@@ -75,11 +75,7 @@ def build_forecast_df(
     df = src.copy()
 
     # Vectorized duracion_meses: map unit factor then multiply
-    factor_series = (
-        df["duracion_unidad"]
-        .str.upper()
-        .map(UNIT_TO_MONTHS)
-    )
+    factor_series = df["duracion_unidad"].str.upper().map(UNIT_TO_MONTHS)
     valor_num = pd.to_numeric(df["duracion_valor"], errors="coerce")
     df["duracion_meses"] = valor_num.where(valor_num > 0) * factor_series
 
@@ -116,8 +112,8 @@ def build_forecast_df(
     # Fin estimado — vectorized:
     # 1. Start from explicit fecha_fin where available
     # 2. Otherwise add duracion_meses (rounded) to inicio_efectivo
-    duracion_offset = df["duracion_meses"].dropna().apply(
-        lambda m: pd.DateOffset(months=round(float(m)))
+    duracion_offset = (
+        df["duracion_meses"].dropna().apply(lambda m: pd.DateOffset(months=round(float(m))))
     )
     computed_end = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
     valid_mask = df["duracion_meses"].notna() & df["inicio_efectivo"].notna()

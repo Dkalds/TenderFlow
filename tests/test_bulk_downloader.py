@@ -197,9 +197,7 @@ class TestDownloadMonthValidation:
             patch("scraper.bulk_downloader.time.sleep"),
             patch(
                 "scraper.bulk_downloader._download",
-                side_effect=requests.HTTPError(
-                    response=MagicMock(status_code=404)
-                ),
+                side_effect=requests.HTTPError(response=MagicMock(status_code=404)),
             ),
         ):
             result = download_month(2024, 1)
@@ -213,9 +211,7 @@ class TestDownloadMonthValidation:
             patch("scraper.bulk_downloader.time.sleep"),
             patch(
                 "scraper.bulk_downloader._download",
-                side_effect=requests.HTTPError(
-                    response=MagicMock(status_code=404)
-                ),
+                side_effect=requests.HTTPError(response=MagicMock(status_code=404)),
             ),
         ):
             result = download_month(2024, 12)
@@ -229,9 +225,7 @@ class TestDownloadMonthValidation:
             patch("scraper.bulk_downloader.time.sleep"),
             patch(
                 "scraper.bulk_downloader._download",
-                side_effect=requests.HTTPError(
-                    response=MagicMock(status_code=404)
-                ),
+                side_effect=requests.HTTPError(response=MagicMock(status_code=404)),
             ),
         ):
             result = download_month(2000, 1)

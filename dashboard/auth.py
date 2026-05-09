@@ -84,7 +84,9 @@ def _check_lockout() -> None:
             )
             st.stop()
     except Exception:
-        log.warning("rate_limit_check_failed", client_key=_client_key())  # Si la BD no está disponible, continuar con session_state
+        log.warning(
+            "rate_limit_check_failed", client_key=_client_key()
+        )  # Si la BD no está disponible, continuar con session_state
 
 
 def _record_failed_attempt() -> None:

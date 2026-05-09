@@ -108,6 +108,7 @@ _settings = _load()
 # Uso recomendado: ``from config import settings`` y luego ``settings.DB_PATH``.
 settings = _settings
 
+
 def ensure_data_dirs() -> None:
     """Crea los directorios de datos si no existen."""
     _settings.DATA_DIR.mkdir(exist_ok=True)

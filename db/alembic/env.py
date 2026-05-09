@@ -25,7 +25,9 @@ try:
 except Exception as e:
     import logging
 
-    logging.getLogger(__name__).debug("alembic_config_fallback", exc_info=e)  # fallback a alembic.ini
+    logging.getLogger(__name__).debug(
+        "alembic_config_fallback", exc_info=e
+    )  # fallback a alembic.ini
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
