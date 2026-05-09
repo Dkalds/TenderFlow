@@ -8,7 +8,7 @@ import threading
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import libsql
@@ -18,12 +18,13 @@ from config import DB_PATH, HISTORY_TRACKED_FIELDS, TURSO_AUTH_TOKEN, TURSO_DATA
 
 def now_utc() -> datetime:
     """Devuelve datetime actual en UTC (aware). Reemplaza datetime.utcnow()."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def now_utc_iso() -> str:
     """ISO 8601 del instante actual en UTC."""
     return now_utc().isoformat()
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS licitaciones (
@@ -182,7 +183,7 @@ def close_pool() -> None:
     if conn is not None:
         try:
             conn.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         _local.conn = None
 
@@ -196,7 +197,6 @@ def connect() -> Iterator[Any]:
     except Exception:
         conn.rollback()
         raise
-
 
 
 def init_db() -> None:
@@ -364,7 +364,7 @@ def upsert_licitaciones_with_history(
     with connect() as c:
         for lic in items:
             existing = c.execute(
-                "SELECT " + _HISTORY_SELECT_COLS + " FROM licitaciones WHERE id_externo = ?",
+                "SELECT " + _HISTORY_SELECT_COLS + " FROM licitaciones WHERE id_externo = ?",  # noqa: S608
                 [lic.id_externo],
             ).fetchone()
 

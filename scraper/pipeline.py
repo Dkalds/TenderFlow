@@ -31,7 +31,7 @@ from scraper.bulk_downloader import (
     download_month,
     iter_xml_files,
 )
-from scraper.codice_parser import parse_atom_bytes, parse_entry, parse_adjudicaciones
+from scraper.codice_parser import parse_adjudicaciones, parse_atom_bytes, parse_entry
 
 log = get_logger(__name__)
 
@@ -169,15 +169,12 @@ def backfill(start_year: int, start_month: int) -> list[dict]:
     with record_run(run_id) as metrics:
         results: list[dict] = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {
-                pool.submit(process_month, y, m, run_id=run_id): (y, m)
-                for y, m in months
-            }
+            futures = {pool.submit(process_month, y, m, run_id=run_id): (y, m) for y, m in months}
             for future in as_completed(futures):
                 y, m = futures[future]
                 try:
                     results.append(future.result())
-                except Exception as e:
+                except Exception:
                     log.exception("backfill_month_error", year=y, month=m)
                     results.append({"year": y, "month": m, "status": "error"})
         _summarize(results, metrics)
