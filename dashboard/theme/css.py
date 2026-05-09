@@ -73,7 +73,7 @@ def _light_overrides(t: Tokens) -> str:
 """
 
 
-def build_css(t: Tokens = TOKENS) -> str:  # noqa: PLR0915
+def build_css(t: Tokens = TOKENS) -> str:
     c = t.colors
     ty = t.type
     ra = t.radii

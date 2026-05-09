@@ -21,8 +21,7 @@ def render(ctx: PageContext) -> None:
     _geo_src = df.dropna(subset=["ccaa"])
     _count_col = "id_externo" if "id_externo" in _geo_src.columns else "importe"
     geo = (
-        _geo_src
-        .groupby("ccaa")
+        _geo_src.groupby("ccaa")
         .agg(n=(_count_col, "count"), importe=("importe", "sum"))
         .reset_index()
     )
@@ -105,8 +104,7 @@ def render(ctx: PageContext) -> None:
         prov_src = df.dropna(subset=["provincia"])
         _count_col_p = "id_externo" if "id_externo" in prov_src.columns else "importe"
         prov = (
-            prov_src
-            .groupby("provincia")
+            prov_src.groupby("provincia")
             .agg(n=(_count_col_p, "count"), importe=("importe", "sum"))
             .reset_index()
             .sort_values("n", ascending=False)

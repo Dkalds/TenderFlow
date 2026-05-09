@@ -36,7 +36,12 @@ def render(ctx: PageContext) -> None:
     with cMod, chart_card("Módulos / productos SAP detectados"):
         if "modulos" not in df.columns:
             from dashboard.components.states import empty_state
-            empty_state("package", "Sin datos de módulos", "La columna 'modulos' no está disponible en el dataset actual.")
+
+            empty_state(
+                "package",
+                "Sin datos de módulos",
+                "La columna 'modulos' no está disponible en el dataset actual.",
+            )
         else:
             _count_col_m = "id_externo" if "id_externo" in df.columns else "importe"
             mod_df = df.explode("modulos")

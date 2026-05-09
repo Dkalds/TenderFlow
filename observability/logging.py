@@ -155,6 +155,7 @@ def configure_logging(
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     import typing
+
     return typing.cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
 
 

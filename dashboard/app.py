@@ -82,7 +82,7 @@ light_mode = render_topbar(last_updated=last_updated)
 if light_mode:
     st.markdown(
         '<script>document.documentElement.setAttribute("data-theme","light");</script>'
-        '<style>html{color-scheme:light}</style>',
+        "<style>html{color-scheme:light}</style>",
         unsafe_allow_html=True,
     )
 else:

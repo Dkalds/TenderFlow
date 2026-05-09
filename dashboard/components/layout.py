@@ -77,7 +77,7 @@ def render_topbar(last_updated=None) -> bool:
             '<div style="display:flex;justify-content:flex-end;align-items:center;height:100%">'
             '<span class="topbar-meta">'
             '<span class="pulse-dot"></span>'
-            f'{icon("clock", 12)} Actualizado {last_str}'
+            f"{icon('clock', 12)} Actualizado {last_str}"
             "</span></div>",
             unsafe_allow_html=True,
         )
