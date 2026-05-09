@@ -365,12 +365,3 @@ Lanzar manualmente: pestaña *Actions* → "Scrape PLACSP daily" → *Run workfl
   Al ritmo SAP actual (~ +30 licitaciones/mes), tardarías años.
 - Cada commit del bot añade peso al historial git. Si crece mucho,
   squash-merge anual o `git lfs` para el `.db`.
-
-## Próximos pasos sugeridos
-
-- Migrar SQLite → Supabase Postgres si crecéis a multi-usuario con
-  escritura concurrente.
-- Añadir alertas por email cuando aparezca una licitación SAP
-  por encima de cierto importe.
-- Auth (Cloudflare Access / streamlit-authenticator) si pasa a uso
-  interno empresa.
