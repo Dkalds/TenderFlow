@@ -252,8 +252,7 @@ def replace_adjudicaciones(licitacion_id: str, items: Iterable[Adjudicacion]) ->
             vals = [data[k] for k in _ADJ_KEYS]
             # Column names come from dataclass fields (controlled code) — safe
             c.execute(
-                f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) "
-                f"VALUES ({_ADJ_PLACEHOLDERS})",
+                f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
                 vals,
             )
             n += 1

@@ -1,4 +1,4 @@
-﻿"""Tests para scheduler/watchlist_alerts.py."""
+"""Tests para scheduler/watchlist_alerts.py."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def _make_entry(**kwargs: Any) -> dict[str, Any]:
 def _make_lic(**kwargs: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "titulo": "Sistema ERP",
-        "organo_contratacion": "Junta de AndalucÃ­a",
+        "organo_contratacion": "Junta de Andalucía",
         "importe": 100000.0,
         "url": "https://example.com/123",
         "fecha_publicacion": "2024-01-15",
@@ -91,7 +91,7 @@ def test_build_body_truncates_at_10():
     entry = _make_entry()
     lics = [_make_lic(titulo=f"Lic {i}") for i in range(15)]
     body = _build_body([(entry, lics)])
-    assert "5 mÃ¡s" in body
+    assert "5 más" in body
 
 
 def test_build_body_no_importe_shows_dash():
@@ -100,7 +100,7 @@ def test_build_body_no_importe_shows_dash():
     entry = _make_entry()
     lic = _make_lic(importe=None)
     body = _build_body([(entry, [lic])])
-    assert "â€”" in body
+    assert "—" in body
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def test_query_licitaciones_since_empty_db(tmp_db):
 
 
 # ---------------------------------------------------------------------------
-# check_and_notify â€” empty watchlist
+# check_and_notify — empty watchlist
 # ---------------------------------------------------------------------------
 
 
@@ -140,7 +140,7 @@ def test_check_and_notify_empty_watchlist_returns_zero(tmp_db):
 
 
 # ---------------------------------------------------------------------------
-# check_and_notify â€” entries without email (no notification sent)
+# check_and_notify — entries without email (no notification sent)
 # ---------------------------------------------------------------------------
 
 
