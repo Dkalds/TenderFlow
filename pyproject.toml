@@ -57,7 +57,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S106", "S105", "S320"]
 "dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
-"dashboard/app.py" = []  # sys.path hack removed — no longer needs E402
+"dashboard/app.py" = ["E402"]  # sys.path insert requires imports after path manipulation
 "dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
 "db/database.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
 
