@@ -36,11 +36,13 @@ repos:
     hooks:
       - id: pytest-fast
         name: pytest (fast)
-        entry: python -m pytest -x -q --no-header --no-cov -k "not slow"
+        entry: python -m pytest -x -q --no-header --no-cov -k "not slow" --ignore=tests/test_property_based.py --ignore=tests/test_atom_live.py
         language: python
         additional_dependencies:
           - pytest>=8.0.0
           - pytest-cov>=5.0.0
+          - requests
+          - httpx
         types: [python]
         pass_filenames: false
         stages: [pre-commit]

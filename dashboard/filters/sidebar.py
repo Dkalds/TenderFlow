@@ -119,26 +119,29 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
         sorted(df_full["ccaa"].dropna().unique()),
         key="fs_ccaas",
     )
-    organos = st.multiselect(
-        "Órgano contratante",
-        sorted(df_full["organo_contratacion"].dropna().unique()),
-        key="fs_organos",
-    )
-    tipos_proy = st.multiselect(
-        "Tipo de proyecto",
-        sorted(df_full["tipo_proyecto"].dropna().unique()),
-        key="fs_tipos",
-    )
 
-    _group_header("Importe", "euro")
-    importe_min = st.number_input(
-        "Importe mínimo (€)",
-        min_value=0,
-        value=0,
-        step=10000,
-        key="fs_imp_min",
-        label_visibility="collapsed",
-    )
+    # Segmentación secundaria — colapsable para liberar espacio vertical.
+    with st.expander("Más filtros", expanded=False):
+        organos = st.multiselect(
+            "Órgano contratante",
+            sorted(df_full["organo_contratacion"].dropna().unique()),
+            key="fs_organos",
+        )
+        tipos_proy = st.multiselect(
+            "Tipo de proyecto",
+            sorted(df_full["tipo_proyecto"].dropna().unique()),
+            key="fs_tipos",
+        )
+
+        _group_header("Importe", "euro")
+        importe_min = st.number_input(
+            "Importe mínimo (€)",
+            min_value=0,
+            value=0,
+            step=10000,
+            key="fs_imp_min",
+            label_visibility="collapsed",
+        )
 
     # ── Filtros avanzados (comparativa) ────────────────────────────
     rango_b = None

@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from dashboard.auth import check_password
-from dashboard.components.layout import render_header, render_sidebar_brand
+from dashboard.components.layout import render_sidebar_brand, render_topbar
 from dashboard.components.navigation import active_filters_chips, breadcrumb, sub_nav, top_nav
 from dashboard.components.states import empty_state
 from dashboard.data_loader import load_dataframe, load_extracciones
@@ -70,13 +70,26 @@ bind_session_context()
 PLOTLY_TEMPLATE = register_plotly_template(TOKENS)
 COLOR_SEQUENCE = get_color_sequence(TOKENS)
 
-# ── Carga de datos (necesaria antes del header para 'última actualización') ──
+# ── Carga de datos (necesaria antes del topbar para 'última actualización') ──
 df_full = load_dataframe()
 
-# ── Header ──────────────────────────────────────────────────────────────
+# ── Topbar premium (logo + meta pill + theme toggle + refresh) ───────────
 _ext = load_extracciones()
 last_updated = _ext["fecha"].max() if not _ext.empty else None
-render_header(last_updated=last_updated)
+light_mode = render_topbar(last_updated=last_updated)
+
+# Aplicar atributo data-theme al <html> para activar la paleta clara.
+if light_mode:
+    st.markdown(
+        '<script>document.documentElement.setAttribute("data-theme","light");</script>'
+        '<style>html{color-scheme:light}</style>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        '<script>document.documentElement.removeAttribute("data-theme");</script>',
+        unsafe_allow_html=True,
+    )
 
 if df_full.empty:
     empty_state(

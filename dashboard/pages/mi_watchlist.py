@@ -130,7 +130,7 @@ def render(ctx: PageContext) -> None:
         if "descripcion" in df.columns
         else pd.Series("", index=df.index)
     )
-    text_col = titulo_col + " " + desc_col
+    text_col = titulo_col + " " + desc_col  # type: ignore[operator]
     importe_col = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
     ccaa_col = df["ccaa"].fillna("").astype(str)
 

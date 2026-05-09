@@ -1,4 +1,9 @@
-"""Componentes de layout — header global, footer y sidebar branding."""
+"""Componentes de layout — topbar unificada, footer y branding.
+
+Premium refresh: el header tradicional + top-nav se unifican en una sola
+``topbar`` fija (logo · nav slot · meta pill · acciones). El logo ya no
+está en el sidebar, lo que libera espacio para los filtros.
+"""
 
 from __future__ import annotations
 
@@ -35,34 +40,57 @@ def _format_last_updated(ts) -> str:
     return f"hace {days} d" if days < 30 else ts.strftime("%Y-%m-%d")
 
 
-def render_header(
-    title: str = "Licitaciones SAP",
-    subtitle: str | None = "Inteligencia comercial · Sector público",
-    last_updated=None,
-) -> None:
-    """Header pro de la app: título + pill 'última actualización' + refresh.
+def render_topbar_brand(tagline: str = "Sector público · ES") -> None:
+    """Renderiza el bloque brand del topbar (logo + nombre + tagline)."""
+    st.markdown(
+        f'<div class="topbar-brand">'
+        f'<span class="brand-logo">{LOGO_SVG}</span>'
+        f'<span class="brand-name">Licitaciones SAP</span>'
+        f'<span class="brand-tag">{tagline}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
-    Layout en 3 zonas: brand+título, meta (pill), acciones (botón refresh).
+
+def render_topbar(last_updated=None) -> bool:
+    """Topbar premium: brand + meta pill + acciones (refresh, theme toggle).
+
+    Devuelve el estado del toggle de tema (False = dark, True = light) para
+    que el caller inyecte el atributo ``data-theme`` correspondiente.
+
+    Layout: usa st.columns con anchos relativos para alinear los slots.
     """
     last_str = _format_last_updated(last_updated)
-    sub_html = f'<div class="ah-subtitle">{subtitle}</div>' if subtitle else ""
 
-    col_l, col_m, col_r = st.columns([6, 3, 1])
-    with col_l:
+    # Apertura del wrapper visual de la topbar
+    st.markdown('<div class="topbar">', unsafe_allow_html=True)
+
+    col_brand, col_spacer, col_meta, col_theme, col_refresh = st.columns(
+        [3, 6, 2.2, 0.6, 0.6], gap="small", vertical_alignment="center"
+    )
+    with col_brand:
+        render_topbar_brand()
+    with col_spacer:
+        st.markdown('<div class="topbar-spacer"></div>', unsafe_allow_html=True)
+    with col_meta:
         st.markdown(
-            f'<div><h1 class="ah-title">{title}</h1>{sub_html}</div>',
+            '<div style="display:flex;justify-content:flex-end;align-items:center;height:100%">'
+            '<span class="topbar-meta">'
+            '<span class="pulse-dot"></span>'
+            f'{icon("clock", 12)} Actualizado {last_str}'
+            "</span></div>",
             unsafe_allow_html=True,
         )
-    with col_m:
-        st.markdown(
-            '<div style="display:flex;justify-content:flex-end;align-items:center;'
-            'height:100%">'
-            f'<span class="ah-meta">{icon("clock", 13)} '
-            f"Actualizado {last_str}</span>"
-            "</div>",
-            unsafe_allow_html=True,
+    with col_theme:
+        # Toggle dark/light. Persistido en session_state.
+        light = st.toggle(
+            "☀",
+            key="ui_light_mode",
+            value=st.session_state.get("ui_light_mode", False),
+            help="Cambiar a tema claro / oscuro",
+            label_visibility="collapsed",
         )
-    with col_r:
+    with col_refresh:
         if st.button(
             "↻",
             use_container_width=True,
@@ -72,23 +100,31 @@ def render_header(
             st.cache_data.clear()
             st.rerun()
 
-    st.markdown(
-        '<div style="height:1px;'
-        "background:linear-gradient(90deg, transparent, var(--color-accent-primary-hover), var(--color-border-subtle), transparent);"
-        'margin:8px 0 18px 0;opacity:0.5"></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    return bool(light)
+
+
+# ── Backward-compat shims ────────────────────────────────────────────────
+
+
+def render_header(
+    title: str = "Licitaciones SAP",
+    subtitle: str | None = "Inteligencia comercial · Sector público",
+    last_updated=None,
+) -> None:
+    """Compat: delega a render_topbar (el header clásico ya no se usa)."""
+    _ = (title, subtitle)  # silencia args legacy
+    render_topbar(last_updated=last_updated)
 
 
 def render_sidebar_brand() -> None:
-    """Logo + nombre + tagline en la parte superior del sidebar."""
+    """Compat: en el nuevo layout el brand vive en la topbar.
+
+    Mantenida para no romper imports externos. Renderiza un divisor sutil
+    con un caption fino para empezar el sidebar de forma limpia.
+    """
     st.markdown(
-        f'<div class="brand">'
-        f'<div class="brand-logo">{LOGO_SVG}</div>'
-        f'<div class="brand-text">'
-        f'<span class="brand-name">Licitaciones SAP</span>'
-        f'<span class="brand-tag">Sector público · ES</span>'
-        f"</div></div>",
+        '<div style="height:6px"></div>',
         unsafe_allow_html=True,
     )
 

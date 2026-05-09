@@ -214,7 +214,7 @@ Los workflows ya están configurados en `.github/workflows/`. Solo
 necesitas añadir los secrets en el repositorio:
 
 Repo → **Settings → Secrets and variables → Actions** →
-"New repository secret": `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.
+"New repository secret": `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.  <!-- pragma: allowlist secret -->
 
 ## Próximos pasos sugeridos
 

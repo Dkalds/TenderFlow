@@ -18,10 +18,12 @@ from dashboard.utils.format import fmt_eur
 def render(ctx: PageContext) -> None:
     df = ctx.df
 
+    _geo_src = df.dropna(subset=["ccaa"])
+    _count_col = "id_externo" if "id_externo" in _geo_src.columns else "importe"
     geo = (
-        df.dropna(subset=["ccaa"])
+        _geo_src
         .groupby("ccaa")
-        .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+        .agg(n=(_count_col, "count"), importe=("importe", "sum"))
         .reset_index()
     )
 
@@ -100,10 +102,12 @@ def render(ctx: PageContext) -> None:
             )
 
     with cT:
+        prov_src = df.dropna(subset=["provincia"])
+        _count_col_p = "id_externo" if "id_externo" in prov_src.columns else "importe"
         prov = (
-            df.dropna(subset=["provincia"])
+            prov_src
             .groupby("provincia")
-            .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+            .agg(n=(_count_col_p, "count"), importe=("importe", "sum"))
             .reset_index()
             .sort_values("n", ascending=False)
             .head(15)

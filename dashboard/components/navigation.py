@@ -85,35 +85,42 @@ def top_nav(
     st.markdown(
         """
         <style>
-          .top-nav-wrap { margin: 4px 0 10px 0; }
-          div[data-testid="stRadio"]:has(> label[for*="topnav"]) > div[role="radiogroup"],
+          .top-nav-wrap { margin: -4px 0 14px 0; }
           .top-nav-wrap + div div[role="radiogroup"] {
-            gap: 4px !important;
+            gap: 2px !important;
             flex-wrap: wrap;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            padding-bottom: 6px;
+            background: var(--color-bg-elev-1);
+            border: 1px solid var(--color-border-card);
+            border-radius: 10px;
+            padding: 4px !important;
+            display: inline-flex !important;
+            box-shadow: var(--shadow-sm);
           }
           .top-nav-wrap + div div[role="radiogroup"] > label {
             background: transparent;
             border: 1px solid transparent;
-            border-radius: 8px 8px 0 0;
-            padding: 8px 14px !important;
+            border-radius: 7px;
+            padding: 7px 14px !important;
             margin: 0 !important;
-            transition: background .15s ease, color .15s ease;
+            transition: background .18s ease, color .18s ease, transform .1s ease;
             cursor: pointer;
             font-weight: 500;
+            font-size: 0.86rem;
+            color: var(--color-text-muted);
           }
           .top-nav-wrap + div div[role="radiogroup"] > label:hover {
-            background: rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.04);
+            color: var(--color-text-primary);
           }
           .top-nav-wrap + div div[role="radiogroup"] > label > div:first-child {
             display: none !important;
           }
           .top-nav-wrap + div div[role="radiogroup"] > label:has(input:checked) {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.10);
-            border-bottom-color: transparent;
+            background: var(--color-bg-elev-2);
+            border-color: var(--color-border-hover);
+            color: var(--color-text-primary);
             font-weight: 600;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.2);
           }
         </style>
         <div class="top-nav-wrap"></div>

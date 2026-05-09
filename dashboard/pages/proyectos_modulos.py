@@ -34,26 +34,31 @@ def render(ctx: PageContext) -> None:
     cMod, cType = st.columns(2)
 
     with cMod, chart_card("Módulos / productos SAP detectados"):
-        mod_df = df.explode("modulos")
-        mod_count = (
-            mod_df.groupby("modulos")
-            .agg(n=("id_externo", "count"), importe=("importe", "sum"))
-            .reset_index()
-            .sort_values("n", ascending=False)
-        )
-        if not mod_count.empty:
-            fig = px.bar(
-                mod_count.head(15).sort_values("n"),
-                x="n",
-                y="modulos",
-                orientation="h",
-                template=ctx.plotly_template,
-                color="importe",
-                color_continuous_scale="YlGn",
-                labels={"n": "Apariciones", "modulos": "", "importe": "Importe €"},
+        if "modulos" not in df.columns:
+            from dashboard.components.states import empty_state
+            empty_state("package", "Sin datos de módulos", "La columna 'modulos' no está disponible en el dataset actual.")
+        else:
+            _count_col_m = "id_externo" if "id_externo" in df.columns else "importe"
+            mod_df = df.explode("modulos")
+            mod_count = (
+                mod_df.groupby("modulos")
+                .agg(n=(_count_col_m, "count"), importe=("importe", "sum"))
+                .reset_index()
+                .sort_values("n", ascending=False)
             )
-            fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
-            st.plotly_chart(fig, use_container_width=True)
+            if not mod_count.empty:
+                fig = px.bar(
+                    mod_count.head(15).sort_values("n"),
+                    x="n",
+                    y="modulos",
+                    orientation="h",
+                    template=ctx.plotly_template,
+                    color="importe",
+                    color_continuous_scale="YlGn",
+                    labels={"n": "Apariciones", "modulos": "", "importe": "Importe €"},
+                )
+                fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True)
 
     with cType, chart_card("Tipo de proyecto × Estado"):
         cross = df.groupby(["tipo_proyecto", "estado_desc"]).size().reset_index(name="n")
@@ -94,9 +99,10 @@ def render(ctx: PageContext) -> None:
         )
 
     st.subheader("Top códigos CPV")
+    _count_col_cpv = "id_externo" if "id_externo" in df.columns else "importe"
     cpv_df = (
         df.groupby(["cpv", "cpv_desc"])
-        .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+        .agg(n=(_count_col_cpv, "count"), importe=("importe", "sum"))
         .reset_index()
         .sort_values("n", ascending=False)
         .head(15)

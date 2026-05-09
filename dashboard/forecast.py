@@ -72,7 +72,7 @@ def build_forecast_df(
 
     df["duracion_meses"] = df.apply(
         lambda r: to_months(r.get("duracion_valor"), r.get("duracion_unidad")),
-        axis=1,  # type: ignore[call-overload]
+        axis=1,
     )
 
     # Sacar datos de adjudicación agregados por licitación
@@ -110,7 +110,7 @@ def build_forecast_df(
         lambda r: estimate_end_date(
             r["inicio_efectivo"], r["duracion_meses"], r["fecha_fin_explicit_dt"]
         ),
-        axis=1,  # type: ignore[call-overload]
+        axis=1,
     )
 
     # Ventana de re-licitación
