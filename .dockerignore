@@ -46,4 +46,3 @@ _test_summary.txt
 .hypothesis/
 .secrets.baseline
 Makefile
-
