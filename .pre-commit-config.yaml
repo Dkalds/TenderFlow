@@ -29,7 +29,7 @@ repos:
           - types-requests
           - types-python-dateutil
         args: ["--ignore-missing-imports"]
-        files: "^(scraper|db|scheduler|dashboard|config\\.py|api)/.*\\.py$|^config\\.py$"
+        files: "^(scraper|db|scheduler|dashboard)/.*\.py$|^config\.py$"
 
   - repo: local
     hooks:
