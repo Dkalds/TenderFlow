@@ -118,7 +118,7 @@ def build_forecast_df(
     computed_end = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
     valid_mask = df["duracion_meses"].notna() & df["inicio_efectivo"].notna()
     for idx in df.index[valid_mask]:
-        computed_end.at[idx] = df.at[idx, "inicio_efectivo"] + duracion_offset.at[idx]
+        computed_end.at[idx] = df.at[idx, "inicio_efectivo"] + duracion_offset.at[idx]  # type: ignore[operator]
     df["fecha_fin_estimada"] = df["fecha_fin_explicit_dt"].where(
         df["fecha_fin_explicit_dt"].notna(), computed_end
     )
