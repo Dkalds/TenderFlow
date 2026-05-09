@@ -65,7 +65,7 @@ def render(ctx: PageContext) -> None:
             if empresa:
                 parts_adj.append(f"🏢 {empresa}")
             if pd.notna(baja):
-                parts_adj.append(f"📉 {float(baja):.1f}% baja")
+                parts_adj.append(f"📉 {float(str(baja)):.1f}% baja")
             if pd.notna(fecha_adj):
                 parts_adj.append(f"📅 {pd.Timestamp(str(fecha_adj)).strftime('%d/%m/%Y')}")
             adj_line = " · ".join(parts_adj)

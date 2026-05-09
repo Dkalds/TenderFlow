@@ -70,7 +70,7 @@ def build_forecast_df(
     if df.empty:
         return df
 
-    df["duracion_meses"] = df.apply(
+    df["duracion_meses"] = df.apply(  # type: ignore[call-overload]
         lambda r: to_months(r.get("duracion_valor"), r.get("duracion_unidad")),
         axis=1,
     )
@@ -106,7 +106,7 @@ def build_forecast_df(
     df["inicio_efectivo"] = df["fecha_inicio_dt"].fillna(df["fecha_adj_calc"]).fillna(fpub)
 
     # Fin estimado
-    df["fecha_fin_estimada"] = df.apply(
+    df["fecha_fin_estimada"] = df.apply(  # type: ignore[call-overload]
         lambda r: estimate_end_date(
             r["inicio_efectivo"], r["duracion_meses"], r["fecha_fin_explicit_dt"]
         ),
