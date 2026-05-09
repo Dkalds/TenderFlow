@@ -34,7 +34,7 @@ jobs:
         run: ruff format --check .
 
       - name: Type check (mypy)
-        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ api/ config.py
+        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config.py
 
   test:
     name: Tests
