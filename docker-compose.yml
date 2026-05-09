@@ -1,0 +1,48 @@
+services:
+  dashboard:
+    build:
+      context: .
+      target: runtime
+    image: licitaciones-sap:latest
+    container_name: licitaciones-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      # Base de datos SQLite persistente fuera del contenedor
+      - licitaciones_data:/data
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /data/licitaciones.db
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  scheduler:
+    build:
+      context: .
+      target: runtime
+    image: licitaciones-sap:latest
+    container_name: licitaciones-scheduler
+    restart: unless-stopped
+    # El scheduler no expone puerto — solo escribe en la BD compartida
+    volumes:
+      - licitaciones_data:/data
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /data/licitaciones.db
+    command: ["python", "-m", "scheduler.run_update"]
+    # Iniciar después del dashboard para que la BD ya esté inicializada
+    depends_on:
+      dashboard:
+        condition: service_healthy
+
+volumes:
+  licitaciones_data:
+    driver: local

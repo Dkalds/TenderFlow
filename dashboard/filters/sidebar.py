@@ -7,19 +7,10 @@ import streamlit as st
 
 from dashboard.components.icons import icon
 from dashboard.filters.state import FiltersState
+from dashboard.session_keys import FILTER_KEYS, QP_LOADED
 
 # Claves de session_state que el botón "Limpiar filtros" debe resetear.
-_FILTER_STATE_KEYS = (
-    "fs_q",
-    "fs_rango",
-    "fs_estados",
-    "fs_ccaas",
-    "fs_organos",
-    "fs_tipos",
-    "fs_imp_min",
-    "fs_comparar",
-    "fs_rango_b",
-)
+_FILTER_STATE_KEYS = FILTER_KEYS
 
 
 def _group_header(label: str, icon_name: str) -> None:
@@ -35,7 +26,7 @@ def _clear_filters() -> None:
     for key in _FILTER_STATE_KEYS:
         if key in st.session_state:
             del st.session_state[key]
-    st.session_state["_qp_loaded"] = False  # forzar relectura desde URL vacía
+    st.session_state[QP_LOADED] = False  # forzar relectura desde URL vacía
 
 
 def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:

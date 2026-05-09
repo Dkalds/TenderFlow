@@ -44,8 +44,14 @@ module = [
     "db.*",
     "observability.*",
     "dashboard.utils.*",
+    "dashboard.classifiers",
+    "dashboard.normalize",
+    "dashboard.forecast",
     "scraper.resilience",
     "scraper.filters",
+    "scraper.pipeline",
+    "scraper.codice_parser",
+    "scraper.bulk_downloader",
 ]
 disallow_untyped_defs = true
 warn_unused_ignores = true
@@ -58,6 +64,12 @@ module = [
     "libsql",
     "libsql.*",
     "pybreaker",
+    "requests",
+    "requests.*",
+    "lxml",
+    "lxml.*",
+    "dateutil",
+    "dateutil.*",
     "streamlit",
     "streamlit.*",
     "st_aggrid",
@@ -69,7 +81,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov=. --cov-report=term-missing"
 filterwarnings = [
     "ignore::DeprecationWarning:libsql",
 ]
@@ -88,11 +100,13 @@ omit = [
     "dashboard/query_params_sync.py",
     "dashboard/router.py",
     "dashboard/data_loader.py",
+    "dashboard/stats.py",
     "scheduler/run_update.py",
     "config.py",
 ]
 
 [tool.coverage.report]
+fail_under = 70
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

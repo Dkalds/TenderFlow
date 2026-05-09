@@ -27,6 +27,16 @@ from dashboard.kpi_bar import render_kpi_bar
 from dashboard.pages import PAGE_REGISTRY
 from dashboard.pages._base import PageContext
 from dashboard.router import SECTION_ICONS, SECTIONS
+from dashboard.session_keys import (
+    FS_CCAAS,
+    FS_ESTADOS,
+    FS_IMP_MIN,
+    FS_ORGANOS,
+    FS_Q,
+    FS_RANGO,
+    FS_TIPOS,
+    QP_LOADED,
+)
 from dashboard.theme import (COMPACT_DENSITY_CSS, TOKENS, build_css,
                               get_color_sequence, register_plotly_template)
 
@@ -86,27 +96,27 @@ if df_full.empty:
     )
     st.stop()
 # ── Inicializar filtros desde URL params (sólo en la primera carga) ──────────────
-if "_qp_loaded" not in st.session_state:
+if QP_LOADED not in st.session_state:
     init_filters = FiltersState.from_query_params(dict(st.query_params))
     if init_filters.q:
-        st.session_state["fs_q"] = init_filters.q
+        st.session_state[FS_Q] = init_filters.q
     if init_filters.estados:
         valid_estados = set(df_full["estado_desc"].dropna().unique())
-        st.session_state["fs_estados"] = [e for e in init_filters.estados if e in valid_estados]
+        st.session_state[FS_ESTADOS] = [e for e in init_filters.estados if e in valid_estados]
     if init_filters.ccaas:
         valid_ccaas = set(df_full["ccaa"].dropna().unique())
-        st.session_state["fs_ccaas"] = [c for c in init_filters.ccaas if c in valid_ccaas]
+        st.session_state[FS_CCAAS] = [c for c in init_filters.ccaas if c in valid_ccaas]
     if init_filters.organos:
         valid_organos = set(df_full["organo_contratacion"].dropna().unique())
-        st.session_state["fs_organos"] = [o for o in init_filters.organos if o in valid_organos]
+        st.session_state[FS_ORGANOS] = [o for o in init_filters.organos if o in valid_organos]
     if init_filters.tipos_proy:
         valid_tipos = set(df_full["tipo_proyecto"].dropna().unique())
-        st.session_state["fs_tipos"] = [t for t in init_filters.tipos_proy if t in valid_tipos]
+        st.session_state[FS_TIPOS] = [t for t in init_filters.tipos_proy if t in valid_tipos]
     if init_filters.importe_min > 0:
-        st.session_state["fs_imp_min"] = init_filters.importe_min
+        st.session_state[FS_IMP_MIN] = init_filters.importe_min
     if init_filters.rango:
-        st.session_state["fs_rango"] = init_filters.rango
-    st.session_state["_qp_loaded"] = True
+        st.session_state[FS_RANGO] = init_filters.rango
+    st.session_state[QP_LOADED] = True
 # ── Sidebar: filtros (la navegación principal vive en el top-nav) ────────
 with st.sidebar:
     render_sidebar_brand()

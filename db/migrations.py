@@ -171,6 +171,19 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         "users_is_admin",
         "",  # handled programmatically
     ),
+    (
+        11,
+        "failed_extractions_dedup_index",
+        """
+        -- Índice único parcial para deduplicar fallos no resueltos.
+        -- Permite usar UPSERT en record_failure() para incrementar retry_count
+        -- cuando el mismo (fuente, scope, payload_ref) vuelve a fallar.
+        -- COALESCE necesario porque SQLite trata cada NULL como distinto.
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fail_unique_unresolved
+        ON failed_extractions(fuente, COALESCE(scope, ''), COALESCE(payload_ref, ''))
+        WHERE resolved_at IS NULL;
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque

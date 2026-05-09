@@ -17,10 +17,16 @@ UNIT_TO_MONTHS = {
 def to_months(valor: float | None, unidad: str | None) -> float | None:
     if valor is None or pd.isna(valor) or not unidad:
         return None
+    try:
+        valor_f = float(valor)
+    except (TypeError, ValueError):
+        return None
+    if valor_f <= 0:
+        return None
     factor = UNIT_TO_MONTHS.get(str(unidad).upper())
     if factor is None:
         return None
-    return float(valor) * factor
+    return valor_f * factor
 
 
 def estimate_end_date(

@@ -155,3 +155,48 @@ class TestRateLimiting:
         lockout_until = session.get("_login_lockout_until", 0)
         remaining = lockout_until - time.time()
         assert remaining <= auth._MAX_LOCKOUT_SECONDS + 1  # +1 para tolerancia de tiempo
+
+
+class TestAdminEnforcement:
+    def test_no_user_in_session_no_admin(self, mock_streamlit):
+        _st_mock, session = mock_streamlit
+        # Sin _user_id en sesión
+        auth = _import_auth()
+        assert auth.current_user_is_admin() is False
+
+    def test_user_with_admin_flag_is_admin(self, mock_streamlit):
+        _st_mock, session = mock_streamlit
+        session["_user_id"] = 42
+        auth = _import_auth()
+        with patch("db.users.is_admin", return_value=True):
+            assert auth.current_user_is_admin() is True
+
+    def test_user_without_admin_flag_not_admin(self, mock_streamlit):
+        _st_mock, session = mock_streamlit
+        session["_user_id"] = 42
+        auth = _import_auth()
+        with patch("db.users.is_admin", return_value=False):
+            assert auth.current_user_is_admin() is False
+
+    def test_db_error_defaults_to_not_admin(self, mock_streamlit):
+        """Si la consulta a DB falla, fail-closed (no admin)."""
+        _st_mock, session = mock_streamlit
+        session["_user_id"] = 42
+        auth = _import_auth()
+        with patch("db.users.is_admin", side_effect=RuntimeError("db down")):
+            assert auth.current_user_is_admin() is False
+
+    def test_require_admin_returns_true_for_admin(self, mock_streamlit):
+        _st_mock, session = mock_streamlit
+        session["_user_id"] = 1
+        auth = _import_auth()
+        with patch("db.users.is_admin", return_value=True):
+            assert auth.require_admin() is True
+
+    def test_require_admin_shows_info_for_non_admin(self, mock_streamlit):
+        st_mock, session = mock_streamlit
+        session["_user_id"] = 1
+        auth = _import_auth()
+        with patch("db.users.is_admin", return_value=False):
+            assert auth.require_admin("custom msg") is False
+        st_mock.info.assert_called_once()

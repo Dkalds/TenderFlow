@@ -41,6 +41,18 @@ class TestToMonths:
     def test_unidad_case_insensitive(self):
         assert to_months(1, "ann") == pytest.approx(12.0)
 
+    def test_valor_cero_devuelve_none(self):
+        # Una duración de 0 no tiene sentido — evita división por cero downstream.
+        assert to_months(0, "MON") is None
+        assert to_months(0.0, "ANN") is None
+
+    def test_valor_negativo_devuelve_none(self):
+        assert to_months(-5, "MON") is None
+        assert to_months(-1.5, "ANN") is None
+
+    def test_valor_no_numerico_devuelve_none(self):
+        assert to_months("abc", "MON") is None  # type: ignore[arg-type]
+
 
 class TestEstimateEndDate:
     def _ts(self, date_str: str) -> pd.Timestamp:
