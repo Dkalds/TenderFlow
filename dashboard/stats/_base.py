@@ -1091,8 +1091,8 @@ def dedupe_reaperturas(
             group_counter += 1
             oid = f"OP-{group_counter:06d}"
             for version, idx in enumerate(cluster, 1):
-                oportunidad_id.iloc[work.index.get_loc(idx)] = oid
-                oportunidad_version.iloc[work.index.get_loc(idx)] = f"v{version}"
+                oportunidad_id.iloc[work.index.get_loc(idx)] = oid  # type: ignore[index]
+                oportunidad_version.iloc[work.index.get_loc(idx)] = f"v{version}"  # type: ignore[index]
 
     result = df.copy()
     result["oportunidad_id"] = oportunidad_id

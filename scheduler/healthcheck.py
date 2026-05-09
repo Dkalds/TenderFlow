@@ -42,7 +42,7 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict:
     # --- Métricas de infraestructura ---
     from config import settings
 
-    db_path = Path(settings.DB_PATH)
+    db_path = settings.DB_PATH or (settings.DATA_DIR / "licitaciones.db")
     info["db_size_bytes"] = db_path.stat().st_size if db_path.exists() else 0
     data_dir = Path(settings.DATA_DIR)
     try:

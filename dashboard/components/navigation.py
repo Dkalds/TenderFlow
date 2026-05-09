@@ -29,8 +29,8 @@ def _remove_filter(key: str, value: str | None) -> None:
         elif key in st.session_state:
             del st.session_state[key]
     else:
-        current: list[Any] = st.session_state.get(key, [])
-        st.session_state[key] = [v for v in current if v != value]
+        current_list: list[Any] = st.session_state.get(key, [])
+        st.session_state[key] = [v for v in current_list if v != value]
 
 
 def breadcrumb(section: str, page: str, description: str | None = None) -> None:

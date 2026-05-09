@@ -253,9 +253,9 @@ def run_drift_report(*, days: int = 30, send_alert: bool = True) -> list[dict[st
         lines.append("\nRevisa si alguno debería añadirse a SAP_KEYWORDS en config.py.")
         body = "\n".join(lines)
         notify(
+            AlertLevel.WARN,
             "Concept Drift — Términos emergentes detectados",
             body,
-            level=AlertLevel.WARN,
         )
 
     return candidates

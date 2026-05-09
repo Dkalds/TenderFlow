@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -276,7 +278,7 @@ def render(ctx: PageContext) -> None:
             .copy()
         )
         top_pdf["importe_fmt"] = top_pdf["importe"].apply(fmt_eur)
-        top_list = top_pdf.to_dict("records")
+        top_list: list[dict[str, Any]] = top_pdf.to_dict("records")  # type: ignore[assignment]
 
         # Exportar charts como PNG
         chart_imgs: list[tuple[str, bytes]] = []
@@ -302,12 +304,13 @@ def render(ctx: PageContext) -> None:
         filtros_pdf = {}
         if hasattr(ctx, "filters") and ctx.filters:
             f = ctx.filters
-            if getattr(f, "rango", None):
-                filtros_pdf["Rango"] = f"{f.rango[0]} → {f.rango[-1]}"
-            if getattr(f, "estado", None):
-                filtros_pdf["Estado"] = str(f.estado)
-            if getattr(f, "ccaa", None):
-                filtros_pdf["CCAA"] = str(f.ccaa)
+            rango = getattr(f, "rango", None)
+            if rango:
+                filtros_pdf["Rango"] = f"{rango[0]} → {rango[-1]}"
+            if getattr(f, "estados", None):
+                filtros_pdf["Estado"] = str(f.estados)
+            if getattr(f, "ccaas", None):
+                filtros_pdf["CCAA"] = str(f.ccaas)
 
         pdf_bytes = generate_pdf(
             kpis=snapshot,

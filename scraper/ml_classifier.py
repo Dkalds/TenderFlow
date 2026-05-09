@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import pickle
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
 
@@ -80,7 +80,7 @@ class SAPClassifier:
 
     # ── Entrenamiento ─────────────────────────────────────────────────────
 
-    def train(self, df: pd.DataFrame) -> dict[str, float]:
+    def train(self, df: pd.DataFrame) -> dict[str, Any]:
         """Entrena el clasificador con datos de la BD.
 
         Args:

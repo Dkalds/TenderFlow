@@ -84,7 +84,7 @@ if df_full.empty:
         "Sin datos en la base de datos",
         "Ejecuta el pipeline para importar licitaciones.",
         cta_label="Ver comando de carga",
-        cta_cb=lambda: st.code("python -m scheduler.run_update --backfill 2024 1"),
+        cta_cb=lambda: (st.code("python -m scheduler.run_update --backfill 2024 1"), None)[1],
     )
     st.stop()
 # ── Inicializar filtros desde URL params (sólo en la primera carga) ──────────────

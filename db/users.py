@@ -46,7 +46,7 @@ def get_or_create_oauth_user(
             "VALUES (?, ?, ?, ?, ?)",
             (email or None, oauth_provider, oauth_sub, display_name, now_utc_iso()),
         )
-        return int(cur.lastrowid)  # type: ignore[arg-type]
+        return int(cur.lastrowid)
 
 
 def get_user_by_id(user_id: int) -> dict[str, Any] | None:

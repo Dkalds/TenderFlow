@@ -117,7 +117,7 @@ class FaissIndex:
 
         q_emb = encode_texts([query]).astype(np.float32)
         k_actual = min(k, len(self.ids))
-        scores, indices = self._index.search(q_emb, k_actual)  # type: ignore[union-attr]
+        scores, indices = self._index.search(q_emb, k_actual)  # type: ignore[attr-defined]
 
         results = []
         for score, idx in zip(scores[0], indices[0], strict=False):

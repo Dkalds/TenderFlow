@@ -95,11 +95,11 @@ class Settings(BaseSettings):
     @field_validator("DASHBOARD_CACHE_TTL", mode="before")
     @classmethod
     def _parse_cache_ttl(cls, v: object) -> int:
-        return int(v)  # type: ignore[arg-type]
+        return int(v)  # type: ignore[call-overload, no-any-return]
 
 
 def _load() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
 
 
 _settings = _load()
@@ -113,8 +113,8 @@ settings = _settings
 # Estos aliases se mantienen temporalmente para no romper consumidores existentes.
 ROOT = _ROOT
 DATA_DIR = _settings.DATA_DIR
-DOWNLOADS_DIR = _settings.DOWNLOADS_DIR  # type: ignore[assignment]
-DB_PATH = _settings.DB_PATH  # type: ignore[assignment]
+DOWNLOADS_DIR = _settings.DOWNLOADS_DIR
+DB_PATH = _settings.DB_PATH
 DASHBOARD_PASSWORD = _settings.DASHBOARD_PASSWORD
 DASHBOARD_CACHE_TTL = _settings.DASHBOARD_CACHE_TTL
 GOOGLE_CLIENT_ID = _settings.GOOGLE_CLIENT_ID
@@ -122,7 +122,7 @@ GOOGLE_CLIENT_SECRET = _settings.GOOGLE_CLIENT_SECRET
 OAUTH_REDIRECT_URI = _settings.OAUTH_REDIRECT_URI
 TURSO_DATABASE_URL = _settings.TURSO_DATABASE_URL
 TURSO_AUTH_TOKEN = _settings.TURSO_AUTH_TOKEN
-TURSO_LOCAL_DB = _settings.TURSO_LOCAL_DB  # type: ignore[assignment]
+TURSO_LOCAL_DB = _settings.TURSO_LOCAL_DB
 LOG_FORMAT = _settings.LOG_FORMAT
 ALERT_MIN_LEVEL = _settings.ALERT_MIN_LEVEL
 ALERT_EMAIL_TO = _settings.ALERT_EMAIL_TO
@@ -141,7 +141,9 @@ BACKFILL_MAX_WORKERS = _settings.BACKFILL_MAX_WORKERS
 def ensure_data_dirs() -> None:
     """Crea los directorios de datos si no existen."""
     DATA_DIR.mkdir(exist_ok=True)
-    DOWNLOADS_DIR.mkdir(exist_ok=True)
+    downloads = _settings.DOWNLOADS_DIR
+    if downloads is not None:
+        downloads.mkdir(exist_ok=True)
 
 
 # Palabras clave para filtrar licitaciones SAP
