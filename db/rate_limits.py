@@ -13,14 +13,17 @@ Diseño:
 from __future__ import annotations
 
 import time
-from typing import Any
+
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
-def _get_conn() -> Any:
-    """Obtiene la conexión de BD activa (lazy import para evitar ciclos)."""
-    from db.database import _get_conn as _db_get_conn
+def _connect():  # type: ignore[no-untyped-def]
+    """Obtiene el context manager de conexión (lazy import para evitar ciclos)."""
+    from db.database import connect
 
-    return _db_get_conn()
+    return connect()
 
 
 def check_rate_limit_db(
@@ -43,24 +46,19 @@ def check_rate_limit_db(
     cutoff = now - window_seconds
 
     try:
-        conn = _get_conn()
-        # Limpiar entradas expiradas para esta clave
-        conn.execute("DELETE FROM rate_limits WHERE key = ? AND ts < ?", [key, cutoff])
-        # Contar llamadas en ventana
-        row = conn.execute(
-            "SELECT COUNT(*) FROM rate_limits WHERE key = ? AND ts >= ?",
-            [key, cutoff],
-        ).fetchone()
-        count = int(row[0])
+        with _connect() as conn:
+            conn.execute("DELETE FROM rate_limits WHERE key = ? AND ts < ?", [key, cutoff])
+            row = conn.execute(
+                "SELECT COUNT(*) FROM rate_limits WHERE key = ? AND ts >= ?",
+                [key, cutoff],
+            ).fetchone()
+            count = int(row[0])
 
-        if count >= max_calls:
-            conn.commit()
-            return False
+            if count >= max_calls:
+                return False
 
-        # Registrar esta llamada (sin IGNORE — la tabla usa AUTOINCREMENT id)
-        conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", [key, now])
-        conn.commit()
-        return True
+            conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", [key, now])
+            return True
     except Exception:
         # Si la tabla no existe o hay error de BD, permitir la operación (fail open)
         return True
@@ -81,15 +79,14 @@ def record_failed_login(client_key: str) -> int:
     cutoff = now - window
 
     try:
-        conn = _get_conn()
-        conn.execute("DELETE FROM rate_limits WHERE key = ? AND ts < ?", [key, cutoff])
-        conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", [key, now])
-        row = conn.execute(
-            "SELECT COUNT(*) FROM rate_limits WHERE key = ? AND ts >= ?",
-            [key, cutoff],
-        ).fetchone()
-        conn.commit()
-        return int(row[0])
+        with _connect() as conn:
+            conn.execute("DELETE FROM rate_limits WHERE key = ? AND ts < ?", [key, cutoff])
+            conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", [key, now])
+            row = conn.execute(
+                "SELECT COUNT(*) FROM rate_limits WHERE key = ? AND ts >= ?",
+                [key, cutoff],
+            ).fetchone()
+            return int(row[0])
     except Exception:
         return 0
 
@@ -110,24 +107,22 @@ def is_login_locked_out(client_key: str, max_attempts: int = 5) -> tuple[bool, f
     cutoff = now - window
 
     try:
-        conn = _get_conn()
-        rows = conn.execute(
-            "SELECT ts FROM rate_limits WHERE key = ? AND ts >= ? ORDER BY ts DESC",
-            [key, cutoff],
-        ).fetchall()
-        count = len(rows)
-        conn.commit()
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT ts FROM rate_limits WHERE key = ? AND ts >= ? ORDER BY ts DESC",
+                [key, cutoff],
+            ).fetchall()
+            count = len(rows)
 
-        if count < max_attempts:
-            return False, 0.0
+            if count < max_attempts:
+                return False, 0.0
 
-        # El bloqueo expira cuando el intento más antiguo de la ventana salga
-        oldest_ts = float(rows[-1][0])
-        expires_at = oldest_ts + window
-        remaining = expires_at - now
-        if remaining <= 0:
-            return False, 0.0
-        return True, remaining
+            oldest_ts = float(rows[-1][0])
+            expires_at = oldest_ts + window
+            remaining = expires_at - now
+            if remaining <= 0:
+                return False, 0.0
+            return True, remaining
     except Exception:
         return False, 0.0
 
@@ -136,11 +131,10 @@ def clear_login_attempts(client_key: str) -> None:
     """Limpia los intentos fallidos de un cliente (tras login exitoso)."""
     key = f"login_fail:{client_key}"
     try:
-        conn = _get_conn()
-        conn.execute("DELETE FROM rate_limits WHERE key = ?", [key])
-        conn.commit()
+        with _connect() as conn:
+            conn.execute("DELETE FROM rate_limits WHERE key = ?", [key])
     except Exception:
-        pass
+        log.warning("clear_login_attempts_db_error", client_key=client_key)
 
 
 def cleanup_expired(window_seconds: float = 86_400.0) -> int:
@@ -156,10 +150,9 @@ def cleanup_expired(window_seconds: float = 86_400.0) -> int:
     """
     cutoff = time.time() - window_seconds
     try:
-        conn = _get_conn()
-        conn.execute("DELETE FROM rate_limits WHERE ts < ?", [cutoff])
-        conn.commit()
-        # SQLite no tiene rowcount fiable vía libsql, así que devolvemos 0
-        return 0
+        with _connect() as conn:
+            conn.execute("DELETE FROM rate_limits WHERE ts < ?", [cutoff])
+            # SQLite no tiene rowcount fiable vía libsql, así que devolvemos 0
+            return 0
     except Exception:
         return 0

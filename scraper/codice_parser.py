@@ -21,7 +21,10 @@ from lxml import etree
 from config import settings
 from dashboard.classifiers import nuts_to_ccaa
 from db.database import Adjudicacion, Licitacion
+from observability.logging import get_logger
 from scraper.filters import matches_sap
+
+log = get_logger(__name__)
 
 NS = {
     "atom": "http://www.w3.org/2005/Atom",
@@ -279,6 +282,4 @@ def parse_atom_bytes(content: bytes) -> Iterator[tuple[Licitacion, list[Adjudica
                 adj = parse_adjudicaciones(entry, lic.id_externo)
                 yield lic, adj
         except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).warning("Error parseando entry: %s", e)
+            log.warning("entry_parse_error", error=str(e))

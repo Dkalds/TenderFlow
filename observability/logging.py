@@ -190,5 +190,5 @@ def bind_session_context() -> str | None:
             bind_contextvars(session_id=session_hash)
             return session_hash
     except Exception:
-        pass
+        structlog.get_logger(__name__).debug("streamlit_session_bind_failed")
     return None

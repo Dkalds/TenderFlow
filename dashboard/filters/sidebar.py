@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -33,14 +33,14 @@ def _clear_filters() -> None:
 
 def _set_rango_preset(n_days: int, fmin: date, fmax: date) -> None:
     """Callback para botones de rango rápido — escribe en fs_rango."""
-    today = min(date.today(), fmax)
+    today = min(datetime.now(UTC).date(), fmax)
     from_date = max(today - timedelta(days=n_days), fmin)
     st.session_state["fs_rango"] = (from_date, today)
 
 
 def _set_rango_ytd(fmin: date, fmax: date) -> None:
     """Callback para botón YTD — desde el 1 de enero del año actual."""
-    today = min(date.today(), fmax)
+    today = min(datetime.now(UTC).date(), fmax)
     from_date = max(date(today.year, 1, 1), fmin)
     st.session_state["fs_rango"] = (from_date, today)
 

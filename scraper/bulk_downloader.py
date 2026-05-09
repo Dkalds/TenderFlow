@@ -51,16 +51,19 @@ def _download(url: str, dest: Path) -> Path:
                     f"Descarga rechazada: Content-Length {size:,} bytes "
                     f"supera el límite de {settings.MAX_DOWNLOAD_SIZE_BYTES:,} bytes."
                 )
-        with open(dest, "wb") as f:
-            downloaded = 0
-            for chunk in r.iter_content(chunk_size=8192):
-                downloaded += len(chunk)
-                if downloaded > settings.MAX_DOWNLOAD_SIZE_BYTES:
-                    dest.unlink(missing_ok=True)
-                    raise ValueError(
-                        f"Descarga abortada: tamaño real supera {settings.MAX_DOWNLOAD_SIZE_BYTES:,} bytes."
-                    )
-                f.write(chunk)
+        downloaded = 0
+        try:
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    downloaded += len(chunk)
+                    if downloaded > settings.MAX_DOWNLOAD_SIZE_BYTES:
+                        raise ValueError(
+                            f"Descarga abortada: tamaño real supera {settings.MAX_DOWNLOAD_SIZE_BYTES:,} bytes."
+                        )
+                    f.write(chunk)
+        except Exception:
+            dest.unlink(missing_ok=True)
+            raise
     log.info("bulk_download_ok", url=url, bytes=downloaded)
     return dest
 
@@ -71,6 +74,10 @@ class CircuitOpenError(RuntimeError):
 
 def download_month(year: int, month: int, force: bool = False) -> Path | None:
     """Descarga el ZIP mensual. Devuelve la ruta o None si no existe."""
+    if not (1 <= month <= 12):
+        raise ValueError(f"month must be 1-12, got {month}")
+    if year < 2000:
+        raise ValueError(f"year must be >= 2000, got {year}")
     ensure_data_dirs()
     assert settings.DOWNLOADS_DIR is not None  # garantizado por ensure_data_dirs()
     url = BULK_URL_TEMPLATE.format(year=year, month=month)

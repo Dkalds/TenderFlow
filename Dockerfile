@@ -28,7 +28,7 @@ COPY --from=deps /usr/local/bin /usr/local/bin
 COPY --chown=appuser:appuser . .
 
 # Instalar el proyecto como paquete (imports resueltos sin sys.path hacks)
-RUN pip install --no-cache-dir --no-deps -e .
+RUN pip install --no-cache-dir --no-deps .
 
 # Directorio de datos persistente — se monta como volumen en producción
 RUN mkdir -p /data && chown appuser:appuser /data

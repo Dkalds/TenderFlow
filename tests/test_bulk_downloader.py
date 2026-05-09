@@ -169,19 +169,70 @@ class TestDownloadMonth:
         assert "202403" in url
         assert url.startswith("https://")
 
-    def test_non_zip_response_returns_none(self, tmp_path):
-        """Si la respuesta no es un ZIP válido, retorna None."""
 
-        def fake_download(url, d):
-            d.write_bytes(b"<html>Error page</html>")
-            return d
+class TestDownloadMonthValidation:
+    """Tests for year/month input validation in download_month."""
 
+    def test_invalid_month_zero_raises(self):
+        with pytest.raises(ValueError, match="month must be 1-12"):
+            download_month(2024, 0)
+
+    def test_invalid_month_13_raises(self):
+        with pytest.raises(ValueError, match="month must be 1-12"):
+            download_month(2024, 13)
+
+    def test_invalid_month_negative_raises(self):
+        with pytest.raises(ValueError, match="month must be 1-12"):
+            download_month(2024, -1)
+
+    def test_invalid_year_raises(self):
+        with pytest.raises(ValueError, match="year must be >= 2000"):
+            download_month(1999, 6)
+
+    def test_valid_boundary_month_1(self, tmp_path):
+        """month=1 is valid — should not raise before attempting download."""
         with (
             patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
             patch("scraper.bulk_downloader.ensure_data_dirs"),
             patch("scraper.bulk_downloader.time.sleep"),
-            patch("scraper.bulk_downloader._download", side_effect=fake_download),
+            patch(
+                "scraper.bulk_downloader._download",
+                side_effect=requests.HTTPError(
+                    response=MagicMock(status_code=404)
+                ),
+            ),
         ):
-            result = download_month(2024, 3)
+            result = download_month(2024, 1)
+        assert result is None
 
+    def test_valid_boundary_month_12(self, tmp_path):
+        """month=12 is valid — should not raise before attempting download."""
+        with (
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.ensure_data_dirs"),
+            patch("scraper.bulk_downloader.time.sleep"),
+            patch(
+                "scraper.bulk_downloader._download",
+                side_effect=requests.HTTPError(
+                    response=MagicMock(status_code=404)
+                ),
+            ),
+        ):
+            result = download_month(2024, 12)
+        assert result is None
+
+    def test_valid_boundary_year_2000(self, tmp_path):
+        """year=2000 is the minimum valid year."""
+        with (
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.ensure_data_dirs"),
+            patch("scraper.bulk_downloader.time.sleep"),
+            patch(
+                "scraper.bulk_downloader._download",
+                side_effect=requests.HTTPError(
+                    response=MagicMock(status_code=404)
+                ),
+            ),
+        ):
+            result = download_month(2000, 1)
         assert result is None

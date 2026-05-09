@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from dateutil.relativedelta import relativedelta
 
 from db.database import (
     UpsertResult,
+    close_pool,
     get_cursor,
     init_db,
     log_extraccion,
@@ -111,7 +112,7 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
         prom.record_parse_error(entries_error)
         _write_metrics(prom)
     except Exception:
-        pass
+        log.debug("prometheus_instrumentation_failed", fuente=fuente)
 
     return {
         "year": year,
@@ -150,7 +151,7 @@ def _summarize(results: list[dict[str, Any]], metrics: Any) -> None:
 def update_recent(months_back: int = 3) -> list[dict]:
     """Actualiza los últimos N meses (idempotente gracias al upsert)."""
     init_db()
-    today = date.today()
+    today = datetime.now(UTC).date()
     run_id = bind_run_context(entrypoint="update_recent", months_back=months_back)
     with record_run(run_id) as metrics:
         results = []
@@ -163,10 +164,14 @@ def update_recent(months_back: int = 3) -> list[dict]:
 
 def backfill(start_year: int, start_month: int) -> list[dict]:
     """Backfill desde una fecha histórica hasta hoy (paralelo por meses)."""
+    if not (1 <= start_month <= 12):
+        raise ValueError(f"start_month must be 1-12, got {start_month}")
+    if start_year < 2000:
+        raise ValueError(f"start_year must be >= 2000, got {start_year}")
     from config import settings
 
     init_db()
-    today = date.today()
+    today = datetime.now(UTC).date()
     cur = date(start_year, start_month, 1)
     run_id = bind_run_context(entrypoint="backfill", start_year=start_year, start_month=start_month)
 
@@ -189,6 +194,8 @@ def backfill(start_year: int, start_month: int) -> list[dict]:
                 except Exception:
                     log.exception("backfill_month_error", year=y, month=m)
                     results.append({"year": y, "month": m, "status": "error"})
+            # Close DB connections held by worker threads
+            pool.map(lambda _: close_pool(), range(workers))
         _summarize(results, metrics)
     return results
 

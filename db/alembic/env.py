@@ -22,8 +22,10 @@ try:
 
     db_url = f"sqlite:///{settings.DB_PATH}"
     config.set_main_option("sqlalchemy.url", db_url)
-except Exception:
-    pass  # fallback a alembic.ini
+except Exception as e:
+    import logging
+
+    logging.getLogger(__name__).debug("alembic_config_fallback", exc_info=e)  # fallback a alembic.ini
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

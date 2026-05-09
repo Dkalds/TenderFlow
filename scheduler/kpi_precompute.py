@@ -159,8 +159,7 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
 def _persist_snapshots(conn: Any, snapshots: list[dict[str, Any]]) -> int:
     """Inserta los snapshots en la BD. Devuelve el número de filas insertadas."""
     conn.execute(
-        "DELETE FROM kpi_snapshots WHERE computed_at = (SELECT MAX(computed_at) FROM kpi_snapshots)"
-        " OR 1"  # Limpiar todos antes de insertar nuevo snapshot completo
+        "DELETE FROM kpi_snapshots"  # Limpiar todos antes de insertar nuevo snapshot completo
     )
     n = 0
     for s in snapshots:

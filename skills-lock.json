@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "skills": {
+    "machine-learning": {
+      "source": "pluginagentmarketplace/custom-plugin-python",
+      "sourceType": "autoskills-registry",
+      "computedHash": "2381439c0d230fad40ead759b6820ecf58f189c4dfc0f446369fea93cfec40ff"
+    },
+    "pandas-data-analysis": {
+      "source": "pluginagentmarketplace/custom-plugin-python",
+      "sourceType": "autoskills-registry",
+      "computedHash": "612eb33d227296b4bdd0ca62785b2e31124a92adf5f40b730b0cf3713adc6f04"
+    },
+    "pandas-pro": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "61f79ae3c9a29fd452e5cf8dee9891f1d0ab7da72fa80aa0366784bcd2b46d2b"
+    },
+    "pydantic": {
+      "source": "bobmatnyc/claude-mpm-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "2173a5225be78c1392ec157dbb1bcfaf8c206aa36f0df35bad5af9461e386dd6"
+    },
+    "python-executor": {
+      "source": "inferen-sh/skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "bd2d874c27788964fadf03c0840049de0409407f06f883ee90886164cb22ef69"
+    },
+    "python-patterns": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "autoskills-registry",
+      "computedHash": "5c344cc64b19a9a7aecb9b5fa977175acd8e55a169f86901d28eb57c637869b4"
+    },
+    "python-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "autoskills-registry",
+      "computedHash": "07b87d62993c0b6159a91d18fc8723b7f4c13d5000c0984266c207493ce641ff"
+    },
+    "scikit-learn": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "autoskills-registry",
+      "computedHash": "85906cd4a73ba484bd09c678de077fa1423ce1ccce59d939f9ff95ee41577341"
+    },
+    "senior-data-scientist": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "autoskills-registry",
+      "computedHash": "e221c094ccf0de522e17582aaa026e3443d12199e6460b483fda2ce2c1548ce7"
+    }
+  }
+}

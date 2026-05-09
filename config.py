@@ -108,39 +108,9 @@ _settings = _load()
 # Uso recomendado: ``from config import settings`` y luego ``settings.DB_PATH``.
 settings = _settings
 
-# ── Backward-compatible module-level exports ─────────────────────────────
-# DEPRECADO: usar ``settings.X`` en lugar de ``from config import X``.
-# Estos aliases se mantienen temporalmente para no romper consumidores existentes.
-ROOT = _ROOT
-DATA_DIR = _settings.DATA_DIR
-DOWNLOADS_DIR = _settings.DOWNLOADS_DIR
-DB_PATH = _settings.DB_PATH
-DASHBOARD_PASSWORD = _settings.DASHBOARD_PASSWORD
-DASHBOARD_CACHE_TTL = _settings.DASHBOARD_CACHE_TTL
-GOOGLE_CLIENT_ID = _settings.GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET = _settings.GOOGLE_CLIENT_SECRET
-OAUTH_REDIRECT_URI = _settings.OAUTH_REDIRECT_URI
-TURSO_DATABASE_URL = _settings.TURSO_DATABASE_URL
-TURSO_AUTH_TOKEN = _settings.TURSO_AUTH_TOKEN
-TURSO_LOCAL_DB = _settings.TURSO_LOCAL_DB
-LOG_FORMAT = _settings.LOG_FORMAT
-ALERT_MIN_LEVEL = _settings.ALERT_MIN_LEVEL
-ALERT_EMAIL_TO = _settings.ALERT_EMAIL_TO
-ALERT_SMTP_USER = _settings.ALERT_SMTP_USER
-ALERT_SMTP_PASSWORD = _settings.ALERT_SMTP_PASSWORD
-ALERT_SMTP_HOST = _settings.ALERT_SMTP_HOST
-ALERT_SMTP_PORT = _settings.ALERT_SMTP_PORT
-REQUEST_TIMEOUT = _settings.REQUEST_TIMEOUT
-REQUEST_DELAY_SECONDS = _settings.REQUEST_DELAY_SECONDS
-MAX_DOWNLOAD_SIZE_BYTES = _settings.MAX_DOWNLOAD_SIZE_BYTES
-MAX_XML_SIZE_BYTES = _settings.MAX_XML_SIZE_BYTES
-DAILY_MAX_PAGES = _settings.DAILY_MAX_PAGES
-BACKFILL_MAX_WORKERS = _settings.BACKFILL_MAX_WORKERS
-
-
 def ensure_data_dirs() -> None:
     """Crea los directorios de datos si no existen."""
-    DATA_DIR.mkdir(exist_ok=True)
+    _settings.DATA_DIR.mkdir(exist_ok=True)
     downloads = _settings.DOWNLOADS_DIR
     if downloads is not None:
         downloads.mkdir(exist_ok=True)

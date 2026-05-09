@@ -64,16 +64,24 @@ def build_forecast_df(
     if licitaciones.empty:
         return pd.DataFrame()
 
-    df = licitaciones.copy()
+    # Filter first, then copy — avoids copying irrelevant rows
     if solo_mantenimiento:
-        df = df[df["tipo_proyecto"] == "Mantenimiento"]
-    if df.empty:
-        return df
+        src = licitaciones[licitaciones["tipo_proyecto"] == "Mantenimiento"]
+    else:
+        src = licitaciones
+    if src.empty:
+        return src.copy()
 
-    df["duracion_meses"] = df.apply(  # type: ignore[call-overload]
-        lambda r: to_months(r.get("duracion_valor"), r.get("duracion_unidad")),
-        axis=1,
+    df = src.copy()
+
+    # Vectorized duracion_meses: map unit factor then multiply
+    factor_series = (
+        df["duracion_unidad"]
+        .str.upper()
+        .map(UNIT_TO_MONTHS)
     )
+    valor_num = pd.to_numeric(df["duracion_valor"], errors="coerce")
+    df["duracion_meses"] = valor_num.where(valor_num > 0) * factor_series
 
     # Sacar datos de adjudicación agregados por licitación
     if not adjudicaciones.empty:
@@ -105,12 +113,18 @@ def build_forecast_df(
         fpub = fpub.dt.tz_localize(None)
     df["inicio_efectivo"] = df["fecha_inicio_dt"].fillna(df["fecha_adj_calc"]).fillna(fpub)
 
-    # Fin estimado
-    df["fecha_fin_estimada"] = df.apply(  # type: ignore[call-overload]
-        lambda r: estimate_end_date(
-            r["inicio_efectivo"], r["duracion_meses"], r["fecha_fin_explicit_dt"]
-        ),
-        axis=1,
+    # Fin estimado — vectorized:
+    # 1. Start from explicit fecha_fin where available
+    # 2. Otherwise add duracion_meses (rounded) to inicio_efectivo
+    duracion_offset = df["duracion_meses"].dropna().apply(
+        lambda m: pd.DateOffset(months=round(float(m)))
+    )
+    computed_end = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    valid_mask = df["duracion_meses"].notna() & df["inicio_efectivo"].notna()
+    for idx in df.index[valid_mask]:
+        computed_end.at[idx] = df.at[idx, "inicio_efectivo"] + duracion_offset.at[idx]
+    df["fecha_fin_estimada"] = df["fecha_fin_explicit_dt"].where(
+        df["fecha_fin_explicit_dt"].notna(), computed_end
     )
 
     # Ventana de re-licitación

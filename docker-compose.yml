@@ -7,7 +7,7 @@ services:
     container_name: licitaciones-dashboard
     restart: unless-stopped
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
     volumes:
       # Base de datos SQLite persistente fuera del contenedor
       - licitaciones_data:/data

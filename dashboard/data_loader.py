@@ -126,6 +126,11 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
         except Exception as e:
             log.warning("data_loader_enrichment_failed", column="ccaa", error=str(e))
 
+    # Categorical dtypes for low-cardinality string columns — reduces memory
+    for col in ("estado", "tipo_contrato", "ccaa"):
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+
     return df
 
 
@@ -145,7 +150,7 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
 
         check_rate_limit("load_dataframe", max_calls=60, window_seconds=60.0)
     except Exception:
-        pass
+        log.debug("rate_limit_check_unavailable")
     return _load_dataframe_shared(limit).copy()
 
 
@@ -268,4 +273,4 @@ def invalidate_caches() -> None:
         _compute_kpis_cached.clear()
         _last_12m_series.clear()
     except Exception:
-        pass
+        log.debug("kpi_cache_clear_failed")

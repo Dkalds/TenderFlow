@@ -12,6 +12,9 @@ import streamlit as st
 
 from config import settings
 from dashboard.session_keys import LOGIN_PWD
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 # Duración máxima de una sesión autenticada (segundos)
 SESSION_TIMEOUT_SECONDS = 28_800  # 8 horas
@@ -38,7 +41,7 @@ def _client_key() -> str:
         if ctx and ctx.session_id:
             return hashlib.sha256(ctx.session_id.encode()).hexdigest()[:16]
     except Exception:
-        pass
+        log.debug("session_id_unavailable")
     return "default"
 
 
@@ -81,7 +84,7 @@ def _check_lockout() -> None:
             )
             st.stop()
     except Exception:
-        pass  # Si la BD no está disponible, continuar con session_state
+        log.warning("rate_limit_check_failed", client_key=_client_key())  # Si la BD no está disponible, continuar con session_state
 
 
 def _record_failed_attempt() -> None:
@@ -102,7 +105,7 @@ def _record_failed_attempt() -> None:
 
         record_failed_login(_client_key())
     except Exception:
-        pass
+        log.warning("record_failed_login_error", client_key=_client_key())
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +293,6 @@ def _show_oauth_button() -> None:
             "redirect_uri": settings.OAUTH_REDIRECT_URI,
             "response_type": "code",
             "scope": "openid email profile",
-            "access_type": "offline",
-            "prompt": "consent",
             "state": state,
         }
     )
@@ -404,7 +405,7 @@ def check_password() -> bool:
 
                     clear_login_attempts(_client_key())
                 except Exception:
-                    pass
+                    log.warning("clear_login_attempts_failed", client_key=_client_key())
 
                 from db.users import log_access
 
@@ -447,7 +448,7 @@ def check_password() -> bool:
 
                     clear_login_attempts(_client_key())
                 except Exception:
-                    pass
+                    log.warning("clear_login_attempts_failed", client_key=_client_key())
 
                 from db.users import log_access
 

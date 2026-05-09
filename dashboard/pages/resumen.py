@@ -28,6 +28,9 @@ from dashboard.stats import (
 from dashboard.utils.export import kpis_snapshot_csv
 from dashboard.utils.format import fmt_eur
 from dashboard.utils.pdf import generate_pdf
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @guarded_render
@@ -299,7 +302,7 @@ def render(ctx: PageContext) -> None:
             )
             chart_imgs.append(("Distribución por estado", fig_estado.to_image(format="png")))
         except Exception:
-            pass
+            log.debug("chart_image_generation_failed", chart="estado")
 
         filtros_pdf = {}
         if hasattr(ctx, "filters") and ctx.filters:

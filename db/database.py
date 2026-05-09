@@ -14,6 +14,9 @@ from typing import Any
 import libsql
 
 from config import HISTORY_TRACKED_FIELDS, settings
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 def now_utc() -> datetime:
@@ -82,6 +85,7 @@ CREATE TABLE IF NOT EXISTS adjudicaciones (
 CREATE INDEX IF NOT EXISTS idx_adj_lic    ON adjudicaciones(licitacion_id);
 CREATE INDEX IF NOT EXISTS idx_adj_nif    ON adjudicaciones(nif);
 CREATE INDEX IF NOT EXISTS idx_adj_ccaa   ON adjudicaciones(ccaa);
+CREATE INDEX IF NOT EXISTS idx_adj_fecha  ON adjudicaciones(fecha_adjudicacion);
 
 CREATE TABLE IF NOT EXISTS extracciones (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +96,7 @@ CREATE TABLE IF NOT EXISTS extracciones (
     total_revisadas INTEGER DEFAULT 0,
     notas           TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_extr_fecha ON extracciones(fecha);
 """
 
 
@@ -193,7 +198,7 @@ def close_pool() -> None:
         try:
             conn.close()
         except Exception:
-            pass
+            log.debug("connection_close_failed")
         _local.conn = None
 
 
@@ -223,14 +228,21 @@ def init_db() -> None:
 
 def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
     """Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)."""
-    nuevas = 0
-    actualizadas = 0
+    batch = list(items)
+    if not batch:
+        return 0, 0
+
     with connect() as c:
-        for lic in items:
-            existing = c.execute(
-                "SELECT 1 FROM licitaciones WHERE id_externo = ?",
-                [lic.id_externo],
-            ).fetchone()
+        # Single bulk SELECT to determine which IDs already exist — avoids N+1
+        placeholders = ", ".join("?" for _ in batch)
+        ids = [lic.id_externo for lic in batch]
+        existing_rows = c.execute(
+            f"SELECT id_externo FROM licitaciones WHERE id_externo IN ({placeholders})",
+            ids,
+        ).fetchall()
+        existing_ids = {row[0] for row in existing_rows}
+
+        for lic in batch:
             data = asdict(lic)
             vals = [data[k] for k in _LIC_KEYS]
             # Column names come from dataclass fields (controlled code) — safe
@@ -239,10 +251,9 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
                 f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
                 vals,
             )
-            if existing:
-                actualizadas += 1
-            else:
-                nuevas += 1
+
+    nuevas = sum(1 for lic in batch if lic.id_externo not in existing_ids)
+    actualizadas = len(batch) - nuevas
     return nuevas, actualizadas
 
 
@@ -430,6 +441,7 @@ def upsert_licitaciones_with_history(
 
 def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
     """Devuelve el historial de cambios de una licitación."""
+    limit = max(1, min(limit, 1000))  # clamp to [1, 1000]
     with connect() as c:
         cur = c.execute(
             "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
@@ -453,6 +465,11 @@ def fts_available() -> bool:
 
 def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
     """Busca licitaciones usando FTS5. Devuelve (rows, total)."""
+    query = query.strip()
+    if not query:
+        return [], 0
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
     with connect() as c:
         count_row = c.execute(
             "SELECT COUNT(*) FROM licitaciones_fts WHERE licitaciones_fts MATCH ?",

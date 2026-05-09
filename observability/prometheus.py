@@ -108,41 +108,45 @@ def _write_metrics(run: RunInstrumentation) -> None:
 
 
 def _write_via_client(run: RunInstrumentation) -> None:
-    """Usa prometheus_client para escribir métricas (formato correcto)."""
+    """Usa prometheus_client para escribir métricas (formato correcto).
+
+    NOTE: Uses Gauge for all metrics since each run overwrites the textfile.
+    Counters would be semantically incorrect — the fresh CollectorRegistry
+    means values are always relative to this single run, not cumulative.
+    """
     from prometheus_client import (
         CollectorRegistry,
-        Counter,
         Gauge,
         write_to_textfile,
     )
 
     registry = CollectorRegistry()
 
-    # Contadores de runs
-    runs_total = Counter(
+    # Runs (1 per invocation — snapshot)
+    runs_total = Gauge(
         "licitaciones_sap_scraper_runs_total",
-        "Total de runs del scraper",
+        "Total de runs del scraper (último run)",
         ["status", "source"],
         registry=registry,
     )
-    runs_total.labels(status=run.status, source=run.source).inc()
+    runs_total.labels(status=run.status, source=run.source).set(1)
 
     # Ítems procesados
-    items_new = Counter(
+    items_new = Gauge(
         "licitaciones_sap_items_nuevas_total",
-        "Licitaciones nuevas insertadas",
+        "Licitaciones nuevas insertadas (último run)",
         ["source"],
         registry=registry,
     )
-    items_new.labels(source=run.source).inc(run.nuevas)
+    items_new.labels(source=run.source).set(run.nuevas)
 
-    items_updated = Counter(
+    items_updated = Gauge(
         "licitaciones_sap_items_actualizadas_total",
-        "Licitaciones actualizadas",
+        "Licitaciones actualizadas (último run)",
         ["source"],
         registry=registry,
     )
-    items_updated.labels(source=run.source).inc(run.actualizadas)
+    items_updated.labels(source=run.source).set(run.actualizadas)
 
     # Duración (Gauge — no Histogram para evitar buckets complejos en textfile)
     duration = Gauge(
@@ -163,21 +167,21 @@ def _write_via_client(run: RunInstrumentation) -> None:
     last_run.labels(source=run.source).set(time.time())
 
     # Errores
-    parse_errors = Counter(
+    parse_errors = Gauge(
         "licitaciones_sap_parse_errors_total",
-        "Errores de parseo XML",
+        "Errores de parseo XML (último run)",
         ["source"],
         registry=registry,
     )
-    parse_errors.labels(source=run.source).inc(run.errores_parseo)
+    parse_errors.labels(source=run.source).set(run.errores_parseo)
 
-    download_errors = Counter(
+    download_errors = Gauge(
         "licitaciones_sap_download_errors_total",
-        "Errores de descarga",
+        "Errores de descarga (último run)",
         ["source"],
         registry=registry,
     )
-    download_errors.labels(source=run.source).inc(run.errores_descarga)
+    download_errors.labels(source=run.source).set(run.errores_descarga)
 
     # Total en BD (gauge global)
     db_total = Gauge(
@@ -208,7 +212,7 @@ def _write_text_file(run: RunInstrumentation) -> None:
 
         db_total = count_licitaciones()
     except Exception:
-        pass
+        log.debug("prometheus_db_count_failed")
 
     lines = [
         "# HELP licitaciones_sap_scraper_runs_total Total de runs del scraper",

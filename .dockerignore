@@ -40,3 +40,10 @@ docs/
 # Archivos temporales del proyecto
 test_results.txt
 _test_summary.txt
+
+# OpenCode / agentes / secretos / dev containers
+.agents/
+.hypothesis/
+.secrets.baseline
+Makefile
+

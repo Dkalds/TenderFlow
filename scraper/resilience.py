@@ -23,7 +23,12 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-log = logging.getLogger(__name__)
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
+# tenacity's before_sleep_log requires a stdlib logger
+_stdlib_log = logging.getLogger(__name__)
 
 
 def _is_transient(exc: BaseException) -> bool:
@@ -34,7 +39,7 @@ def _is_transient(exc: BaseException) -> bool:
         resp = getattr(exc, "response", None)
         if resp is None:
             return True
-        return bool(500 <= resp.status_code < 600 or resp.status_code == 429)
+        return bool(500 <= resp.status_code < 600 or resp.status_code in (408, 429))
     return False
 
 
@@ -42,7 +47,7 @@ http_retry = retry(
     stop=stop_after_attempt(4),
     wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
     retry=retry_if_exception(_is_transient),
-    before_sleep=before_sleep_log(log, logging.WARNING),
+    before_sleep=before_sleep_log(_stdlib_log, logging.WARNING),
     reraise=True,
 )
 
@@ -55,10 +60,10 @@ class _BreakerLogger(pybreaker.CircuitBreakerListener):
         new_state: object,
     ) -> None:
         log.warning(
-            "placsp_breaker_state_change from=%s to=%s fails=%s",
-            getattr(old_state, "name", old_state),
-            getattr(new_state, "name", new_state),
-            cb.fail_counter,
+            "placsp_breaker_state_change",
+            old_state=str(getattr(old_state, "name", old_state)),
+            new_state=str(getattr(new_state, "name", new_state)),
+            fail_counter=cb.fail_counter,
         )
 
 

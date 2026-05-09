@@ -23,10 +23,13 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Ensure project root is on sys.path when run as `python -m scheduler.healthcheck`
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
-from db.database import connect, init_db
-from observability import AlertLevel, configure_logging, get_logger, notify
+from db.database import connect, init_db  # noqa: E402
+from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 
 log = get_logger(__name__)
 
