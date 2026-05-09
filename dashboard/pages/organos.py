@@ -41,6 +41,7 @@ def render(ctx: PageContext) -> None:
                 labels={"n": "Licitaciones", "organo_contratacion": "", "importe": "Importe €"},
             )
             fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+            fig.update_xaxes(tickformat=",.0f")
             st.plotly_chart(fig, use_container_width=True)
 
     with cB, chart_card("Top órganos por importe acumulado"):
@@ -63,6 +64,7 @@ def render(ctx: PageContext) -> None:
                 labels={"importe": "Importe €", "organo_contratacion": "", "n": "Licitaciones"},
             )
             fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+            fig.update_xaxes(tickformat=",.0f")
             st.plotly_chart(fig, use_container_width=True)
 
     with chart_card("Treemap: órganos → tipos proyecto → importe"):
@@ -222,6 +224,7 @@ def render(ctx: PageContext) -> None:
                     coloraxis_showscale=False,
                     margin=dict(t=10, b=10, l=10, r=10),
                 )
+                fig.update_xaxes(tickformat=",.0f")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Sin adjudicaciones registradas para este órgano.")

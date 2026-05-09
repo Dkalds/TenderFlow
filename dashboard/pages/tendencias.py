@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.components.cards import chart_card
@@ -121,6 +122,7 @@ def render(ctx: PageContext) -> None:
                 color_discrete_sequence=["#86BC25"],
             )
             fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
+            fig.update_traces(hovertemplate="<b>%{y}</b> licitaciones<br>%{x}<extra></extra>")
             st.plotly_chart(fig, use_container_width=True)
         with c2, chart_card("Importe acumulado por mes"):
             fig = px.area(
@@ -132,6 +134,8 @@ def render(ctx: PageContext) -> None:
                 color_discrete_sequence=["#00A3E0"],
             )
             fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
+            fig.update_traces(hovertemplate="<b>%{y:,.0f} €</b><br>%{x}<extra></extra>")
+            fig.update_yaxes(tickformat=",.0f")
             st.plotly_chart(fig, use_container_width=True)
 
     with chart_card("Heatmap mes × estado"):
@@ -153,6 +157,35 @@ def render(ctx: PageContext) -> None:
             )
             fig.update_layout(height=350, margin=dict(t=20, b=10, l=10, r=10))
             st.plotly_chart(fig, use_container_width=True)
+
+    with chart_card(
+        "Variación mensual (mes a mes)", subtitle="Incremento/decremento respecto al mes anterior"
+    ):
+        if not g.empty and len(g) >= 2:
+            g_sorted = g.sort_values("mes")
+            g_sorted["delta"] = g_sorted["n"].diff()
+            g_sorted = g_sorted.dropna(subset=["delta"])
+            if not g_sorted.empty:
+                measures = ["relative"] * len(g_sorted)
+                fig = go.Figure(
+                    go.Waterfall(
+                        x=g_sorted["mes"].dt.strftime("%Y-%m"),
+                        y=g_sorted["delta"],
+                        measure=measures,
+                        increasing=dict(marker=dict(color="#86BC25")),
+                        decreasing=dict(marker=dict(color="#E21836")),
+                        connector=dict(line=dict(color="rgba(255,255,255,0.08)", width=1)),
+                        textposition="outside",
+                        text=[f"{int(v):+d}" for v in g_sorted["delta"]],
+                    )
+                )
+                fig.update_layout(
+                    template=ctx.plotly_template,
+                    height=350,
+                    margin=dict(t=20, b=10, l=10, r=10),
+                )
+                fig.update_yaxes(title="Δ Licitaciones")
+                st.plotly_chart(fig, use_container_width=True)
 
     with chart_card("Distribución de importes", subtitle="Escala logarítmica"):
         if df["importe"].notna().any():

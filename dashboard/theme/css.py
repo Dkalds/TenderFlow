@@ -790,6 +790,16 @@ def build_css(t: Tokens = TOKENS) -> str:
       min-width: 100% !important;
     }}
     .kpi-card {{ min-height: auto; }}
+    .kpi-card {{
+      padding: 12px 14px;
+      min-height: 100px;
+    }}
+    .kpi-card .value {{
+      font-size: 1.3rem;
+    }}
+    .kpi-card .label {{
+      font-size: 0.65rem;
+    }}
     .topbar {{ height: auto; padding: 8px 12px; flex-wrap: wrap; }}
     .topbar-meta {{ display: none; }}
   }}
@@ -797,6 +807,11 @@ def build_css(t: Tokens = TOKENS) -> str:
   /* ── Responsive — iPad portrait (≤ {bp.tablet_mid}px) ─────────────── */
   @media (max-width: {bp.tablet_mid}px) {{
     [data-testid="stHorizontalBlock"] > [data-testid="column"] {{
+      flex: 1 1 48% !important;
+      min-width: 48% !important;
+    }}
+    /* Full width only for chart containers */
+    [data-testid="stHorizontalBlock"] > [data-testid="column"]:has([data-testid="stPlotlyChart"]) {{
       flex: 1 1 100% !important;
       min-width: 100% !important;
     }}

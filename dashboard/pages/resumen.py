@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.components.cards import chart_card, top_card
@@ -101,7 +102,11 @@ def render(ctx: PageContext) -> None:
                     template=ctx.plotly_template,
                     color_discrete_sequence=ctx.color_sequence,
                 )
-                fig.update_traces(textposition="outside", textinfo="label+percent")
+                fig.update_traces(
+                    textposition="outside",
+                    textinfo="label+percent",
+                    hovertemplate="<b>%{label}</b><br>%{value} licitaciones<br>%{percent}<extra></extra>",
+                )
                 fig.update_layout(showlegend=False, height=320, margin=dict(t=10, b=10, l=10, r=10))
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -130,6 +135,63 @@ def render(ctx: PageContext) -> None:
                     margin=dict(t=10, b=10, l=10, r=10),
                 )
                 st.plotly_chart(fig, use_container_width=True)
+
+    # ── Sankey: Tipo de proyecto → Estado ──────────────────────────
+    with chart_card(
+        "Flujo licitaciones: Tipo → Estado", subtitle="Volumen por combinación tipo-estado"
+    ):
+        flow = (
+            df.groupby(["tipo_proyecto", "estado_desc"])
+            .agg(
+                n=("id_externo", "count"),
+                importe=("importe", "sum"),
+            )
+            .reset_index()
+        )
+        if not flow.empty:
+            from dashboard.theme.tokens import TOKENS
+
+            tipos = flow["tipo_proyecto"].unique().tolist()
+            estados = flow["estado_desc"].unique().tolist()
+            all_labels = tipos + estados
+
+            source_idx = [tipos.index(t) for t in flow["tipo_proyecto"]]
+            target_idx = [len(tipos) + estados.index(e) for e in flow["estado_desc"]]
+
+            node_colors = [TOKENS.colors.accent_primary] * len(tipos) + [
+                TOKENS.colors.success
+            ] * len(estados)
+            link_colors = ["rgba(0,163,224,0.15)"] * len(flow)
+
+            fig = go.Figure(
+                go.Sankey(
+                    arrangement="snap",
+                    node=dict(
+                        pad=20,
+                        thickness=20,
+                        label=all_labels,
+                        color=node_colors,
+                        line=dict(color="rgba(255,255,255,0.1)", width=0.5),
+                    ),
+                    link=dict(
+                        source=source_idx,
+                        target=target_idx,
+                        value=flow["n"].tolist(),
+                        color=link_colors,
+                        customdata=flow["importe"].apply(lambda v: f"{v:,.0f} €").tolist(),
+                        hovertemplate="<b>%{source.label} → %{target.label}</b><br>"
+                        "%{value} licitaciones<br>"
+                        "Importe: %{customdata}<extra></extra>",
+                    ),
+                )
+            )
+            fig.update_layout(
+                template=ctx.plotly_template,
+                height=420,
+                margin=dict(t=20, b=10, l=10, r=10),
+                font=dict(size=11, color="#A1A1AA"),
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     # ── Indicadores de mercado ──
     if not adj_resumen.empty:

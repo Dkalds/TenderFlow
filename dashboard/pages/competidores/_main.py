@@ -135,6 +135,8 @@ def render(ctx: PageContext) -> None:
             hover_data=["contratos", "cuota_pct"],
         )
         fig.update_layout(height=360, margin=dict(t=10, b=10, l=10, r=10))
+        fig.update_traces(hovertemplate="<b>%{y}</b><br>Importe: %{x:,.0f} €<extra></extra>")
+        fig.update_xaxes(tickformat=",.0f")
         st.plotly_chart(fig, use_container_width=True)
 
     with cCI2:
@@ -158,6 +160,9 @@ def render(ctx: PageContext) -> None:
                 log_x=True,
             )
             fig.update_layout(height=360, margin=dict(t=10, b=10, l=10, r=10))
+            fig.update_traces(
+                hovertemplate="<b>%{hovertext}</b><br>Ticket: %{x:,.0f} €<br>Dep. cliente: %{y:.1f}%<extra></extra>"
+            )
             st.plotly_chart(fig, use_container_width=True)
             st.caption(
                 "Arriba-izquierda = tickets pequeños + cliente cautivo. "

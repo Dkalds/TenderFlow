@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.components.kpi import kpi_card
@@ -169,6 +170,37 @@ def render(ctx: PageContext) -> None:
 
     st.markdown("")
 
+    # ── Embudo de oportunidades ──────────────────────────────────
+    st.subheader("Embudo de oportunidades")
+    n_total = len(oport)
+    n_ventana = len(en_ventana)
+    n_alto = n_riesgo_alto
+
+    funnel_stages = ["Detectadas", "En ventana de alerta", "Riesgo alto"]
+    funnel_values = [n_total, n_ventana, n_alto]
+
+    if n_total > 0:
+        fig = go.Figure(
+            go.Funnel(
+                y=funnel_stages,
+                x=funnel_values,
+                textposition="inside",
+                textinfo="value+percent initial",
+                marker=dict(
+                    color=["#00A3E0", "#FFB627", "#E21836"],
+                    line=dict(color="rgba(255,255,255,0.1)", width=1),
+                ),
+                connector=dict(line=dict(color="rgba(255,255,255,0.08)", width=1)),
+            )
+        )
+        fig.update_layout(
+            template=ctx.plotly_template,
+            height=300,
+            margin=dict(t=20, b=10, l=10, r=10),
+            funnelgap=0.08,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
     # ── Distribución horizonte + Volumen trimestral ──────────────
     cFc1, cFc2 = st.columns(2)
     with cFc1:
@@ -212,6 +244,7 @@ def render(ctx: PageContext) -> None:
                 hover_data=["n"],
             )
             fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
+            fig.update_yaxes(tickformat=",.0f")
             st.plotly_chart(fig, use_container_width=True)
 
     # ── Matriz urgencia × valor ──────────────────────────────────
@@ -256,6 +289,9 @@ def render(ctx: PageContext) -> None:
                 annotation_position="top right",
             )
             fig.update_layout(height=480, margin=dict(t=20, b=10, l=10, r=10))
+            fig.update_traces(
+                hovertemplate="<b>%{hovertext}</b><br>Días: %{x}<br>Importe: %{y:,.0f} €<extra></extra>"
+            )
             st.plotly_chart(fig, use_container_width=True)
             st.caption(
                 "Cuadrante **izquierda-arriba**: contratos grandes "

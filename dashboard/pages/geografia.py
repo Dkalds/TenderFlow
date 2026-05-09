@@ -12,6 +12,7 @@ from dashboard.components.tables import data_table
 from dashboard.pages._base import PageContext
 from dashboard.stats import ccaa_mas_activa, concentracion_geografica
 from dashboard.utils.format import fmt_eur
+from dashboard.utils.geo import load_spain_ccaa_geojson
 
 
 @guarded_render
@@ -78,6 +79,46 @@ def render(ctx: PageContext) -> None:
 
         st.markdown("")
 
+    # ── Mapa coroplético de CCAA ──────────────────────────────────
+    geojson = load_spain_ccaa_geojson()
+    if geojson is not None and not geo.empty:
+        with chart_card("Mapa por Comunidad Autónoma"):
+            map_metric = st.radio(
+                "Métrica del mapa",
+                ["Licitaciones", "Importe €"],
+                horizontal=True,
+                label_visibility="collapsed",
+                key="geo_map_metric",
+            )
+            value_col = "n" if map_metric == "Licitaciones" else "importe"
+            fig_map = px.choropleth_mapbox(
+                geo,
+                geojson=geojson,
+                locations="ccaa",
+                featureidkey="properties.name",
+                color=value_col,
+                color_continuous_scale="Greens",
+                mapbox_style="carto-darkmatter",
+                center={"lat": 40.0, "lon": -3.7},
+                zoom=4.3,
+                labels={"n": "Licitaciones", "importe": "Importe €", "ccaa": "CCAA"},
+                hover_data={"n": True, "importe": ":,.0f"},
+            )
+            fig_map.update_layout(
+                height=500,
+                margin=dict(t=10, b=10, l=10, r=10),
+            )
+            st.plotly_chart(fig_map, use_container_width=True)
+    elif geojson is None and not geo.empty:
+        with chart_card("Mapa por Comunidad Autónoma"):
+            empty_state(
+                "🗺️",
+                "Mapa no disponible",
+                "No se pudo cargar el GeoJSON de CCAA. Revisa la conexión a internet.",
+            )
+
+    st.markdown("")
+
     cM, cT = st.columns([2, 1])
     with cM, chart_card("Reparto por Comunidad Autónoma"):
         if not geo.empty:
@@ -92,6 +133,7 @@ def render(ctx: PageContext) -> None:
                 labels={"n": "Licitaciones", "ccaa": "", "importe": "Importe €"},
             )
             fig.update_layout(height=600, margin=dict(t=20, b=10, l=10, r=10))
+            fig.update_xaxes(tickformat=",.0f")
             st.plotly_chart(fig, use_container_width=True)
         else:
             empty_state(
