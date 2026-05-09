@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure the repo root is on sys.path so that `dashboard`, `db`, `config`, etc.
+# are importable regardless of the working directory (e.g. Streamlit Cloud).
+_REPO_ROOT = str(Path(__file__).parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import streamlit as st
 
 from dashboard.auth import check_password
