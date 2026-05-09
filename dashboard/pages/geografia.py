@@ -78,27 +78,26 @@ def render(ctx: PageContext) -> None:
         st.markdown("")
 
     cM, cT = st.columns([2, 1])
-    with cM:
-        with chart_card("Reparto por Comunidad Autónoma"):
-            if not geo.empty:
-                fig = px.bar(
-                    geo.sort_values("n"),
-                    x="n",
-                    y="ccaa",
-                    orientation="h",
-                    template=ctx.plotly_template,
-                    color="importe",
-                    color_continuous_scale="Greens",
-                    labels={"n": "Licitaciones", "ccaa": "", "importe": "Importe €"},
-                )
-                fig.update_layout(height=600, margin=dict(t=20, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                empty_state(
-                    "🗺️",
-                    "Sin datos geográficos",
-                    "Re-ejecuta el pipeline tras la actualización del parser para poblar CCAA y provincias.",
-                )
+    with cM, chart_card("Reparto por Comunidad Autónoma"):
+        if not geo.empty:
+            fig = px.bar(
+                geo.sort_values("n"),
+                x="n",
+                y="ccaa",
+                orientation="h",
+                template=ctx.plotly_template,
+                color="importe",
+                color_continuous_scale="Greens",
+                labels={"n": "Licitaciones", "ccaa": "", "importe": "Importe €"},
+            )
+            fig.update_layout(height=600, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            empty_state(
+                "🗺️",
+                "Sin datos geográficos",
+                "Re-ejecuta el pipeline tras la actualización del parser para poblar CCAA y provincias.",
+            )
 
     with cT:
         prov = (
@@ -118,8 +117,6 @@ def render(ctx: PageContext) -> None:
                         "Lic.": st.column_config.ProgressColumn(
                             "Lic.", min_value=0, max_value=n_max, format="%d"
                         ),
-                        "Importe €": st.column_config.NumberColumn(
-                            "Importe €", format="%.0f €"
-                        ),
+                        "Importe €": st.column_config.NumberColumn("Importe €", format="%.0f €"),
                     },
                 )

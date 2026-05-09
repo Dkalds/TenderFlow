@@ -139,7 +139,8 @@ class TestDownloadMonth:
             patch(
                 "scraper.bulk_downloader._download",
                 side_effect=pybreaker.CircuitBreakerError("open"),
-            ),pytest.raises(CircuitOpenError)
+            ),
+            pytest.raises(CircuitOpenError),
         ):
             download_month(2024, 1)
 

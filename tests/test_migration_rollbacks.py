@@ -30,19 +30,13 @@ def _fresh_conn() -> sqlite3.Connection:
 
 def _tables(conn: sqlite3.Connection) -> set[str]:
     return {
-        r[0]
-        for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
 
 
 def _indexes(conn: sqlite3.Connection) -> set[str]:
     return {
-        r[0]
-        for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index'"
-        ).fetchall()
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
     }
 
 
@@ -136,7 +130,9 @@ def test_rollback_removes_schema_objects(
     indexes = _indexes(conn)
 
     for table in absent_tables:
-        assert table not in tables, f"Table '{table}' should be absent after rollback(target={target})"
+        assert table not in tables, (
+            f"Table '{table}' should be absent after rollback(target={target})"
+        )
     for idx in absent_indexes:
         assert idx not in indexes, f"Index '{idx}' should be absent after rollback(target={target})"
 
@@ -180,8 +176,8 @@ def test_partial_rollback_leaves_lower_versions_intact() -> None:
 
     rollback(12, conn)
 
-    assert "rate_limits" in _tables(conn)     # v12 still present
-    assert 12 in _versions_in_schema(conn)    # record still in schema_version
+    assert "rate_limits" in _tables(conn)  # v12 still present
+    assert 12 in _versions_in_schema(conn)  # record still in schema_version
     assert 13 not in _versions_in_schema(conn)
 
 
@@ -193,15 +189,15 @@ def test_full_rollback_removes_all_reversible_tables() -> None:
 
     tables = _tables(conn)
     for table in (
-        "extraction_runs",      # v1
-        "failed_extractions",   # v1
-        "watchlist_cpv",        # v2
-        "ingestion_cursors",    # v5
-        "licitaciones_history", # v5
-        "users",                # v8
-        "access_log",           # v9
-        "rate_limits",          # v12
-        "kpi_snapshots",        # v13
+        "extraction_runs",  # v1
+        "failed_extractions",  # v1
+        "watchlist_cpv",  # v2
+        "ingestion_cursors",  # v5
+        "licitaciones_history",  # v5
+        "users",  # v8
+        "access_log",  # v9
+        "rate_limits",  # v12
+        "kpi_snapshots",  # v13
     ):
         assert table not in tables, f"Table '{table}' should be gone after full rollback"
 

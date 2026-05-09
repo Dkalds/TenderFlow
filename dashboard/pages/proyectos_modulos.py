@@ -33,43 +33,41 @@ def render(ctx: PageContext) -> None:
 
     cMod, cType = st.columns(2)
 
-    with cMod:
-        with chart_card("Módulos / productos SAP detectados"):
-            mod_df = df.explode("modulos")
-            mod_count = (
-                mod_df.groupby("modulos")
-                .agg(n=("id_externo", "count"), importe=("importe", "sum"))
-                .reset_index()
-                .sort_values("n", ascending=False)
+    with cMod, chart_card("Módulos / productos SAP detectados"):
+        mod_df = df.explode("modulos")
+        mod_count = (
+            mod_df.groupby("modulos")
+            .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+            .reset_index()
+            .sort_values("n", ascending=False)
+        )
+        if not mod_count.empty:
+            fig = px.bar(
+                mod_count.head(15).sort_values("n"),
+                x="n",
+                y="modulos",
+                orientation="h",
+                template=ctx.plotly_template,
+                color="importe",
+                color_continuous_scale="YlGn",
+                labels={"n": "Apariciones", "modulos": "", "importe": "Importe €"},
             )
-            if not mod_count.empty:
-                fig = px.bar(
-                    mod_count.head(15).sort_values("n"),
-                    x="n",
-                    y="modulos",
-                    orientation="h",
-                    template=ctx.plotly_template,
-                    color="importe",
-                    color_continuous_scale="YlGn",
-                    labels={"n": "Apariciones", "modulos": "", "importe": "Importe €"},
-                )
-                fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
 
-    with cType:
-        with chart_card("Tipo de proyecto × Estado"):
-            cross = df.groupby(["tipo_proyecto", "estado_desc"]).size().reset_index(name="n")
-            if not cross.empty:
-                fig = px.sunburst(
-                    cross,
-                    path=["tipo_proyecto", "estado_desc"],
-                    values="n",
-                    template=ctx.plotly_template,
-                    color="n",
-                    color_continuous_scale="Greens",
-                )
-                fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
+    with cType, chart_card("Tipo de proyecto × Estado"):
+        cross = df.groupby(["tipo_proyecto", "estado_desc"]).size().reset_index(name="n")
+        if not cross.empty:
+            fig = px.sunburst(
+                cross,
+                path=["tipo_proyecto", "estado_desc"],
+                values="n",
+                template=ctx.plotly_template,
+                color="n",
+                color_continuous_scale="Greens",
+            )
+            fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
 
     # ── Importe medio por módulo ─────────────────────────────────
     st.subheader("Importe medio por módulo SAP")
@@ -104,9 +102,9 @@ def render(ctx: PageContext) -> None:
         .head(15)
     )
     if not cpv_df.empty:
-        cpv_table = cpv_df.rename(
-            columns={"cpv_desc": "CPV", "n": "Lic.", "importe": "Importe €"}
-        )[["CPV", "Lic.", "Importe €"]]
+        cpv_table = cpv_df.rename(columns={"cpv_desc": "CPV", "n": "Lic.", "importe": "Importe €"})[
+            ["CPV", "Lic.", "Importe €"]
+        ]
         n_max_cpv = int(cpv_table["Lic."].max()) or 1
         data_table(
             cpv_table,

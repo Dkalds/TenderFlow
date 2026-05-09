@@ -37,9 +37,7 @@ def breadcrumb(section: str, page: str, description: str | None = None) -> None:
     """Renderiza `Sección › Página` y, opcionalmente, una línea de descripción."""
     safe_section = _html.escape(section)
     safe_page = _html.escape(page)
-    desc_html = (
-        f'<p class="bc-desc">{_html.escape(description)}</p>' if description else ""
-    )
+    desc_html = f'<p class="bc-desc">{_html.escape(description)}</p>' if description else ""
     st.markdown(
         f'<nav aria-label="breadcrumb">'
         f'<div class="bc">'

@@ -45,7 +45,7 @@ class TestCheckPasswordNoAuth:
                 patch.object(auth, "_get_password", return_value=""),
                 patch.object(auth, "oauth_configured", return_value=False),
             ):
-                    result = auth.check_password()
+                result = auth.check_password()
         assert result is True
 
 
@@ -60,7 +60,7 @@ class TestSessionTimeout:
             patch.object(auth, "_get_password", return_value="secret"),
             patch.object(auth, "SESSION_TIMEOUT_SECONDS", 3600),
         ):
-                result = auth.check_password()
+            result = auth.check_password()
 
         assert result is True
 
@@ -94,7 +94,7 @@ class TestRateLimiting:
             patch.object(auth, "_get_password", return_value="secret"),
             pytest.raises(SystemExit),
         ):
-                auth.check_password()
+            auth.check_password()
 
         st_mock.stop.assert_called()
 
@@ -299,7 +299,7 @@ class TestEmailVerification:
             patch("requests.post", return_value=mock_token_resp),
             patch("requests.get", return_value=mock_userinfo_resp),
         ):
-                result = auth._handle_oauth_callback()
+            result = auth._handle_oauth_callback()
 
         assert result is False
         st_mock.error.assert_called()

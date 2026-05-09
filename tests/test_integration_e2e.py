@@ -32,9 +32,7 @@ _NS = {
 def _make_atom_feed(entries_xml: str) -> bytes:
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<feed xmlns="http://www.w3.org/2005/Atom">\n'
-        + entries_xml
-        + "\n</feed>\n"
+        '<feed xmlns="http://www.w3.org/2005/Atom">\n' + entries_xml + "\n</feed>\n"
     )
     return xml.encode()
 
@@ -330,9 +328,7 @@ class TestE2EKpiPrecompute:
         db_mod, _ = tmp_db
 
         # Poblar con datos
-        feed_bytes = _make_atom_feed(
-            "".join(_make_sap_entry(f"E2E-KPI-{i}") for i in range(3))
-        )
+        feed_bytes = _make_atom_feed("".join(_make_sap_entry(f"E2E-KPI-{i}") for i in range(3)))
         from scraper.codice_parser import parse_atom_bytes
 
         licitaciones = [lic for lic, _ in parse_atom_bytes(feed_bytes)]

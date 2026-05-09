@@ -314,7 +314,6 @@ ROLLBACKS: dict[int, str] = {
 _IRREVERSIBLE_VERSIONS = {3, 4, 6, 10}
 
 
-
 def current_version(conn: Any) -> int:
     _ensure_version_table(conn)
     row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()

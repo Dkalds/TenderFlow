@@ -22,6 +22,7 @@ log = get_logger(__name__)
 
 # ── Definición de KPIs a pre-calcular ────────────────────────────────────────
 
+
 def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     """Calcula todos los KPIs desde la BD directamente (sin cargar Streamlit).
 
@@ -59,8 +60,7 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
 
     # Licitaciones últimos 30 días
     row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones "
-        "WHERE fecha_publicacion >= date('now', '-30 days')"
+        "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-30 days')"
     ).fetchone()
     snapshots.append({"metrica": "licitaciones_30d", "dimension": "global", "valor": row[0]})
 
@@ -80,12 +80,14 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
         "GROUP BY ccaa ORDER BY n DESC"
     ).fetchall()
     ccaa_data = [{"ccaa": r[0], "n": r[1], "importe": r[2]} for r in rows]
-    snapshots.append({
-        "metrica": "licitaciones_por_ccaa",
-        "dimension": "global",
-        "valor": None,
-        "valor_text": json.dumps(ccaa_data, ensure_ascii=False),
-    })
+    snapshots.append(
+        {
+            "metrica": "licitaciones_por_ccaa",
+            "dimension": "global",
+            "valor": None,
+            "valor_text": json.dumps(ccaa_data, ensure_ascii=False),
+        }
+    )
 
     # ── Por estado ────────────────────────────────────────────────────────
 
@@ -94,16 +96,20 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
         "GROUP BY estado ORDER BY 2 DESC"
     ).fetchall()
     estado_data = {r[0]: r[1] for r in rows}
-    snapshots.append({
-        "metrica": "licitaciones_por_estado",
-        "dimension": "global",
-        "valor": None,
-        "valor_text": json.dumps(estado_data, ensure_ascii=False),
-    })
+    snapshots.append(
+        {
+            "metrica": "licitaciones_por_estado",
+            "dimension": "global",
+            "valor": None,
+            "valor_text": json.dumps(estado_data, ensure_ascii=False),
+        }
+    )
 
     # ── Adjudicaciones ────────────────────────────────────────────────────
 
-    row = conn.execute("SELECT COUNT(*), COUNT(DISTINCT licitacion_id) FROM adjudicaciones").fetchone()
+    row = conn.execute(
+        "SELECT COUNT(*), COUNT(DISTINCT licitacion_id) FROM adjudicaciones"
+    ).fetchone()
     snapshots.append({"metrica": "total_adjudicaciones", "dimension": "global", "valor": row[0]})
     snapshots.append({"metrica": "licitaciones_con_adj", "dimension": "global", "valor": row[1]})
 
@@ -114,12 +120,14 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
         "GROUP BY nombre ORDER BY total DESC LIMIT 10"
     ).fetchall()
     top_adj = [{"nombre": r[0], "n": r[1], "importe": r[2]} for r in rows]
-    snapshots.append({
-        "metrica": "top10_adjudicatarios",
-        "dimension": "global",
-        "valor": None,
-        "valor_text": json.dumps(top_adj, ensure_ascii=False),
-    })
+    snapshots.append(
+        {
+            "metrica": "top10_adjudicatarios",
+            "dimension": "global",
+            "valor": None,
+            "valor_text": json.dumps(top_adj, ensure_ascii=False),
+        }
+    )
 
     # ── Serie mensual últimos 24 meses ────────────────────────────────────
 
@@ -131,12 +139,14 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
         "GROUP BY mes ORDER BY mes"
     ).fetchall()
     serie = [{"mes": r[0], "n": r[1], "importe": r[2]} for r in rows]
-    snapshots.append({
-        "metrica": "serie_mensual_24m",
-        "dimension": "global",
-        "valor": None,
-        "valor_text": json.dumps(serie, ensure_ascii=False),
-    })
+    snapshots.append(
+        {
+            "metrica": "serie_mensual_24m",
+            "dimension": "global",
+            "valor": None,
+            "valor_text": json.dumps(serie, ensure_ascii=False),
+        }
+    )
 
     # Añadir timestamp a todos
     for s in snapshots:
@@ -230,8 +240,7 @@ def get_all_latest() -> dict[str, Any]:
         latest_ts = row[0]
 
         rows = c.execute(
-            "SELECT metrica, dimension, valor, valor_text FROM kpi_snapshots "
-            "WHERE computed_at = ?",
+            "SELECT metrica, dimension, valor, valor_text FROM kpi_snapshots WHERE computed_at = ?",
             [latest_ts],
         ).fetchall()
 
@@ -261,10 +270,13 @@ if __name__ == "__main__":
         print(f"  Tiempo: {result['elapsed_ms']}ms")
     elif cmd == "--latest":
         from db.database import init_db
+
         init_db()
         data = get_all_latest()
         if not data:
-            print("No hay snapshots disponibles. Ejecuta primero: python -m scheduler.kpi_precompute")
+            print(
+                "No hay snapshots disponibles. Ejecuta primero: python -m scheduler.kpi_precompute"
+            )
         else:
             print(f"Snapshot de: {data.get('_computed_at')}")
             for k, v in data.items():

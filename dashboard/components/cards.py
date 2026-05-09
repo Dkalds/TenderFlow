@@ -25,8 +25,7 @@ def chart_card(title: str, subtitle: str | None = None) -> Generator[None, None,
             st.plotly_chart(fig, use_container_width=True)
     """
     header_html = (
-        f'<div class="chart-card-header">'
-        f'<div class="chart-card-title">{_html.escape(title)}</div>'
+        f'<div class="chart-card-header"><div class="chart-card-title">{_html.escape(title)}</div>'
     )
     if subtitle:
         header_html += f'<div class="chart-card-sub">{_html.escape(subtitle)}</div>'

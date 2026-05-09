@@ -82,8 +82,10 @@ class FaissIndex:
 
         df_clean = df.dropna(subset=["id_externo"]).copy()
         texts = (
-            df_clean["titulo"].fillna("") + " " + df_clean["descripcion"].fillna("")
-        ).str.strip().tolist()
+            (df_clean["titulo"].fillna("") + " " + df_clean["descripcion"].fillna(""))
+            .str.strip()
+            .tolist()
+        )
         ids = df_clean["id_externo"].tolist()
 
         if len(texts) < _MIN_TEXTS:

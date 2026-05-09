@@ -229,9 +229,7 @@ def train_from_db() -> dict[str, float]:
 
     init_db()
     with connect() as c:
-        cursor = c.execute(
-            "SELECT titulo, descripcion, raw_keywords, cpv FROM licitaciones"
-        )
+        cursor = c.execute("SELECT titulo, descripcion, raw_keywords, cpv FROM licitaciones")
         rows = cursor.fetchall()
         cols = [d[0] for d in cursor.description]
 

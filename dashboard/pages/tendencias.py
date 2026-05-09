@@ -111,30 +111,28 @@ def render(ctx: PageContext) -> None:
         )
     else:
         c1, c2 = st.columns(2)
-        with c1:
-            with chart_card("Licitaciones por mes"):
-                fig = px.bar(
-                    g,
-                    x="mes",
-                    y="n",
-                    template=ctx.plotly_template,
-                    labels={"mes": "Mes", "n": "Nº licitaciones"},
-                    color_discrete_sequence=["#86BC25"],
-                )
-                fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            with chart_card("Importe acumulado por mes"):
-                fig = px.area(
-                    g,
-                    x="mes",
-                    y="importe",
-                    template=ctx.plotly_template,
-                    labels={"mes": "Mes", "importe": "Importe (€)"},
-                    color_discrete_sequence=["#00A3E0"],
-                )
-                fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
+        with c1, chart_card("Licitaciones por mes"):
+            fig = px.bar(
+                g,
+                x="mes",
+                y="n",
+                template=ctx.plotly_template,
+                labels={"mes": "Mes", "n": "Nº licitaciones"},
+                color_discrete_sequence=["#86BC25"],
+            )
+            fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
+        with c2, chart_card("Importe acumulado por mes"):
+            fig = px.area(
+                g,
+                x="mes",
+                y="importe",
+                template=ctx.plotly_template,
+                labels={"mes": "Mes", "importe": "Importe (€)"},
+                color_discrete_sequence=["#00A3E0"],
+            )
+            fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
 
     with chart_card("Heatmap mes × estado"):
         if not df.empty and df["mes"].notna().any():

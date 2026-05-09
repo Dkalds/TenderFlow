@@ -63,9 +63,15 @@ class TestParseSummaryProperties:
             assert result["moneda"]  # non-empty
 
     @given(
-        id_=st.text(min_size=1, max_size=30, alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd"))),
-        organo=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Zs"))),
-        importe=st.decimals(min_value=0, max_value=1_000_000_000, places=2, allow_nan=False, allow_infinity=False),
+        id_=st.text(
+            min_size=1, max_size=30, alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd"))
+        ),
+        organo=st.text(
+            min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Zs"))
+        ),
+        importe=st.decimals(
+            min_value=0, max_value=1_000_000_000, places=2, allow_nan=False, allow_infinity=False
+        ),
         estado=st.sampled_from(["PUB", "ADJ", "RES", "ANU", "EV"]),
     )
     def test_well_formed_summary_parsed_correctly(self, id_, organo, importe, estado):
@@ -119,8 +125,9 @@ class TestSafeUrlProperties:
         assert result == url.strip()
 
     @given(
-        st.sampled_from(["javascript:", "data:", "ftp://", "file://", "vbscript:", "mailto:"])
-        .flatmap(lambda prefix: st.text(min_size=0, max_size=80).map(lambda s: prefix + s))
+        st.sampled_from(
+            ["javascript:", "data:", "ftp://", "file://", "vbscript:", "mailto:"]
+        ).flatmap(lambda prefix: st.text(min_size=0, max_size=80).map(lambda s: prefix + s))
     )
     def test_dangerous_schemes_rejected(self, url):
         """Known dangerous/non-http schemes are always rejected."""
@@ -178,7 +185,11 @@ class TestNormalizeCompanyProperties:
         """Non-string inputs return None without raising."""
         assert normalize_company(value) is None  # type: ignore[arg-type]
 
-    @given(st.text(min_size=1, max_size=60, alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Zs"))))
+    @given(
+        st.text(
+            min_size=1, max_size=60, alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Zs"))
+        )
+    )
     def test_result_has_no_extra_internal_whitespace(self, name):
         """Result never has consecutive internal spaces."""
         result = normalize_company(name)

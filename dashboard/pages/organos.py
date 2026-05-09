@@ -6,8 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from dashboard.components.cards import top_card
-from dashboard.components.cards import chart_card
+from dashboard.components.cards import chart_card, top_card
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import guarded_render
 from dashboard.components.tables import data_table
@@ -22,51 +21,49 @@ def render(ctx: PageContext) -> None:
     df = ctx.df
 
     cA, cB = st.columns(2)
-    with cA:
-        with chart_card("Top órganos por nº de licitaciones"):
-            top_n = (
-                df.groupby("organo_contratacion")
-                .agg(n=("id_externo", "count"), importe=("importe", "sum"))
-                .reset_index()
-                .sort_values("n", ascending=False)
-                .head(15)
+    with cA, chart_card("Top órganos por nº de licitaciones"):
+        top_n = (
+            df.groupby("organo_contratacion")
+            .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+            .reset_index()
+            .sort_values("n", ascending=False)
+            .head(15)
+        )
+        if not top_n.empty:
+            fig = px.bar(
+                top_n.sort_values("n"),
+                x="n",
+                y="organo_contratacion",
+                orientation="h",
+                template=ctx.plotly_template,
+                color="importe",
+                color_continuous_scale="Greens",
+                labels={"n": "Licitaciones", "organo_contratacion": "", "importe": "Importe €"},
             )
-            if not top_n.empty:
-                fig = px.bar(
-                    top_n.sort_values("n"),
-                    x="n",
-                    y="organo_contratacion",
-                    orientation="h",
-                    template=ctx.plotly_template,
-                    color="importe",
-                    color_continuous_scale="Greens",
-                    labels={"n": "Licitaciones", "organo_contratacion": "", "importe": "Importe €"},
-                )
-                fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
 
-    with cB:
-        with chart_card("Top órganos por importe acumulado"):
-            top_e = (
-                df.groupby("organo_contratacion")
-                .agg(importe=("importe", "sum"), n=("id_externo", "count"))
-                .reset_index()
-                .sort_values("importe", ascending=False)
-                .head(15)
+    with cB, chart_card("Top órganos por importe acumulado"):
+        top_e = (
+            df.groupby("organo_contratacion")
+            .agg(importe=("importe", "sum"), n=("id_externo", "count"))
+            .reset_index()
+            .sort_values("importe", ascending=False)
+            .head(15)
+        )
+        if not top_e.empty:
+            fig = px.bar(
+                top_e.sort_values("importe"),
+                x="importe",
+                y="organo_contratacion",
+                orientation="h",
+                template=ctx.plotly_template,
+                color="n",
+                color_continuous_scale="Blues",
+                labels={"importe": "Importe €", "organo_contratacion": "", "n": "Licitaciones"},
             )
-            if not top_e.empty:
-                fig = px.bar(
-                    top_e.sort_values("importe"),
-                    x="importe",
-                    y="organo_contratacion",
-                    orientation="h",
-                    template=ctx.plotly_template,
-                    color="n",
-                    color_continuous_scale="Blues",
-                    labels={"importe": "Importe €", "organo_contratacion": "", "n": "Licitaciones"},
-                )
-                fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
 
     with chart_card("Treemap: órganos → tipos proyecto → importe"):
         tm = df.dropna(subset=["importe"]).copy()

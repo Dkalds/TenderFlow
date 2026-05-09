@@ -31,6 +31,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """No-op: no se puede revertir el baseline."""
-    raise RuntimeError(
-        "No se puede revertir el baseline. Restaura desde backup."
-    )
+    raise RuntimeError("No se puede revertir el baseline. Restaura desde backup.")

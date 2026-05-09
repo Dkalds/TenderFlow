@@ -401,6 +401,7 @@ def check_password() -> bool:
                 # Limpiar intentos fallidos en BD
                 try:
                     from db.rate_limits import clear_login_attempts
+
                     clear_login_attempts(_client_key())
                 except Exception:
                     pass
@@ -443,6 +444,7 @@ def check_password() -> bool:
                 # Limpiar intentos fallidos en BD
                 try:
                     from db.rate_limits import clear_login_attempts
+
                     clear_login_attempts(_client_key())
                 except Exception:
                     pass

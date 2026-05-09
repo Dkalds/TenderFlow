@@ -689,4 +689,3 @@ def render(ctx: PageContext) -> None:
 
     # ── Sub-apartado: UTEs (Uniones Temporales de Empresas) ──────
     render_utes_section(ctx, adj_ci)
-

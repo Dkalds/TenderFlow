@@ -61,4 +61,3 @@ def matches_sap_ml(*texts: str | None, threshold: float = 0.70) -> tuple[bool, f
     except Exception as e:
         log.warning("ml_filter.error", error=str(e))
         return False, 0.0
-
