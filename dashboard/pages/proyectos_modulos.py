@@ -56,7 +56,7 @@ def render(ctx: PageContext) -> None:
             st.plotly_chart(fig, use_container_width=True)
 
     with cType:
-        st.subheader("Tipo de proyecto × Estado")  # noqa: RUF001
+        st.subheader("Tipo de proyecto × Estado")
         cross = df.groupby(["tipo_proyecto", "estado_desc"]).size().reset_index(name="n")
         if not cross.empty:
             fig = px.sunburst(

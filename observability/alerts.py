@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import smtplib
 import textwrap
+from datetime import UTC
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from enum import IntEnum
@@ -215,7 +216,7 @@ def check_daily_lag() -> None:
     Consulta ``ingestion_cursors`` para ``place_live_atom`` y compara
     ``last_seen_updated`` con la hora actual.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime
 
     from db.database import get_cursor
 
@@ -231,10 +232,10 @@ def check_daily_lag() -> None:
     try:
         # Parsear timestamp ISO
         last_dt = datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Normalizar a aware UTC para comparar
         if last_dt.tzinfo is None:
-            last_dt = last_dt.replace(tzinfo=timezone.utc)
+            last_dt = last_dt.replace(tzinfo=UTC)
         lag = now - last_dt
         lag_hours = lag.total_seconds() / 3600
     except (ValueError, TypeError):

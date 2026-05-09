@@ -20,7 +20,7 @@ import json
 import shutil
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -76,10 +76,10 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict:
             try:
                 started = datetime.fromisoformat(last_run[1])
                 if started.tzinfo is None:
-                    started = started.replace(tzinfo=timezone.utc)
+                    started = started.replace(tzinfo=UTC)
             except (ValueError, TypeError):
-                started = datetime.now(timezone.utc) - timedelta(days=365)
-            age = datetime.now(timezone.utc) - started
+                started = datetime.now(UTC) - timedelta(days=365)
+            age = datetime.now(UTC) - started
             info["last_run_age_hours"] = round(age.total_seconds() / 3600, 1)
             if age > timedelta(hours=freshness_hours):
                 warnings.append(f"last_run_stale:{info['last_run_age_hours']}h")
@@ -105,7 +105,7 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict:
 
     return {
         "status": status,
-        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "checked_at": datetime.now(UTC).isoformat(),
         "checks": checks,
         "warnings": warnings,
         "errors": errors,

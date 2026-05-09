@@ -101,11 +101,7 @@ def semantic_match(
     c_emb = encode_texts(corpus)
     scores = cosine_similarity(q_emb, c_emb).flatten()
 
-    results = [
-        (int(i), float(scores[i]))
-        for i in range(len(scores))
-        if scores[i] >= threshold
-    ]
+    results = [(int(i), float(scores[i])) for i in range(len(scores)) if scores[i] >= threshold]
     results.sort(key=lambda x: x[1], reverse=True)
     return results
 

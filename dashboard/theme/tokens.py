@@ -126,9 +126,9 @@ class Type:
 
 @dataclass(frozen=True)
 class Breakpoints:
-    mobile_max: int = 640   # < 640px
-    tablet_mid: int = 768   # iPad portrait
-    tablet_max: int = 1024  # 641–1024  # noqa: RUF003
+    mobile_max: int = 640  # < 640px
+    tablet_mid: int = 768  # iPad portrait
+    tablet_max: int = 1024  # 641–1024
     desktop_min: int = 1025  # ≥ 1025
 
 

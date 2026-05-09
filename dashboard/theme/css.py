@@ -10,6 +10,7 @@
 - Status badges, tooltip CSS-only, search highlight (mejoras-visuales)
 - Sticky thead, micro-interacciones, scroll indicator móvil (mejoras-visuales)
 """
+
 from __future__ import annotations
 
 from dashboard.theme.tokens import TOKENS, Tokens

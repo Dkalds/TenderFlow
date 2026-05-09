@@ -48,12 +48,15 @@ def test_record_failure_dedups_same_key_increments_retry(tmp_db):
     """Dos fallos con misma (fuente, scope, payload_ref) → un solo registro con retry=1."""
     from db import dlq
 
-    dlq.record_failure("run-1", "bulk_202601", ValueError("primer error"),
-                       scope="parse", payload_ref="f1.xml")
-    dlq.record_failure("run-2", "bulk_202601", RuntimeError("segundo error"),
-                       scope="parse", payload_ref="f1.xml")
-    dlq.record_failure("run-3", "bulk_202601", RuntimeError("tercer error"),
-                       scope="parse", payload_ref="f1.xml")
+    dlq.record_failure(
+        "run-1", "bulk_202601", ValueError("primer error"), scope="parse", payload_ref="f1.xml"
+    )
+    dlq.record_failure(
+        "run-2", "bulk_202601", RuntimeError("segundo error"), scope="parse", payload_ref="f1.xml"
+    )
+    dlq.record_failure(
+        "run-3", "bulk_202601", RuntimeError("tercer error"), scope="parse", payload_ref="f1.xml"
+    )
 
     items = dlq.list_unresolved()
     assert len(items) == 1

@@ -96,6 +96,7 @@ def kpi_card(
 
     # Anomaly badge (no bloquea lectura — flotante arriba-derecha junto al icono).
     from dashboard.components.icons import icon as _icon  # local import para evitar circular
+
     anomaly_html = (
         '<span class="anomaly-badge" aria-label="Valor anómalo" '
         f'title="Desvío significativo vs histórico">{_icon("alert-triangle", 14)}</span>'

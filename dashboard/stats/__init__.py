@@ -14,10 +14,10 @@ Submódulos disponibles para imports directos:
 """
 
 from dashboard.stats._base import (  # noqa: F401
+    _STRIP_RE,
     _build_searchable_text,
     _keywords_mask,
     _normalize_titulo,
-    _STRIP_RE,
     calidad_dato,
     calientes_hoy,
     ccaa_mas_activa,

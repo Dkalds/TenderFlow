@@ -1,4 +1,4 @@
-﻿"""Componentes de navegación — breadcrumb, sub-nav y filtros activos."""
+"""Componentes de navegación — breadcrumb, sub-nav y filtros activos."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ if TYPE_CHECKING:
 
 
 def breadcrumb(section: str, page: str) -> None:
-    """Renderiza `Sección › Página` en la barra de navegación secundaria."""  # noqa: RUF002
+    """Renderiza `Sección › Página` en la barra de navegación secundaria."""
     safe_section = _html.escape(section)
     safe_page = _html.escape(page)
     st.markdown(
         f'<nav aria-label="breadcrumb">'
         f'<div class="bc">'
         f'<span class="bc-section">{safe_section}</span>'
-        f'<span class="bc-sep" aria-hidden="true">›</span>'  # noqa: RUF001
+        f'<span class="bc-sep" aria-hidden="true">›</span>'
         f'<span class="bc-page" aria-current="page">{safe_page}</span>'
         f"</div></nav>",
         unsafe_allow_html=True,
@@ -108,10 +108,10 @@ def top_nav(
 
 
 def active_filters_chips(
-    state: "FiltersState",
+    state: FiltersState,
     on_clear: Callable[[str], None] | None = None,
 ) -> None:
-    """Muestra chips con × para cada filtro activo."""  # noqa: RUF002
+    """Muestra chips con × para cada filtro activo."""
     labels = state.active_labels()
     if not labels:
         return

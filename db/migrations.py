@@ -9,7 +9,7 @@ mantener un historial auditable sigue siendo importante.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from observability.logging import get_logger
@@ -197,8 +197,7 @@ _V6_COLUMNS: list[tuple[str, str]] = [
     ("fecha_actualizacion_fuente", "TEXT"),
 ]
 
-
-import re
+import re  # noqa: E402
 
 _VALID_COLUMN_NAME = re.compile(r"^[a-zA-Z_]\w*$")
 
@@ -248,7 +247,7 @@ def apply_pending(conn: Any) -> list[int]:
             _apply_v10_is_admin(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
-            (version, description, datetime.now(timezone.utc).isoformat()),
+            (version, description, datetime.now(UTC).isoformat()),
         )
         applied.append(version)
     if applied:
@@ -331,9 +330,7 @@ def _apply_v8_user_id(conn: Any) -> None:
         return
     cols = {r[1] for r in conn.execute("PRAGMA table_info(watchlist_cpv)").fetchall()}
     if "user_id" not in cols:
-        conn.execute(
-            "ALTER TABLE watchlist_cpv ADD COLUMN user_id INTEGER REFERENCES users(id)"
-        )
+        conn.execute("ALTER TABLE watchlist_cpv ADD COLUMN user_id INTEGER REFERENCES users(id)")
     # Index for user_id lookups (idempotent via IF NOT EXISTS)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wl_user_id ON watchlist_cpv(user_id)")
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import streamlit as st
@@ -22,7 +22,7 @@ def _format_last_updated(ts) -> str:
     if hasattr(ts, "tzinfo") and ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     delta = now - (ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts)
     secs = int(delta.total_seconds())
     if secs < 60:
@@ -58,7 +58,7 @@ def render_header(
             '<div style="display:flex;justify-content:flex-end;align-items:center;'
             'height:100%">'
             f'<span class="ah-meta">{icon("clock", 13)} '
-            f'Actualizado {last_str}</span>'
+            f"Actualizado {last_str}</span>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -74,7 +74,7 @@ def render_header(
 
     st.markdown(
         '<div style="height:1px;'
-        'background:linear-gradient(90deg, transparent, var(--color-accent-primary-hover), var(--color-border-subtle), transparent);'
+        "background:linear-gradient(90deg, transparent, var(--color-accent-primary-hover), var(--color-border-subtle), transparent);"
         'margin:8px 0 18px 0;opacity:0.5"></div>',
         unsafe_allow_html=True,
     )
@@ -101,13 +101,12 @@ def render_footer() -> None:
         st.markdown(
             f'<div style="font-size:0.78rem;color:var(--color-text-muted);'
             f'display:flex;align-items:center;gap:6px">'
-            f'{icon("database", 12)}'
-            f'<span>Última extracción: {ext.iloc[0]["fecha"]} — fuente '
-            f'{ext.iloc[0]["fuente"]} ({ext.iloc[0]["nuevas"]} nuevas)</span>'
-            f'</div>',
+            f"{icon('database', 12)}"
+            f"<span>Última extracción: {ext.iloc[0]['fecha']} — fuente "
+            f"{ext.iloc[0]['fuente']} ({ext.iloc[0]['nuevas']} nuevas)</span>"
+            f"</div>",
             unsafe_allow_html=True,
         )
     st.caption(
-        "Fuente oficial: contrataciondelestado.es · "
-        "Datos reutilizados al amparo de la Ley 37/2007"
+        "Fuente oficial: contrataciondelestado.es · Datos reutilizados al amparo de la Ley 37/2007"
     )

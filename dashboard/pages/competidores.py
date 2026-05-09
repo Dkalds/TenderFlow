@@ -743,9 +743,7 @@ def _render_utes_section(ctx: PageContext, adj_ci: pd.DataFrame) -> None:
         )
     with k3:
         ticket_ute = utes["importe_adjudicado"].mean()
-        ticket_no_ute = (
-            adj_ci.loc[~adj_ci["es_ute"].fillna(False), "importe_adjudicado"].mean()
-        )
+        ticket_no_ute = adj_ci.loc[~adj_ci["es_ute"].fillna(False), "importe_adjudicado"].mean()
         delta_ticket = (
             ((ticket_ute / ticket_no_ute - 1) * 100)
             if ticket_no_ute and pd.notna(ticket_no_ute) and ticket_no_ute > 0
@@ -766,7 +764,7 @@ def _render_utes_section(ctx: PageContext, adj_ci: pd.DataFrame) -> None:
             kpi_card(
                 "Empresas distintas",
                 f"{len(empresas_unicas):,}",
-                delta=f"que han ido en UTE",
+                delta="que han ido en UTE",
                 delta_up=True,
                 icon="🏢",
             ),
@@ -786,7 +784,9 @@ def _render_utes_section(ctx: PageContext, adj_ci: pd.DataFrame) -> None:
             counter_emp: Counter[str] = Counter()
             importe_emp: dict[str, float] = {}
             for _, row in utes_with_members.iterrows():
-                imp = float(row["importe_adjudicado"]) if pd.notna(row["importe_adjudicado"]) else 0.0
+                imp = (
+                    float(row["importe_adjudicado"]) if pd.notna(row["importe_adjudicado"]) else 0.0
+                )
                 # Repartir importe a partes iguales entre los miembros
                 share = imp / max(row["n_miembros"], 1)
                 for m in row["miembros"]:
@@ -976,9 +976,7 @@ def _render_utes_section(ctx: PageContext, adj_ci: pd.DataFrame) -> None:
         )
         if emp_sel:
             sel_set = set(emp_sel)
-            mask_emp = utes_with_members["miembros"].apply(
-                lambda ms: any(m in sel_set for m in ms)
-            )
+            mask_emp = utes_with_members["miembros"].apply(lambda ms: any(m in sel_set for m in ms))
             utes_filtradas = utes_with_members[mask_emp].copy()
         else:
             utes_filtradas = utes.copy()
@@ -1016,9 +1014,7 @@ def _render_utes_section(ctx: PageContext, adj_ci: pd.DataFrame) -> None:
             "titulo": st.column_config.TextColumn("Título", width="large"),
             "organo_contratacion": st.column_config.TextColumn("Órgano", width="medium"),
             "ccaa": st.column_config.TextColumn("CCAA", width="small"),
-            "importe_adjudicado": st.column_config.NumberColumn(
-                "Importe", format="%.0f €"
-            ),
+            "importe_adjudicado": st.column_config.NumberColumn("Importe", format="%.0f €"),
             "baja_pct": st.column_config.NumberColumn("Baja %", format="%.1f%%"),
             "n_ofertas_recibidas": st.column_config.NumberColumn("Ofertas"),
             "n_miembros": st.column_config.NumberColumn("Socios"),

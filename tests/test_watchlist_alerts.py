@@ -1,13 +1,10 @@
-"""Tests para scheduler/watchlist_alerts.py."""
+﻿"""Tests para scheduler/watchlist_alerts.py."""
 
 from __future__ import annotations
 
 import hashlib
-import os
-from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
-
+from unittest.mock import patch
 
 # ---------------------------------------------------------------------------
 # _user_key
@@ -19,12 +16,13 @@ def test_user_key_uses_password(monkeypatch):
     import importlib
 
     import config
+
     importlib.reload(config)
 
     from scheduler.watchlist_alerts import _user_key
 
     key = _user_key()
-    expected = hashlib.sha256("test_secret".encode()).hexdigest()[:16]
+    expected = hashlib.sha256(b"test_secret").hexdigest()[:16]
     assert key == expected
 
 
@@ -34,12 +32,13 @@ def test_user_key_fallback_to_computername(monkeypatch):
     import importlib
 
     import config
+
     importlib.reload(config)
 
     from scheduler.watchlist_alerts import _user_key
 
     key = _user_key()
-    expected = hashlib.sha256("MYHOST".encode()).hexdigest()[:16]
+    expected = hashlib.sha256(b"MYHOST").hexdigest()[:16]
     assert key == expected
 
 
@@ -57,7 +56,7 @@ def _make_entry(**kwargs: Any) -> dict[str, Any]:
 def _make_lic(**kwargs: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "titulo": "Sistema ERP",
-        "organo_contratacion": "Junta de Andalucía",
+        "organo_contratacion": "Junta de AndalucÃ­a",
         "importe": 100000.0,
         "url": "https://example.com/123",
         "fecha_publicacion": "2024-01-15",
@@ -92,7 +91,7 @@ def test_build_body_truncates_at_10():
     entry = _make_entry()
     lics = [_make_lic(titulo=f"Lic {i}") for i in range(15)]
     body = _build_body([(entry, lics)])
-    assert "5 más" in body
+    assert "5 mÃ¡s" in body
 
 
 def test_build_body_no_importe_shows_dash():
@@ -101,7 +100,7 @@ def test_build_body_no_importe_shows_dash():
     entry = _make_entry()
     lic = _make_lic(importe=None)
     body = _build_body([(entry, [lic])])
-    assert "—" in body
+    assert "â€”" in body
 
 
 # ---------------------------------------------------------------------------
@@ -110,10 +109,11 @@ def test_build_body_no_importe_shows_dash():
 
 
 def test_query_licitaciones_since_empty_db(tmp_db):
-    db_mod, _ = tmp_db
+    _, _ = tmp_db
+    import importlib
+
     from scheduler import watchlist_alerts
 
-    import importlib
     importlib.reload(watchlist_alerts)
 
     result = watchlist_alerts._query_licitaciones_since("48", "2024-01-01")
@@ -122,15 +122,16 @@ def test_query_licitaciones_since_empty_db(tmp_db):
 
 
 # ---------------------------------------------------------------------------
-# check_and_notify — empty watchlist
+# check_and_notify â€” empty watchlist
 # ---------------------------------------------------------------------------
 
 
 def test_check_and_notify_empty_watchlist_returns_zero(tmp_db):
-    db_mod, _ = tmp_db
+    _, _ = tmp_db
+    import importlib
+
     from scheduler import watchlist_alerts
 
-    import importlib
     importlib.reload(watchlist_alerts)
 
     with patch("scheduler.watchlist_alerts.list_entries", return_value=[]):
@@ -139,15 +140,17 @@ def test_check_and_notify_empty_watchlist_returns_zero(tmp_db):
 
 
 # ---------------------------------------------------------------------------
-# check_and_notify — entries without email (no notification sent)
+# check_and_notify â€” entries without email (no notification sent)
 # ---------------------------------------------------------------------------
 
 
 def test_check_and_notify_no_email_no_notify(tmp_db, monkeypatch):
-    db_mod, _ = tmp_db
+    _, _ = tmp_db
 
     import importlib
+
     from scheduler import watchlist_alerts
+
     importlib.reload(watchlist_alerts)
 
     entry = {
@@ -174,15 +177,17 @@ def test_check_and_notify_no_email_no_notify(tmp_db, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# check_and_notify — entry with email, has matches → notify
+# check_and_notify - entry with email, has matches -> notify
 # ---------------------------------------------------------------------------
 
 
 def test_check_and_notify_with_matches_sends_alert(tmp_db):
-    db_mod, _ = tmp_db
+    _, _ = tmp_db
 
     import importlib
+
     from scheduler import watchlist_alerts
+
     importlib.reload(watchlist_alerts)
 
     entry = {
@@ -223,10 +228,12 @@ def test_check_and_notify_with_matches_sends_alert(tmp_db):
 
 
 def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
-    db_mod, _ = tmp_db
+    _, _ = tmp_db
 
     import importlib
+
     from scheduler import watchlist_alerts
+
     importlib.reload(watchlist_alerts)
 
     entry = {

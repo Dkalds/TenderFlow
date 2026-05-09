@@ -16,10 +16,8 @@ if str(_PROJECT_ROOT) not in sys.path:
 import streamlit as st
 
 from dashboard.auth import check_password
-from dashboard.components.layout import (render_footer, render_header,
-                                          render_sidebar_brand)
-from dashboard.components.navigation import (active_filters_chips, breadcrumb,
-                                              sub_nav, top_nav)
+from dashboard.components.layout import render_header, render_sidebar_brand
+from dashboard.components.navigation import active_filters_chips, breadcrumb, sub_nav, top_nav
 from dashboard.components.states import empty_state
 from dashboard.data_loader import load_dataframe
 from dashboard.filters import FiltersState, apply_filters, render_sidebar_filters
@@ -37,8 +35,13 @@ from dashboard.session_keys import (
     FS_TIPOS,
     QP_LOADED,
 )
-from dashboard.theme import (COMPACT_DENSITY_CSS, TOKENS, build_css,
-                              get_color_sequence, register_plotly_template)
+from dashboard.theme import (
+    COMPACT_DENSITY_CSS,
+    TOKENS,
+    build_css,
+    get_color_sequence,
+    register_plotly_template,
+)
 
 # ── Config & estilo ──────────────────────────────────────────────────────
 st.set_page_config(
@@ -50,14 +53,14 @@ st.set_page_config(
 
 # Anti-flash: ocultar chrome nativo antes de que se renderice nada
 st.markdown(
-    '<style>'
+    "<style>"
     '#MainMenu,footer,[data-testid="stSidebarNav"],[data-testid="stSidebarNavSeparator"],'
     '[data-testid="stAppDeployButton"],[data-testid="stMainMenu"],'
     '[data-testid="stDecoration"],[data-testid="stStatusWidget"]'
-    '{display:none!important;visibility:hidden!important}'
+    "{display:none!important;visibility:hidden!important}"
     '[data-testid="stToolbar"]{visibility:hidden!important}'
     '[data-testid="stExpandSidebarButton"]{visibility:visible!important;display:block!important}'
-    '</style>',
+    "</style>",
     unsafe_allow_html=True,
 )
 
@@ -90,9 +93,7 @@ if df_full.empty:
         "Sin datos en la base de datos",
         "Ejecuta el pipeline para importar licitaciones.",
         cta_label="Ver comando de carga",
-        cta_cb=lambda: st.code(
-            "python -m scheduler.run_update --backfill 2024 1"
-        ),
+        cta_cb=lambda: st.code("python -m scheduler.run_update --backfill 2024 1"),
     )
     st.stop()
 # ── Inicializar filtros desde URL params (sólo en la primera carga) ──────────────

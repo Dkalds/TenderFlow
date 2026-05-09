@@ -19,6 +19,7 @@ def fake_streamlit(monkeypatch):
     # Hay que limpiar tanto sys.modules como el atributo en el paquete padre.
     sys.modules.pop("dashboard.utils.rate_limit", None)
     import dashboard.utils as _du
+
     if hasattr(_du, "rate_limit"):
         delattr(_du, "rate_limit")
     yield mod
@@ -45,7 +46,6 @@ def test_check_rate_limit_blocks_over_threshold(fake_streamlit):
 
 def test_check_rate_limit_window_slides(fake_streamlit, monkeypatch):
     """Tras pasar la ventana, el contador se purga y permite nuevas llamadas."""
-    import time as time_mod
 
     from dashboard.utils import rate_limit
 

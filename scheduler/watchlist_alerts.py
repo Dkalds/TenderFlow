@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from db.database import connect
@@ -89,8 +89,8 @@ def check_and_notify() -> int:
         log.debug("watchlist_empty", user_key=user_key)
         return 0
 
-    now_ts = datetime.now(timezone.utc).isoformat()
-    default_since = (datetime.now(timezone.utc) - timedelta(days=_LOOKBACK_DAYS)).date().isoformat()
+    now_ts = datetime.now(UTC).isoformat()
+    default_since = (datetime.now(UTC) - timedelta(days=_LOOKBACK_DAYS)).date().isoformat()
 
     # Agrupar entradas por email destinatario para enviar un único correo por persona
     from collections import defaultdict

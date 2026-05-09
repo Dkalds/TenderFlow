@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from config import SAP_KEYWORDS
@@ -52,11 +52,10 @@ def _tokenize(text: str) -> list[str]:
 
 def _fetch_recent_texts(days: int = 30) -> list[str]:
     """Obtiene títulos y descripciones de licitaciones de los últimos N días."""
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with connect() as c:
         cur = c.execute(
-            "SELECT titulo, descripcion FROM licitaciones "
-            "WHERE fecha_publicacion >= ?",
+            "SELECT titulo, descripcion FROM licitaciones WHERE fecha_publicacion >= ?",
             (since,),
         )
         texts = []
@@ -146,9 +145,7 @@ def run_drift_report(*, days: int = 30, send_alert: bool = True) -> list[dict[st
             lines.append(f"  • **{c['term']}** ({c['doc_freq']} docs)")
             if c["example_titles"]:
                 lines.append(f"    Ejemplo: {c['example_titles'][0][:100]}")
-        lines.append(
-            "\nRevisa si alguno debería añadirse a SAP_KEYWORDS en config.py."
-        )
+        lines.append("\nRevisa si alguno debería añadirse a SAP_KEYWORDS en config.py.")
         body = "\n".join(lines)
         notify(
             "Concept Drift — Términos emergentes detectados",

@@ -161,9 +161,7 @@ class TestCursorHelpers:
 class TestUpsertWithHistory:
     def test_insert_new_no_history(self, tmp_db):
         db_mod, _ = tmp_db
-        result = db_mod.upsert_licitaciones_with_history(
-            [_make_lic("NEW-001")], source="test"
-        )
+        result = db_mod.upsert_licitaciones_with_history([_make_lic("NEW-001")], source="test")
         assert result.nuevas == 1
         assert result.modified == []
         assert result.unchanged == []
@@ -221,7 +219,7 @@ class TestUpsertWithHistory:
         lic2 = _make_lic("MULTI-001")
         lic2.importe = 20000.0
         lic2.estado = "ADJUDICADA"
-        result = db_mod.upsert_licitaciones_with_history([lic2], source="daily")
+        db_mod.upsert_licitaciones_with_history([lic2], source="daily")
 
         history = db_mod.get_history("MULTI-001")
         assert len(history) == 1

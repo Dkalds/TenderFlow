@@ -69,7 +69,7 @@ def _handle_oauth_callback() -> bool:
     if not code:
         return False
 
-    import requests  # noqa: S404
+    import requests
 
     # Intercambiar code por access token
     try:
@@ -187,8 +187,13 @@ def check_password() -> bool:
 
     # Verificar sesión completamente autenticada y su timeout
     from dashboard.session_keys import (
-        AUTH_METHOD, AUTH_TIME, AUTHENTICATED, OAUTH_STEP_DONE,
-        USER_EMAIL, USER_ID, USER_NAME,
+        AUTH_METHOD,
+        AUTH_TIME,
+        AUTHENTICATED,
+        OAUTH_STEP_DONE,
+        USER_EMAIL,
+        USER_ID,
+        USER_NAME,
     )
 
     if st.session_state.get(AUTHENTICATED):
@@ -196,8 +201,15 @@ def check_password() -> bool:
         if time.time() - auth_time < SESSION_TIMEOUT_SECONDS:
             return True
         # Sesión expirada: limpiar estado
-        for key in (AUTHENTICATED, AUTH_TIME, AUTH_METHOD,
-                     USER_ID, USER_EMAIL, USER_NAME, OAUTH_STEP_DONE):
+        for key in (
+            AUTHENTICATED,
+            AUTH_TIME,
+            AUTH_METHOD,
+            USER_ID,
+            USER_EMAIL,
+            USER_NAME,
+            OAUTH_STEP_DONE,
+        ):
             st.session_state.pop(key, None)
         st.info("Tu sesión ha expirado. Ingresa de nuevo.")
 

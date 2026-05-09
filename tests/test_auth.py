@@ -159,7 +159,7 @@ class TestRateLimiting:
 
 class TestAdminEnforcement:
     def test_no_user_in_session_no_admin(self, mock_streamlit):
-        _st_mock, session = mock_streamlit
+        _st_mock, _session = mock_streamlit
         # Sin _user_id en sesión
         auth = _import_auth()
         assert auth.current_user_is_admin() is False

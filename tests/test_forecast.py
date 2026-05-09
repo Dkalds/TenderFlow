@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from dashboard.forecast import estimate_end_date, to_months
+from dashboard.forecast import build_forecast_df, estimate_end_date, to_months
 
 
 class TestToMonths:
@@ -92,8 +92,6 @@ class TestEstimateEndDate:
 
 
 # ─── build_forecast_df ───────────────────────────────────────────────────────
-
-from dashboard.forecast import build_forecast_df  # noqa: E402
 
 
 def _lic_df(n: int = 3, tipo: str = "Mantenimiento") -> pd.DataFrame:

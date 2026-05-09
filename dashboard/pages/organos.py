@@ -284,11 +284,9 @@ def render(ctx: PageContext) -> None:
 
     # Enriquecer con datos de adjudicación (empresa, baja, fecha)
     if not sub_adj.empty:
-        adj_best = (
-            sub_adj.sort_values("importe_adjudicado", ascending=False)
-            .drop_duplicates(subset=["licitacion_id"], keep="first")
-            [["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]]
-        )
+        adj_best = sub_adj.sort_values("importe_adjudicado", ascending=False).drop_duplicates(
+            subset=["licitacion_id"], keep="first"
+        )[["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]]
         sub_sorted = sub_sorted.merge(
             adj_best,
             left_on="id_externo",

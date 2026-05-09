@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 
 def test_healthcheck_critical_without_runs(tmp_db):
     from scheduler.healthcheck import run_check
@@ -25,11 +27,11 @@ def test_healthcheck_healthy_after_successful_run(tmp_db):
 
 
 def test_healthcheck_degraded_when_last_run_stale(tmp_db):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from db.database import connect
 
-    old = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+    old = (datetime.now(UTC) - timedelta(days=5)).isoformat()
     with connect() as c:
         c.execute(
             "INSERT INTO extraction_runs "
@@ -47,7 +49,7 @@ def test_healthcheck_degraded_when_last_run_stale(tmp_db):
 
 
 def test_healthcheck_degraded_when_dlq_above_threshold(tmp_db):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from db.database import connect
 
@@ -56,12 +58,12 @@ def test_healthcheck_degraded_when_dlq_above_threshold(tmp_db):
             "INSERT INTO extraction_runs "
             "(run_id, started_at, ended_at, status) VALUES "
             "('r1', ?, ?, 'ok')",
-            (datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat()),
+            (datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat()),
         )
         for i in range(6):
             c.execute(
                 "INSERT INTO failed_extractions (fuente, created_at) VALUES (?, ?)",
-                (f"src-{i}", datetime.now(timezone.utc).isoformat()),
+                (f"src-{i}", datetime.now(UTC).isoformat()),
             )
 
     from scheduler.healthcheck import run_check

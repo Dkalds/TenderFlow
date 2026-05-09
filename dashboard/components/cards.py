@@ -103,8 +103,4 @@ def with_tooltip(content_html: str, tooltip_text: str) -> str:
         String HTML listo para ``st.markdown(..., unsafe_allow_html=True)``.
     """
     safe_tip = _html.escape(str(tooltip_text))
-    return (
-        f'<span class="has-tooltip" data-tip="{safe_tip}">'
-        f"{content_html}"
-        f"</span>"
-    )
+    return f'<span class="has-tooltip" data-tip="{safe_tip}">{content_html}</span>'

@@ -75,7 +75,7 @@ def error_state(
     """
     st.markdown(
         f'<div role="alert" aria-live="assertive" class="error-banner">'
-        f'{icon("alert-triangle", 18)}'
+        f"{icon('alert-triangle', 18)}"
         f"<div><strong>{_html.escape(title)}</strong>"
         f"<span>{_html.escape(message)}</span></div>"
         f"</div>",

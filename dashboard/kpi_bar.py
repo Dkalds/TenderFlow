@@ -85,9 +85,7 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
     spark_count = _last_12m_series(df) or None
     spark_imp = _last_12m_series(df, value_col="importe") or None
     delta_up = k["delta_n"] >= 0
-    delta_txt = (
-        f"{k['delta_pct']:+.0f}% últ. 30d" if k["prev30_size"] else "sin comparativa"
-    )
+    delta_txt = f"{k['delta_pct']:+.0f}% últ. 30d" if k["prev30_size"] else "sin comparativa"
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:

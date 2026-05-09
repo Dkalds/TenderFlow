@@ -6,7 +6,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from observability.logging import get_logger
 
@@ -36,7 +36,7 @@ class RunMetrics:
 def record_run(run_id: str) -> Iterator[RunMetrics]:
     """Context manager que persiste el resultado del run al salir."""
     t0 = time.monotonic()
-    m = RunMetrics(run_id=run_id, started_at=datetime.now(timezone.utc).isoformat())
+    m = RunMetrics(run_id=run_id, started_at=datetime.now(UTC).isoformat())
     try:
         yield m
         if m.status == "running":
@@ -45,7 +45,7 @@ def record_run(run_id: str) -> Iterator[RunMetrics]:
         m.status = "error"
         raise
     finally:
-        m.ended_at = datetime.now(timezone.utc).isoformat()
+        m.ended_at = datetime.now(UTC).isoformat()
         m.duration_ms = int((time.monotonic() - t0) * 1000)
         _persist(m)
 

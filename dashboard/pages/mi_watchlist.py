@@ -54,7 +54,7 @@ def render(ctx: PageContext) -> None:
     user_key, user_id = _get_user_context()
     entries = list_entries(user_key, user_id=user_id)
 
-    with st.expander("➕ Añadir entrada", expanded=not entries):  # noqa: RUF001
+    with st.expander("➕ Añadir entrada", expanded=not entries):
         col1, col2, col3, col4 = st.columns([1, 2, 1, 1])
         with col1:
             cpv = st.text_input("CPV prefix", value="72", max_chars=8, key="wl_cpv")
@@ -123,7 +123,11 @@ def render(ctx: PageContext) -> None:
     combined_mask = pd.Series(False, index=df.index)
     cpv_col = df["cpv"].fillna("").astype(str)
     titulo_col = df["titulo"].fillna("").astype(str).str.lower()
-    desc_col = df["descripcion"].fillna("").astype(str).str.lower() if "descripcion" in df.columns else pd.Series("", index=df.index)
+    desc_col = (
+        df["descripcion"].fillna("").astype(str).str.lower()
+        if "descripcion" in df.columns
+        else pd.Series("", index=df.index)
+    )
     text_col = titulo_col + " " + desc_col
     importe_col = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
     ccaa_col = df["ccaa"].fillna("").astype(str)

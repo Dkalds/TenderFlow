@@ -229,8 +229,8 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
             data = asdict(lic)
             vals = [data[k] for k in _LIC_KEYS]
             # Column names come from dataclass fields (controlled code) — safe
-            c.execute(  # noqa: RUF100, S608
-                f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "  # noqa: S608
+            c.execute(
+                f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
                 f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
                 vals,
             )
@@ -251,8 +251,8 @@ def replace_adjudicaciones(licitacion_id: str, items: Iterable[Adjudicacion]) ->
             data = asdict(adj)
             vals = [data[k] for k in _ADJ_KEYS]
             # Column names come from dataclass fields (controlled code) — safe
-            c.execute(  # noqa: RUF100, S608
-                f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) "  # noqa: S608
+            c.execute(
+                f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) "
                 f"VALUES ({_ADJ_PLACEHOLDERS})",
                 vals,
             )
@@ -368,7 +368,7 @@ def upsert_licitaciones_with_history(
     with connect() as c:
         for lic in items:
             existing = c.execute(
-                "SELECT " + _HISTORY_SELECT_COLS + " FROM licitaciones WHERE id_externo = ?",  # noqa: S608
+                "SELECT " + _HISTORY_SELECT_COLS + " FROM licitaciones WHERE id_externo = ?",
                 [lic.id_externo],
             ).fetchone()
 
@@ -416,7 +416,7 @@ def upsert_licitaciones_with_history(
 
             # UPSERT (siempre, incluso si unchanged — actualiza fecha_extraccion)
             c.execute(
-                f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "  # noqa: S608
+                f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
                 f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
                 vals,
             )

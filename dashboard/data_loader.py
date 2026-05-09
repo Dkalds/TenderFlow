@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -86,8 +87,9 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
     # ── Enriquecimientos opcionales: cada uno con fallback aislado ──
     text_blob = df["titulo"].fillna("") + " " + df["descripcion"].fillna("")
 
-    _safe_apply(df, "modulos", detect_modules, source=text_blob, fallback=[],
-                op_name="detect_modules")
+    _safe_apply(
+        df, "modulos", detect_modules, source=text_blob, fallback=[], op_name="detect_modules"
+    )
     try:
         df["modulos_str"] = df["modulos"].apply(
             lambda mods: ", ".join(mods) if isinstance(mods, list) else ""
@@ -96,14 +98,26 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
         log.warning("data_loader_enrichment_failed", column="modulos_str", error=str(e))
         df["modulos_str"] = ""
 
-    _safe_apply(df, "tipo_proyecto", detect_project_type, source=text_blob, fallback="Otro",
-                op_name="detect_project_type")
-    _safe_apply(df, "cpv_desc", cpv_label, source=df["cpv"], fallback="",
-                op_name="cpv_label")
-    _safe_apply(df, "estado_desc", estado_label, source=df["estado"], fallback="",
-                op_name="estado_label")
-    _safe_apply(df, "tipo_contrato_desc", tipo_contrato_label, source=df["tipo_contrato"],
-                fallback="", op_name="tipo_contrato_label")
+    _safe_apply(
+        df,
+        "tipo_proyecto",
+        detect_project_type,
+        source=text_blob,
+        fallback="Otro",
+        op_name="detect_project_type",
+    )
+    _safe_apply(df, "cpv_desc", cpv_label, source=df["cpv"], fallback="", op_name="cpv_label")
+    _safe_apply(
+        df, "estado_desc", estado_label, source=df["estado"], fallback="", op_name="estado_label"
+    )
+    _safe_apply(
+        df,
+        "tipo_contrato_desc",
+        tipo_contrato_label,
+        source=df["tipo_contrato"],
+        fallback="",
+        op_name="tipo_contrato_label",
+    )
 
     if "ccaa" in df.columns and "nuts_code" in df.columns:
         try:
@@ -192,10 +206,17 @@ def load_adjudicaciones(limit: int | None = None) -> pd.DataFrame:
 
     df["es_ute"] = df["nombre"].str.contains(r"\bU\.?T\.?E\.?\b", case=False, na=False, regex=True)
 
-    _safe_apply(df, "nombre_norm", normalize_company, source=df["nombre"], fallback=None,
-                op_name="normalize_company")
-    _safe_apply(df, "nif_norm", normalize_nif, source=df["nif"], fallback=None,
-                op_name="normalize_nif")
+    _safe_apply(
+        df,
+        "nombre_norm",
+        normalize_company,
+        source=df["nombre"],
+        fallback=None,
+        op_name="normalize_company",
+    )
+    _safe_apply(
+        df, "nif_norm", normalize_nif, source=df["nif"], fallback=None, op_name="normalize_nif"
+    )
     df["empresa_key"] = df["nif_norm"].where(
         df["nif_norm"].notna() & (df["nif_norm"] != ""), df["nombre_norm"]
     )

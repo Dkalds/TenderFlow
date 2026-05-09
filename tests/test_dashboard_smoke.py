@@ -8,7 +8,7 @@ completo no lance excepciones.
 from __future__ import annotations
 
 import importlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -16,7 +16,7 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 
 _SEED_LICITACIONES = [
     {
@@ -44,7 +44,7 @@ _SEED_LICITACIONES = [
 
 def _seed_db(db_mod: object) -> None:
     """Inserta licitaciones de prueba y una extracción."""
-    from db.database import Licitacion, upsert_licitaciones, log_extraccion
+    from db.database import Licitacion, log_extraccion, upsert_licitaciones
 
     lics = [Licitacion(**row) for row in _SEED_LICITACIONES]
     upsert_licitaciones(lics)
@@ -54,6 +54,7 @@ def _seed_db(db_mod: object) -> None:
 # ---------------------------------------------------------------------------
 # Fixture: BD temporal con datos representativos
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def _smoke_db(monkeypatch, tmp_path):
@@ -100,7 +101,7 @@ _PAGES = [
 
 
 @pytest.mark.parametrize("page_name", _PAGES)
-def test_page_renders_without_error(page_name: str, _smoke_db, monkeypatch) -> None:  # noqa: PT019
+def test_page_renders_without_error(page_name: str, _smoke_db, monkeypatch) -> None:
     """Renderizar ``page_name`` no debe lanzar excepción."""
     import os
 
@@ -140,6 +141,4 @@ PAGE_REGISTRY["{page_name}"](ctx)
 """
     at = AppTest.from_string(script)
     at.run(timeout=15)
-    assert not at.exception, (
-        f"Página '{page_name}' lanzó excepción: {at.exception}"
-    )
+    assert not at.exception, f"Página '{page_name}' lanzó excepción: {at.exception}"

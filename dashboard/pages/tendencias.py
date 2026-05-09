@@ -134,7 +134,7 @@ def render(ctx: PageContext) -> None:
             fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
             st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Heatmap mes × estado")  # noqa: RUF001
+    st.subheader("Heatmap mes × estado")
     if not df.empty and df["mes"].notna().any():
         hm = (
             df.dropna(subset=["mes"])

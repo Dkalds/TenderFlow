@@ -8,3 +8,15 @@ data/*.db-*
 .streamlit/secrets.toml
 .env
 .coverage
+# Generated test/coverage output
+test_results.txt
+_test_summary.txt
+coverage_out.txt
+coverage_output.txt
+full_cov.txt
+pytest-output.txt
+pytest-run.txt
+pytest_full.log
+cov80.txt
+coverage.xml
+pytest-run.txt

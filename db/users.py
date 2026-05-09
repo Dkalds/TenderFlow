@@ -74,9 +74,7 @@ def get_user_by_email(email: str) -> dict[str, Any] | None:
 def is_admin(user_id: int) -> bool:
     """Devuelve True si el usuario tiene el flag is_admin activo."""
     with connect() as c:
-        row = c.execute(
-            "SELECT is_admin FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
+        row = c.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
         return bool(row and row[0])
 
 

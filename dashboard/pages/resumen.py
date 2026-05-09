@@ -43,11 +43,11 @@ def render(ctx: PageContext) -> None:
 
         # Enriquecer con datos de adjudicación (empresa, baja, fecha)
         if not adj_resumen.empty:
-            adj_best = (
-                adj_resumen.sort_values("importe_adjudicado", ascending=False)
-                .drop_duplicates(subset=["licitacion_id"], keep="first")
-                [["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]]
-            )
+            adj_best = adj_resumen.sort_values(
+                "importe_adjudicado", ascending=False
+            ).drop_duplicates(subset=["licitacion_id"], keep="first")[
+                ["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]
+            ]
             top = top.merge(
                 adj_best,
                 left_on="id_externo",
@@ -271,8 +271,9 @@ def render(ctx: PageContext) -> None:
         # ── PDF Informe ejecutivo ──────────────────────────────────
         top_pdf = (
             df.dropna(subset=["importe"])
-            .nlargest(10, "importe")
-            [["titulo", "organo_contratacion", "importe", "estado_desc", "cpv"]]
+            .nlargest(10, "importe")[
+                ["titulo", "organo_contratacion", "importe", "estado_desc", "cpv"]
+            ]
             .copy()
         )
         top_pdf["importe_fmt"] = top_pdf["importe"].apply(fmt_eur)
@@ -282,12 +283,17 @@ def render(ctx: PageContext) -> None:
         chart_imgs: list[tuple[str, bytes]] = []
         try:
             fig_estado = px.pie(
-                est, names="estado_desc", values="n", hole=0.55,
+                est,
+                names="estado_desc",
+                values="n",
+                hole=0.55,
                 template=ctx.plotly_template,
                 color_discrete_sequence=ctx.color_sequence,
             )
             fig_estado.update_layout(
-                showlegend=True, height=400, width=600,
+                showlegend=True,
+                height=400,
+                width=600,
                 margin=dict(t=30, b=30, l=30, r=30),
             )
             chart_imgs.append(("Distribución por estado", fig_estado.to_image(format="png")))
@@ -345,18 +351,10 @@ def render(ctx: PageContext) -> None:
             "organos": "Órganos únicos",
         }
         cols = st.columns(len(comp))
-        for col, (key, vals) in zip(cols, comp.items()):
+        for col, (key, vals) in zip(cols, comp.items(), strict=False):
             with col:
-                va_str = (
-                    fmt_eur(vals["a"])
-                    if "importe" in key
-                    else f"{int(vals['a']):,}"
-                )
-                vb_str = (
-                    fmt_eur(vals["b"])
-                    if "importe" in key
-                    else f"{int(vals['b']):,}"
-                )
+                va_str = fmt_eur(vals["a"]) if "importe" in key else f"{int(vals['a']):,}"
+                vb_str = fmt_eur(vals["b"]) if "importe" in key else f"{int(vals['b']):,}"
                 delta = vals["delta_pct"]
                 arrow = "🔺" if delta > 0 else "🔻" if delta < 0 else "▬"
                 st.metric(

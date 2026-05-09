@@ -49,7 +49,9 @@ KPI_FORMULAS: dict[str, str] = {
     ),
     "licitaciones_30d": "Nº de licitaciones publicadas en los últimos 30 días.",
     "importe_30d": "Suma de importes de licitaciones publicadas en los últimos 30 días.",
-    "yoy_365d": ("Crecimiento YoY en nº de licitaciones: (n_últimos_12m - n_12m_anteriores) / n_12m_anteriores × 100."),
+    "yoy_365d": (
+        "Crecimiento YoY en nº de licitaciones: (n_últimos_12m - n_12m_anteriores) / n_12m_anteriores × 100."
+    ),
     "mes_pico": "Mes con mayor importe acumulado en el rango filtrado actual.",
     "ccaa_activa": "CCAA con más licitaciones en el rango filtrado.",
     "ccaa_ticket": "CCAA con mayor importe medio por licitación (mínimo 5 lics).",

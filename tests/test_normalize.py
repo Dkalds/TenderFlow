@@ -130,4 +130,3 @@ class TestParseUteMembers:
 
     def test_dedupe(self):
         assert parse_ute_members("UTE EMPRESA - EMPRESA SA") == ["EMPRESA"]
-

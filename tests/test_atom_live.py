@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from scraper.atom_live import (
     FetchResult,
     _entry_updated,
@@ -214,9 +212,7 @@ class TestIterLiveEntries:
         )
         pages = {
             "https://x.com/feed": FetchResult(content=_ATOM_PAGE_1, status_code=200),
-            page2_url: FetchResult(
-                content=_ATOM_PAGE_2, status_code=200
-            ),
+            page2_url: FetchResult(content=_ATOM_PAGE_2, status_code=200),
         }
         mock_fetch.side_effect = lambda url, **kw: pages[url]
 
@@ -248,7 +244,7 @@ class TestIterLiveEntries:
         """No sobrepasa max_pages."""
         mock_fetch.return_value = FetchResult(content=_ATOM_PAGE_1, status_code=200)
 
-        entries, meta = iter_live_entries(
+        _entries, meta = iter_live_entries(
             last_seen_updated="2026-01-01T00:00:00Z",
             start_url="https://x.com/feed",
             max_pages=1,

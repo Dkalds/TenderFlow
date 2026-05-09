@@ -111,7 +111,9 @@ def render(ctx: PageContext) -> None:
         )
     with kv4:
         st.markdown(
-            kpi_card("Importe en ventana", fmt_eur(en_ventana["importe"].sum(skipna=True)), icon="🚨"),
+            kpi_card(
+                "Importe en ventana", fmt_eur(en_ventana["importe"].sum(skipna=True)), icon="🚨"
+            ),
             unsafe_allow_html=True,
         )
 
@@ -212,8 +214,8 @@ def render(ctx: PageContext) -> None:
             fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
             st.plotly_chart(fig, use_container_width=True)
 
-    # ── Matriz urgencia × valor ──────────────────────────────────  # noqa: RUF003
-    st.subheader("Matriz urgencia × valor del contrato")  # noqa: RUF001
+    # ── Matriz urgencia × valor ──────────────────────────────────
+    st.subheader("Matriz urgencia × valor del contrato")
     if not oport.empty:
         oport["dias_restantes"] = (oport["fecha_fin_estimada"] - hoy_rv).dt.days
         oport_s = oport.dropna(subset=["importe", "dias_restantes"])

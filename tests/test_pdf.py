@@ -63,11 +63,11 @@ def test_generate_pdf_many_kpis():
 
 
 def test_generate_pdf_with_chart():
-    from dashboard.utils.pdf import generate_pdf
-
     # Minimal valid 1x1 white PNG
     import struct
     import zlib
+
+    from dashboard.utils.pdf import generate_pdf
 
     def _minimal_png() -> bytes:
         sig = b"\x89PNG\r\n\x1a\n"
