@@ -167,7 +167,11 @@ def _get_conn() -> Any:
     else:
         # En CI (GitHub Actions y similares) NUNCA usar SQLite local: el FS es
         # efímero y los datos se perderían silenciosamente. Forzar fallo ruidoso.
-        if os.environ.get("CI", "").lower() in ("1", "true", "yes"):
+        # Excepción: dentro de pytest (PYTEST_CURRENT_TEST lo fija pytest) se
+        # permite SQLite temporal para el fixture tmp_db.
+        if os.environ.get("CI", "").lower() in ("1", "true", "yes") and not os.environ.get(
+            "PYTEST_CURRENT_TEST"
+        ):
             raise RuntimeError(
                 "Faltan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN en el entorno CI. "
                 "Configura los secrets del repositorio antes de ejecutar el pipeline."
