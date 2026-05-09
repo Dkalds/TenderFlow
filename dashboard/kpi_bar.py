@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pandas as pd
 import streamlit as st
 
@@ -9,6 +11,36 @@ from dashboard.components.icons import icon
 from dashboard.components.kpi import kpi_card
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.utils.format import fmt_eur
+
+
+def _df_cache_key(df: pd.DataFrame) -> str:
+    """Genera una clave de caché ligera basada en shape + hash de índices."""
+    shape_str = f"{len(df)}_{list(df.columns)}"
+    return hashlib.md5(shape_str.encode()).hexdigest()  # noqa: S324
+
+
+@st.cache_data(show_spinner=False)
+def _compute_kpis_cached(
+    n_rows: int,
+    importe_total: float,
+    importe_medio: float,
+    n_organos: int,
+    n_ccaa: int,
+    delta_n: int,
+    delta_pct: float,
+    prev30_size: int,
+) -> dict[str, float | int]:
+    """Capa de caché sobre los KPIs ya calculados (evita recálculo en reruns)."""
+    return {
+        "total": n_rows,
+        "importe_total": importe_total,
+        "importe_medio": importe_medio,
+        "n_organos": n_organos,
+        "n_ccaa": n_ccaa,
+        "delta_n": delta_n,
+        "delta_pct": delta_pct,
+        "prev30_size": prev30_size,
+    }
 
 
 def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
@@ -40,18 +72,20 @@ def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
     delta_n = len(ult30) - len(prev30)
     delta_pct = (delta_n / len(prev30) * 100) if len(prev30) else 0.0
 
-    return {
-        "total": total,
-        "importe_total": importe_total,
-        "importe_medio": importe_medio,
-        "n_organos": n_organos,
-        "n_ccaa": n_ccaa,
-        "delta_n": delta_n,
-        "delta_pct": delta_pct,
-        "prev30_size": len(prev30),
-    }
+    # Delegar a capa cacheada para evitar recálculo en reruns de Streamlit
+    return _compute_kpis_cached(
+        n_rows=total,
+        importe_total=importe_total,
+        importe_medio=importe_medio,
+        n_organos=n_organos,
+        n_ccaa=n_ccaa,
+        delta_n=delta_n,
+        delta_pct=delta_pct,
+        prev30_size=len(prev30),
+    )
 
 
+@st.cache_data(show_spinner=False)
 def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[float]:
     """Devuelve la serie agregada por mes de los últimos 12 meses.
 

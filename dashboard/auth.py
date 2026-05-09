@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import time
 from typing import Any
@@ -14,10 +15,28 @@ from dashboard.session_keys import LOGIN_PWD
 # Duración máxima de una sesión autenticada (segundos)
 SESSION_TIMEOUT_SECONDS = 28_800  # 8 horas
 
-# Número de intentos fallidos antes de activar el lockout
+# Número de intentos fallidos antes de activar el lockout (en session_state)
 _MAX_ATTEMPTS_BEFORE_LOCKOUT = 3
 # Lockout máximo independientemente del número de intentos (segundos)
 _MAX_LOCKOUT_SECONDS = 60
+
+# Rate limiting persistente: máximo de intentos fallidos en 5 minutos por cliente
+_DB_MAX_ATTEMPTS = 5
+_DB_WINDOW_SECONDS = 300.0
+
+
+def _client_key() -> str:
+    """Genera una clave de cliente anónima basada en el session_id de Streamlit."""
+    try:
+        from streamlit.runtime import get_instance
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx and ctx.session_id:
+            return hashlib.sha256(ctx.session_id.encode()).hexdigest()[:16]
+    except Exception:
+        pass
+    return "default"
 
 
 def oauth_configured() -> bool:
@@ -34,29 +53,53 @@ def _get_password() -> str:
 
 
 def _check_lockout() -> None:
-    """Si hay lockout activo, muestra aviso y detiene la ejecución."""
+    """Si hay lockout activo (session o BD), muestra aviso y detiene la ejecución."""
     from dashboard.session_keys import LOGIN_LOCKOUT_UNTIL
 
+    # 1. Verificar lockout en session_state (fallback rápido, sin BD)
     lockout_until: float = st.session_state.get(LOGIN_LOCKOUT_UNTIL, 0.0)
-    remaining = lockout_until - time.time()
-    if remaining > 0:
+    remaining_session = lockout_until - time.time()
+    if remaining_session > 0:
         st.warning(
             f"Demasiados intentos fallidos. "
-            f"Espera {int(remaining) + 1} segundos antes de intentarlo de nuevo."
+            f"Espera {int(remaining_session) + 1} segundos antes de intentarlo de nuevo."
         )
         st.stop()
+
+    # 2. Verificar lockout persistente en BD (sobrevive reinicios)
+    try:
+        from db.rate_limits import is_login_locked_out
+
+        locked, remaining_db = is_login_locked_out(_client_key(), max_attempts=_DB_MAX_ATTEMPTS)
+        if locked:
+            st.warning(
+                f"Demasiados intentos fallidos desde este cliente. "
+                f"Espera {int(remaining_db) + 1} segundos antes de intentarlo de nuevo."
+            )
+            st.stop()
+    except Exception:
+        pass  # Si la BD no está disponible, continuar con session_state
 
 
 def _record_failed_attempt() -> None:
     """Incrementa el contador de intentos y calcula el lockout progresivo."""
     from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
 
+    # Contador en session_state (lockout rápido dentro de la sesión)
     attempts: int = st.session_state.get(LOGIN_ATTEMPTS, 0) + 1
     st.session_state[LOGIN_ATTEMPTS] = attempts
     if attempts >= _MAX_ATTEMPTS_BEFORE_LOCKOUT:
         exponent = attempts - _MAX_ATTEMPTS_BEFORE_LOCKOUT + 1
         delay = min(2**exponent, _MAX_LOCKOUT_SECONDS)
         st.session_state[LOGIN_LOCKOUT_UNTIL] = time.time() + delay
+
+    # Registro persistente en BD (protege frente a reinicios y nuevas sesiones)
+    try:
+        from db.rate_limits import record_failed_login
+
+        record_failed_login(_client_key())
+    except Exception:
+        pass
 
 
 def _handle_oauth_callback() -> bool:
@@ -252,6 +295,13 @@ def check_password() -> bool:
                 st.session_state[LOGIN_ATTEMPTS] = 0
                 st.session_state.pop(LOGIN_LOCKOUT_UNTIL, None)
 
+                # Limpiar intentos fallidos en BD
+                try:
+                    from db.rate_limits import clear_login_attempts
+                    clear_login_attempts(_client_key())
+                except Exception:
+                    pass
+
                 from db.users import log_access
 
                 log_access(
@@ -286,6 +336,13 @@ def check_password() -> bool:
                 st.session_state[AUTH_METHOD] = "password"
                 st.session_state[LOGIN_ATTEMPTS] = 0
                 st.session_state.pop(LOGIN_LOCKOUT_UNTIL, None)
+
+                # Limpiar intentos fallidos en BD
+                try:
+                    from db.rate_limits import clear_login_attempts
+                    clear_login_attempts(_client_key())
+                except Exception:
+                    pass
 
                 from db.users import log_access
 

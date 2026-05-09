@@ -101,6 +101,18 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
         total=len(sap_encontradas),
         notas=f"SAP:{len(sap_encontradas)} adj:{n_adj} adj_errors:{n_adj_failed} errors:{entries_error}",
     )
+
+    # Instrumentación Prometheus (no bloquea si falla)
+    try:
+        from observability.prometheus import RunInstrumentation, _write_metrics
+
+        prom = RunInstrumentation(source=fuente)
+        prom.record_items(nuevas=nuevas, actualizadas=actualizadas)
+        prom.record_parse_error(entries_error)
+        _write_metrics(prom)
+    except Exception:
+        pass
+
     return {
         "year": year,
         "month": month,

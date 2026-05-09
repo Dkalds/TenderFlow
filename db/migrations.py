@@ -3,6 +3,9 @@
 Cada migración es una tupla ``(version, description, sql)``. Se aplican en
 orden ascendente y la versión actual queda registrada en ``schema_version``.
 
+Rollbacks: cada versión puede tener asociada una función ``down`` en
+``ROLLBACKS`` que deshace los cambios. Se ejecutan en orden descendente.
+
 Diseñado para proyectos pequeños donde un Alembic completo es overkill pero
 mantener un historial auditable sigue siendo importante.
 """
@@ -184,6 +187,35 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         WHERE resolved_at IS NULL;
         """,
     ),
+    (
+        12,
+        "rate_limits_table",
+        """
+        CREATE TABLE IF NOT EXISTS rate_limits (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            key     TEXT NOT NULL,
+            ts      REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_rate_limits_expires
+            ON rate_limits(key, ts)
+        """,
+    ),
+    (
+        13,
+        "kpi_snapshots_table",
+        """
+        CREATE TABLE IF NOT EXISTS kpi_snapshots (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            computed_at TEXT NOT NULL,
+            metrica     TEXT NOT NULL,
+            dimension   TEXT NOT NULL DEFAULT 'global',
+            valor       REAL,
+            valor_text  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_kpi_snapshots_fecha
+            ON kpi_snapshots(computed_at DESC, metrica, dimension)
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -212,6 +244,70 @@ def _ensure_version_table(conn: Any) -> None:
         )
         """
     )
+
+
+# ---------------------------------------------------------------------------
+# Rollbacks: SQL para deshacer cada migración (orden inverso)
+# ---------------------------------------------------------------------------
+# Regla: solo incluir rollbacks que sean seguros y reversibles.
+# Las migraciones de tipo ALTER TABLE ADD COLUMN no son reversibles en SQLite
+# (no soporta DROP COLUMN antes de SQLite 3.35), así que se marcan como tal.
+
+ROLLBACKS: dict[int, str] = {
+    1: """
+        DROP INDEX IF EXISTS idx_fail_unresolved;
+        DROP INDEX IF EXISTS idx_fail_run;
+        DROP TABLE IF EXISTS failed_extractions;
+        DROP INDEX IF EXISTS idx_runs_status;
+        DROP INDEX IF EXISTS idx_runs_started;
+        DROP TABLE IF EXISTS extraction_runs;
+    """,
+    2: """
+        DROP INDEX IF EXISTS idx_wl_user;
+        DROP TABLE IF EXISTS watchlist_cpv;
+    """,
+    # 3 y 4: ALTER TABLE ADD COLUMN — no reversible en SQLite < 3.35
+    5: """
+        DROP INDEX IF EXISTS idx_hist_externo;
+        DROP TABLE IF EXISTS licitaciones_history;
+        DROP TABLE IF EXISTS ingestion_cursors;
+    """,
+    # 6: ALTER TABLE ADD COLUMN — no reversible
+    # 7: FTS5 + triggers
+    7: """
+        DROP TRIGGER IF EXISTS trg_fts_update_after;
+        DROP TRIGGER IF EXISTS trg_fts_update;
+        DROP TRIGGER IF EXISTS trg_fts_delete;
+        DROP TRIGGER IF EXISTS trg_fts_insert;
+        DROP TABLE IF EXISTS licitaciones_fts;
+    """,
+    8: """
+        DROP INDEX IF EXISTS idx_users_oauth;
+        DROP INDEX IF EXISTS idx_users_email;
+        DROP TABLE IF EXISTS users;
+    """,
+    9: """
+        DROP INDEX IF EXISTS idx_access_log_time;
+        DROP INDEX IF EXISTS idx_access_log_user;
+        DROP TABLE IF EXISTS access_log;
+    """,
+    # 10: ALTER TABLE ADD COLUMN — no reversible
+    11: """
+        DROP INDEX IF EXISTS idx_fail_unique_unresolved;
+    """,
+    12: """
+        DROP INDEX IF EXISTS idx_rate_limits_expires;
+        DROP TABLE IF EXISTS rate_limits;
+    """,
+    13: """
+        DROP INDEX IF EXISTS idx_kpi_snapshots_fecha;
+        DROP TABLE IF EXISTS kpi_snapshots;
+    """,
+}
+
+# Migraciones que NO se pueden revertir (solo ADD COLUMN sin DROP COLUMN)
+_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10}
+
 
 
 def current_version(conn: Any) -> int:
@@ -345,3 +441,107 @@ def _apply_v10_is_admin(conn: Any) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "is_admin" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+
+
+# ---------------------------------------------------------------------------
+# Rollback: revertir migraciones hasta una versión objetivo
+# ---------------------------------------------------------------------------
+
+
+def rollback(target_version: int, conn: Any) -> list[int]:
+    """Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive).
+
+    Args:
+        target_version: Versión destino (se revertirán todas las versiones > target).
+        conn: Conexión de base de datos activa.
+
+    Returns:
+        Lista de versiones revertidas en orden descendente.
+
+    Raises:
+        ValueError: Si se intenta revertir una migración irreversible.
+        RuntimeError: Si target_version >= versión actual (nada que revertir).
+    """
+    _ensure_version_table(conn)
+    current = current_version(conn)
+
+    if target_version >= current:
+        raise RuntimeError(
+            f"No hay nada que revertir: versión actual={current}, destino={target_version}."
+        )
+
+    # Verificar que ninguna versión a revertir sea irreversible
+    versions_to_revert = sorted(
+        [v for v in ROLLBACKS if v > target_version and v <= current],
+        reverse=True,
+    )
+    irreversible = [v for v in versions_to_revert if v in _IRREVERSIBLE_VERSIONS]
+    if irreversible:
+        raise ValueError(
+            f"Las migraciones {irreversible} no son reversibles (ALTER TABLE ADD COLUMN). "
+            f"Restaura desde un backup en su lugar."
+        )
+
+    reverted: list[int] = []
+    for version in versions_to_revert:
+        sql = ROLLBACKS.get(version, "")
+        log.info("migration_rollback", version=version)
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if stmt and not stmt.startswith("--"):
+                conn.execute(stmt)
+        conn.execute("DELETE FROM schema_version WHERE version = ?", (version,))
+        reverted.append(version)
+
+    if reverted:
+        log.info("migrations_rolled_back", versions=reverted)
+    return reverted
+
+
+# ---------------------------------------------------------------------------
+# Validación de integridad del esquema
+# ---------------------------------------------------------------------------
+
+
+def validate_schema(conn: Any) -> dict[str, bool]:
+    """Verifica que las tablas principales y sus columnas clave existen.
+
+    Returns:
+        Dict {check_name: passed} — True si el check pasó.
+    """
+    checks: dict[str, bool] = {}
+
+    def _table_exists(name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [name]
+        ).fetchone()
+        return row is not None
+
+    def _col_exists(table: str, col: str) -> bool:
+        if not _table_exists(table):
+            return False
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
+        return col in cols
+
+    # Tablas principales
+    for table in ("licitaciones", "adjudicaciones", "extracciones", "schema_version"):
+        checks[f"table_{table}"] = _table_exists(table)
+
+    # Columnas críticas de licitaciones
+    for col in ("id_externo", "titulo", "importe", "fecha_publicacion", "raw_keywords"):
+        checks[f"licitaciones.{col}"] = _col_exists("licitaciones", col)
+
+    # Migraciones opcionales (presencia de tablas de funcionalidades avanzadas)
+    checks["fts5_available"] = _table_exists("licitaciones_fts")
+    checks["history_available"] = _table_exists("licitaciones_history")
+    checks["users_available"] = _table_exists("users")
+    checks["rate_limits_available"] = _table_exists("rate_limits")
+    checks["kpi_snapshots_available"] = _table_exists("kpi_snapshots")
+
+    failed = [k for k, v in checks.items() if not v]
+    if failed:
+        log.warning("schema_validation_failed", failed=failed)
+    else:
+        log.info("schema_validation_passed", n_checks=len(checks))
+
+    return checks

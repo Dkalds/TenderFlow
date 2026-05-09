@@ -177,6 +177,11 @@ def _get_conn() -> Any:
                 "Configura los secrets del repositorio antes de ejecutar el pipeline."
             )
         conn = libsql.connect(str(DB_PATH))
+        # WAL mode: permite lecturas concurrentes del dashboard mientras el
+        # scraper escribe. busy_timeout=5000ms evita "database is locked".
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.commit()
     _local.conn = conn
     return conn
 

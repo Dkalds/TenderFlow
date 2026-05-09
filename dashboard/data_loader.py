@@ -261,3 +261,11 @@ def invalidate_caches() -> None:
     _load_dataframe_shared.clear()
     load_adjudicaciones.clear()
     load_extracciones.clear()
+    # Limpiar también caches de KPI bar
+    try:
+        from dashboard.kpi_bar import _compute_kpis_cached, _last_12m_series
+
+        _compute_kpis_cached.clear()
+        _last_12m_series.clear()
+    except Exception:
+        pass
