@@ -68,3 +68,56 @@ def test_json_logs_contain_run_id(capsys):
             assert data["foo"] == "bar"
             return
     pytest.fail(f"no JSON válido con event=test_event en: {lines}")
+
+
+# ── Redacción de secretos ────────────────────────────────────────────────
+
+
+def _find_event(captured_text: str, event_name: str) -> dict:
+    """Localiza un evento JSON en la salida capturada."""
+    for ln in captured_text.splitlines():
+        try:
+            data = json.loads(ln)
+        except ValueError:
+            continue
+        if data.get("event") == event_name:
+            return data
+    pytest.fail(f"no se encontró JSON con event={event_name} en:\n{captured_text}")
+
+
+def test_redact_keys_with_sensitive_names(capsys):
+    """Cualquier campo cuya clave coincide con un nombre sensible se redacta."""
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.redact")
+    log.info("login_attempt", password="hunter2", token="abc123", user="alice")
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "login_attempt")
+    assert data["password"] == "***REDACTED***"
+    assert data["token"] == "***REDACTED***"
+    assert data["user"] == "alice"  # no sensible
+
+
+def test_redact_env_secret_value(capsys, monkeypatch):
+    """Si un valor coincide con el contenido de una env var sensible, se redacta."""
+    secret = "super-secret-token-xyz"
+    monkeypatch.setenv("TURSO_AUTH_TOKEN", secret)
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.redact")
+    log.info("conn_open", connection_string=f"libsql://db?token={secret}", host="example")
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "conn_open")
+    assert secret not in data["connection_string"]
+    assert "***REDACTED***" in data["connection_string"]
+    assert data["host"] == "example"
+
+
+def test_short_env_secret_not_redacted(capsys, monkeypatch):
+    """Valores demasiado cortos (<4 chars) no se consideran secretos para evitar
+    falsos positivos."""
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "ab")
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.redact")
+    log.info("noop_event", note="this is ab safe")
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "noop_event")
+    assert data["note"] == "this is ab safe"

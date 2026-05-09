@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
+from typing import Any
 
-from dateutil.relativedelta import relativedelta  # type: ignore[import-untyped]
+from dateutil.relativedelta import relativedelta
 
 from db.database import (
     UpsertResult,
@@ -113,7 +114,7 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
     }
 
 
-def _summarize(results: list[dict], metrics) -> None:
+def _summarize(results: list[dict[str, Any]], metrics: Any) -> None:
     adj_errors_total = 0
     for r in results:
         metrics.months_attempted += 1

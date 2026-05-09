@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import sys
 import uuid
+from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
@@ -25,6 +26,76 @@ from structlog.contextvars import (
     clear_contextvars,
     merge_contextvars,
 )
+
+# ── Redacción de secretos ────────────────────────────────────────────────
+_SENSITIVE_ENV_VARS = (
+    "TURSO_AUTH_TOKEN",
+    "DASHBOARD_PASSWORD",
+    "ALERT_SMTP_PASSWORD",
+    "GOOGLE_CLIENT_SECRET",
+)
+
+# Claves de event_dict cuyo valor SIEMPRE se redacta (independiente del contenido).
+_SENSITIVE_KEYS = frozenset(
+    {
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "auth_token",
+        "api_key",
+        "apikey",
+        "authorization",
+        "cookie",
+    }
+)
+
+_REDACTED = "***REDACTED***"
+
+
+def _load_sensitive_values() -> set[str]:
+    """Lee los valores actuales de las env vars sensibles. Vacíos se ignoran."""
+    import os
+
+    values: set[str] = set()
+    for var in _SENSITIVE_ENV_VARS:
+        v = os.environ.get(var, "")
+        if v and len(v) >= 4:  # evita redactar strings triviales
+            values.add(v)
+    return values
+
+
+def _redact_secrets(
+    _logger: Any, _method: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
+    """Procesador structlog que redacta valores sensibles en cada evento.
+
+    Aplica dos estrategias:
+      1. Si la *clave* del campo coincide con un nombre sensible
+         (password, token, secret, ...), se redacta el valor.
+      2. Si el *valor* coincide con el contenido actual de una env var
+         sensible (TURSO_AUTH_TOKEN, DASHBOARD_PASSWORD, etc.), se redacta.
+
+    Es un best-effort defensivo: redacciones adicionales en el código que
+    construye el log siguen siendo recomendables.
+    """
+    sensitive_values = _load_sensitive_values()
+
+    for key, value in list(event_dict.items()):
+        if key.lower() in _SENSITIVE_KEYS:
+            event_dict[key] = _REDACTED
+            continue
+        if isinstance(value, str) and value in sensitive_values:
+            event_dict[key] = _REDACTED
+        elif isinstance(value, str) and sensitive_values:
+            # Sustituir cualquier ocurrencia incrustada (e.g. URLs con token)
+            redacted = value
+            for sv in sensitive_values:
+                if sv in redacted:
+                    redacted = redacted.replace(sv, _REDACTED)
+            if redacted != value:
+                event_dict[key] = redacted
+    return event_dict
 
 
 def _detect_json_default() -> bool:
@@ -58,6 +129,7 @@ def configure_logging(
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
+        _redact_secrets,
     ]
 
     if json_logs:

@@ -9,6 +9,7 @@ from typing import Any
 import streamlit as st
 
 from config import DASHBOARD_PASSWORD, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_REDIRECT_URI
+from dashboard.session_keys import LOGIN_PWD
 
 # Duración máxima de una sesión autenticada (segundos)
 SESSION_TIMEOUT_SECONDS = 28_800  # 8 horas
@@ -34,7 +35,9 @@ def _get_password() -> str:
 
 def _check_lockout() -> None:
     """Si hay lockout activo, muestra aviso y detiene la ejecución."""
-    lockout_until: float = st.session_state.get("_login_lockout_until", 0.0)
+    from dashboard.session_keys import LOGIN_LOCKOUT_UNTIL
+
+    lockout_until: float = st.session_state.get(LOGIN_LOCKOUT_UNTIL, 0.0)
     remaining = lockout_until - time.time()
     if remaining > 0:
         st.warning(
@@ -46,12 +49,14 @@ def _check_lockout() -> None:
 
 def _record_failed_attempt() -> None:
     """Incrementa el contador de intentos y calcula el lockout progresivo."""
-    attempts: int = st.session_state.get("_login_attempts", 0) + 1
-    st.session_state["_login_attempts"] = attempts
+    from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
+
+    attempts: int = st.session_state.get(LOGIN_ATTEMPTS, 0) + 1
+    st.session_state[LOGIN_ATTEMPTS] = attempts
     if attempts >= _MAX_ATTEMPTS_BEFORE_LOCKOUT:
         exponent = attempts - _MAX_ATTEMPTS_BEFORE_LOCKOUT + 1
         delay = min(2**exponent, _MAX_LOCKOUT_SECONDS)
-        st.session_state["_login_lockout_until"] = time.time() + delay
+        st.session_state[LOGIN_LOCKOUT_UNTIL] = time.time() + delay
 
 
 def _handle_oauth_callback() -> bool:
@@ -109,11 +114,13 @@ def _handle_oauth_callback() -> bool:
         display_name=userinfo.get("name"),
     )
 
-    st.session_state["_auth_time"] = time.time()
-    st.session_state["_auth_method"] = "oauth"
-    st.session_state["_user_id"] = user_id
-    st.session_state["_user_email"] = userinfo.get("email", "")
-    st.session_state["_user_name"] = userinfo.get("name", "")
+    from dashboard.session_keys import AUTH_METHOD, AUTH_TIME, USER_EMAIL, USER_ID, USER_NAME
+
+    st.session_state[AUTH_TIME] = time.time()
+    st.session_state[AUTH_METHOD] = "oauth"
+    st.session_state[USER_ID] = user_id
+    st.session_state[USER_EMAIL] = userinfo.get("email", "")
+    st.session_state[USER_NAME] = userinfo.get("name", "")
 
     # No marcar authenticated aquí — check_password decide si falta contraseña
     # (excepto si el usuario es admin — se salta la contraseña)
@@ -150,13 +157,15 @@ def get_current_user() -> dict[str, Any] | None:
 
     Claves: user_id, email, name, auth_method.
     """
-    if not st.session_state.get("authenticated"):
+    from dashboard.session_keys import AUTH_METHOD, AUTHENTICATED, USER_EMAIL, USER_ID, USER_NAME
+
+    if not st.session_state.get(AUTHENTICATED):
         return None
     return {
-        "user_id": st.session_state.get("_user_id"),
-        "email": st.session_state.get("_user_email", ""),
-        "name": st.session_state.get("_user_name", ""),
-        "auth_method": st.session_state.get("_auth_method", "password"),
+        "user_id": st.session_state.get(USER_ID),
+        "email": st.session_state.get(USER_EMAIL, ""),
+        "name": st.session_state.get(USER_NAME, ""),
+        "auth_method": st.session_state.get(AUTH_METHOD, "password"),
     }
 
 
@@ -177,14 +186,18 @@ def check_password() -> bool:
         return True
 
     # Verificar sesión completamente autenticada y su timeout
-    if st.session_state.get("authenticated"):
-        auth_time: float = st.session_state.get("_auth_time", 0.0)
+    from dashboard.session_keys import (
+        AUTH_METHOD, AUTH_TIME, AUTHENTICATED, OAUTH_STEP_DONE,
+        USER_EMAIL, USER_ID, USER_NAME,
+    )
+
+    if st.session_state.get(AUTHENTICATED):
+        auth_time: float = st.session_state.get(AUTH_TIME, 0.0)
         if time.time() - auth_time < SESSION_TIMEOUT_SECONDS:
             return True
         # Sesión expirada: limpiar estado
-        for key in ("authenticated", "_auth_time", "_auth_method",
-                     "_user_id", "_user_email", "_user_name",
-                     "_oauth_step_done"):
+        for key in (AUTHENTICATED, AUTH_TIME, AUTH_METHOD,
+                     USER_ID, USER_EMAIL, USER_NAME, OAUTH_STEP_DONE):
             st.session_state.pop(key, None)
         st.info("Tu sesión ha expirado. Ingresa de nuevo.")
 
@@ -194,22 +207,22 @@ def check_password() -> bool:
             # Si el usuario es admin, saltar la contraseña
             from db.users import is_admin as _is_admin
 
-            user_id = st.session_state.get("_user_id")
+            user_id = st.session_state.get(USER_ID)
             if user_id and _is_admin(user_id):
-                st.session_state["authenticated"] = True
-                st.session_state["_auth_method"] = "oauth"
+                st.session_state[AUTHENTICATED] = True
+                st.session_state[AUTH_METHOD] = "oauth"
             else:
                 # OAuth OK, pero falta contraseña → marcar paso 1 completo
-                st.session_state["_oauth_step_done"] = True
+                st.session_state[OAUTH_STEP_DONE] = True
         else:
             # Solo OAuth, sin contraseña → autenticado
-            st.session_state["authenticated"] = True
+            st.session_state[AUTHENTICATED] = True
         st.rerun()
 
     # Verificar lockout activo por intentos fallidos
     _check_lockout()
 
-    oauth_done = st.session_state.get("_oauth_step_done", False)
+    oauth_done = st.session_state.get(OAUTH_STEP_DONE, False)
 
     # ── Paso 2: Contraseña (tras OAuth) ──────────────────────────────
     if has_oauth and password and oauth_done:
@@ -219,18 +232,20 @@ def check_password() -> bool:
         pwd = st.text_input("Contraseña", type="password", key="login_pwd")
         if st.button("Entrar", type="primary"):
             if hmac.compare_digest(pwd, password):
-                st.session_state["authenticated"] = True
-                st.session_state["_auth_time"] = time.time()
-                st.session_state["_auth_method"] = "oauth+password"
-                st.session_state["_login_attempts"] = 0
-                st.session_state.pop("_login_lockout_until", None)
+                from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
+
+                st.session_state[AUTHENTICATED] = True
+                st.session_state[AUTH_TIME] = time.time()
+                st.session_state[AUTH_METHOD] = "oauth+password"
+                st.session_state[LOGIN_ATTEMPTS] = 0
+                st.session_state.pop(LOGIN_LOCKOUT_UNTIL, None)
 
                 from db.users import log_access
 
                 log_access(
                     auth_method="oauth+password",
-                    user_id=st.session_state.get("_user_id"),
-                    email=st.session_state.get("_user_email"),
+                    user_id=st.session_state.get(USER_ID),
+                    email=st.session_state.get(USER_EMAIL),
                 )
                 st.rerun()
             else:
@@ -248,15 +263,17 @@ def check_password() -> bool:
 
     # ── Solo contraseña (sin OAuth configurado) ──────────────────────
     if password:
+        from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
+
         st.markdown("### 🔒 Acceso restringido")
-        pwd = st.text_input("Contraseña", type="password", key="login_pwd")
+        pwd = st.text_input("Contraseña", type="password", key=LOGIN_PWD)
         if st.button("Entrar", type="primary"):
             if hmac.compare_digest(pwd, password):
-                st.session_state["authenticated"] = True
-                st.session_state["_auth_time"] = time.time()
-                st.session_state["_auth_method"] = "password"
-                st.session_state["_login_attempts"] = 0
-                st.session_state.pop("_login_lockout_until", None)
+                st.session_state[AUTHENTICATED] = True
+                st.session_state[AUTH_TIME] = time.time()
+                st.session_state[AUTH_METHOD] = "password"
+                st.session_state[LOGIN_ATTEMPTS] = 0
+                st.session_state.pop(LOGIN_LOCKOUT_UNTIL, None)
 
                 from db.users import log_access
 
@@ -268,3 +285,37 @@ def check_password() -> bool:
 
     st.stop()
     return False  # unreachable, but satisfies mypy
+
+
+# ── Authorization helpers ────────────────────────────────────────────────
+
+
+def current_user_is_admin() -> bool:
+    """Devuelve True si el usuario autenticado tiene flag ``is_admin``.
+
+    Si no hay usuario en sesión (modo solo-password sin OAuth) o el ID no se
+    encuentra en la tabla ``users``, devuelve False.
+    """
+    from dashboard.session_keys import USER_ID
+
+    user_id = st.session_state.get(USER_ID)
+    if user_id is None:
+        return False
+    try:
+        from db.users import is_admin
+
+        return is_admin(int(user_id))
+    except Exception:  # pragma: no cover — DB errors → no admin
+        return False
+
+
+def require_admin(message: str = "Acción restringida a administradores.") -> bool:
+    """Comprueba si el usuario es admin. Si no lo es, muestra info y devuelve False.
+
+    Returns:
+        True si admin, False en caso contrario (call site debe abortar la acción).
+    """
+    if current_user_is_admin():
+        return True
+    st.info(message, icon="🔒")
+    return False

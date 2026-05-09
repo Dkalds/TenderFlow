@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from typing import Any
 
 from lxml import etree
 
@@ -41,7 +42,7 @@ _SUMMARY_RE = re.compile(
 )
 
 
-def _text(elem, xpath: str) -> str | None:
+def _text(elem: Any, xpath: str) -> str | None:
     if elem is None:
         return None
     found = elem.xpath(xpath, namespaces=NS)
@@ -53,7 +54,7 @@ def _text(elem, xpath: str) -> str | None:
     return str(val).strip() or None
 
 
-def _float(elem, xpath: str) -> float | None:
+def _float(elem: Any, xpath: str) -> float | None:
     raw = _text(elem, xpath)
     if not raw:
         return None
@@ -83,7 +84,7 @@ def parse_summary(summary: str | None) -> dict:
     return out
 
 
-def _int(elem, xpath: str) -> int | None:
+def _int(elem: Any, xpath: str) -> int | None:
     raw = _text(elem, xpath)
     if not raw:
         return None
@@ -93,7 +94,7 @@ def _int(elem, xpath: str) -> int | None:
         return None
 
 
-def parse_adjudicaciones(entry, licitacion_id: str) -> list[Adjudicacion]:
+def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
     """Extrae todas las adjudicaciones (TenderResult+WinningParty) de una entry."""
     cfs = "./cacext:ContractFolderStatus"
     results = entry.xpath(f"{cfs}/cac:TenderResult", namespaces=NS)
@@ -148,7 +149,7 @@ def parse_adjudicaciones(entry, licitacion_id: str) -> list[Adjudicacion]:
     return out
 
 
-def parse_entry(entry) -> Licitacion | None:
+def parse_entry(entry: Any) -> Licitacion | None:
     """Convierte una <entry> ATOM en una Licitacion (si es de SAP)."""
     titulo = _text(entry, "./atom:title") or ""
     summary = _text(entry, "./atom:summary")

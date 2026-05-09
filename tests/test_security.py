@@ -28,37 +28,41 @@ class TestSafeUrl:
         result = safe_url(url)
         assert result == "https://example.com"
 
-    # ── URLs peligrosas — deben devolver '#' ────────────────────────────
+    # ── URLs peligrosas — deben devolver None ───────────────────────────
     def test_javascript_uri(self):
-        assert safe_url("javascript:alert('xss')") == "#"
+        assert safe_url("javascript:alert('xss')") is None
 
     def test_javascript_uri_mayusculas(self):
-        assert safe_url("JAVASCRIPT:alert(1)") == "#"
+        assert safe_url("JAVASCRIPT:alert(1)") is None
 
     def test_javascript_con_espacios(self):
-        assert safe_url("  javascript:void(0)  ") == "#"
+        assert safe_url("  javascript:void(0)  ") is None
 
     def test_data_uri(self):
-        assert safe_url("data:text/html,<script>alert(1)</script>") == "#"
+        assert safe_url("data:text/html,<script>alert(1)</script>") is None
 
     def test_vbscript_uri(self):
-        assert safe_url("vbscript:msgbox('xss')") == "#"
+        assert safe_url("vbscript:msgbox('xss')") is None
 
     def test_file_uri(self):
-        assert safe_url("file:///etc/passwd") == "#"
+        assert safe_url("file:///etc/passwd") is None
 
     def test_ruta_relativa(self):
-        assert safe_url("/relative/path") == "#"
+        assert safe_url("/relative/path") is None
+
+    def test_hash_no_es_url_valida(self):
+        # Antes pasaba como autorreferencia válida — ahora se rechaza.
+        assert safe_url("#") is None
 
     # ── Entradas inválidas ───────────────────────────────────────────────
-    def test_none_devuelve_hash(self):
-        assert safe_url(None) == "#"
+    def test_none_devuelve_none(self):
+        assert safe_url(None) is None
 
-    def test_string_vacio_devuelve_hash(self):
-        assert safe_url("") == "#"
+    def test_string_vacio_devuelve_none(self):
+        assert safe_url("") is None
 
-    def test_no_string_devuelve_hash(self):
-        assert safe_url(123) == "#"  # type: ignore[arg-type]
+    def test_no_string_devuelve_none(self):
+        assert safe_url(123) is None  # type: ignore[arg-type]
 
-    def test_solo_espacios_devuelve_hash(self):
-        assert safe_url("   ") == "#"
+    def test_solo_espacios_devuelve_none(self):
+        assert safe_url("   ") is None

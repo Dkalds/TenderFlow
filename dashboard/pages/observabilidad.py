@@ -180,6 +180,10 @@ def render(ctx: PageContext) -> None:
     data_table(dlq_df, height=320)
 
     with st.expander("Marcar como resuelto"):
+        from dashboard.auth import require_admin
+
+        if not require_admin("Solo los administradores pueden resolver fallos del DLQ."):
+            return
         ids = dlq_df["id"].astype(int).tolist()
         pick = st.selectbox("ID fallo", ids, key="dlq_pick")
         if st.button("Marcar resuelto"):

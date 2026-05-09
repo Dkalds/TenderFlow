@@ -114,3 +114,146 @@ def test_build_html_uses_level_color():
     html_crit = _build_html(AlertLevel.CRITICAL, "t", "b", {})
     assert "#e6a817" in html_warn  # color WARN
     assert "#8b0000" in html_crit  # color CRITICAL
+
+
+def test_send_smtp_logs_on_smtp_exception(monkeypatch):
+    """SMTPException debe loguear warning y no relanzar."""
+    import smtplib
+
+    monkeypatch.setenv("ALERT_EMAIL_TO", "dest@example.com")
+    monkeypatch.setenv("ALERT_SMTP_USER", "sender@gmail.com")
+    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "app-password-16ch")
+    monkeypatch.setenv("ALERT_SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setenv("ALERT_SMTP_PORT", "587")
+    _reload_config()
+
+    mock_server = MagicMock()
+    mock_server.__enter__ = lambda s: s
+    mock_server.__exit__ = MagicMock(return_value=False)
+    mock_server.login.side_effect = smtplib.SMTPAuthenticationError(535, b"auth failed")
+
+    with patch("smtplib.SMTP", return_value=mock_server):
+        from observability.alerts import _send_smtp
+
+        # No debe lanzar excepción — solo loguea
+        _send_smtp(AlertLevel.ERROR, "t", "b", {})
+
+
+def test_send_smtp_logs_on_os_error(monkeypatch):
+    """OSError (fallo de red) debe loguear warning y no relanzar."""
+    monkeypatch.setenv("ALERT_EMAIL_TO", "dest@example.com")
+    monkeypatch.setenv("ALERT_SMTP_USER", "sender@gmail.com")
+    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "pass")
+    monkeypatch.setenv("ALERT_SMTP_HOST", "badhost")
+    monkeypatch.setenv("ALERT_SMTP_PORT", "587")
+    _reload_config()
+
+    with patch("smtplib.SMTP", side_effect=OSError("connection refused")):
+        from observability.alerts import _send_smtp
+
+        _send_smtp(AlertLevel.WARN, "t", "b", {})
+
+
+# ---------------------------------------------------------------------------
+# check_daily_lag
+# ---------------------------------------------------------------------------
+
+
+def test_check_daily_lag_no_cursor_is_noop(tmp_db):
+    db_mod, _ = tmp_db
+    from observability.alerts import check_daily_lag
+
+    with patch("observability.alerts.notify") as mock_notify:
+        check_daily_lag()
+    mock_notify.assert_not_called()
+
+
+def test_check_daily_lag_fresh_cursor_no_alert(tmp_db, monkeypatch):
+    db_mod, _ = tmp_db
+    from datetime import datetime, timezone
+
+    from observability.alerts import check_daily_lag
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with (
+        patch("db.database.get_cursor", return_value={"last_seen_updated": now_iso}),
+        patch("observability.alerts.notify") as mock_notify,
+    ):
+        check_daily_lag()
+    mock_notify.assert_not_called()
+
+
+def test_check_daily_lag_stale_cursor_sends_alert(monkeypatch):
+    from observability.alerts import check_daily_lag
+
+    old_ts = "2020-01-01T00:00:00+00:00"
+    with (
+        patch("db.database.get_cursor", return_value={"last_seen_updated": old_ts}),
+        patch("observability.alerts.notify") as mock_notify,
+    ):
+        check_daily_lag()
+    mock_notify.assert_called_once()
+    assert "lag" in mock_notify.call_args[0][1].lower()
+
+
+def test_check_daily_lag_invalid_timestamp_no_crash(monkeypatch):
+    from observability.alerts import check_daily_lag
+
+    with (
+        patch("db.database.get_cursor", return_value={"last_seen_updated": "NOT_A_DATE"}),
+        patch("observability.alerts.notify") as mock_notify,
+    ):
+        check_daily_lag()
+    mock_notify.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# check_daily_consecutive_failures
+# ---------------------------------------------------------------------------
+
+
+def test_check_consecutive_failures_not_enough_rows(tmp_db):
+    db_mod, _ = tmp_db
+    from observability.alerts import check_daily_consecutive_failures
+
+    with patch("observability.alerts.notify") as mock_notify:
+        check_daily_consecutive_failures()
+    mock_notify.assert_not_called()
+
+
+def test_check_consecutive_failures_sends_alert(tmp_db):
+    db_mod, _ = tmp_db
+    from observability.alerts import _DAILY_MAX_CONSECUTIVE_FAILURES, check_daily_consecutive_failures
+
+    # Insertar N runs con status="error"
+    with db_mod.connect() as c:
+        for i in range(_DAILY_MAX_CONSECUTIVE_FAILURES):
+            c.execute(
+                "INSERT INTO extraction_runs (started_at, status, notas) VALUES (?, ?, ?)",
+                (f"2024-01-0{i+1}T00:00:00", "error", "daily|test"),
+            )
+
+    with patch("observability.alerts.notify") as mock_notify:
+        check_daily_consecutive_failures()
+    mock_notify.assert_called_once()
+    assert "fallo" in mock_notify.call_args[0][1].lower()
+
+
+def test_check_consecutive_failures_mixed_status_no_alert(tmp_db):
+    db_mod, _ = tmp_db
+    from observability.alerts import _DAILY_MAX_CONSECUTIVE_FAILURES, check_daily_consecutive_failures
+
+    with db_mod.connect() as c:
+        c.execute(
+            "INSERT INTO extraction_runs (started_at, status, notas) VALUES (?, ?, ?)",
+            ("2024-01-01T00:00:00", "ok", "daily|test"),
+        )
+        for i in range(_DAILY_MAX_CONSECUTIVE_FAILURES - 1):
+            c.execute(
+                "INSERT INTO extraction_runs (started_at, status, notas) VALUES (?, ?, ?)",
+                (f"2024-01-0{i+2}T00:00:00", "error", "daily|test"),
+            )
+
+    with patch("observability.alerts.notify") as mock_notify:
+        check_daily_consecutive_failures()
+    mock_notify.assert_not_called()

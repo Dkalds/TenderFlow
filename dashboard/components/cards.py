@@ -35,12 +35,21 @@ def top_card(
     else:
         meta_html = meta_escaped
 
+    # Si la URL es inválida (None) → renderizar título como texto plano sin enlace.
+    if href is None:
+        title_html = f'<div class="title">{safe_title}</div>'
+    else:
+        safe_href = _html.escape(href, quote=True)
+        title_html = (
+            f'<div class="title">'
+            f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer">'
+            f"{safe_title}</a></div>"
+        )
+
     st.markdown(
         f'<div class="top-card">'
         f'<div class="amount">{_html.escape(amount)}</div>'
-        f'<div class="title">'
-        f'<a href="{href}" target="_blank">'
-        f"{safe_title}</a></div>"
+        f"{title_html}"
         f'<div class="meta">{meta_html}</div>'
         f"</div>",
         unsafe_allow_html=True,

@@ -1,0 +1,42 @@
+# Dependencias de desarrollo y test
+requirements-dev.txt
+requirements-dev.in
+requirements.in
+
+# Base de datos local (se monta como volumen)
+data/
+
+# Variables de entorno — NUNCA en la imagen
+.env
+.env.*
+*.env
+
+# Artefactos de Python
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage_*.txt
+
+# Tests (no necesarios en producción)
+tests/
+
+# Control de versiones
+.git/
+.gitignore
+
+# Documentación y notas
+docs/
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+
+# Archivos temporales del proyecto
+test_results.txt
+_test_summary.txt

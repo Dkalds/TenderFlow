@@ -76,6 +76,7 @@ class CircuitOpenError(RuntimeError):
 def download_month(year: int, month: int, force: bool = False) -> Path | None:
     """Descarga el ZIP mensual. Devuelve la ruta o None si no existe."""
     ensure_data_dirs()
+    assert DOWNLOADS_DIR is not None  # garantizado por ensure_data_dirs()
     url = BULK_URL_TEMPLATE.format(year=year, month=month)
     dest = DOWNLOADS_DIR / f"placsp_{year}{month:02d}.zip"
 
