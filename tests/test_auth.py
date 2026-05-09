@@ -41,8 +41,10 @@ class TestCheckPasswordNoAuth:
         _st_mock, _session = mock_streamlit
         with patch("config.DASHBOARD_PASSWORD", ""):
             auth = _import_auth()
-            with patch.object(auth, "_get_password", return_value=""):
-                with patch.object(auth, "oauth_configured", return_value=False):
+            with (
+                patch.object(auth, "_get_password", return_value=""),
+                patch.object(auth, "oauth_configured", return_value=False),
+            ):
                     result = auth.check_password()
         assert result is True
 
@@ -54,8 +56,10 @@ class TestSessionTimeout:
         session["_auth_time"] = time.time()
 
         auth = _import_auth()
-        with patch.object(auth, "_get_password", return_value="secret"):
-            with patch.object(auth, "SESSION_TIMEOUT_SECONDS", 3600):
+        with (
+            patch.object(auth, "_get_password", return_value="secret"),
+            patch.object(auth, "SESSION_TIMEOUT_SECONDS", 3600),
+        ):
                 result = auth.check_password()
 
         assert result is True
@@ -68,10 +72,12 @@ class TestSessionTimeout:
         st_mock.button.return_value = False
 
         auth = _import_auth()
-        with patch.object(auth, "_get_password", return_value="secret"):
-            with patch.object(auth, "SESSION_TIMEOUT_SECONDS", 10):
-                with pytest.raises(SystemExit):
-                    auth.check_password()
+        with (
+            patch.object(auth, "_get_password", return_value="secret"),
+            patch.object(auth, "SESSION_TIMEOUT_SECONDS", 10),
+            pytest.raises(SystemExit),
+        ):
+            auth.check_password()
 
         assert "authenticated" not in session
         assert "_auth_time" not in session
@@ -84,8 +90,10 @@ class TestRateLimiting:
         session["_login_lockout_until"] = time.time() + 60
 
         auth = _import_auth()
-        with patch.object(auth, "_get_password", return_value="secret"):
-            with pytest.raises(SystemExit):
+        with (
+            patch.object(auth, "_get_password", return_value="secret"),
+            pytest.raises(SystemExit),
+        ):
                 auth.check_password()
 
         st_mock.stop.assert_called()
@@ -96,12 +104,18 @@ class TestRateLimiting:
         session["_login_lockout_until"] = time.time() - 5
         # El botón no está pulsado para no entrar en hmac.compare_digest
         st_mock.button.return_value = False
+        # Sin query params (evitar que entre en OAuth callback)
+        st_mock.query_params = {}
 
         auth = _import_auth()
-        with patch.object(auth, "_get_password", return_value="secret"):
+        with (
+            patch.object(auth, "_get_password", return_value="secret"),
+            patch.object(auth, "oauth_configured", return_value=False),
+            patch("db.rate_limits.is_login_locked_out", return_value=(False, 0.0)),
             # st.stop() se llama al final del formulario (comportamiento normal)
-            with pytest.raises(SystemExit):
-                auth.check_password()
+            pytest.raises(SystemExit),
+        ):
+            auth.check_password()
 
         # El stop NO fue por lockout — no hubo warning de espera
         warning_calls = [str(c) for c in st_mock.warning.call_args_list]
@@ -200,3 +214,95 @@ class TestAdminEnforcement:
         with patch("db.users.is_admin", return_value=False):
             assert auth.require_admin("custom msg") is False
         st_mock.info.assert_called_once()
+
+
+class TestOAuthStateValidation:
+    """Tests para la protección CSRF vía state firmado HMAC en OAuth."""
+
+    def test_oauth_callback_missing_state_rejected(self, mock_streamlit):
+        """Si no hay state en el callback, se rechaza."""
+        st_mock, _session = mock_streamlit
+        st_mock.query_params = {"code": "test_code"}
+        auth = _import_auth()
+        result = auth._handle_oauth_callback()
+        assert result is False
+        st_mock.error.assert_called()
+
+    def test_oauth_callback_mismatched_state_rejected(self, mock_streamlit):
+        """Si el state del callback no tiene firma HMAC válida, se rechaza."""
+        st_mock, _session = mock_streamlit
+        st_mock.query_params = {"code": "test_code", "state": "wrong_state_xyz"}
+        auth = _import_auth()
+        result = auth._handle_oauth_callback()
+        assert result is False
+        st_mock.error.assert_called()
+
+    def test_oauth_callback_expired_state_rejected(self, mock_streamlit):
+        """Un state con firma válida pero timestamp expirado se rechaza."""
+        st_mock, _session = mock_streamlit
+        auth = _import_auth()
+        # Generar un state válido y luego hacerlo expirar manipulando el timestamp
+        with patch("dashboard.auth.time") as time_mock:
+            time_mock.time.return_value = time.time() - 700  # 700s ago (> 600s max_age)
+            old_state = auth._generate_oauth_state()
+        st_mock.query_params = {"code": "test_code", "state": old_state}
+        result = auth._handle_oauth_callback()
+        assert result is False
+        st_mock.error.assert_called()
+
+    def test_show_oauth_button_generates_valid_signed_state(self, mock_streamlit):
+        """_show_oauth_button genera un state firmado que pasa verificación."""
+        st_mock, _session = mock_streamlit
+        with patch("config.GOOGLE_CLIENT_ID", "test_id"):
+            auth = _import_auth()
+            auth._show_oauth_button()
+        # st.link_button fue llamado con una URL que contiene state=
+        call_args = st_mock.link_button.call_args
+        url = call_args[0][1] if call_args[0] else call_args[1].get("url", "")
+        assert "state=" in url
+        # Extraer el state del URL y verificar que es válido
+        import urllib.parse
+
+        parsed = urllib.parse.urlparse(url)
+        params = urllib.parse.parse_qs(parsed.query)
+        state_value = params["state"][0]
+        assert auth._verify_oauth_state(state_value) is True
+
+
+class TestEmailVerification:
+    """Tests para la validación de email_verified en OAuth callback."""
+
+    def test_oauth_unverified_email_rejected(self, mock_streamlit):
+        """Si el email de Google no está verificado, se rechaza."""
+        st_mock, _session = mock_streamlit
+
+        auth = _import_auth()
+
+        # Generar un state HMAC válido para pasar la validación CSRF
+        valid_state = auth._generate_oauth_state()
+        st_mock.query_params = {"code": "test_code", "state": valid_state}
+
+        # Mock requests: token exchange OK, userinfo con email_verified=False
+        mock_token_resp = MagicMock()
+        mock_token_resp.json.return_value = {"access_token": "fake_token"}
+        mock_token_resp.raise_for_status = MagicMock()
+
+        mock_userinfo_resp = MagicMock()
+        mock_userinfo_resp.json.return_value = {
+            "sub": "12345",
+            "email": "user@example.com",
+            "email_verified": False,
+            "name": "Test User",
+        }
+
+        with (
+            patch("requests.post", return_value=mock_token_resp),
+            patch("requests.get", return_value=mock_userinfo_resp),
+        ):
+                result = auth._handle_oauth_callback()
+
+        assert result is False
+        st_mock.error.assert_called()
+        # Verificar que el mensaje menciona email verificado
+        error_msg = str(st_mock.error.call_args)
+        assert "verificado" in error_msg.lower() or "verified" in error_msg.lower()

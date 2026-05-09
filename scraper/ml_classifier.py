@@ -45,10 +45,10 @@ class SAPClassifier:
     """Pipeline TF-IDF + LogisticRegression para detección de licitaciones SAP."""
 
     def __init__(self) -> None:
+        from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.linear_model import LogisticRegression
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import MaxAbsScaler
-        from sklearn.feature_extraction.text import TfidfVectorizer
 
         self.pipeline = Pipeline(
             [
@@ -80,7 +80,7 @@ class SAPClassifier:
 
     # ── Entrenamiento ─────────────────────────────────────────────────────
 
-    def train(self, df: "pd.DataFrame") -> dict[str, float]:
+    def train(self, df: pd.DataFrame) -> dict[str, float]:
         """Entrena el clasificador con datos de la BD.
 
         Args:
@@ -102,7 +102,7 @@ class SAPClassifier:
             )
             return {"error": "insufficient_data", "n_samples": len(texts)}
 
-        n_pos = int(sum(1 for l in labels if l == 1))
+        n_pos = int(sum(1 for label in labels if label == 1))
         n_neg = len(labels) - n_pos
         if len(set(labels)) < 2:
             log.warning(
@@ -171,7 +171,7 @@ class SAPClassifier:
         return target
 
     @classmethod
-    def load(cls, path: Path | None = None) -> "SAPClassifier":
+    def load(cls, path: Path | None = None) -> SAPClassifier:
         """Carga un modelo serializado. Lanza FileNotFoundError si no existe."""
         target = path or _MODEL_PATH
         with open(target, "rb") as f:
@@ -190,7 +190,7 @@ class SAPClassifier:
 # ── Funciones auxiliares ──────────────────────────────────────────────────────
 
 
-def _build_dataset(df: "pd.DataFrame") -> tuple[list[str], list[int]]:
+def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     """Construye el dataset de entrenamiento desde el DataFrame.
 
     Positivos: raw_keywords IS NOT NULL (coincidió con keywords SAP).

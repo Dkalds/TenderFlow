@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import time
 from typing import Any
 
 import streamlit as st
 
-from config import DASHBOARD_PASSWORD, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_REDIRECT_URI
+from config import settings
 from dashboard.session_keys import LOGIN_PWD
 
 # Duración máxima de una sesión autenticada (segundos)
@@ -24,11 +25,13 @@ _MAX_LOCKOUT_SECONDS = 60
 _DB_MAX_ATTEMPTS = 5
 _DB_WINDOW_SECONDS = 300.0
 
+# Tiempo máximo de validez del state OAuth (10 minutos)
+_OAUTH_STATE_MAX_AGE_SECONDS = 600
+
 
 def _client_key() -> str:
     """Genera una clave de cliente anónima basada en el session_id de Streamlit."""
     try:
-        from streamlit.runtime import get_instance
         from streamlit.runtime.scriptrunner import get_script_run_ctx
 
         ctx = get_script_run_ctx()
@@ -41,15 +44,15 @@ def _client_key() -> str:
 
 def oauth_configured() -> bool:
     """True si las credenciales de Google OAuth están configuradas."""
-    return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+    return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET)
 
 
 def _get_password() -> str:
     """Lee la contraseña desde st.secrets (Cloud) o config.py (.env / local)."""
     try:
-        return st.secrets.get("DASHBOARD_PASSWORD", "") or DASHBOARD_PASSWORD
+        return st.secrets.get("DASHBOARD_PASSWORD", "") or settings.DASHBOARD_PASSWORD
     except FileNotFoundError:
-        return DASHBOARD_PASSWORD
+        return settings.DASHBOARD_PASSWORD
 
 
 def _check_lockout() -> None:
@@ -102,14 +105,101 @@ def _record_failed_attempt() -> None:
         pass
 
 
+# ---------------------------------------------------------------------------
+# OAuth state: HMAC-signed token (no depende de session_state)
+# ---------------------------------------------------------------------------
+
+
+def _get_signing_key() -> bytes:
+    """Devuelve la clave para firmar/verificar el state OAuth.
+
+    Usa GOOGLE_CLIENT_SECRET como material base — es un secreto del servidor
+    que el atacante no conoce.
+    """
+    return settings.GOOGLE_CLIENT_SECRET.encode()
+
+
+def _generate_oauth_state() -> str:
+    """Genera un state OAuth firmado con HMAC.
+
+    Formato: ``{nonce}:{timestamp}:{signature}``
+
+    - ``nonce``: 16 bytes aleatorios en hex (anti-replay).
+    - ``timestamp``: Unix epoch (para expiración).
+    - ``signature``: HMAC-SHA256 truncado a 32 hex chars.
+
+    La firma se verifica en :func:`_verify_oauth_state` sin necesidad de
+    almacenar nada en ``session_state`` — que puede perderse cuando el
+    navegador sale de Streamlit para ir a Google y vuelve con el redirect.
+    """
+    nonce = os.urandom(16).hex()
+    timestamp = str(int(time.time()))
+    payload = f"{nonce}:{timestamp}"
+    signature = hmac.new(
+        _get_signing_key(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+    return f"{payload}:{signature}"
+
+
+def _verify_oauth_state(
+    state: str,
+    max_age: int = _OAUTH_STATE_MAX_AGE_SECONDS,
+) -> bool:
+    """Verifica la firma y frescura de un state OAuth.
+
+    Returns True si:
+    - El formato es válido (nonce:timestamp:signature).
+    - La firma HMAC coincide.
+    - El timestamp no supera ``max_age`` segundos de antigüedad.
+    """
+    if not state:
+        return False
+    parts = state.split(":")
+    if len(parts) != 3:
+        return False
+    nonce, timestamp_str, signature = parts
+    try:
+        ts = int(timestamp_str)
+    except ValueError:
+        return False
+    if abs(time.time() - ts) > max_age:
+        return False
+    payload = f"{nonce}:{timestamp_str}"
+    expected = hmac.new(
+        _get_signing_key(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+    return hmac.compare_digest(signature, expected)
+
+
 def _handle_oauth_callback() -> bool:
     """Procesa el callback de OAuth si hay code en query params.
+
+    Valida el parámetro ``state`` mediante verificación de firma HMAC
+    (no depende de ``session_state``, que puede perderse tras el redirect
+    a Google) y verifica que el email de Google esté verificado.
 
     Returns True si el usuario queda autenticado tras el callback.
     """
     params = st.query_params
     code = params.get("code")
     if not code:
+        return False
+
+    # ── Validar state anti-CSRF (firma HMAC, sin session_state) ──────
+    callback_state = params.get("state", "")
+    if not _verify_oauth_state(callback_state):
+        import structlog
+
+        structlog.get_logger().warning(
+            "oauth_state_invalid",
+            received=bool(callback_state),
+        )
+        st.error("Solicitud de autenticación inválida (state mismatch). Inténtalo de nuevo.")
+        st.query_params.clear()
         return False
 
     import requests
@@ -120,9 +210,9 @@ def _handle_oauth_callback() -> bool:
             "https://oauth2.googleapis.com/token",
             data={
                 "code": code,
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "redirect_uri": OAUTH_REDIRECT_URI,
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": settings.OAUTH_REDIRECT_URI,
                 "grant_type": "authorization_code",
             },
             timeout=10,
@@ -131,7 +221,6 @@ def _handle_oauth_callback() -> bool:
         token_data = resp.json()
     except Exception:
         st.error("Error al autenticar con Google. Inténtalo de nuevo.")
-        # Limpiar code de la URL
         st.query_params.clear()
         return False
 
@@ -144,6 +233,12 @@ def _handle_oauth_callback() -> bool:
         ).json()
     except Exception:
         st.error("Error al obtener datos del usuario.")
+        st.query_params.clear()
+        return False
+
+    # ── Verificar que el email esté verificado por Google ────────────
+    if not userinfo.get("email_verified", False):
+        st.error("Tu cuenta de Google no tiene el email verificado. Acceso denegado.")
         st.query_params.clear()
         return False
 
@@ -179,17 +274,25 @@ def _handle_oauth_callback() -> bool:
 
 
 def _show_oauth_button() -> None:
-    """Muestra el botón de inicio de sesión con Google."""
+    """Muestra el botón de inicio de sesión con Google.
+
+    Genera un ``state`` firmado con HMAC que se envía como parámetro en la URL
+    de autorización para prevenir CSRF. La firma se verifica en el callback
+    sin depender de ``session_state`` (que puede perderse tras el redirect).
+    """
     import urllib.parse
+
+    state = _generate_oauth_state()
 
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(
         {
-            "client_id": GOOGLE_CLIENT_ID,
-            "redirect_uri": OAUTH_REDIRECT_URI,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "redirect_uri": settings.OAUTH_REDIRECT_URI,
             "response_type": "code",
             "scope": "openid email profile",
             "access_type": "offline",
             "prompt": "consent",
+            "state": state,
         }
     )
     st.link_button("🔑 Iniciar sesión con Google", auth_url, use_container_width=True)

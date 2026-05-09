@@ -7,6 +7,7 @@ import plotly.express as px
 import streamlit as st
 
 from dashboard.components.cards import top_card
+from dashboard.components.cards import chart_card
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import guarded_render
 from dashboard.data_loader import load_adjudicaciones
@@ -38,94 +39,94 @@ def render(ctx: PageContext) -> None:
 
     cL, cR = st.columns([2, 1])
     with cL:
-        st.subheader("Top 10 licitaciones por importe")
-        top = df.dropna(subset=["importe"]).nlargest(10, "importe")
+        with chart_card("Top 10 licitaciones por importe"):
+            top = df.dropna(subset=["importe"]).nlargest(10, "importe")
 
-        # Enriquecer con datos de adjudicación (empresa, baja, fecha)
-        if not adj_resumen.empty:
-            adj_best = adj_resumen.sort_values(
-                "importe_adjudicado", ascending=False
-            ).drop_duplicates(subset=["licitacion_id"], keep="first")[
-                ["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]
-            ]
-            top = top.merge(
-                adj_best,
-                left_on="id_externo",
-                right_on="licitacion_id",
-                how="left",
-            )
+            # Enriquecer con datos de adjudicación (empresa, baja, fecha)
+            if not adj_resumen.empty:
+                adj_best = adj_resumen.sort_values(
+                    "importe_adjudicado", ascending=False
+                ).drop_duplicates(subset=["licitacion_id"], keep="first")[
+                    ["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]
+                ]
+                top = top.merge(
+                    adj_best,
+                    left_on="id_externo",
+                    right_on="licitacion_id",
+                    how="left",
+                )
 
-        for _, row in top.iterrows():
-            # Info adjudicación
-            empresa = row.get("nombre_canonico") or ""
-            baja = row.get("baja_pct")
-            fecha_adj = row.get("fecha_adjudicacion")
-            parts_adj = []
-            if empresa:
-                parts_adj.append(f"🏢 {empresa}")
-            if pd.notna(baja):
-                parts_adj.append(f"📉 {baja:.1f}% baja")
-            if pd.notna(fecha_adj):
-                parts_adj.append(f"📅 {pd.Timestamp(fecha_adj).strftime('%d/%m/%Y')}")
-            adj_line = " · ".join(parts_adj)
+            for _, row in top.iterrows():
+                # Info adjudicación
+                empresa = row.get("nombre_canonico") or ""
+                baja = row.get("baja_pct")
+                fecha_adj = row.get("fecha_adjudicacion")
+                parts_adj = []
+                if empresa:
+                    parts_adj.append(f"🏢 {empresa}")
+                if pd.notna(baja):
+                    parts_adj.append(f"📉 {baja:.1f}% baja")
+                if pd.notna(fecha_adj):
+                    parts_adj.append(f"📅 {pd.Timestamp(fecha_adj).strftime('%d/%m/%Y')}")
+                adj_line = " · ".join(parts_adj)
 
-            meta_base = (
-                f"{row.get('organo_contratacion') or '—'} · "
-                f"{row.get('estado_desc') or '—'} · "
-                f"{row.get('tipo_proyecto') or '—'}"
-            )
-            meta = f"{meta_base} · {adj_line}" if adj_line else meta_base
+                meta_base = (
+                    f"{row.get('organo_contratacion') or '—'} · "
+                    f"{row.get('estado_desc') or '—'} · "
+                    f"{row.get('tipo_proyecto') or '—'}"
+                )
+                meta = f"{meta_base} · {adj_line}" if adj_line else meta_base
 
-            top_card(
-                amount=fmt_eur(row["importe"]),
-                title=str(row["titulo"]),
-                meta=meta,
-                url=row.get("url"),
-                highlight=str(row.get("modulos_str") or "—"),
-            )
+                top_card(
+                    amount=fmt_eur(row["importe"]),
+                    title=str(row["titulo"]),
+                    meta=meta,
+                    url=row.get("url"),
+                    highlight=str(row.get("modulos_str") or "—"),
+                )
     with cR:
-        st.subheader("Distribución por estado")
         est = (
             df.groupby("estado_desc").size().reset_index(name="n").sort_values("n", ascending=False)
         )
-        if not est.empty:
-            fig = px.pie(
-                est,
-                names="estado_desc",
-                values="n",
-                hole=0.55,
-                template=ctx.plotly_template,
-                color_discrete_sequence=ctx.color_sequence,
-            )
-            fig.update_traces(textposition="outside", textinfo="label+percent")
-            fig.update_layout(showlegend=False, height=320, margin=dict(t=10, b=10, l=10, r=10))
-            st.plotly_chart(fig, use_container_width=True)
+        with chart_card("Distribución por estado"):
+            if not est.empty:
+                fig = px.pie(
+                    est,
+                    names="estado_desc",
+                    values="n",
+                    hole=0.55,
+                    template=ctx.plotly_template,
+                    color_discrete_sequence=ctx.color_sequence,
+                )
+                fig.update_traces(textposition="outside", textinfo="label+percent")
+                fig.update_layout(showlegend=False, height=320, margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("Tipos de proyecto")
         tp = (
             df.groupby("tipo_proyecto")
             .size()
             .reset_index(name="n")
             .sort_values("n", ascending=True)
         )
-        if not tp.empty:
-            fig = px.bar(
-                tp,
-                x="n",
-                y="tipo_proyecto",
-                orientation="h",
-                template=ctx.plotly_template,
-                color="n",
-                color_continuous_scale="Greens",
-                labels={"n": "", "tipo_proyecto": ""},
-            )
-            fig.update_layout(
-                height=300,
-                showlegend=False,
-                coloraxis_showscale=False,
-                margin=dict(t=10, b=10, l=10, r=10),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+        with chart_card("Tipos de proyecto"):
+            if not tp.empty:
+                fig = px.bar(
+                    tp,
+                    x="n",
+                    y="tipo_proyecto",
+                    orientation="h",
+                    template=ctx.plotly_template,
+                    color="n",
+                    color_continuous_scale="Greens",
+                    labels={"n": "", "tipo_proyecto": ""},
+                )
+                fig.update_layout(
+                    height=300,
+                    showlegend=False,
+                    coloraxis_showscale=False,
+                    margin=dict(t=10, b=10, l=10, r=10),
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
     # ── Indicadores de mercado ──
     if not adj_resumen.empty:

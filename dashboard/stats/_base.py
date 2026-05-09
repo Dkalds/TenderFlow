@@ -922,7 +922,7 @@ def score_oportunidad(
 
     # Banda visual
     def _banda(s: int) -> str:
-        for _key, (threshold, label) in SCORING_BANDS.items():
+        for threshold, label in SCORING_BANDS.values():
             if s >= threshold:
                 return label
         return "⚪ Descarte"

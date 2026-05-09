@@ -113,6 +113,7 @@ def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[flo
     return [float(v) for v in s.tolist()]
 
 
+@st.fragment
 def render_kpi_bar(df: pd.DataFrame) -> None:
     """Renderiza la barra de 5 KPIs con tooltips, sparklines e iconos SVG."""
     k = compute_kpis(df)

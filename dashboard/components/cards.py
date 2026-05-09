@@ -3,10 +3,39 @@
 from __future__ import annotations
 
 import html as _html
+from collections.abc import Generator
+from contextlib import contextmanager
 
 import streamlit as st
 
 from dashboard.utils.security import safe_url
+
+
+@contextmanager
+def chart_card(title: str, subtitle: str | None = None) -> Generator[None, None, None]:
+    """Context manager — envuelve contenido en una chart-card glass-morphism.
+
+    Renderiza una tarjeta con borde, fondo desenfocado y cabecera de título.
+    El efecto visual se aplica via CSS sobre el ``stVerticalBlockBorderWrapper``
+    cuando éste contiene un hijo ``.chart-card-header``.
+
+    Usage::
+
+        with chart_card("Distribución por estado", subtitle="Últimos 90 días"):
+            st.plotly_chart(fig, use_container_width=True)
+    """
+    header_html = (
+        f'<div class="chart-card-header">'
+        f'<div class="chart-card-title">{_html.escape(title)}</div>'
+    )
+    if subtitle:
+        header_html += f'<div class="chart-card-sub">{_html.escape(subtitle)}</div>'
+    header_html += "</div>"
+
+    container = st.container(border=True)
+    with container:
+        st.markdown(header_html, unsafe_allow_html=True)
+        yield
 
 
 def top_card(

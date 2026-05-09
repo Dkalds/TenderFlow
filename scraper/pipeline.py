@@ -163,7 +163,7 @@ def update_recent(months_back: int = 3) -> list[dict]:
 
 def backfill(start_year: int, start_month: int) -> list[dict]:
     """Backfill desde una fecha histórica hasta hoy (paralelo por meses)."""
-    from config import BACKFILL_MAX_WORKERS
+    from config import settings
 
     init_db()
     today = date.today()
@@ -175,7 +175,7 @@ def backfill(start_year: int, start_month: int) -> list[dict]:
         months.append((cur.year, cur.month))
         cur += relativedelta(months=1)
 
-    workers = min(BACKFILL_MAX_WORKERS, len(months)) or 1
+    workers = min(settings.BACKFILL_MAX_WORKERS, len(months)) or 1
     log.info("backfill_start", months=len(months), workers=workers)
 
     with record_run(run_id) as metrics:

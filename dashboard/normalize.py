@@ -47,20 +47,33 @@ def _strip_accents(text: str) -> str:
 def normalize_company(name: str | None) -> str | None:
     """Normaliza un nombre de empresa para agrupar duplicados.
 
-    Pasos: mayúsculas → sin tildes → strip puntuación → quita sufijos
-    societarios (S.A., S.L., GmbH...) → colapsa espacios.
+    Pasos: mayúsculas → sin tildes → quita sufijos societarios →
+    strip puntuación → quita sufijos descubiertos tras puntuación → colapsa espacios.
+
+    La función es idempotente: normalize(normalize(x)) == normalize(x).
     """
     if not name or not isinstance(name, str):
         return None
     s = name.strip().upper()
-    s = _strip_accents(s)
-    # Quitar sufijos societarios (varias pasadas por si hay encadenados)
-    for _ in range(3):
+    # Re-uppercase after NFKD: some Unicode modifier letters (e.g. ᵃ U+1D43)
+    # decompose to lowercase ASCII via NFKD, violating the uppercase contract.
+    s = _strip_accents(s).upper()
+    # Pass 1: remove terminal legal suffixes before punctuation normalization
+    while True:
         new = _SUFFIX_RE.sub("", s).strip(" ,.-")
         if new == s:
             break
         s = new
+    # Normalize punctuation (replace with spaces) and collapse whitespace
     s = _PUNCT_RE.sub(" ", s)
+    s = _WS_RE.sub(" ", s).strip()
+    # Pass 2: punctuation removal may expose suffixes that were 'hidden' in pass 1
+    # (e.g. ":SA" → "SA" after ':' → ' '; "SA" alone is still a legal suffix).
+    while True:
+        new = _SUFFIX_RE.sub("", s).strip()
+        if new == s:
+            break
+        s = new
     s = _WS_RE.sub(" ", s).strip()
     return s or None
 

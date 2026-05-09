@@ -361,9 +361,9 @@ class TestParseAtomBytes:
         assert "VIAL-001" not in ids
 
     def test_raises_on_oversized_content(self):
-        from config import MAX_XML_SIZE_BYTES
+        from config import settings
 
-        big = b"x" * (MAX_XML_SIZE_BYTES + 1)
+        big = b"x" * (settings.MAX_XML_SIZE_BYTES + 1)
         with pytest.raises(ValueError, match="demasiado grande"):
             list(parse_atom_bytes(big))
 

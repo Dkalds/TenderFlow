@@ -15,6 +15,7 @@ import streamlit as st
 from dashboard.auth import get_current_user
 from dashboard.components.states import empty_state, guarded_render
 from dashboard.components.tables import data_table
+from dashboard.components.toasts import notify_error, notify_success
 from dashboard.pages._base import PageContext
 from dashboard.utils.format import fmt_eur
 from db.watchlist import (
@@ -30,9 +31,9 @@ def _user_key() -> str:
 
     Usa el password del dashboard o el nombre de host; nunca el valor en claro.
     """
-    from config import DASHBOARD_PASSWORD
+    from config import settings
 
-    seed = DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
+    seed = settings.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
@@ -77,7 +78,7 @@ def render(ctx: PageContext) -> None:
         )
         if st.button("Guardar", type="primary"):
             if not cpv.strip():
-                st.error("El CPV es obligatorio.")
+                notify_error("El CPV es obligatorio.")
             else:
                 add_entry(
                     WatchlistEntry(
@@ -90,7 +91,7 @@ def render(ctx: PageContext) -> None:
                         user_id=user_id,
                     )
                 )
-                st.success("Entrada guardada.")
+                notify_success("Entrada guardada.")
                 st.rerun()
 
     if not entries:
@@ -112,6 +113,7 @@ def render(ctx: PageContext) -> None:
         c6.caption(e.get("created_at", ""))
         if c7.button("🗑️", key=f"wl_rm_{e['id']}"):
             remove_entry(int(e["id"]))
+            notify_success("Entrada eliminada.")
             st.rerun()
 
     st.markdown("#### Licitaciones que encajan")

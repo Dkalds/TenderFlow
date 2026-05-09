@@ -62,7 +62,7 @@ class FaissIndex:
     # ── Construcción ──────────────────────────────────────────────────────
 
     @staticmethod
-    def _build_faiss_index(embeddings: np.ndarray) -> "object":
+    def _build_faiss_index(embeddings: np.ndarray) -> object:
         """Construye un IndexFlatIP (coseno sobre vectores normalizados)."""
         import faiss
 
@@ -72,7 +72,7 @@ class FaissIndex:
         return index
 
     @classmethod
-    def build(cls, df: "pd.DataFrame") -> "FaissIndex":
+    def build(cls, df: pd.DataFrame) -> FaissIndex:
         """Construye el índice a partir del DataFrame de licitaciones.
 
         Args:
@@ -118,7 +118,7 @@ class FaissIndex:
         scores, indices = self._index.search(q_emb, k_actual)  # type: ignore[union-attr]
 
         results = []
-        for score, idx in zip(scores[0], indices[0]):
+        for score, idx in zip(scores[0], indices[0], strict=False):
             if idx < 0 or float(score) < threshold:
                 continue
             results.append((self.ids[idx], float(score)))
@@ -136,7 +136,7 @@ class FaissIndex:
         return target
 
     @classmethod
-    def load(cls, path: Path | None = None) -> "FaissIndex":
+    def load(cls, path: Path | None = None) -> FaissIndex:
         """Carga el índice desde disco."""
         target = path or _INDEX_PATH
         with open(target, "rb") as f:
@@ -151,7 +151,7 @@ class FaissIndex:
         return (path or _INDEX_PATH).exists()
 
     @classmethod
-    def load_or_build(cls, df: "pd.DataFrame", path: Path | None = None) -> "FaissIndex":
+    def load_or_build(cls, df: pd.DataFrame, path: Path | None = None) -> FaissIndex:
         """Carga el índice si existe; si no, lo construye y guarda.
 
         Preferir ``build()`` explícito en producción para controlar cuándo
@@ -174,7 +174,7 @@ class FaissIndex:
 
 def search_similar(
     query: str,
-    df: "pd.DataFrame",
+    df: pd.DataFrame,
     k: int = 10,
     threshold: float = 0.4,
 ) -> list[tuple[str, float]]:
@@ -205,7 +205,7 @@ def search_similar(
     return [(ids[i], score) for i, score in matches]
 
 
-def rebuild_index(df: "pd.DataFrame") -> FaissIndex | None:
+def rebuild_index(df: pd.DataFrame) -> FaissIndex | None:
     """Reconstruye y guarda el índice FAISS desde cero.
 
     Diseñado para llamarse al final del pipeline de scraping.
@@ -237,6 +237,7 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "build"
     if cmd == "build":
         import pandas as pd
+
         from db.database import connect, init_db
 
         print("Construyendo índice FAISS desde la BD...")

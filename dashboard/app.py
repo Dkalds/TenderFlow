@@ -2,29 +2,18 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-# Aseguramos que la raíz del proyecto esté en sys.path para que tanto
-# `dashboard.*` como `config` sean importables al ejecutarse en Streamlit
-# Cloud (que añade el directorio del script — dashboard/ — al sys.path,
-# no la raíz del repo).
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
-
 import streamlit as st
 
 from dashboard.auth import check_password
 from dashboard.components.layout import render_header, render_sidebar_brand
 from dashboard.components.navigation import active_filters_chips, breadcrumb, sub_nav, top_nav
 from dashboard.components.states import empty_state
-from dashboard.data_loader import load_dataframe
+from dashboard.data_loader import load_dataframe, load_extracciones
 from dashboard.filters import FiltersState, apply_filters, render_sidebar_filters
 from dashboard.kpi_bar import render_kpi_bar
 from dashboard.pages import PAGE_REGISTRY
 from dashboard.pages._base import PageContext
-from dashboard.router import SECTION_ICONS, SECTIONS
+from dashboard.router import PAGE_DESCRIPTIONS, PAGE_ICONS, SECTION_ICONS, SECTIONS
 from dashboard.session_keys import (
     FS_CCAAS,
     FS_ESTADOS,
@@ -42,6 +31,7 @@ from dashboard.theme import (
     get_color_sequence,
     register_plotly_template,
 )
+from observability.logging import bind_session_context
 
 # ── Config & estilo ──────────────────────────────────────────────────────
 st.set_page_config(
@@ -73,6 +63,9 @@ st.markdown(
 # ── Autenticación ────────────────────────────────────────────────────────
 check_password()
 
+# ── Correlation ID de sesión (para correlacionar logs UI↔backend) ─────────
+bind_session_context()
+
 # ── Plotly premium template ─────────────────────────────────────────────
 PLOTLY_TEMPLATE = register_plotly_template(TOKENS)
 COLOR_SEQUENCE = get_color_sequence(TOKENS)
@@ -81,8 +74,6 @@ COLOR_SEQUENCE = get_color_sequence(TOKENS)
 df_full = load_dataframe()
 
 # ── Header ──────────────────────────────────────────────────────────────
-from dashboard.data_loader import load_extracciones
-
 _ext = load_extracciones()
 last_updated = _ext["fecha"].max() if not _ext.empty else None
 render_header(last_updated=last_updated)
@@ -152,10 +143,17 @@ st.markdown("")
 
 # ── Sub-nav + breadcrumb ───────────────────────────────────────────────────
 _pages = SECTIONS[section]
-page = sub_nav(_pages, key=f"nav_page_{section}")
-breadcrumb(section, page)
+page = sub_nav(_pages, key=f"nav_page_{section}", icons=PAGE_ICONS)
+breadcrumb(section, page, description=PAGE_DESCRIPTIONS.get(page))
 active_filters_chips(filters)
 st.markdown("")
+
+# ── Scroll-to-top cuando cambia la página ────────────────────────────────
+st.markdown(
+    "<script>window.parent.document.querySelector('[data-testid=\"stAppViewContainer\"]')"
+    "?.scrollTo({top:0,behavior:'smooth'});</script>",
+    unsafe_allow_html=True,
+)
 
 # ── Page router ────────────────────────────────────────────────────────────
 ctx = PageContext(
@@ -166,6 +164,14 @@ ctx = PageContext(
     plotly_template=PLOTLY_TEMPLATE,
     color_sequence=COLOR_SEQUENCE,
 )
-PAGE_REGISTRY[page](ctx)
+
+
+@st.fragment
+def _render_page(ctx: PageContext, page: str) -> None:
+    """Fragment wrapper — widget interactions inside a page don't trigger a full app rerun."""
+    PAGE_REGISTRY[page](ctx)
+
+
+_render_page(ctx, page)
 
 # ── Footer ─────────────────────────────────────────────────────────────

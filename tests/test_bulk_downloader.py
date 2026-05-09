@@ -83,7 +83,7 @@ class TestDownloadMonth:
             zf.writestr("feed.xml", b"<x/>")
 
         with (
-            patch("scraper.bulk_downloader.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
             patch("scraper.bulk_downloader.ensure_data_dirs"),
         ):
             result = download_month(2024, 1)
@@ -105,7 +105,7 @@ class TestDownloadMonth:
         mock_response.iter_content = MagicMock(return_value=[zip_bytes])
 
         with (
-            patch("scraper.bulk_downloader.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
             patch("scraper.bulk_downloader.ensure_data_dirs"),
             patch("scraper.bulk_downloader.time.sleep"),
             patch("requests.get", return_value=mock_response),
@@ -121,7 +121,7 @@ class TestDownloadMonth:
         http_err.response.status_code = 404
 
         with (
-            patch("scraper.bulk_downloader.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
             patch("scraper.bulk_downloader.ensure_data_dirs"),
             patch("scraper.bulk_downloader.time.sleep"),
             patch("scraper.bulk_downloader._download", side_effect=http_err),
@@ -133,16 +133,15 @@ class TestDownloadMonth:
     def test_circuit_breaker_raises_circuit_open_error(self, tmp_path):
         """Un CircuitBreakerError se transforma en CircuitOpenError."""
         with (
-            patch("scraper.bulk_downloader.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
             patch("scraper.bulk_downloader.ensure_data_dirs"),
             patch("scraper.bulk_downloader.time.sleep"),
             patch(
                 "scraper.bulk_downloader._download",
                 side_effect=pybreaker.CircuitBreakerError("open"),
-            ),
+            ),pytest.raises(CircuitOpenError)
         ):
-            with pytest.raises(CircuitOpenError):
-                download_month(2024, 1)
+            download_month(2024, 1)
 
     def test_corrupt_cache_is_removed_and_redownloaded(self, tmp_path):
         """Un ZIP corrupto en caché se elimina antes de reintentarlo."""
@@ -154,7 +153,7 @@ class TestDownloadMonth:
         http_err.response.status_code = 404
 
         with (
-            patch("scraper.bulk_downloader.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
             patch("scraper.bulk_downloader.ensure_data_dirs"),
             patch("scraper.bulk_downloader.time.sleep"),
             patch("scraper.bulk_downloader._download", side_effect=http_err),
@@ -177,7 +176,7 @@ class TestDownloadMonth:
             return d
 
         with (
-            patch("scraper.bulk_downloader.DOWNLOADS_DIR", tmp_path),
+            patch("scraper.bulk_downloader.settings.DOWNLOADS_DIR", tmp_path),
             patch("scraper.bulk_downloader.ensure_data_dirs"),
             patch("scraper.bulk_downloader.time.sleep"),
             patch("scraper.bulk_downloader._download", side_effect=fake_download),

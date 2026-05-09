@@ -100,9 +100,9 @@ def _redact_secrets(
 
 def _detect_json_default() -> bool:
     """Por defecto JSON en entornos no-TTY (CI, Docker, systemd)."""
-    from config import LOG_FORMAT
+    from config import settings
 
-    fmt = LOG_FORMAT.lower()
+    fmt = settings.LOG_FORMAT.lower()
     if fmt == "json":
         return True
     if fmt == "console":
@@ -169,3 +169,24 @@ def bind_run_context(**kwargs: Any) -> str:
 
 def clear_run_context() -> None:
     clear_contextvars()
+
+
+def bind_session_context() -> str | None:
+    """Asocia el session_id de Streamlit al contexto de logging.
+
+    Permite correlacionar logs del dashboard con la sesión del usuario.
+    Devuelve el session_id (truncado) o None si no está en un contexto Streamlit.
+    """
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx and ctx.session_id:
+            import hashlib
+
+            session_hash = hashlib.sha256(ctx.session_id.encode()).hexdigest()[:12]
+            bind_contextvars(session_id=session_hash)
+            return session_hash
+    except Exception:
+        pass
+    return None

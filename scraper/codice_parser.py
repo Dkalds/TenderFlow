@@ -18,7 +18,7 @@ from typing import Any
 
 from lxml import etree
 
-from config import MAX_XML_SIZE_BYTES
+from config import settings
 from dashboard.classifiers import nuts_to_ccaa
 from db.database import Adjudicacion, Licitacion
 from scraper.filters import matches_sap
@@ -262,10 +262,10 @@ def parse_entry(entry: Any) -> Licitacion | None:
 
 def parse_atom_bytes(content: bytes) -> Iterator[tuple[Licitacion, list[Adjudicacion]]]:
     """Itera (licitación SAP, adjudicaciones) encontradas en un ATOM."""
-    if len(content) > MAX_XML_SIZE_BYTES:
+    if len(content) > settings.MAX_XML_SIZE_BYTES:
         raise ValueError(
             f"Fichero XML demasiado grande: {len(content):,} bytes "
-            f"(límite: {MAX_XML_SIZE_BYTES:,}). Procesamiento abortado."
+            f"(límite: {settings.MAX_XML_SIZE_BYTES:,}). Procesamiento abortado."
         )
     # huge_tree=False (default): mantiene límites de profundidad y tamaño de
     # lxml para prevenir ataques XML bomb. resolve_entities=False y

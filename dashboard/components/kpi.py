@@ -45,10 +45,15 @@ def _sparkline_svg(
     path = " ".join(points)
     last_x, last_y = points[-1].split(",")
     color = "#86BC25" if up else "#E21836"
+    fill_color = "rgba(134,188,37,0.12)" if up else "rgba(226,24,54,0.10)"
+
+    # Area fill: polygon closes back along the bottom edge of the SVG
+    polygon_pts = f"{path} {width:.1f},{height - 1:.1f} 0,{height - 1:.1f}"
 
     return (
         f'<svg class="sparkline" width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}" aria-hidden="true">'
+        f'<polygon points="{polygon_pts}" fill="{fill_color}" stroke="none"/>'
         f'<polyline fill="none" stroke="{color}" stroke-width="1.5" '
         f'stroke-linecap="round" stroke-linejoin="round" points="{path}"/>'
         f'<circle cx="{last_x}" cy="{last_y}" r="2" fill="{color}"/>'

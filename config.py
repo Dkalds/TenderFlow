@@ -104,9 +104,13 @@ def _load() -> Settings:
 
 _settings = _load()
 
+# ── Singleton accesible para nuevos consumidores ─────────────────────────
+# Uso recomendado: ``from config import settings`` y luego ``settings.DB_PATH``.
+settings = _settings
+
 # ── Backward-compatible module-level exports ─────────────────────────────
-# Todos los consumidores existentes usan ``from config import X``.
-# Estos aliases permiten que sigan funcionando sin cambios.
+# DEPRECADO: usar ``settings.X`` en lugar de ``from config import X``.
+# Estos aliases se mantienen temporalmente para no romper consumidores existentes.
 ROOT = _ROOT
 DATA_DIR = _settings.DATA_DIR
 DOWNLOADS_DIR = _settings.DOWNLOADS_DIR  # type: ignore[assignment]

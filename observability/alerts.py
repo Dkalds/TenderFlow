@@ -65,9 +65,9 @@ _LEVEL_EMOJI = {
 
 
 def _min_level() -> AlertLevel:
-    from config import ALERT_MIN_LEVEL
+    from config import settings
 
-    raw = ALERT_MIN_LEVEL.lower()
+    raw = settings.ALERT_MIN_LEVEL.lower()
     return _LEVEL_NAMES.get(raw, AlertLevel.WARN)
 
 
@@ -113,19 +113,13 @@ def _send_smtp(
     ``to_addr`` sobreescribe la variable de entorno ``ALERT_EMAIL_TO``
     cuando se especifica (útil para notificaciones por destinatario).
     """
-    from config import (
-        ALERT_EMAIL_TO,
-        ALERT_SMTP_HOST,
-        ALERT_SMTP_PASSWORD,
-        ALERT_SMTP_PORT,
-        ALERT_SMTP_USER,
-    )
+    from config import settings
 
-    recipient = (to_addr or ALERT_EMAIL_TO or "").strip()
-    user = ALERT_SMTP_USER.strip()
-    password = ALERT_SMTP_PASSWORD.strip()
-    host = ALERT_SMTP_HOST.strip()
-    port = ALERT_SMTP_PORT
+    recipient = (to_addr or settings.ALERT_EMAIL_TO or "").strip()
+    user = settings.ALERT_SMTP_USER.strip()
+    password = settings.ALERT_SMTP_PASSWORD.strip()
+    host = settings.ALERT_SMTP_HOST.strip()
+    port = settings.ALERT_SMTP_PORT
 
     if not (recipient and user and password):
         log.debug(

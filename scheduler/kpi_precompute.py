@@ -271,5 +271,5 @@ if __name__ == "__main__":
                 if k != "_computed_at":
                     print(f"  {k}: {v}")
     else:
-        print(f"Uso: python -m scheduler.kpi_precompute [run|--latest]")
+        print("Uso: python -m scheduler.kpi_precompute [run|--latest]")
         sys.exit(1)

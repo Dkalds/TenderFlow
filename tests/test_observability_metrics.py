@@ -53,9 +53,8 @@ def test_record_run_marks_partial(tmp_db):
 
 def test_record_run_marks_error_on_exception(tmp_db):
     db_mod, _ = tmp_db
-    with pytest.raises(ValueError):
-        with record_run("run-err"):
-            raise ValueError("boom")
+    with pytest.raises(ValueError), record_run("run-err"):
+        raise ValueError("boom")
     with db_mod.connect() as c:
         row = c.execute(
             "SELECT status FROM extraction_runs WHERE run_id = ?",

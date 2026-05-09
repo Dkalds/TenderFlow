@@ -27,9 +27,9 @@ _LOOKBACK_DAYS = 30
 
 def _user_key() -> str:
     """Misma derivación que usa el dashboard (hash del DASHBOARD_PASSWORD)."""
-    from config import DASHBOARD_PASSWORD
+    from config import settings
 
-    seed = DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
+    seed = settings.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 

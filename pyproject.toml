@@ -1,3 +1,33 @@
+[project]
+name = "licitaciones-sap"
+version = "1.0.0"
+description = "Detección y análisis de licitaciones SAP del Sector Público español"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0,<3",
+    "lxml>=5.0.0,<7",
+    "pandas>=2.1.0,<3",
+    "streamlit>=1.30.0,<2",
+    "plotly>=5.18.0,<7",
+    "python-dateutil>=2.8.2,<3",
+    "tenacity>=8.2.0,<10",
+    "openpyxl>=3.1.0,<4",
+    "libsql>=0.1.0,<1",
+    "python-dotenv>=1.0.0,<2",
+    "pydantic-settings>=2.0.0,<3",
+    "streamlit-aggrid>=0.3.3,<1",
+    "structlog>=24.1.0,<26",
+    "pybreaker>=1.0.0,<2",
+    "reportlab>=4.0,<5",
+    "scikit-learn>=1.3.0,<2",
+    "faiss-cpu>=1.7.4,<2",
+    "sentence-transformers>=2.2.0,<4",
+    "prometheus_client>=0.19.0,<1",
+]
+
+[project.scripts]
+licitaciones-dashboard = "dashboard.app:main"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
@@ -12,19 +42,24 @@ select = [
     "UP",  # pyupgrade
     "S",   # flake8-bandit (security)
     "RUF", # ruff-specific
+    "SIM", # flake8-simplify
+    "PERF",# perflint
+    "PIE", # flake8-pie
+    "LOG", # flake8-logging
 ]
 ignore = [
-    "S101",  # assert allowed in tests
-    "S603",  # subprocess calls allowed in scheduler
-    "E501",  # line length managed by formatter
-    "S110",  # try-except-pass allowed in best-effort persisters
-    "B904",  # raise ... from ... — not always needed
+    "S101",    # assert allowed in tests
+    "S603",    # subprocess calls allowed in scheduler
+    "E501",    # line length managed by formatter
+    "S110",    # try-except-pass allowed in best-effort persisters
+    "PERF401", # list.append in loops is often more readable than extend
+    "SIM105",  # contextlib.suppress is less explicit than try/except pass
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S106", "S105", "S320"]
 "dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
-"dashboard/app.py" = ["E402"]  # sys.path manipulation must precede imports
+"dashboard/app.py" = []  # sys.path hack removed — no longer needs E402
 "dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
 "db/database.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
 

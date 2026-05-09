@@ -13,7 +13,7 @@ from typing import Any
 
 import libsql
 
-from config import DB_PATH, HISTORY_TRACKED_FIELDS, TURSO_AUTH_TOKEN, TURSO_DATABASE_URL
+from config import HISTORY_TRACKED_FIELDS, settings
 
 
 def now_utc() -> datetime:
@@ -162,8 +162,8 @@ def _get_conn() -> Any:
     conn = getattr(_local, "conn", None)
     if conn is not None:
         return conn
-    if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
-        conn = libsql.connect(TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    if settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN:
+        conn = libsql.connect(settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN)
     else:
         # En CI (GitHub Actions y similares) NUNCA usar SQLite local: el FS es
         # efímero y los datos se perderían silenciosamente. Forzar fallo ruidoso.
@@ -176,7 +176,7 @@ def _get_conn() -> Any:
                 "Faltan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN en el entorno CI. "
                 "Configura los secrets del repositorio antes de ejecutar el pipeline."
             )
-        conn = libsql.connect(str(DB_PATH))
+        conn = libsql.connect(str(settings.DB_PATH))
         # WAL mode: permite lecturas concurrentes del dashboard mientras el
         # scraper escribe. busy_timeout=5000ms evita "database is locked".
         conn.execute("PRAGMA journal_mode=WAL")

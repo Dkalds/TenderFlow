@@ -22,7 +22,7 @@ _SEED_LICITACIONES = [
     {
         "id_externo": f"LIC-SMOKE-{i}",
         "titulo": f"Implantación SAP S/4HANA fase {i}",
-        "descripcion": f"Proyecto de implantación módulo {'FI MM SD HR PP'.split()[i % 5]}",
+        "descripcion": f"Proyecto de implantación módulo {['FI', 'MM', 'SD', 'HR', 'PP'][i % 5]}",
         "organo_contratacion": f"Ministerio de Pruebas {i % 3}",
         "importe": 100_000.0 * (i + 1),
         "moneda": "EUR",

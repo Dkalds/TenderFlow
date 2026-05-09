@@ -40,11 +40,11 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict:
     info: dict[str, object] = {}
 
     # --- Métricas de infraestructura ---
-    from config import DATA_DIR, DB_PATH
+    from config import settings
 
-    db_path = Path(DB_PATH)
+    db_path = Path(settings.DB_PATH)
     info["db_size_bytes"] = db_path.stat().st_size if db_path.exists() else 0
-    data_dir = Path(DATA_DIR)
+    data_dir = Path(settings.DATA_DIR)
     try:
         info["data_dir_free_bytes"] = shutil.disk_usage(data_dir).free
     except OSError:

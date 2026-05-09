@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+COPY pyproject.toml .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Etapa 2: imagen de producción ───────────────────────────────────────────
@@ -25,6 +26,9 @@ COPY --from=deps /usr/local/bin /usr/local/bin
 
 # Código fuente (excluir lo que está en .dockerignore)
 COPY --chown=appuser:appuser . .
+
+# Instalar el proyecto como paquete (imports resueltos sin sys.path hacks)
+RUN pip install --no-cache-dir --no-deps -e .
 
 # Directorio de datos persistente — se monta como volumen en producción
 RUN mkdir -p /data && chown appuser:appuser /data

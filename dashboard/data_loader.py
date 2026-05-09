@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from config import DASHBOARD_CACHE_TTL
+from config import settings
 from dashboard.classifiers import (
     cpv_label,
     detect_modules,
@@ -51,7 +51,7 @@ def _safe_apply(
         df[column] = fallback
 
 
-@st.cache_resource(ttl=DASHBOARD_CACHE_TTL or None)
+@st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
 def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
     """Carga base compartida entre todas las sesiones (no copiar).
 
@@ -149,7 +149,7 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
     return _load_dataframe_shared(limit).copy()
 
 
-@st.cache_data(ttl=DASHBOARD_CACHE_TTL or None, show_spinner="Cargando adjudicaciones…")
+@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None, show_spinner="Cargando adjudicaciones…")
 def load_adjudicaciones(limit: int | None = None) -> pd.DataFrame:
     """Carga adjudicaciones enriquecidas desde la DB.
 
@@ -244,7 +244,7 @@ def _build_canonical_names(df: pd.DataFrame) -> pd.Series:
         return df["nombre"]
 
 
-@st.cache_data(ttl=DASHBOARD_CACHE_TTL or None)
+@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
 def load_extracciones() -> pd.DataFrame:
     with connect() as c:
         cursor = c.execute("SELECT * FROM extracciones ORDER BY fecha DESC")

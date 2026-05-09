@@ -6,8 +6,13 @@ orden ascendente y la versión actual queda registrada en ``schema_version``.
 Rollbacks: cada versión puede tener asociada una función ``down`` en
 ``ROLLBACKS`` que deshace los cambios. Se ejecutan en orden descendente.
 
-Diseñado para proyectos pequeños donde un Alembic completo es overkill pero
-mantener un historial auditable sigue siendo importante.
+.. note::
+
+   Este sistema gestiona las migraciones **v1-v13** (baseline). Las
+   migraciones nuevas (v14+) se gestionan con **Alembic** (ver
+   ``db/alembic/``). Para bases de datos existentes, ejecutar
+   ``apply_pending()`` antes de ``alembic stamp head`` y luego
+   ``alembic upgrade head``.
 """
 
 from __future__ import annotations
@@ -326,9 +331,14 @@ def apply_pending(conn: Any) -> list[int]:
             continue
         log.info("migration_applying", version=version, description=description)
         for stmt in sql.split(";"):
-            stmt = stmt.strip()
-            if stmt and not stmt.startswith("--"):
-                conn.execute(stmt)
+            # Strip standalone comment lines so that a statement whose first
+            # non-blank line is a comment is not silently skipped (bug: the
+            # old `not stmt.startswith("--")` guard dropped the entire stmt).
+            meaningful = "\n".join(
+                line for line in stmt.splitlines() if not line.strip().startswith("--")
+            ).strip()
+            if meaningful:
+                conn.execute(meaningful)
         # Migración 6: ALTER TABLE ADD COLUMN programático
         if version == 6:
             _apply_v6_columns(conn)
@@ -487,9 +497,11 @@ def rollback(target_version: int, conn: Any) -> list[int]:
         sql = ROLLBACKS.get(version, "")
         log.info("migration_rollback", version=version)
         for stmt in sql.split(";"):
-            stmt = stmt.strip()
-            if stmt and not stmt.startswith("--"):
-                conn.execute(stmt)
+            meaningful = "\n".join(
+                line for line in stmt.splitlines() if not line.strip().startswith("--")
+            ).strip()
+            if meaningful:
+                conn.execute(meaningful)
         conn.execute("DELETE FROM schema_version WHERE version = ?", (version,))
         reverted.append(version)
 
@@ -520,7 +532,7 @@ def validate_schema(conn: Any) -> dict[str, bool]:
     def _col_exists(table: str, col: str) -> bool:
         if not _table_exists(table):
             return False
-        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         return col in cols
 
     # Tablas principales

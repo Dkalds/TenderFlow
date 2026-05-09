@@ -27,10 +27,10 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
 
 from observability.logging import get_logger
 
@@ -113,7 +113,6 @@ def _write_via_client(run: RunInstrumentation) -> None:
         CollectorRegistry,
         Counter,
         Gauge,
-        Histogram,
         write_to_textfile,
     )
 
@@ -281,5 +280,5 @@ if __name__ == "__main__":
         else:
             print("Aún no hay métricas escritas.")
     else:
-        print(f"Uso: python -m observability.prometheus [serve [--port N]|info]")
+        print("Uso: python -m observability.prometheus [serve [--port N]|info]")
         sys.exit(1)

@@ -31,20 +31,28 @@ class FiltersState:
 
     def active_labels(self) -> list[str]:
         """Lista de etiquetas de filtros activos (para chips de la UI)."""
-        labels = []
+        return [label for label, _key, _val in self.active_items()]
+
+    def active_items(self) -> list[tuple[str, str, str | None]]:
+        """Lista de (display_label, session_key, valor_a_eliminar | None) para chips interactivos.
+
+        - Si ``valor_a_eliminar`` es ``None`` el filtro es escalar (se borra la clave).
+        - Si es una cadena se elimina sólo ese valor de la lista en session_state.
+        """
+        items: list[tuple[str, str, str | None]] = []
         if self.q:
-            labels.append(f'Búsqueda: "{self.q}"')
+            items.append((f'Búsqueda: "{self.q}"', "fs_q", None))
         for e in self.estados:
-            labels.append(f"Estado: {e}")
+            items.append((f"Estado: {e}", "fs_estados", e))
         for c in self.ccaas:
-            labels.append(f"CCAA: {c}")
+            items.append((f"CCAA: {c}", "fs_ccaas", c))
         for o in self.organos:
-            labels.append(f"Órgano: {o[:30]}")
+            items.append((f"Órgano: {o[:25]}", "fs_organos", o))
         for t in self.tipos_proy:
-            labels.append(f"Tipo: {t}")
+            items.append((f"Tipo: {t}", "fs_tipos", t))
         if self.importe_min > 0:
-            labels.append(f"Imp. mín: {self.importe_min:,} €")
-        return labels
+            items.append((f"Imp. ≥ {self.importe_min:,} €", "fs_imp_min", None))
+        return items
 
     def to_query_params(self) -> dict[str, str]:
         """Serializa el estado activo a parámetros de URL (solo campos con valor)."""

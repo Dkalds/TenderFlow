@@ -17,3 +17,29 @@ SECTION_ICONS: dict[str, str] = {
     "Personal": "★",
     "Ops": "▤",
 }
+
+PAGE_ICONS: dict[str, str] = {
+    "Resumen": "◈",
+    "Tendencias": "📈",
+    "Detalle": "🔍",
+    "Órganos": "🏛",
+    "Geografía": "🗺",
+    "Proyectos & Módulos": "🧩",
+    "Competidores": "🏆",
+    "Pipeline & Alertas": "🔔",
+    "Mi Watchlist": "⭐",
+    "Observabilidad": "📊",
+}
+
+PAGE_DESCRIPTIONS: dict[str, str] = {
+    "Resumen": "Top licitaciones, distribución por estado y salud competitiva del mercado.",
+    "Tendencias": "Evolución mensual de publicaciones e importes, heatmap y distribución.",
+    "Detalle": "Tabla completa con todos los campos y exportación a Excel/CSV.",
+    "Órganos": "Ranking de órganos contratantes, treemap y análisis de pipeline individual.",
+    "Geografía": "Distribución geográfica por comunidad autónoma e importe acumulado.",
+    "Proyectos & Módulos": "Desglose por tipo de proyecto y módulo SAP detectado.",
+    "Competidores": "Empresas adjudicatarias, cuota de mercado y análisis comparativo.",
+    "Pipeline & Alertas": "Licitaciones en plazo, predicciones y alertas de vencimiento.",
+    "Mi Watchlist": "Reglas de seguimiento personalizadas por CPV, keyword e importe.",
+    "Observabilidad": "Métricas de rendimiento, logs de scraping y estado del pipeline.",
+}

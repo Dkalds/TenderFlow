@@ -20,13 +20,9 @@ import pybreaker
 import requests
 
 from config import (
-    DOWNLOADS_DIR,
-    MAX_DOWNLOAD_SIZE_BYTES,
-    MAX_XML_SIZE_BYTES,
-    REQUEST_DELAY_SECONDS,
-    REQUEST_TIMEOUT,
     USER_AGENT,
     ensure_data_dirs,
+    settings,
 )
 from observability.logging import get_logger
 from scraper.resilience import http_retry, placsp_breaker
@@ -45,24 +41,24 @@ BULK_URL_TEMPLATE = (
 def _download(url: str, dest: Path) -> Path:
     log.info("bulk_download_start", url=url, dest=str(dest))
     headers = {"User-Agent": USER_AGENT}
-    with requests.get(url, headers=headers, stream=True, timeout=REQUEST_TIMEOUT) as r:
+    with requests.get(url, headers=headers, stream=True, timeout=settings.REQUEST_TIMEOUT) as r:
         r.raise_for_status()
         content_length = r.headers.get("Content-Length")
         if content_length is not None:
             size = int(content_length)
-            if size > MAX_DOWNLOAD_SIZE_BYTES:
+            if size > settings.MAX_DOWNLOAD_SIZE_BYTES:
                 raise ValueError(
                     f"Descarga rechazada: Content-Length {size:,} bytes "
-                    f"supera el límite de {MAX_DOWNLOAD_SIZE_BYTES:,} bytes."
+                    f"supera el límite de {settings.MAX_DOWNLOAD_SIZE_BYTES:,} bytes."
                 )
         with open(dest, "wb") as f:
             downloaded = 0
             for chunk in r.iter_content(chunk_size=8192):
                 downloaded += len(chunk)
-                if downloaded > MAX_DOWNLOAD_SIZE_BYTES:
+                if downloaded > settings.MAX_DOWNLOAD_SIZE_BYTES:
                     dest.unlink(missing_ok=True)
                     raise ValueError(
-                        f"Descarga abortada: tamaño real supera {MAX_DOWNLOAD_SIZE_BYTES:,} bytes."
+                        f"Descarga abortada: tamaño real supera {settings.MAX_DOWNLOAD_SIZE_BYTES:,} bytes."
                     )
                 f.write(chunk)
     log.info("bulk_download_ok", url=url, bytes=downloaded)
@@ -76,9 +72,9 @@ class CircuitOpenError(RuntimeError):
 def download_month(year: int, month: int, force: bool = False) -> Path | None:
     """Descarga el ZIP mensual. Devuelve la ruta o None si no existe."""
     ensure_data_dirs()
-    assert DOWNLOADS_DIR is not None  # garantizado por ensure_data_dirs()
+    assert settings.DOWNLOADS_DIR is not None  # garantizado por ensure_data_dirs()
     url = BULK_URL_TEMPLATE.format(year=year, month=month)
-    dest = DOWNLOADS_DIR / f"placsp_{year}{month:02d}.zip"
+    dest = settings.DOWNLOADS_DIR / f"placsp_{year}{month:02d}.zip"
 
     if dest.exists() and not force:
         if zipfile.is_zipfile(dest):
@@ -88,7 +84,7 @@ def download_month(year: int, month: int, force: bool = False) -> Path | None:
         dest.unlink()
 
     try:
-        time.sleep(REQUEST_DELAY_SECONDS)
+        time.sleep(settings.REQUEST_DELAY_SECONDS)
         _download(url, dest)
         if not zipfile.is_zipfile(dest):
             log.warning("bulk_not_a_zip", year=year, month=month)
@@ -110,12 +106,12 @@ def iter_xml_files(zip_path: Path) -> Iterator[tuple[str, bytes]]:
         for name in zf.namelist():
             if name.lower().endswith(".atom") or name.lower().endswith(".xml"):
                 info = zf.getinfo(name)
-                if info.file_size > MAX_XML_SIZE_BYTES:
+                if info.file_size > settings.MAX_XML_SIZE_BYTES:
                     log.warning(
                         "zip_member_too_large",
                         name=name,
                         file_size=info.file_size,
-                        limit=MAX_XML_SIZE_BYTES,
+                        limit=settings.MAX_XML_SIZE_BYTES,
                     )
                     continue
                 with zf.open(name) as f:

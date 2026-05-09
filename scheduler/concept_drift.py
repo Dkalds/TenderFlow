@@ -21,20 +21,7 @@ log = get_logger(__name__)
 
 # Palabras funcionales (stop words) que ignoramos siempre
 _STOP_WORDS = frozenset(
-    "de del la las el los un una en por para con al que se su sus "
-    "no es y o a ante bajo con contra desde entre hacia hasta "
-    "según sin sobre tras durante mediante como más pero si "
-    "ser haber estar tener hacer poder decir ir ver dar saber "
-    "este esta estos estas ese esa esos esas aquel aquella "
-    "todo toda todos todas otro otra otros otras mismo misma "
-    "servicio servicios contrato contratos licitación licitaciones "
-    "sistema sistemas información pública público públicas públicos "
-    "gestión administración plataforma electrónica general "
-    "mantenimiento soporte técnico asistencia dirección nacional "
-    "ministerio comunidad ayuntamiento diputación universidad "
-    "acuerdo marco lote lotes expediente tipo procedimiento "
-    "abierto negociado restringido anualidad anualidades importe "
-    "objeto descripción título adjudicación".split()
+    ["de", "del", "la", "las", "el", "los", "un", "una", "en", "por", "para", "con", "al", "que", "se", "su", "sus", "no", "es", "y", "o", "a", "ante", "bajo", "con", "contra", "desde", "entre", "hacia", "hasta", "según", "sin", "sobre", "tras", "durante", "mediante", "como", "más", "pero", "si", "ser", "haber", "estar", "tener", "hacer", "poder", "decir", "ir", "ver", "dar", "saber", "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas", "aquel", "aquella", "todo", "toda", "todos", "todas", "otro", "otra", "otros", "otras", "mismo", "misma", "servicio", "servicios", "contrato", "contratos", "licitación", "licitaciones", "sistema", "sistemas", "información", "pública", "público", "públicas", "públicos", "gestión", "administración", "plataforma", "electrónica", "general", "mantenimiento", "soporte", "técnico", "asistencia", "dirección", "nacional", "ministerio", "comunidad", "ayuntamiento", "diputación", "universidad", "acuerdo", "marco", "lote", "lotes", "expediente", "tipo", "procedimiento", "abierto", "negociado", "restringido", "anualidad", "anualidades", "importe", "objeto", "descripción", "título", "adjudicación"]
 )
 
 # Normalizar SAP_KEYWORDS a minúsculas para comparación

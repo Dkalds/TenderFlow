@@ -415,6 +415,12 @@ def build_css(t: Tokens = TOKENS) -> str:
   .bc-section {{ color: {c.text_muted}; font-weight: {ty.weight_medium}; }}
   .bc-sep {{ color: {c.text_disabled}; display: inline-flex; line-height: 0; }}
   .bc-page {{ color: {c.accent_primary}; font-weight: {ty.weight_medium}; }}
+  .bc-desc {{
+    font-size: {ty.size_xs};
+    color: {c.text_muted};
+    margin: 2px 0 0 0;
+    line-height: 1.4;
+  }}
 
   /* ── Empty / error states ─────────────────────────────────────────── */
   .empty-state {{
@@ -461,6 +467,36 @@ def build_css(t: Tokens = TOKENS) -> str:
   ::-webkit-scrollbar {{ width: 5px; }}
   ::-webkit-scrollbar-track {{ background: transparent; }}
   ::-webkit-scrollbar-thumb {{ background: {c.scrollbar_thumb}; border-radius: 3px; }}
+
+  /* ── Chart cards (glass-morphism wrapping charts) ─────────────────── */
+  [data-testid="stVerticalBlockBorderWrapper"]:has(.chart-card-header) {{
+    background: {c.bg_elev_1} !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+    border: 1px solid {c.border_subtle} !important;
+    border-radius: {ra.md} !important;
+    box-shadow: {sh.md} !important;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }}
+  [data-testid="stVerticalBlockBorderWrapper"]:has(.chart-card-header):hover {{
+    border-color: rgba(0,163,224,0.25) !important;
+    box-shadow: 0 6px 20px rgba(0,163,224,0.08), 0 1px 4px rgba(0,0,0,0.18) !important;
+  }}
+  .chart-card-header {{
+    margin-bottom: 4px;
+  }}
+  .chart-card-title {{
+    font-size: {ty.size_sm};
+    font-weight: {ty.weight_semibold};
+    color: {c.text_card_title};
+    letter-spacing: 0.01em;
+    line-height: 1.3;
+  }}
+  .chart-card-sub {{
+    font-size: {ty.size_xs};
+    color: {c.text_muted};
+    margin-top: 2px;
+  }}
 
   /* ── Density: tablas (Aggrid / dataframe) ─────────────────────────── */
   .ag-theme-streamlit .ag-row, .ag-theme-balham-dark .ag-row {{
@@ -740,7 +776,8 @@ def build_css(t: Tokens = TOKENS) -> str:
     border-left-style: solid !important;
   }}
   .top-card:hover {{
-    box-shadow: -4px 0 16px -4px rgba(0,163,224,0.15), 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: -4px 0 16px -4px rgba(0,163,224,0.18), 0 6px 16px rgba(0,0,0,0.12);
+    transform: translateX(2px) scale(1.005);
   }}
 
   /* ── Premium: Navigation tabs ─────────────────────────────────────── */
@@ -786,6 +823,27 @@ def build_css(t: Tokens = TOKENS) -> str:
     @keyframes fadeInDown {{
       from {{ opacity: 0; transform: translateY(-6px); }}
       to   {{ opacity: 1; transform: translateY(0); }}
+    }}
+
+    /* ── Staggered KPI card entrance ──────────────────────────────── */
+    @keyframes fadeInUp {{
+      from {{ opacity: 0; transform: translateY(8px); }}
+      to   {{ opacity: 1; transform: translateY(0); }}
+    }}
+    [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1) .kpi-card {{
+      animation: fadeInUp 0.28s ease both; animation-delay: 0ms;
+    }}
+    [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2) .kpi-card {{
+      animation: fadeInUp 0.28s ease both; animation-delay: 55ms;
+    }}
+    [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3) .kpi-card {{
+      animation: fadeInUp 0.28s ease both; animation-delay: 110ms;
+    }}
+    [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(4) .kpi-card {{
+      animation: fadeInUp 0.28s ease both; animation-delay: 165ms;
+    }}
+    [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(5) .kpi-card {{
+      animation: fadeInUp 0.28s ease both; animation-delay: 220ms;
     }}
   }}
 

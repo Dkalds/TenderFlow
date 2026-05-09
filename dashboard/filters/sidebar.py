@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import pandas as pd
 import streamlit as st
 
@@ -29,6 +31,20 @@ def _clear_filters() -> None:
     st.session_state[QP_LOADED] = False  # forzar relectura desde URL vacía
 
 
+def _set_rango_preset(n_days: int, fmin: date, fmax: date) -> None:
+    """Callback para botones de rango rápido — escribe en fs_rango."""
+    today = min(date.today(), fmax)
+    from_date = max(today - timedelta(days=n_days), fmin)
+    st.session_state["fs_rango"] = (from_date, today)
+
+
+def _set_rango_ytd(fmin: date, fmax: date) -> None:
+    """Callback para botón YTD — desde el 1 de enero del año actual."""
+    today = min(date.today(), fmax)
+    from_date = max(date(today.year, 1, 1), fmin)
+    st.session_state["fs_rango"] = (from_date, today)
+
+
 def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
     """Dibuja los controles de filtro en el sidebar activo y devuelve el estado."""
     _group_header("Buscar", "search")
@@ -44,11 +60,48 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
     fmax = df_full["fecha_publicacion"].max()
     if pd.notna(fmin) and pd.notna(fmax):
         _group_header("Periodo", "calendar")
+
+        # ── Botones de rango rápido ──────────────────────────────────────
+        fmin_d, fmax_d = fmin.date(), fmax.date()
+        c7, c30, c90, cytd = st.columns(4)
+        c7.button(
+            "7d",
+            on_click=_set_rango_preset,
+            args=(7, fmin_d, fmax_d),
+            use_container_width=True,
+            key="fs_preset_7d",
+            help="Últimos 7 días",
+        )
+        c30.button(
+            "30d",
+            on_click=_set_rango_preset,
+            args=(30, fmin_d, fmax_d),
+            use_container_width=True,
+            key="fs_preset_30d",
+            help="Últimos 30 días",
+        )
+        c90.button(
+            "90d",
+            on_click=_set_rango_preset,
+            args=(90, fmin_d, fmax_d),
+            use_container_width=True,
+            key="fs_preset_90d",
+            help="Últimos 90 días",
+        )
+        cytd.button(
+            "YTD",
+            on_click=_set_rango_ytd,
+            args=(fmin_d, fmax_d),
+            use_container_width=True,
+            key="fs_preset_ytd",
+            help="Desde el 1 de enero de este año",
+        )
+
         rango = st.date_input(
             "Rango fechas",
-            (fmin.date(), fmax.date()),
-            min_value=fmin.date(),
-            max_value=fmax.date(),
+            (fmin_d, fmax_d),
+            min_value=fmin_d,
+            max_value=fmax_d,
             key="fs_rango",
             label_visibility="collapsed",
         )
@@ -104,7 +157,23 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
             if isinstance(rango_b_raw, tuple) and len(rango_b_raw) == 2:
                 rango_b = rango_b_raw
 
-    # ── Acciones ──────────────────────────────────────────────────
+    # ── Badge de filtros activos + botón Limpiar ───────────────────
+    n_active = (
+        bool(q)
+        + len(estados)
+        + len(ccaas)
+        + len(organos)
+        + len(tipos_proy)
+        + (1 if importe_min > 0 else 0)
+    )
+    if n_active:
+        st.markdown(
+            f'<p style="font-size:0.75rem;color:var(--accent-primary,#00A3E0);'
+            f'margin:4px 0 2px 0;font-weight:600;">'
+            f"&#x2022; {n_active} filtro{'s' if n_active != 1 else ''} activo{'s' if n_active != 1 else ''}"
+            f"</p>",
+            unsafe_allow_html=True,
+        )
     st.button(
         "Limpiar filtros",
         on_click=_clear_filters,

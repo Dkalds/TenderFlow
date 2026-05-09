@@ -5,6 +5,7 @@ from __future__ import annotations
 import plotly.express as px
 import streamlit as st
 
+from dashboard.components.cards import chart_card
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import guarded_render
 from dashboard.components.tables import data_table
@@ -33,57 +34,62 @@ def render(ctx: PageContext) -> None:
     cMod, cType = st.columns(2)
 
     with cMod:
-        st.subheader("Módulos / productos SAP detectados")
-        mod_df = df.explode("modulos")
-        mod_count = (
-            mod_df.groupby("modulos")
-            .agg(n=("id_externo", "count"), importe=("importe", "sum"))
-            .reset_index()
-            .sort_values("n", ascending=False)
-        )
-        if not mod_count.empty:
-            fig = px.bar(
-                mod_count.head(15).sort_values("n"),
-                x="n",
-                y="modulos",
-                orientation="h",
-                template=ctx.plotly_template,
-                color="importe",
-                color_continuous_scale="YlGn",
-                labels={"n": "Apariciones", "modulos": "", "importe": "Importe €"},
+        with chart_card("Módulos / productos SAP detectados"):
+            mod_df = df.explode("modulos")
+            mod_count = (
+                mod_df.groupby("modulos")
+                .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+                .reset_index()
+                .sort_values("n", ascending=False)
             )
-            fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
-            st.plotly_chart(fig, use_container_width=True)
+            if not mod_count.empty:
+                fig = px.bar(
+                    mod_count.head(15).sort_values("n"),
+                    x="n",
+                    y="modulos",
+                    orientation="h",
+                    template=ctx.plotly_template,
+                    color="importe",
+                    color_continuous_scale="YlGn",
+                    labels={"n": "Apariciones", "modulos": "", "importe": "Importe €"},
+                )
+                fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True)
 
     with cType:
-        st.subheader("Tipo de proyecto × Estado")
-        cross = df.groupby(["tipo_proyecto", "estado_desc"]).size().reset_index(name="n")
-        if not cross.empty:
-            fig = px.sunburst(
-                cross,
-                path=["tipo_proyecto", "estado_desc"],
-                values="n",
-                template=ctx.plotly_template,
-                color="n",
-                color_continuous_scale="Greens",
-            )
-            fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
-            st.plotly_chart(fig, use_container_width=True)
+        with chart_card("Tipo de proyecto × Estado"):
+            cross = df.groupby(["tipo_proyecto", "estado_desc"]).size().reset_index(name="n")
+            if not cross.empty:
+                fig = px.sunburst(
+                    cross,
+                    path=["tipo_proyecto", "estado_desc"],
+                    values="n",
+                    template=ctx.plotly_template,
+                    color="n",
+                    color_continuous_scale="Greens",
+                )
+                fig.update_layout(height=520, margin=dict(t=20, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True)
 
     # ── Importe medio por módulo ─────────────────────────────────
     st.subheader("Importe medio por módulo SAP")
     imp_mod = importe_medio_por_modulo(df)
     if not imp_mod.empty:
+        imp_mod_top = imp_mod.head(15).rename(
+            columns={
+                "modulo": "Módulo",
+                "n": "Lic.",
+                "importe_medio": "Importe medio €",
+                "importe_total": "Importe total €",
+            }
+        )
+        n_max_mod = int(imp_mod_top["Lic."].max()) or 1
         data_table(
-            imp_mod.head(15).rename(
-                columns={
-                    "modulo": "Módulo",
-                    "n": "Lic.",
-                    "importe_medio": "Importe medio €",
-                    "importe_total": "Importe total €",
-                }
-            ),
+            imp_mod_top,
             column_config={
+                "Lic.": st.column_config.ProgressColumn(
+                    "Lic.", min_value=0, max_value=n_max_mod, format="%d"
+                ),
                 "Importe medio €": st.column_config.NumberColumn(format="%.0f €"),
                 "Importe total €": st.column_config.NumberColumn(format="%.0f €"),
             },
@@ -98,11 +104,18 @@ def render(ctx: PageContext) -> None:
         .head(15)
     )
     if not cpv_df.empty:
+        cpv_table = cpv_df.rename(
+            columns={"cpv_desc": "CPV", "n": "Lic.", "importe": "Importe €"}
+        )[["CPV", "Lic.", "Importe €"]]
+        n_max_cpv = int(cpv_table["Lic."].max()) or 1
         data_table(
-            cpv_df.rename(columns={"cpv_desc": "CPV", "n": "Lic.", "importe": "Importe €"})[
-                ["CPV", "Lic.", "Importe €"]
-            ],
-            column_config={"Importe €": st.column_config.NumberColumn(format="%.0f €")},
+            cpv_table,
+            column_config={
+                "Lic.": st.column_config.ProgressColumn(
+                    "Lic.", min_value=0, max_value=n_max_cpv, format="%d"
+                ),
+                "Importe €": st.column_config.NumberColumn(format="%.0f €"),
+            },
         )
 
 

@@ -15,12 +15,9 @@ import requests
 from lxml import etree
 
 from config import (
-    DAILY_MAX_PAGES,
-    MAX_XML_SIZE_BYTES,
     PLACE_LIVE_ATOM_URL,
-    REQUEST_DELAY_SECONDS,
-    REQUEST_TIMEOUT,
     USER_AGENT,
+    settings,
 )
 from observability.logging import get_logger
 from scraper.resilience import http_retry, placsp_breaker
@@ -55,7 +52,7 @@ def fetch_atom_page(
     if last_modified:
         headers["If-Modified-Since"] = last_modified
 
-    resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    resp = requests.get(url, headers=headers, timeout=settings.REQUEST_TIMEOUT)
     resp.raise_for_status()
 
     if resp.status_code == 304:
@@ -68,10 +65,10 @@ def fetch_atom_page(
         )
 
     content = resp.content
-    if len(content) > MAX_XML_SIZE_BYTES:
+    if len(content) > settings.MAX_XML_SIZE_BYTES:
         raise ValueError(
             f"Página ATOM demasiado grande: {len(content):,} bytes "
-            f"(límite: {MAX_XML_SIZE_BYTES:,})."
+            f"(límite: {settings.MAX_XML_SIZE_BYTES:,})."
         )
 
     return FetchResult(
@@ -145,7 +142,7 @@ def iter_live_entries(
           ``entries_seen``, ``etag``, ``last_modified``.
     """
     url: str | None = start_url or PLACE_LIVE_ATOM_URL
-    limit = max_pages or DAILY_MAX_PAGES
+    limit = max_pages or settings.DAILY_MAX_PAGES
     is_bootstrap = last_seen_updated is None
 
     collected: list[tuple[etree._Element, str]] = []
@@ -218,7 +215,7 @@ def iter_live_entries(
 
         # Delay entre páginas para no saturar PLACE
         if url:
-            time.sleep(REQUEST_DELAY_SECONDS)
+            time.sleep(settings.REQUEST_DELAY_SECONDS)
 
     log.info(
         "atom_live_iteration_done",
