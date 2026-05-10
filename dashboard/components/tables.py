@@ -64,11 +64,14 @@ def data_table(
             key=key,
         )
     else:
+        extra_kw: dict = {}
+        if height is not None:
+            extra_kw["height"] = height
         st.dataframe(
             df,
             use_container_width=True,
             hide_index=True,
-            height=height or None,  # type: ignore[arg-type]
             column_config=column_config or {},
             key=key,
+            **extra_kw,
         )
