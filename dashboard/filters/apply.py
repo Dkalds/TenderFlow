@@ -29,8 +29,10 @@ def apply_filters(df: pd.DataFrame, state: FiltersState) -> pd.DataFrame:
         result = result[result["tipo_proyecto"].isin(state.tipos_proy)]
     if state.tecnologias and "tecnologia" in result.columns:
         # tecnologia puede ser multi-valor ("SAP,ORACLE"), filtrar si contiene alguna
-        mask = result["tecnologia"].fillna("").apply(
-            lambda t: any(tech in t.split(",") for tech in state.tecnologias)
+        mask = (
+            result["tecnologia"]
+            .fillna("")
+            .apply(lambda t: any(tech in t.split(",") for tech in state.tecnologias))
         )
         result = result[mask]
     if state.importe_min > 0:

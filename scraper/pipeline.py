@@ -289,9 +289,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
 
     # Persistir con detección de cambios
     try:
-        upsert_result: UpsertResult = upsert_licitaciones_with_history(
-            encontradas, source=fuente
-        )
+        upsert_result: UpsertResult = upsert_licitaciones_with_history(encontradas, source=fuente)
     except Exception as e:
         log.exception("daily_persist_error")
         record_failure(run_id, fuente, e, scope="persist_licitaciones")

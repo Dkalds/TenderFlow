@@ -479,9 +479,7 @@ def _apply_v14_tecnologia(conn: Any) -> None:
         conn.execute("ALTER TABLE licitaciones ADD COLUMN tecnologia TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tecnologia ON licitaciones(tecnologia)")
         # Backfill: todas las licitaciones existentes son SAP (pre multi-vendor)
-        conn.execute(
-            "UPDATE licitaciones SET tecnologia = 'SAP' WHERE raw_keywords IS NOT NULL"
-        )
+        conn.execute("UPDATE licitaciones SET tecnologia = 'SAP' WHERE raw_keywords IS NOT NULL")
 
 
 # ---------------------------------------------------------------------------

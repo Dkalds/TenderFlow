@@ -140,7 +140,9 @@ with st.sidebar:
 
 # ── Top-nav: secciones principales ───────────────────────────────────────
 _all_sections = list(SECTIONS.keys())
-_visible_sections = _all_sections if current_user_is_admin() else [s for s in _all_sections if s != "Ops"]
+_visible_sections = (
+    _all_sections if current_user_is_admin() else [s for s in _all_sections if s != "Ops"]
+)
 
 section = top_nav(
     _visible_sections,

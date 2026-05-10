@@ -119,9 +119,9 @@ def build_forecast_df(
     computed_end = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
     valid_mask = df["duracion_meses"].notna() & df["inicio_efectivo"].notna()
     if valid_mask.any():
-        dur_days = (
-            df.loc[valid_mask, "duracion_meses"].round().astype(float) * 30.4375
-        ).astype("timedelta64[D]")
+        dur_days = (df.loc[valid_mask, "duracion_meses"].round().astype(float) * 30.4375).astype(
+            "timedelta64[D]"
+        )
         computed_end.loc[valid_mask] = df.loc[valid_mask, "inicio_efectivo"] + dur_days
     df["fecha_fin_estimada"] = df["fecha_fin_explicit_dt"].where(
         df["fecha_fin_explicit_dt"].notna(), computed_end

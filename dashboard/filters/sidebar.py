@@ -112,6 +112,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
 
     # ── Filtro de tecnología (nuevo, prominente) ─────────────────────
     tech_options = sorted(df_full["tecnologia"].dropna().unique())
+    tecnologias: list[str]
     if tech_options:
         tecnologias = st.multiselect(
             "Tecnología",
@@ -119,7 +120,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
             key="fs_tecnologias",
         )
     else:
-        tecnologias: list[str] = []
+        tecnologias = []
 
     estados = st.multiselect(
         "Estado",

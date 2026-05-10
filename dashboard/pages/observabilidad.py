@@ -6,13 +6,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from dashboard.auth import current_user_is_admin
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import empty_state, guarded_render
 from dashboard.components.tables import data_table
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
-from dashboard.auth import current_user_is_admin
 from db.database import connect
 from db.dlq import list_unresolved, mark_resolved
 
