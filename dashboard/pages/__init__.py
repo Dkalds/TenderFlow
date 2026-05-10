@@ -18,6 +18,7 @@ from dashboard.pages import (
     pipeline_alertas,
     proyectos_modulos,
     resumen,
+    tecnologias,
     tendencias,
 )
 
@@ -27,6 +28,7 @@ PAGE_REGISTRY: dict[str, Callable[[PageContext], None]] = {
     "Órganos": organos.render,
     "Geografía": geografia.render,
     "Proyectos & Módulos": proyectos_modulos.render,
+    "Tecnologías": tecnologias.render,
     "Detalle": detalle.render,
     "Competidores": competidores.render,
     "Pipeline & Alertas": pipeline_alertas.render,

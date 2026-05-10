@@ -4,7 +4,7 @@ from __future__ import annotations
 
 SECTIONS: dict[str, list[str]] = {
     "Vista General": ["Resumen", "Tendencias", "Detalle"],
-    "Mercado": ["Órganos", "Geografía", "Proyectos & Módulos"],
+    "Mercado": ["Órganos", "Geografía", "Proyectos & Módulos", "Tecnologías"],
     "Competencia": ["Competidores", "Pipeline & Alertas"],
     "Personal": ["Mi Watchlist"],
     "Ops": ["Observabilidad"],
@@ -25,6 +25,7 @@ PAGE_ICONS: dict[str, str] = {
     "Órganos": "🏛",
     "Geografía": "🗺",
     "Proyectos & Módulos": "🧩",
+    "Tecnologías": "🔧",
     "Competidores": "🏆",
     "Pipeline & Alertas": "🔔",
     "Mi Watchlist": "⭐",
@@ -38,6 +39,7 @@ PAGE_DESCRIPTIONS: dict[str, str] = {
     "Órganos": "Ranking de órganos contratantes, treemap y análisis de pipeline individual.",
     "Geografía": "Distribución geográfica por comunidad autónoma e importe acumulado.",
     "Proyectos & Módulos": "Desglose por tipo de proyecto y módulo SAP detectado.",
+    "Tecnologías": "Distribución, evolución y cruces por tecnología detectada (SAP, Oracle, Salesforce…).",
     "Competidores": "Empresas adjudicatarias, cuota de mercado y análisis comparativo.",
     "Pipeline & Alertas": "Licitaciones en plazo, predicciones y alertas de vencimiento.",
     "Mi Watchlist": "Reglas de seguimiento personalizadas por CPV, keyword e importe.",
