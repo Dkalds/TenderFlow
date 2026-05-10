@@ -53,12 +53,12 @@ def render(ctx: PageContext) -> None:
     )
     if not tech_counts.empty:
         tech_lider = tech_counts["n"].idxmax()
-        tech_lider_n = int(tech_counts.loc[tech_lider, "n"])
+        tech_lider_n = int(tech_counts.loc[tech_lider, "n"])  # type: ignore[arg-type]
         imp_medio = float(tech_counts["importe"].mean())
         # Tasa adjudicación media por tecnología
         adj_by_tech = (
             dfx_classified.groupby("tech_label")
-            .apply(
+            .apply(  # type: ignore[call-overload]
                 lambda g: (
                     (g["estado_desc"].str.contains("Adjud", case=False, na=False).sum())
                     / max(len(g), 1)
@@ -84,7 +84,7 @@ def render(ctx: PageContext) -> None:
         st.markdown(
             kpi_card(
                 "Tecnología líder",
-                tech_lider,
+                str(tech_lider),
                 delta=f"{tech_lider_n:,} licitaciones",
                 icon="🏅",
             ),
