@@ -223,17 +223,13 @@ def init_db() -> None:
         for stmt in SCHEMA.split(";"):
             stmt = stmt.strip()
             if stmt:
-                try:
-                    c.execute(stmt)
-                except Exception as exc:
-                    print(f"[init_db] SCHEMA ERROR on: {stmt[:200]}")
-                    print(f"[init_db] Exception: {exc}")
-                    raise
-        try:
-            apply_pending(c)
-        except Exception as exc:
-            print(f"[init_db] MIGRATION ERROR: {exc}")
-            raise
+                c.execute(stmt)
+        apply_pending(c)
+        # Ensure tecnologia column exists (may have been added by migration v14
+        # or may need to be added for the first time on new databases).
+        cols = {r[1] for r in c.execute("PRAGMA table_info(licitaciones)").fetchall()}
+        if "tecnologia" not in cols:
+            c.execute("ALTER TABLE licitaciones ADD COLUMN tecnologia TEXT")
 
 
 def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
