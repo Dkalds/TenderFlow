@@ -112,13 +112,17 @@ def build_forecast_df(
     # Fin estimado — vectorized:
     # 1. Start from explicit fecha_fin where available
     # 2. Otherwise add duracion_meses (rounded) to inicio_efectivo
-    duracion_offset = (
-        df["duracion_meses"].dropna().apply(lambda m: pd.DateOffset(months=round(float(m))))
-    )
+    #
+    # DateOffset(months=N) no es vectorizable (depende del calendario concreto),
+    # por lo que se aproxima con 30.4375 días/mes — suficientemente preciso para
+    # forecasting; la alternativa row-by-row sería O(n) con alto overhead de pandas.
     computed_end = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
     valid_mask = df["duracion_meses"].notna() & df["inicio_efectivo"].notna()
-    for idx in df.index[valid_mask]:
-        computed_end.at[idx] = df.at[idx, "inicio_efectivo"] + duracion_offset.at[idx]  # type: ignore[operator]
+    if valid_mask.any():
+        dur_days = (
+            df.loc[valid_mask, "duracion_meses"].round().astype(float) * 30.4375
+        ).astype("timedelta64[D]")
+        computed_end.loc[valid_mask] = df.loc[valid_mask, "inicio_efectivo"] + dur_days
     df["fecha_fin_estimada"] = df["fecha_fin_explicit_dt"].where(
         df["fecha_fin_explicit_dt"].notna(), computed_end
     )

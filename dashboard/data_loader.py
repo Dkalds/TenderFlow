@@ -24,6 +24,33 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
+def _rows_to_df(cursor: Any) -> pd.DataFrame:
+    """Convierte el resultado de un cursor a DataFrame usando cursor.description.
+
+    Centraliza el patrón repetido ``cols = [d[0] for d in cursor.description]``
+    + ``pd.DataFrame(rows, columns=cols)`` en un único helper reutilizable.
+    """
+    rows = cursor.fetchall()
+    cols = [d[0] for d in cursor.description]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def _backfill_ccaa(df: pd.DataFrame, log_suffix: str = "") -> None:
+    """Rellena la columna ``ccaa`` desde ``nuts_code`` donde está vacía.
+
+    Operación in-place. Si alguna de las columnas no existe o la conversión
+    falla, loguea un warning y continúa sin modificar el DataFrame.
+    """
+    if "ccaa" not in df.columns or "nuts_code" not in df.columns:
+        return
+    try:
+        mask = df["ccaa"].isna() & df["nuts_code"].notna()
+        df.loc[mask, "ccaa"] = df.loc[mask, "nuts_code"].apply(nuts_to_ccaa)
+    except Exception as e:
+        col_label = f"ccaa_{log_suffix}" if log_suffix else "ccaa"
+        log.warning("data_loader_enrichment_failed", column=col_label, error=str(e))
+
+
 def _safe_apply(
     df: pd.DataFrame,
     column: str,
@@ -68,9 +95,7 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
             sql += " LIMIT ?"
             params = (int(limit),)
         cursor = c.execute(sql, params)
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
-        df = pd.DataFrame(rows, columns=cols)
+        df = _rows_to_df(cursor)
     if df.empty:
         return df
 
@@ -119,12 +144,7 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
         op_name="tipo_contrato_label",
     )
 
-    if "ccaa" in df.columns and "nuts_code" in df.columns:
-        try:
-            mask = df["ccaa"].isna() & df["nuts_code"].notna()
-            df.loc[mask, "ccaa"] = df.loc[mask, "nuts_code"].apply(nuts_to_ccaa)
-        except Exception as e:
-            log.warning("data_loader_enrichment_failed", column="ccaa", error=str(e))
+    _backfill_ccaa(df)
 
     # Categorical dtypes for low-cardinality string columns — reduces memory
     for col in ("estado", "tipo_contrato", "ccaa"):
@@ -175,9 +195,7 @@ def load_adjudicaciones(limit: int | None = None) -> pd.DataFrame:
             sql += " LIMIT ?"
             params = (int(limit),)
         cursor = c.execute(sql, params)
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
-        df = pd.DataFrame(rows, columns=cols)
+        df = _rows_to_df(cursor)
     if df.empty:
         return df
 
@@ -202,12 +220,7 @@ def load_adjudicaciones(limit: int | None = None) -> pd.DataFrame:
     df["lead_time_dias"] = (df["fecha_adjudicacion"] - _fp).dt.days
     df.loc[df["lead_time_dias"] <= 0, "lead_time_dias"] = pd.NA
 
-    if "ccaa" in df.columns and "nuts_code" in df.columns:
-        try:
-            mask = df["ccaa"].isna() & df["nuts_code"].notna()
-            df.loc[mask, "ccaa"] = df.loc[mask, "nuts_code"].apply(nuts_to_ccaa)
-        except Exception as e:
-            log.warning("data_loader_enrichment_failed", column="ccaa_adj", error=str(e))
+    _backfill_ccaa(df, "adj")
 
     df["es_ute"] = df["nombre"].str.contains(r"\bU\.?T\.?E\.?\b", case=False, na=False, regex=True)
 
@@ -253,9 +266,7 @@ def _build_canonical_names(df: pd.DataFrame) -> pd.Series:
 def load_extracciones() -> pd.DataFrame:
     with connect() as c:
         cursor = c.execute("SELECT * FROM extracciones ORDER BY fecha DESC")
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
-        df = pd.DataFrame(rows, columns=cols)
+        df = _rows_to_df(cursor)
     if not df.empty:
         df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
     return df

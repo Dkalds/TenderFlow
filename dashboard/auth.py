@@ -224,7 +224,8 @@ def _handle_oauth_callback() -> bool:
         )
         resp.raise_for_status()
         token_data = resp.json()
-    except Exception:
+    except Exception as exc:
+        log.warning("oauth_token_exchange_failed", error=str(exc))
         st.error("Error al autenticar con Google. Inténtalo de nuevo.")
         st.query_params.clear()
         return False
@@ -236,7 +237,8 @@ def _handle_oauth_callback() -> bool:
             headers={"Authorization": f"Bearer {token_data['access_token']}"},
             timeout=10,
         ).json()
-    except Exception:
+    except Exception as exc:
+        log.warning("oauth_userinfo_failed", error=str(exc))
         st.error("Error al obtener datos del usuario.")
         st.query_params.clear()
         return False
@@ -387,7 +389,7 @@ def check_password() -> bool:
 
     # ── Paso 2: Contraseña (tras OAuth) ──────────────────────────────
     if has_oauth and password and oauth_done:
-        user_name = st.session_state.get("_user_name", "")
+        user_name = st.session_state.get(USER_NAME, "")
         greeting = f"Hola, {user_name}. " if user_name else ""
         st.markdown(f"### 🔒 {greeting}Introduce la contraseña")
         pwd = st.text_input("Contraseña", type="password", key="login_pwd")

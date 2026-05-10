@@ -225,11 +225,6 @@ def init_db() -> None:
             if stmt:
                 c.execute(stmt)
         apply_pending(c)
-        # Ensure tecnologia column exists (may have been added by migration v14
-        # or may need to be added for the first time on new databases).
-        cols = {r[1] for r in c.execute("PRAGMA table_info(licitaciones)").fetchall()}
-        if "tecnologia" not in cols:
-            c.execute("ALTER TABLE licitaciones ADD COLUMN tecnologia TEXT")
 
 
 def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
@@ -386,29 +381,36 @@ def upsert_licitaciones_with_history(
     """
     result = UpsertResult(inserted=[], modified=[], unchanged=[])
 
-    with connect() as c:
-        for lic in items:
-            existing = c.execute(
-                "SELECT " + _HISTORY_SELECT_COLS + " FROM licitaciones WHERE id_externo = ?",
-                [lic.id_externo],
-            ).fetchone()
+    batch = list(items)
+    if not batch:
+        return result
 
+    # Bulk pre-fetch: un único SELECT IN (...) en lugar de N SELECTs individuales
+    col_names = [c.strip() for c in _HISTORY_SELECT_COLS.split(",")]
+    with connect() as c:
+        placeholders = ", ".join("?" for _ in batch)
+        ids = [lic.id_externo for lic in batch]
+        existing_rows = c.execute(
+            f"SELECT {_HISTORY_SELECT_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})",
+            ids,
+        ).fetchall()
+        # Construir dict {id_externo: old_record} para lookup O(1) por item
+        existing: dict[str, dict] = {
+            row[0]: dict(zip(col_names, row, strict=False)) for row in existing_rows
+        }
+
+        for lic in batch:
             data = asdict(lic)
             vals = [data[k] for k in _LIC_KEYS]
+            old_record = existing.get(lic.id_externo)
 
-            if existing is not None:
-                # Construir dict del registro existente para comparar
-                col_names = [c.strip() for c in _HISTORY_SELECT_COLS.split(",")]
-                old_record = dict(zip(col_names, existing, strict=False))
-
+            if old_record is not None:
                 # Detectar campos que cambiaron
-                changed: list[str] = []
-                for field_name in HISTORY_TRACKED_FIELDS:
-                    old_val = old_record.get(field_name)
-                    new_val = data.get(field_name)
-                    # Normalizar para comparación (ambos None → iguales)
-                    if old_val != new_val:
-                        changed.append(field_name)
+                changed: list[str] = [
+                    field_name
+                    for field_name in HISTORY_TRACKED_FIELDS
+                    if old_record.get(field_name) != data.get(field_name)
+                ]
 
                 if changed:
                     # Guardar snapshot del estado ANTERIOR

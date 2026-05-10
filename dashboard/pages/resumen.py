@@ -92,9 +92,11 @@ def render(ctx: PageContext) -> None:
         est = (
             df.groupby("estado_desc").size().reset_index(name="n").sort_values("n", ascending=False)
         )
+        # fig_pie_estado se guarda para reusar en el export PDF sin reconstruir
+        fig_pie_estado = None
         with chart_card("Distribución por estado"):
             if not est.empty:
-                fig = px.pie(
+                fig_pie_estado = px.pie(
                     est,
                     names="estado_desc",
                     values="n",
@@ -102,13 +104,15 @@ def render(ctx: PageContext) -> None:
                     template=ctx.plotly_template,
                     color_discrete_sequence=ctx.color_sequence,
                 )
-                fig.update_traces(
+                fig_pie_estado.update_traces(
                     textposition="outside",
                     textinfo="label+percent",
                     hovertemplate="<b>%{label}</b><br>%{value} licitaciones<br>%{percent}<extra></extra>",
                 )
-                fig.update_layout(showlegend=False, height=320, margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True)
+                fig_pie_estado.update_layout(
+                    showlegend=False, height=320, margin=dict(t=10, b=10, l=10, r=10)
+                )
+                st.plotly_chart(fig_pie_estado, use_container_width=True)
 
         tp = (
             df.groupby("tipo_proyecto")
@@ -197,10 +201,6 @@ def render(ctx: PageContext) -> None:
     if not adj_resumen.empty:
         ids_filt = set(df["id_externo"])
         adj_r = adj_resumen[adj_resumen["licitacion_id"].isin(ids_filt)]
-
-        # Sparkline histórica de volumen (reutilizada en varios KPIs)
-        sp_count = kpi_sparkline_series(df, metric="count", freq="W", periods=12)
-        sp_sum = kpi_sparkline_series(df, metric="sum", freq="W", periods=12)
 
         cM1, cM2, cM3 = st.columns(3)
         with cM1:
@@ -345,24 +345,21 @@ def render(ctx: PageContext) -> None:
         top_pdf["importe_fmt"] = top_pdf["importe"].apply(fmt_eur)
         top_list: list[dict[str, Any]] = top_pdf.to_dict("records")  # type: ignore[assignment]
 
-        # Exportar charts como PNG
+        # Exportar charts como PNG — reusar fig_pie_estado ya construido
         chart_imgs: list[tuple[str, bytes]] = []
         try:
-            fig_estado = px.pie(
-                est,
-                names="estado_desc",
-                values="n",
-                hole=0.55,
-                template=ctx.plotly_template,
-                color_discrete_sequence=ctx.color_sequence,
-            )
-            fig_estado.update_layout(
-                showlegend=True,
-                height=400,
-                width=600,
-                margin=dict(t=30, b=30, l=30, r=30),
-            )
-            chart_imgs.append(("Distribución por estado", fig_estado.to_image(format="png")))
+            if fig_pie_estado is not None:
+                # Clonar para ajustar layout del PDF sin afectar el render en pantalla
+                import copy
+
+                fig_pdf = copy.deepcopy(fig_pie_estado)
+                fig_pdf.update_layout(
+                    showlegend=True,
+                    height=400,
+                    width=600,
+                    margin=dict(t=30, b=30, l=30, r=30),
+                )
+                chart_imgs.append(("Distribución por estado", fig_pdf.to_image(format="png")))
         except Exception:
             log.debug("chart_image_generation_failed", chart="estado")
 
@@ -391,9 +388,6 @@ def render(ctx: PageContext) -> None:
             mime="application/pdf",
             help="Genera un PDF con KPIs, top oportunidades y gráficos.",
         )
-
-        # Silenciar lint sobre variables usadas en el ámbito pero no en render
-        _ = (sp_count, sp_sum)
 
     # ── Panel comparativa de periodos ──────────────────────────────
     if ctx.filters.comparar and ctx.filters.rango and ctx.filters.rango_b:

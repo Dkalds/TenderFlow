@@ -40,8 +40,22 @@ _DAILY_SOURCE = "place_live_atom"
 
 
 def process_month(year: int, month: int, *, run_id: str | None = None, force: bool = False) -> dict:
-    """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste."""
+    """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.
+
+    Garantiza el cierre de la conexión DB del hilo worker actual al finalizar,
+    independientemente del resultado (éxito, error o circuit open).
+    """
     fuente = f"bulk_{year}{month:02d}"
+    try:
+        return _process_month_impl(year, month, run_id=run_id, force=force, fuente=fuente)
+    finally:
+        close_pool()
+
+
+def _process_month_impl(
+    year: int, month: int, *, run_id: str | None, force: bool, fuente: str
+) -> dict:
+    """Implementación interna de process_month (sin gestión de recursos del hilo)."""
     try:
         zip_path = download_month(year, month, force=force)
     except CircuitOpenError as e:
@@ -194,8 +208,7 @@ def backfill(start_year: int, start_month: int) -> list[dict]:
                 except Exception:
                     log.exception("backfill_month_error", year=y, month=m)
                     results.append({"year": y, "month": m, "status": "error"})
-            # Close DB connections held by worker threads
-            pool.map(lambda _: close_pool(), range(workers))
+            # Nota: las conexiones DB de cada worker se cierran en process_month via finally.
         _summarize(results, metrics)
     return results
 
