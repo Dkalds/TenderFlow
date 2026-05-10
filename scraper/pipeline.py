@@ -1,4 +1,4 @@
-"""Pipeline completo: descarga -> parseo -> filtrado SAP -> persistencia."""
+"""Pipeline completo: descarga -> parseo -> filtrado tecnología -> persistencia."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ _DAILY_SOURCE = "place_live_atom"
 
 
 def process_month(year: int, month: int, *, run_id: str | None = None, force: bool = False) -> dict:
-    """Procesa un mes: descarga ZIP, parsea, filtra SAP, persiste."""
+    """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste."""
     fuente = f"bulk_{year}{month:02d}"
     try:
         zip_path = download_month(year, month, force=force)
@@ -63,14 +63,14 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
     if zip_path is None:
         return {"year": year, "month": month, "status": "no_publicado"}
 
-    sap_encontradas = []
+    encontradas = []
     adj_por_lic: dict[str, list] = {}
     entries_error = 0
     for filename, content in iter_xml_files(zip_path):
         log.info("xml_parse_start", filename=filename)
         try:
             for lic, adjudicaciones in parse_atom_bytes(content):
-                sap_encontradas.append(lic)
+                encontradas.append(lic)
                 if adjudicaciones:
                     adj_por_lic[lic.id_externo] = adjudicaciones
         except Exception as e:
@@ -79,7 +79,7 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
             entries_error += 1
 
     try:
-        nuevas, actualizadas = upsert_licitaciones(sap_encontradas)
+        nuevas, actualizadas = upsert_licitaciones(encontradas)
     except Exception as e:
         log.exception("month_persist_error", year=year, month=month)
         record_failure(run_id, fuente, e, scope="persist_licitaciones")
@@ -99,8 +99,8 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
         fuente=fuente,
         nuevas=nuevas,
         actualizadas=actualizadas,
-        total=len(sap_encontradas),
-        notas=f"SAP:{len(sap_encontradas)} adj:{n_adj} adj_errors:{n_adj_failed} errors:{entries_error}",
+        total=len(encontradas),
+        notas=f"matches:{len(encontradas)} adj:{n_adj} adj_errors:{n_adj_failed} errors:{entries_error}",
     )
 
     # Instrumentación Prometheus (no bloquea si falla)
@@ -118,7 +118,7 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
         "year": year,
         "month": month,
         "status": "ok",
-        "sap_matches": len(sap_encontradas),
+        "tech_matches": len(encontradas),
         "adjudicaciones": n_adj,
         "adj_errors": n_adj_failed,
         "nuevas": nuevas,
@@ -206,7 +206,7 @@ def backfill(start_year: int, start_month: int) -> list[dict]:
 
 
 def process_daily(*, run_id: str | None = None) -> dict:
-    """Procesa el feed ATOM en vivo: pagina, filtra SAP, persiste con historial.
+    """Procesa el feed ATOM en vivo: pagina, filtra por tecnología, persiste con historial.
 
     Returns:
         dict con status, contadores y listas de ids insertados/modificados.
@@ -245,7 +245,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
         return {
             "status": "ok",
             "source": fuente,
-            "sap_matches": 0,
+            "tech_matches": 0,
             "inserted": [],
             "modified": [],
             "unchanged": [],
@@ -253,8 +253,8 @@ def process_daily(*, run_id: str | None = None) -> dict:
             "entries_seen": meta["entries_seen"],
         }
 
-    # Parsear entries y filtrar SAP
-    sap_encontradas = []
+    # Parsear entries y filtrar por tecnología
+    encontradas = []
     adj_por_lic: dict[str, list] = {}
     entries_error = 0
 
@@ -265,7 +265,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
                 # Actualizar fecha_actualizacion_fuente con el <updated> de la entry
                 if updated_str:
                     lic.fecha_actualizacion_fuente = updated_str
-                sap_encontradas.append(lic)
+                encontradas.append(lic)
                 adj = parse_adjudicaciones(entry_elem, lic.id_externo)
                 if adj:
                     adj_por_lic[lic.id_externo] = adj
@@ -277,7 +277,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
     # Persistir con detección de cambios
     try:
         upsert_result: UpsertResult = upsert_licitaciones_with_history(
-            sap_encontradas, source=fuente
+            encontradas, source=fuente
         )
     except Exception as e:
         log.exception("daily_persist_error")
@@ -307,9 +307,9 @@ def process_daily(*, run_id: str | None = None) -> dict:
         fuente=fuente,
         nuevas=upsert_result.nuevas,
         actualizadas=upsert_result.actualizadas,
-        total=len(sap_encontradas),
+        total=len(encontradas),
         notas=(
-            f"SAP:{len(sap_encontradas)} adj:{n_adj} "
+            f"matches:{len(encontradas)} adj:{n_adj} "
             f"inserted:{upsert_result.nuevas} modified:{len(upsert_result.modified)} "
             f"unchanged:{len(upsert_result.unchanged)} errors:{entries_error} "
             f"pages:{meta['pages_fetched']}"
@@ -318,7 +318,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
 
     log.info(
         "daily_pipeline_done",
-        sap_matches=len(sap_encontradas),
+        tech_matches=len(encontradas),
         inserted=upsert_result.nuevas,
         modified=len(upsert_result.modified),
         unchanged=len(upsert_result.unchanged),
@@ -330,7 +330,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
     return {
         "status": "ok",
         "source": fuente,
-        "sap_matches": len(sap_encontradas),
+        "tech_matches": len(encontradas),
         "adjudicaciones": n_adj,
         "inserted": upsert_result.inserted,
         "modified": upsert_result.modified,

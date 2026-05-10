@@ -175,7 +175,7 @@ class TestProcessMonth:
         ):
             result = process_month(2024, 1)
         assert result["status"] == "ok"
-        assert result["sap_matches"] == 1
+        assert result["tech_matches"] == 1
         assert result["nuevas"] == 1
 
     def test_adjudicaciones_are_persisted(self):
