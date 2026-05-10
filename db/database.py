@@ -223,8 +223,16 @@ def init_db() -> None:
         for stmt in SCHEMA.split(";"):
             stmt = stmt.strip()
             if stmt:
-                c.execute(stmt)
-        apply_pending(c)
+                try:
+                    c.execute(stmt)
+                except Exception as exc:
+                    log.error("init_db_schema_error", stmt=stmt[:120], error=str(exc))
+                    raise
+        try:
+            apply_pending(c)
+        except Exception as exc:
+            log.error("init_db_migration_error", error=str(exc))
+            raise
 
 
 def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
