@@ -1,11 +1,12 @@
 """Design tokens — única fuente de verdad del tema corporativo.
 
 Premium refresh:
-- Paleta dark más neutra (estilo Vercel/Linear), bg casi negro `#0A0A0B`.
+- Paleta dark más neutra (estilo Vercel/Linear), bg casi negro `#000000`.
 - Surfaces sólidas con leve gradient interior (sin glass-morphism agresivo).
 - Tipografía: Inter Tight como display + tabular-nums para KPIs.
 - Bordes 1px sutiles (rgba 6-8% blanco) para look enterprise.
 - Light mode tokens paralelos (`LIGHT_TOKENS`) — mismo schema, valores claros.
+- Acento principal: verde corporativo #86BC24 (PMS 368 C).
 """
 
 from __future__ import annotations
@@ -15,13 +16,13 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Colors:
-    # Base surfaces (dark mode default — paleta Vercel-like)
-    bg_base: str = "#0A0A0B"  # casi negro, neutro
-    bg_sidebar_top: str = "#0C0C0E"
-    bg_sidebar_bottom: str = "#0A0A0B"
-    bg_elev_1: str = "#111114"  # surface 1 (cards)
-    bg_elev_2: str = "#16161A"  # surface 2 (cards activas / tablas)
-    bg_hoverlabel: str = "#1A1A1F"
+    # Base surfaces (dark mode default — paleta negra corporativa)
+    bg_base: str = "#000000"  # negro puro corporativo
+    bg_sidebar_top: str = "#0A0A0A"
+    bg_sidebar_bottom: str = "#000000"
+    bg_elev_1: str = "#0D0D0D"  # surface 1 (cards)
+    bg_elev_2: str = "#141414"  # surface 2 (cards activas / tablas)
+    bg_hoverlabel: str = "#1A1A1A"
 
     # Borders (más sutiles, 6-8%)
     border_subtle: str = "rgba(255,255,255,0.06)"
@@ -35,17 +36,17 @@ class Colors:
     text_value: str = "#FAFAFA"
     text_secondary: str = "#A1A1AA"
     text_card_title: str = "#E4E4E7"
-    text_muted: str = "#A1A1AA"  # WCAG AA sobre #0A0A0B
+    text_muted: str = "#A1A1AA"  # WCAG AA sobre #000000
     text_disabled: str = "#71717A"
     text_plot_axis: str = "#A1A1AA"
     text_plot_body: str = "#A1A1AA"
 
-    # Accents — SAP-aligned
-    accent_primary: str = "#00A3E0"  # SAP blue
-    accent_primary_hover: str = "#0086BA"
-    accent_secondary: str = "#5BC0EB"
-    accent_secondary_hover: str = "#3DA3CC"
-    success: str = "#86BC25"
+    # Accents — verde corporativo #86BC24 (PMS 368 C) + negro #000000
+    accent_primary: str = "#86BC24"  # verde corporativo
+    accent_primary_hover: str = "#6B9B1E"  # verde oscuro hover
+    accent_secondary: str = "#A8D44C"  # verde claro complementario
+    accent_secondary_hover: str = "#8FBA35"
+    success: str = "#86BC24"  # verde = éxito (mismo acento)
     success_hover: str = "#6B9B1E"
     warning: str = "#FFB627"
     danger: str = "#E21836"
@@ -54,20 +55,20 @@ class Colors:
     scrollbar_thumb: str = "rgba(255,255,255,0.10)"
 
     # Streamlit native theme
-    st_primary: str = "#00A3E0"
-    st_bg_widget: str = "#16161A"
+    st_primary: str = "#86BC24"
+    st_bg_widget: str = "#141414"
     st_text: str = "#F4F4F5"
 
     # Plotly categorical palette
     plotly_colorway: tuple[str, ...] = (
-        "#00A3E0",
-        "#86BC25",
-        "#5BC0EB",
-        "#FFB627",
-        "#E21836",
-        "#7A5FFF",
-        "#00C2A8",
-        "#A1A1AA",
+        "#86BC24",  # verde corporativo (principal)
+        "#A8D44C",  # verde claro
+        "#FFB627",  # ámbar
+        "#00C2A8",  # teal
+        "#7A5FFF",  # púrpura
+        "#5BC0EB",  # azul claro
+        "#E21836",  # rojo
+        "#A1A1AA",  # gris neutro
     )
 
 
@@ -97,12 +98,12 @@ class LightColors:
     text_plot_axis: str = "#52525B"
     text_plot_body: str = "#52525B"
 
-    accent_primary: str = "#0086BA"
-    accent_primary_hover: str = "#005F85"
-    accent_secondary: str = "#3DA3CC"
-    accent_secondary_hover: str = "#2A86AB"
-    success: str = "#5E8B0F"
-    success_hover: str = "#4A6D0C"
+    accent_primary: str = "#6B9B1E"  # verde más oscuro para contraste sobre blanco
+    accent_primary_hover: str = "#527A17"
+    accent_secondary: str = "#86BC24"
+    accent_secondary_hover: str = "#6B9B1E"
+    success: str = "#6B9B1E"
+    success_hover: str = "#527A17"
     warning: str = "#B57600"
     danger: str = "#B91229"
 
@@ -131,7 +132,7 @@ class Radii:
 class Shadows:
     sm: str = "0 1px 2px rgba(0,0,0,0.20)"
     md: str = "0 4px 16px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.10)"
-    focus: str = "0 0 0 3px rgba(0,163,224,0.35)"
+    focus: str = "0 0 0 3px rgba(134,188,36,0.35)"  # verde corporativo
 
 
 @dataclass(frozen=True)

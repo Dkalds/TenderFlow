@@ -165,7 +165,7 @@ def render(ctx: PageContext) -> None:
             node_colors = [TOKENS.colors.accent_primary] * len(tipos) + [
                 TOKENS.colors.success
             ] * len(estados)
-            link_colors = ["rgba(0,163,224,0.15)"] * len(flow)
+            link_colors = ["rgba(134,188,36,0.15)"] * len(flow)
 
             fig = go.Figure(
                 go.Sankey(

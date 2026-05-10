@@ -172,7 +172,7 @@ def build_css(t: Tokens = TOKENS) -> str:
     transition: background 0.2s ease, border-color 0.2s ease !important;
   }}
   [data-testid="stExpandSidebarButton"]:hover {{
-    background: rgba(0,163,224,0.08) !important;
+    background: rgba(134,188,36,0.08) !important;
     border-color: var(--color-accent-primary) !important;
   }}
   [data-testid="stExpandSidebarButton"] svg {{
@@ -199,7 +199,7 @@ def build_css(t: Tokens = TOKENS) -> str:
     gap: 24px;
     padding: 0 20px;
     margin: -1.5rem -1rem 18px -1rem;
-    background: rgba(10,10,11,0.78);
+    background: rgba(0,0,0,0.82);
     backdrop-filter: saturate(160%) blur(14px);
     -webkit-backdrop-filter: saturate(160%) blur(14px);
     border-bottom: 1px solid var(--color-border-subtle);
@@ -212,7 +212,7 @@ def build_css(t: Tokens = TOKENS) -> str:
   }}
   .topbar-brand .brand-logo {{ line-height: 0; }}
   .topbar-brand .brand-logo svg {{
-    filter: drop-shadow(0 0 8px rgba(0,163,224,0.35));
+    filter: drop-shadow(0 0 8px rgba(134,188,36,0.35));
   }}
   .topbar-brand .brand-name {{
     font-family: {ty.family_display};
@@ -366,7 +366,7 @@ def build_css(t: Tokens = TOKENS) -> str:
   }}
   .filter-chip:hover {{
     border-color: var(--color-accent-primary);
-    background: rgba(0,163,224,0.07);
+    background: rgba(134,188,36,0.07);
     transform: translateY(-1px);
   }}
   .filter-chip svg {{ opacity: 0.7; flex-shrink: 0; }}
@@ -392,7 +392,7 @@ def build_css(t: Tokens = TOKENS) -> str:
   .kpi-card:hover {{
     border-color: var(--color-border-hover);
     transform: translateY(-1px);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 6px 22px -6px rgba(0,163,224,0.18), 0 2px 6px rgba(0,0,0,0.20);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 6px 22px -6px rgba(134,188,36,0.18), 0 2px 6px rgba(0,0,0,0.20);
     background-image: linear-gradient(180deg, rgba(255,255,255,0.030), rgba(255,255,255,0));
   }}
   .kpi-card .label {{
@@ -463,7 +463,7 @@ def build_css(t: Tokens = TOKENS) -> str:
   .top-card:hover {{
     border-color: var(--color-border-hover);
     transform: translateX(2px);
-    box-shadow: -3px 0 12px -4px rgba(0,163,224,0.18), 0 4px 14px rgba(0,0,0,0.18);
+    box-shadow: -3px 0 12px -4px rgba(134,188,36,0.18), 0 4px 14px rgba(0,0,0,0.18);
   }}
   .top-card .amount {{
     font-family: {ty.family_display};
@@ -575,7 +575,7 @@ def build_css(t: Tokens = TOKENS) -> str:
   }}
   [data-testid="stVerticalBlockBorderWrapper"]:has(.chart-card-header):hover {{
     border-color: var(--color-border-hover) !important;
-    box-shadow: 0 4px 18px -6px rgba(0,163,224,0.10), var(--shadow-sm) !important;
+    box-shadow: 0 4px 18px -6px rgba(134,188,36,0.10), var(--shadow-sm) !important;
   }}
   .chart-card-header {{ margin-bottom: 4px; }}
   .chart-card-title {{
@@ -737,7 +737,7 @@ def build_css(t: Tokens = TOKENS) -> str:
 
   /* ── Search highlight ─────────────────────────────────────────────── */
   mark.search-hl {{
-    background: rgba(0,163,224,0.25);
+    background: rgba(134,188,36,0.25);
     color: inherit;
     padding: 1px 2px;
     border-radius: 3px;
@@ -751,8 +751,8 @@ def build_css(t: Tokens = TOKENS) -> str:
     position: fixed;
     inset: 0;
     background:
-      radial-gradient(ellipse 60% 40% at 18% -8%, rgba(0,163,224,0.045) 0%, transparent 60%),
-      radial-gradient(ellipse 50% 40% at 82% 105%, rgba(91,192,235,0.030) 0%, transparent 60%);
+      radial-gradient(ellipse 60% 40% at 18% -8%, rgba(134,188,36,0.045) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 82% 105%, rgba(134,188,36,0.030) 0%, transparent 60%);
     pointer-events: none;
     z-index: -1;
   }}

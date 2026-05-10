@@ -145,9 +145,9 @@ LOGO_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" '
     'viewBox="0 0 32 32" fill="none" aria-label="Licitaciones SAP">'
     '<rect x="1.5" y="1.5" width="29" height="29" rx="7" '
-    'fill="rgba(0,163,224,0.12)" stroke="#00A3E0" stroke-width="1.5"/>'
+    'fill="rgba(134,188,36,0.12)" stroke="#86BC24" stroke-width="1.5"/>'
     '<path d="M9 22 L9 10 L13 10 L13 17 L17 10 L21 10 L17 16 L23 22 L18 22 L13 17 L13 22 Z" '
-    'fill="#00A3E0"/>'
+    'fill="#86BC24"/>'
     "</svg>"
 )
 
