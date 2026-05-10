@@ -12,12 +12,17 @@ from dashboard.components.tables import data_table
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
+from dashboard.auth import current_user_is_admin
 from db.database import connect
 from db.dlq import list_unresolved, mark_resolved
 
 
 @guarded_render
 def render(ctx: PageContext) -> None:
+    if not current_user_is_admin():
+        st.warning("Sección restringida a administradores.")
+        st.stop()
+
     st.subheader("Observabilidad")
     st.caption(
         "Estado del pipeline de extracción: runs recientes, métricas y "

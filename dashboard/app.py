@@ -13,7 +13,7 @@ if _REPO_ROOT not in sys.path:
 
 import streamlit as st
 
-from dashboard.auth import check_password
+from dashboard.auth import check_password, current_user_is_admin
 from dashboard.components.layout import render_sidebar_brand, render_topbar
 from dashboard.components.navigation import active_filters_chips, breadcrumb, sub_nav, top_nav
 from dashboard.components.states import empty_state
@@ -139,8 +139,11 @@ with st.sidebar:
     compact = st.toggle("Modo compacto", key="density_compact", value=False)
 
 # ── Top-nav: secciones principales ───────────────────────────────────────
+_all_sections = list(SECTIONS.keys())
+_visible_sections = _all_sections if current_user_is_admin() else [s for s in _all_sections if s != "Ops"]
+
 section = top_nav(
-    list(SECTIONS.keys()),
+    _visible_sections,
     icons=SECTION_ICONS,
     key="nav_section",
 )
