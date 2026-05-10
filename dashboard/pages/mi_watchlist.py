@@ -122,17 +122,19 @@ def render(ctx: PageContext) -> None:
         return
 
     # Vectorized matching — one boolean mask per entry, OR-combined
+    # NOTE: astype(str) must come BEFORE fillna("") to avoid TypeError when the
+    # column is Categorical (fillna with a value not in categories raises).
     combined_mask = pd.Series(False, index=df.index)
-    cpv_col = df["cpv"].fillna("").astype(str)
-    titulo_col = df["titulo"].fillna("").astype(str).str.lower()
+    cpv_col = df["cpv"].astype(str).fillna("")
+    titulo_col = df["titulo"].astype(str).fillna("").str.lower()
     desc_col = (
-        df["descripcion"].fillna("").astype(str).str.lower()
+        df["descripcion"].astype(str).fillna("").str.lower()
         if "descripcion" in df.columns
         else pd.Series("", index=df.index)
     )
     text_col = titulo_col + " " + desc_col  # type: ignore[operator]
     importe_col = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
-    ccaa_col = df["ccaa"].fillna("").astype(str)
+    ccaa_col = df["ccaa"].astype(str).fillna("")
 
     for e in entries:
         entry_mask = pd.Series(True, index=df.index)
