@@ -52,7 +52,6 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     fecha_inicio        TEXT,
     fecha_fin           TEXT,
     prorroga_descripcion TEXT,
-    tecnologia          TEXT,
     fecha_extraccion    TEXT NOT NULL
 );
 
@@ -224,12 +223,7 @@ def init_db() -> None:
         for stmt in SCHEMA.split(";"):
             stmt = stmt.strip()
             if stmt:
-                try:
-                    c.execute(stmt)
-                except Exception as e:
-                    # Log but don't crash on index creation for columns that
-                    # may not exist yet (added by migrations that run next).
-                    log.warning("schema_stmt_error", stmt=stmt[:80], error=str(e))
+                c.execute(stmt)
         apply_pending(c)
 
 
