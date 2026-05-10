@@ -226,12 +226,13 @@ def init_db() -> None:
                 try:
                     c.execute(stmt)
                 except Exception as exc:
-                    log.error("init_db_schema_error", stmt=stmt[:120], error=str(exc))
+                    print(f"[init_db] SCHEMA ERROR on: {stmt[:200]}")
+                    print(f"[init_db] Exception: {exc}")
                     raise
         try:
             apply_pending(c)
         except Exception as exc:
-            log.error("init_db_migration_error", error=str(exc))
+            print(f"[init_db] MIGRATION ERROR: {exc}")
             raise
 
 
