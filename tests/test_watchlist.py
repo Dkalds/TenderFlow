@@ -95,7 +95,14 @@ def test_watchlist_matching_with_categorical_columns():
     )
 
     entries = [
-        {"id": 1, "user_key": "u", "cpv_prefix": "72", "keyword": None, "min_importe": None, "ccaa": None}
+        {
+            "id": 1,
+            "user_key": "u",
+            "cpv_prefix": "72",
+            "keyword": None,
+            "min_importe": None,
+            "ccaa": None,
+        }
     ]
 
     # This block mirrors mi_watchlist.py lines 125-148.  Must not raise.
