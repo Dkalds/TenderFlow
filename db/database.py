@@ -224,7 +224,12 @@ def init_db() -> None:
         for stmt in SCHEMA.split(";"):
             stmt = stmt.strip()
             if stmt:
-                c.execute(stmt)
+                try:
+                    c.execute(stmt)
+                except Exception as e:
+                    # Log but don't crash on index creation for columns that
+                    # may not exist yet (added by migrations that run next).
+                    log.warning("schema_stmt_error", stmt=stmt[:80], error=str(e))
         apply_pending(c)
 
 
