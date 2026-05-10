@@ -1,12 +1,17 @@
 """Design tokens — única fuente de verdad del tema corporativo.
 
-Premium refresh:
-- Paleta dark más neutra (estilo Vercel/Linear), bg casi negro `#000000`.
-- Surfaces sólidas con leve gradient interior (sin glass-morphism agresivo).
-- Tipografía: Inter Tight como display + tabular-nums para KPIs.
-- Bordes 1px sutiles (rgba 6-8% blanco) para look enterprise.
-- Light mode tokens paralelos (`LIGHT_TOKENS`) — mismo schema, valores claros.
-- Acento principal: verde corporativo #86BC24 (PMS 368 C).
+Paleta oficial:
+  #86BC24  Verde corporativo  — color principal / acentos
+  #000000  Negro              — tipografía y branding
+  #4A4A4A  Gris oscuro        — textos secundarios
+  #75787B  Gris medio         — fondos y separadores
+  #D0D0CE  Gris claro         — fondos suaves
+  #FFFFFF  Blanco             — espacios y limpieza visual
+
+Dark mode: superficies en negro puro; grises corporativos para texto/bordes.
+Light mode: blanco como base, gris claro #D0D0CE para elevaciones,
+            gris medio #75787B para separadores, gris oscuro #4A4A4A para
+            textos secundarios, negro #000000 para texto primario.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Colors:
-    # Base surfaces (dark mode default — paleta negra corporativa)
+    # Base surfaces (dark mode — negro corporativo #000000)
     bg_base: str = "#000000"  # negro puro corporativo
     bg_sidebar_top: str = "#0A0A0A"
     bg_sidebar_bottom: str = "#000000"
@@ -24,24 +29,24 @@ class Colors:
     bg_elev_2: str = "#141414"  # surface 2 (cards activas / tablas)
     bg_hoverlabel: str = "#1A1A1A"
 
-    # Borders (más sutiles, 6-8%)
-    border_subtle: str = "rgba(255,255,255,0.06)"
-    border_card: str = "rgba(255,255,255,0.07)"
-    border_hover: str = "rgba(255,255,255,0.14)"
-    border_plot: str = "rgba(255,255,255,0.06)"
-    border_hoverlabel: str = "rgba(255,255,255,0.10)"
+    # Borders — derivados del gris medio #75787B con opacidad sobre negro
+    border_subtle: str = "rgba(117,120,123,0.18)"  # #75787B @18%
+    border_card: str = "rgba(117,120,123,0.20)"  # #75787B @20%
+    border_hover: str = "rgba(117,120,123,0.45)"  # #75787B @45%
+    border_plot: str = "rgba(117,120,123,0.15)"  # #75787B @15%
+    border_hoverlabel: str = "rgba(117,120,123,0.30)"  # #75787B @30%
 
-    # Text
-    text_primary: str = "#F4F4F5"  # casi blanco neutro
-    text_value: str = "#FAFAFA"
-    text_secondary: str = "#A1A1AA"
-    text_card_title: str = "#E4E4E7"
-    text_muted: str = "#A1A1AA"  # WCAG AA sobre #000000
-    text_disabled: str = "#71717A"
-    text_plot_axis: str = "#A1A1AA"
-    text_plot_body: str = "#A1A1AA"
+    # Text — blanco corporativo + grises de la paleta oficial
+    text_primary: str = "#FFFFFF"  # blanco corporativo
+    text_value: str = "#FFFFFF"  # blanco puro para valores KPI
+    text_secondary: str = "#D0D0CE"  # gris claro corporativo
+    text_card_title: str = "#D0D0CE"  # gris claro corporativo
+    text_muted: str = "#75787B"  # gris medio corporativo
+    text_disabled: str = "#4A4A4A"  # gris oscuro corporativo
+    text_plot_axis: str = "#75787B"  # gris medio corporativo
+    text_plot_body: str = "#D0D0CE"  # gris claro corporativo
 
-    # Accents — verde corporativo #86BC24 (PMS 368 C) + negro #000000
+    # Accents — verde corporativo #86BC24 + negro #000000
     accent_primary: str = "#86BC24"  # verde corporativo
     accent_primary_hover: str = "#6B9B1E"  # verde oscuro hover
     accent_secondary: str = "#A8D44C"  # verde claro complementario
@@ -51,13 +56,13 @@ class Colors:
     warning: str = "#FFB627"
     danger: str = "#E21836"
 
-    # Scrollbar
-    scrollbar_thumb: str = "rgba(255,255,255,0.10)"
+    # Scrollbar — gris medio corporativo
+    scrollbar_thumb: str = "rgba(117,120,123,0.30)"  # #75787B @30%
 
     # Streamlit native theme
     st_primary: str = "#86BC24"
     st_bg_widget: str = "#141414"
-    st_text: str = "#F4F4F5"
+    st_text: str = "#FFFFFF"
 
     # Plotly categorical palette
     plotly_colorway: tuple[str, ...] = (
@@ -68,7 +73,7 @@ class Colors:
         "#7A5FFF",  # púrpura
         "#5BC0EB",  # azul claro
         "#E21836",  # rojo
-        "#A1A1AA",  # gris neutro
+        "#75787B",  # gris medio corporativo
     )
 
 
@@ -76,29 +81,33 @@ class Colors:
 class LightColors:
     """Tokens claros — mismo schema que Colors. Usados con `data-theme="light"`."""
 
-    bg_base: str = "#FAFAFA"
-    bg_sidebar_top: str = "#FFFFFF"
-    bg_sidebar_bottom: str = "#F4F4F5"
-    bg_elev_1: str = "#FFFFFF"
-    bg_elev_2: str = "#F4F4F5"
+    # Base surfaces — blanco corporativo + gris claro #D0D0CE
+    bg_base: str = "#FFFFFF"  # blanco corporativo
+    bg_sidebar_top: str = "#FFFFFF"  # blanco
+    bg_sidebar_bottom: str = "#D0D0CE"  # gris claro corporativo
+    bg_elev_1: str = "#FFFFFF"  # blanco (cards)
+    bg_elev_2: str = "#D0D0CE"  # gris claro corporativo (tablas/activas)
     bg_hoverlabel: str = "#FFFFFF"
 
-    border_subtle: str = "rgba(0,0,0,0.07)"
-    border_card: str = "rgba(0,0,0,0.08)"
-    border_hover: str = "rgba(0,0,0,0.16)"
-    border_plot: str = "rgba(0,0,0,0.06)"
-    border_hoverlabel: str = "rgba(0,0,0,0.10)"
+    # Borders — derivados del gris medio #75787B
+    border_subtle: str = "rgba(117,120,123,0.20)"  # #75787B @20%
+    border_card: str = "rgba(117,120,123,0.25)"  # #75787B @25%
+    border_hover: str = "rgba(117,120,123,0.55)"  # #75787B @55%
+    border_plot: str = "rgba(117,120,123,0.18)"  # #75787B @18%
+    border_hoverlabel: str = "rgba(117,120,123,0.30)"  # #75787B @30%
 
-    text_primary: str = "#09090B"
-    text_value: str = "#09090B"
-    text_secondary: str = "#52525B"
-    text_card_title: str = "#18181B"
-    text_muted: str = "#52525B"
-    text_disabled: str = "#A1A1AA"
-    text_plot_axis: str = "#52525B"
-    text_plot_body: str = "#52525B"
+    # Text — negro y grises corporativos sobre blanco
+    text_primary: str = "#000000"  # negro corporativo
+    text_value: str = "#000000"  # negro corporativo para valores KPI
+    text_secondary: str = "#4A4A4A"  # gris oscuro corporativo
+    text_card_title: str = "#000000"  # negro corporativo
+    text_muted: str = "#75787B"  # gris medio corporativo
+    text_disabled: str = "#D0D0CE"  # gris claro corporativo
+    text_plot_axis: str = "#75787B"  # gris medio corporativo
+    text_plot_body: str = "#4A4A4A"  # gris oscuro corporativo
 
-    accent_primary: str = "#6B9B1E"  # verde más oscuro para contraste sobre blanco
+    # Accents — verde más oscuro para WCAG AA sobre blanco
+    accent_primary: str = "#6B9B1E"  # verde oscuro (contraste ≥4.5:1 sobre #FFF)
     accent_primary_hover: str = "#527A17"
     accent_secondary: str = "#86BC24"
     accent_secondary_hover: str = "#6B9B1E"
@@ -107,7 +116,8 @@ class LightColors:
     warning: str = "#B57600"
     danger: str = "#B91229"
 
-    scrollbar_thumb: str = "rgba(0,0,0,0.15)"
+    # Scrollbar — gris medio corporativo
+    scrollbar_thumb: str = "rgba(117,120,123,0.35)"  # #75787B @35%
 
 
 @dataclass(frozen=True)

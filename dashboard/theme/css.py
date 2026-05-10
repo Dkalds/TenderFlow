@@ -249,12 +249,12 @@ def build_css(t: Tokens = TOKENS) -> str:
     height: 6px;
     border-radius: 50%;
     background: var(--color-success);
-    box-shadow: 0 0 0 0 rgba(134,188,37,0.6);
+    box-shadow: 0 0 0 0 rgba(134,188,36,0.6);
     animation: pulseDot 2s ease-in-out infinite;
   }}
   @keyframes pulseDot {{
-    0%, 100% {{ box-shadow: 0 0 0 0 rgba(134,188,37,0.5); }}
-    50%      {{ box-shadow: 0 0 0 5px rgba(134,188,37,0); }}
+    0%, 100% {{ box-shadow: 0 0 0 0 rgba(134,188,36,0.5); }}
+    50%      {{ box-shadow: 0 0 0 5px rgba(134,188,36,0); }}
   }}
   .topbar-meta svg {{ flex-shrink: 0; opacity: 0.85; }}
 

@@ -8,7 +8,7 @@ base = "dark"
 primaryColor = "#86BC24"
 backgroundColor = "#000000"
 secondaryBackgroundColor = "#141414"
-textColor = "#F4F4F5"
+textColor = "#FFFFFF"
 font = "sans serif"
 
 [server]
