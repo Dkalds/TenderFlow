@@ -163,6 +163,31 @@ def detect_modules(text: str | None) -> list[str]:
     return found or ["SAP (genérico)"]
 
 
+# ── Etiquetas de tecnología para el dashboard ───────────────────────────
+TECHNOLOGY_LABELS: dict[str, str] = {
+    "SAP": "SAP",
+    "SALESFORCE": "Salesforce",
+    "ORACLE": "Oracle",
+    "MICROSOFT": "Microsoft Dynamics / Azure",
+    "SERVICENOW": "ServiceNow",
+    "WORKDAY": "Workday",
+    "IBM": "IBM",
+    "OPENTEXT": "OpenText",
+    "UNIT4": "Unit4",
+    "META4": "Meta4",
+    "SOPRA": "Sopra",
+    "SAGE": "Sage",
+    "INFOR": "Infor",
+}
+
+
+def tecnologia_label(code: str | None) -> str:
+    """Devuelve etiqueta legible para un código de tecnología."""
+    if not code:
+        return "Sin clasificar"
+    return TECHNOLOGY_LABELS.get(code.strip(), code.strip())
+
+
 # ── Clasificador de tipo de proyecto ────────────────────────────────────
 PROJECT_TYPES = {
     "Mantenimiento": [r"\bmantenimien", r"\bsoporte\b", r"\bmantenance\b"],

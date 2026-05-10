@@ -14,6 +14,7 @@ class FiltersState:
     ccaas: list[str] = field(default_factory=list)
     organos: list[str] = field(default_factory=list)
     tipos_proy: list[str] = field(default_factory=list)
+    tecnologias: list[str] = field(default_factory=list)
     importe_min: int = 0
     comparar: bool = False
     rango_b: tuple[date, date] | None = None
@@ -26,6 +27,7 @@ class FiltersState:
             or self.ccaas
             or self.organos
             or self.tipos_proy
+            or self.tecnologias
             or self.importe_min > 0
         )
 
@@ -50,6 +52,8 @@ class FiltersState:
             items.append((f"Órgano: {o[:25]}", "fs_organos", o))
         for t in self.tipos_proy:
             items.append((f"Tipo: {t}", "fs_tipos", t))
+        for tech in self.tecnologias:
+            items.append((f"Tecnología: {tech}", "fs_tecnologias", tech))
         if self.importe_min > 0:
             items.append((f"Imp. ≥ {self.importe_min:,} €", "fs_imp_min", None))
         return items
@@ -70,6 +74,8 @@ class FiltersState:
             params["organos"] = ",".join(self.organos)
         if self.tipos_proy:
             params["tipos"] = ",".join(self.tipos_proy)
+        if self.tecnologias:
+            params["tecnologias"] = ",".join(self.tecnologias)
         if self.importe_min > 0:
             params["imp_min"] = str(self.importe_min)
         return params
@@ -97,5 +103,6 @@ class FiltersState:
             ccaas=[c for c in params.get("ccaas", "").split(",") if c],
             organos=[o for o in params.get("organos", "").split(",") if o],
             tipos_proy=[t for t in params.get("tipos", "").split(",") if t],
+            tecnologias=[t for t in params.get("tecnologias", "").split(",") if t],
             importe_min=importe_min,
         )

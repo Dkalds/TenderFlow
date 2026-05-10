@@ -109,6 +109,18 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
         rango = None
 
     _group_header("Segmentación", "filter")
+
+    # ── Filtro de tecnología (nuevo, prominente) ─────────────────────
+    tech_options = sorted(df_full["tecnologia"].dropna().unique())
+    if tech_options:
+        tecnologias = st.multiselect(
+            "Tecnología",
+            tech_options,
+            key="fs_tecnologias",
+        )
+    else:
+        tecnologias: list[str] = []
+
     estados = st.multiselect(
         "Estado",
         sorted(df_full["estado_desc"].dropna().unique()),
@@ -167,6 +179,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
         + len(ccaas)
         + len(organos)
         + len(tipos_proy)
+        + len(tecnologias)
         + (1 if importe_min > 0 else 0)
     )
     if n_active:
@@ -192,6 +205,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
         ccaas=list(ccaas),
         organos=list(organos),
         tipos_proy=list(tipos_proy),
+        tecnologias=list(tecnologias),
         importe_min=int(importe_min),
         comparar=st.session_state.get("fs_comparar", False),
         rango_b=rango_b,

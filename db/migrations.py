@@ -221,6 +221,14 @@ MIGRATIONS: list[tuple[int, str, str]] = [
             ON kpi_snapshots(computed_at DESC, metrica, dimension)
         """,
     ),
+    (
+        14,
+        "add_tecnologia_column",
+        """
+        -- Columna añadida de forma programática en _apply_v14_tecnologia
+        SELECT 1
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -311,7 +319,7 @@ ROLLBACKS: dict[int, str] = {
 }
 
 # Migraciones que NO se pueden revertir (solo ADD COLUMN sin DROP COLUMN)
-_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10}
+_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10, 14}
 
 
 def current_version(conn: Any) -> int:
@@ -350,6 +358,9 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 10: is_admin column on users
         if version == 10:
             _apply_v10_is_admin(conn)
+        # Migración 14: tecnologia column on licitaciones
+        if version == 14:
+            _apply_v14_tecnologia(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -450,6 +461,27 @@ def _apply_v10_is_admin(conn: Any) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "is_admin" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+
+
+def _apply_v14_tecnologia(conn: Any) -> None:
+    """Añade columna tecnologia a licitaciones si no existe (idempotente).
+
+    También backfill: marca licitaciones existentes con raw_keywords como 'SAP'
+    ya que antes del multi-vendor solo se extraían licitaciones SAP.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(licitaciones)").fetchall()}
+    if "tecnologia" not in cols:
+        conn.execute("ALTER TABLE licitaciones ADD COLUMN tecnologia TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tecnologia ON licitaciones(tecnologia)")
+        # Backfill: todas las licitaciones existentes son SAP (pre multi-vendor)
+        conn.execute(
+            "UPDATE licitaciones SET tecnologia = 'SAP' WHERE raw_keywords IS NOT NULL"
+        )
 
 
 # ---------------------------------------------------------------------------

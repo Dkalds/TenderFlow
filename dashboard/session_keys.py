@@ -24,6 +24,7 @@ FS_ESTADOS: Final = "fs_estados"
 FS_CCAAS: Final = "fs_ccaas"
 FS_ORGANOS: Final = "fs_organos"
 FS_TIPOS: Final = "fs_tipos"
+FS_TECNOLOGIAS: Final = "fs_tecnologias"
 FS_IMP_MIN: Final = "fs_imp_min"
 FS_COMPARAR: Final = "fs_comparar"
 
@@ -35,6 +36,7 @@ FILTER_KEYS: Final[tuple[str, ...]] = (
     FS_CCAAS,
     FS_ORGANOS,
     FS_TIPOS,
+    FS_TECNOLOGIAS,
     FS_IMP_MIN,
     FS_COMPARAR,
     FS_RANGO_B,

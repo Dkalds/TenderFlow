@@ -22,7 +22,7 @@ from config import settings
 from dashboard.classifiers import nuts_to_ccaa
 from db.database import Adjudicacion, Licitacion
 from observability.logging import get_logger
-from scraper.filters import matches_sap
+from scraper.filters import matches_technology
 
 log = get_logger(__name__)
 
@@ -153,7 +153,7 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
 
 
 def parse_entry(entry: Any) -> Licitacion | None:
-    """Convierte una <entry> ATOM en una Licitacion (si es de SAP)."""
+    """Convierte una <entry> ATOM en una Licitacion (si es de tecnología enterprise)."""
     titulo = _text(entry, "./atom:title") or ""
     summary = _text(entry, "./atom:summary")
     fecha_pub = _text(entry, "./atom:updated")
@@ -234,9 +234,16 @@ def parse_entry(entry: Any) -> Licitacion | None:
     if nombre_proyecto:
         titulo = nombre_proyecto
 
-    is_sap, kw = matches_sap(titulo, summary)
-    if not is_sap:
+    is_tech, tech_kw = matches_technology(titulo, summary)
+    if not is_tech:
         return None
+
+    # Determinar tecnologías detectadas y keywords
+    tecnologias = sorted(tech_kw.keys())
+    all_keywords: list[str] = []
+    for kw_list in tech_kw.values():
+        all_keywords.extend(kw_list)
+    kw = sorted(set(all_keywords))
 
     return Licitacion(
         id_externo=id_externo,
@@ -260,11 +267,12 @@ def parse_entry(entry: Any) -> Licitacion | None:
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
         prorroga_descripcion=prorroga,
+        tecnologia=",".join(tecnologias),
     )
 
 
 def parse_atom_bytes(content: bytes) -> Iterator[tuple[Licitacion, list[Adjudicacion]]]:
-    """Itera (licitación SAP, adjudicaciones) encontradas en un ATOM."""
+    """Itera (licitación, adjudicaciones) encontradas en un ATOM."""
     if len(content) > settings.MAX_XML_SIZE_BYTES:
         raise ValueError(
             f"Fichero XML demasiado grande: {len(content):,} bytes "
