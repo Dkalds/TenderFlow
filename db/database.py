@@ -56,8 +56,6 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     fecha_extraccion    TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_tecnologia ON licitaciones(tecnologia);
-
 CREATE INDEX IF NOT EXISTS idx_fecha_pub ON licitaciones(fecha_publicacion);
 CREATE INDEX IF NOT EXISTS idx_organo    ON licitaciones(organo_contratacion);
 CREATE INDEX IF NOT EXISTS idx_estado    ON licitaciones(estado);
