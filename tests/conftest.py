@@ -17,6 +17,7 @@ def tmp_db(monkeypatch, tmp_path):
 
     importlib.import_module("config.settings")
     import sys
+
     importlib.reload(sys.modules["config.settings"])
     import config as cfg
 

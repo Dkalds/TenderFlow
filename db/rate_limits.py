@@ -61,6 +61,7 @@ def check_rate_limit_db(
             return True
     except Exception:
         # Si la tabla no existe o hay error de BD, permitir la operación (fail open)
+        log.debug("check_rate_limit_db_error", key=key, exc_info=True)
         return True
 
 
@@ -88,6 +89,7 @@ def record_failed_login(client_key: str) -> int:
             ).fetchone()
             return int(row[0])
     except Exception:
+        log.debug("record_failed_login_db_error", client_key=client_key, exc_info=True)
         return 0
 
 
@@ -124,6 +126,7 @@ def is_login_locked_out(client_key: str, max_attempts: int = 5) -> tuple[bool, f
                 return False, 0.0
             return True, remaining
     except Exception:
+        log.debug("is_login_locked_out_db_error", client_key=client_key, exc_info=True)
         return False, 0.0
 
 
@@ -155,4 +158,5 @@ def cleanup_expired(window_seconds: float = 86_400.0) -> int:
             # SQLite no tiene rowcount fiable vía libsql, así que devolvemos 0
             return 0
     except Exception:
+        log.debug("cleanup_expired_db_error", exc_info=True)
         return 0

@@ -14,6 +14,9 @@ from dashboard.components.tables import data_table
 from dashboard.pages._base import PageContext
 from dashboard.stats import score_oportunidad
 from dashboard.utils.format import fmt_eur
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -340,7 +343,8 @@ def render(ctx: PageContext) -> None:
             )
             sub_scored["score"] = sub_scored["score"].fillna(0).astype(int)
             sub_scored = sub_scored.sort_values("score", ascending=False)
-        except Exception:
+        except Exception as e:
+            log.debug("tecnologias_score_oportunidad_failed", error=str(e))
             sub_scored = sub.copy()
             sub_scored["score"] = 0
             sub_scored["banda"] = "—"

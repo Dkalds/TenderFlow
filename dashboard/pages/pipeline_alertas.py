@@ -15,6 +15,9 @@ from dashboard.forecast import build_forecast_df
 from dashboard.pages._base import PageContext
 from dashboard.stats import ratio_relicitacion, risk_flags, score_oportunidad
 from dashboard.utils.format import fmt_eur
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @guarded_render
@@ -351,7 +354,8 @@ def render(ctx: PageContext) -> None:
             how="left",
         )
         oport_display["riesgo_flags"] = oport_display["riesgo_flags"].fillna("")
-    except Exception:
+    except Exception as e:
+        log.debug("pipeline_risk_flags_failed", error=str(e))
         oport_display["riesgo_flags"] = ""
 
     try:
@@ -361,7 +365,8 @@ def render(ctx: PageContext) -> None:
         )
         oport_display["score"] = oport_display["score"].fillna(0).astype(int)
         oport_display["banda"] = oport_display["banda"].fillna("—")
-    except Exception:
+    except Exception as e:
+        log.debug("pipeline_score_oportunidad_failed", error=str(e))
         oport_display["score"] = 0
         oport_display["banda"] = "—"
 

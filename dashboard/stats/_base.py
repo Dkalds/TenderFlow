@@ -5,6 +5,9 @@ from __future__ import annotations
 import pandas as pd
 
 from db.database import connect
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 def load_dataframe() -> pd.DataFrame:
@@ -907,7 +910,8 @@ def score_oportunidad(
             riesgo_n = df["id_externo"].map(lambda i: rf_map.get(i, 0)).astype(float)
             # 0 flags = +1 * peso, 4 flags = -1 * peso (mapeo lineal)
             riesgo_norm = 1.0 - (riesgo_n / 2.0).clip(0, 1) * 2.0  # [1, -1]
-        except Exception:
+        except Exception as e:
+            log.debug("score_risk_flags_failed", error=str(e))
             riesgo_norm = pd.Series(1.0, index=df.index)
     else:
         riesgo_norm = pd.Series(1.0, index=df.index)

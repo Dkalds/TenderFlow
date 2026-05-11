@@ -193,7 +193,8 @@ def _write_via_client(run: RunInstrumentation) -> None:
         from db.database import count_licitaciones
 
         db_total.set(count_licitaciones())
-    except Exception:
+    except Exception as e:
+        log.debug("prometheus_db_count_failed", error=str(e))
         db_total.set(0)
 
     _METRICS_DIR.mkdir(parents=True, exist_ok=True)

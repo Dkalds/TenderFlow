@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 # Ensure project root is on sys.path when run as `python -m scheduler.run_update`
 _project_root = str(Path(__file__).resolve().parent.parent)
@@ -106,7 +107,7 @@ def main() -> int:
     return 0
 
 
-def _handle_daily_result(result: dict, log) -> None:
+def _handle_daily_result(result: dict[str, Any], log: Any) -> None:
     """Procesa resultado del carril diario: alertas watchlist + notificación."""
     if result.get("status") != "ok":
         return

@@ -14,6 +14,9 @@ from dashboard.pages._base import PageContext
 from dashboard.stats import risk_flags, score_oportunidad
 from dashboard.utils.export import to_excel_bytes
 from dashboard.utils.format import fmt_eur, highlight_match
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @guarded_render
@@ -30,7 +33,8 @@ def render(ctx: PageContext) -> None:
         )
         df["riesgo_flags"] = df["riesgo_flags"].fillna("")
         df["riesgo_score"] = df["riesgo_score"].fillna(0).astype(int)
-    except Exception:
+    except Exception as e:
+        log.debug("detalle_risk_flags_failed", error=str(e))
         df = df.copy()
         df["riesgo_flags"] = ""
         df["riesgo_score"] = 0
@@ -40,7 +44,8 @@ def render(ctx: PageContext) -> None:
         df = df.merge(sc[["id_externo", "score", "banda", "desglose"]], on="id_externo", how="left")
         df["score"] = df["score"].fillna(0).astype(int)
         df["banda"] = df["banda"].fillna("—")
-    except Exception:
+    except Exception as e:
+        log.debug("detalle_score_oportunidad_failed", error=str(e))
         df = df.copy() if "score" not in df.columns else df
         df["score"] = 0
         df["banda"] = "—"

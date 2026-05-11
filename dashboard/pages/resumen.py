@@ -440,7 +440,8 @@ def _render_banner_hoy(df: pd.DataFrame, adj: pd.DataFrame) -> None:
             watchlist_ids = {
                 str(m.get("id_externo")) for m in matches_session if m.get("id_externo")
             }
-        except Exception:
+        except Exception as e:
+            log.debug("resumen_watchlist_ids_failed", error=str(e))
             watchlist_ids = set()
 
     # Calculos KPI

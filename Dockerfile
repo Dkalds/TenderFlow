@@ -1,6 +1,12 @@
 # ── Etapa 1: dependencias ───────────────────────────────────────────────────
 FROM python:3.11-slim AS deps
 
+# Buenas prácticas para Python en contenedores:
+# - PYTHONDONTWRITEBYTECODE: evita ficheros .pyc en la imagen
+# - PYTHONUNBUFFERED: stdout/stderr sin buffer → logs inmediatos en Docker
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Herramientas del sistema mínimas (SQLite nativo ya incluido en slim)
@@ -14,6 +20,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Etapa 2: imagen de producción ───────────────────────────────────────────
 FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 # Usuario no-root para reducir superficie de ataque
 RUN useradd --create-home --shell /bin/bash appuser

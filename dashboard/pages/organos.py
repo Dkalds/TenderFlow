@@ -14,6 +14,9 @@ from dashboard.data_loader import load_adjudicaciones
 from dashboard.pages._base import PageContext
 from dashboard.stats import kpis_organo, score_oportunidad
 from dashboard.utils.format import fmt_eur
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @guarded_render
@@ -280,7 +283,8 @@ def render(ctx: PageContext) -> None:
         sub_sorted = sub.merge(sc[["id_externo", "score", "banda"]], on="id_externo", how="left")
         sub_sorted["score"] = sub_sorted["score"].fillna(0).astype(int)
         sub_sorted = sub_sorted.sort_values("score", ascending=False)
-    except Exception:
+    except Exception as e:
+        log.debug("organos_score_oportunidad_failed", error=str(e))
         sub_sorted = sub.copy()
         sub_sorted["score"] = 0
         sub_sorted["banda"] = "—"

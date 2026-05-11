@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
 [project]
 name = "licitaciones-sap"
 version = "1.0.0"
@@ -96,6 +100,8 @@ module = [
     "scraper.pipeline",
     "scraper.codice_parser",
     "scraper.bulk_downloader",
+    "scheduler.*",
+    "shared.*",
 ]
 disallow_untyped_defs = true
 warn_unused_ignores = true
@@ -148,12 +154,7 @@ omit = [
     "dashboard/data_loader.py",
     "dashboard/stats.py",
     "dashboard/faiss_index.py",
-    "scheduler/run_update.py",
-    "scheduler/kpi_precompute.py",
-    "scraper/ml_classifier.py",
     "observability/prometheus.py",
-    "db/rate_limits.py",
-    "config.py",
     "config/*",
 ]
 
