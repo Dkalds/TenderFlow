@@ -89,7 +89,11 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
     """
     init_db()
     with connect() as c:
-        sql = "SELECT * FROM licitaciones ORDER BY fecha_publicacion DESC"
+        sql = (
+            "SELECT * FROM licitaciones "
+            "WHERE tecnologia IS NOT NULL AND tecnologia != '' "
+            "ORDER BY fecha_publicacion DESC"
+        )
         params: tuple[Any, ...] = ()
         if limit is not None and limit > 0:
             sql += " LIMIT ?"
