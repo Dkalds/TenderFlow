@@ -14,16 +14,13 @@ Submódulos disponibles para imports directos:
 """
 
 from dashboard.stats._base import (  # noqa: F401
-    _STRIP_RE,
     _build_searchable_text,
     _keywords_mask,
-    _normalize_titulo,
     calidad_dato,
     calientes_hoy,
     ccaa_mas_activa,
     compare_periods,
     concentracion_geografica,
-    dedupe_reaperturas,
     funnel_estados,
     hhi_concentracion,
     importe_medio_por_modulo,
@@ -62,7 +59,6 @@ __all__ = [
     "ccaa_mas_activa",
     "compare_periods",
     "concentracion_geografica",
-    "dedupe_reaperturas",
     "funnel_estados",
     "hhi_concentracion",
     "importe_medio_por_modulo",

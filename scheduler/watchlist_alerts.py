@@ -51,6 +51,51 @@ def _query_licitaciones_since(cpv_prefix: str, since_date: str) -> list[dict[str
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
+def _query_licitaciones_batch(
+    entries: list[dict[str, Any]], default_since: str
+) -> dict[str, list[dict[str, Any]]]:
+    """Consulta licitaciones para múltiples entradas en una sola query por fecha.
+
+    Agrupa todos los CPV prefixes con el mismo ``since_date``, ejecuta una única
+    query con OR de LIKE y devuelve un dict ``{cpv_prefix: [licitaciones]}``.
+
+    Para entradas con ``since_date`` distintos se agrupan por fecha y se hace una
+    query por grupo — normalmente 1-2 queries en vez de N.
+    """
+    from collections import defaultdict
+
+    # Agrupar por since_date para minimizar queries
+    by_since: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for entry in entries:
+        raw_since = entry.get("last_notified_at") or default_since
+        by_since[str(raw_since)].append(entry)
+
+    result: dict[str, list[dict[str, Any]]] = {}
+
+    with connect() as c:
+        for since_date, grp_entries in by_since.items():
+            cpv_prefixes = [e["cpv_prefix"] for e in grp_entries]
+            placeholders = " OR ".join("cpv LIKE ?" for _ in cpv_prefixes)
+            params: list[Any] = [since_date] + [p + "%" for p in cpv_prefixes]
+            cur = c.execute(
+                "SELECT id_externo, titulo, descripcion, organo_contratacion, "  # noqa: S608
+                "cpv, importe, ccaa, estado, fecha_publicacion, url "
+                "FROM licitaciones "
+                f"WHERE fecha_publicacion >= ? AND ({placeholders}) "
+                "ORDER BY fecha_publicacion DESC",
+                params,
+            )
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+            # Distribuir resultados por CPV prefix (una licitación puede coincidir
+            # con varios prefixes — matches_licitacion() hará el filtro fino)
+            for prefix in cpv_prefixes:
+                result[prefix] = [r for r in rows if (r.get("cpv") or "").startswith(prefix)]
+
+    return result
+
+
 def _build_body(matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> str:
     total = sum(len(lics) for _, lics in matches_by_entry)
     lines: list[str] = [f"Se han encontrado {total} licitación(es) que encajan con tu watchlist:\n"]
@@ -110,18 +155,17 @@ def check_and_notify() -> int:
     for recipient, recipient_entries in by_email.items():
         matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
 
-        for entry in recipient_entries:
-            raw_since = entry.get("last_notified_at") or default_since
-            since_date = str(raw_since)
+        # Batch: una query por grupo de since_date en lugar de N queries
+        candidates_by_prefix = _query_licitaciones_batch(recipient_entries, default_since)
 
-            candidates = _query_licitaciones_since(entry["cpv_prefix"], since_date)
+        for entry in recipient_entries:
+            candidates = candidates_by_prefix.get(entry["cpv_prefix"], [])
             matched = [lic for lic in candidates if matches_licitacion(entry, lic)]
 
             log.debug(
                 "watchlist_entry_checked",
                 cpv=entry["cpv_prefix"],
                 keyword=entry.get("keyword"),
-                since=since_date,
                 candidates=len(candidates),
                 matches=len(matched),
                 recipient=recipient,

@@ -118,10 +118,18 @@ def _record_failed_attempt() -> None:
 def _get_signing_key() -> bytes:
     """Devuelve la clave para firmar/verificar el state OAuth.
 
-    Usa GOOGLE_CLIENT_SECRET como material base — es un secreto del servidor
-    que el atacante no conoce.
+    Usa SIGNING_KEY si está configurada (recomendado en producción).
+    Fallback: deriva una clave de GOOGLE_CLIENT_SECRET para compatibilidad
+    con entornos que aún no tienen SIGNING_KEY configurada.
     """
-    return settings.GOOGLE_CLIENT_SECRET.encode()
+    if settings.SIGNING_KEY:
+        return settings.SIGNING_KEY.encode()
+    # Fallback: derivar clave con HKDF-like SHA256 para no usar el secret raw
+    import hashlib
+
+    return hashlib.sha256(
+        b"oauth_state_signing_v1:" + settings.GOOGLE_CLIENT_SECRET.encode()
+    ).digest()
 
 
 def _generate_oauth_state() -> str:

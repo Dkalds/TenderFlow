@@ -19,10 +19,10 @@ from typing import Any
 from lxml import etree
 
 from config import settings
-from dashboard.classifiers import nuts_to_ccaa
 from db.database import Adjudicacion, Licitacion
 from observability.logging import get_logger
 from scraper.filters import matches_technology
+from shared.geo import nuts_to_ccaa
 
 log = get_logger(__name__)
 

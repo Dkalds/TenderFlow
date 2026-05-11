@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     OAUTH_REDIRECT_URI: str = "http://localhost:8501"
+    # Clave independiente para firmar tokens CSRF/OAuth state (HMAC-SHA256).
+    # Si no se configura, se deriva de GOOGLE_CLIENT_SECRET como fallback.
+    # En producción configura un valor aleatorio de 32+ caracteres:
+    #   python -c "import secrets; print(secrets.token_hex(32))"
+    SIGNING_KEY: str = ""
 
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""

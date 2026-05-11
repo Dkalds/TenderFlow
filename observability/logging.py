@@ -52,6 +52,10 @@ _SENSITIVE_KEYS = frozenset(
 
 _REDACTED = "***REDACTED***"
 
+# Cache de valores sensibles — se actualiza una única vez en configure_logging().
+# Evita leer os.environ en cada evento de log.
+_cached_sensitive_values: set[str] = set()
+
 
 def _load_sensitive_values() -> set[str]:
     """Lee los valores actuales de las env vars sensibles. Vacíos se ignoran."""
@@ -70,16 +74,10 @@ def _redact_secrets(
 ) -> MutableMapping[str, Any]:
     """Procesador structlog que redacta valores sensibles en cada evento.
 
-    Aplica dos estrategias:
-      1. Si la *clave* del campo coincide con un nombre sensible
-         (password, token, secret, ...), se redacta el valor.
-      2. Si el *valor* coincide con el contenido actual de una env var
-         sensible (TURSO_AUTH_TOKEN, DASHBOARD_PASSWORD, etc.), se redacta.
-
-    Es un best-effort defensivo: redacciones adicionales en el código que
-    construye el log siguen siendo recomendables.
+    Usa el cache de valores sensibles calculado en configure_logging() para
+    evitar llamadas repetidas a os.environ en cada evento de log.
     """
-    sensitive_values = _load_sensitive_values()
+    sensitive_values = _cached_sensitive_values
 
     for key, value in list(event_dict.items()):
         if key.lower() in _SENSITIVE_KEYS:
@@ -118,7 +116,10 @@ def configure_logging(
     """Configura structlog + logging stdlib para toda la app.
 
     Idempotente: llamar múltiples veces es seguro.
+    Actualiza el cache de valores sensibles para el processor de redacción.
     """
+    global _cached_sensitive_values
+    _cached_sensitive_values = _load_sensitive_values()
     if json_logs is None:
         json_logs = _detect_json_default()
 

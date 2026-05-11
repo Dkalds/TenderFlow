@@ -11,6 +11,10 @@ from observability.alerts import AlertLevel, _build_html, notify
 
 def _reload_config():
     """Recarga config para que las variables de entorno actualizadas surtan efecto."""
+    import sys
+
+    importlib.import_module("config.settings")
+    importlib.reload(sys.modules["config.settings"])
     import config as cfg
 
     importlib.reload(cfg)

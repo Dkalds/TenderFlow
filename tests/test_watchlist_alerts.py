@@ -14,7 +14,10 @@ from unittest.mock import patch
 def test_user_key_uses_password(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "test_secret")
     import importlib
+    import sys
 
+    importlib.import_module("config.settings")
+    importlib.reload(sys.modules["config.settings"])
     import config
 
     importlib.reload(config)
@@ -30,7 +33,10 @@ def test_user_key_fallback_to_computername(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "")
     monkeypatch.setenv("COMPUTERNAME", "MYHOST")
     import importlib
+    import sys
 
+    importlib.import_module("config.settings")
+    importlib.reload(sys.modules["config.settings"])
     import config
 
     importlib.reload(config)
@@ -214,7 +220,7 @@ def test_check_and_notify_with_matches_sends_alert(tmp_db):
 
     with (
         patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
-        patch("scheduler.watchlist_alerts._query_licitaciones_since", return_value=[lic]),
+        patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={"48": [lic]}),
         patch("scheduler.watchlist_alerts.matches_licitacion", return_value=True),
         patch("scheduler.watchlist_alerts.update_last_notified"),
         patch("scheduler.watchlist_alerts.notify") as mock_notify,

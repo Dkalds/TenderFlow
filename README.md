@@ -1,84 +1,154 @@
 # Licitaciones SAP — Sector Público España
 
-Aplicación que extrae automáticamente las licitaciones publicadas en la
-**Plataforma de Contratación del Sector Público (PLACSP)** relacionadas
-con proyectos **SAP** y muestra estadísticas en un dashboard interactivo.
+Sistema de inteligencia comercial que extrae automáticamente las licitaciones
+publicadas en la **Plataforma de Contratación del Sector Público (PLACSP)**
+relacionadas con proyectos de software enterprise (SAP, Salesforce, Oracle,
+Microsoft Dynamics y otros) y las presenta en un dashboard interactivo con
+análisis estadístico, alertas y exportación.
+
+---
+
+## Características principales
+
+| Módulo | Descripción |
+|--------|-------------|
+| **Scraper** | Descarga ZIPs mensuales (bulk) y feed ATOM en vivo de PLACSP. Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
+| **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
+| **Base de datos** | SQLite local o Turso cloud (réplica embebida). Upsert idempotente, historial de cambios, DLQ |
+| **Dashboard** | Streamlit con KPIs, mapas, gráficos Plotly, comparador de periodos, watchlist, exportación PDF/Excel |
+| **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo) |
+| **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, alertas por nivel de severidad |
+| **Autenticación** | Password con rate limiting + Google OAuth 2.0, HMAC-signed CSRF state |
+| **Búsqueda semántica** | sentence-transformers + FAISS para similitud de licitaciones (opcional, ver deps) |
+
+---
 
 ## Arquitectura
 
 ```
-┌─────────────────────────┐       ┌──────────────────┐
-│ PLACSP open data (ZIP)  │──────▶│ scraper/pipeline │
-│ hacienda.gob.es         │       │ (descarga+parse) │
-└─────────────────────────┘       └────────┬─────────┘
-                                           │
-                                  filtra SAP keywords
-                                           ▼
-                          ┌────────────────────────────┐
-                          │  SQLite local / Turso cloud │
-                          │  (upsert idempotente)       │
-                          └──────────────┬─────────────┘
+┌─────────────────────────┐       ┌──────────────────────┐
+│ PLACSP open data        │──────▶│  scraper/pipeline    │
+│ - ZIPs mensuales (bulk) │       │  - descarga + parse  │
+│ - Feed ATOM en vivo     │       │  - filtro keywords   │
+└─────────────────────────┘       │  - clasificador ML   │
+                                  └──────────┬───────────┘
+                                             │  upsert idempotente
+                                             ▼
+                              ┌──────────────────────────┐
+                              │  SQLite local / Turso    │
+                              │  (historial de cambios)  │
+                              └──────────┬───────────────┘
                                          │
-                          ┌──────────────┼─────────────┐
-                          ▼                            ▼
-                ┌──────────────────┐         ┌──────────────────┐
-                │ GitHub Actions   │         │ Streamlit UI     │
-                │ (cron diario)    │         │ KPIs + gráficos  │
-                └──────────────────┘         └──────────────────┘
+                          ┌──────────────┼──────────────┐
+                          ▼              ▼              ▼
+              ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+              │ GitHub       │  │ Streamlit UI │  │ Alertas      │
+              │ Actions cron │  │ KPIs+gráficos│  │ email/SMTP   │
+              └──────────────┘  └──────────────┘  └──────────────┘
 ```
 
-## Estructura
+---
+
+## Estructura del proyecto
 
 ```
 licitaciones-sap/
-├── config.py                # Keywords SAP, rutas, URLs, límites
-├── requirements.txt
-├── .env                     # Variables de entorno (NO commitear)
+├── config/                       # Configuración modular
+│   ├── settings.py               #   Variables de entorno (pydantic-settings)
+│   ├── keywords.py               #   SAP_KEYWORDS, TECHNOLOGY_KEYWORDS
+│   └── constants.py              #   URLs PLACSP, CPV_PREFIXES_TI, campos histórico
+├── shared/
+│   └── geo.py                    # NUTS3 → CCAA (compartido entre scraper y dashboard)
 ├── db/
-│   └── database.py          # SQLite/Turso + upsert + log extracciones
+│   ├── database.py               # SQLite/Turso, upsert, historial, extracciones
+│   ├── migrations.py             # Migraciones DDL idempotentes
+│   ├── watchlist.py              # Persistencia de watchlist de usuario
+│   ├── dlq.py                    # Dead Letter Queue para items fallidos
+│   └── rate_limits.py            # Rate limiting en BD
 ├── scraper/
-│   ├── bulk_downloader.py   # Descarga ZIPs mensuales del PLACSP
-│   ├── codice_parser.py     # Parser ATOM/CODICE (UBL)
-│   ├── filters.py           # Detección de keywords SAP
-│   └── pipeline.py          # Orquestación end-to-end
+│   ├── pipeline.py               # Orquestador principal (bulk + daily)
+│   ├── bulk_downloader.py        # Descarga ZIPs mensuales de PLACSP
+│   ├── codice_parser.py          # Parser ATOM/CODICE (formato UBL)
+│   ├── atom_live.py              # Feed ATOM en vivo (cada 4h)
+│   ├── filters.py                # Detección de keywords por tecnología
+│   ├── ml_classifier.py          # Clasificador ML TF-IDF + LogisticRegression
+│   └── resilience.py             # Circuit breaker, reintentos, timeouts
 ├── dashboard/
-│   ├── app.py               # Streamlit dashboard (punto de entrada)
-│   ├── auth.py              # Autenticación con rate limiting y timeout
-│   ├── data_loader.py       # Carga y enriquecimiento de datos
-│   ├── classifiers.py       # CPV, módulos, tipo de proyecto
-│   ├── normalize.py         # Normalización de empresas y NIFs
-│   ├── forecast.py          # Predicción de tendencias
-│   ├── components/          # Cards, KPIs, navegación, tablas
-│   ├── filters/             # Estado de filtros y sidebar
-│   ├── pages/               # Una página por sección del dashboard
-│   ├── theme/               # Tokens de diseño, CSS, plantilla Plotly
-│   └── utils/               # Exportación, formato, seguridad
+│   ├── app.py                    # Entry point Streamlit
+│   ├── auth.py                   # Password + Google OAuth 2.0
+│   ├── data_loader.py            # Carga y enriquecimiento con caché
+│   ├── classifiers.py            # CPV, módulos SAP, tipo de proyecto
+│   ├── normalize.py              # Normalización de empresas y NIFs
+│   ├── forecast.py               # Predicción de tendencias
+│   ├── faiss_index.py            # Búsqueda semántica con FAISS (opcional)
+│   ├── embeddings.py             # Generación de embeddings (opcional)
+│   ├── kpi_bar.py                # Barra de KPIs reutilizable
+│   ├── stats/                    # Funciones estadísticas (kpis, por_mes, ...)
+│   ├── components/               # Cards, KPIs, navegación, toasts, iconos
+│   ├── filters/                  # Estado de filtros y sidebar
+│   ├── pages/                    # Una página Streamlit por sección
+│   ├── theme/                    # Tokens de diseño, CSS, plantilla Plotly
+│   └── utils/                    # Exportación PDF/Excel, formato, seguridad
 ├── scheduler/
-│   ├── run_update.py        # Entry point para cron / GitHub Actions
-│   ├── healthcheck.py       # Verificación de salud del sistema
-│   └── watchlist_alerts.py  # Alertas por watchlist de usuario
+│   ├── run_update.py             # Entry point para cron / GitHub Actions
+│   ├── healthcheck.py            # Verificación de frescura de datos
+│   ├── watchlist_alerts.py       # Alertas por watchlist (batch optimizado)
+│   └── kpi_precompute.py         # Pre-cómputo de KPIs pesados
+├── observability/
+│   ├── logging.py                # Structlog configurado, redacción de secretos
+│   ├── alerts.py                 # Envío de alertas por email / nivel
+│   └── prometheus.py             # Métricas Prometheus (textfile + HTTP)
 ├── .github/workflows/
-│   ├── scrape.yml           # Bulk mensual (diario 06:00 UTC)
-│   ├── scrape-daily.yml     # Feed ATOM en vivo (cada 4h)
-│   └── healthcheck.yml      # Healthcheck (cada 6h)
-└── data/                    # BD SQLite + ZIPs descargados (gitignored)
+│   ├── ci.yml                    # Lint, tipos, tests, pre-commit, audit, docker build
+│   ├── scrape.yml                # Bulk mensual (diario 06:00 UTC)
+│   ├── scrape-daily.yml          # Feed ATOM en vivo (cada 4h)
+│   └── healthcheck.yml           # Healthcheck (cada 6h)
+├── Dockerfile                    # Multi-stage build (deps + runtime)
+├── docker-compose.yml            # dashboard + scheduler compartiendo volumen
+└── data/                         # BD SQLite + ZIPs descargados (gitignored)
 ```
+
+---
 
 ## Instalación
 
+### Instalación estándar
+
 ```bash
+git clone https://github.com/Dkalds/Licitaciones_sap_SP.git
 cd licitaciones-sap
 python -m venv .venv
 .venv\Scripts\activate          # Windows
-pip install -r requirements.txt
+# source .venv/bin/activate     # Linux / macOS
+pip install -e .
 ```
+
+### Con búsqueda semántica (opcional, ~2 GB adicionales por PyTorch)
+
+```bash
+pip install -e ".[ml]"
+```
+
+### Con Docker
+
+```bash
+docker compose up -d
+```
+
+El dashboard estará disponible en http://localhost:8501.
+El scheduler ejecuta actualizaciones automáticamente en el mismo stack.
+
+---
 
 ## Configuración
 
-Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
+Crea un archivo `.env` en la raíz del proyecto:
 
 ```dotenv
-# Base de datos (elige una opción)
+# ── Entorno ─────────────────────────────────────────────
+ENV=dev   # "prod" obliga a definir DASHBOARD_PASSWORD
+
+# ── Base de datos (elige una opción) ────────────────────
 
 # Opción A — SQLite local (por defecto, sin configuración adicional)
 # DB_PATH=data/licitaciones.db
@@ -87,45 +157,86 @@ Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
 TURSO_DATABASE_URL=libsql://<tu-db>.turso.io
 TURSO_AUTH_TOKEN=<token-con-permisos-rw>
 
-# Dashboard — dejar vacío para deshabilitar la autenticación
-DASHBOARD_PASSWORD=<contraseña-segura>
+# ── Dashboard ────────────────────────────────────────────
+DASHBOARD_PASSWORD=<contraseña-segura-32-chars>   # vacío = sin autenticación
+
+# ── OAuth Google (opcional) ──────────────────────────────
+GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=<client-secret>
+OAUTH_REDIRECT_URI=http://localhost:8501
+# Clave independiente para firmar tokens CSRF (recomendado en producción):
+# python -c "import secrets; print(secrets.token_hex(32))"
+SIGNING_KEY=<clave-aleatoria-32-chars>
+
+# ── Alertas por email (opcional) ─────────────────────────
+ALERT_EMAIL_TO=destino@ejemplo.com
+ALERT_SMTP_USER=remitente@gmail.com
+ALERT_SMTP_PASSWORD=<app-password-gmail>
 ```
 
 > **Importante:** `.env` está en `.gitignore`. Nunca lo commitees.
-> Si usas Streamlit Cloud, define estas variables en
-> *App settings → Secrets* (`secrets.toml`).
+> Si usas Streamlit Cloud, define estas variables en *App settings → Secrets*.
+
+---
 
 ## Uso
 
-### 1. Primera carga histórica (ej. desde enero 2024)
+### 1. Primera carga histórica
+
 ```bash
 python -m scheduler.run_update --backfill 2024 1
 ```
 
+Descarga todos los meses desde enero 2024 hasta hoy.
+
 ### 2. Actualización incremental (últimos 3 meses)
+
 ```bash
 python -m scheduler.run_update
 ```
-Es **idempotente**: usa upsert por `id_externo`, ejecutarlo varias veces
-no duplica registros.
 
-### 3. Lanzar el dashboard
+Operación **idempotente**: usa upsert por `id_externo`. Ejecutarlo varias
+veces no duplica registros.
+
+### 3. Actualización ligera (feed ATOM en vivo)
+
+```bash
+python -m scheduler.run_update --daily
+```
+
+### 4. Lanzar el dashboard
+
 ```bash
 streamlit run dashboard/app.py
 ```
-Abre http://localhost:8501
 
-### 4. Programar actualización automática (GitHub Actions)
+Abre http://localhost:8501.
 
-Los workflows ya están incluidos en `.github/workflows/`. Solo necesitas
-configurar los secrets en tu repositorio de GitHub:
+### 5. Entrenar el clasificador ML
 
-1. Ve a **Settings → Secrets and variables → Actions**
-2. Añade estos secrets:
-   - `TURSO_DATABASE_URL` — URL de tu base de datos Turso
-   - `TURSO_AUTH_TOKEN` — Token de autenticación de Turso
-   - `ALERT_EMAIL_TO` (opcional) — Email para alertas
-   - `ALERT_SMTP_USER` / `ALERT_SMTP_PASSWORD` (opcional) — Credenciales SMTP
+```bash
+python -m scraper.ml_classifier train
+```
+
+Requiere al menos 50 registros en la BD. El modelo se guarda en
+`data/models/sap_classifier.pkl`.
+
+---
+
+## Despliegue
+
+### Opción A — Streamlit Cloud + Turso (recomendado, sin servidores)
+
+1. **Turso**: crea una base de datos en https://turso.tech y obtén
+   `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.
+
+2. **Streamlit Cloud**: https://share.streamlit.io → "New app"
+   - Repo: tu fork, branch `master`, main file: `dashboard/app.py`
+   - *App settings → Secrets*: añade todas las variables del `.env`
+
+3. **GitHub Actions**: configura los secrets en el repositorio
+   (*Settings → Secrets and variables → Actions*) y los workflows
+   de `.github/workflows/` corren automáticamente.
 
 | Workflow | Frecuencia | Descripción |
 |----------|------------|-------------|
@@ -133,156 +244,108 @@ configurar los secrets en tu repositorio de GitHub:
 | `scrape-daily.yml` | Cada 4 horas | Feed ATOM en vivo |
 | `healthcheck.yml` | Cada 6 horas | Verificación de frescura de datos |
 
-También puedes ejecutarlos manualmente desde la pestaña **Actions** del repo.
+También puedes ejecutarlos manualmente desde la pestaña **Actions**.
+
+### Opción B — Docker (autohospedado)
+
+```bash
+cp .env.example .env   # edita con tus credenciales
+docker compose up -d
+```
+
+El `docker-compose.yml` levanta dos servicios que comparten el mismo
+volumen de datos: `dashboard` (Streamlit) y `scheduler` (cron de scraping).
+
+---
 
 ## Seguridad
 
-### Autenticación del dashboard
-Cuando `DASHBOARD_PASSWORD` está definida, el dashboard muestra una
-pantalla de login con las siguientes protecciones:
+### Autenticación
 
-- **Rate limiting progresivo:** tras 3 intentos fallidos se activa un
-  bloqueo de `2^n` segundos (máximo 60 s), visible en pantalla.
-- **Timeout de sesión:** las sesiones expiran automáticamente tras
-  **8 horas** de inactividad. Configurable con `SESSION_TIMEOUT_SECONDS`
-  en `dashboard/auth.py`.
-- **Comparación segura:** se usa `hmac.compare_digest` para prevenir
-  ataques de temporización.
+| Mecanismo | Descripción |
+|-----------|-------------|
+| Password | Comparación con `hmac.compare_digest`. Rate limiting progresivo (bloqueo `2^n` segundos tras 3 intentos). Timeout de sesión 8h |
+| Google OAuth | HMAC-SHA256 state con nonce + timestamp. Clave de firma independiente (`SIGNING_KEY`) del client secret |
 
 ### Protecciones generales
+
 | Área | Medida |
-|---|---|
-| Inyección SQL | Queries parametrizadas con `?`; nombres de columna validados con regex |
-| XSS | Todo HTML dinámico escapado con `html.escape()` |
+|------|--------|
+| Inyección SQL | Queries parametrizadas con `?`; columnas derivadas de dataclass fields (constantes internas) |
+| XSS | HTML dinámico escapado con `html.escape()` |
 | Validación de URLs | `safe_url()` rechaza esquemas `javascript:` |
 | XXE (XML) | Parser lxml con `resolve_entities=False`, `no_network=True` |
 | Tamaño de descarga | ZIP ≤ 200 MB, XML ≤ 150 MB por fichero |
-| Secretos | Cargados exclusivamente desde variables de entorno / `st.secrets` |
+| Serialización ML | `joblib` en lugar de `pickle` para el clasificador |
+| Secretos en logs | Structlog redacta automáticamente tokens, passwords y API keys |
 
 ### Rotación de credenciales
-Si sospechas que el token de Turso está comprometido:
+
+Si el token de Turso se compromete:
 1. Panel Turso → tu base de datos → **Settings → Tokens** → Revocar
-2. Generar nuevo token y actualizar `.env`
+2. Generar nuevo token → actualizar `.env` y secrets de GitHub
 
-## Personalizar las keywords SAP
+---
 
-Editar `config.py` → `SAP_KEYWORDS`. Por defecto incluye:
-SAP, S/4HANA, ABAP, Fiori, SuccessFactors, Ariba, Concur, módulos
-funcionales (FI, CO, MM, SD, HCM, …), etc.
+## Personalizar keywords
+
+Las keywords para cada tecnología están en `config/keywords.py`:
+
+- `SAP_KEYWORDS` — módulos, suite cloud, infraestructura SAP
+- `TECHNOLOGY_KEYWORDS` — SAP, Salesforce, Oracle, Microsoft, ServiceNow, Workday, IBM, OpenText, Unit4, Meta4, Sopra, Sage, Infor
+
+Para añadir una tecnología nueva, añade una entrada al dict `TECHNOLOGY_KEYWORDS`.
+
+---
+
+## CI / Calidad de código
+
+```bash
+# Linting y formato
+ruff check .
+ruff format .
+
+# Tipos
+mypy dashboard/ scraper/ db/ scheduler/ observability/ config/
+
+# Tests con cobertura (umbral: 80%)
+pytest
+
+# Pre-commit hooks
+pre-commit run --all-files
+
+# Auditoría de dependencias
+pip-audit -r requirements.txt
+```
+
+El pipeline de CI incluye además un job de `docker build` que verifica
+que la imagen compila correctamente en cada push.
+
+---
 
 ## Marco legal
 
 Los datos se reutilizan al amparo de:
+
 - **Ley 37/2007** de reutilización de información del sector público
-- **RD 1495/2011**
+- **Real Decreto 1495/2011**
 - **Ley 9/2017** de Contratos del Sector Público
 
 Fuente oficial: Plataforma de Contratación del Sector Público
 (https://contrataciondelestado.es).
 
 Esta aplicación **no suplanta** a la fuente oficial; sirve únicamente
-para fines de análisis estadístico.
+para fines de análisis estadístico e inteligencia comercial.
+
+---
 
 ## Limitaciones conocidas
 
-- La URL de los ZIP mensuales (`BULK_URL_TEMPLATE` en
-  `scraper/bulk_downloader.py`) puede cambiar; verificar contra
+- La URL de los ZIP mensuales puede cambiar; verificar contra
   hacienda.gob.es si fallan las descargas.
-- El parser CODICE asume estructura estándar; si algún XML viene
-  malformado, los entries problemáticos se loggean y se omiten.
-- Los datos de meses muy recientes pueden tardar en publicarse
-  (típicamente el ZIP del mes M aparece a mediados del mes M+1).
-
-## Despliegue (Streamlit Cloud + Turso)
-
-Setup recomendado, sin servidores propios:
-
-- **Dashboard** en [Streamlit Community Cloud](https://share.streamlit.io)
-- **Base de datos** en [Turso](https://turso.tech) (SQLite cloud, tier
-  gratuito suficiente para este volumen)
-- **Scraping diario** en GitHub Actions (workflows incluidos en el repo)
-
-### 1. Conectar el repo a Streamlit Cloud
-1. https://share.streamlit.io → "New app"
-2. Repo: tu fork, branch `master`, main file: `dashboard/app.py`
-3. *App settings → Secrets*: añadir `TURSO_DATABASE_URL`,
-   `TURSO_AUTH_TOKEN` y `DASHBOARD_PASSWORD`
-4. Deploy. Se instalará desde `requirements.txt` automáticamente.
-
-### 2. Cron diario en GitHub Actions
-Los workflows ya están configurados en `.github/workflows/`. Solo
-necesitas añadir los secrets en el repositorio:
-
-Repo → **Settings → Secrets and variables → Actions** →
-"New repository secret": `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.  <!-- pragma: allowlist secret -->
-
-## Próximos pasos sugeridos
-
-- Añadir alertas por email cuando aparezca una licitación SAP
-  por encima de cierto importe.
-- Exportación programada a Excel/CSV por correo.
-- Autenticación multi-usuario con roles si pasa a uso interno de empresa.
-
-## Personalizar las keywords SAP
-
-Editar `config.py` → `SAP_KEYWORDS`. Por defecto incluye:
-SAP, S/4HANA, ABAP, Fiori, SuccessFactors, Ariba, Concur, módulos
-funcionales (FI, CO, MM, SD, HCM, …), etc.
-
-## Marco legal
-
-Los datos se reutilizan al amparo de:
-- **Ley 37/2007** de reutilización de información del sector público
-- **RD 1495/2011**
-- **Ley 9/2017** de Contratos del Sector Público
-
-Fuente oficial: Plataforma de Contratación del Sector Público
-(https://contrataciondelestado.es).
-
-Esta aplicación **no suplanta** a la fuente oficial; sirve únicamente
-para fines de análisis estadístico.
-
-## Limitaciones conocidas
-
-- La URL de los ZIP mensuales (`BULK_URL_TEMPLATE` en
-  `scraper/bulk_downloader.py`) puede cambiar; verificar contra
-  hacienda.gob.es si fallan las descargas.
-- El parser CODICE asume estructura estándar; si algún XML viene
-  malformado, los entries problemáticos se loggean y se omiten.
-- Los datos de meses muy recientes pueden tardar en publicarse
-  (típicamente el ZIP del mes M aparece a mediados del mes M+1).
-
-## Despliegue (Streamlit Cloud + GitHub Actions)
-
-Setup recomendado, gratis y sin servidores:
-
-- **Dashboard** corriendo en [Streamlit Community Cloud](https://share.streamlit.io)
-- **Scraping diario** en GitHub Actions, que commitea la BD actualizada
-- Streamlit Cloud detecta el push y refresca
-
-### 1. Conectar el repo a Streamlit Cloud
-1. https://share.streamlit.io → "New app"
-2. Repo: `Dkalds/Licitaciones_SAP_DASHBOARD`, branch `master`
-3. Main file path: `dashboard/app.py`
-4. Deploy. Se instalará desde `requirements.txt` automáticamente.
-
-### 2. Cron diario en GitHub Actions
-Ya configurado en [`.github/workflows/scrape.yml`](.github/workflows/scrape.yml):
-- Diario a las 06:00 UTC
-- Lanza `python -m scheduler.run_update --months 3`
-- Hace `git commit + push` de `data/licitaciones.db` si ha cambiado
-
-Para que el workflow tenga permiso de push:
-1. Repo → Settings → Actions → General
-2. *Workflow permissions* → seleccionar **Read and write permissions**
-
-Lanzar manualmente: pestaña *Actions* → "Scrape PLACSP daily" → *Run workflow*.
-
-### Limitaciones de este setup
-- La BD vive en el repo (público) → cualquiera puede descargarla. Como
-  los datos ya son públicos en PLACSP no es problema legal, pero
-  conviene saberlo.
-- Si la BD supera ~50 MB, GitHub avisa; >100 MB rechaza el push.
-  Al ritmo SAP actual (~ +30 licitaciones/mes), tardarías años.
-- Cada commit del bot añade peso al historial git. Si crece mucho,
-  squash-merge anual o `git lfs` para el `.db`.
+- El parser CODICE asume estructura estándar; entradas malformadas
+  se loggean y se omiten sin interrumpir el proceso.
+- Los datos de meses recientes pueden tardar en publicarse
+  (el ZIP del mes M suele aparecer a mediados del mes M+1).
+- La búsqueda semántica (FAISS) requiere instalar el extra `[ml]`
+  y genera embeddings en la primera carga (~30 s con GPU, ~5 min sin GPU).

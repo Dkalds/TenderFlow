@@ -40,7 +40,10 @@ from dashboard.theme import (
     get_color_sequence,
     register_plotly_template,
 )
-from observability.logging import bind_session_context
+from observability.logging import bind_session_context, configure_logging
+
+# ── Logging estructurado: activar antes de cualquier otra llamada ────────
+configure_logging()
 
 # ── Config & estilo ──────────────────────────────────────────────────────
 st.set_page_config(

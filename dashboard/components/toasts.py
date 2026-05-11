@@ -11,7 +11,3 @@ def notify_success(message: str) -> None:
 
 def notify_error(message: str) -> None:
     st.toast(message, icon=":material/error:")
-
-
-def notify_info(message: str) -> None:
-    st.toast(message, icon=":material/info:")

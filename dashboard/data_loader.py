@@ -14,12 +14,12 @@ from dashboard.classifiers import (
     detect_modules,
     detect_project_type,
     estado_label,
-    nuts_to_ccaa,
     tipo_contrato_label,
 )
 from dashboard.normalize import normalize_company, normalize_nif
 from db.database import connect, init_db
 from observability.logging import get_logger
+from shared.geo import nuts_to_ccaa
 
 log = get_logger(__name__)
 
@@ -171,7 +171,7 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
         check_rate_limit("load_dataframe", max_calls=60, window_seconds=60.0)
     except Exception:
         log.debug("rate_limit_check_unavailable")
-    return _load_dataframe_shared(limit).copy()
+    return _load_dataframe_shared(limit).copy()  # .copy() necesario: cache_resource comparte objeto
 
 
 @st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None, show_spinner="Cargando adjudicaciones…")

@@ -65,6 +65,9 @@ def _smoke_db(monkeypatch, tmp_path):
     monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "")
 
+    importlib.import_module("config.settings")
+    import sys
+    importlib.reload(sys.modules["config.settings"])
     import config as cfg
 
     importlib.reload(cfg)
@@ -116,6 +119,7 @@ os.environ["TURSO_DATABASE_URL"] = ""
 os.environ["TURSO_AUTH_TOKEN"] = ""
 os.environ["DASHBOARD_PASSWORD"] = ""
 
+import sys; importlib.import_module("config.settings"); importlib.reload(sys.modules["config.settings"])
 import config as cfg; importlib.reload(cfg)
 import db.database as db_mod; importlib.reload(db_mod)
 import db.migrations as mig; importlib.reload(mig)

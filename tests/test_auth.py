@@ -39,7 +39,7 @@ def _import_auth():
 class TestCheckPasswordNoAuth:
     def test_sin_contraseña_devuelve_true(self, mock_streamlit):
         _st_mock, _session = mock_streamlit
-        with patch("config.settings.DASHBOARD_PASSWORD", ""):
+        with patch("config.settings.settings.DASHBOARD_PASSWORD", ""):
             auth = _import_auth()
             with (
                 patch.object(auth, "_get_password", return_value=""),
@@ -253,7 +253,7 @@ class TestOAuthStateValidation:
     def test_show_oauth_button_generates_valid_signed_state(self, mock_streamlit):
         """_show_oauth_button genera un state firmado que pasa verificación."""
         st_mock, _session = mock_streamlit
-        with patch("config.settings.GOOGLE_CLIENT_ID", "test_id"):
+        with patch("config.settings.settings.GOOGLE_CLIENT_ID", "test_id"):
             auth = _import_auth()
             auth._show_oauth_button()
         # st.link_button fue llamado con una URL que contiene state=

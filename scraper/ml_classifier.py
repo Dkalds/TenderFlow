@@ -20,7 +20,6 @@ Uso:
 
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -31,7 +30,7 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-# Ruta del modelo serializado
+# Ruta del modelo serializado (formato joblib, extensión .pkl por compatibilidad)
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pkl"
 
 # Umbral de confianza para clasificar como SAP sin keywords
@@ -162,20 +161,22 @@ class SAPClassifier:
     # ── Persistencia ──────────────────────────────────────────────────────
 
     def save(self, path: Path | None = None) -> Path:
-        """Serializa el modelo a disco."""
+        """Serializa el modelo a disco usando joblib (más seguro que pickle)."""
+        import joblib
+
         target = path or _MODEL_PATH
         target.parent.mkdir(parents=True, exist_ok=True)
-        with open(target, "wb") as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        joblib.dump(self, target, compress=3)
         log.info("ml_classifier.saved", path=str(target))
         return target
 
     @classmethod
     def load(cls, path: Path | None = None) -> SAPClassifier:
-        """Carga un modelo serializado. Lanza FileNotFoundError si no existe."""
+        """Carga un modelo serializado con joblib. Lanza FileNotFoundError si no existe."""
+        import joblib
+
         target = path or _MODEL_PATH
-        with open(target, "rb") as f:
-            obj = pickle.load(f)  # noqa: S301
+        obj = joblib.load(target)
         if not isinstance(obj, cls):
             raise TypeError(f"El archivo no contiene un SAPClassifier: {type(obj)}")
         log.info("ml_classifier.loaded", path=str(target))

@@ -37,7 +37,7 @@ jobs:
         run: ruff format --check .
 
       - name: Type check (mypy)
-        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config.py
+        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config/
 
   test:
     name: Tests
@@ -59,7 +59,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
-        run: pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+        run: pytest --cov=. --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@v7
@@ -107,3 +107,12 @@ jobs:
 
       - name: Audit dependencies
         run: pip-audit -r requirements.txt
+
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Docker image (runtime target)
+        run: docker build --target runtime --tag licitaciones-sap:ci .

@@ -1,6 +1,6 @@
 from dashboard.components.cards import chart_card, top_card
 from dashboard.components.kpi import kpi_card
-from dashboard.components.layout import render_footer, render_header
+from dashboard.components.layout import render_footer
 from dashboard.components.navigation import (
     active_filters_chips,
     breadcrumb,
@@ -14,7 +14,6 @@ __all__ = [
     "chart_card",
     "kpi_card",
     "render_footer",
-    "render_header",
     "sub_nav",
     "top_card",
     "top_nav",

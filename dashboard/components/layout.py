@@ -107,16 +107,6 @@ def render_topbar(last_updated=None) -> bool:
 # ── Backward-compat shims ────────────────────────────────────────────────
 
 
-def render_header(
-    title: str = "Licitaciones SAP",
-    subtitle: str | None = "Inteligencia comercial · Sector público",
-    last_updated=None,
-) -> None:
-    """Compat: delega a render_topbar (el header clásico ya no se usa)."""
-    _ = (title, subtitle)  # silencia args legacy
-    render_topbar(last_updated=last_updated)
-
-
 def render_sidebar_brand() -> None:
     """Compat: en el nuevo layout el brand vive en la topbar.
 

@@ -15,6 +15,9 @@ def tmp_db(monkeypatch, tmp_path):
     monkeypatch.setenv("TURSO_DATABASE_URL", "")
     monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
 
+    importlib.import_module("config.settings")
+    import sys
+    importlib.reload(sys.modules["config.settings"])
     import config as cfg
 
     importlib.reload(cfg)

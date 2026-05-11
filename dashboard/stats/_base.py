@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 import pandas as pd
 
 from db.database import connect
@@ -1014,90 +1012,6 @@ def kpis_organo(
                     out["top_adj_importe"] = float(top.iloc[0])
 
     return out
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# Deduplicación de licitaciones reabiertas
-# ────────────────────────────────────────────────────────────────────────────
-
-_STRIP_RE = re.compile(r"[^a-z0-9 ]")
-
-
-def _normalize_titulo(titulo: str) -> str:
-    """Normaliza un título para agrupar reaperturas del mismo contrato."""
-    import unicodedata
-
-    s = unicodedata.normalize("NFD", titulo.lower())
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    return _STRIP_RE.sub("", s).strip()
-
-
-def dedupe_reaperturas(
-    df: pd.DataFrame,
-    *,
-    window_days: int = 5,
-) -> pd.DataFrame:
-    """Agrupa licitaciones que parecen ser reaperturas del mismo contrato.
-
-    Criterio: mismo ``organo_contratacion`` + título normalizado similar,
-    con fecha de publicación dentro de ±*window_days* entre sí.
-
-    Añade columnas:
-      - ``oportunidad_id``: identificador del grupo lógico.
-      - ``oportunidad_version``: v1, v2, v3… (por fecha ascendente).
-
-    No modifica la BD — opera sobre el DataFrame en memoria.
-    """
-    required = {"id_externo", "organo_contratacion", "titulo", "fecha_publicacion"}
-    if not required.issubset(df.columns) or df.empty:
-        df = df.copy()
-        df["oportunidad_id"] = None
-        df["oportunidad_version"] = None
-        return df
-
-    work = df.copy()
-    work["_titulo_norm"] = work["titulo"].fillna("").apply(_normalize_titulo)
-    work["_organo_norm"] = work["organo_contratacion"].fillna("").str.strip().str.lower()
-    work["_fpub"] = pd.to_datetime(work["fecha_publicacion"], errors="coerce", utc=True)
-    work["_group_key"] = work["_organo_norm"] + "|" + work["_titulo_norm"]
-
-    oportunidad_id = pd.Series(index=work.index, dtype="object")
-    oportunidad_version = pd.Series(index=work.index, dtype="object")
-
-    group_counter = 0
-    for _, group in work.groupby("_group_key", sort=False):
-        if len(group) < 2:
-            continue
-        sorted_g = group.sort_values("_fpub")
-        # Cluster within the ±window_days using a simple sequential scan
-        clusters: list[list[int]] = []
-        current_cluster: list[int] = []
-        last_date: pd.Timestamp | None = None
-        for idx, row in sorted_g.iterrows():
-            fpub = row["_fpub"]
-            if pd.isna(fpub):
-                continue
-            if last_date is None or (fpub - last_date).days <= window_days:
-                current_cluster.append(idx)  # type: ignore[arg-type]
-            else:
-                if len(current_cluster) >= 2:
-                    clusters.append(current_cluster)
-                current_cluster = [idx]  # type: ignore[list-item]
-            last_date = fpub
-        if len(current_cluster) >= 2:
-            clusters.append(current_cluster)
-
-        for cluster in clusters:
-            group_counter += 1
-            oid = f"OP-{group_counter:06d}"
-            for version, idx in enumerate(cluster, 1):
-                oportunidad_id.iloc[work.index.get_loc(idx)] = oid  # type: ignore[index]
-                oportunidad_version.iloc[work.index.get_loc(idx)] = f"v{version}"  # type: ignore[index]
-
-    result = df.copy()
-    result["oportunidad_id"] = oportunidad_id
-    result["oportunidad_version"] = oportunidad_version
-    return result
 
 
 # ── Comparador de periodos ──────────────────────────────────────────────

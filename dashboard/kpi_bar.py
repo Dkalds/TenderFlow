@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-
 import pandas as pd
 import streamlit as st
 
@@ -11,12 +9,6 @@ from dashboard.components.icons import icon
 from dashboard.components.kpi import kpi_card
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.utils.format import fmt_eur
-
-
-def _df_cache_key(df: pd.DataFrame) -> str:
-    """Genera una clave de caché ligera basada en shape + hash de índices."""
-    shape_str = f"{len(df)}_{list(df.columns)}"
-    return hashlib.md5(shape_str.encode()).hexdigest()  # noqa: S324
 
 
 @st.cache_data(show_spinner=False)

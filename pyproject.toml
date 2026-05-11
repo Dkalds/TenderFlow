@@ -20,9 +20,17 @@ dependencies = [
     "pybreaker>=1.0.0,<2",
     "reportlab>=4.0,<5",
     "scikit-learn>=1.3.0,<2",
+    "joblib>=1.3.0,<2",
+    "prometheus_client>=0.19.0,<1",
+]
+
+[project.optional-dependencies]
+# Deps opcionales para búsqueda semántica y vectorización.
+# Instalar con: pip install licitaciones-sap[ml]
+# NOTA: sentence-transformers arrastra PyTorch (~2 GB). No instalar en entornos sin GPU si no se usa.
+ml = [
     "faiss-cpu>=1.7.4,<2",
     "sentence-transformers>=2.2.0,<4",
-    "prometheus_client>=0.19.0,<1",
 ]
 
 [tool.ruff]
@@ -146,10 +154,11 @@ omit = [
     "observability/prometheus.py",
     "db/rate_limits.py",
     "config.py",
+    "config/*",
 ]
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

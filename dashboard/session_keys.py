@@ -57,10 +57,6 @@ LOGIN_ATTEMPTS: Final = "_login_attempts"
 LOGIN_LOCKOUT_UNTIL: Final = "_login_lockout_until"
 LOGIN_PWD: Final = "login_pwd"
 OAUTH_STEP_DONE: Final = "_oauth_step_done"
-OAUTH_STATE: Final = "_oauth_state"
 
 # ── Sincronización de query params ───────────────────────────────────────
 QP_LOADED: Final = "_qp_loaded"
-
-# ── Widgets internos del dashboard ───────────────────────────────────────
-DLQ_PICK: Final = "dlq_pick"

@@ -234,14 +234,19 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
         return 0, 0
 
     with connect() as c:
-        # Single bulk SELECT to determine which IDs already exist — avoids N+1
-        placeholders = ", ".join("?" for _ in batch)
-        ids = [lic.id_externo for lic in batch]
-        existing_rows = c.execute(
-            f"SELECT id_externo FROM licitaciones WHERE id_externo IN ({placeholders})",
-            ids,
-        ).fetchall()
-        existing_ids = {row[0] for row in existing_rows}
+        # Bulk SELECT to determine which IDs already exist — avoids N+1.
+        # Chunked in groups of 500 to stay within SQLite's SQLITE_MAX_VARIABLE_NUMBER.
+        existing_ids: set[str] = set()
+        _CHUNK = 500
+        for i in range(0, len(batch), _CHUNK):
+            chunk = batch[i : i + _CHUNK]
+            placeholders = ", ".join("?" for _ in chunk)
+            chunk_ids = [lic.id_externo for lic in chunk]
+            rows = c.execute(
+                f"SELECT id_externo FROM licitaciones WHERE id_externo IN ({placeholders})",
+                chunk_ids,
+            ).fetchall()
+            existing_ids.update(row[0] for row in rows)
 
         for lic in batch:
             data = asdict(lic)

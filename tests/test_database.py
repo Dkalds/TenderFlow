@@ -20,7 +20,10 @@ def tmp_db(monkeypatch, tmp_path):
 
     # Recargar config con los nuevos env vars
     import importlib
+    import sys
 
+    importlib.import_module("config.settings")
+    importlib.reload(sys.modules["config.settings"])
     import config as cfg
 
     importlib.reload(cfg)
