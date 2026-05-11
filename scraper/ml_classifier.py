@@ -171,6 +171,86 @@ class SAPClassifier:
         return target
 
     @classmethod
+    def ensure_downloaded(
+        cls,
+        path: Path | None = None,
+        repo: str = "Dkalds/Licitaciones_sap_SP",
+        asset_name: str = "sap_classifier.pkl",
+    ) -> bool:
+        """Descarga el modelo desde el último GitHub Release si no existe localmente.
+
+        Usa GITHUB_TOKEN del entorno si está disponible (necesario para repos privados
+        y siempre disponible en GitHub Actions via secrets.GITHUB_TOKEN).
+
+        Returns:
+            True si el modelo está disponible (ya existía o se descargó correctamente).
+            False si no se pudo descargar (sin acceso a red, sin releases, etc.).
+        """
+        import json
+        import os
+        import urllib.request
+
+        target = path or _MODEL_PATH
+        if target.exists():
+            log.info("ml_classifier.model_already_local", path=str(target))
+            return True
+
+        github_token = os.environ.get("GITHUB_TOKEN", "")
+        auth_header = {"Authorization": f"Bearer {github_token}"} if github_token else {}
+
+        # Obtener la URL del asset desde la GitHub API
+        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+        try:
+            req = urllib.request.Request(  # noqa: S310
+                api_url,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "licitaciones-sap",
+                    **auth_header,
+                },
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+                release = json.loads(resp.read())
+        except Exception as e:
+            log.warning("ml_classifier.release_fetch_failed", error=str(e))
+            return False
+
+        asset_id = None
+        for asset in release.get("assets", []):
+            if asset["name"] == asset_name:
+                asset_id = asset["id"]
+                break
+
+        if not asset_id:
+            log.warning(
+                "ml_classifier.asset_not_found", asset=asset_name, release=release.get("tag_name")
+            )
+            return False
+
+        # Para repos privados, descargar via API con Accept: application/octet-stream
+        download_url = f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            log.info("ml_classifier.downloading_model", asset_id=asset_id, dest=str(target))
+            dl_req = urllib.request.Request(  # noqa: S310
+                download_url,
+                headers={
+                    "Accept": "application/octet-stream",
+                    "User-Agent": "licitaciones-sap",
+                    **auth_header,
+                },
+            )
+            with urllib.request.urlopen(dl_req, timeout=60) as resp:  # noqa: S310
+                target.write_bytes(resp.read())
+            log.info("ml_classifier.model_downloaded", path=str(target))
+            return True
+        except Exception as e:
+            log.warning("ml_classifier.download_failed", error=str(e))
+            if target.exists():
+                target.unlink()
+            return False
+
+    @classmethod
     def load(cls, path: Path | None = None) -> SAPClassifier:
         """Carga un modelo serializado con joblib. Lanza FileNotFoundError si no existe."""
         import joblib
@@ -222,6 +302,198 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     return texts, labels
 
 
+def seed_negatives(
+    year: int | None = None,
+    month: int | None = None,
+    max_negatives: int = 2000,
+) -> dict[str, int]:
+    """Descarga el bulk de un mes y persiste licitaciones con CPV no-TI como negativos.
+
+    Estas licitaciones se guardan con raw_keywords=NULL para que el entrenamiento ML
+    las use como ejemplos negativos.
+
+    Args:
+        year: Año del bulk a descargar (defecto: mes anterior).
+        month: Mes del bulk a descargar (defecto: mes anterior).
+        max_negatives: Máximo de negativos a insertar (para no inflar la BD).
+
+    Returns:
+        {"downloaded": N, "inserted": M, "skipped_ti": K, "already_exists": J}
+    """
+    from datetime import UTC, datetime
+
+    from dateutil.relativedelta import relativedelta
+
+    from db.database import init_db
+    from scraper.bulk_downloader import download_month, iter_xml_files
+    from scraper.codice_parser import (  # type: ignore[attr-defined]
+        _text,
+        parse_entry_unfiltered,
+    )
+
+    if year is None or month is None:
+        prev = datetime.now(UTC).date() - relativedelta(months=1)
+        year = year or prev.year
+        month = month or prev.month
+
+    log.info("seed_negatives.start", year=year, month=month, max_negatives=max_negatives)
+    init_db()
+
+    zip_path = download_month(year, month, force=False)
+    if zip_path is None:
+        log.warning("seed_negatives.no_zip", year=year, month=month)
+        return {"downloaded": 0, "inserted": 0, "skipped_ti": 0, "already_exists": 0}
+
+    # CPV prefijos que consideramos TI/software (positivos en potencia → excluir)
+    _TI_PREFIXES = ("48", "72")
+
+    downloaded = 0
+    skipped_ti = 0
+    rows_to_insert: list[tuple] = []
+
+    for _filename, content in iter_xml_files(zip_path):
+        if len(rows_to_insert) >= max_negatives:
+            break
+        try:
+            from lxml import etree
+
+            parser = etree.XMLParser(
+                huge_tree=False, recover=True, resolve_entities=False, no_network=True
+            )
+            root = etree.fromstring(content, parser=parser)
+            for entry in root.iter("{http://www.w3.org/2005/Atom}entry"):
+                if len(rows_to_insert) >= max_negatives:
+                    break
+                try:
+                    # Filtrar por CPV antes de parsear completamente
+                    cfs = "./cacext:ContractFolderStatus"
+                    project_xp = f"{cfs}/cac:ProcurementProject"
+                    cpv_raw = _text(
+                        entry,
+                        f"{project_xp}/cac:RequiredCommodityClassification"
+                        f"/cbc:ItemClassificationCode",
+                    )
+                    if cpv_raw and any(cpv_raw.startswith(p) for p in _TI_PREFIXES):
+                        skipped_ti += 1
+                        continue
+
+                    lic = parse_entry_unfiltered(entry)
+                    if lic is None:
+                        continue
+                    downloaded += 1
+                    rows_to_insert.append(
+                        (
+                            lic.id_externo,
+                            lic.titulo,
+                            lic.descripcion,
+                            lic.organo_contratacion,
+                            lic.importe,
+                            lic.moneda,
+                            lic.cpv,
+                            lic.tipo_contrato,
+                            lic.estado,
+                            lic.fecha_publicacion,
+                            lic.fecha_actualizacion_fuente,
+                            lic.url,
+                            lic.provincia,
+                            lic.nuts_code,
+                            lic.ccaa,
+                            lic.duracion_valor,
+                            lic.duracion_unidad,
+                            lic.fecha_inicio,
+                            lic.fecha_fin,
+                            lic.prorroga_descripcion,
+                        )
+                    )
+                except Exception:
+                    log.debug("seed_negatives.entry_error")
+        except Exception:
+            log.debug("seed_negatives.file_error")
+
+    # Bulk insert en una sola transacción usando sqlite3 nativo (evita overhead libsql)
+    inserted = 0
+    already_exists = 0
+    if rows_to_insert:
+        import sqlite3
+
+        from config import settings as _settings
+
+        db_file = str(_settings.DB_PATH)
+        with sqlite3.connect(db_file) as sqlite_conn:
+            sqlite_conn.execute("PRAGMA journal_mode=WAL")
+            sqlite_conn.execute("PRAGMA busy_timeout=5000")
+            # Detect available columns to handle schema version differences
+            existing_cols = {
+                r[1] for r in sqlite_conn.execute("PRAGMA table_info(licitaciones)").fetchall()
+            }
+            has_fecha_act = "fecha_actualizacion_fuente" in existing_cols
+            has_tecnologia = "tecnologia" in existing_cols
+
+            for row in rows_to_insert:
+                extra_cols = ""
+                extra_vals = ""
+                extra_params: list = []
+                if has_fecha_act:
+                    extra_cols += ", fecha_actualizacion_fuente"
+                    extra_vals += ", ?"
+                    extra_params.append(row[10])
+                if has_tecnologia:
+                    extra_cols += ", tecnologia"
+                    extra_vals += ", NULL"
+                cur = sqlite_conn.execute(
+                    f"""INSERT OR IGNORE INTO licitaciones
+                       (id_externo, titulo, descripcion, organo_contratacion,
+                        importe, moneda, cpv, tipo_contrato, estado,
+                        fecha_publicacion, fecha_extraccion, url, raw_keywords,
+                        provincia, nuts_code, ccaa,
+                        duracion_valor, duracion_unidad, fecha_inicio,
+                        fecha_fin, prorroga_descripcion{extra_cols})
+                       VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'),?,NULL,?,?,?,?,?,?,?,?{extra_vals})""",
+                    (
+                        row[0],  # id_externo
+                        row[1],  # titulo
+                        row[2],  # descripcion
+                        row[3],  # organo_contratacion
+                        row[4],  # importe
+                        row[5],  # moneda
+                        row[6],  # cpv
+                        row[7],  # tipo_contrato
+                        row[8],  # estado
+                        row[9],  # fecha_publicacion
+                        row[11],  # url
+                        row[12],  # provincia
+                        row[13],  # nuts_code
+                        row[14],  # ccaa
+                        row[15],  # duracion_valor
+                        row[16],  # duracion_unidad
+                        row[17],  # fecha_inicio
+                        row[18],  # fecha_fin
+                        row[19],  # prorroga_descripcion
+                        *extra_params,
+                    ),
+                )
+                if cur.rowcount:
+                    inserted += 1
+                else:
+                    already_exists += 1
+
+    log.info(
+        "seed_negatives.done",
+        year=year,
+        month=month,
+        downloaded=downloaded,
+        inserted=inserted,
+        skipped_ti=skipped_ti,
+        already_exists=already_exists,
+    )
+    return {
+        "downloaded": downloaded,
+        "inserted": inserted,
+        "skipped_ti": skipped_ti,
+        "already_exists": already_exists,
+    }
+
+
 def train_from_db() -> dict[str, float]:
     """Entrena el clasificador usando datos de la BD activa y lo guarda."""
     import pandas as pd
@@ -258,7 +530,7 @@ if __name__ == "__main__":
                     "\n[AVISO] Entrenamiento no posible: todos los ejemplos son SAP (clase única).\n"
                     f"  n_positive={result.get('n_positive', 0)}, n_negative={result.get('n_negative', 0)}\n"
                     "  El clasificador ML necesita licitaciones sin keywords SAP con CPV fuera de 48xxx/72xxx.\n"
-                    "  Solución: ejecuta el scraper sin filtro para acumular datos mixtos."
+                    "  Solución: ejecuta primero: python -m scraper.ml_classifier seed-negatives"
                 )
             elif err == "insufficient_data":
                 print(
@@ -271,11 +543,31 @@ if __name__ == "__main__":
             for k, v in result.items():
                 print(f"  {k}: {v}")
             print(f"\nModelo guardado en: {_MODEL_PATH}")
+    elif cmd == "seed-negatives":
+        import argparse
+
+        parser_cli = argparse.ArgumentParser(prog="ml_classifier seed-negatives")
+        parser_cli.add_argument("--year", type=int, default=None)
+        parser_cli.add_argument("--month", type=int, default=None)
+        parser_cli.add_argument("--max", type=int, default=2000, dest="max_negatives")
+        args = parser_cli.parse_args(sys.argv[2:])
+        print(
+            f"Descargando negativos del bulk "
+            f"{args.year or 'mes anterior'}/{args.month or ''}  (máx {args.max_negatives})..."
+        )
+        result = seed_negatives(year=args.year, month=args.month, max_negatives=args.max_negatives)
+        print(
+            f"  Descargadas : {result['downloaded']}\n"
+            f"  Insertadas  : {result['inserted']}\n"
+            f"  Omitidas TI : {result['skipped_ti']}\n"
+            f"  Ya existían : {result['already_exists']}\n"
+            "\nAhora puedes entrenar: python -m scraper.ml_classifier train"
+        )
     elif cmd == "info":
         if SAPClassifier.is_available():
             print(f"Modelo disponible: {_MODEL_PATH}")
         else:
             print("No hay modelo entrenado. Ejecuta: python -m scraper.ml_classifier train")
     else:
-        print(f"Comando desconocido: {cmd}. Usa 'train' o 'info'.")
+        print(f"Comando desconocido: {cmd}. Usa 'train', 'seed-negatives' o 'info'.")
         sys.exit(1)

@@ -76,6 +76,7 @@ ignore = [
 "dashboard/app.py" = ["E402"]  # sys.path insert requires imports after path manipulation
 "dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
 "db/database.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
+"scraper/ml_classifier.py" = ["S608"]  # SQL built from internal schema-detection strings, not user input
 
 [tool.ruff.format]
 quote-style = "double"
