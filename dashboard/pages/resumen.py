@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html as _html
 from typing import Any
 
 import pandas as pd
@@ -29,6 +30,7 @@ from dashboard.stats import (
 from dashboard.utils.export import kpis_snapshot_csv
 from dashboard.utils.format import fmt_eur
 from dashboard.utils.pdf import generate_pdf
+from dashboard.utils.security import safe_url
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -41,6 +43,12 @@ def render(ctx: PageContext) -> None:
 
     # ── Banner "Para hoy" — señales accionables ─────────────────────
     _render_banner_hoy(df, adj_resumen)
+
+    # ── Timeline de contratos publicados (último mes) ───────────────
+    _render_timeline(df, ctx)
+
+    # ── Actividad diaria + Últimas publicaciones ────────────────────
+    _render_actividad_reciente(df, ctx)
 
     cL, cR = st.columns([2, 1])
     with cL, chart_card("Top 10 licitaciones por importe"):
@@ -425,6 +433,235 @@ def render(ctx: PageContext) -> None:
                     delta_color="normal",
                     help=f"A = {label_a} | B = {label_b} {arrow}",
                 )
+
+
+def _render_timeline(df: pd.DataFrame, ctx: PageContext) -> None:
+    """Timeline interactivo de licitaciones publicadas en el último mes."""
+    if df.empty:
+        return
+
+    ahora = pd.Timestamp.now("UTC")
+    hace_30d = ahora - pd.Timedelta(days=30)
+    recientes = df[df["fecha_publicacion"] >= hace_30d].copy()
+
+    if recientes.empty:
+        st.info("No hay licitaciones publicadas en los últimos 30 días.")
+        return
+
+    with chart_card(
+        "Timeline de publicaciones — último mes",
+        subtitle="Haz clic en un punto para ver el detalle de la licitación",
+    ):
+        recientes["importe_display"] = recientes["importe"].fillna(0)
+        recientes["titulo_short"] = recientes["titulo"].str[:80]
+        recientes["fecha_str"] = recientes["fecha_publicacion"].dt.strftime("%d/%m/%Y %H:%M")
+        recientes["importe_fmt"] = recientes["importe"].apply(fmt_eur)
+
+        # Color por estado
+        fig = px.scatter(
+            recientes.sort_values("fecha_publicacion"),
+            x="fecha_publicacion",
+            y="importe_display",
+            color="estado_desc",
+            size="importe_display",
+            size_max=25,
+            hover_name="titulo_short",
+            hover_data={
+                "fecha_str": True,
+                "importe_fmt": True,
+                "organo_contratacion": True,
+                "estado_desc": True,
+                "tipo_proyecto": True,
+                "fecha_publicacion": False,
+                "importe_display": False,
+                "titulo_short": False,
+            },
+            labels={
+                "fecha_publicacion": "Fecha publicación",
+                "importe_display": "Importe (€)",
+                "estado_desc": "Estado",
+                "fecha_str": "Fecha",
+                "importe_fmt": "Importe",
+                "organo_contratacion": "Órgano",
+                "tipo_proyecto": "Tipo",
+            },
+            template=ctx.plotly_template,
+            color_discrete_sequence=ctx.color_sequence,
+        )
+        fig.update_layout(
+            height=380,
+            margin=dict(t=10, b=40, l=60, r=10),
+            xaxis_title="",
+            yaxis_title="Importe (€)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        fig.update_yaxes(tickformat=",.0f")
+        st.plotly_chart(fig, use_container_width=True, key="timeline_chart")
+
+        # ── Selector de licitación para ver detalle ──
+        recientes_sorted = recientes.sort_values("fecha_publicacion", ascending=False)
+        options = recientes_sorted["id_externo"].tolist()
+        labels = [
+            f"{row['fecha_publicacion'].strftime('%d/%m')} · "
+            f"{fmt_eur(row['importe'])} · "
+            f"{str(row['titulo'])[:70]}"
+            for _, row in recientes_sorted.iterrows()
+        ]
+        label_map = dict(zip(labels, options, strict=False))
+
+        selected_label = st.selectbox(
+            "Selecciona una licitación para ver detalle:",
+            options=[""] + labels,
+            index=0,
+            key="timeline_select",
+        )
+        if selected_label and selected_label in label_map:
+            sel_id = label_map[selected_label]
+            row = recientes[recientes["id_externo"] == sel_id].iloc[0]
+            _render_licitacion_detalle(row)
+
+
+def _render_licitacion_detalle(row: pd.Series) -> None:
+    """Muestra el detalle expandido de una licitación seleccionada."""
+    with st.expander(f"📋 {row['titulo'][:100]}", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Importe", fmt_eur(row.get("importe")))
+            st.caption(f"**Estado:** {row.get('estado_desc', '—')}")
+        with c2:
+            fecha = row.get("fecha_publicacion")
+            fecha_str = fecha.strftime("%d/%m/%Y") if pd.notna(fecha) else "—"
+            st.metric("Fecha publicación", fecha_str)
+            st.caption(f"**Tipo proyecto:** {row.get('tipo_proyecto', '—')}")
+        with c3:
+            st.metric("CCAA", str(row.get("ccaa", "—") or "—"))
+            st.caption(f"**Tipo contrato:** {row.get('tipo_contrato_desc', '—')}")
+
+        st.markdown(f"**Órgano:** {row.get('organo_contratacion', '—')}")
+        st.markdown(f"**CPV:** {row.get('cpv_desc', '—')}")
+
+        if row.get("modulos_str"):
+            st.markdown(f"**Módulos SAP:** {row['modulos_str']}")
+
+        desc = row.get("descripcion")
+        if desc and str(desc).strip():
+            st.markdown("**Descripción:**")
+            st.markdown(
+                f'<div style="max-height:200px;overflow-y:auto;padding:8px;'
+                f'background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.9em">'
+                f"{_html.escape(str(desc)[:2000])}</div>",
+                unsafe_allow_html=True,
+            )
+
+        url = row.get("url")
+        href = safe_url(url)
+        if href:
+            st.link_button("🔗 Ver en PLACSP", href)
+
+
+def _render_actividad_reciente(df: pd.DataFrame, ctx: PageContext) -> None:
+    """Heatmap de actividad diaria + tabla de últimas publicaciones."""
+    if df.empty:
+        return
+
+    ahora = pd.Timestamp.now("UTC")
+    hace_30d = ahora - pd.Timedelta(days=30)
+    recientes = df[df["fecha_publicacion"] >= hace_30d].copy()
+
+    cA, cB = st.columns([1, 1])
+    with cA, chart_card(
+        "Actividad diaria (30 días)",
+        subtitle="Nº de licitaciones publicadas por día",
+    ):
+        if not recientes.empty:
+            daily = (
+                recientes.set_index("fecha_publicacion")
+                .resample("D")
+                .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+                .reset_index()
+            )
+            daily["importe_fmt"] = daily["importe"].apply(fmt_eur)
+
+            fig = px.bar(
+                daily,
+                x="fecha_publicacion",
+                y="n",
+                color="n",
+                color_continuous_scale="Greens",
+                hover_data={
+                    "importe_fmt": True,
+                    "n": True,
+                    "fecha_publicacion": False,
+                },
+                labels={
+                    "fecha_publicacion": "",
+                    "n": "Licitaciones",
+                    "importe_fmt": "Importe total",
+                },
+                template=ctx.plotly_template,
+            )
+            fig.update_layout(
+                height=300,
+                showlegend=False,
+                coloraxis_showscale=False,
+                margin=dict(t=10, b=10, l=10, r=10),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("Sin datos en los últimos 30 días.")
+
+    with cB, chart_card(
+        "Tecnologías en el último mes",
+        subtitle="Distribución de licitaciones por tecnología",
+    ):
+        if not recientes.empty and "tecnologia" in recientes.columns:
+            tech_data = recientes.copy()
+            tech_data["tecnologia"] = tech_data["tecnologia"].fillna("Sin clasificar")
+            tech_data = tech_data.assign(
+                tecnologia=tech_data["tecnologia"].str.split(",")
+            ).explode("tecnologia", ignore_index=True)
+            tech_data["tecnologia"] = tech_data["tecnologia"].str.strip()
+            tech_counts = (
+                tech_data.groupby("tecnologia")
+                .agg(n=("id_externo", "count"))
+                .reset_index()
+                .sort_values("n", ascending=True)
+            )
+            fig = px.bar(
+                tech_counts,
+                x="n",
+                y="tecnologia",
+                orientation="h",
+                template=ctx.plotly_template,
+                color="n",
+                color_continuous_scale="Greens",
+                labels={"n": "", "tecnologia": ""},
+            )
+            fig.update_layout(
+                height=300,
+                showlegend=False,
+                coloraxis_showscale=False,
+                margin=dict(t=10, b=10, l=10, r=10),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("Sin datos de tecnología.")
+
+    # ── Últimas 20 publicaciones con detalle expandible ─────────────
+    with chart_card(
+        "Últimas publicaciones",
+        subtitle="20 licitaciones más recientes — haz clic para expandir",
+    ):
+        ultimas = df.sort_values("fecha_publicacion", ascending=False).head(20)
+        for _, row in ultimas.iterrows():
+            fecha = row["fecha_publicacion"]
+            fecha_str = fecha.strftime("%d/%m/%Y") if pd.notna(fecha) else "—"
+            imp = fmt_eur(row.get("importe"))
+            estado = row.get("estado_desc", "—")
+            titulo = str(row.get("titulo", "—"))[:90]
+            header = f"{fecha_str} · {imp} · {estado} — {titulo}"
+            with st.expander(header):
+                _render_licitacion_detalle(row)
 
 
 def _render_banner_hoy(df: pd.DataFrame, adj: pd.DataFrame) -> None:
