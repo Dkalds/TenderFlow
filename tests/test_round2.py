@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
-
 
 # ─── apply_filters: regex=False, organo scope, no copy ──────────────────────
 
@@ -139,7 +136,9 @@ class TestUserKey:
         monkeypatch.setenv("DASHBOARD_PASSWORD", "test_password_123")
         # Reimport to pick up new env
         import importlib
+
         import config as cfg
+
         importlib.reload(cfg)
 
         from shared.user_key import user_key
@@ -151,11 +150,13 @@ class TestUserKey:
 
     def test_different_password_different_key(self, monkeypatch):
         import importlib
+
         import config as cfg
 
         monkeypatch.setenv("DASHBOARD_PASSWORD", "alpha")
         importlib.reload(cfg)
         from shared.user_key import user_key
+
         k1 = user_key()
 
         monkeypatch.setenv("DASHBOARD_PASSWORD", "beta")
@@ -170,12 +171,13 @@ class TestUserKey:
 class TestAtomicDownload:
     def test_tmp_file_used_during_download(self, tmp_path):
         """Verifica que la descarga usa .tmp como paso intermedio."""
-        from scraper.bulk_downloader import _download
-
         # _download está envuelto en retry + breaker, lo cual complica el mock.
         # Verificamos simplemente que el archivo final solo se crea al final
         # mirando el código fuente que usa .with_suffix('.tmp')
         import inspect
+
+        from scraper.bulk_downloader import _download
+
         src = inspect.getsource(_download.__wrapped__)
         assert ".tmp" in src
         assert ".replace(" in src or ".rename(" in src

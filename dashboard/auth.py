@@ -42,6 +42,7 @@ def _verify_password(candidate: str, reference: str) -> bool:
     )
     return hmac.compare_digest(candidate, reference)
 
+
 # Duración máxima de una sesión autenticada (segundos)
 SESSION_TIMEOUT_SECONDS = 28_800  # 8 horas
 

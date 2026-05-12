@@ -43,9 +43,7 @@ class TestMLAccuracy:
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
         assert "error" not in metrics, f"Entrenamiento falló: {metrics}"
-        assert metrics["accuracy"] >= 0.80, (
-            f"Accuracy {metrics['accuracy']:.2f} < 0.80 mínimo"
-        )
+        assert metrics["accuracy"] >= 0.80, f"Accuracy {metrics['accuracy']:.2f} < 0.80 mínimo"
 
     def test_f1_above_threshold(self, sample_df):
         from scraper.ml_classifier import SAPClassifier
@@ -63,16 +61,12 @@ class TestMLAccuracy:
         clf.train(sample_df)
 
         # Texto claramente SAP
-        is_sap, confidence = clf.predict(
-            "Implantación SAP S/4HANA módulo FI/CO con ABAP"
-        )
+        is_sap, confidence = clf.predict("Implantación SAP S/4HANA módulo FI/CO con ABAP")
         assert is_sap is True
         assert confidence > 0.7
 
         # Texto claramente NO SAP
-        is_sap, confidence = clf.predict(
-            "Suministro de mobiliario de oficina y sillas ergonómicas"
-        )
+        is_sap, confidence = clf.predict("Suministro de mobiliario de oficina y sillas ergonómicas")
         assert is_sap is False
         assert confidence < 0.5
 

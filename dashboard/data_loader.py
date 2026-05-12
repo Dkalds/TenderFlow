@@ -207,7 +207,10 @@ def load_adjudicaciones(limit: int | None = None) -> pd.DataFrame:
 
     df["fecha_adjudicacion"] = pd.to_datetime(df["fecha_adjudicacion"], errors="coerce")
     df["fecha_publicacion"] = pd.to_datetime(
-        df["fecha_publicacion"], errors="coerce", format="mixed", utc=True,
+        df["fecha_publicacion"],
+        errors="coerce",
+        format="mixed",
+        utc=True,
     )
     for col in (
         "importe_adjudicado",

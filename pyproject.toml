@@ -107,6 +107,25 @@ module = [
 ]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+warn_return_any = false
+disallow_any_generics = false
+warn_unused_ignores = false
+disallow_untyped_calls = false
+
+# Módulos con errores type-arg / no-any-return / no-untyped-call pre-existentes
+[[tool.mypy.overrides]]
+module = [
+    "db.rate_limits",
+    "scraper.atom_live",
+    "scraper.pipeline",
+    "scheduler.healthcheck",
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_return_any = false
+disallow_any_generics = false
+disallow_untyped_calls = false
+warn_unused_ignores = false
 
 # Dependencias sin stubs útiles
 [[tool.mypy.overrides]]

@@ -21,12 +21,12 @@ def main() -> None:
         password = getpass.getpass("Contraseña: ")
         confirm = getpass.getpass("Confirmar:   ")
         if password != confirm:
-            print("Las contraseñas no coinciden.", file=sys.stderr)  # noqa: T201
+            print("Las contraseñas no coinciden.", file=sys.stderr)
             sys.exit(1)
 
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    print(f"\nAñade esta línea a tu .env:\n")  # noqa: T201
-    print(f"DASHBOARD_PASSWORD_HASH={hashed}")  # noqa: T201
+    print("\nAñade esta línea a tu .env:\n")
+    print(f"DASHBOARD_PASSWORD_HASH={hashed}")
 
 
 if __name__ == "__main__":

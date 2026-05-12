@@ -13,13 +13,15 @@ Diseño:
 from __future__ import annotations
 
 import time
+from contextlib import AbstractContextManager
+from typing import Any
 
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
 
-def _connect():  # type: ignore[no-untyped-def]
+def _connect() -> AbstractContextManager[Any]:
     """Obtiene el context manager de conexión (lazy import para evitar ciclos)."""
     from db.database import connect
 

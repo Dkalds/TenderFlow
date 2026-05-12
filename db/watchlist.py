@@ -114,6 +114,5 @@ def matches_licitacion(entry: dict[str, Any], licitacion: dict[str, Any]) -> boo
         except (TypeError, ValueError):
             return False
     return not (
-        entry.get("ccaa")
-        and str(licitacion.get("ccaa") or "").lower() != entry["ccaa"].lower()
+        entry.get("ccaa") and str(licitacion.get("ccaa") or "").lower() != entry["ccaa"].lower()
     )

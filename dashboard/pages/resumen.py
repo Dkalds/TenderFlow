@@ -569,9 +569,12 @@ def _render_actividad_reciente(df: pd.DataFrame, ctx: PageContext) -> None:
     recientes = df[df["fecha_publicacion"] >= hace_30d].copy()
 
     cA, cB = st.columns([1, 1])
-    with cA, chart_card(
-        "Actividad diaria (30 días)",
-        subtitle="Nº de licitaciones publicadas por día",
+    with (
+        cA,
+        chart_card(
+            "Actividad diaria (30 días)",
+            subtitle="Nº de licitaciones publicadas por día",
+        ),
     ):
         if not recientes.empty:
             daily = (
@@ -610,16 +613,19 @@ def _render_actividad_reciente(df: pd.DataFrame, ctx: PageContext) -> None:
         else:
             st.caption("Sin datos en los últimos 30 días.")
 
-    with cB, chart_card(
-        "Tecnologías en el último mes",
-        subtitle="Distribución de licitaciones por tecnología",
+    with (
+        cB,
+        chart_card(
+            "Tecnologías en el último mes",
+            subtitle="Distribución de licitaciones por tecnología",
+        ),
     ):
         if not recientes.empty and "tecnologia" in recientes.columns:
             tech_data = recientes.copy()
             tech_data["tecnologia"] = tech_data["tecnologia"].fillna("Sin clasificar")
-            tech_data = tech_data.assign(
-                tecnologia=tech_data["tecnologia"].str.split(",")
-            ).explode("tecnologia", ignore_index=True)
+            tech_data = tech_data.assign(tecnologia=tech_data["tecnologia"].str.split(",")).explode(
+                "tecnologia", ignore_index=True
+            )
             tech_data["tecnologia"] = tech_data["tecnologia"].str.strip()
             tech_counts = (
                 tech_data.groupby("tecnologia")

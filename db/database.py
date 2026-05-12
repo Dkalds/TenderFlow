@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue as _queue_mod
 import threading
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -160,7 +161,6 @@ _ADJ_PLACEHOLDERS = ", ".join("?" for _ in _ADJ_KEYS)
 
 
 # ── Connection pool ─────────────────────────────────────────────────────────
-import queue as _queue_mod
 
 _local = threading.local()
 
@@ -176,7 +176,7 @@ _pool_lock = threading.Lock()
 
 def set_db_path_override(path: str | None) -> None:
     """Establece (o limpia con None) el override de ruta de BD para tests."""
-    global _DB_PATH_OVERRIDE  # noqa: PLW0603
+    global _DB_PATH_OVERRIDE
     _DB_PATH_OVERRIDE = path
 
 
@@ -217,12 +217,10 @@ def _get_conn() -> Any:
     Para Turso cloud usa un pool con health-check. Para SQLite local usa
     thread-local (1 conexión por hilo, WAL permite lecturas concurrentes).
     """
-    global _pool  # noqa: PLW0603
+    global _pool
 
     # Para Turso con pool_size > 1, usar el pool compartido
-    is_turso = (
-        not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
-    )
+    is_turso = not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
     if is_turso and settings.DB_POOL_SIZE > 1:
         if _pool is None:
             with _pool_lock:
@@ -253,9 +251,7 @@ def _get_conn() -> Any:
 
 def _return_conn(conn: Any) -> None:
     """Devuelve una conexión al pool (Turso) o la mantiene en thread-local."""
-    is_turso = (
-        not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
-    )
+    is_turso = not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
     if is_turso and settings.DB_POOL_SIZE > 1 and _pool is not None:
         try:
             _pool.put_nowait(conn)
@@ -268,7 +264,7 @@ def _return_conn(conn: Any) -> None:
 
 def close_pool() -> None:
     """Cierra la conexión del hilo actual y vacía el pool compartido."""
-    global _pool  # noqa: PLW0603
+    global _pool
     conn = getattr(_local, "conn", None)
     if conn is not None:
         try:
@@ -487,7 +483,7 @@ def upsert_licitaciones_with_history(
             ids,
         ).fetchall()
         # Construir dict {id_externo: old_record} para lookup O(1) por item
-        existing: dict[str, dict] = {
+        existing: dict[str, dict[str, Any]] = {
             row[0]: dict(zip(col_names, row, strict=False)) for row in existing_rows
         }
 

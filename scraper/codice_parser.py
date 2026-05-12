@@ -67,7 +67,7 @@ def _float(elem: Any, xpath: str) -> float | None:
         return None
 
 
-def parse_summary(summary: str | None) -> dict:
+def parse_summary(summary: str | None) -> dict[str, Any]:
     """Extrae id/órgano/importe/estado del texto del summary."""
     if not summary:
         return {}
@@ -325,9 +325,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     moneda = moneda_attr[0] if moneda_attr else None
 
     provincia = _text(entry, f"{project_xp}/cac:RealizedLocation/cbc:CountrySubentity")
-    nuts_code = _text(
-        entry, f"{project_xp}/cac:RealizedLocation/cbc:CountrySubentityCode"
-    )
+    nuts_code = _text(entry, f"{project_xp}/cac:RealizedLocation/cbc:CountrySubentityCode")
 
     pp = f"{project_xp}/cac:PlannedPeriod"
     duracion_valor = _float(entry, f"{pp}/cbc:DurationMeasure")

@@ -124,9 +124,7 @@ class TestQueryPerformance:
                 importe=float(100_000 + i),
                 ccaa=["Madrid", "Cataluña", "Andalucía", "Valencia", "P. Vasco"][i % 5],
                 estado=["PUB", "ADJ", "ANUL", "RES", "EVA"][i % 5],
-                fecha_publicacion=(
-                    datetime.now(UTC) - timedelta(days=i % 365)
-                ).isoformat(),
+                fecha_publicacion=(datetime.now(UTC) - timedelta(days=i % 365)).isoformat(),
                 fecha_extraccion=now_iso,
             )
             for i in range(10_000)
@@ -140,9 +138,7 @@ class TestQueryPerformance:
                 "SELECT ccaa, COUNT(*), SUM(importe) FROM licitaciones GROUP BY ccaa"
             ).fetchall()
             # Agregación por estado
-            c.execute(
-                "SELECT estado, COUNT(*) FROM licitaciones GROUP BY estado"
-            ).fetchall()
+            c.execute("SELECT estado, COUNT(*) FROM licitaciones GROUP BY estado").fetchall()
             # Búsqueda por texto
             c.execute(
                 "SELECT COUNT(*) FROM licitaciones WHERE titulo LIKE ?",
@@ -167,7 +163,7 @@ class TestXMLParsingPerformance:
         # Parsear con lxml (simula lo que hace el pipeline)
         from lxml import etree
 
-        tree = etree.parse(str(xml_path))  # noqa: S320
+        tree = etree.parse(str(xml_path))
         root = tree.getroot()
         entries = root.findall("{http://www.w3.org/2005/Atom}entry")
         elapsed = time.monotonic() - t0

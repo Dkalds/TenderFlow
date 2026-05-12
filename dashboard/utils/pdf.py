@@ -122,8 +122,7 @@ def generate_pdf(
 
     if filtros:
         filtros_text = " · ".join(
-            f"<b>{_html.escape(str(k))}</b>: {_html.escape(str(v))}"
-            for k, v in filtros.items()
+            f"<b>{_html.escape(str(k))}</b>: {_html.escape(str(v))}" for k, v in filtros.items()
         )
         story.append(Paragraph(f"Filtros: {filtros_text}", s["body"]))
         story.append(Spacer(1, 5 * mm))

@@ -90,8 +90,6 @@ class TestResumenPage:
 
     def test_kpi_values_present(self, func_db):
         from dashboard.data_loader import load_dataframe
-        from dashboard.pages._base import PageContext
-        from dashboard.filters import FiltersState
 
         df = load_dataframe()
         assert len(df) == 10, f"Expected 10 licitaciones, got {len(df)}"

@@ -362,7 +362,7 @@ def seed_negatives(
 
     from db.database import init_db
     from scraper.bulk_downloader import download_month, iter_xml_files
-    from scraper.codice_parser import (  # type: ignore[attr-defined]
+    from scraper.codice_parser import (
         _text,
         parse_entry_unfiltered,
     )
@@ -385,7 +385,7 @@ def seed_negatives(
 
     downloaded = 0
     skipped_ti = 0
-    rows_to_insert: list[tuple] = []
+    rows_to_insert: list[tuple[Any, ...]] = []
 
     for _filename, content in iter_xml_files(zip_path):
         if len(rows_to_insert) >= max_negatives:
@@ -468,7 +468,7 @@ def seed_negatives(
             for row in rows_to_insert:
                 extra_cols = ""
                 extra_vals = ""
-                extra_params: list = []
+                extra_params: list[Any] = []
                 if has_fecha_act:
                     extra_cols += ", fecha_actualizacion_fuente"
                     extra_vals += ", ?"
@@ -530,7 +530,7 @@ def seed_negatives(
     }
 
 
-def train_from_db() -> dict[str, float]:
+def train_from_db() -> dict[str, Any]:
     """Entrena el clasificador usando datos de la BD activa y lo guarda."""
     import pandas as pd
 
@@ -591,12 +591,14 @@ if __name__ == "__main__":
             f"Descargando negativos del bulk "
             f"{args.year or 'mes anterior'}/{args.month or ''}  (máx {args.max_negatives})..."
         )
-        result = seed_negatives(year=args.year, month=args.month, max_negatives=args.max_negatives)
+        seed_result = seed_negatives(
+            year=args.year, month=args.month, max_negatives=args.max_negatives
+        )
         print(
-            f"  Descargadas : {result['downloaded']}\n"
-            f"  Insertadas  : {result['inserted']}\n"
-            f"  Omitidas TI : {result['skipped_ti']}\n"
-            f"  Ya existían : {result['already_exists']}\n"
+            f"  Descargadas : {seed_result['downloaded']}\n"
+            f"  Insertadas  : {seed_result['inserted']}\n"
+            f"  Omitidas TI : {seed_result['skipped_ti']}\n"
+            f"  Ya existían : {seed_result['already_exists']}\n"
             "\nAhora puedes entrenar: python -m scraper.ml_classifier train"
         )
     elif cmd == "info":

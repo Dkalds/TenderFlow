@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from db.database import (
     Adjudicacion,
     Licitacion,
 )
-
 
 # Usa el fixture tmp_db de conftest.py (simplificado con DI hook).
 
