@@ -530,7 +530,7 @@ def _render_licitacion_detalle(row: pd.Series) -> None:
             st.caption(f"**Estado:** {row.get('estado_desc', '—')}")
         with c2:
             fecha = row.get("fecha_publicacion")
-            fecha_str = pd.Timestamp(fecha).strftime("%d/%m/%Y") if pd.notna(fecha) else "—"
+            fecha_str = pd.Timestamp(fecha).strftime("%d/%m/%Y") if pd.notna(fecha) else "—"  # type: ignore[arg-type]
             st.metric("Fecha publicación", fecha_str)
             st.caption(f"**Tipo proyecto:** {row.get('tipo_proyecto', '—')}")
         with c3:
