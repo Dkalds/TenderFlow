@@ -154,6 +154,11 @@ module = [
     "bcrypt",
     "prometheus_client",
     "prometheus_client.*",
+    "alembic",
+    "alembic.*",
+    "sqlalchemy",
+    "sqlalchemy.*",
+    "joblib",
 ]
 ignore_missing_imports = true
 

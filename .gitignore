@@ -22,4 +22,24 @@ pytest-run.txt
 pytest_full.log
 cov80.txt
 coverage.xml
-pytest-run.txt
+# Temp output files generated during development
+cov_out.txt
+final_checks.txt
+ml_out.txt
+smoke_out.txt
+test_final.txt
+test_full_out.txt
+test_r2_out.txt
+ruff_out.txt
+pytest_output.txt
+pytest_out*.txt
+pytest_err*.txt
+*_out.txt
+
+# Python packaging artifacts
+*.egg-info/
+dist/
+build/
+
+# Editor config
+.vscode/
