@@ -69,7 +69,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin  # pragma: allowlist secret
       GF_USERS_ALLOW_SIGN_UP: "false"
     depends_on:
       prometheus:
