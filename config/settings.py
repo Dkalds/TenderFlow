@@ -9,7 +9,14 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_ROOT = Path(__file__).parent.parent
+_ROOT = Path(__file__).resolve().parent.parent
+
+# En entornos donde el paquete se instala en site-packages (e.g. Streamlit Cloud),
+# _ROOT apuntaría a un directorio sin permisos de escritura.  Usamos un
+# directorio escribible como fallback.
+_DEFAULT_DATA_DIR = _ROOT / "data"
+if "site-packages" in str(_ROOT):
+    _DEFAULT_DATA_DIR = Path("/tmp/licitaciones_data")
 
 
 class Settings(BaseSettings):
@@ -25,7 +32,7 @@ class Settings(BaseSettings):
     ENV: Literal["dev", "prod"] = "dev"
 
     # ── Rutas ────────────────────────────────────────────────────────────
-    DATA_DIR: Path = _ROOT / "data"
+    DATA_DIR: Path = _DEFAULT_DATA_DIR
     DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None
 
