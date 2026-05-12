@@ -16,9 +16,9 @@ pybreaker>=1.0.0,<2
 reportlab>=4.0,<5
 # ML — clasificador TF-IDF + LogisticRegression para detección SAP
 scikit-learn>=1.3.0,<2
-# Búsqueda semántica vectorial
-faiss-cpu>=1.7.4,<2
-sentence-transformers>=2.2.0,<4
+# Búsqueda semántica vectorial (opcional — instalar manualmente si se necesita)
+# faiss-cpu>=1.7.4,<2
+# sentence-transformers>=2.2.0,<4  # arrastra torch (~2 GB), no apto para Streamlit Cloud
 # Métricas Prometheus (opcional — fallback a fichero texto si no está instalado)
 prometheus_client>=0.19.0,<1
 # Password hashing seguro para autenticación del dashboard

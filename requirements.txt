@@ -1,3 +1,5 @@
+alembic==1.18.4
+    # via -r requirements.in
 altair==6.1.0
     # via streamlit
 annotated-types==0.7.0
@@ -10,6 +12,8 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
+bcrypt==4.3.0
+    # via -r requirements.in
 blinker==1.9.0
     # via streamlit
 cachetools==7.1.0
@@ -32,6 +36,8 @@ gitdb==4.0.12
     # via gitpython
 gitpython==3.1.50
     # via streamlit
+greenlet==3.5.0
+    # via sqlalchemy
 h11==0.16.0
     # via uvicorn
 httptools==0.7.1
@@ -46,6 +52,8 @@ jinja2==3.1.6
     # via
     #   altair
     #   pydeck
+joblib==1.5.3
+    # via scikit-learn
 jsonschema==4.26.0
     # via altair
 jsonschema-specifications==2025.9.1
@@ -54,8 +62,12 @@ libsql==0.1.11
     # via -r requirements.in
 lxml==6.1.0
     # via -r requirements.in
+mako==1.3.12
+    # via alembic
 markupsafe==3.0.3
-    # via jinja2
+    # via
+    #   jinja2
+    #   mako
 narwhals==2.20.0
     # via
     #   altair
@@ -64,6 +76,8 @@ numpy==2.4.4
     # via
     #   pandas
     #   pydeck
+    #   scikit-learn
+    #   scipy
     #   streamlit
 openpyxl==3.1.5
     # via -r requirements.in
@@ -72,7 +86,7 @@ packaging==26.2
     #   altair
     #   plotly
     #   streamlit
-pandas==3.0.2
+pandas==2.3.3
     # via
     #   -r requirements.in
     #   streamlit
@@ -82,6 +96,8 @@ pillow==12.2.0
     #   reportlab
     #   streamlit
 plotly==6.7.0
+    # via -r requirements.in
+prometheus-client==0.25.0
     # via -r requirements.in
 protobuf==7.34.1
     # via streamlit
@@ -109,6 +125,8 @@ python-dotenv==1.2.2
     #   pydantic-settings
 python-multipart==0.0.27
     # via streamlit
+pytz==2026.2
+    # via pandas
 referencing==0.37.0
     # via
     #   jsonschema
@@ -123,10 +141,16 @@ rpds-py==0.30.0
     # via
     #   jsonschema
     #   referencing
+scikit-learn==1.8.0
+    # via -r requirements.in
+scipy==1.17.1
+    # via scikit-learn
 six==1.17.0
     # via python-dateutil
 smmap==5.0.3
     # via gitdb
+sqlalchemy==2.0.49
+    # via alembic
 starlette==1.0.0
     # via streamlit
 streamlit==1.57.0
@@ -141,13 +165,20 @@ tenacity==9.1.4
     # via
     #   -r requirements.in
     #   streamlit
+threadpoolctl==3.6.0
+    # via scikit-learn
 toml==0.10.2
     # via streamlit
 typing-extensions==4.15.0
     # via
+    #   alembic
     #   altair
+    #   anyio
     #   pydantic
     #   pydantic-core
+    #   referencing
+    #   sqlalchemy
+    #   starlette
     #   streamlit
     #   typing-inspection
 typing-inspection==0.4.2
