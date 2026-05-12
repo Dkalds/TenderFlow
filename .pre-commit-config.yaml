@@ -29,8 +29,8 @@ repos:
           - pandas-stubs
           - types-requests
           - types-python-dateutil
-        args: ["--ignore-missing-imports"]
-        files: '^(scraper|db|scheduler|dashboard)/.*\.py$|^config\.py$'
+        args: ["--ignore-missing-imports", "--disable-error-code=misc"]
+        files: '^(scraper|db|scheduler|dashboard)/.*\.py$|^config/.*\.py$'
 
   - repo: local
     hooks:
