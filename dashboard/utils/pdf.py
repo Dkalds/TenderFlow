@@ -9,6 +9,7 @@ Usa reportlab para generar un PDF con:
 
 from __future__ import annotations
 
+import html as _html
 from io import BytesIO
 from typing import Any
 
@@ -120,7 +121,10 @@ def generate_pdf(
     story.append(Spacer(1, 1 * cm))
 
     if filtros:
-        filtros_text = " · ".join(f"<b>{k}</b>: {v}" for k, v in filtros.items())
+        filtros_text = " · ".join(
+            f"<b>{_html.escape(str(k))}</b>: {_html.escape(str(v))}"
+            for k, v in filtros.items()
+        )
         story.append(Paragraph(f"Filtros: {filtros_text}", s["body"]))
         story.append(Spacer(1, 5 * mm))
 

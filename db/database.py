@@ -159,41 +159,116 @@ _ADJ_COLS = ", ".join(_ADJ_KEYS)
 _ADJ_PLACEHOLDERS = ", ".join("?" for _ in _ADJ_KEYS)
 
 
-# ── Thread-local connection pool ────────────────────────────────────────────
+# ── Connection pool ─────────────────────────────────────────────────────────
+import queue as _queue_mod
+
 _local = threading.local()
+
+# Override para tests: si se setea, _get_conn() usa esta ruta en vez de settings.DB_PATH.
+# Esto evita el patrón frágil de importlib.reload() en los tests.
+_DB_PATH_OVERRIDE: str | None = None
+
+# Pool de conexiones Turso (Queue thread-safe). Sólo se usa cuando hay
+# TURSO_DATABASE_URL configurada (>1 conexión). Para SQLite local, thread-local basta.
+_pool: _queue_mod.Queue[Any] | None = None
+_pool_lock = threading.Lock()
+
+
+def set_db_path_override(path: str | None) -> None:
+    """Establece (o limpia con None) el override de ruta de BD para tests."""
+    global _DB_PATH_OVERRIDE  # noqa: PLW0603
+    _DB_PATH_OVERRIDE = path
+
+
+def _create_connection() -> Any:
+    """Crea una nueva conexión a la BD según la configuración actual."""
+    if not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN:
+        return libsql.connect(settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN)
+
+    if (
+        not _DB_PATH_OVERRIDE
+        and os.environ.get("CI", "").lower() in ("1", "true", "yes")
+        and not os.environ.get("PYTEST_CURRENT_TEST")
+    ):
+        raise RuntimeError(
+            "Faltan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN en el entorno CI. "
+            "Configura los secrets del repositorio antes de ejecutar el pipeline."
+        )
+    db_path = _DB_PATH_OVERRIDE or str(settings.DB_PATH)
+    conn = libsql.connect(db_path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.commit()
+    return conn
+
+
+def _health_check(conn: Any) -> bool:
+    """Verifica que una conexión sigue viva."""
+    try:
+        conn.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
 
 
 def _get_conn() -> Any:
-    """Devuelve una conexión reutilizada por hilo (thread-local pool)."""
+    """Devuelve una conexión reutilizada por hilo.
+
+    Para Turso cloud usa un pool con health-check. Para SQLite local usa
+    thread-local (1 conexión por hilo, WAL permite lecturas concurrentes).
+    """
+    global _pool  # noqa: PLW0603
+
+    # Para Turso con pool_size > 1, usar el pool compartido
+    is_turso = (
+        not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
+    )
+    if is_turso and settings.DB_POOL_SIZE > 1:
+        if _pool is None:
+            with _pool_lock:
+                if _pool is None:
+                    _pool = _queue_mod.Queue(maxsize=settings.DB_POOL_SIZE)
+        # Intentar obtener del pool
+        try:
+            conn = _pool.get_nowait()
+            if _health_check(conn):
+                return conn
+            # Conexión muerta — crear nueva
+            try:
+                conn.close()
+            except Exception:
+                pass
+        except _queue_mod.Empty:
+            pass
+        return _create_connection()
+
+    # SQLite local / tests: thread-local (una conexión por hilo)
     conn = getattr(_local, "conn", None)
     if conn is not None:
         return conn
-    if settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN:
-        conn = libsql.connect(settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN)
-    else:
-        # En CI (GitHub Actions y similares) NUNCA usar SQLite local: el FS es
-        # efímero y los datos se perderían silenciosamente. Forzar fallo ruidoso.
-        # Excepción: dentro de pytest (PYTEST_CURRENT_TEST lo fija pytest) se
-        # permite SQLite temporal para el fixture tmp_db.
-        if os.environ.get("CI", "").lower() in ("1", "true", "yes") and not os.environ.get(
-            "PYTEST_CURRENT_TEST"
-        ):
-            raise RuntimeError(
-                "Faltan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN en el entorno CI. "
-                "Configura los secrets del repositorio antes de ejecutar el pipeline."
-            )
-        conn = libsql.connect(str(settings.DB_PATH))
-        # WAL mode: permite lecturas concurrentes del dashboard mientras el
-        # scraper escribe. busy_timeout=5000ms evita "database is locked".
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.commit()
+    conn = _create_connection()
     _local.conn = conn
     return conn
 
 
+def _return_conn(conn: Any) -> None:
+    """Devuelve una conexión al pool (Turso) o la mantiene en thread-local."""
+    is_turso = (
+        not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
+    )
+    if is_turso and settings.DB_POOL_SIZE > 1 and _pool is not None:
+        try:
+            _pool.put_nowait(conn)
+        except _queue_mod.Full:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def close_pool() -> None:
-    """Cierra la conexión del hilo actual (para tests / shutdown)."""
+    """Cierra la conexión del hilo actual y vacía el pool compartido."""
+    global _pool  # noqa: PLW0603
     conn = getattr(_local, "conn", None)
     if conn is not None:
         try:
@@ -201,6 +276,16 @@ def close_pool() -> None:
         except Exception:
             log.debug("connection_close_failed")
         _local.conn = None
+
+    # Vaciar pool compartido (Turso)
+    if _pool is not None:
+        while not _pool.empty():
+            try:
+                c = _pool.get_nowait()
+                c.close()
+            except Exception:
+                pass
+        _pool = None
 
 
 @contextmanager
@@ -212,6 +297,8 @@ def connect() -> Iterator[Any]:
     except Exception:
         conn.rollback()
         raise
+    finally:
+        _return_conn(conn)
 
 
 def init_db() -> None:

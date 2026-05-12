@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # ── Dashboard ────────────────────────────────────────────────────────
     DASHBOARD_PASSWORD: str = ""
+    DASHBOARD_PASSWORD_HASH: str = ""  # bcrypt hash — preferido sobre DASHBOARD_PASSWORD
     DASHBOARD_CACHE_TTL: int = 300
 
     # ── OAuth ────────────────────────────────────────────────────────────
@@ -56,6 +57,10 @@ class Settings(BaseSettings):
     ALERT_SMTP_PASSWORD: str = ""
     ALERT_SMTP_HOST: str = "smtp.gmail.com"
     ALERT_SMTP_PORT: int = 587
+
+    # ── Base de datos ─────────────────────────────────────────────────────
+    DB_POOL_SIZE: int = 5
+    DB_POOL_TIMEOUT: float = 10.0
 
     # ── Scraper ──────────────────────────────────────────────────────────
     REQUEST_TIMEOUT: int = 30
@@ -90,9 +95,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_password(self) -> Settings:
-        if self.ENV == "prod" and not self.DASHBOARD_PASSWORD:
+        if self.ENV == "prod" and not self.DASHBOARD_PASSWORD and not self.DASHBOARD_PASSWORD_HASH:
             raise ValueError(
-                "DASHBOARD_PASSWORD es obligatorio en ENV=prod. "
+                "DASHBOARD_PASSWORD o DASHBOARD_PASSWORD_HASH es obligatorio en ENV=prod. "
                 "Configura la variable de entorno antes de arrancar."
             )
         return self

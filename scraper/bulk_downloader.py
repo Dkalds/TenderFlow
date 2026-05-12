@@ -41,6 +41,7 @@ BULK_URL_TEMPLATE = (
 def _download(url: str, dest: Path) -> Path:
     log.info("bulk_download_start", url=url, dest=str(dest))
     headers = {"User-Agent": USER_AGENT}
+    tmp = dest.with_suffix(".tmp")
     with requests.get(url, headers=headers, stream=True, timeout=settings.REQUEST_TIMEOUT) as r:
         r.raise_for_status()
         content_length = r.headers.get("Content-Length")
@@ -53,7 +54,7 @@ def _download(url: str, dest: Path) -> Path:
                 )
         downloaded = 0
         try:
-            with open(dest, "wb") as f:
+            with open(tmp, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     downloaded += len(chunk)
                     if downloaded > settings.MAX_DOWNLOAD_SIZE_BYTES:
@@ -62,8 +63,9 @@ def _download(url: str, dest: Path) -> Path:
                         )
                     f.write(chunk)
         except Exception:
-            dest.unlink(missing_ok=True)
+            tmp.unlink(missing_ok=True)
             raise
+    tmp.replace(dest)
     log.info("bulk_download_ok", url=url, bytes=downloaded)
     return dest
 

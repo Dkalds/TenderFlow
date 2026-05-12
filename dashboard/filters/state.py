@@ -86,10 +86,9 @@ class FiltersState:
         rango = None
         if "fecha_desde" in params and "fecha_hasta" in params:
             try:
-                rango = (
-                    date.fromisoformat(params["fecha_desde"]),
-                    date.fromisoformat(params["fecha_hasta"]),
-                )
+                d0 = date.fromisoformat(params["fecha_desde"])
+                d1 = date.fromisoformat(params["fecha_hasta"])
+                rango = (min(d0, d1), max(d0, d1))
             except ValueError:
                 pass
         try:

@@ -10,29 +10,7 @@ from db.database import (
 )
 
 
-@pytest.fixture()
-def tmp_db(monkeypatch, tmp_path):
-    """BD SQLite en directorio temporal; limpia entre tests."""
-    db_path = tmp_path / "test.db"
-    monkeypatch.setenv("DB_PATH", str(db_path))
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
-
-    # Recargar config con los nuevos env vars
-    import importlib
-    import sys
-
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
-    import config as cfg
-
-    importlib.reload(cfg)
-    import db.database as db_mod
-
-    importlib.reload(db_mod)
-
-    db_mod.init_db()
-    return db_mod, tmp_path
+# Usa el fixture tmp_db de conftest.py (simplificado con DI hook).
 
 
 def _make_lic(id_externo: str = "TEST-001", titulo: str = "Test SAP") -> Licitacion:

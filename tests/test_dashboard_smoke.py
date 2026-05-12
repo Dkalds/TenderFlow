@@ -7,7 +7,6 @@ completo no lance excepciones.
 
 from __future__ import annotations
 
-import importlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -59,31 +58,23 @@ def _seed_db(db_mod: object) -> None:
 @pytest.fixture()
 def _smoke_db(monkeypatch, tmp_path):
     """BD SQLite temporal poblada con 5 licitaciones representativas."""
+    import db.database as db_mod
+
     db_path = tmp_path / "smoke.db"
-    monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("TURSO_DATABASE_URL", "")
     monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "")
+    monkeypatch.setenv("DB_PATH", str(db_path))
 
-    importlib.import_module("config.settings")
-    import sys
-
-    importlib.reload(sys.modules["config.settings"])
-    import config as cfg
-
-    importlib.reload(cfg)
-
-    import db.database as db_mod
-
-    importlib.reload(db_mod)
-
-    import db.migrations as mig
-
-    importlib.reload(mig)
+    # Usar DI hook en vez de importlib.reload() masivo
+    db_mod.close_pool()
+    db_mod.set_db_path_override(str(db_path))
 
     db_mod.init_db()
     _seed_db(db_mod)
-    return db_mod
+    yield db_mod
+    db_mod.close_pool()
+    db_mod.set_db_path_override(None)
 
 
 # ---------------------------------------------------------------------------

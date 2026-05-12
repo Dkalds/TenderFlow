@@ -162,12 +162,20 @@ class SAPClassifier:
 
     def save(self, path: Path | None = None) -> Path:
         """Serializa el modelo a disco usando joblib (más seguro que pickle)."""
+        import hashlib
+
         import joblib
 
         target = path or _MODEL_PATH
         target.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self, target, compress=3)
-        log.info("ml_classifier.saved", path=str(target))
+
+        # Generar checksum SHA256 junto al modelo
+        sha256_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+        checksum_path = target.with_suffix(".sha256")
+        checksum_path.write_text(sha256_hash, encoding="utf-8")
+
+        log.info("ml_classifier.saved", path=str(target), sha256=sha256_hash[:16])
         return target
 
     @classmethod
@@ -252,10 +260,38 @@ class SAPClassifier:
 
     @classmethod
     def load(cls, path: Path | None = None) -> SAPClassifier:
-        """Carga un modelo serializado con joblib. Lanza FileNotFoundError si no existe."""
+        """Carga un modelo serializado con joblib. Lanza FileNotFoundError si no existe.
+
+        Verifica la integridad del fichero contra el checksum SHA256 almacenado.
+        Si el checksum no coincide, lanza RuntimeError para evitar cargar un
+        modelo potencialmente manipulado.
+        """
+        import hashlib
+
         import joblib
 
         target = path or _MODEL_PATH
+
+        # Verificar integridad con SHA256
+        checksum_path = target.with_suffix(".sha256")
+        if checksum_path.exists():
+            expected_hash = checksum_path.read_text(encoding="utf-8").strip()
+            actual_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+            if actual_hash != expected_hash:
+                raise RuntimeError(
+                    f"Integridad del modelo comprometida: SHA256 no coincide. "
+                    f"Esperado: {expected_hash[:16]}..., obtenido: {actual_hash[:16]}... "
+                    f"Fichero: {target}"
+                )
+            log.info("ml_classifier.checksum_verified", path=str(target))
+        else:
+            log.warning(
+                "ml_classifier.no_checksum_file",
+                path=str(checksum_path),
+                hint="El modelo se cargará sin verificación de integridad. "
+                "Re-entrena con save() para generar el fichero .sha256.",
+            )
+
         obj = joblib.load(target)
         if not isinstance(obj, cls):
             raise TypeError(f"El archivo no contiene un SAPClassifier: {type(obj)}")

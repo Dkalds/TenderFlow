@@ -33,6 +33,9 @@ test-integration:
 test-smoke:
 	pytest tests/test_dashboard_smoke.py
 
+test-perf:
+	pytest tests/test_performance.py -m slow --timeout=120
+
 # ── Scraper ──────────────────────────────────────────────────────────────
 scrape:
 	python -m scheduler.run_update --backfill $(YEAR) $(MONTH)

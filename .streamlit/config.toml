@@ -16,3 +16,8 @@ headless = true
 
 [browser]
 gatherUsageStats = false
+
+[client]
+# Deshabilita la navegación nativa de multi-page que Streamlit genera
+# automáticamente al detectar la carpeta pages/. La app usa su propio router.
+showSidebarNavigation = false

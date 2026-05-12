@@ -56,6 +56,9 @@ _REDACTED = "***REDACTED***"
 # Evita leer os.environ en cada evento de log.
 _cached_sensitive_values: set[str] = set()
 
+# Flag de idempotencia — True si configure_logging() ya ha sido invocado.
+_configured: bool = False
+
 
 def _load_sensitive_values() -> set[str]:
     """Lee los valores actuales de las env vars sensibles. Vacíos se ignoran."""
@@ -152,6 +155,9 @@ def configure_logging(
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+
+    global _configured
+    _configured = True
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

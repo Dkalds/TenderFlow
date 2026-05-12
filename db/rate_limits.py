@@ -60,9 +60,9 @@ def check_rate_limit_db(
             conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", [key, now])
             return True
     except Exception:
-        # Si la tabla no existe o hay error de BD, permitir la operación (fail open)
-        log.debug("check_rate_limit_db_error", key=key, exc_info=True)
-        return True
+        # Si la tabla no existe o hay error de BD, denegar la operación (fail closed)
+        log.warning("check_rate_limit_db_error", key=key, exc_info=True)
+        return False
 
 
 def record_failed_login(client_key: str) -> int:

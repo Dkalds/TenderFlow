@@ -11,23 +11,17 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import Any
 
-# Ensure project root is on sys.path when run as `python -m scheduler.run_update`
-_project_root = str(Path(__file__).resolve().parent.parent)
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-
-from db.database import count_licitaciones  # noqa: E402
-from observability import (  # noqa: E402
+from db.database import count_licitaciones
+from observability import (
     AlertLevel,
     configure_logging,
     get_logger,
     notify,
 )
-from scheduler.watchlist_alerts import check_and_notify  # noqa: E402
-from scraper.pipeline import backfill, update_daily, update_recent  # noqa: E402
+from scheduler.watchlist_alerts import check_and_notify
+from scraper.pipeline import backfill, update_daily, update_recent
 
 
 def main() -> int:

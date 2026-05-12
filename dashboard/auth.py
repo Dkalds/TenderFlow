@@ -16,6 +16,32 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+
+def _verify_password(candidate: str, reference: str) -> bool:
+    """Verifica *candidate* contra *reference* (plano) o el hash bcrypt de settings.
+
+    Prioridad:
+    1. Si ``settings.DASHBOARD_PASSWORD_HASH`` tiene valor, se usa bcrypt.
+    2. Fallback: comparación timing-safe con ``hmac.compare_digest``
+       + log warning recomendando migrar a bcrypt.
+    """
+    pw_hash = settings.DASHBOARD_PASSWORD_HASH
+    if pw_hash:
+        try:
+            import bcrypt
+
+            return bcrypt.checkpw(candidate.encode("utf-8"), pw_hash.encode("utf-8"))
+        except Exception:
+            log.warning("bcrypt_verify_failed", exc_info=True)
+            return False
+    # Fallback: comparación plana timing-safe
+    log.warning(
+        "plaintext_password_in_use",
+        hint="Configura DASHBOARD_PASSWORD_HASH con bcrypt. "
+        "Genera el hash con: python scripts/hash_password.py",
+    )
+    return hmac.compare_digest(candidate, reference)
+
 # Duración máxima de una sesión autenticada (segundos)
 SESSION_TIMEOUT_SECONDS = 28_800  # 8 horas
 
@@ -51,11 +77,21 @@ def oauth_configured() -> bool:
 
 
 def _get_password() -> str:
-    """Lee la contraseña desde st.secrets (Cloud) o config.py (.env / local)."""
+    """Lee la contraseña desde st.secrets (Cloud) o config.py (.env / local).
+
+    Cuando se usa ``DASHBOARD_PASSWORD_HASH`` (bcrypt), esta función sigue
+    devolviendo el valor plano como referencia para el flujo de fallback.
+    La verificación real la hace :func:`_verify_password`.
+    """
     try:
         return st.secrets.get("DASHBOARD_PASSWORD", "") or settings.DASHBOARD_PASSWORD
     except FileNotFoundError:
         return settings.DASHBOARD_PASSWORD
+
+
+def _has_password_configured() -> bool:
+    """True si hay algún mecanismo de password activo (plano o hash)."""
+    return bool(_get_password() or settings.DASHBOARD_PASSWORD_HASH)
 
 
 def _check_lockout() -> None:
@@ -339,9 +375,10 @@ def check_password() -> bool:
     Detiene la ejecución con ``st.stop()`` si el usuario no está autenticado.
     """
     password = _get_password()
+    has_password = _has_password_configured()
     has_oauth = oauth_configured()
 
-    if not password and not has_oauth:
+    if not has_password and not has_oauth:
         return True
 
     # Verificar sesión completamente autenticada y su timeout
@@ -374,7 +411,7 @@ def check_password() -> bool:
 
     # Procesar callback OAuth si hay code en la URL
     if has_oauth and _handle_oauth_callback():
-        if password:
+        if has_password:
             # Si el usuario es admin, saltar la contraseña
             from db.users import is_admin as _is_admin
 
@@ -396,13 +433,13 @@ def check_password() -> bool:
     oauth_done = st.session_state.get(OAUTH_STEP_DONE, False)
 
     # ── Paso 2: Contraseña (tras OAuth) ──────────────────────────────
-    if has_oauth and password and oauth_done:
+    if has_oauth and has_password and oauth_done:
         user_name = st.session_state.get(USER_NAME, "")
         greeting = f"Hola, {user_name}. " if user_name else ""
         st.markdown(f"### 🔒 {greeting}Introduce la contraseña")
         pwd = st.text_input("Contraseña", type="password", key="login_pwd")
         if st.button("Entrar", type="primary"):
-            if hmac.compare_digest(pwd, password):
+            if _verify_password(pwd, password):
                 from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
 
                 st.session_state[AUTHENTICATED] = True
@@ -441,13 +478,13 @@ def check_password() -> bool:
         return False
 
     # ── Solo contraseña (sin OAuth configurado) ──────────────────────
-    if password:
+    if has_password:
         from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
 
         st.markdown("### 🔒 Acceso restringido")
         pwd = st.text_input("Contraseña", type="password", key=LOGIN_PWD)
         if st.button("Entrar", type="primary"):
-            if hmac.compare_digest(pwd, password):
+            if _verify_password(pwd, password):
                 st.session_state[AUTHENTICATED] = True
                 st.session_state[AUTH_TIME] = time.time()
                 st.session_state[AUTH_METHOD] = "password"

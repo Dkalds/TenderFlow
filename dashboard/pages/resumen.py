@@ -511,7 +511,7 @@ def _render_timeline(df: pd.DataFrame, ctx: PageContext) -> None:
 
         selected_label = st.selectbox(
             "Selecciona una licitación para ver detalle:",
-            options=[""] + labels,
+            options=["", *labels],
             index=0,
             key="timeline_select",
         )
