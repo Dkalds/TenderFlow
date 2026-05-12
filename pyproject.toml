@@ -187,8 +187,12 @@ omit = [
     "dashboard/data_loader.py",
     "dashboard/stats.py",
     "dashboard/faiss_index.py",
+    "dashboard/utils/chart_helpers.py",
+    "dashboard/utils/lazy.py",
     "observability/prometheus.py",
     "config/*",
+    "scripts/*",
+    "scheduler/register_daily_task_windows.ps1",
 ]
 
 [tool.coverage.report]

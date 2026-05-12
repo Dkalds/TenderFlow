@@ -2,21 +2,9 @@
 
 from __future__ import annotations
 
-import sys
-
 import streamlit as st
 
-# ── Diagnóstico temporal: muestra el módulo exacto que falta ─────────────
-try:
-    from dashboard.auth import check_password, current_user_is_admin
-except ModuleNotFoundError as _e:
-    st.error(
-        f"**ModuleNotFoundError**: `{_e.name}` no está instalado.\n\n"
-        f"Error completo: `{_e}`\n\n"
-        f"Python: {sys.version}\n\n"
-        f"Elimina esta app y vuelve a desplegarla en Streamlit Cloud."
-    )
-    st.stop()
+from dashboard.auth import check_password, current_user_is_admin
 from dashboard.components.layout import render_sidebar_brand, render_topbar
 from dashboard.components.navigation import active_filters_chips, breadcrumb, sub_nav, top_nav
 from dashboard.components.states import empty_state
