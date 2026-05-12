@@ -34,6 +34,7 @@ _SEED_LICITACIONES = [
         "duracion_valor": 12.0,
         "duracion_unidad": "MON",
         "fecha_extraccion": _NOW.isoformat(),
+        "tecnologia": "SAP",
     }
     for i in range(10)
 ]
@@ -67,6 +68,14 @@ def func_db(monkeypatch, tmp_path):
 
     db_mod.close_pool()
     db_mod.set_db_path_override(str(db_path))
+    # Limpiar caché de Streamlit para que load_dataframe lea la BD de test
+    try:
+        import streamlit as st
+
+        st.cache_resource.clear()
+        st.cache_data.clear()
+    except Exception:
+        pass
     db_mod.init_db()
 
     lics = [Licitacion(**row) for row in _SEED_LICITACIONES]
@@ -83,6 +92,14 @@ def func_db(monkeypatch, tmp_path):
     yield db_mod
     db_mod.close_pool()
     db_mod.set_db_path_override(None)
+    # Limpiar caché al salir para no contaminar otros tests
+    try:
+        import streamlit as st
+
+        st.cache_resource.clear()
+        st.cache_data.clear()
+    except Exception:
+        pass
 
 
 class TestResumenPage:
