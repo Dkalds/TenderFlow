@@ -104,9 +104,11 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
         return df
 
     # ── Tipos básicos: errores aquí son fatales (corrupción en DB) ──
+    # format="mixed" necesario: IssueDate = "2025-02-09", atom:updated = "2026-04-10T15:36:50+02:00"
     df["fecha_publicacion"] = pd.to_datetime(
         df["fecha_publicacion"],
         errors="coerce",
+        format="mixed",
         utc=True,
     )
     df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
@@ -204,7 +206,9 @@ def load_adjudicaciones(limit: int | None = None) -> pd.DataFrame:
         return df
 
     df["fecha_adjudicacion"] = pd.to_datetime(df["fecha_adjudicacion"], errors="coerce")
-    df["fecha_publicacion"] = pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True)
+    df["fecha_publicacion"] = pd.to_datetime(
+        df["fecha_publicacion"], errors="coerce", format="mixed", utc=True,
+    )
     for col in (
         "importe_adjudicado",
         "importe_pagable",

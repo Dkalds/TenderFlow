@@ -152,11 +152,23 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
     return out
 
 
+def _issue_date(entry: Any, cfs: str) -> str | None:
+    """Extrae la primera fecha de publicación (IssueDate) de ValidNoticeInfo."""
+    dates = entry.xpath(
+        f"{cfs}/cacext:ValidNoticeInfo"
+        "/cacext:AdditionalPublicationStatus"
+        "/cacext:AdditionalPublicationDocumentReference"
+        "/cbc:IssueDate/text()",
+        namespaces=NS,
+    )
+    return min(dates) if dates else None
+
+
 def parse_entry(entry: Any) -> Licitacion | None:
     """Convierte una <entry> ATOM en una Licitacion (si es de tecnología enterprise)."""
     titulo = _text(entry, "./atom:title") or ""
     summary = _text(entry, "./atom:summary")
-    fecha_pub = _text(entry, "./atom:updated")
+    fecha_upd = _text(entry, "./atom:updated")
 
     link = entry.xpath("./atom:link/@href", namespaces=NS)
     url = link[0] if link else None
@@ -245,6 +257,8 @@ def parse_entry(entry: Any) -> Licitacion | None:
         all_keywords.extend(kw_list)
     kw = sorted(set(all_keywords))
 
+    fecha_pub = _issue_date(entry, cfs) or fecha_upd
+
     return Licitacion(
         id_externo=id_externo,
         titulo=titulo or "(sin título)",
@@ -256,7 +270,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         tipo_contrato=tipo,
         estado=estado_codice or s.get("estado"),
         fecha_publicacion=fecha_pub,
-        fecha_actualizacion_fuente=fecha_pub,
+        fecha_actualizacion_fuente=fecha_upd,
         url=url,
         raw_keywords=",".join(kw),
         provincia=provincia,
@@ -281,7 +295,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     """
     titulo = _text(entry, "./atom:title") or ""
     summary = _text(entry, "./atom:summary")
-    fecha_pub = _text(entry, "./atom:updated")
+    fecha_upd = _text(entry, "./atom:updated")
 
     link = entry.xpath("./atom:link/@href", namespaces=NS)
     url = link[0] if link else None
@@ -334,6 +348,8 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     if nombre_proyecto:
         titulo = nombre_proyecto
 
+    fecha_pub = _issue_date(entry, cfs) or fecha_upd
+
     return Licitacion(
         id_externo=id_externo,
         titulo=titulo or "(sin título)",
@@ -345,7 +361,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         tipo_contrato=tipo,
         estado=estado_codice or s.get("estado"),
         fecha_publicacion=fecha_pub,
-        fecha_actualizacion_fuente=fecha_pub,
+        fecha_actualizacion_fuente=fecha_upd,
         url=url,
         raw_keywords=None,  # sin keywords → ejemplo negativo para ML
         provincia=provincia,
