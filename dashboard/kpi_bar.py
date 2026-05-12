@@ -8,6 +8,7 @@ import streamlit as st
 from dashboard.components.icons import icon
 from dashboard.components.kpi import kpi_card
 from dashboard.kpi_config import KPI_FORMULAS
+from dashboard.utils.dates import month_period
 from dashboard.utils.format import fmt_eur
 
 
@@ -77,6 +78,41 @@ def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
     )
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _load_precomputed_kpis() -> dict:
+    """Lee snapshots globales de KPI si existen; falla en silencio."""
+    try:
+        from scheduler.kpi_precompute import get_all_latest
+
+        return get_all_latest()
+    except Exception:
+        return {}
+
+
+def _snapshot_kpis(snapshot: dict, expected_rows: int) -> dict[str, float | int] | None:
+    """Adapta un snapshot global al contrato de ``compute_kpis``.
+
+    Solo se usa si el total del snapshot coincide con el DataFrame recibido.
+    Eso evita mostrar KPIs globales cuando el usuario tiene filtros activos.
+    """
+    total = snapshot.get("total_licitaciones")
+    if total is None or int(total) != expected_rows:
+        return None
+    cur30 = int(snapshot.get("licitaciones_30d") or 0)
+    prev30 = int(snapshot.get("licitaciones_30d_prev") or 0)
+    delta_n = cur30 - prev30
+    return {
+        "total": int(total),
+        "importe_total": float(snapshot.get("importe_total") or 0.0),
+        "importe_medio": float(snapshot.get("importe_medio") or 0.0),
+        "n_organos": int(snapshot.get("n_organos") or 0),
+        "n_ccaa": int(snapshot.get("n_ccaa") or 0),
+        "delta_n": delta_n,
+        "delta_pct": (delta_n / prev30 * 100) if prev30 else 0.0,
+        "prev30_size": prev30,
+    }
+
+
 @st.cache_data(show_spinner=False)
 def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[float]:
     """Devuelve la serie agregada por mes de los últimos 12 meses.
@@ -94,7 +130,7 @@ def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[flo
     sub = df[fpub >= desde].copy()
     if sub.empty:
         return []
-    sub["_mes"] = sub["fecha_publicacion"].dt.to_period("M")
+    sub["_mes"] = month_period(sub["fecha_publicacion"])
     if value_col and value_col in sub.columns:
         s = sub.groupby("_mes")[value_col].sum(min_count=1).fillna(0)
     else:
@@ -105,12 +141,25 @@ def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[flo
     return [float(v) for v in s.tolist()]
 
 
+def _snapshot_series(snapshot: dict, key: str) -> list[float] | None:
+    serie = snapshot.get("serie_mensual_24m")
+    if not isinstance(serie, list):
+        return None
+    tail = serie[-12:]
+    values = [float(item.get(key) or 0.0) for item in tail if isinstance(item, dict)]
+    return values or None
+
+
 @st.fragment
 def render_kpi_bar(df: pd.DataFrame) -> None:
     """Renderiza la barra de 5 KPIs con tooltips, sparklines e iconos SVG."""
-    k = compute_kpis(df)
-    spark_count = _last_12m_series(df) or None
-    spark_imp = _last_12m_series(df, value_col="importe") or None
+    snapshot = _load_precomputed_kpis()
+    snapshot_k = _snapshot_kpis(snapshot, len(df))
+    k = snapshot_k or compute_kpis(df)
+    spark_count = _snapshot_series(snapshot, "n") if snapshot_k is not None else None
+    spark_imp = _snapshot_series(snapshot, "importe") if snapshot_k is not None else None
+    spark_count = spark_count or _last_12m_series(df) or None
+    spark_imp = spark_imp or _last_12m_series(df, value_col="importe") or None
     delta_up = k["delta_n"] >= 0
     delta_txt = f"{k['delta_pct']:+.0f}% últ. 30d" if k["prev30_size"] else "sin comparativa"
 

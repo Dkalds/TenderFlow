@@ -15,6 +15,7 @@ from dashboard.components.states import empty_state
 from dashboard.components.tables import data_table
 from dashboard.normalize import parse_ute_members
 from dashboard.pages._base import PageContext
+from dashboard.utils.dates import month_start
 from dashboard.utils.format import fmt_eur
 
 
@@ -259,7 +260,7 @@ def render_utes_section(ctx: PageContext, adj_ci: pd.DataFrame) -> None:
     st.subheader("Evolución temporal de adjudicaciones en UTE")
     evo_ute = utes.dropna(subset=["fecha_adjudicacion"]).copy()
     if not evo_ute.empty:
-        evo_ute["mes"] = evo_ute["fecha_adjudicacion"].dt.to_period("M").dt.to_timestamp()
+        evo_ute["mes"] = month_start(evo_ute["fecha_adjudicacion"])
         evo_g = (
             evo_ute.groupby("mes")
             .agg(contratos=("id", "count"), importe=("importe_adjudicado", "sum"))

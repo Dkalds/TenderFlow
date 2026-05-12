@@ -57,6 +57,7 @@ _DB_WINDOW_SECONDS = 300.0
 
 # Tiempo máximo de validez del state OAuth (10 minutos)
 _OAUTH_STATE_MAX_AGE_SECONDS = 600
+_SEEN_OAUTH_NONCES: dict[str, float] = {}
 
 
 def _client_key() -> str:
@@ -193,6 +194,25 @@ def _generate_oauth_state() -> str:
     return f"{payload}:{signature}"
 
 
+def _csv_set(value: str) -> set[str]:
+    return {item.strip().lower() for item in value.split(",") if item.strip()}
+
+
+def _oauth_email_allowed(email: str) -> bool:
+    """Valida el email OAuth contra allowlists opcionales."""
+    normalized = email.strip().lower()
+    allowed_emails = _csv_set(settings.OAUTH_ALLOWED_EMAILS)
+    allowed_domains = _csv_set(settings.OAUTH_ALLOWED_DOMAINS)
+    if not allowed_emails and not allowed_domains:
+        return True
+    domain = normalized.rsplit("@", 1)[-1] if "@" in normalized else ""
+    return normalized in allowed_emails or domain in allowed_domains
+
+
+def _oauth_email_is_admin(email: str) -> bool:
+    return email.strip().lower() in _csv_set(settings.OAUTH_ADMIN_EMAILS)
+
+
 def _verify_oauth_state(
     state: str,
     max_age: int = _OAUTH_STATE_MAX_AGE_SECONDS,
@@ -216,13 +236,22 @@ def _verify_oauth_state(
         return False
     if abs(time.time() - ts) > max_age:
         return False
+    now = time.time()
+    for seen_nonce, expires_at in list(_SEEN_OAUTH_NONCES.items()):
+        if expires_at <= now:
+            _SEEN_OAUTH_NONCES.pop(seen_nonce, None)
+    if nonce in _SEEN_OAUTH_NONCES:
+        return False
     payload = f"{nonce}:{timestamp_str}"
     expected = hmac.new(
         _get_signing_key(),
         payload.encode(),
         hashlib.sha256,
     ).hexdigest()[:32]
-    return hmac.compare_digest(signature, expected)
+    valid = hmac.compare_digest(signature, expected)
+    if valid:
+        _SEEN_OAUTH_NONCES[nonce] = now + max_age
+    return valid
 
 
 def _handle_oauth_callback() -> bool:
@@ -294,22 +323,31 @@ def _handle_oauth_callback() -> bool:
         st.query_params.clear()
         return False
 
+    email = userinfo.get("email", "")
+    if not _oauth_email_allowed(email):
+        log.warning("oauth_email_not_allowed", email=email)
+        st.error("Tu cuenta de Google no estÃ¡ autorizada para acceder a este dashboard.")
+        st.query_params.clear()
+        return False
+
     # Crear/vincular usuario en BD
-    from db.users import get_or_create_oauth_user
+    from db.users import get_or_create_oauth_user, set_admin
 
     user_id = get_or_create_oauth_user(
-        email=userinfo.get("email", ""),
+        email=email,
         oauth_provider="google",
         oauth_sub=userinfo["sub"],
         display_name=userinfo.get("name"),
     )
+    if _oauth_email_is_admin(email):
+        set_admin(user_id, True)
 
     from dashboard.session_keys import AUTH_METHOD, AUTH_TIME, USER_EMAIL, USER_ID, USER_NAME
 
     st.session_state[AUTH_TIME] = time.time()
     st.session_state[AUTH_METHOD] = "oauth"
     st.session_state[USER_ID] = user_id
-    st.session_state[USER_EMAIL] = userinfo.get("email", "")
+    st.session_state[USER_EMAIL] = email
     st.session_state[USER_NAME] = userinfo.get("name", "")
 
     # No marcar authenticated aquí — check_password decide si falta contraseña
@@ -318,7 +356,7 @@ def _handle_oauth_callback() -> bool:
     # Registrar acceso OAuth (paso 1)
     from db.users import log_access
 
-    log_access(auth_method="oauth", user_id=user_id, email=userinfo.get("email", ""))
+    log_access(auth_method="oauth", user_id=user_id, email=email)
 
     # Limpiar code/state de la URL
     st.query_params.clear()

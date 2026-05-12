@@ -164,6 +164,9 @@ DASHBOARD_PASSWORD=<contraseña-segura-32-chars>   # vacío = sin autenticación
 GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=<client-secret>
 OAUTH_REDIRECT_URI=http://localhost:8501
+OAUTH_ALLOWED_EMAILS=persona@empresa.com,otra@empresa.com
+OAUTH_ALLOWED_DOMAINS=empresa.com
+OAUTH_ADMIN_EMAILS=admin@empresa.com
 # Clave independiente para firmar tokens CSRF (recomendado en producción):
 # python -c "import secrets; print(secrets.token_hex(32))"
 SIGNING_KEY=<clave-aleatoria-32-chars>

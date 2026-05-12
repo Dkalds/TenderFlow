@@ -24,6 +24,21 @@ from scheduler.watchlist_alerts import check_and_notify
 from scraper.pipeline import backfill, update_daily, update_recent
 
 
+def _run_kpi_precompute_best_effort(log: Any) -> None:
+    """Refresh KPI snapshots after successful ingestion without failing the run."""
+    try:
+        from scheduler.kpi_precompute import run_kpi_precompute
+
+        result = run_kpi_precompute()
+        log.info(
+            "kpi_precompute_completed",
+            n_metricas=result.get("n_metricas"),
+            elapsed_ms=result.get("elapsed_ms"),
+        )
+    except Exception:
+        log.exception("kpi_precompute_failed")
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument(
@@ -60,6 +75,8 @@ def main() -> int:
         if args.daily:
             result = update_daily()
             _handle_daily_result(result, log)
+            if result.get("status") == "ok":
+                _run_kpi_precompute_best_effort(log)
             return 0 if result.get("status") == "ok" else 1
         elif args.backfill:
             results = backfill(args.backfill[0], args.backfill[1])
@@ -92,6 +109,8 @@ def main() -> int:
             total_bd=total_db,
         )
         return 1
+
+    _run_kpi_precompute_best_effort(log)
 
     try:
         check_and_notify()

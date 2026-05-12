@@ -37,7 +37,10 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
-    command: ["python", "-m", "scheduler.run_update"]
+      SCHEDULER_DAILY_INTERVAL_MINUTES: ${SCHEDULER_DAILY_INTERVAL_MINUTES:-240}
+      SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
+      SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}
+    entrypoint: ["python", "-m", "scheduler.loop"]
     # Iniciar después del dashboard para que la BD ya esté inicializada
     depends_on:
       dashboard:

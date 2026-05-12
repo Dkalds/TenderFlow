@@ -14,7 +14,7 @@ from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
 from db.database import connect
-from db.dlq import list_unresolved, mark_resolved
+from db.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
 
 
 @guarded_render
@@ -30,14 +30,14 @@ def render(ctx: PageContext) -> None:
     )
 
     with connect() as c:
-        runs = pd.read_sql_query(
+        cur = c.execute(
             "SELECT run_id, started_at, ended_at, duration_ms, status, "
             "months_attempted, months_ok, months_failed, "
             "licitaciones_nuevas, licitaciones_actualizadas, "
             "adjudicaciones, errores_parseo, errores_descarga, notas "
-            "FROM extraction_runs ORDER BY started_at DESC LIMIT 200",
-            c,
+            "FROM extraction_runs ORDER BY started_at DESC LIMIT 200"
         )
+        runs = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
 
     if runs.empty:
         empty_state("📉", "Sin runs registrados", "Ejecuta el pipeline para ver métricas aquí.")
@@ -175,6 +175,10 @@ def render(ctx: PageContext) -> None:
     )
 
     st.markdown("#### Dead Letter Queue")
+    summary = unresolved_summary()
+    if summary:
+        st.caption("Resumen por fuente y fase")
+        data_table(pd.DataFrame(summary), height=180)
     failures = list_unresolved(limit=200)
     if not failures:
         st.success("No hay fallos sin resolver. ✅")
@@ -184,17 +188,42 @@ def render(ctx: PageContext) -> None:
     st.warning(f"{len(dlq_df)} fallos sin resolver")
     data_table(dlq_df, height=320)
 
-    with st.expander("Marcar como resuelto"):
+    with st.expander("Acciones DLQ"):
         from dashboard.auth import require_admin
 
         if not require_admin("Solo los administradores pueden resolver fallos del DLQ."):
             return
         ids = dlq_df["id"].astype(int).tolist()
         pick = st.selectbox("ID fallo", ids, key="dlq_pick")
-        if st.button("Marcar resuelto"):
-            mark_resolved(int(pick))
-            st.success(f"Fallo #{pick} marcado como resuelto.")
-            st.rerun()
+        c_resolve, c_retry = st.columns(2)
+        with c_resolve:
+            if st.button("Marcar resuelto"):
+                mark_resolved(int(pick))
+                st.success(f"Fallo #{pick} marcado como resuelto.")
+                st.rerun()
+        with c_retry:
+            if st.button("Reintentar fallo"):
+                from scheduler.dlq_actions import retry_failure
+
+                try:
+                    result = retry_failure(int(pick))
+                    st.success(f"Retry #{pick}: {result['status']}")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"No se pudo reintentar: {exc}")
+
+        st.divider()
+        group_labels = [
+            f"{row['fuente']} / {row['scope'] or 'sin_scope'} ({row['n']})" for row in summary
+        ]
+        if group_labels:
+            selected_group = st.selectbox("Resolver grupo", group_labels, key="dlq_group")
+            idx = group_labels.index(selected_group)
+            group = summary[idx]
+            if st.button("Marcar grupo resuelto"):
+                n = mark_matching_resolved(group["fuente"], group["scope"] or None)
+                st.success(f"{n} fallo(s) marcados como resueltos.")
+                st.rerun()
 
 
 def _render_calidad_dato(ctx: PageContext, last_run, runs) -> None:

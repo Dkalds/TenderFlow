@@ -268,6 +268,31 @@ class TestOAuthStateValidation:
         state_value = params["state"][0]
         assert auth._verify_oauth_state(state_value) is True
 
+    def test_oauth_state_cannot_be_reused(self, mock_streamlit):
+        """Un state vÃ¡lido se acepta una sola vez para reducir replay."""
+        _st_mock, _session = mock_streamlit
+        auth = _import_auth()
+        state = auth._generate_oauth_state()
+        assert auth._verify_oauth_state(state) is True
+        assert auth._verify_oauth_state(state) is False
+
+    def test_oauth_email_allowlist_accepts_domain(self, mock_streamlit):
+        _st_mock, _session = mock_streamlit
+        auth = _import_auth()
+        with (
+            patch.object(auth.settings, "OAUTH_ALLOWED_EMAILS", ""),
+            patch.object(auth.settings, "OAUTH_ALLOWED_DOMAINS", "empresa.com"),
+        ):
+            assert auth._oauth_email_allowed("Persona@Empresa.com") is True
+            assert auth._oauth_email_allowed("persona@otra.com") is False
+
+    def test_oauth_admin_email_list(self, mock_streamlit):
+        _st_mock, _session = mock_streamlit
+        auth = _import_auth()
+        with patch.object(auth.settings, "OAUTH_ADMIN_EMAILS", "admin@empresa.com"):
+            assert auth._oauth_email_is_admin("ADMIN@empresa.com") is True
+            assert auth._oauth_email_is_admin("user@empresa.com") is False
+
 
 class TestEmailVerification:
     """Tests para la validación de email_verified en OAuth callback."""

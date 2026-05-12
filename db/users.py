@@ -78,6 +78,15 @@ def is_admin(user_id: int) -> bool:
         return bool(row and row[0])
 
 
+def set_admin(user_id: int, is_admin_value: bool) -> None:
+    """Actualiza el flag ``is_admin`` de un usuario."""
+    with connect() as c:
+        c.execute(
+            "UPDATE users SET is_admin = ? WHERE id = ?",
+            (1 if is_admin_value else 0, user_id),
+        )
+
+
 def log_access(
     *,
     auth_method: str,

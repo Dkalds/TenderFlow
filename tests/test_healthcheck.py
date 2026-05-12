@@ -71,3 +71,56 @@ def test_healthcheck_degraded_when_dlq_above_threshold(tmp_db):
     result = run_check(dlq_threshold=5)
     assert result["status"] == "degraded"
     assert any("dlq_above_threshold" in w for w in result["warnings"])
+
+
+def test_healthcheck_main_returns_0_for_healthy(tmp_db):
+    from unittest.mock import patch
+
+    from observability.metrics import record_run
+
+    with record_run("run-main-ok") as m:
+        m.months_attempted = 1
+        m.months_ok = 1
+
+    from scheduler.healthcheck import main
+
+    with patch("sys.argv", ["healthcheck"]):
+        code = main()
+
+    assert code == 0
+
+
+def test_healthcheck_main_returns_1_for_degraded(tmp_db):
+    from datetime import datetime, timedelta
+    from unittest.mock import patch
+
+    from db.database import connect
+
+    old = (datetime.now(UTC) - timedelta(days=5)).isoformat()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO extraction_runs "
+            "(run_id, started_at, ended_at, duration_ms, status, "
+            " months_attempted, months_ok) "
+            "VALUES ('r-deg', ?, ?, 1000, 'ok', 1, 1)",
+            (old, old),
+        )
+
+    from scheduler.healthcheck import main
+
+    with patch("sys.argv", ["healthcheck"]):
+        code = main()
+
+    assert code == 1
+
+
+def test_healthcheck_main_alert_mode_returns_0(tmp_db):
+    from unittest.mock import patch
+
+    from scheduler.healthcheck import main
+
+    # No runs → critical, but --alert mode should still return 0
+    with patch("sys.argv", ["healthcheck", "--alert"]), patch("scheduler.healthcheck.notify"):
+        code = main()
+
+    assert code == 0

@@ -36,6 +36,50 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
+def _render_top_licitaciones(df: pd.DataFrame, adj_resumen: pd.DataFrame) -> None:
+    """Renderiza el ranking principal enriquecido con adjudicaciones."""
+    top = df.dropna(subset=["importe"]).nlargest(10, "importe")
+
+    if not adj_resumen.empty:
+        adj_best = adj_resumen.sort_values("importe_adjudicado", ascending=False).drop_duplicates(
+            subset=["licitacion_id"], keep="first"
+        )[["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]]
+        top = top.merge(
+            adj_best,
+            left_on="id_externo",
+            right_on="licitacion_id",
+            how="left",
+        )
+
+    for _, row in top.iterrows():
+        empresa = row.get("nombre_canonico") or ""
+        baja = row.get("baja_pct")
+        fecha_adj = row.get("fecha_adjudicacion")
+        parts_adj = []
+        if empresa:
+            parts_adj.append(f"Empresa: {empresa}")
+        if pd.notna(baja):
+            parts_adj.append(f"{float(str(baja)):.1f}% baja")
+        if pd.notna(fecha_adj):
+            parts_adj.append(pd.Timestamp(str(fecha_adj)).strftime("%d/%m/%Y"))
+        adj_line = " | ".join(parts_adj)
+
+        meta_base = (
+            f"{row.get('organo_contratacion') or '-'} | "
+            f"{row.get('estado_desc') or '-'} | "
+            f"{row.get('tipo_proyecto') or '-'}"
+        )
+        meta = f"{meta_base} | {adj_line}" if adj_line else meta_base
+
+        top_card(
+            amount=fmt_eur(row["importe"]),
+            title=str(row["titulo"]),
+            meta=meta,
+            url=row.get("url"),
+            highlight=str(row.get("modulos_str") or "-"),
+        )
+
+
 @guarded_render
 def render(ctx: PageContext) -> None:
     df = ctx.df
@@ -52,10 +96,11 @@ def render(ctx: PageContext) -> None:
 
     cL, cR = st.columns([2, 1])
     with cL, chart_card("Top 10 licitaciones por importe"):
-        top = df.dropna(subset=["importe"]).nlargest(10, "importe")
+        _render_top_licitaciones(df, adj_resumen)
+        top = pd.DataFrame()
 
         # Enriquecer con datos de adjudicación (empresa, baja, fecha)
-        if not adj_resumen.empty:
+        if not top.empty and not adj_resumen.empty:
             adj_best = adj_resumen.sort_values(
                 "importe_adjudicado", ascending=False
             ).drop_duplicates(subset=["licitacion_id"], keep="first")[

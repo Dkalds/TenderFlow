@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     OAUTH_REDIRECT_URI: str = "http://localhost:8501"
+    OAUTH_ALLOWED_EMAILS: str = ""
+    OAUTH_ALLOWED_DOMAINS: str = ""
+    OAUTH_ADMIN_EMAILS: str = ""
     # Clave independiente para firmar tokens CSRF/OAuth state (HMAC-SHA256).
     # Si no se configura, se deriva de GOOGLE_CLIENT_SECRET como fallback.
     # En producción configura un valor aleatorio de 32+ caracteres:

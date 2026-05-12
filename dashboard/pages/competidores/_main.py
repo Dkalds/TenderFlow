@@ -21,6 +21,7 @@ from dashboard.components.tables import data_table
 from dashboard.data_loader import load_adjudicaciones
 from dashboard.pages._base import PageContext
 from dashboard.pages.competidores._utes import render_utes_section
+from dashboard.utils.dates import month_start
 from dashboard.utils.format import fmt_eur
 
 
@@ -219,7 +220,7 @@ def render(ctx: PageContext) -> None:
     st.subheader("Estacionalidad de adjudicaciones")
     seas_ci = sub_ci.dropna(subset=["fecha_adjudicacion"]).copy()
     if not seas_ci.empty:
-        seas_ci["mes"] = seas_ci["fecha_adjudicacion"].dt.to_period("M").dt.to_timestamp()
+        seas_ci["mes"] = month_start(seas_ci["fecha_adjudicacion"])
         seas_g = (
             seas_ci.groupby(["mes", "nombre_canonico"])
             .agg(importe=("importe_adjudicado", "sum"), n=("id", "count"))
@@ -636,9 +637,7 @@ def render(ctx: PageContext) -> None:
                     evo = (
                         sub_dd.dropna(subset=["fecha_adjudicacion"])
                         .assign(
-                            mes=lambda x: (
-                                x["fecha_adjudicacion"].dt.to_period("M").dt.to_timestamp()
-                            )
+                            mes=lambda x: month_start(x["fecha_adjudicacion"])
                         )
                         .groupby(["mes", "nombre_canonico"])["importe_adjudicado"]
                         .sum()

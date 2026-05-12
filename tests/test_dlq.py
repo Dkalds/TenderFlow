@@ -102,3 +102,30 @@ def test_record_failure_resolved_does_not_block_new_entry(tmp_db):
     items = dlq.list_unresolved()
     assert len(items) == 1
     assert items[0]["retry_count"] == 0  # nuevo registro, no incrementado
+
+
+def test_unresolved_summary_groups_by_source_and_scope(tmp_db):
+    from db import dlq
+
+    dlq.record_failure("run-1", "bulk_202601", ValueError("a"), scope="parse", payload_ref="a")
+    dlq.record_failure("run-2", "bulk_202601", ValueError("b"), scope="parse", payload_ref="b")
+    dlq.record_failure("run-3", "bulk_202601", ValueError("c"), scope="download")
+
+    summary = dlq.unresolved_summary()
+    parse = next(row for row in summary if row["scope"] == "parse")
+    assert parse["fuente"] == "bulk_202601"
+    assert parse["n"] == 2
+
+
+def test_mark_matching_resolved_resolves_group(tmp_db):
+    from db import dlq
+
+    dlq.record_failure("run-1", "bulk_202601", ValueError("a"), scope="parse", payload_ref="a")
+    dlq.record_failure("run-2", "bulk_202601", ValueError("b"), scope="parse", payload_ref="b")
+    dlq.record_failure("run-3", "bulk_202601", ValueError("c"), scope="download")
+
+    n = dlq.mark_matching_resolved("bulk_202601", "parse")
+    assert n == 2
+    remaining = dlq.list_unresolved()
+    assert len(remaining) == 1
+    assert remaining[0]["scope"] == "download"

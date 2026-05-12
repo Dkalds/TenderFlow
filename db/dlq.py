@@ -82,12 +82,56 @@ def list_unresolved(limit: int = 100) -> list[dict[str, Any]]:
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
+def get_failure(failure_id: int) -> dict[str, Any] | None:
+    """Devuelve un fallo por ID, incluyendo resueltos."""
+    with connect() as c:
+        cur = c.execute(
+            "SELECT id, run_id, fuente, scope, error_type, error_message, "
+            "payload_ref, retry_count, resolved_at, created_at "
+            "FROM failed_extractions WHERE id = ?",
+            (failure_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row, strict=False))
+
+
+def unresolved_summary() -> list[dict[str, Any]]:
+    """Agrupa fallos abiertos por fuente/scope para priorizar acciones."""
+    with connect() as c:
+        cur = c.execute(
+            "SELECT fuente, COALESCE(scope, '') AS scope, COUNT(*) AS n, "
+            "SUM(retry_count) AS retries, MIN(created_at) AS first_seen, "
+            "MAX(created_at) AS last_seen "
+            "FROM failed_extractions "
+            "WHERE resolved_at IS NULL "
+            "GROUP BY fuente, COALESCE(scope, '') "
+            "ORDER BY n DESC, last_seen DESC"
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
 def mark_resolved(failure_id: int) -> None:
     with connect() as c:
         c.execute(
             "UPDATE failed_extractions SET resolved_at = ? WHERE id = ?",
             (now_utc_iso(), failure_id),
         )
+
+
+def mark_matching_resolved(fuente: str, scope: str | None = None) -> int:
+    """Marca como resueltos todos los fallos abiertos de una fuente/scope."""
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE failed_extractions SET resolved_at = ? "
+            "WHERE fuente = ? AND COALESCE(scope, '') = COALESCE(?, '') "
+            "AND resolved_at IS NULL",
+            (now_utc_iso(), fuente, scope),
+        )
+        return int(cur.rowcount or 0)
 
 
 def increment_retry(failure_id: int) -> None:

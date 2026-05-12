@@ -17,6 +17,7 @@ from dashboard.classifiers import (
     tipo_contrato_label,
 )
 from dashboard.normalize import normalize_company, normalize_nif
+from dashboard.utils.dates import month_start
 from db.database import connect, init_db
 from observability.logging import get_logger
 from shared.geo import nuts_to_ccaa
@@ -112,7 +113,7 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
         utc=True,
     )
     df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    df["mes"] = df["fecha_publicacion"].dt.to_period("M").dt.to_timestamp()
+    df["mes"] = month_start(df["fecha_publicacion"])
     df["anyo"] = df["fecha_publicacion"].dt.year
 
     # ── Enriquecimientos opcionales: cada uno con fallback aislado ──

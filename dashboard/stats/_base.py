@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from dashboard.utils.dates import month_start
 from db.database import connect
 from observability.logging import get_logger
 
@@ -47,7 +48,7 @@ def por_mes(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["mes", "n_licitaciones", "importe"])
     g = (
         df.dropna(subset=["fecha_publicacion"])
-        .assign(mes=lambda x: x["fecha_publicacion"].dt.to_period("M").dt.to_timestamp())
+        .assign(mes=lambda x: month_start(x["fecha_publicacion"]))
         .groupby("mes")
         .agg(n_licitaciones=("id_externo", "count"), importe=("importe", "sum"))
         .reset_index()
@@ -274,7 +275,7 @@ def mes_pico(df: pd.DataFrame) -> dict | None:
         return None
     mensual = (
         df.dropna(subset=["fecha_publicacion"])
-        .assign(_mes=lambda x: x["fecha_publicacion"].dt.to_period("M").dt.to_timestamp())
+        .assign(_mes=lambda x: month_start(x["fecha_publicacion"]))
         .groupby("_mes")
         .agg(n=("id_externo", "count"), importe=("importe", "sum"))
         .sort_values("importe", ascending=False)

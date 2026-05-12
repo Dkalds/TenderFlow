@@ -13,6 +13,7 @@ from dashboard.components.states import guarded_render
 from dashboard.components.tables import data_table
 from dashboard.pages._base import PageContext
 from dashboard.stats import score_oportunidad
+from dashboard.utils.dates import month_start
 from dashboard.utils.format import fmt_eur
 from observability.logging import get_logger
 
@@ -159,7 +160,7 @@ def render(ctx: PageContext) -> None:
             and dfx_classified["fecha_publicacion"].notna().any()
         ):
             ts = dfx_classified.dropna(subset=["fecha_publicacion"]).copy()
-            ts["mes"] = ts["fecha_publicacion"].dt.to_period("M").dt.to_timestamp()
+            ts["mes"] = month_start(ts["fecha_publicacion"])
             ts_agg = ts.groupby(["mes", "tech_label"]).agg(n=("id_externo", "count")).reset_index()
 
             metric_ts = st.radio(

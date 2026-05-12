@@ -14,6 +14,7 @@ from dashboard.data_loader import load_adjudicaciones
 from dashboard.forecast import build_forecast_df
 from dashboard.pages._base import PageContext
 from dashboard.stats import ratio_relicitacion, risk_flags, score_oportunidad
+from dashboard.utils.dates import quarter_start
 from dashboard.utils.format import fmt_eur
 from observability.logging import get_logger
 
@@ -231,7 +232,7 @@ def render(ctx: PageContext) -> None:
         st.subheader("Volumen previsto por trimestre")
         qf = oport.dropna(subset=["fecha_fin_estimada"]).copy()
         if not qf.empty:
-            qf["trimestre"] = qf["fecha_fin_estimada"].dt.to_period("Q").dt.to_timestamp()
+            qf["trimestre"] = quarter_start(qf["fecha_fin_estimada"])
             qg = (
                 qf.groupby("trimestre")
                 .agg(n=("id_externo", "count"), importe=("importe", "sum"))
