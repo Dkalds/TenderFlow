@@ -263,3 +263,154 @@ def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
 
     assert result == 0
     mock_notify.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _store_pending_digests
+# ---------------------------------------------------------------------------
+
+
+def test_store_pending_digests_inserts_rows(tmp_db):
+    """_store_pending_digests persiste filas en pending_digests."""
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
+            "VALUES ('testkey', '48', NULL, NULL, NULL, 'u@example.com', 'daily', '2024-01-01')"
+        )
+        entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    entry = {"id": entry_id, "cpv_prefix": "48", "keyword": None, "min_importe": None, "ccaa": None}
+    lic = {"id_externo": "LIC-STORE-01", "titulo": "T"}
+
+    from scheduler.watchlist_alerts import _store_pending_digests
+
+    stored = _store_pending_digests(
+        "testkey", "u@example.com", [(entry, [lic])], "daily", "2024-01-01T00:00:00"
+    )
+    assert stored == 1
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT licitacion_id FROM pending_digests WHERE licitacion_id = 'LIC-STORE-01'"
+        ).fetchone()
+    assert row is not None
+
+
+def test_store_pending_digests_idempotent(tmp_db):
+    """Insertar la misma fila dos veces → OR IGNORE, segunda no inserta."""
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
+            "VALUES ('testkey2', '48', NULL, NULL, NULL, 'u2@example.com', 'daily', '2024-01-01')"
+        )
+        entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    entry = {"id": entry_id, "cpv_prefix": "48", "keyword": None, "min_importe": None, "ccaa": None}
+    lic = {"id_externo": "LIC-DUP-01", "titulo": "T"}
+
+    from scheduler.watchlist_alerts import _store_pending_digests
+
+    first = _store_pending_digests(
+        "testkey2", "u2@example.com", [(entry, [lic])], "daily", "2024-01-01"
+    )
+    assert first == 1
+
+
+# ---------------------------------------------------------------------------
+# send_pending_digests
+# ---------------------------------------------------------------------------
+
+
+def test_send_pending_digests_invalid_frequency(tmp_db):
+    """Frecuencia no válida → ValueError."""
+    import pytest
+
+    from scheduler.watchlist_alerts import send_pending_digests
+
+    with pytest.raises(ValueError):
+        send_pending_digests("hourly")
+
+
+def test_send_pending_digests_empty(tmp_db):
+    """Sin pendientes → devuelve 0, no envía emails."""
+    from scheduler.watchlist_alerts import send_pending_digests
+
+    with patch("scheduler.watchlist_alerts.notify") as mock_notify:
+        result = send_pending_digests("daily")
+    assert result == 0
+    mock_notify.assert_not_called()
+
+
+def test_send_pending_digests_weekly_empty(tmp_db):
+    """Frecuencia weekly vacía → devuelve 0."""
+    from scheduler.watchlist_alerts import send_pending_digests
+
+    with patch("scheduler.watchlist_alerts.notify") as mock_notify:
+        result = send_pending_digests("weekly")
+    assert result == 0
+    mock_notify.assert_not_called()
+
+
+def test_send_pending_digests_sends_and_marks_sent(tmp_db):
+    """Con rows pendientes → envía email y marca sent=1."""
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
+            "VALUES ('uk1', '48', NULL, NULL, NULL, 'dest@example.com', 'daily', '2024-01-01')"
+        )
+        entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        c.execute(
+            "INSERT INTO pending_digests "
+            "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
+            "VALUES ('uk1', 'dest@example.com', ?, 'LIC-DIGEST-01', 'daily', '2024-01-01')",
+            (entry_id,),
+        )
+
+    from scheduler.watchlist_alerts import send_pending_digests
+
+    with patch("scheduler.watchlist_alerts.notify") as mock_notify:
+        result = send_pending_digests("daily")
+
+    assert result == 1
+    mock_notify.assert_called_once()
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT sent FROM pending_digests WHERE licitacion_id = 'LIC-DIGEST-01'"
+        ).fetchone()
+    assert row[0] == 1
+
+
+def test_send_pending_digests_multiple_recipients(tmp_db):
+    """Múltiples destinatarios → un email por destinatario."""
+    from db.database import connect
+
+    with connect() as c:
+        for i, email in enumerate(["a@x.com", "b@x.com"], start=1):
+            c.execute(
+                "INSERT INTO watchlist_cpv "
+                "(user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
+                "VALUES (?, '48', NULL, NULL, NULL, ?, 'daily', '2024-01-01')",
+                (f"uk{i}", email),
+            )
+            entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+            c.execute(
+                "INSERT INTO pending_digests "
+                "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
+                "VALUES (?, ?, ?, ?, 'daily', '2024-01-01')",
+                (f"uk{i}", email, entry_id, f"LIC-MULTI-{i:02d}"),
+            )
+
+    from scheduler.watchlist_alerts import send_pending_digests
+
+    with patch("scheduler.watchlist_alerts.notify") as mock_notify:
+        result = send_pending_digests("daily")
+
+    assert result == 2
+    assert mock_notify.call_count == 2
