@@ -65,19 +65,23 @@ def test_get_signal_timestamp_returns_mtime(tmp_path):
 def test_signal_write_failure_no_crash(tmp_path):
     """Si falla la escritura (directorio de solo lectura), no explota."""
     signal_file = tmp_path / ".cache_invalidation"
-    with patch("shared.cache_signal._signal_path", return_value=signal_file):
-        with patch("pathlib.Path.write_text", side_effect=OSError("read-only")):
-            from shared.cache_signal import signal_cache_invalidation
+    with (
+        patch("shared.cache_signal._signal_path", return_value=signal_file),
+        patch("pathlib.Path.write_text", side_effect=OSError("read-only")),
+    ):
+        from shared.cache_signal import signal_cache_invalidation
 
-            signal_cache_invalidation()  # no debe lanzar excepción
+        signal_cache_invalidation()  # no debe lanzar excepción
 
 
 def test_check_signal_read_failure_returns_false(tmp_path):
     """Si falla la lectura del mtime, devuelve False sin crash."""
     signal_file = tmp_path / ".cache_invalidation"
     signal_file.write_text("0.0", encoding="utf-8")
-    with patch("shared.cache_signal._signal_path", return_value=signal_file):
-        with patch("pathlib.Path.stat", side_effect=OSError("permission denied")):
-            from shared.cache_signal import check_cache_signal
+    with (
+        patch("shared.cache_signal._signal_path", return_value=signal_file),
+        patch("pathlib.Path.stat", side_effect=OSError("permission denied")),
+    ):
+        from shared.cache_signal import check_cache_signal
 
-            assert check_cache_signal(0.0) is False
+        assert check_cache_signal(0.0) is False
