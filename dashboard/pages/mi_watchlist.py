@@ -23,6 +23,7 @@ from db.watchlist import (
     add_entry,
     list_entries,
     remove_entry,
+    update_frequency,
 )
 
 
@@ -103,15 +104,30 @@ def render(ctx: PageContext) -> None:
         return
 
     st.markdown("#### Entradas activas")
+    _FREQ_OPTIONS = ["immediate", "daily", "weekly"]
+    _FREQ_LABELS = {"immediate": "Inmediata", "daily": "Diaria", "weekly": "Semanal"}
     for e in entries:
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([1, 2, 1, 1, 2, 2, 1])
+        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 2, 1, 1, 1, 2, 2, 1])
         c1.code(e["cpv_prefix"])
         c2.write(e.get("keyword") or "—")
         c3.write(fmt_eur(e["min_importe"]) if e.get("min_importe") else "—")
         c4.write(e.get("ccaa") or "—")
-        c5.caption(e.get("email") or "sin email")
-        c6.caption(e.get("created_at", ""))
-        if c7.button("🗑️", key=f"wl_rm_{e['id']}"):
+        _cur_freq = e.get("frequency") or "daily"
+        _new_freq = c5.selectbox(
+            "Frecuencia",
+            options=_FREQ_OPTIONS,
+            index=_FREQ_OPTIONS.index(_cur_freq) if _cur_freq in _FREQ_OPTIONS else 1,
+            format_func=lambda f: _FREQ_LABELS.get(f, f),
+            key=f"wl_freq_{e['id']}",
+            label_visibility="collapsed",
+        )
+        if _new_freq != _cur_freq:
+            update_frequency(int(e["id"]), _new_freq)
+            notify_success(f"Frecuencia actualizada a {_FREQ_LABELS[_new_freq]}.")
+            st.rerun()
+        c6.caption(e.get("email") or "sin email")
+        c7.caption(e.get("created_at", ""))
+        if c8.button("🗑️", key=f"wl_rm_{e['id']}"):
             remove_entry(int(e["id"]))
             notify_success("Entrada eliminada.")
             st.rerun()

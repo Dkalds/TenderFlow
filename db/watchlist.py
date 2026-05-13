@@ -20,6 +20,7 @@ class WatchlistEntry:
     ccaa: str | None = None
     email: str | None = None
     user_id: int | None = None
+    frequency: str = "daily"  # 'immediate' | 'daily' | 'weekly'
 
 
 def add_entry(entry: WatchlistEntry) -> None:
@@ -46,8 +47,8 @@ def add_entry(entry: WatchlistEntry) -> None:
             return
         c.execute(
             "INSERT INTO watchlist_cpv "
-            "(user_key, cpv_prefix, keyword, min_importe, ccaa, email, user_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(user_key, cpv_prefix, keyword, min_importe, ccaa, email, user_id, frequency, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 entry.user_key,
                 entry.cpv_prefix,
@@ -56,6 +57,7 @@ def add_entry(entry: WatchlistEntry) -> None:
                 entry.ccaa,
                 entry.email,
                 entry.user_id,
+                entry.frequency,
                 now_utc_iso(),
             ),
         )
@@ -71,7 +73,8 @@ def list_entries(user_key: str, *, user_id: int | None = None) -> list[dict[str,
         if user_id is not None:
             cur = c.execute(
                 "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
-                "created_at, last_notified_at, user_id "
+                "created_at, last_notified_at, user_id, "
+                "COALESCE(frequency, 'daily') AS frequency "
                 "FROM watchlist_cpv WHERE user_id = ? OR user_key = ? "
                 "ORDER BY created_at DESC",
                 (user_id, user_key),
@@ -79,7 +82,8 @@ def list_entries(user_key: str, *, user_id: int | None = None) -> list[dict[str,
         else:
             cur = c.execute(
                 "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
-                "created_at, last_notified_at, user_id "
+                "created_at, last_notified_at, user_id, "
+                "COALESCE(frequency, 'daily') AS frequency "
                 "FROM watchlist_cpv WHERE user_key = ? ORDER BY created_at DESC",
                 (user_key,),
             )
@@ -93,6 +97,22 @@ def update_last_notified(entry_id: int, ts: str) -> None:
         c.execute(
             "UPDATE watchlist_cpv SET last_notified_at = ? WHERE id = ?",
             (ts, entry_id),
+        )
+
+
+def update_frequency(entry_id: int, frequency: str) -> None:
+    """Actualiza la frecuencia de notificación de una entrada de watchlist.
+
+    Args:
+        entry_id: ID de la entrada.
+        frequency: 'immediate' | 'daily' | 'weekly'
+    """
+    if frequency not in ("immediate", "daily", "weekly"):
+        raise ValueError(f"frequency debe ser 'immediate', 'daily' o 'weekly', no {frequency!r}")
+    with connect() as c:
+        c.execute(
+            "UPDATE watchlist_cpv SET frequency = ? WHERE id = ?",
+            (frequency, entry_id),
         )
 
 

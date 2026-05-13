@@ -18,6 +18,7 @@ class FiltersState:
     importe_min: int = 0
     comparar: bool = False
     rango_b: tuple[date, date] | None = None
+    lic_id: str | None = None  # deep-link a una licitación individual
 
     def is_active(self) -> bool:
         """Devuelve True si algún filtro distinto al rango está activo."""
@@ -104,4 +105,5 @@ class FiltersState:
             tipos_proy=[t for t in params.get("tipos", "").split(",") if t],
             tecnologias=[t for t in params.get("tecnologias", "").split(",") if t],
             importe_min=importe_min,
+            lic_id=params.get("lic") or None,
         )

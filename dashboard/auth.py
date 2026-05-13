@@ -521,6 +521,13 @@ def check_password() -> bool:
         from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
 
         st.markdown("### 🔒 Acceso restringido")
+        alias = st.text_input(
+            "Tu nombre (opcional)",
+            value=st.session_state.get(USER_NAME, ""),
+            placeholder="Escribe tu nombre o alias",
+            key="_login_alias",
+            help="Personaliza el saludo — no afecta al acceso.",
+        )
         pwd = st.text_input("Contraseña", type="password", key=LOGIN_PWD)
         if st.button("Entrar", type="primary"):
             if _verify_password(pwd, password):
@@ -529,6 +536,9 @@ def check_password() -> bool:
                 st.session_state[AUTH_METHOD] = "password"
                 st.session_state[LOGIN_ATTEMPTS] = 0
                 st.session_state.pop(LOGIN_LOCKOUT_UNTIL, None)
+                # Persistir alias
+                if alias.strip():
+                    st.session_state[USER_NAME] = alias.strip()
 
                 # Limpiar intentos fallidos en BD
                 try:

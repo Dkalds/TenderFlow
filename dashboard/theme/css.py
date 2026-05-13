@@ -833,6 +833,19 @@ def build_css(t: Tokens = TOKENS) -> str:
       background: linear-gradient(to right, transparent, var(--color-bg-base));
       pointer-events: none;
     }}
+    /* M14: Stack comparison columns on mobile */
+    [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {{
+      flex-wrap: wrap !important;
+    }}
+    [data-testid="stExpander"] [data-testid="stHorizontalBlock"] > [data-testid="column"] {{
+      flex: 1 1 100% !important;
+      min-width: 100% !important;
+    }}
+    /* M14: Hide secondary actions on narrow screens */
+    button[data-testid="stBaseButton-secondary"][kind="secondary"] {{
+      font-size: 0.75rem !important;
+      padding: 4px 8px !important;
+    }}
   }}
 
   /* ── Skip-link ────────────────────────────────────────────────────── */
@@ -850,6 +863,53 @@ def build_css(t: Tokens = TOKENS) -> str:
   .skip-link:focus {{
     left: 1rem; top: 0.5rem;
     width: auto; height: auto; overflow: visible;
+  }}
+
+  /* ── M13: Accessibility ───────────────────────────────────────────── */
+  /* Skip-to-content link */
+  .skip-link {{
+    position: absolute; top: -40px; left: 0; z-index: 99999;
+    background: var(--color-accent); color: #fff;
+    padding: 8px 16px; font-size: 0.9rem;
+    transition: top 0.2s;
+  }}
+  .skip-link:focus {{ top: 0; }}
+  /* Enhanced focus-visible for all interactive elements */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  [role="button"]:focus-visible {{
+    outline: 3px solid var(--color-accent) !important;
+    outline-offset: 2px !important;
+  }}
+  /* Minimum contrast for muted text */
+  .topbar-meta, .stCaption, [data-testid="stCaption"] {{
+    color: var(--color-text-muted) !important;
+  }}
+
+  /* ── M12: Feedback animations ─────────────────────────────────────── */
+  @keyframes slideInRight {{
+    from {{ transform: translateX(100%); opacity: 0; }}
+    to {{ transform: translateX(0); opacity: 1; }}
+  }}
+  @keyframes fadeOut {{
+    from {{ opacity: 1; }}
+    to {{ opacity: 0; }}
+  }}
+  /* Toast slide-in */
+  [data-testid="stToast"] {{
+    animation: slideInRight 0.35s ease-out;
+  }}
+  /* Button ripple feedback */
+  button[kind="primary"]:active,
+  button[kind="secondary"]:active {{
+    transform: scale(0.97);
+    transition: transform 0.1s ease;
+  }}
+  /* Expander open animation */
+  [data-testid="stExpander"] details[open] > div {{
+    animation: cardFadeUp 0.25s ease-out;
   }}
 
   /* ── prefers-reduced-motion ───────────────────────────────────────── */

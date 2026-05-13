@@ -229,6 +229,43 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         SELECT 1
         """,
     ),
+    (
+        15,
+        "watchlist_frequency",
+        """
+        -- Columna añadida de forma programática en _apply_v15_frequency
+        SELECT 1
+        """,
+    ),
+    (
+        16,
+        "saved_filters_table",
+        """
+        CREATE TABLE IF NOT EXISTS saved_filters (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_key        TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            filters_json    TEXT NOT NULL,
+            created_at      TEXT NOT NULL,
+            UNIQUE(user_key, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_saved_filters_user ON saved_filters(user_key);
+        """,
+    ),
+    (
+        17,
+        "notification_reads_table",
+        """
+        CREATE TABLE IF NOT EXISTS notification_reads (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_key        TEXT NOT NULL,
+            notification_id TEXT NOT NULL,
+            read_at         TEXT NOT NULL,
+            UNIQUE(user_key, notification_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_notif_reads_user ON notification_reads(user_key);
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -316,10 +353,18 @@ ROLLBACKS: dict[int, str] = {
         DROP INDEX IF EXISTS idx_kpi_snapshots_fecha;
         DROP TABLE IF EXISTS kpi_snapshots;
     """,
+    16: """
+        DROP INDEX IF EXISTS idx_saved_filters_user;
+        DROP TABLE IF EXISTS saved_filters;
+    """,
+    17: """
+        DROP INDEX IF EXISTS idx_notif_reads_user;
+        DROP TABLE IF EXISTS notification_reads;
+    """,
 }
 
 # Migraciones que NO se pueden revertir (solo ADD COLUMN sin DROP COLUMN)
-_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10, 14}
+_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10, 14, 15}
 
 
 def current_version(conn: Any) -> int:
@@ -361,6 +406,9 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 14: tecnologia column on licitaciones
         if version == 14:
             _apply_v14_tecnologia(conn)
+        # Migración 15: frequency column on watchlist_cpv
+        if version == 15:
+            _apply_v15_frequency(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -480,6 +528,23 @@ def _apply_v14_tecnologia(conn: Any) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tecnologia ON licitaciones(tecnologia)")
         # Backfill: todas las licitaciones existentes son SAP (pre multi-vendor)
         conn.execute("UPDATE licitaciones SET tecnologia = 'SAP' WHERE raw_keywords IS NOT NULL")
+
+
+def _apply_v15_frequency(conn: Any) -> None:
+    """Añade columna frequency a watchlist_cpv si no existe (idempotente).
+
+    Valores posibles: 'immediate' | 'daily' | 'weekly'. Default: 'daily'.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='watchlist_cpv'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(watchlist_cpv)").fetchall()}
+    if "frequency" not in cols:
+        conn.execute(
+            "ALTER TABLE watchlist_cpv ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily'"
+        )
 
 
 # ---------------------------------------------------------------------------

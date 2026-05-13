@@ -29,6 +29,7 @@ from dashboard.stats import (
 )
 from dashboard.utils.export import kpis_snapshot_csv
 from dashboard.utils.format import fmt_eur
+from dashboard.utils.lazy import lazy_section
 from dashboard.utils.pdf import generate_pdf
 from dashboard.utils.security import safe_url
 from observability.logging import get_logger
@@ -85,6 +86,32 @@ def render(ctx: PageContext) -> None:
     df = ctx.df
     adj_resumen = load_adjudicaciones()
 
+    # ── Panel "Novedades desde tu última visita" ─────────────────────
+    _now = pd.Timestamp.now("UTC")
+    _last_visit = st.session_state.get("_last_visit_ts")
+    if _last_visit is not None and not df.empty:
+        _fpub = df["fecha_publicacion"]
+        if getattr(_fpub.dt, "tz", None) is None:
+            _last_visit_cmp = _last_visit.tz_localize(None)
+        else:
+            _last_visit_cmp = _last_visit
+        _nuevas = df[_fpub > _last_visit_cmp]
+        if not _nuevas.empty:
+            with st.expander(
+                f"📬 {len(_nuevas)} nueva{'s' if len(_nuevas) != 1 else ''} licitaci{'ones' if len(_nuevas) != 1 else 'ón'} desde tu última visita",
+                expanded=False,
+            ):
+                for _, _row in _nuevas.sort_values("fecha_publicacion", ascending=False).head(10).iterrows():
+                    _fstr = _row["fecha_publicacion"].strftime("%d/%m/%Y") if pd.notna(_row["fecha_publicacion"]) else "—"
+                    st.markdown(
+                        f"**{_fstr}** · {fmt_eur(_row.get('importe'))} · "
+                        f"{_row.get('estado_desc', '—')} — {str(_row.get('titulo', '—'))[:80]}"
+                    )
+                if len(_nuevas) > 10:
+                    st.caption(f"... y {len(_nuevas) - 10} más. Usa los filtros para explorarlas.")
+    # Actualizar timestamp de última visita
+    st.session_state["_last_visit_ts"] = _now
+
     # ── Banner "Para hoy" — señales accionables ─────────────────────
     _render_banner_hoy(df, adj_resumen)
 
@@ -97,50 +124,6 @@ def render(ctx: PageContext) -> None:
     cL, cR = st.columns([2, 1])
     with cL, chart_card("Top 10 licitaciones por importe"):
         _render_top_licitaciones(df, adj_resumen)
-        top = pd.DataFrame()
-
-        # Enriquecer con datos de adjudicación (empresa, baja, fecha)
-        if not top.empty and not adj_resumen.empty:
-            adj_best = adj_resumen.sort_values(
-                "importe_adjudicado", ascending=False
-            ).drop_duplicates(subset=["licitacion_id"], keep="first")[
-                ["licitacion_id", "nombre_canonico", "baja_pct", "fecha_adjudicacion"]
-            ]
-            top = top.merge(
-                adj_best,
-                left_on="id_externo",
-                right_on="licitacion_id",
-                how="left",
-            )
-
-        for _, row in top.iterrows():
-            # Info adjudicación
-            empresa = row.get("nombre_canonico") or ""
-            baja = row.get("baja_pct")
-            fecha_adj = row.get("fecha_adjudicacion")
-            parts_adj = []
-            if empresa:
-                parts_adj.append(f"🏢 {empresa}")
-            if pd.notna(baja):
-                parts_adj.append(f"📉 {float(str(baja)):.1f}% baja")
-            if pd.notna(fecha_adj):
-                parts_adj.append(f"📅 {pd.Timestamp(str(fecha_adj)).strftime('%d/%m/%Y')}")
-            adj_line = " · ".join(parts_adj)
-
-            meta_base = (
-                f"{row.get('organo_contratacion') or '—'} · "
-                f"{row.get('estado_desc') or '—'} · "
-                f"{row.get('tipo_proyecto') or '—'}"
-            )
-            meta = f"{meta_base} · {adj_line}" if adj_line else meta_base
-
-            top_card(
-                amount=fmt_eur(row["importe"]),
-                title=str(row["titulo"]),
-                meta=meta,
-                url=row.get("url"),
-                highlight=str(row.get("modulos_str") or "—"),
-            )
     with cR:
         est = (
             df.groupby("estado_desc").size().reset_index(name="n").sort_values("n", ascending=False)
@@ -193,254 +176,259 @@ def render(ctx: PageContext) -> None:
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-    # ── Sankey: Tipo de proyecto → Estado ──────────────────────────
-    with chart_card(
-        "Flujo licitaciones: Tipo → Estado", subtitle="Volumen por combinación tipo-estado"
-    ):
-        flow = (
-            df.groupby(["tipo_proyecto", "estado_desc"])
-            .agg(
-                n=("id_externo", "count"),
-                importe=("importe", "sum"),
-            )
-            .reset_index()
-        )
-        if not flow.empty:
-            from dashboard.theme.tokens import TOKENS
-
-            tipos = flow["tipo_proyecto"].unique().tolist()
-            estados = flow["estado_desc"].unique().tolist()
-            all_labels = tipos + estados
-
-            source_idx = [tipos.index(t) for t in flow["tipo_proyecto"]]
-            target_idx = [len(tipos) + estados.index(e) for e in flow["estado_desc"]]
-
-            node_colors = [TOKENS.colors.accent_primary] * len(tipos) + [
-                TOKENS.colors.success
-            ] * len(estados)
-            link_colors = ["rgba(134,188,36,0.15)"] * len(flow)
-
-            fig = go.Figure(
-                go.Sankey(
-                    arrangement="snap",
-                    node=dict(
-                        pad=20,
-                        thickness=20,
-                        label=all_labels,
-                        color=node_colors,
-                        line=dict(color="rgba(255,255,255,0.1)", width=0.5),
-                    ),
-                    link=dict(
-                        source=source_idx,
-                        target=target_idx,
-                        value=flow["n"].tolist(),
-                        color=link_colors,
-                        customdata=flow["importe"].apply(lambda v: f"{v:,.0f} €").tolist(),
-                        hovertemplate="<b>%{source.label} → %{target.label}</b><br>"
-                        "%{value} licitaciones<br>"
-                        "Importe: %{customdata}<extra></extra>",
-                    ),
+    # ── Sankey: Tipo de proyecto → Estado (lazy) ───────────────────
+    with lazy_section("sankey_flujo", "Ver flujo licitaciones: Tipo → Estado") as _should_render:
+        if _should_render:
+            with chart_card(
+                "Flujo licitaciones: Tipo → Estado",
+                subtitle="Volumen por combinación tipo-estado",
+            ):
+                flow = (
+                    df.groupby(["tipo_proyecto", "estado_desc"])
+                    .agg(
+                        n=("id_externo", "count"),
+                        importe=("importe", "sum"),
+                    )
+                    .reset_index()
                 )
-            )
-            fig.update_layout(
-                template=ctx.plotly_template,
-                height=420,
-                margin=dict(t=20, b=10, l=10, r=10),
-                font=dict(size=11, color="#A1A1AA"),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                if not flow.empty:
+                    from dashboard.theme.tokens import TOKENS
 
-    # ── Indicadores de mercado ──
-    if not adj_resumen.empty:
-        ids_filt = set(df["id_externo"])
-        adj_r = adj_resumen[adj_resumen["licitacion_id"].isin(ids_filt)]
+                    tipos = flow["tipo_proyecto"].unique().tolist()
+                    estados = flow["estado_desc"].unique().tolist()
+                    all_labels = tipos + estados
 
-        cM1, cM2, cM3 = st.columns(3)
-        with cM1:
-            pct_pyme = (
-                (adj_r["es_pyme"] == 1).sum() / adj_r["es_pyme"].notna().sum() * 100
-                if adj_r["es_pyme"].notna().any()
-                else 0
-            )
-            th_pyme = KPI_THRESHOLDS["pct_pyme"]
-            st.markdown(
-                kpi_card(
-                    "% adjudicaciones PYMEs",
-                    f"{pct_pyme:.0f}%",
-                    delta="del nº de adjudicaciones",
-                    delta_up=pct_pyme >= th_pyme["ok"],
-                    icon="🏭",
-                    tooltip=KPI_FORMULAS["pct_pyme"],
-                ),
-                unsafe_allow_html=True,
-            )
-        with cM2:
-            top_cum = (
-                adj_r.groupby("nombre_canonico")["importe_adjudicado"]
-                .sum()
-                .sort_values(ascending=False)
-            )
-            top10 = (top_cum.head(10).sum() / top_cum.sum() * 100) if top_cum.sum() else 0
-            th_c10 = KPI_THRESHOLDS["concentracion_top10"]
-            st.markdown(
-                kpi_card(
-                    "Concentración top 10",
-                    f"{top10:.0f}%",
-                    delta="del importe adjudicado",
-                    delta_up=top10 < th_c10["ok"],
-                    icon="📊",
-                    tooltip=KPI_FORMULAS["concentracion_top10"],
-                ),
-                unsafe_allow_html=True,
-            )
-        with cM3:
-            ofertas_med = adj_r["n_ofertas_recibidas"].median()
-            of_txt = f"{ofertas_med:.0f}" if pd.notna(ofertas_med) else "—"
-            st.markdown(
-                kpi_card(
-                    "Ofertas/adjudicación",
-                    of_txt,
-                    delta="mediana",
-                    icon="📨",
-                    tooltip=KPI_FORMULAS["ofertas_adj"],
-                ),
-                unsafe_allow_html=True,
-            )
+                    source_idx = [tipos.index(t) for t in flow["tipo_proyecto"]]
+                    target_idx = [len(tipos) + estados.index(e) for e in flow["estado_desc"]]
 
-        # ── Salud competitiva del mercado ─────────────────────────
-        st.subheader("Salud competitiva")
-        cS1, cS2, cS3 = st.columns(3)
+                    node_colors = [TOKENS.colors.accent_primary] * len(tipos) + [
+                        TOKENS.colors.success
+                    ] * len(estados)
+                    link_colors = ["rgba(134,188,36,0.15)"] * len(flow)
 
-        # Lead time — adj_r ya contiene fecha_publicacion (JOIN en load_adjudicaciones).
-        lt = lead_time_medio(adj_r)
-        lt_txt = f"{lt:.0f} días" if lt is not None else "—"
-        with cS1:
-            st.markdown(
-                kpi_card(
-                    "Lead time pub→adj",
-                    lt_txt,
-                    delta="mediana",
-                    icon="⏱",
-                    tooltip=KPI_FORMULAS["lead_time"],
-                ),
-                unsafe_allow_html=True,
-            )
+                    fig = go.Figure(
+                        go.Sankey(
+                            arrangement="snap",
+                            node=dict(
+                                pad=20,
+                                thickness=20,
+                                label=all_labels,
+                                color=node_colors,
+                                line=dict(color="rgba(255,255,255,0.1)", width=0.5),
+                            ),
+                            link=dict(
+                                source=source_idx,
+                                target=target_idx,
+                                value=flow["n"].tolist(),
+                                color=link_colors,
+                                customdata=flow["importe"]
+                                .apply(lambda v: f"{v:,.0f} €")
+                                .tolist(),
+                                hovertemplate="<b>%{source.label} → %{target.label}</b><br>"
+                                "%{value} licitaciones<br>"
+                                "Importe: %{customdata}<extra></extra>",
+                            ),
+                        )
+                    )
+                    fig.update_layout(
+                        template=ctx.plotly_template,
+                        height=420,
+                        margin=dict(t=20, b=10, l=10, r=10),
+                        font=dict(size=11, color="#A1A1AA"),
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
 
-        # HHI de concentración
-        hhi_val = hhi_concentracion(adj_r)
-        th_hhi = KPI_THRESHOLDS["hhi"]
-        if hhi_val < th_hhi["competitivo"]:
-            hhi_label = "competitivo"
-            hhi_up = True
-        elif hhi_val < th_hhi["moderado"]:
-            hhi_label = "moderado"
-            hhi_up = True
-        else:
-            hhi_label = "concentrado"
-            hhi_up = False
-        with cS2:
-            st.markdown(
-                kpi_card(
-                    "HHI concentración",
-                    f"{hhi_val:,.0f}",
-                    delta=f"mercado {hhi_label}",
-                    delta_up=hhi_up,
-                    icon="📊",
-                    tooltip=KPI_FORMULAS["hhi"],
-                ),
-                unsafe_allow_html=True,
-            )
+    # ── Indicadores de mercado (lazy) ───────────────────────────────
+    with lazy_section("indicadores_mercado", "Ver indicadores de mercado y salud competitiva") as _mkt_render:
+        if _mkt_render and not adj_resumen.empty:
+            ids_filt = set(df["id_externo"])
+            adj_r = adj_resumen[adj_resumen["licitacion_id"].isin(ids_filt)]
 
-        # % oferta única
-        ou = pct_oferta_unica(adj_r)
-        th_ou = KPI_THRESHOLDS["oferta_unica"]
-        with cS3:
-            st.markdown(
-                kpi_card(
-                    "% Oferta única",
-                    f"{ou:.0f}%",
-                    delta="1 sola oferta recibida",
-                    delta_up=ou < th_ou["ok"],
-                    icon="🔒",
-                    tooltip=KPI_FORMULAS["oferta_unica"],
-                ),
-                unsafe_allow_html=True,
-            )
-
-        # ── Snapshot CSV ───────────────────────────────────────────
-        st.markdown("")
-        snapshot = {
-            "% PYMEs": f"{pct_pyme:.0f}%",
-            "Concentración top 10": f"{top10:.0f}%",
-            "Ofertas/adjudicación (mediana)": of_txt,
-            "Lead time pub→adj": lt_txt,
-            "HHI concentración": f"{hhi_val:,.0f} ({hhi_label})",
-            "% sin competencia": f"{ou:.0f}%",
-        }
-        csv_bytes = kpis_snapshot_csv(snapshot, titulo="Snapshot KPIs — Resumen")
-        fname = f"kpis_resumen_{pd.Timestamp.now('UTC').strftime('%Y%m%d_%H%M')}.csv"
-        st.download_button(
-            "📸 Descargar snapshot KPIs (CSV)",
-            data=csv_bytes,
-            file_name=fname,
-            mime="text/csv",
-            help="Exporta los indicadores actuales a CSV para pegarlos en un informe.",
-        )
-
-        # ── PDF Informe ejecutivo ──────────────────────────────────
-        top_pdf = (
-            df.dropna(subset=["importe"])
-            .nlargest(10, "importe")[
-                ["titulo", "organo_contratacion", "importe", "estado_desc", "cpv"]
-            ]
-            .copy()
-        )
-        top_pdf["importe_fmt"] = top_pdf["importe"].apply(fmt_eur)
-        top_list: list[dict[str, Any]] = top_pdf.to_dict("records")  # type: ignore[assignment]
-
-        # Exportar charts como PNG — reusar fig_pie_estado ya construido
-        chart_imgs: list[tuple[str, bytes]] = []
-        try:
-            if fig_pie_estado is not None:
-                # Clonar para ajustar layout del PDF sin afectar el render en pantalla
-                import copy
-
-                fig_pdf = copy.deepcopy(fig_pie_estado)
-                fig_pdf.update_layout(
-                    showlegend=True,
-                    height=400,
-                    width=600,
-                    margin=dict(t=30, b=30, l=30, r=30),
+            cM1, cM2, cM3 = st.columns(3)
+            with cM1:
+                pct_pyme = (
+                    (adj_r["es_pyme"] == 1).sum() / adj_r["es_pyme"].notna().sum() * 100
+                    if adj_r["es_pyme"].notna().any()
+                    else 0
                 )
-                chart_imgs.append(("Distribución por estado", fig_pdf.to_image(format="png")))
-        except Exception:
-            log.debug("chart_image_generation_failed", chart="estado")
+                th_pyme = KPI_THRESHOLDS["pct_pyme"]
+                st.markdown(
+                    kpi_card(
+                        "% adjudicaciones PYMEs",
+                        f"{pct_pyme:.0f}%",
+                        delta="del nº de adjudicaciones",
+                        delta_up=pct_pyme >= th_pyme["ok"],
+                        icon="🏭",
+                        tooltip=KPI_FORMULAS["pct_pyme"],
+                    ),
+                    unsafe_allow_html=True,
+                )
+            with cM2:
+                top_cum = (
+                    adj_r.groupby("nombre_canonico")["importe_adjudicado"]
+                    .sum()
+                    .sort_values(ascending=False)
+                )
+                top10 = (top_cum.head(10).sum() / top_cum.sum() * 100) if top_cum.sum() else 0
+                th_c10 = KPI_THRESHOLDS["concentracion_top10"]
+                st.markdown(
+                    kpi_card(
+                        "Concentración top 10",
+                        f"{top10:.0f}%",
+                        delta="del importe adjudicado",
+                        delta_up=top10 < th_c10["ok"],
+                        icon="📊",
+                        tooltip=KPI_FORMULAS["concentracion_top10"],
+                    ),
+                    unsafe_allow_html=True,
+                )
+            with cM3:
+                ofertas_med = adj_r["n_ofertas_recibidas"].median()
+                of_txt = f"{ofertas_med:.0f}" if pd.notna(ofertas_med) else "—"
+                st.markdown(
+                    kpi_card(
+                        "Ofertas/adjudicación",
+                        of_txt,
+                        delta="mediana",
+                        icon="📨",
+                        tooltip=KPI_FORMULAS["ofertas_adj"],
+                    ),
+                    unsafe_allow_html=True,
+                )
 
-        filtros_pdf = {}
-        if hasattr(ctx, "filters") and ctx.filters:
-            f = ctx.filters
-            rango = getattr(f, "rango", None)
-            if rango:
-                filtros_pdf["Rango"] = f"{rango[0]} → {rango[-1]}"
-            if getattr(f, "estados", None):
-                filtros_pdf["Estado"] = str(f.estados)
-            if getattr(f, "ccaas", None):
-                filtros_pdf["CCAA"] = str(f.ccaas)
+            # ── Salud competitiva del mercado ─────────────────────────
+            st.subheader("Salud competitiva")
+            cS1, cS2, cS3 = st.columns(3)
 
-        pdf_bytes = generate_pdf(
-            kpis=snapshot,
-            filtros=filtros_pdf,
-            top_oportunidades=top_list,
-            chart_images=chart_imgs or None,
-        )
-        pdf_fname = f"informe_ejecutivo_{pd.Timestamp.now('UTC').strftime('%Y%m%d_%H%M')}.pdf"
-        st.download_button(
-            "📄 Descargar informe ejecutivo (PDF)",
-            data=pdf_bytes,
-            file_name=pdf_fname,
-            mime="application/pdf",
-            help="Genera un PDF con KPIs, top oportunidades y gráficos.",
-        )
+            # Lead time — adj_r ya contiene fecha_publicacion (JOIN en load_adjudicaciones).
+            lt = lead_time_medio(adj_r)
+            lt_txt = f"{lt:.0f} días" if lt is not None else "—"
+            with cS1:
+                st.markdown(
+                    kpi_card(
+                        "Lead time pub→adj",
+                        lt_txt,
+                        delta="mediana",
+                        icon="⏱",
+                        tooltip=KPI_FORMULAS["lead_time"],
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            # HHI de concentración
+            hhi_val = hhi_concentracion(adj_r)
+            th_hhi = KPI_THRESHOLDS["hhi"]
+            if hhi_val < th_hhi["competitivo"]:
+                hhi_label = "competitivo"
+                hhi_up = True
+            elif hhi_val < th_hhi["moderado"]:
+                hhi_label = "moderado"
+                hhi_up = True
+            else:
+                hhi_label = "concentrado"
+                hhi_up = False
+            with cS2:
+                st.markdown(
+                    kpi_card(
+                        "HHI concentración",
+                        f"{hhi_val:,.0f}",
+                        delta=f"mercado {hhi_label}",
+                        delta_up=hhi_up,
+                        icon="📊",
+                        tooltip=KPI_FORMULAS["hhi"],
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            # % oferta única
+            ou = pct_oferta_unica(adj_r)
+            th_ou = KPI_THRESHOLDS["oferta_unica"]
+            with cS3:
+                st.markdown(
+                    kpi_card(
+                        "% Oferta única",
+                        f"{ou:.0f}%",
+                        delta="1 sola oferta recibida",
+                        delta_up=ou < th_ou["ok"],
+                        icon="🔒",
+                        tooltip=KPI_FORMULAS["oferta_unica"],
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            # ── Snapshot CSV ───────────────────────────────────────────
+            st.markdown("")
+            snapshot = {
+                "% PYMEs": f"{pct_pyme:.0f}%",
+                "Concentración top 10": f"{top10:.0f}%",
+                "Ofertas/adjudicación (mediana)": of_txt,
+                "Lead time pub→adj": lt_txt,
+                "HHI concentración": f"{hhi_val:,.0f} ({hhi_label})",
+                "% sin competencia": f"{ou:.0f}%",
+            }
+            csv_bytes = kpis_snapshot_csv(snapshot, titulo="Snapshot KPIs — Resumen")
+            fname = f"kpis_resumen_{pd.Timestamp.now('UTC').strftime('%Y%m%d_%H%M')}.csv"
+            st.download_button(
+                "📸 Descargar snapshot KPIs (CSV)",
+                data=csv_bytes,
+                file_name=fname,
+                mime="text/csv",
+                help="Exporta los indicadores actuales a CSV para pegarlos en un informe.",
+            )
+
+            # ── PDF Informe ejecutivo ──────────────────────────────────
+            top_pdf = (
+                df.dropna(subset=["importe"])
+                .nlargest(10, "importe")[
+                    ["titulo", "organo_contratacion", "importe", "estado_desc", "cpv"]
+                ]
+                .copy()
+            )
+            top_pdf["importe_fmt"] = top_pdf["importe"].apply(fmt_eur)
+            top_list: list[dict[str, Any]] = top_pdf.to_dict("records")  # type: ignore[assignment]
+
+            # Exportar charts como PNG — reusar fig_pie_estado ya construido
+            chart_imgs: list[tuple[str, bytes]] = []
+            try:
+                if fig_pie_estado is not None:
+                    import copy
+
+                    fig_pdf = copy.deepcopy(fig_pie_estado)
+                    fig_pdf.update_layout(
+                        showlegend=True,
+                        height=400,
+                        width=600,
+                        margin=dict(t=30, b=30, l=30, r=30),
+                    )
+                    chart_imgs.append(("Distribución por estado", fig_pdf.to_image(format="png")))
+            except Exception:
+                log.debug("chart_image_generation_failed", chart="estado")
+
+            filtros_pdf = {}
+            if hasattr(ctx, "filters") and ctx.filters:
+                f = ctx.filters
+                rango = getattr(f, "rango", None)
+                if rango:
+                    filtros_pdf["Rango"] = f"{rango[0]} → {rango[-1]}"
+                if getattr(f, "estados", None):
+                    filtros_pdf["Estado"] = str(f.estados)
+                if getattr(f, "ccaas", None):
+                    filtros_pdf["CCAA"] = str(f.ccaas)
+
+            pdf_bytes = generate_pdf(
+                kpis=snapshot,
+                filtros=filtros_pdf,
+                top_oportunidades=top_list,
+                chart_images=chart_imgs or None,
+            )
+            pdf_fname = f"informe_ejecutivo_{pd.Timestamp.now('UTC').strftime('%Y%m%d_%H%M')}.pdf"
+            st.download_button(
+                "📄 Descargar informe ejecutivo (PDF)",
+                data=pdf_bytes,
+                file_name=pdf_fname,
+                mime="application/pdf",
+                help="Genera un PDF con KPIs, top oportunidades y gráficos.",
+            )
 
     # ── Panel comparativa de periodos ──────────────────────────────
     if ctx.filters.comparar and ctx.filters.rango and ctx.filters.rango_b:
@@ -698,12 +686,22 @@ def _render_actividad_reciente(df: pd.DataFrame, ctx: PageContext) -> None:
         else:
             st.caption("Sin datos de tecnología.")
 
-    # ── Últimas 20 publicaciones con detalle expandible ─────────────
+    # ── Últimas publicaciones con paginación ─────────────────────────
+    _PAGE_SIZE = 10
     with chart_card(
         "Últimas publicaciones",
-        subtitle="20 licitaciones más recientes — haz clic para expandir",
+        subtitle="Licitaciones más recientes — haz clic para expandir",
     ):
-        ultimas = df.sort_values("fecha_publicacion", ascending=False).head(20)
+        ultimas_all = df.sort_values("fecha_publicacion", ascending=False)
+        _total_ultimas = len(ultimas_all)
+        _total_pages = max(1, (_total_ultimas + _PAGE_SIZE - 1) // _PAGE_SIZE)
+        _page_key = "resumen_ultimas_page"
+        if _page_key not in st.session_state:
+            st.session_state[_page_key] = 0
+        _current_page = min(st.session_state[_page_key], _total_pages - 1)
+        _start = _current_page * _PAGE_SIZE
+        ultimas = ultimas_all.iloc[_start : _start + _PAGE_SIZE]
+
         for _, row in ultimas.iterrows():
             fecha = row["fecha_publicacion"]
             fecha_str = fecha.strftime("%d/%m/%Y") if pd.notna(fecha) else "—"
@@ -713,6 +711,27 @@ def _render_actividad_reciente(df: pd.DataFrame, ctx: PageContext) -> None:
             header = f"{fecha_str} · {imp} · {estado} — {titulo}"
             with st.expander(header):
                 _render_licitacion_detalle(row)
+
+        # Controles de paginación
+        if _total_pages > 1:
+            _pc1, _pc2, _pc3 = st.columns([1, 4, 1])
+            with _pc1:
+                if st.button("← Anterior", key="ultimas_prev", disabled=_current_page == 0):
+                    st.session_state[_page_key] = _current_page - 1
+                    st.rerun()
+            with _pc2:
+                st.caption(
+                    f"Página {_current_page + 1} de {_total_pages} "
+                    f"({_total_ultimas} licitaciones)"
+                )
+            with _pc3:
+                if st.button(
+                    "Siguiente →",
+                    key="ultimas_next",
+                    disabled=_current_page >= _total_pages - 1,
+                ):
+                    st.session_state[_page_key] = _current_page + 1
+                    st.rerun()
 
 
 def _render_banner_hoy(df: pd.DataFrame, adj: pd.DataFrame) -> None:

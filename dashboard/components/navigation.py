@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
+from dashboard.session_keys import NAV_CUR_PAGE, NAV_PREV_PAGE, NAV_PREV_SECTION
+
 if TYPE_CHECKING:
     from dashboard.filters.state import FiltersState
 
@@ -33,20 +35,104 @@ def _remove_filter(key: str, value: str | None) -> None:
         st.session_state[key] = [v for v in current_list if v != value]
 
 
+def _navigate_to_section(section: str) -> None:
+    """Navega a la primera página de una sección actualizando session_state."""
+    st.session_state["nav_section"] = section
+
+
 def breadcrumb(section: str, page: str, description: str | None = None) -> None:
-    """Renderiza `Sección › Página` y, opcionalmente, una línea de descripción."""
+    """Renderiza `Sección › Página` con la sección como enlace clicable."""
     safe_section = _html.escape(section)
     safe_page = _html.escape(page)
     desc_html = f'<p class="bc-desc">{_html.escape(description)}</p>' if description else ""
+
+    # El span de sección se envuelve con styling de link para indicar que es clicable
     st.markdown(
         f'<nav aria-label="breadcrumb">'
         f'<div class="bc">'
-        f'<span class="bc-section">{safe_section}</span>'
+        f'<span class="bc-section bc-section-link" style="cursor:pointer;text-decoration:underline dotted;opacity:0.8">{safe_section}</span>'
         f'<span class="bc-sep" aria-hidden="true">›</span>'
         f'<span class="bc-page" aria-current="page">{safe_page}</span>'
         f"</div>{desc_html}</nav>",
         unsafe_allow_html=True,
     )
+    # Botón invisible que activa la navegación a la sección al ser clicado
+    # Usamos CSS para superponer el botón sobre el texto del breadcrumb
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stButton"]:has(button[title="Volver a la sección"]) {
+            position: relative; margin-top: -2.4em; opacity: 0;
+            width: fit-content; pointer-events: auto;
+        }
+        div[data-testid="stButton"]:has(button[title="Volver a la sección"]) button {
+            padding: 0 !important; min-height: 0 !important;
+            height: 1.6em; font-size: 0.85rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button(section, key=f"bc_nav_{section}", help="Volver a la sección"):
+        _navigate_to_section(section)
+        st.rerun()
+
+
+def back_button() -> None:
+    """Renderiza un botón '← Volver' si hay una página anterior en el historial.
+
+    Sólo visible cuando ``session_state[NAV_PREV_PAGE]`` está definido,
+    es decir, cuando el usuario llegó a la página actual desde otra sub-página
+    distinta (ej. desde Resumen → Detalle).
+    """
+    prev_page: str | None = st.session_state.get(NAV_PREV_PAGE)
+    prev_section: str | None = st.session_state.get(NAV_PREV_SECTION)
+    if not prev_page or not prev_section:
+        return
+
+    safe_prev = _html.escape(prev_page)
+    # Botón compacto con ← y el nombre de la página anterior
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stButton"]:has(button[title="Volver a página anterior"]) button {
+            background: transparent !important;
+            border: 1px solid var(--color-border-card) !important;
+            color: var(--color-text-muted) !important;
+            font-size: 0.82rem !important;
+            padding: 2px 10px !important;
+            min-height: 0 !important;
+            height: 1.7em !important;
+            border-radius: 6px !important;
+            margin-bottom: 4px !important;
+        }
+        div[data-testid="stButton"]:has(button[title="Volver a página anterior"]) button:hover {
+            color: var(--color-text-primary) !important;
+            border-color: var(--color-border-hover) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        f"← {safe_prev}",
+        key="btn_back",
+        help="Volver a página anterior",
+    ):
+        # Cannot set nav_section directly after widget is instantiated.
+        # Store a pending nav request that app.py consumes before the widget renders.
+        st.session_state["_pending_nav_section"] = prev_section
+        # Determinar la clave del sub-nav de esa sección para restaurar la página
+        nav_key = f"nav_page_{prev_section}"
+        from dashboard.router import SECTIONS  # local import to avoid circular
+
+        pages = SECTIONS.get(prev_section, [])
+        if prev_page in pages:
+            st.session_state[nav_key] = pages.index(prev_page)
+        # Limpiar historial para que el botón desaparezca en la página de destino
+        st.session_state.pop(NAV_PREV_PAGE, None)
+        st.session_state.pop(NAV_PREV_SECTION, None)
+        st.rerun()
 
 
 def sub_nav(pages: list[str], *, key: str, icons: dict[str, str] | None = None) -> str:

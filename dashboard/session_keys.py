@@ -60,3 +60,8 @@ OAUTH_STEP_DONE: Final = "_oauth_step_done"
 
 # ── Sincronización de query params ───────────────────────────────────────
 QP_LOADED: Final = "_qp_loaded"
+
+# ── Navegación contextual ────────────────────────────────────────────────
+NAV_PREV_PAGE: Final = "_prev_page"
+NAV_PREV_SECTION: Final = "_prev_section"
+NAV_CUR_PAGE: Final = "_cur_page"

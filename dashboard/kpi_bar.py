@@ -194,7 +194,11 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
                 "Importe medio",
                 fmt_eur(k["importe_medio"]),
                 icon=icon("trending-up", 18),
-                tooltip="Importe medio por licitación en el rango filtrado.",
+                tooltip=(
+                    "Media aritmética del importe de licitación (sin IVA) "
+                    "sobre todas las licitaciones en el rango filtrado. "
+                    "Fórmula: Importe total / Nº licitaciones con importe informado."
+                ),
             ),
             unsafe_allow_html=True,
         )
@@ -204,7 +208,11 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
                 "Órganos distintos",
                 f"{k['n_organos']}",
                 icon=icon("building-2", 18),
-                tooltip="Número de órganos de contratación distintos en el rango filtrado.",
+                tooltip=(
+                    "Número de órganos de contratación únicos que han publicado "
+                    "al menos una licitación en el rango filtrado. "
+                    "Un mismo organismo puede publicar múltiples licitaciones."
+                ),
             ),
             unsafe_allow_html=True,
         )
@@ -214,7 +222,13 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
                 "CCAA cubiertas",
                 f"{k['n_ccaa']}/17",
                 icon=icon("map", 18),
-                tooltip="Comunidades autónomas con al menos una licitación en el rango filtrado.",
+                tooltip=(
+                    "Comunidades autónomas con al menos una licitación en el rango filtrado. "
+                    "El total posible es 17 (sin contar Ceuta y Melilla). "
+                    "Una CCAA se asigna por el código NUTS3 del órgano contratante."
+                ),
             ),
             unsafe_allow_html=True,
         )
+
+

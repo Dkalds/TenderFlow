@@ -25,12 +25,15 @@ def data_table(
     page_size: int = 50,
     enable_filter: bool = True,
     enable_export: bool = True,
-) -> None:
+    selection_mode: str | None = None,
+) -> dict | None:
     """Renderiza un DataFrame con configuración estándar.
 
     mode='auto'   → AgGrid cuando len(df) > 100 (si está instalado).
     mode='aggrid' → fuerza AgGrid (fallback a native si no está instalado).
     mode='native' → fuerza st.dataframe.
+
+    Returns selection event dict when selection_mode is set, else None.
     """
     use_aggrid = _AGGRID and mode != "native" and (mode == "aggrid" or len(df) > _AUTO_THRESHOLD)
 
@@ -67,7 +70,10 @@ def data_table(
         extra_kw: dict = {}
         if height is not None:
             extra_kw["height"] = height
-        st.dataframe(
+        if selection_mode:
+            extra_kw["selection_mode"] = selection_mode
+            extra_kw["on_select"] = "rerun"
+        event = st.dataframe(
             df,
             use_container_width=True,
             hide_index=True,
@@ -75,3 +81,6 @@ def data_table(
             key=key,
             **extra_kw,
         )
+        if selection_mode and event is not None:
+            return event
+        return None

@@ -12,20 +12,37 @@ from dashboard.utils.security import safe_url
 
 
 @contextmanager
-def chart_card(title: str, subtitle: str | None = None) -> Generator[None, None, None]:
+def chart_card(
+    title: str,
+    subtitle: str | None = None,
+    *,
+    exportable: bool = False,
+) -> Generator[None, None, None]:
     """Context manager — envuelve contenido en una chart-card glass-morphism.
 
     Renderiza una tarjeta con borde, fondo desenfocado y cabecera de título.
     El efecto visual se aplica via CSS sobre el ``stVerticalBlockBorderWrapper``
     cuando éste contiene un hijo ``.chart-card-header``.
 
+    Args:
+        title: Título de la tarjeta.
+        subtitle: Subtítulo opcional.
+        exportable: Si True, añade un botón de descarga PNG usando la API
+            de Plotly ``toImage`` en el cliente (solo funciona con gráficas Plotly).
+
     Usage::
 
-        with chart_card("Distribución por estado", subtitle="Últimos 90 días"):
+        with chart_card("Distribución por estado", subtitle="Últimos 90 días",
+                        exportable=True):
             st.plotly_chart(fig, use_container_width=True)
     """
+    safe_title = _html.escape(title)
+    # Identificador único para anclar el botón de exportación al gráfico correcto
+    _card_id = f"cc_{abs(hash(title)) % 100000}"
+
     header_html = (
-        f'<div class="chart-card-header"><div class="chart-card-title">{_html.escape(title)}</div>'
+        f'<div class="chart-card-header" id="{_card_id}-hdr">'
+        f'<div class="chart-card-title">{safe_title}</div>'
     )
     if subtitle:
         header_html += f'<div class="chart-card-sub">{_html.escape(subtitle)}</div>'
@@ -35,6 +52,45 @@ def chart_card(title: str, subtitle: str | None = None) -> Generator[None, None,
     with container:
         st.markdown(header_html, unsafe_allow_html=True)
         yield
+        if exportable:
+            _safe_fname = safe_title.replace(" ", "_").lower()[:30]
+            _export_js = f"""
+            <script>
+            (function() {{
+              var cardId = '{_card_id}';
+              var fname  = '{_safe_fname}';
+              var btn = document.getElementById(cardId + '-exp-btn');
+              if (!btn) return;
+              btn.addEventListener('click', function() {{
+                // Buscar el SVG de Plotly más cercano al encabezado
+                var hdr = document.getElementById(cardId + '-hdr');
+                if (!hdr) return;
+                var card = hdr.closest('[data-testid="stVerticalBlockBorderWrapper"]')
+                          || hdr.parentElement;
+                var svg = card ? card.querySelector('.main-svg') : null;
+                if (!svg) {{ alert('No se encontró el gráfico SVG.'); return; }}
+                var serializer = new XMLSerializer();
+                var svgStr = serializer.serializeToString(svg);
+                var blob = new Blob([svgStr], {{type: 'image/svg+xml'}});
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = fname + '.svg';
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a);
+                setTimeout(function() {{ URL.revokeObjectURL(url); }}, 1000);
+              }});
+            }})();
+            </script>
+            """
+            st.markdown(
+                f'<button id="{_card_id}-exp-btn" '
+                f'style="background:transparent;border:1px solid rgba(255,255,255,0.15);'
+                f'color:rgba(255,255,255,0.5);border-radius:5px;padding:3px 10px;'
+                f'font-size:0.75rem;cursor:pointer;margin-top:4px">'
+                f"⬇ SVG</button>"
+                f"{_export_js}",
+                unsafe_allow_html=True,
+            )
 
 
 def top_card(

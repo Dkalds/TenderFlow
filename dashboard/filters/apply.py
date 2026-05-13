@@ -7,18 +7,81 @@ import re
 import pandas as pd
 
 from dashboard.filters.state import FiltersState
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
+# ── Cache del estado FTS5 (evitar consultar sqlite_master en cada rerun) ──
+_fts_available: bool | None = None
+
+
+def _check_fts() -> bool:
+    """Comprueba una sola vez si FTS5 está disponible."""
+    global _fts_available
+    if _fts_available is None:
+        try:
+            from db.database import fts_available
+
+            _fts_available = fts_available()
+        except Exception:
+            _fts_available = False
+    return _fts_available
+
+
+def _search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
+    """Busca con FTS5 y devuelve id_externo ordenados por bm25 rank.
+
+    Returns None si FTS no está disponible o la query falla (fallback a str.contains).
+    """
+    if not _check_fts() or not query.strip():
+        return None
+    try:
+        from db.database import connect
+
+        # Construir query FTS: splitear por espacios y unir con AND
+        terms = query.strip().split()
+        if len(terms) == 1:
+            fts_query = f'"{terms[0]}"'
+        else:
+            # Cada término entre comillas y conectados con AND
+            fts_query = " AND ".join(f'"{t}"' for t in terms)
+
+        with connect() as c:
+            cur = c.execute(
+                "SELECT f.id_externo FROM licitaciones_fts f "
+                "WHERE licitaciones_fts MATCH ? "
+                "ORDER BY rank "
+                "LIMIT ?",
+                [fts_query, limit],
+            )
+            return [row[0] for row in cur.fetchall()]
+    except Exception as exc:
+        log.debug("fts_search_fallback", error=str(exc), query=query)
+        return None
 
 
 def apply_filters(df: pd.DataFrame, state: FiltersState) -> pd.DataFrame:
     result = df.copy()
+    _fts_used = False
     if state.q:
-        q_escaped = re.escape(state.q)
-        mask = (
-            result["titulo"].str.contains(q_escaped, case=False, na=False)
-            | result["descripcion"].str.contains(q_escaped, case=False, na=False)
-            | result["organo_contratacion"].str.contains(q_escaped, case=False, na=False)
-        )
-        result = result[mask]
+        # Intentar FTS5 primero para ranking por relevancia
+        fts_ids = _search_fts_ids(state.q)
+        if fts_ids is not None and fts_ids:
+            # Preservar orden de relevancia de FTS5
+            _fts_used = True
+            id_order = {eid: i for i, eid in enumerate(fts_ids)}
+            result = result[result["id_externo"].isin(id_order)]
+            result = result.assign(_fts_rank=result["id_externo"].map(id_order))
+            result = result.sort_values("_fts_rank").drop(columns=["_fts_rank"])
+        else:
+            # Fallback: pandas str.contains
+            q_escaped = re.escape(state.q)
+            mask = (
+                result["titulo"].str.contains(q_escaped, case=False, na=False)
+                | result["descripcion"].str.contains(q_escaped, case=False, na=False)
+                | result["organo_contratacion"].str.contains(q_escaped, case=False, na=False)
+            )
+            result = result[mask]
     if state.rango and isinstance(state.rango, tuple) and len(state.rango) == 2:
         result = result[
             (result["fecha_publicacion"].dt.date >= state.rango[0])
@@ -33,13 +96,15 @@ def apply_filters(df: pd.DataFrame, state: FiltersState) -> pd.DataFrame:
     if state.tipos_proy:
         result = result[result["tipo_proyecto"].isin(state.tipos_proy)]
     if state.tecnologias and "tecnologia" in result.columns:
-        # tecnologia puede ser multi-valor ("SAP,ORACLE"), filtrar si contiene alguna
-        mask = (
-            result["tecnologia"]
-            .fillna("")
-            .apply(lambda t: any(tech in t.split(",") for tech in state.tecnologias))
+        # tecnologia puede ser multi-valor ("SAP,ORACLE"); usamos regex vectorizado
+        # para evitar .apply() con lambda (lento en datasets grandes).
+        pattern = "|".join(
+            r"(?:^|,)\s*" + re.escape(t) + r"\s*(?:,|$)" for t in state.tecnologias
         )
+        mask = result["tecnologia"].fillna("").str.contains(pattern, regex=True, na=False)
         result = result[mask]
     if state.importe_min > 0:
         result = result[result["importe"].fillna(0) >= state.importe_min]
+    # Anotar si los resultados están ordenados por relevancia FTS
+    result.attrs["fts_ranked"] = _fts_used
     return result
