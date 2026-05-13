@@ -32,7 +32,7 @@ def load_dataframe() -> pd.DataFrame:
     return df
 
 
-def kpis(df: pd.DataFrame) -> dict:
+def kpis(df: pd.DataFrame) -> dict[str, float | int]:
     if df.empty:
         return {"total": 0, "importe_total": 0, "importe_medio": 0, "organos": 0}
     return {
@@ -238,8 +238,7 @@ def indice_novedad(df: pd.DataFrame, df_adj: pd.DataFrame) -> float:
     return float(nuevos / len(df_c) * 100)
 
 
-def ccaa_mas_activa(df: pd.DataFrame) -> dict | None:
-    """Devuelve la CCAA con más licitaciones: {ccaa, n, importe}."""
+def ccaa_mas_activa(df: pd.DataFrame) -> dict[str, str | int | float] | None:
     if df.empty or "ccaa" not in df.columns:
         return None
     geo = (
@@ -269,8 +268,7 @@ def concentracion_geografica(df: pd.DataFrame, top_n: int = 3) -> float:
     return float(geo.head(top_n).sum() / total * 100)
 
 
-def mes_pico(df: pd.DataFrame) -> dict | None:
-    """Mes con mayor volumen acumulado en el rango: {mes: str, importe: float, n: int}."""
+def mes_pico(df: pd.DataFrame) -> dict[str, str | float | int] | None:
     if df.empty or "fecha_publicacion" not in df.columns:
         return None
     mensual = (
@@ -396,7 +394,7 @@ def importe_medio_por_modulo(df: pd.DataFrame) -> pd.DataFrame:
     return g
 
 
-def top_modulo_yoy(df: pd.DataFrame) -> dict | None:
+def top_modulo_yoy(df: pd.DataFrame) -> dict[str, str | float | int] | None:
     """Módulo SAP con mayor crecimiento YoY en nº de licitaciones.
 
     Returns: {modulo, crecimiento_pct, n_act, n_prev} o None si no hay datos suficientes.
@@ -447,7 +445,7 @@ def top_modulo_yoy(df: pd.DataFrame) -> dict | None:
 
 
 def pct_multi_modulo(df: pd.DataFrame) -> float:
-    """% de licitaciones con ≥2 módulos SAP detectados (proyectos integrales)."""
+    """% de licitaciones con >=2 módulos SAP detectados (proyectos integrales)."""
     if df.empty or "modulos" not in df.columns:
         return 0.0
     con_modulos = df[df["modulos"].apply(lambda m: isinstance(m, list) and len(m) > 0)]
@@ -489,7 +487,7 @@ def _keywords_mask(text: pd.Series, keywords: list[str]) -> pd.Series:
     return text.str.contains(pattern, na=False, regex=True)
 
 
-def ticket_medio_por_plataforma(df: pd.DataFrame) -> dict:
+def ticket_medio_por_plataforma(df: pd.DataFrame) -> dict[str, dict[str, int | float]]:
     """Importe medio de licitaciones que mencionan S/4HANA vs ECC.
 
     Returns: {s4hana: {n, ticket_medio}, ecc: {n, ticket_medio}}.

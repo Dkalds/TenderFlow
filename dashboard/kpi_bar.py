@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import streamlit as st
 
@@ -79,7 +81,7 @@ def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _load_precomputed_kpis() -> dict:
+def _load_precomputed_kpis() -> dict[str, Any]:
     """Lee snapshots globales de KPI si existen; falla en silencio."""
     try:
         from scheduler.kpi_precompute import get_all_latest
@@ -89,7 +91,7 @@ def _load_precomputed_kpis() -> dict:
         return {}
 
 
-def _snapshot_kpis(snapshot: dict, expected_rows: int) -> dict[str, float | int] | None:
+def _snapshot_kpis(snapshot: dict[str, Any], expected_rows: int) -> dict[str, float | int] | None:
     """Adapta un snapshot global al contrato de ``compute_kpis``.
 
     Solo se usa si el total del snapshot coincide con el DataFrame recibido.
@@ -141,7 +143,7 @@ def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[flo
     return [float(v) for v in s.tolist()]
 
 
-def _snapshot_series(snapshot: dict, key: str) -> list[float] | None:
+def _snapshot_series(snapshot: dict[str, Any], key: str) -> list[float] | None:
     serie = snapshot.get("serie_mensual_24m")
     if not isinstance(serie, list):
         return None

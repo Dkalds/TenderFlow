@@ -32,7 +32,7 @@ def licitacion_popover(row: pd.Series, key: str) -> None:
             fecha = row.get("fecha_publicacion")
             if pd.notna(fecha):
                 try:
-                    fecha_str = pd.Timestamp(fecha).strftime("%d/%m/%Y")  # type: ignore[arg-type]
+                    fecha_str = pd.Timestamp(fecha).strftime("%d/%m/%Y")
                 except Exception:
                     fecha_str = str(fecha)[:10]
             else:

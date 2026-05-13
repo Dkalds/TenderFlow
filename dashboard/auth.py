@@ -17,13 +17,11 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
-def _verify_password(candidate: str, reference: str) -> bool:
-    """Verifica *candidate* contra *reference* (plano) o el hash bcrypt de settings.
+def _verify_password(candidate: str) -> bool:
+    """Verifica *candidate* contra el hash bcrypt de settings.
 
-    Prioridad:
-    1. Si ``settings.DASHBOARD_PASSWORD_HASH`` tiene valor, se usa bcrypt.
-    2. Fallback: comparación timing-safe con ``hmac.compare_digest``
-       + log warning recomendando migrar a bcrypt.
+    Requiere que ``settings.DASHBOARD_PASSWORD_HASH`` esté configurado
+    con un hash bcrypt válido. Si no hay hash, rechaza siempre con warning.
     """
     pw_hash = settings.DASHBOARD_PASSWORD_HASH
     if pw_hash:
@@ -34,14 +32,12 @@ def _verify_password(candidate: str, reference: str) -> bool:
         except Exception:
             log.warning("bcrypt_verify_failed", exc_info=True)
             return False
-    # Fallback: comparación plana timing-safe
     log.warning(
-        "plaintext_password_in_use",
+        "no_bcrypt_hash_configured",
         hint="Configura DASHBOARD_PASSWORD_HASH con bcrypt. "
         "Genera el hash con: python scripts/hash_password.py",
     )
-    return hmac.compare_digest(candidate, reference)
-
+    return False
 
 # Duración máxima de una sesión autenticada (segundos)
 SESSION_TIMEOUT_SECONDS = 28_800  # 8 horas
@@ -59,7 +55,7 @@ _DB_WINDOW_SECONDS = 300.0
 _OAUTH_STATE_MAX_AGE_SECONDS = 600
 _SEEN_OAUTH_NONCES: dict[str, float] = {}
 
-
+"""Flujos de autenticación:"""
 def _client_key() -> str:
     """Genera una clave de cliente anónima basada en el session_id de Streamlit."""
     try:
@@ -78,6 +74,22 @@ def oauth_configured() -> bool:
     return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET)
 
 
+def _audit(action: str, detail: str = "") -> None:
+    """Registra una acción en el audit log de forma best-effort."""
+    try:
+        import hashlib
+
+        from db.audit import log_action
+
+        # user_key opaco basado en la contraseña o id de sesión
+        seed = settings.DASHBOARD_PASSWORD_HASH or settings.DASHBOARD_PASSWORD or "anonymous"
+        user_key = hashlib.sha256(seed.encode()).hexdigest()[:16]
+        session_hash = _client_key()
+        log_action(user_key, session_hash, action, detail)
+    except Exception:
+        log.debug("audit_log_unavailable", action=action)
+
+
 def _get_password() -> str:
     """Lee la contraseña desde st.secrets (Cloud) o config.py (.env / local).
 
@@ -92,8 +104,8 @@ def _get_password() -> str:
 
 
 def _has_password_configured() -> bool:
-    """True si hay algún mecanismo de password activo (plano o hash)."""
-    return bool(_get_password() or settings.DASHBOARD_PASSWORD_HASH)
+    """True si hay un hash bcrypt configurado (DASHBOARD_PASSWORD_HASH)."""
+    return bool(settings.DASHBOARD_PASSWORD_HASH)
 
 
 def _check_lockout() -> None:
@@ -413,7 +425,6 @@ def check_password() -> bool:
 
     Detiene la ejecución con ``st.stop()`` si el usuario no está autenticado.
     """
-    password = _get_password()
     has_password = _has_password_configured()
     has_oauth = oauth_configured()
 
@@ -478,7 +489,7 @@ def check_password() -> bool:
         st.markdown(f"### 🔒 {greeting}Introduce la contraseña")
         pwd = st.text_input("Contraseña", type="password", key="login_pwd")
         if st.button("Entrar", type="primary"):
-            if _verify_password(pwd, password):
+            if _verify_password(pwd):
                 from dashboard.session_keys import LOGIN_ATTEMPTS, LOGIN_LOCKOUT_UNTIL
 
                 st.session_state[AUTHENTICATED] = True
@@ -502,9 +513,11 @@ def check_password() -> bool:
                     user_id=st.session_state.get(USER_ID),
                     email=st.session_state.get(USER_EMAIL),
                 )
+                _audit("login", "auth_method=oauth+password")
                 st.rerun()
             else:
                 _record_failed_attempt()
+                _audit("login_failed", "auth_method=oauth+password")
                 st.error("Contraseña incorrecta.")
         st.stop()
         return False
@@ -530,7 +543,7 @@ def check_password() -> bool:
         )
         pwd = st.text_input("Contraseña", type="password", key=LOGIN_PWD)
         if st.button("Entrar", type="primary"):
-            if _verify_password(pwd, password):
+            if _verify_password(pwd):
                 st.session_state[AUTHENTICATED] = True
                 st.session_state[AUTH_TIME] = time.time()
                 st.session_state[AUTH_METHOD] = "password"
@@ -551,9 +564,11 @@ def check_password() -> bool:
                 from db.users import log_access
 
                 log_access(auth_method="password")
+                _audit("login", "auth_method=password")
                 st.rerun()
             else:
                 _record_failed_attempt()
+                _audit("login_failed", "auth_method=password")
                 st.error("Contraseña incorrecta.")
 
     st.stop()

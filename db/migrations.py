@@ -266,6 +266,36 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_notif_reads_user ON notification_reads(user_key);
         """,
     ),
+    (
+        18,
+        "pending_digests_and_audit_log",
+        """
+        CREATE TABLE IF NOT EXISTS pending_digests (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_key        TEXT NOT NULL,
+            recipient_email TEXT NOT NULL,
+            entry_id        INTEGER NOT NULL,
+            licitacion_id   TEXT NOT NULL,
+            frequency       TEXT NOT NULL DEFAULT 'daily',
+            matched_at      TEXT NOT NULL,
+            sent            INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(entry_id, licitacion_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_digests_recipient
+            ON pending_digests(recipient_email, sent, frequency);
+
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_key        TEXT NOT NULL,
+            session_hash    TEXT NOT NULL DEFAULT '',
+            action          TEXT NOT NULL,
+            detail          TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_key);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -360,6 +390,13 @@ ROLLBACKS: dict[int, str] = {
     17: """
         DROP INDEX IF EXISTS idx_notif_reads_user;
         DROP TABLE IF EXISTS notification_reads;
+    """,
+    18: """
+        DROP INDEX IF EXISTS idx_audit_log_action;
+        DROP INDEX IF EXISTS idx_audit_log_user;
+        DROP TABLE IF EXISTS audit_log;
+        DROP INDEX IF EXISTS idx_pending_digests_recipient;
+        DROP TABLE IF EXISTS pending_digests;
     """,
 }
 

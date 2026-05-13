@@ -23,6 +23,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from config import settings
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -52,25 +53,69 @@ http_retry = retry(
 )
 
 
-class _BreakerLogger(pybreaker.CircuitBreakerListener):
+class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
+    """Ajusta ``reset_timeout`` con backoff exponencial entre aperturas consecutivas.
+
+    Cada vez que el circuito se abre, el timeout se dobla respecto al anterior
+    (hasta ``max_timeout``). Al cerrarse exitosamente, se resetea al ``base_timeout``.
+    Sustituye a ``_BreakerLogger`` — también registra los cambios de estado.
+    """
+
+    def __init__(self, base_timeout: int, max_timeout: int) -> None:
+        self._base_timeout = base_timeout
+        self._max_timeout = max_timeout
+        self._consecutive_opens = 0
+
     def state_change(
         self,
         cb: pybreaker.CircuitBreaker,
         old_state: object,
         new_state: object,
     ) -> None:
-        log.warning(
-            "placsp_breaker_state_change",
-            old_state=str(getattr(old_state, "name", old_state)),
-            new_state=str(getattr(new_state, "name", new_state)),
-            fail_counter=cb.fail_counter,
-        )
+        new_name = str(getattr(new_state, "name", new_state))
+        old_name = str(getattr(old_state, "name", old_state))
+
+        if new_name == "open":
+            self._consecutive_opens += 1
+            new_timeout = min(
+                self._base_timeout * (2 ** (self._consecutive_opens - 1)),
+                self._max_timeout,
+            )
+            cb.reset_timeout = new_timeout
+            log.warning(
+                "placsp_breaker_state_change",
+                old_state=old_name,
+                new_state=new_name,
+                fail_counter=cb.fail_counter,
+                consecutive_opens=self._consecutive_opens,
+                next_reset_timeout_s=new_timeout,
+            )
+        elif new_name == "closed":
+            self._consecutive_opens = 0
+            cb.reset_timeout = self._base_timeout
+            log.info(
+                "placsp_breaker_state_change",
+                old_state=old_name,
+                new_state=new_name,
+                fail_counter=cb.fail_counter,
+                reset_timeout_s=self._base_timeout,
+            )
+        else:
+            log.info(
+                "placsp_breaker_state_change",
+                old_state=old_name,
+                new_state=new_name,
+                fail_counter=cb.fail_counter,
+            )
 
 
 placsp_breaker = pybreaker.CircuitBreaker(
     fail_max=5,
     reset_timeout=60 * 5,
     exclude=[ValueError],
-    listeners=[_BreakerLogger()],
+    listeners=[_AdaptiveBackoffListener(
+        base_timeout=settings.BREAKER_BASE_TIMEOUT,
+        max_timeout=settings.BREAKER_MAX_TIMEOUT,
+    )],
     name="placsp",
 )

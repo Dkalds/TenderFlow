@@ -13,9 +13,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from observability import AlertLevel, configure_logging, get_logger, notify
+from observability import AlertLevel, configure_logging, configure_tracing, get_logger, notify
+from scheduler.dlq_retry import retry_failed_extractions
 from scheduler.kpi_precompute import run_kpi_precompute
-from scheduler.watchlist_alerts import check_and_notify
+from scheduler.watchlist_alerts import check_and_notify, send_pending_digests
 from scraper.pipeline import update_daily, update_recent
 
 log = get_logger(__name__)
@@ -54,6 +55,7 @@ def _run_daily_atom() -> None:
         raise RuntimeError(f"daily atom failed: {result.get('status')}")
     run_kpi_precompute()
     check_and_notify()
+    retry_failed_extractions()
 
 
 def _run_recent_bulk(months: int) -> None:
@@ -67,19 +69,26 @@ def _run_recent_bulk(months: int) -> None:
 
 def main() -> int:
     configure_logging(json_logs=os.environ.get("LOG_FORMAT") == "json")
+    configure_tracing()
 
     daily_interval = timedelta(minutes=_env_int("SCHEDULER_DAILY_INTERVAL_MINUTES", 240))
     bulk_interval = timedelta(minutes=_env_int("SCHEDULER_BULK_INTERVAL_MINUTES", 1440))
     bulk_months = _env_int("SCHEDULER_BULK_MONTHS", 3)
+    dlq_interval = timedelta(minutes=_env_int("SCHEDULER_DLQ_RETRY_INTERVAL_MINUTES", 720))
+    digest_interval = timedelta(minutes=_env_int("SCHEDULER_DIGEST_INTERVAL_MINUTES", 1440))
     sleep_seconds = _env_int("SCHEDULER_POLL_SECONDS", 60)
 
     now = datetime.now(UTC)
     next_daily = now
     next_bulk = now
+    next_dlq = now + timedelta(minutes=30)  # primer reintento DLQ: 30 min tras arranque
+    next_digest = now + timedelta(hours=1)  # primer digest: 1 hora tras arranque
     log.info(
         "scheduler_loop_start",
         daily_interval_minutes=int(daily_interval.total_seconds() // 60),
         bulk_interval_minutes=int(bulk_interval.total_seconds() // 60),
+        dlq_retry_interval_minutes=int(dlq_interval.total_seconds() // 60),
+        digest_interval_minutes=int(digest_interval.total_seconds() // 60),
         bulk_months=bulk_months,
     )
 
@@ -91,6 +100,12 @@ def main() -> int:
         if now >= next_bulk:
             _run_job("recent_bulk", lambda: _run_recent_bulk(bulk_months))
             next_bulk = datetime.now(UTC) + bulk_interval
+        if now >= next_dlq:
+            _run_job("dlq_retry", retry_failed_extractions)
+            next_dlq = datetime.now(UTC) + dlq_interval
+        if now >= next_digest:
+            _run_job("digest_daily", lambda: send_pending_digests("daily"))
+            next_digest = datetime.now(UTC) + digest_interval
         time.sleep(sleep_seconds)
 
 

@@ -13,6 +13,7 @@ from dashboard.components.tables import data_table
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
+from db.audit import list_recent as audit_list_recent
 from db.database import connect
 from db.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
 
@@ -224,6 +225,27 @@ def render(ctx: PageContext) -> None:
                 n = mark_matching_resolved(group["fuente"], group["scope"] or None)
                 st.success(f"{n} fallo(s) marcados como resueltos.")
                 st.rerun()
+
+    # ── Audit Log ────────────────────────────────────────────────────────
+    st.markdown("#### Audit Log")
+    st.caption("Últimas 200 acciones de usuario registradas.")
+    audit_rows = audit_list_recent(limit=200)
+    if audit_rows:
+        audit_df = pd.DataFrame(audit_rows)
+        audit_df["created_at"] = pd.to_datetime(audit_df["created_at"], errors="coerce", utc=True)
+        data_table(
+            audit_df,
+            height=320,
+            column_config={
+                "created_at": st.column_config.DatetimeColumn("Fecha"),
+                "action": st.column_config.TextColumn("Acción"),
+                "detail": st.column_config.TextColumn("Detalle"),
+                "user_key": st.column_config.TextColumn("Usuario"),
+                "session_hash": st.column_config.TextColumn("Sesión"),
+            },
+        )
+    else:
+        st.info("Sin acciones registradas aún.")
 
 
 def _render_calidad_dato(ctx: PageContext, last_run, runs) -> None:

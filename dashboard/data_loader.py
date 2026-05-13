@@ -168,9 +168,30 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
     que recargan en bucle. Si se excede, se sirve igualmente la copia cacheada
     pero se loguea el evento.
 
+    Si detecta que el scraper ha ingestado datos nuevos (señal de archivo),
+    invalida la caché antes de servir los datos.
+
     Args:
         limit: Límite opcional de filas (forwarded a ``_load_dataframe_shared``).
     """
+    # Comprobar si el scraper ha señalizado datos nuevos
+    try:
+        from shared.cache_signal import check_cache_signal
+
+        import streamlit as _st
+
+        _last_check_key = "_cache_signal_last_check"
+        last_check: float = _st.session_state.get(_last_check_key, 0.0)
+        if check_cache_signal(last_check):
+            invalidate_caches()
+            _st.session_state[_last_check_key] = __import__("time").time()
+            log.debug("data_loader_cache_invalidated_by_signal")
+        elif last_check == 0.0:
+            # Primera carga de la sesión: registrar el timestamp actual
+            _st.session_state[_last_check_key] = __import__("time").time()
+    except Exception:
+        log.debug("cache_signal_check_unavailable")
+
     # Best-effort: si no hay contexto Streamlit (tests, scripts), saltarse el throttle.
     try:
         from dashboard.utils.rate_limit import check_rate_limit

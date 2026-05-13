@@ -9,8 +9,9 @@ from __future__ import annotations
 import functools
 import html as _html
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import Any
 
 import streamlit as st
 
@@ -139,7 +140,7 @@ def card_skeleton(rows: int = 3) -> None:
 
 
 @contextmanager
-def with_loading(message: str = "Cargando…"):
+def with_loading(message: str = "Cargando…") -> Iterator[None]:
     """Context manager: muestra `st.spinner` mientras ejecuta el bloque.
 
     Si ocurre una excepción la captura y la muestra con `error_state`.
@@ -162,7 +163,7 @@ def with_loading(message: str = "Cargando…"):
             )
 
 
-def guarded_render(fn: Callable) -> Callable:
+def guarded_render(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Decorador para funciones `render(ctx)` de páginas.
 
     Envuelve la ejecución en try/except y muestra `error_state` en vez de
@@ -172,7 +173,7 @@ def guarded_render(fn: Callable) -> Callable:
     """
 
     @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         debug = bool(st.query_params.get("debug"))
         try:
             return fn(*args, **kwargs)

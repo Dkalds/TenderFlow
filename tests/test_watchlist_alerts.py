@@ -204,6 +204,7 @@ def test_check_and_notify_with_matches_sends_alert(tmp_db):
         "ccaa": None,
         "email": "test@example.com",
         "last_notified_at": "2024-01-01",
+        "frequency": "immediate",
     }
     lic = {
         "id_externo": "LIC-001",

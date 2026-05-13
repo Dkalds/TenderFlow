@@ -12,7 +12,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from dashboard.auth import get_current_user
+from dashboard.auth import get_current_user, _audit
 from dashboard.components.states import empty_state, guarded_render
 from dashboard.components.tables import data_table
 from dashboard.components.toasts import notify_error, notify_success
@@ -92,6 +92,7 @@ def render(ctx: PageContext) -> None:
                         user_id=user_id,
                     )
                 )
+                _audit("watchlist_add", f"cpv={cpv.strip()}")
                 notify_success("Entrada guardada.")
                 st.rerun()
 
@@ -129,6 +130,7 @@ def render(ctx: PageContext) -> None:
         c7.caption(e.get("created_at", ""))
         if c8.button("🗑️", key=f"wl_rm_{e['id']}"):
             remove_entry(int(e["id"]))
+            _audit("watchlist_delete", f"entry_id={e['id']} cpv={e.get('cpv_prefix')}")
             notify_success("Entrada eliminada.")
             st.rerun()
 

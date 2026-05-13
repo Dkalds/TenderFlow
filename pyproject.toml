@@ -94,15 +94,7 @@ module = [
     "dashboard.data_loader",
     "dashboard.embeddings",
     "dashboard.faiss_index",
-    "dashboard.filters.*",
-    "dashboard.kpi_bar",
-    "dashboard.kpi_config",
     "dashboard.pages.*",
-    "dashboard.router",
-    "dashboard.session_keys",
-    "dashboard.stats.*",
-    "dashboard.theme.*",
-    "dashboard.components.*",
     "tests.*",
 ]
 disallow_untyped_defs = false
@@ -159,6 +151,8 @@ module = [
     "sqlalchemy",
     "sqlalchemy.*",
     "joblib",
+    "opentelemetry",
+    "opentelemetry.*",
 ]
 ignore_missing_imports = true
 

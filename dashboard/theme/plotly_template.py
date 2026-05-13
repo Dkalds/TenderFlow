@@ -17,7 +17,7 @@ from dashboard.theme.tokens import TOKENS, Tokens
 
 PLOTLY_TEMPLATE_NAME = "plotly_dark+premium_dark"
 
-PLOTLY_CONFIG: dict = {
+PLOTLY_CONFIG: dict[str, object] = {
     "displaylogo": False,
     "modeBarButtonsToRemove": [
         "lasso2d",

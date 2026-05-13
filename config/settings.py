@@ -38,8 +38,22 @@ class Settings(BaseSettings):
 
     # ── Dashboard ────────────────────────────────────────────────────────
     DASHBOARD_PASSWORD: str = ""
-    DASHBOARD_PASSWORD_HASH: str = ""  # bcrypt hash — preferido sobre DASHBOARD_PASSWORD
+    DASHBOARD_PASSWORD_HASH: str = ""  # bcrypt hash — requerido en ENV=prod
     DASHBOARD_CACHE_TTL: int = 300
+
+    # ── ML ───────────────────────────────────────────────────────────────
+    # Umbral de confianza para clasificar como SAP sin keywords (0.0–1.0)
+    ML_CONFIDENCE_THRESHOLD: float = 0.70
+
+    # ── Resiliencia ───────────────────────────────────────────────────────
+    # Circuit breaker: backoff exponencial entre aperturas del circuito
+    BREAKER_BASE_TIMEOUT: int = 60    # segundos — primer timeout tras apertura
+    BREAKER_MAX_TIMEOUT: int = 1800   # segundos — techo del backoff (30 min)
+
+    # ── OpenTelemetry ─────────────────────────────────────────────────────
+    # Si está vacío, el tracing opera en modo NoOp (sin overhead)
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_SERVICE_NAME: str = "licitaciones-sap"
 
     # ── OAuth ────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
@@ -105,10 +119,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_password(self) -> Settings:
-        if self.ENV == "prod" and not self.DASHBOARD_PASSWORD and not self.DASHBOARD_PASSWORD_HASH:
+        if self.ENV == "prod" and not self.DASHBOARD_PASSWORD_HASH:
             raise ValueError(
-                "DASHBOARD_PASSWORD o DASHBOARD_PASSWORD_HASH es obligatorio en ENV=prod. "
-                "Configura la variable de entorno antes de arrancar."
+                "DASHBOARD_PASSWORD_HASH (hash bcrypt) es obligatorio en ENV=prod. "
+                "Genera el hash con: python scripts/hash_password.py"
             )
         return self
 

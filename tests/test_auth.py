@@ -110,6 +110,7 @@ class TestRateLimiting:
         auth = _import_auth()
         with (
             patch.object(auth, "_get_password", return_value="secret"),
+            patch.object(auth, "_has_password_configured", return_value=True),
             patch.object(auth, "oauth_configured", return_value=False),
             patch("db.rate_limits.is_login_locked_out", return_value=(False, 0.0)),
             # st.stop() se llama al final del formulario (comportamiento normal)

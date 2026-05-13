@@ -1,0 +1,64 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.7, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\Users\dkalitovicsdorta\AppData\Local\Temp\Licitaciones_sap_SP
+configfile: pyproject.toml
+plugins: anyio-4.13.0, hypothesis-6.152.6, cov-5.0.0
+collected 716 items
+
+tests\test_atom_live.py ..............                                   [  1%]
+tests\test_auth.py .......................                               [  5%]
+tests\test_bulk_downloader.py ...................                        [  7%]
+tests\test_chart_helpers.py ..........                                   [  9%]
+tests\test_classifiers.py ............................................   [ 15%]
+tests\test_codice_parser.py ..........................                   [ 18%]
+tests\test_concept_drift.py ..........                                   [ 20%]
+tests\test_dashboard_pages.py .........                                  [ 21%]
+tests\test_dashboard_smoke.py ..........                                 [ 23%]
+tests\test_database.py ..................                                [ 25%]
+tests\test_dates.py .....                                                [ 26%]
+tests\test_dlq.py ..........                                             [ 27%]
+tests\test_dlq_actions.py ...                                            [ 28%]
+tests\test_embeddings.py ..........                                      [ 29%]
+tests\test_filters.py ................                                   [ 31%]
+tests\test_forecast.py .............................                     [ 35%]
+tests\test_format_export.py ..................................           [ 40%]
+tests\test_healthcheck.py .......                                        [ 41%]
+tests\test_integration_e2e.py ................                           [ 43%]
+tests\test_kpi_bar.py ...                                                [ 44%]
+tests\test_kpi_precompute.py ............                                [ 45%]
+tests\test_loop.py ............                                          [ 47%]
+tests\test_migration_rollbacks.py ..........................             [ 51%]
+tests\test_migrations.py ....                                            [ 51%]
+tests\test_ml_realistic.py .......                                       [ 52%]
+tests\test_normalize.py ................................                 [ 57%]
+tests\test_observability_alerts.py ...................                   [ 59%]
+tests\test_observability_logging.py .............                        [ 61%]
+tests\test_observability_metrics.py .....                                [ 62%]
+tests\test_pdf.py ....                                                   [ 62%]
+tests\test_performance.py ....                                           [ 63%]
+tests\test_pipeline.py ...............                                   [ 65%]
+tests\test_property_based.py ............................                [ 69%]
+tests\test_rate_limit.py .............                                   [ 71%]
+tests\test_resilience.py .........                                       [ 72%]
+tests\test_round2.py ..............                                      [ 74%]
+tests\test_run_update.py ..........                                      [ 75%]
+tests\test_security.py .................                                 [ 78%]
+tests\test_stats.py .................................................... [ 85%]
+........................................................                 [ 93%]
+tests\test_turso_sync.py ....                                            [ 93%]
+tests\test_users.py ...........                                          [ 95%]
+tests\test_utils.py ...............                                      [ 97%]
+tests\test_watchlist.py .......                                          [ 98%]
+tests\test_watchlist_alerts.py ...........                               [100%]
+
+============================== warnings summary ===============================
+tests\test_ml_realistic.py:15
+  C:\Users\dkalitovicsdorta\AppData\Local\Temp\Licitaciones_sap_SP\tests\test_ml_realistic.py:15: PytestUnknownMarkWarning: Unknown pytest.mark.slow - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.slow
+
+tests\test_performance.py:15
+  C:\Users\dkalitovicsdorta\AppData\Local\Temp\Licitaciones_sap_SP\tests\test_performance.py:15: PytestUnknownMarkWarning: Unknown pytest.mark.slow - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.slow
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 716 passed, 2 warnings in 69.40s (0:01:09) ==================

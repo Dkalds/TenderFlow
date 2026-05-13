@@ -8,6 +8,7 @@ está en el sidebar, lo que libera espacio para los filtros.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -17,7 +18,7 @@ from dashboard.data_loader import load_extracciones
 from dashboard.utils.export import to_excel_bytes
 
 
-def _format_last_updated(ts) -> str:
+def _format_last_updated(ts: Any) -> str:
     """Devuelve un texto humano corto para la pill de 'Última actualización'."""
     if ts is None:
         return "sin datos"
@@ -53,7 +54,7 @@ def render_topbar_brand(tagline: str = "Sector público · ES") -> None:
     )
 
 
-def render_topbar(last_updated=None) -> bool:
+def render_topbar(last_updated: Any = None) -> bool:
     """Topbar premium: brand + meta pill + acciones (refresh, theme toggle).
 
     Devuelve el estado del toggle de tema (False = dark, True = light) para
@@ -203,7 +204,7 @@ def render_sidebar_brand() -> None:
 
 
 def render_notification_bell(
-    df_full,
+    df_full: pd.DataFrame,
     user_key: str,
     *,
     since_days: int = 7,
@@ -316,7 +317,7 @@ def render_notification_bell(
         pass  # No romper el topbar si la DB no está lista
 
 
-def fmt_eur(value) -> str:
+def fmt_eur(value: Any) -> str:
     """Helper local para formatear euros (evitar import circular)."""
     try:
         from dashboard.utils.format import fmt_eur as _fmt

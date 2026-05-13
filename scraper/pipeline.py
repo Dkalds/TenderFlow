@@ -26,6 +26,7 @@ from observability import (
     get_logger,
     notify,
     record_run,
+    traced,
 )
 from scraper.bulk_downloader import (
     CircuitOpenError,
@@ -39,6 +40,7 @@ log = get_logger(__name__)
 _DAILY_SOURCE = "place_live_atom"
 
 
+@traced("scraper.process_month")
 def process_month(year: int, month: int, *, run_id: str | None = None, force: bool = False) -> dict:
     """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.
 
@@ -127,6 +129,14 @@ def _process_month_impl(
         _write_metrics(prom)
     except Exception:
         log.debug("prometheus_instrumentation_failed", fuente=fuente)
+
+    # Señal de invalidación de caché para el dashboard
+    try:
+        from shared.cache_signal import signal_cache_invalidation
+
+        signal_cache_invalidation()
+    except Exception:
+        log.debug("cache_signal_failed", fuente=fuente)
 
     return {
         "year": year,
@@ -338,6 +348,14 @@ def process_daily(*, run_id: str | None = None) -> dict:
         entries_seen=meta["entries_seen"],
     )
 
+    # Señal de invalidación de caché para el dashboard
+    try:
+        from shared.cache_signal import signal_cache_invalidation
+
+        signal_cache_invalidation()
+    except Exception:
+        log.debug("cache_signal_failed", fuente=fuente)
+
     return {
         "status": "ok",
         "source": fuente,
@@ -352,6 +370,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
     }
 
 
+@traced("scraper.update_daily")
 def update_daily() -> dict:
     """Punto de entrada para el carril diario con observabilidad."""
     init_db()

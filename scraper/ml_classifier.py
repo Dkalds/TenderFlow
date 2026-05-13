@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from config import settings
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -32,9 +33,6 @@ log = get_logger(__name__)
 
 # Ruta del modelo serializado (formato joblib, extensión .pkl por compatibilidad)
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pkl"
-
-# Umbral de confianza para clasificar como SAP sin keywords
-CONFIDENCE_THRESHOLD = 0.70
 
 # Número mínimo de ejemplos para entrenar
 MIN_TRAIN_SAMPLES = 50
@@ -149,14 +147,15 @@ class SAPClassifier:
         proba = self.pipeline.predict_proba([text])[0]
         # proba[1] = P(SAP)
         confidence = float(proba[1])
-        return confidence >= CONFIDENCE_THRESHOLD, confidence
+        return confidence >= settings.ML_CONFIDENCE_THRESHOLD, confidence
 
     def predict_batch(self, texts: list[str]) -> list[tuple[bool, float]]:
         """Predicción en batch (más eficiente que llamadas individuales)."""
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado.")
         probas = self.pipeline.predict_proba(texts)
-        return [(float(p[1]) >= CONFIDENCE_THRESHOLD, float(p[1])) for p in probas]
+        threshold = settings.ML_CONFIDENCE_THRESHOLD
+        return [(float(p[1]) >= threshold, float(p[1])) for p in probas]
 
     # ── Persistencia ──────────────────────────────────────────────────────
 

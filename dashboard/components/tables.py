@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pandas as pd
 import streamlit as st
 
@@ -18,7 +20,7 @@ _AUTO_THRESHOLD = 100  # filas por encima de las cuales se activa AgGrid en modo
 def data_table(
     df: pd.DataFrame,
     *,
-    column_config: dict | None = None,
+    column_config: dict[str, Any] | None = None,
     height: int | None = None,
     key: str | None = None,
     mode: str = "auto",
@@ -26,7 +28,7 @@ def data_table(
     enable_filter: bool = True,
     enable_export: bool = True,
     selection_mode: str | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Renderiza un DataFrame con configuración estándar.
 
     mode='auto'   → AgGrid cuando len(df) > 100 (si está instalado).
@@ -68,7 +70,7 @@ def data_table(
         )
         return None
     else:
-        extra_kw: dict = {}
+        extra_kw: dict[str, Any] = {}
         if height is not None:
             extra_kw["height"] = height
         if selection_mode:
@@ -83,5 +85,5 @@ def data_table(
             **extra_kw,
         )
         if selection_mode and event is not None:
-            return event
-        return None  # type: ignore[return-value]
+            return cast(dict[str, Any], event)
+        return None
