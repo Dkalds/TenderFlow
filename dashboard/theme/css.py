@@ -869,6 +869,7 @@ def build_css(t: Tokens = TOKENS) -> str:
   /* Skip-to-content link */
   .skip-link {{
     position: absolute; top: -40px; left: 0; z-index: 99999;
+    width: auto; height: auto; overflow: visible;
     background: var(--color-accent); color: #fff;
     padding: 8px 16px; font-size: 0.9rem;
     transition: top 0.2s;
