@@ -16,7 +16,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect
 from db.watchlist import list_entries, matches_licitacion, update_last_notified
 from observability import AlertLevel, get_logger, notify
 
@@ -313,7 +313,9 @@ def send_pending_digests(frequency: str = "daily") -> int:
     # Agrupar por destinatario → entry → licitaciones
     from collections import defaultdict
 
-    by_recipient: dict[str, dict[int, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+    by_recipient: dict[str, dict[int, list[dict[str, Any]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     digest_ids: list[int] = []
     for row in rows:
         by_recipient[row["recipient_email"]][int(row["entry_id"])].append(row)

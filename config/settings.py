@@ -42,13 +42,13 @@ class Settings(BaseSettings):
     DASHBOARD_CACHE_TTL: int = 300
 
     # ── ML ───────────────────────────────────────────────────────────────
-    # Umbral de confianza para clasificar como SAP sin keywords (0.0–1.0)
+    # Umbral de confianza para clasificar como SAP sin keywords (0.0-1.0)
     ML_CONFIDENCE_THRESHOLD: float = 0.70
 
     # ── Resiliencia ───────────────────────────────────────────────────────
     # Circuit breaker: backoff exponencial entre aperturas del circuito
-    BREAKER_BASE_TIMEOUT: int = 60    # segundos — primer timeout tras apertura
-    BREAKER_MAX_TIMEOUT: int = 1800   # segundos — techo del backoff (30 min)
+    BREAKER_BASE_TIMEOUT: int = 60  # segundos — primer timeout tras apertura
+    BREAKER_MAX_TIMEOUT: int = 1800  # segundos — techo del backoff (30 min)
 
     # ── OpenTelemetry ─────────────────────────────────────────────────────
     # Si está vacío, el tracing opera en modo NoOp (sin overhead)

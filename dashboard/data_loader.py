@@ -176,9 +176,9 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
     """
     # Comprobar si el scraper ha señalizado datos nuevos
     try:
-        from shared.cache_signal import check_cache_signal
-
         import streamlit as _st
+
+        from shared.cache_signal import check_cache_signal
 
         _last_check_key = "_cache_signal_last_check"
         last_check: float = _st.session_state.get(_last_check_key, 0.0)

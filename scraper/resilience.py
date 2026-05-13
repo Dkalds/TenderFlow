@@ -113,9 +113,11 @@ placsp_breaker = pybreaker.CircuitBreaker(
     fail_max=5,
     reset_timeout=60 * 5,
     exclude=[ValueError],
-    listeners=[_AdaptiveBackoffListener(
-        base_timeout=settings.BREAKER_BASE_TIMEOUT,
-        max_timeout=settings.BREAKER_MAX_TIMEOUT,
-    )],
+    listeners=[
+        _AdaptiveBackoffListener(
+            base_timeout=settings.BREAKER_BASE_TIMEOUT,
+            max_timeout=settings.BREAKER_MAX_TIMEOUT,
+        )
+    ],
     name="placsp",
 )

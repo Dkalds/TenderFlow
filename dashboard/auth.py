@@ -39,6 +39,7 @@ def _verify_password(candidate: str) -> bool:
     )
     return False
 
+
 # Duración máxima de una sesión autenticada (segundos)
 SESSION_TIMEOUT_SECONDS = 28_800  # 8 horas
 
@@ -56,6 +57,8 @@ _OAUTH_STATE_MAX_AGE_SECONDS = 600
 _SEEN_OAUTH_NONCES: dict[str, float] = {}
 
 """Flujos de autenticación:"""
+
+
 def _client_key() -> str:
     """Genera una clave de cliente anónima basada en el session_id de Streamlit."""
     try:

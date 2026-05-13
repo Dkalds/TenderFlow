@@ -12,7 +12,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from dashboard.auth import get_current_user, _audit
+from dashboard.auth import _audit, get_current_user
 from dashboard.components.states import empty_state, guarded_render
 from dashboard.components.tables import data_table
 from dashboard.components.toasts import notify_error, notify_success

@@ -10,12 +10,10 @@ respete el backoff correctamente.
 
 from __future__ import annotations
 
-import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from db.database import now_utc_iso
-from db.dlq import increment_retry, list_unresolved, mark_resolved, record_failure
+from db.dlq import increment_retry, list_unresolved, mark_resolved
 from observability.logging import bind_run_context, get_logger
 
 log = get_logger(__name__)
@@ -60,7 +58,7 @@ def _retry_failure(failure: dict[str, Any], run_id: str) -> bool:
     try:
         if fuente.startswith("bulk_"):
             # Formato: bulk_YYYYMM
-            ym = fuente[len("bulk_"):]
+            ym = fuente[len("bulk_") :]
             if len(ym) == 6 and ym.isdigit():
                 year, month = int(ym[:4]), int(ym[4:])
                 from scraper.pipeline import process_month
@@ -128,7 +126,11 @@ def retry_failed_extractions(
     Returns:
         Número de fallos que se han resuelto exitosamente.
     """
-    unresolved = [f for f in list_unresolved(limit=batch_size * 3) if int(f.get("retry_count") or 0) < max_retries]
+    unresolved = [
+        f
+        for f in list_unresolved(limit=batch_size * 3)
+        if int(f.get("retry_count") or 0) < max_retries
+    ]
 
     if not unresolved:
         log.debug("dlq_retry_nothing_pending")
