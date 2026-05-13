@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pandas as pd
-
 from dashboard.utils.format import fmt_eur, highlight_match
 
 
@@ -107,32 +105,39 @@ class TestNutsToCcaaShared:
 
     def test_exact_nuts3(self):
         from shared.geo import nuts_to_ccaa
+
         assert nuts_to_ccaa("ES300") == "Madrid"
 
     def test_case_insensitive(self):
         from shared.geo import nuts_to_ccaa
+
         assert nuts_to_ccaa("es300") == "Madrid"
 
     def test_none_returns_none(self):
         from shared.geo import nuts_to_ccaa
+
         assert nuts_to_ccaa(None) is None
 
     def test_empty_returns_none(self):
         from shared.geo import nuts_to_ccaa
+
         assert nuts_to_ccaa("") is None
 
     def test_unknown_returns_none(self):
         from shared.geo import nuts_to_ccaa
+
         assert nuts_to_ccaa("ES999") is None
 
     def test_nuts2_prefix_fallback(self):
         from shared.geo import nuts_to_ccaa
+
         # ES30 is NUTS2 for Madrid (ES300)
         result = nuts_to_ccaa("ES30")
         assert result == "Madrid"
 
     def test_nuts2_prefix_andalucia(self):
         from shared.geo import nuts_to_ccaa
+
         result = nuts_to_ccaa("ES61")
         assert result == "Andalucía"
 
@@ -142,28 +147,35 @@ class TestSafeUrlSecurity:
 
     def test_http_accepted(self):
         from dashboard.utils.security import safe_url
+
         assert safe_url("http://example.com") == "http://example.com"
 
     def test_https_accepted(self):
         from dashboard.utils.security import safe_url
+
         assert safe_url("https://example.com") == "https://example.com"
 
     def test_javascript_rejected(self):
         from dashboard.utils.security import safe_url
+
         assert safe_url("javascript:alert(1)") is None
 
     def test_data_uri_rejected(self):
         from dashboard.utils.security import safe_url
+
         assert safe_url("data:text/html,<h1>hi</h1>") is None
 
     def test_none_returns_none(self):
         from dashboard.utils.security import safe_url
+
         assert safe_url(None) is None
 
     def test_non_string_returns_none(self):
         from dashboard.utils.security import safe_url
+
         assert safe_url(123) is None  # type: ignore[arg-type]
 
     def test_strips_whitespace(self):
         from dashboard.utils.security import safe_url
+
         assert safe_url("  https://example.com  ") == "https://example.com"

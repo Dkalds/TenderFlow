@@ -40,11 +40,7 @@ def _search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
 
         # Construir query FTS: splitear por espacios y unir con AND
         terms = query.strip().split()
-        if len(terms) == 1:
-            fts_query = f'"{terms[0]}"'
-        else:
-            # Cada término entre comillas y conectados con AND
-            fts_query = " AND ".join(f'"{t}"' for t in terms)
+        fts_query = f'"{terms[0]}"' if len(terms) == 1 else " AND ".join(f'"{t}"' for t in terms)
 
         with connect() as c:
             cur = c.execute(
@@ -98,9 +94,7 @@ def apply_filters(df: pd.DataFrame, state: FiltersState) -> pd.DataFrame:
     if state.tecnologias and "tecnologia" in result.columns:
         # tecnologia puede ser multi-valor ("SAP,ORACLE"); usamos regex vectorizado
         # para evitar .apply() con lambda (lento en datasets grandes).
-        pattern = "|".join(
-            r"(?:^|,)\s*" + re.escape(t) + r"\s*(?:,|$)" for t in state.tecnologias
-        )
+        pattern = "|".join(r"(?:^|,)\s*" + re.escape(t) + r"\s*(?:,|$)" for t in state.tecnologias)
         mask = result["tecnologia"].fillna("").str.contains(pattern, regex=True, na=False)
         result = result[mask]
     if state.importe_min > 0:

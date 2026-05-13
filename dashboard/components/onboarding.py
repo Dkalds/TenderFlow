@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-
 _TOUR_STEPS = [
     {
         "title": "Secciones principales",
@@ -34,7 +33,7 @@ _TOUR_STEPS = [
     {
         "title": "Indicadores clave (KPIs)",
         "body": "Aquí ves el total de licitaciones, importes y órganos. Haz clic en cada KPI para ir a la vista correspondiente.",
-        "selector": '.kpi-card',
+        "selector": ".kpi-card",
         "position": "bottom",
     },
     {
@@ -67,6 +66,7 @@ def render_onboarding_tour() -> None:
         return
 
     import json
+
     steps_json = json.dumps(_TOUR_STEPS, ensure_ascii=False)
 
     tour_js = f"""

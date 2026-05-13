@@ -16,7 +16,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 # directorio escribible como fallback.
 _DEFAULT_DATA_DIR = _ROOT / "data"
 if "site-packages" in str(_ROOT):
-    _DEFAULT_DATA_DIR = Path("/tmp/licitaciones_data")
+    _DEFAULT_DATA_DIR = Path("/tmp/licitaciones_data")  # noqa: S108
 
 
 class Settings(BaseSettings):

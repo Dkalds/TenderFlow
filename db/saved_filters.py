@@ -48,7 +48,9 @@ def delete_saved_filter(filter_id: int) -> None:
         c.execute("DELETE FROM saved_filters WHERE id = ?", (filter_id,))
 
 
-def filters_to_json(filters_state, *, nav_section: str | None = None, detalle_cols: list[str] | None = None) -> str:
+def filters_to_json(
+    filters_state: Any, *, nav_section: str | None = None, detalle_cols: list[str] | None = None
+) -> str:
     """Serializa un FiltersState a JSON string, con contexto de vista opcional."""
     d: dict[str, Any] = {
         "q": filters_state.q,

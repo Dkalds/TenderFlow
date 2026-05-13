@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
-from dashboard.session_keys import NAV_CUR_PAGE, NAV_PREV_PAGE, NAV_PREV_SECTION
+from dashboard.session_keys import NAV_PREV_PAGE, NAV_PREV_SECTION
 
 if TYPE_CHECKING:
     from dashboard.filters.state import FiltersState

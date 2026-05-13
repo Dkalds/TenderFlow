@@ -7,9 +7,20 @@ import json
 import streamlit as st
 
 from dashboard.auth import check_password, current_user_is_admin
-from dashboard.components.layout import render_export_popover, render_notification_bell, render_sidebar_brand, render_topbar
+from dashboard.components.layout import (
+    render_export_popover,
+    render_notification_bell,
+    render_sidebar_brand,
+    render_topbar,
+)
+from dashboard.components.navigation import (
+    active_filters_chips,
+    back_button,
+    breadcrumb,
+    sub_nav,
+    top_nav,
+)
 from dashboard.components.onboarding import render_onboarding_tour
-from dashboard.components.navigation import active_filters_chips, back_button, breadcrumb, sub_nav, top_nav
 from dashboard.components.states import empty_state
 from dashboard.data_loader import load_dataframe, load_extracciones
 from dashboard.filters import FiltersState, apply_filters, render_sidebar_filters
@@ -175,9 +186,11 @@ df = apply_filters(df_full, filters)
 # ── Exportación global en topbar ────────────────────────────────────────
 render_export_popover(df)
 # ── Campana de notificaciones ────────────────────────────────────────────
-import hashlib as _hashlib
-import os as _os
-from config import settings as _settings
+import hashlib as _hashlib  # noqa: E402
+import os as _os  # noqa: E402
+
+from config import settings as _settings  # noqa: E402
+
 _notif_seed = _settings.DASHBOARD_PASSWORD or _os.environ.get("COMPUTERNAME", "default")
 _notif_user_key = _hashlib.sha256(_notif_seed.encode()).hexdigest()[:16]
 render_notification_bell(df_full, _notif_user_key)

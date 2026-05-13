@@ -636,9 +636,7 @@ def render(ctx: PageContext) -> None:
                 if sub_dd["fecha_adjudicacion"].notna().any():
                     evo = (
                         sub_dd.dropna(subset=["fecha_adjudicacion"])
-                        .assign(
-                            mes=lambda x: month_start(x["fecha_adjudicacion"])
-                        )
+                        .assign(mes=lambda x: month_start(x["fecha_adjudicacion"]))
                         .groupby(["mes", "nombre_canonico"])["importe_adjudicado"]
                         .sum()
                         .reset_index()

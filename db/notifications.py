@@ -10,8 +10,6 @@ Modelo simple:
 
 from __future__ import annotations
 
-from typing import Any
-
 from db.database import connect, now_utc_iso
 
 
@@ -47,7 +45,7 @@ def get_unread_ids(user_key: str, candidate_ids: list[str]) -> list[str]:
     with connect() as c:
         placeholders = ",".join("?" * len(candidate_ids))
         cur = c.execute(
-            f"SELECT notification_id FROM notification_reads "
+            f"SELECT notification_id FROM notification_reads "  # noqa: S608
             f"WHERE user_key = ? AND notification_id IN ({placeholders})",
             [user_key, *candidate_ids],
         )

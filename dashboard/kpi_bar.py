@@ -230,5 +230,3 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
             ),
             unsafe_allow_html=True,
         )
-
-

@@ -542,9 +542,7 @@ def _apply_v15_frequency(conn: Any) -> None:
         return
     cols = {r[1] for r in conn.execute("PRAGMA table_info(watchlist_cpv)").fetchall()}
     if "frequency" not in cols:
-        conn.execute(
-            "ALTER TABLE watchlist_cpv ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily'"
-        )
+        conn.execute("ALTER TABLE watchlist_cpv ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily'")
 
 
 # ---------------------------------------------------------------------------

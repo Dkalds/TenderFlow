@@ -66,6 +66,7 @@ def data_table(
             use_container_width=True,
             key=key,
         )
+        return None
     else:
         extra_kw: dict = {}
         if height is not None:
@@ -83,4 +84,4 @@ def data_table(
         )
         if selection_mode and event is not None:
             return event
-        return None
+        return None  # type: ignore[return-value]

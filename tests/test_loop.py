@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 
 class TestEnvInt:
@@ -72,12 +72,15 @@ class TestRunDailyAtom:
         mock_notify.assert_called_once()
 
     def test_non_ok_status_raises(self):
-        from scheduler.loop import _run_daily_atom
         import pytest
 
-        with patch("scheduler.loop.update_daily", return_value={"status": "error"}):
-            with pytest.raises(RuntimeError):
-                _run_daily_atom()
+        from scheduler.loop import _run_daily_atom
+
+        with (
+            patch("scheduler.loop.update_daily", return_value={"status": "error"}),
+            pytest.raises(RuntimeError),
+        ):
+            _run_daily_atom()
 
 
 class TestRunRecentBulk:
@@ -85,7 +88,10 @@ class TestRunRecentBulk:
         from scheduler.loop import _run_recent_bulk
 
         with (
-            patch("scheduler.loop.update_recent", return_value=[{"status": "ok"}, {"status": "no_publicado"}]),
+            patch(
+                "scheduler.loop.update_recent",
+                return_value=[{"status": "ok"}, {"status": "no_publicado"}],
+            ),
             patch("scheduler.loop.run_kpi_precompute") as mock_kpi,
             patch("scheduler.loop.check_and_notify") as mock_notify,
         ):
@@ -94,18 +100,22 @@ class TestRunRecentBulk:
         mock_notify.assert_called_once()
 
     def test_failed_month_raises(self):
-        from scheduler.loop import _run_recent_bulk
         import pytest
 
-        with patch("scheduler.loop.update_recent", return_value=[{"status": "error"}]):
-            with pytest.raises(RuntimeError):
-                _run_recent_bulk(1)
+        from scheduler.loop import _run_recent_bulk
+
+        with (
+            patch("scheduler.loop.update_recent", return_value=[{"status": "error"}]),
+            pytest.raises(RuntimeError),
+        ):
+            _run_recent_bulk(1)
 
 
 class TestMain:
     def test_main_runs_one_iteration_then_stops(self):
         """main() ejecuta al menos una iteración antes de ser interrumpido."""
         import pytest
+
         from scheduler.loop import main
 
         call_count = {"n": 0}

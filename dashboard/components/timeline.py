@@ -9,7 +9,6 @@ import streamlit as st
 
 from db.database import get_history
 
-
 _TIMELINE_CSS = """
 <style>
 .tl-container{position:relative;padding-left:24px;margin:0.5rem 0}
@@ -68,7 +67,9 @@ def timeline_popover(id_externo: str, *, key: str = "") -> None:
                 f'<div class="tl-date">{ts} · {source}</div>'
             )
             if changed_txt:
-                parts.append(f'<div class="tl-body"><span class="tl-change">{changed_txt}</span></div>')
+                parts.append(
+                    f'<div class="tl-body"><span class="tl-change">{changed_txt}</span></div>'
+                )
             parts.append("</div>")
 
         parts.append("</div>")

@@ -276,6 +276,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
     try:
         import hashlib
         import os
+
         from config import settings as _settings
         from db.saved_filters import (
             delete_saved_filter,
@@ -313,28 +314,27 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
                 key="sf_new_name",
                 label_visibility="collapsed",
             )
-            if st.button("Guardar", key="sf_save_btn", type="primary"):
-                if _sf_name.strip():
-                    _cur_fs = FiltersState(
-                        q=q,
-                        rango=rango if isinstance(rango, tuple) and len(rango) == 2 else None,
-                        estados=list(estados),
-                        ccaas=list(ccaas),
-                        organos=list(organos),
-                        tipos_proy=list(tipos_proy),
-                        tecnologias=list(tecnologias),
-                        importe_min=int(importe_min),
-                    )
-                    save_filter(
-                        _sf_user_key,
-                        _sf_name.strip(),
-                        filters_to_json(
-                            _cur_fs,
-                            nav_section=st.session_state.get("nav_section"),
-                            detalle_cols=st.session_state.get("detalle_cols"),
-                        ),
-                    )
-                    st.rerun()
+            if st.button("Guardar", key="sf_save_btn", type="primary") and _sf_name.strip():
+                _cur_fs = FiltersState(
+                    q=q,
+                    rango=rango if isinstance(rango, tuple) and len(rango) == 2 else None,
+                    estados=list(estados),
+                    ccaas=list(ccaas),
+                    organos=list(organos),
+                    tipos_proy=list(tipos_proy),
+                    tecnologias=list(tecnologias),
+                    importe_min=int(importe_min),
+                )
+                save_filter(
+                    _sf_user_key,
+                    _sf_name.strip(),
+                    filters_to_json(
+                        _cur_fs,
+                        nav_section=st.session_state.get("nav_section"),
+                        detalle_cols=st.session_state.get("detalle_cols"),
+                    ),
+                )
+                st.rerun()
     except Exception:
         pass  # No romper el sidebar si la DB no tiene la tabla aún
 
@@ -351,9 +351,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
     )
     _n_results = len(apply_filters(df_full, _partial_state))
     _result_color = (
-        "var(--color-success,#86BC24)"
-        if _n_results > 0
-        else "var(--color-danger,#E21836)"
+        "var(--color-success,#86BC24)" if _n_results > 0 else "var(--color-danger,#E21836)"
     )
     st.markdown(
         f'<p style="font-size:0.75rem;color:{_result_color};'

@@ -101,8 +101,14 @@ def render(ctx: PageContext) -> None:
                 f"📬 {len(_nuevas)} nueva{'s' if len(_nuevas) != 1 else ''} licitaci{'ones' if len(_nuevas) != 1 else 'ón'} desde tu última visita",
                 expanded=False,
             ):
-                for _, _row in _nuevas.sort_values("fecha_publicacion", ascending=False).head(10).iterrows():
-                    _fstr = _row["fecha_publicacion"].strftime("%d/%m/%Y") if pd.notna(_row["fecha_publicacion"]) else "—"
+                for _, _row in (
+                    _nuevas.sort_values("fecha_publicacion", ascending=False).head(10).iterrows()
+                ):
+                    _fstr = (
+                        _row["fecha_publicacion"].strftime("%d/%m/%Y")
+                        if pd.notna(_row["fecha_publicacion"])
+                        else "—"
+                    )
                     st.markdown(
                         f"**{_fstr}** · {fmt_eur(_row.get('importe'))} · "
                         f"{_row.get('estado_desc', '—')} — {str(_row.get('titulo', '—'))[:80]}"
@@ -221,9 +227,7 @@ def render(ctx: PageContext) -> None:
                                 target=target_idx,
                                 value=flow["n"].tolist(),
                                 color=link_colors,
-                                customdata=flow["importe"]
-                                .apply(lambda v: f"{v:,.0f} €")
-                                .tolist(),
+                                customdata=flow["importe"].apply(lambda v: f"{v:,.0f} €").tolist(),
                                 hovertemplate="<b>%{source.label} → %{target.label}</b><br>"
                                 "%{value} licitaciones<br>"
                                 "Importe: %{customdata}<extra></extra>",
@@ -239,7 +243,9 @@ def render(ctx: PageContext) -> None:
                     st.plotly_chart(fig, use_container_width=True)
 
     # ── Indicadores de mercado (lazy) ───────────────────────────────
-    with lazy_section("indicadores_mercado", "Ver indicadores de mercado y salud competitiva") as _mkt_render:
+    with lazy_section(
+        "indicadores_mercado", "Ver indicadores de mercado y salud competitiva"
+    ) as _mkt_render:
         if _mkt_render and not adj_resumen.empty:
             ids_filt = set(df["id_externo"])
             adj_r = adj_resumen[adj_resumen["licitacion_id"].isin(ids_filt)]
@@ -721,8 +727,7 @@ def _render_actividad_reciente(df: pd.DataFrame, ctx: PageContext) -> None:
                     st.rerun()
             with _pc2:
                 st.caption(
-                    f"Página {_current_page + 1} de {_total_pages} "
-                    f"({_total_ultimas} licitaciones)"
+                    f"Página {_current_page + 1} de {_total_pages} ({_total_ultimas} licitaciones)"
                 )
             with _pc3:
                 if st.button(

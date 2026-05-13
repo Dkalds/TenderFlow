@@ -75,6 +75,7 @@ def render_topbar(last_updated=None) -> bool:
         st.markdown('<div class="topbar-spacer"></div>', unsafe_allow_html=True)
     with col_meta:
         from dashboard.session_keys import USER_NAME
+
         _user_name = st.session_state.get(USER_NAME, "")
         _user_str = f" · {_user_name}" if _user_name else ""
         st.markdown(
@@ -176,7 +177,9 @@ def render_export_popover(df: pd.DataFrame) -> None:
         )
         st.download_button(
             "⬇️ CSV",
-            data=df.drop(columns=["modulos"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+            data=df.drop(columns=["modulos"], errors="ignore")
+            .to_csv(index=False)
+            .encode("utf-8-sig"),
             file_name=f"licitaciones_sap_{_ts}.csv",
             mime="text/csv",
             use_container_width=True,
@@ -216,7 +219,7 @@ def render_notification_bell(
         since_days: Ventana de tiempo para considerar licitaciones nuevas.
     """
     try:
-        from db.notifications import count_unread, get_unread_ids, mark_all_read
+        from db.notifications import get_unread_ids, mark_all_read
 
         hoy = pd.Timestamp.now(tz="UTC")
         fpub = df_full["fecha_publicacion"]
@@ -229,38 +232,38 @@ def render_notification_bell(
         unread_ids = get_unread_ids(user_key, candidate_ids)
         n_unread = len(unread_ids)
 
-        badge_html = (
+        _badge_html = (
             f'<span style="position:absolute;top:-4px;right:-4px;background:#E21836;'
-            f'color:#fff;border-radius:50%;width:16px;height:16px;font-size:0.68rem;'
-            f'display:flex;align-items:center;justify-content:center;'
+            f"color:#fff;border-radius:50%;width:16px;height:16px;font-size:0.68rem;"
+            f"display:flex;align-items:center;justify-content:center;"
             f'font-weight:700;line-height:1">{min(n_unread, 99)}</span>'
             if n_unread > 0
             else ""
         )
 
         st.markdown(
-            f"""
+            """
             <style>
-            div[data-testid="stPopover"]:has(button[title="Notificaciones recientes"]) {{
+            div[data-testid="stPopover"]:has(button[title="Notificaciones recientes"]) {
                 position: fixed; top: 8px; right: 52px; z-index: 9998;
-            }}
-            div[data-testid="stPopover"]:has(button[title="Notificaciones recientes"]) > div {{
+            }
+            div[data-testid="stPopover"]:has(button[title="Notificaciones recientes"]) > div {
                 position: relative; display: inline-block;
-            }}
-            div[data-testid="stPopover"]:has(button[title="Notificaciones recientes"]) button {{
+            }
+            div[data-testid="stPopover"]:has(button[title="Notificaciones recientes"]) button {
                 background: var(--color-bg-elev-2) !important;
                 border: 1px solid var(--color-border-card) !important;
                 min-height: 0 !important; height: 1.9em !important;
                 padding: 4px 8px !important; font-size: 0.9rem !important;
                 border-radius: 6px !important;
-            }}
+            }
             </style>
-            <style>.notif-badge-wrap{{position:relative;display:inline-block}}</style>
+            <style>.notif-badge-wrap{position:relative;display:inline-block}</style>
             """,
             unsafe_allow_html=True,
         )
 
-        with st.popover(f"🔔", help="Notificaciones recientes"):
+        with st.popover("🔔", help="Notificaciones recientes"):
             st.markdown(
                 f"**Novedades últimos {since_days} días** "
                 f"({n_unread} no leídas de {len(candidate_ids)})"
@@ -278,9 +281,7 @@ def render_notification_bell(
                         f"_{str(_nr.get('organo_contratacion', '—'))[:40]}_ · "
                         f"{fmt_eur(_nr.get('importe'))}"
                     )
-                if n_unread > 0 and st.button(
-                    "Marcar todo como leído", key="notif_mark_read"
-                ):
+                if n_unread > 0 and st.button("Marcar todo como leído", key="notif_mark_read"):
                     mark_all_read(user_key, unread_ids)
                     st.rerun()
 
@@ -319,6 +320,7 @@ def fmt_eur(value) -> str:
     """Helper local para formatear euros (evitar import circular)."""
     try:
         from dashboard.utils.format import fmt_eur as _fmt
+
         return _fmt(value)
     except Exception:
         if value is None:

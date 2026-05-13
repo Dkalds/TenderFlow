@@ -85,7 +85,7 @@ def chart_card(
             st.markdown(
                 f'<button id="{_card_id}-exp-btn" '
                 f'style="background:transparent;border:1px solid rgba(255,255,255,0.15);'
-                f'color:rgba(255,255,255,0.5);border-radius:5px;padding:3px 10px;'
+                f"color:rgba(255,255,255,0.5);border-radius:5px;padding:3px 10px;"
                 f'font-size:0.75rem;cursor:pointer;margin-top:4px">'
                 f"⬇ SVG</button>"
                 f"{_export_js}",

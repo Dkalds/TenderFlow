@@ -10,7 +10,7 @@ def month_start(series: pd.Series) -> pd.Series:
     values = pd.to_datetime(series, errors="coerce", utc=True)
     if getattr(values.dt, "tz", None) is not None:
         values = values.dt.tz_localize(None)
-    return values.dt.to_period("M").dt.to_timestamp()
+    return values.dt.to_period("M").dt.to_timestamp()  # type: ignore[return-value]
 
 
 def month_period(series: pd.Series) -> pd.Series:
@@ -26,4 +26,4 @@ def quarter_start(series: pd.Series) -> pd.Series:
     values = pd.to_datetime(series, errors="coerce", utc=True)
     if getattr(values.dt, "tz", None) is not None:
         values = values.dt.tz_localize(None)
-    return values.dt.to_period("Q").dt.to_timestamp()
+    return values.dt.to_period("Q").dt.to_timestamp()  # type: ignore[return-value]

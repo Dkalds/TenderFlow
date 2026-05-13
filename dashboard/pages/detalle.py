@@ -9,17 +9,17 @@ import streamlit as st
 
 from dashboard.components.cards import status_badge
 from dashboard.components.preview import licitacion_popover
-from dashboard.components.timeline import timeline_popover
 from dashboard.components.states import guarded_render
-from dashboard.components.toasts import notify_error, notify_success
 from dashboard.components.tables import data_table
-from db.notifications import mark_read as _mark_read_notification
+from dashboard.components.timeline import timeline_popover
+from dashboard.components.toasts import notify_error, notify_success
 from dashboard.data_loader import load_adjudicaciones
 from dashboard.kpi_config import SCORING_BAND_LEVELS
 from dashboard.pages._base import PageContext
 from dashboard.stats import risk_flags, score_oportunidad
 from dashboard.utils.export import to_excel_bytes
 from dashboard.utils.format import fmt_eur, highlight_match
+from db.notifications import mark_read as _mark_read_notification
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -43,8 +43,20 @@ _AVAILABLE_COLS: dict[str, str] = {
     "Enlace": "url",
 }
 _DEFAULT_COLS = [
-    "Nuevo", "Score", "Banda", "Fecha", "Título", "Órgano", "CCAA",
-    "Importe", "Estado", "Tipo proyecto", "Módulos", "CPV", "Riesgo", "Enlace",
+    "Nuevo",
+    "Score",
+    "Banda",
+    "Fecha",
+    "Título",
+    "Órgano",
+    "CCAA",
+    "Importe",
+    "Estado",
+    "Tipo proyecto",
+    "Módulos",
+    "CPV",
+    "Riesgo",
+    "Enlace",
 ]
 
 
@@ -96,6 +108,7 @@ def render(ctx: PageContext) -> None:
     _unread_ids: set[str] = set()
     import hashlib
     import os
+
     from config import settings as _cfg
 
     _seed_v = _cfg.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
@@ -140,7 +153,9 @@ def render(ctx: PageContext) -> None:
     with cdl2:
         st.download_button(
             "⬇️ CSV",
-            data=df.drop(columns=["modulos"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+            data=df.drop(columns=["modulos"], errors="ignore")
+            .to_csv(index=False)
+            .encode("utf-8-sig"),
             file_name=f"licitaciones_sap_{_ts}.csv",
             mime="text/csv",
         )
@@ -178,13 +193,17 @@ def render(ctx: PageContext) -> None:
     if event is not None:
         sel = getattr(event, "selection", None)
         if sel is not None:
-            _selected_rows = sel.get("rows", []) if isinstance(sel, dict) else getattr(sel, "rows", [])
+            _selected_rows = (
+                sel.get("rows", []) if isinstance(sel, dict) else getattr(sel, "rows", [])
+            )
     if _selected_rows:
         _sel_df = show.iloc[_selected_rows]
         st.info(f"**{len(_selected_rows)}** licitaciones seleccionadas")
         _ba1, _ba2, _ba3, _ba4 = st.columns(4)
         with _ba1:
-            if st.button("⬇️ Exportar selección (Excel)", key="bulk_export", use_container_width=True):
+            if st.button(
+                "⬇️ Exportar selección (Excel)", key="bulk_export", use_container_width=True
+            ):
                 _ts_bulk = datetime.now(UTC).strftime("%Y%m%d_%H%M")
                 st.download_button(
                     "Descargar",
@@ -203,8 +222,8 @@ def render(ctx: PageContext) -> None:
         with _ba3:
             if st.button("⭐ Seguir todos (watchlist)", key="bulk_watch", use_container_width=True):
                 try:
-                    from db.watchlist import WatchlistEntry, add_entry
                     from dashboard.auth import get_current_user
+                    from db.watchlist import WatchlistEntry, add_entry
 
                     _user = get_current_user()
                     _uid = _user.get("user_id") if _user else None
@@ -214,13 +233,15 @@ def render(ctx: PageContext) -> None:
                         _cpv_r = str(_sr.get("cpv", _sr.get("cpv_desc", "")) or "")
                         _cpv_p = _cpv_r[:8].strip()
                         if _cpv_p:
-                            add_entry(WatchlistEntry(
-                                user_key=_ukey_v,
-                                cpv_prefix=_cpv_p,
-                                keyword=str(_sr.get("titulo", ""))[:60] or None,
-                                ccaa=_sr.get("ccaa") or None,
-                                user_id=_uid,
-                            ))
+                            add_entry(
+                                WatchlistEntry(
+                                    user_key=_ukey_v,
+                                    cpv_prefix=_cpv_p,
+                                    keyword=str(_sr.get("titulo", ""))[:60] or None,
+                                    ccaa=_sr.get("ccaa") or None,
+                                    user_id=_uid,
+                                )
+                            )
                             _added += 1
                     notify_success(f"{_added} CPVs añadidos a tu watchlist.")
                 except Exception as exc:
@@ -390,48 +411,55 @@ def render(ctx: PageContext) -> None:
                     )
                 # ── M4: Copiar enlace profundo ────────────────────────
                 import streamlit.components.v1 as _stc
+
                 _deep_url = f"?lic={row.get('id_externo', '')}"
                 _copy_js = (
                     f'<button onclick="navigator.clipboard.writeText(window.location.origin'
-                    f'+window.location.pathname+\'{_deep_url}\').then(()=>this.textContent=\'✅ Copiado\')"'
+                    f"+window.location.pathname+'{_deep_url}').then(()=>this.textContent='✅ Copiado')\""
                     f' style="width:100%;padding:0.4rem;cursor:pointer;border:1px solid #ccc;'
                     f'border-radius:0.3rem;background:#f8f9fa;font-size:0.85rem">'
-                    f'\U0001f4cb Copiar enlace</button>'
+                    f"\U0001f4cb Copiar enlace</button>"
                 )
                 _stc.html(_copy_js, height=42)
                 # ── M8: Timeline de cambios ───────────────────────────
-                timeline_popover(str(row.get("id_externo", "")), key=f"tl_{row.get('id_externo', _)}")
+                timeline_popover(
+                    str(row.get("id_externo", "")), key=f"tl_{row.get('id_externo', _)}"
+                )
                 # ── Botón Seguir (watchlist) ──────────────────────────────
                 _cpv_raw = str(row.get("cpv", row.get("cpv_desc", "")) or "")
                 _cpv_prefix = _cpv_raw[:8].strip() if _cpv_raw else ""
-                if _cpv_prefix:
-                    if st.button(
-                        "⭐ Seguir",
-                        key=f"seguir_{row.get('id_externo', _)}",
-                        help="Añadir este CPV a tu watchlist para recibir alertas",
-                        use_container_width=True,
-                    ):
-                        try:
-                            import hashlib
-                            import os
-                            from config import settings
-                            from db.watchlist import WatchlistEntry, add_entry
-                            from dashboard.auth import get_current_user
+                if _cpv_prefix and st.button(
+                    "⭐ Seguir",
+                    key=f"seguir_{row.get('id_externo', _)}",
+                    help="Añadir este CPV a tu watchlist para recibir alertas",
+                    use_container_width=True,
+                ):
+                    try:
+                        import hashlib
+                        import os
 
-                            _seed = settings.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
-                            _ukey = hashlib.sha256(_seed.encode()).hexdigest()[:16]
-                            _user = get_current_user()
-                            _uid = _user.get("user_id") if _user else None
-                            add_entry(WatchlistEntry(
+                        from config import settings
+                        from dashboard.auth import get_current_user
+                        from db.watchlist import WatchlistEntry, add_entry
+
+                        _seed = settings.DASHBOARD_PASSWORD or os.environ.get(
+                            "COMPUTERNAME", "default"
+                        )
+                        _ukey = hashlib.sha256(_seed.encode()).hexdigest()[:16]
+                        _user = get_current_user()
+                        _uid = _user.get("user_id") if _user else None
+                        add_entry(
+                            WatchlistEntry(
                                 user_key=_ukey,
                                 cpv_prefix=_cpv_prefix,
                                 keyword=str(row.get("titulo", ""))[:60] or None,
                                 ccaa=row.get("ccaa") or None,
                                 user_id=_uid,
-                            ))
-                            notify_success(f"CPV {_cpv_prefix} añadido a tu watchlist.")
-                        except Exception as exc:
-                            notify_error(f"No se pudo añadir a watchlist: {exc}")
+                            )
+                        )
+                        notify_success(f"CPV {_cpv_prefix} añadido a tu watchlist.")
+                    except Exception as exc:
+                        notify_error(f"No se pudo añadir a watchlist: {exc}")
 
     # Controles de paginación vista expandida
     if _det_pages > 1:
@@ -441,7 +469,9 @@ def render(ctx: PageContext) -> None:
                 st.session_state[_det_page_key] = _det_cur - 1
                 st.rerun()
         with _dp2:
-            st.caption(f"Mostrando {_det_start + 1}–{min(_det_start + _DETALLE_PAGE_SIZE, _total_det)} de {_total_det}")
+            st.caption(
+                f"Mostrando {_det_start + 1}–{min(_det_start + _DETALLE_PAGE_SIZE, _total_det)} de {_total_det}"
+            )
         with _dp3:
             if st.button("Siguiente →", key="det_next", disabled=_det_cur >= _det_pages - 1):
                 st.session_state[_det_page_key] = _det_cur + 1
