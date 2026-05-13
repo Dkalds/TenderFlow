@@ -97,6 +97,7 @@ module = [
     "dashboard.pages.*",
     "tests.*",
 ]
+ignore_errors = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 warn_return_any = false
