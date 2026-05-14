@@ -91,9 +91,11 @@ strict = true
 module = [
     "dashboard.app",
     "dashboard.auth",
+    "dashboard.components.*",
     "dashboard.data_loader",
     "dashboard.embeddings",
     "dashboard.faiss_index",
+    "dashboard.kpi_bar",
     "dashboard.pages.*",
     "tests.*",
 ]
@@ -186,6 +188,7 @@ omit = [
     "dashboard/utils/chart_helpers.py",
     "dashboard/utils/lazy.py",
     "observability/prometheus.py",
+    "observability/tracing.py",
     "config/*",
     "scripts/*",
     "scheduler/register_daily_task_windows.ps1",

@@ -8,6 +8,7 @@ data/*.db-*
 # Generated model artifacts (rebuilt with: python -m dashboard.faiss_index build / python -m scraper.ml_classifier train)
 data/models/
 data/metrics/
+data/.cache_invalidation
 .streamlit/secrets.toml
 .env
 .coverage

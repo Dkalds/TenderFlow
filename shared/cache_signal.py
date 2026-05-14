@@ -40,7 +40,7 @@ def signal_cache_invalidation() -> None:
     try:
         path = _signal_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(time.time()), encoding="utf-8")
+        path.write_text(str(time.time()) + "\n", encoding="utf-8")
         log.debug("cache_signal_written", path=str(path))
     except Exception as exc:
         log.warning("cache_signal_write_failed", error=str(exc))
