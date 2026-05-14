@@ -112,6 +112,7 @@ module = [
     "scraper.atom_live",
     "scraper.pipeline",
     "scheduler.healthcheck",
+    "dashboard.utils.dates",
 ]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
