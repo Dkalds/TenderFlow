@@ -73,7 +73,8 @@ class TestSessionTimeout:
 
         auth = _import_auth()
         with (
-            patch.object(auth, "_get_password", return_value="secret"),
+            patch.object(auth, "_has_password_configured", return_value=True),
+            patch.object(auth, "oauth_configured", return_value=False),
             patch.object(auth, "SESSION_TIMEOUT_SECONDS", 10),
             pytest.raises(SystemExit),
         ):
@@ -91,7 +92,8 @@ class TestRateLimiting:
 
         auth = _import_auth()
         with (
-            patch.object(auth, "_get_password", return_value="secret"),
+            patch.object(auth, "_has_password_configured", return_value=True),
+            patch.object(auth, "oauth_configured", return_value=False),
             pytest.raises(SystemExit),
         ):
             auth.check_password()
