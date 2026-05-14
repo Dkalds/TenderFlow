@@ -6,8 +6,6 @@ import gzip
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 
 class TestBackupSqlite:
     def test_crea_backup_comprimido(self, tmp_path):
@@ -22,6 +20,7 @@ class TestBackupSqlite:
 
         backup_dir = tmp_path / "backups"
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from scripts.backup_db import backup_sqlite
 
@@ -39,6 +38,7 @@ class TestBackupSqlite:
     def test_prune_old_backups(self, tmp_path):
         """prune_old_backups() elimina los más antiguos."""
         import time
+
         from scripts.backup_db import prune_old_backups
 
         backup_dir = tmp_path / "backups"
@@ -72,7 +72,7 @@ class TestBackupSqlite:
 class TestRetentionCleanup:
     def test_dry_run_no_borra_nada(self, tmp_db):
         """dry_run=False ejecuta pero no aplica — en este caso apply=False."""
-        db_mod, tmp_path = tmp_db
+        db_mod, _tmp_path = tmp_db
 
         # Insertar datos de test en extraction_runs
         with db_mod.connect() as c:
@@ -82,6 +82,7 @@ class TestRetentionCleanup:
             )
 
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from scripts.retention_cleanup import run_retention
 
@@ -99,12 +100,14 @@ class TestRetentionCleanup:
 
         # Verificar que el registro sigue existiendo
         with db_mod.connect() as c:
-            cur = c.execute("SELECT COUNT(*) FROM extraction_runs WHERE started_at = '2000-01-01T00:00:00'")
+            cur = c.execute(
+                "SELECT COUNT(*) FROM extraction_runs WHERE started_at = '2000-01-01T00:00:00'"
+            )
             assert cur.fetchone()[0] == 1
 
     def test_apply_borra_registros_antiguos(self, tmp_db):
         """apply=True elimina registros más antiguos que el umbral."""
-        db_mod, tmp_path = tmp_db
+        db_mod, _tmp_path = tmp_db
 
         with db_mod.connect() as c:
             c.execute(
@@ -126,13 +129,16 @@ class TestRetentionCleanup:
         assert results.get("extraction_runs", 0) >= 1
 
         with db_mod.connect() as c:
-            cur = c.execute("SELECT COUNT(*) FROM extraction_runs WHERE started_at = '2000-01-01T00:00:00'")
+            cur = c.execute(
+                "SELECT COUNT(*) FROM extraction_runs WHERE started_at = '2000-01-01T00:00:00'"
+            )
             assert cur.fetchone()[0] == 0
 
     def test_apply_no_borra_registros_recientes(self, tmp_db):
         """No purga registros dentro del periodo de retención."""
         from datetime import UTC, datetime
-        db_mod, tmp_path = tmp_db
+
+        db_mod, _tmp_path = tmp_db
 
         recent_ts = datetime.now(UTC).isoformat()
         with db_mod.connect() as c:
@@ -153,5 +159,7 @@ class TestRetentionCleanup:
         )
 
         with db_mod.connect() as c:
-            cur = c.execute("SELECT COUNT(*) FROM extraction_runs WHERE started_at = ?", (recent_ts,))
+            cur = c.execute(
+                "SELECT COUNT(*) FROM extraction_runs WHERE started_at = ?", (recent_ts,)
+            )
             assert cur.fetchone()[0] == 1

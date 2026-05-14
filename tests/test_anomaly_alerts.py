@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import math
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ── helpers de datos de test ────────────────────────────────────────────
 
@@ -39,7 +35,9 @@ class TestCheckImporteAnomalo:
 
         lics = [_make_lic(importe=10_000_000.0)]
         # Simular historial con media=100k, std=10k → threshold ≈ 120k con sigma=2
-        with patch("scheduler.anomaly_alerts._query_historico_organo", return_value=(100_000.0, 10_000.0)):
+        with patch(
+            "scheduler.anomaly_alerts._query_historico_organo", return_value=(100_000.0, 10_000.0)
+        ):
             alerts = check_importe_anomalo(lics, sigma=2.0)
         assert len(alerts) == 1
         assert "anómalo" in alerts[0].lower() or "anomal" in alerts[0].lower()
@@ -48,7 +46,9 @@ class TestCheckImporteAnomalo:
         from scheduler.anomaly_alerts import check_importe_anomalo
 
         lics = [_make_lic(importe=110_000.0)]
-        with patch("scheduler.anomaly_alerts._query_historico_organo", return_value=(100_000.0, 10_000.0)):
+        with patch(
+            "scheduler.anomaly_alerts._query_historico_organo", return_value=(100_000.0, 10_000.0)
+        ):
             alerts = check_importe_anomalo(lics, sigma=2.0)
         # 110k < 100k + 2*10k = 120k → no alerta
         assert len(alerts) == 0
@@ -65,7 +65,9 @@ class TestCheckImporteAnomalo:
         from scheduler.anomaly_alerts import check_importe_anomalo
 
         lics = [_make_lic(importe=None)]
-        with patch("scheduler.anomaly_alerts._query_historico_organo", return_value=(100_000.0, 10_000.0)):
+        with patch(
+            "scheduler.anomaly_alerts._query_historico_organo", return_value=(100_000.0, 10_000.0)
+        ):
             alerts = check_importe_anomalo(lics, sigma=2.0)
         assert len(alerts) == 0
 
@@ -145,6 +147,7 @@ class TestCheckSpikePublicaciones:
 class TestRunAnomalyChecks:
     def test_disabled_returns_zero(self, monkeypatch):
         from config import settings
+
         monkeypatch.setattr(settings, "ANOMALY_ALERT_ENABLED", False)
         from scheduler.anomaly_alerts import run_anomaly_checks
 
@@ -153,6 +156,7 @@ class TestRunAnomalyChecks:
 
     def test_runs_all_checks(self, monkeypatch):
         from config import settings
+
         monkeypatch.setattr(settings, "ANOMALY_ALERT_ENABLED", True)
         monkeypatch.setattr(settings, "ANOMALY_IMPORTE_SIGMA", 2.0)
         monkeypatch.setattr(settings, "ANOMALY_BAJA_THRESHOLD", 80.0)
@@ -164,11 +168,13 @@ class TestRunAnomalyChecks:
             patch("scheduler.anomaly_alerts.check_spike_publicaciones", return_value=[]),
         ):
             from scheduler.anomaly_alerts import run_anomaly_checks
+
             result = run_anomaly_checks()
         assert result == 0
 
     def test_sends_alert_when_anomalies(self, monkeypatch):
         from config import settings
+
         monkeypatch.setattr(settings, "ANOMALY_ALERT_ENABLED", True)
         monkeypatch.setattr(settings, "ANOMALY_IMPORTE_SIGMA", 2.0)
         monkeypatch.setattr(settings, "ANOMALY_BAJA_THRESHOLD", 80.0)
@@ -182,6 +188,7 @@ class TestRunAnomalyChecks:
             patch("scheduler.anomaly_alerts.notify", notify_mock),
         ):
             from scheduler.anomaly_alerts import run_anomaly_checks
+
             result = run_anomaly_checks()
 
         assert result == 1

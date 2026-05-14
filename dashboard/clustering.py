@@ -14,7 +14,6 @@ Uso típico:
 from __future__ import annotations
 
 import re
-from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -42,13 +41,13 @@ def _tfidf_embeddings(texts: list[str], n_features: int = 256) -> np.ndarray:
     )
     mat = vec.fit_transform(texts)
     dense = mat.toarray().astype(np.float32)
-    return normalize(dense)  # type: ignore[return-value]
+    return normalize(dense)  # type: ignore[no-any-return]
 
 
 def _get_embeddings(texts: list[str]) -> np.ndarray:
     """Devuelve embeddings semánticos o TF-IDF según disponibilidad."""
     try:
-        from dashboard.embeddings import encode_texts, embeddings_available
+        from dashboard.embeddings import embeddings_available, encode_texts
 
         if embeddings_available():
             return encode_texts(texts)
@@ -74,7 +73,9 @@ def _optimal_k(embeddings: np.ndarray, k_min: int = 3, k_max: int = 12) -> int:
         km = KMeans(n_clusters=k, random_state=42, n_init=5)
         labels = km.fit_predict(embeddings)
         try:
-            score = float(silhouette_score(embeddings, labels, sample_size=min(1000, len(embeddings))))
+            score = float(
+                silhouette_score(embeddings, labels, sample_size=min(1000, len(embeddings)))
+            )
         except Exception:
             score = -1.0
         if score > best_score:
@@ -88,9 +89,34 @@ def _cluster_keywords(texts: list[str], top_n: int = 3) -> str:
     from collections import Counter
 
     _STOPWORDS = {
-        "de", "del", "la", "el", "los", "las", "un", "una", "y", "en", "para",
-        "con", "por", "a", "al", "se", "que", "es", "o", "e", "su", "sus",
-        "sistema", "servicio", "servicios", "contrato", "licitación", "proyecto",
+        "de",
+        "del",
+        "la",
+        "el",
+        "los",
+        "las",
+        "un",
+        "una",
+        "y",
+        "en",
+        "para",
+        "con",
+        "por",
+        "a",
+        "al",
+        "se",
+        "que",
+        "es",
+        "o",
+        "e",
+        "su",
+        "sus",
+        "sistema",
+        "servicio",
+        "servicios",
+        "contrato",
+        "licitación",
+        "proyecto",
     }
     words: list[str] = []
     for text in texts:

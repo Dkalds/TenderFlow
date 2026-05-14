@@ -38,7 +38,7 @@ class TestListUsers:
     def test_lista_usuario_registrado(self, tmp_db):
         from db.users import get_or_create_oauth_user, list_users
 
-        uid = get_or_create_oauth_user(
+        _ = get_or_create_oauth_user(
             email="bob@example.com",
             oauth_provider="google",
             oauth_sub="sub_bob",
@@ -126,6 +126,7 @@ class TestSetAdmin:
         assert is_admin(uid)
         set_admin(uid, False)
         assert not is_admin(uid)
+
 
 def test_different_users_get_different_ids(tmp_db):
     import db.users as users_mod

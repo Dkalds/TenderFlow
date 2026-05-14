@@ -58,22 +58,29 @@ def backup_turso(backup_dir: Path) -> Path | None:
 
     turso_url = os.environ.get("TURSO_DATABASE_URL", "")
     if not turso_url:
-        print("[backup] TURSO_DATABASE_URL no configurada — omitiendo backup Turso.", file=sys.stderr)
+        print(
+            "[backup] TURSO_DATABASE_URL no configurada — omitiendo backup Turso.", file=sys.stderr
+        )
         return None
 
     db_name = turso_url.rstrip("/").split("/")[-1]
     backup_dir.mkdir(parents=True, exist_ok=True)
     dest = backup_dir / f"turso_{db_name}_{_timestamp()}.db"
 
+    turso_bin = shutil.which("turso") or "turso"
     try:
-        subprocess.run(
-            ["turso", "db", "shell", db_name, ".dump"],
-            check=True,
-            stdout=open(dest, "w"),
-            text=True,
-        )
+        with open(dest, "w") as stdout_file:
+            subprocess.run(
+                [turso_bin, "db", "shell", db_name, ".dump"],
+                check=True,
+                stdout=stdout_file,
+                text=True,
+            )
     except FileNotFoundError:
-        print("[backup] turso CLI no encontrado. Instala: https://docs.turso.tech/cli/introduction", file=sys.stderr)
+        print(
+            "[backup] turso CLI no encontrado. Instala: https://docs.turso.tech/cli/introduction",
+            file=sys.stderr,
+        )
         return None
     except subprocess.CalledProcessError as exc:
         print(f"[backup] Error ejecutando turso CLI: {exc}", file=sys.stderr)
@@ -102,9 +109,15 @@ def prune_old_backups(backup_dir: Path, keep: int) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Backup de la base de datos")
-    parser.add_argument("--turso", action="store_true", help="Hacer backup de Turso además de SQLite local")
-    parser.add_argument("--keep", type=int, default=7, help="Número de backups a retener (default: 7)")
-    parser.add_argument("--dry-run", action="store_true", help="Solo mostrar qué se haría, sin ejecutar")
+    parser.add_argument(
+        "--turso", action="store_true", help="Hacer backup de Turso además de SQLite local"
+    )
+    parser.add_argument(
+        "--keep", type=int, default=7, help="Número de backups a retener (default: 7)"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Solo mostrar qué se haría, sin ejecutar"
+    )
     args = parser.parse_args()
 
     # Importar settings para obtener rutas

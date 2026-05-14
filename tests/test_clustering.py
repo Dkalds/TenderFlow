@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 
 def _make_df(n: int = 30) -> pd.DataFrame:
@@ -21,15 +20,17 @@ def _make_df(n: int = 30) -> pd.DataFrame:
     rows = []
     for i in range(n):
         base = titulos[i % len(titulos)]
-        rows.append({
-            "id_externo": f"LIC-{i:04d}",
-            "titulo": f"{base} lote {i}",
-            "descripcion": f"Descripción detallada {base}",
-            "organo_contratacion": f"Ministerio {i % 3}",
-            "importe": float(rng.integers(10_000, 1_000_000)),
-            "ccaa": "Madrid",
-            "estado": "PUB",
-        })
+        rows.append(
+            {
+                "id_externo": f"LIC-{i:04d}",
+                "titulo": f"{base} lote {i}",
+                "descripcion": f"Descripción detallada {base}",
+                "organo_contratacion": f"Ministerio {i % 3}",
+                "importe": float(rng.integers(10_000, 1_000_000)),
+                "ccaa": "Madrid",
+                "estado": "PUB",
+            }
+        )
     return pd.DataFrame(rows)
 
 

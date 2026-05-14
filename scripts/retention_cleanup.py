@@ -23,6 +23,7 @@ from pathlib import Path
 
 def _cutoff_iso(days: int) -> str:
     from datetime import timedelta
+
     return (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
 
@@ -55,10 +56,10 @@ def run_retention(
     results: dict[str, int] = {}
 
     rules = [
-        ("extraction_runs",      "started_at",   runs_days),
-        ("audit_log",            "created_at",   audit_days),
-        ("licitaciones_history", "changed_at",   history_days),
-        ("access_log",           "logged_in_at", access_days),
+        ("extraction_runs", "started_at", runs_days),
+        ("audit_log", "created_at", audit_days),
+        ("licitaciones_history", "changed_at", history_days),
+        ("access_log", "logged_in_at", access_days),
     ]
 
     with connect() as conn:
@@ -99,13 +100,21 @@ def run_retention(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Purga de datos históricos por política de retención")
-    parser.add_argument("--apply", action="store_true", help="Ejecutar la purga (sin este flag es dry-run)")
-    parser.add_argument("--runs-days",    type=int, default=90,  help="Retención extraction_runs (días)")
-    parser.add_argument("--audit-days",   type=int, default=180, help="Retención audit_log (días)")
-    parser.add_argument("--dlq-days",     type=int, default=30,  help="Retención DLQ resueltos (días)")
-    parser.add_argument("--history-days", type=int, default=365, help="Retención licitaciones_history (días)")
-    parser.add_argument("--access-days",  type=int, default=180, help="Retención access_log (días)")
+    parser = argparse.ArgumentParser(
+        description="Purga de datos históricos por política de retención"
+    )
+    parser.add_argument(
+        "--apply", action="store_true", help="Ejecutar la purga (sin este flag es dry-run)"
+    )
+    parser.add_argument(
+        "--runs-days", type=int, default=90, help="Retención extraction_runs (días)"
+    )
+    parser.add_argument("--audit-days", type=int, default=180, help="Retención audit_log (días)")
+    parser.add_argument("--dlq-days", type=int, default=30, help="Retención DLQ resueltos (días)")
+    parser.add_argument(
+        "--history-days", type=int, default=365, help="Retención licitaciones_history (días)"
+    )
+    parser.add_argument("--access-days", type=int, default=180, help="Retención access_log (días)")
     args = parser.parse_args()
 
     mode = "APLICANDO" if args.apply else "DRY-RUN"

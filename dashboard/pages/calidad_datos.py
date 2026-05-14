@@ -210,9 +210,18 @@ def _render_completeness_chart(df: pd.DataFrame, template: str) -> None:
     """Gráfico de barras horizontales con % completitud por columna."""
     # Columnas de interés ordenadas por importancia
     cols_of_interest = [
-        "titulo", "descripcion", "cpv", "importe", "fecha_publicacion",
-        "organo_contratacion", "ccaa", "estado", "tipo_contrato",
-        "fecha_fin_contrato", "url", "nuts_code",
+        "titulo",
+        "descripcion",
+        "cpv",
+        "importe",
+        "fecha_publicacion",
+        "organo_contratacion",
+        "ccaa",
+        "estado",
+        "tipo_contrato",
+        "fecha_fin_contrato",
+        "url",
+        "nuts_code",
     ]
     present = [c for c in cols_of_interest if c in df.columns]
     n = len(df)

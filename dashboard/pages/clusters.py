@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pandas as pd
 import plotly.express as px
 import streamlit as st
 
@@ -81,13 +80,15 @@ def render(ctx: PageContext) -> None:
 
         # Tabla resumen
         data_table(
-            summary.rename(columns={
-                "cluster_id": "ID",
-                "cluster_label": "Keywords",
-                "n": "Licitaciones",
-                "importe_medio": "Importe medio (€)",
-                "importe_total": "Importe total (€)",
-            }),
+            summary.rename(
+                columns={
+                    "cluster_id": "ID",
+                    "cluster_label": "Keywords",
+                    "n": "Licitaciones",
+                    "importe_medio": "Importe medio (€)",
+                    "importe_total": "Importe total (€)",
+                }
+            ),
             height=260,
         )
 
@@ -118,10 +119,16 @@ def render(ctx: PageContext) -> None:
     selected_cid = st.selectbox(
         "Selecciona cluster",
         cluster_options,
-        format_func=lambda cid: f"Cluster {cid}: {clustered.loc[clustered['cluster_id'] == cid, 'cluster_label'].iloc[0] if len(clustered[clustered['cluster_id'] == cid]) > 0 else ''}",
+        format_func=lambda cid: (
+            f"Cluster {cid}: {clustered.loc[clustered['cluster_id'] == cid, 'cluster_label'].iloc[0] if len(clustered[clustered['cluster_id'] == cid]) > 0 else ''}"
+        ),
         key="cluster_explorer",
     )
     cluster_rows = clustered[clustered["cluster_id"] == selected_cid]
     st.caption(f"{len(cluster_rows):,} licitaciones en este cluster")
-    cols_show = [c for c in ["titulo", "organo_contratacion", "importe", "ccaa", "estado_desc"] if c in cluster_rows.columns]
+    cols_show = [
+        c
+        for c in ["titulo", "organo_contratacion", "importe", "ccaa", "estado_desc"]
+        if c in cluster_rows.columns
+    ]
     data_table(cluster_rows[cols_show].head(100), height=340)

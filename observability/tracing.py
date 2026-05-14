@@ -46,6 +46,7 @@ def _redact_span_text(text: str) -> str:
     except Exception:
         return text
 
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 _configured = False
@@ -195,9 +196,7 @@ def traced(span_name: str | None = None) -> Callable[[F], F]:
                         from opentelemetry.trace import StatusCode
 
                         span.record_exception(exc)
-                        span.set_status(
-                            StatusCode.ERROR, _redact_span_text(str(exc))
-                        )
+                        span.set_status(StatusCode.ERROR, _redact_span_text(str(exc)))
                     except Exception:
                         pass
                     raise

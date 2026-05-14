@@ -723,14 +723,14 @@ ________ TestRollbackMechanics.test_returns_list_of_reverted_versions _________
 tests\test_migration_rollbacks.py:72: in test_returns_list_of_reverted_versions
     assert reverted == [17, 16, 13]
 E   AssertionError: assert [18, 17, 16, 13] == [17, 16, 13]
-E     
+E
 E     At index 0 diff: 18 != 17
 E     Left contains one more item: 13
-E     
+E
 E     Full diff:
 E       [
 E     +     18,...
-E     
+E
 E     ...Full output truncated (4 lines hidden), use '-vv' to show
 ---------------------------- Captured stderr call -----------------------------
 {"version": 1, "description": "baseline_and_run_metrics", "event": "migration_applying", "level": "info", "logger": "db.migrations", "timestamp": "2026-05-13T16:29:33.795899Z"}

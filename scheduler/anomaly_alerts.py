@@ -1,7 +1,7 @@
 """Detección de anomalías en licitaciones y alertas automáticas.
 
 Reglas implementadas:
-1. Importe anómalo — importe > media + N*σ del historial del órgano contratante.
+1. Importe anómalo — importe > media + N*sigma del historial del órgano contratante.
 2. Baja temeraria — porcentaje de baja en adjudicación > umbral configurado.
 3. Spike de publicaciones — volumen diario > factor * media de los últimos 30 días.
 
@@ -24,9 +24,7 @@ log = get_logger(__name__)
 # ── helpers ──────────────────────────────────────────────────────────────
 
 
-def _query_historico_organo(
-    organo: str, months: int = 12
-) -> tuple[float, float]:
+def _query_historico_organo(organo: str, months: int = 12) -> tuple[float, float]:
     """Devuelve (media, desv_std) del importe para el órgano en los últimos N meses."""
     with connect() as c:
         cur = c.execute(
@@ -79,8 +77,7 @@ def _query_volumen_diario_30d() -> float:
     """Media diaria de nuevas licitaciones en los últimos 30 días."""
     with connect() as c:
         cur = c.execute(
-            "SELECT COUNT(*) FROM licitaciones "
-            "WHERE fecha_publicacion >= date('now', '-30 days')",
+            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-30 days')",
         )
         total = cur.fetchone()[0] or 0
     return float(total) / 30.0
@@ -89,8 +86,7 @@ def _query_volumen_diario_30d() -> float:
 def _query_volumen_hoy() -> int:
     with connect() as c:
         cur = c.execute(
-            "SELECT COUNT(*) FROM licitaciones "
-            "WHERE fecha_publicacion >= date('now', '-1 day')",
+            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-1 day')",
         )
         return int(cur.fetchone()[0] or 0)
 
@@ -115,10 +111,15 @@ def check_importe_anomalo(licitaciones: list[dict[str, Any]], sigma: float) -> l
                 f"Importe anómalo detectado: {lic.get('titulo', 'Sin título')[:80]} | "
                 f"Órgano: {organo[:60]} | "
                 f"Importe: {importe:,.0f}€ (umbral: {threshold:,.0f}€, "
-                f"media: {mean:,.0f}€, σ={std:,.0f}€)"
+                f"media: {mean:,.0f}\u20ac, sigma={std:,.0f}\u20ac)"
             )
             alerts.append(msg)
-            log.warning("anomaly_importe", licitacion_id=lic.get("id_externo"), importe=importe, threshold=threshold)
+            log.warning(
+                "anomaly_importe",
+                licitacion_id=lic.get("id_externo"),
+                importe=importe,
+                threshold=threshold,
+            )
     return alerts
 
 
@@ -181,34 +182,28 @@ def run_anomaly_checks() -> int:
 
     try:
         lics = _query_licitaciones_nuevas_hoy()
-        all_alerts.extend(
-            check_importe_anomalo(lics, settings.ANOMALY_IMPORTE_SIGMA)
-        )
+        all_alerts.extend(check_importe_anomalo(lics, settings.ANOMALY_IMPORTE_SIGMA))
     except Exception as exc:
         log.warning("anomaly_importe_check_failed", error=str(exc))
 
     try:
         adjs = _query_adjudicaciones_recientes()
-        all_alerts.extend(
-            check_baja_temeraria(adjs, settings.ANOMALY_BAJA_THRESHOLD)
-        )
+        all_alerts.extend(check_baja_temeraria(adjs, settings.ANOMALY_BAJA_THRESHOLD))
     except Exception as exc:
         log.warning("anomaly_baja_check_failed", error=str(exc))
 
     try:
-        all_alerts.extend(
-            check_spike_publicaciones(settings.ANOMALY_SPIKE_FACTOR)
-        )
+        all_alerts.extend(check_spike_publicaciones(settings.ANOMALY_SPIKE_FACTOR))
     except Exception as exc:
         log.warning("anomaly_spike_check_failed", error=str(exc))
 
     if all_alerts:
         body = "\n\n".join(f"• {a}" for a in all_alerts)
         notify(
-            subject=f"[Licitaciones SAP] {len(all_alerts)} anomalía(s) detectada(s)",
-            body=body,
             level=AlertLevel.WARN,
-            context={"n_anomalias": len(all_alerts)},
+            title=f"[Licitaciones SAP] {len(all_alerts)} anomía(s) detectada(s)",
+            body=body,
+            n_anomalias=len(all_alerts),
         )
         log.warning("anomaly_checks_done", n_anomalias=len(all_alerts))
     else:

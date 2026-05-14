@@ -237,11 +237,21 @@ def render(ctx: PageContext) -> None:
         # Filtros rápidos
         acol1, acol2, acol3 = st.columns(3)
         with acol1:
-            acciones_disponibles = ["(todas)"] + sorted(audit_df["action"].dropna().unique().tolist())
-            filtro_accion = st.selectbox("Filtrar por acción", acciones_disponibles, key="audit_accion")
+            acciones_disponibles = [
+                "(todas)",
+                *sorted(audit_df["action"].dropna().unique().tolist()),
+            ]
+            filtro_accion = st.selectbox(
+                "Filtrar por acción", acciones_disponibles, key="audit_accion"
+            )
         with acol2:
-            usuarios_disponibles = ["(todos)"] + sorted(audit_df["user_key"].dropna().unique().tolist())
-            filtro_usuario = st.selectbox("Filtrar por usuario", usuarios_disponibles, key="audit_usuario")
+            usuarios_disponibles = [
+                "(todos)",
+                *sorted(audit_df["user_key"].dropna().unique().tolist()),
+            ]
+            filtro_usuario = st.selectbox(
+                "Filtrar por usuario", usuarios_disponibles, key="audit_usuario"
+            )
         with acol3:
             rango = st.date_input("Rango de fechas", value=[], key="audit_rango")
 
