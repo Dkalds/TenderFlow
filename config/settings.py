@@ -82,6 +82,16 @@ class Settings(BaseSettings):
     ALERT_SMTP_HOST: str = "smtp.gmail.com"
     ALERT_SMTP_PORT: int = 587
 
+    # ── Anomaly detection ────────────────────────────────────────────────
+    # Activar detección de anomalías en el scheduler
+    ANOMALY_ALERT_ENABLED: bool = True
+    # Desviaciones estándar para considerar un importe anómalo vs. histórico del órgano
+    ANOMALY_IMPORTE_SIGMA: float = 2.0
+    # % de baja sobre el presupuesto a partir del cual se alerta (baja temeraria)
+    ANOMALY_BAJA_THRESHOLD: float = 80.0
+    # Factor vs. media diaria de los últimos 30d para considerar spike de publicaciones
+    ANOMALY_SPIKE_FACTOR: float = 3.0
+
     # ── Base de datos ─────────────────────────────────────────────────────
     DB_POOL_SIZE: int = 5
     DB_POOL_TIMEOUT: float = 10.0

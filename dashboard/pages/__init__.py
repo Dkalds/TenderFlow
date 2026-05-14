@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     from dashboard.pages._base import PageContext
 
 from dashboard.pages import (
+    calidad_datos,
+    clusters,
     competidores,
     detalle,
     geografia,
@@ -34,4 +36,6 @@ PAGE_REGISTRY: dict[str, Callable[[PageContext], None]] = {
     "Pipeline & Alertas": pipeline_alertas.render,
     "Mi Watchlist": mi_watchlist.render,
     "Observabilidad": observabilidad.render,
+    "Calidad de Datos": calidad_datos.render,
+    "Clusters": clusters.render,
 }

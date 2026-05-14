@@ -1,4 +1,4 @@
-"""Tests para db.users (CRUD OAuth + local)."""
+"""Tests para db.users (CRUD OAuth + local, list_users, deactivate_user)."""
 
 from __future__ import annotations
 
@@ -27,6 +27,105 @@ def test_get_or_create_oauth_user(tmp_db):
     )
     assert uid1 == uid2
 
+
+class TestListUsers:
+    def test_vacio_sin_usuarios(self, tmp_db):
+        from db.users import list_users
+
+        users = list_users()
+        assert isinstance(users, list)
+
+    def test_lista_usuario_registrado(self, tmp_db):
+        from db.users import get_or_create_oauth_user, list_users
+
+        uid = get_or_create_oauth_user(
+            email="bob@example.com",
+            oauth_provider="google",
+            oauth_sub="sub_bob",
+            display_name="Bob",
+        )
+
+        users = list_users()
+        emails = [u["email"] for u in users]
+        assert "bob@example.com" in emails
+
+    def test_incluye_columna_last_access(self, tmp_db):
+        from db.users import get_or_create_oauth_user, list_users
+
+        get_or_create_oauth_user(
+            email="carol@example.com",
+            oauth_provider="google",
+            oauth_sub="sub_carol",
+        )
+        users = list_users()
+        found = next((u for u in users if u["email"] == "carol@example.com"), None)
+        assert found is not None
+        assert "last_access" in found
+
+    def test_respeta_limit(self, tmp_db):
+        from db.users import get_or_create_oauth_user, list_users
+
+        for i in range(5):
+            get_or_create_oauth_user(
+                email=f"limit_user{i}@example.com",
+                oauth_provider="google",
+                oauth_sub=f"sub_limit_{i}",
+            )
+
+        users = list_users(limit=2)
+        assert len(users) <= 2
+
+
+class TestDeactivateUser:
+    def test_elimina_usuario(self, tmp_db):
+        from db.users import deactivate_user, get_or_create_oauth_user, get_user_by_id
+
+        uid = get_or_create_oauth_user(
+            email="todelete@example.com",
+            oauth_provider="google",
+            oauth_sub="sub_del",
+        )
+
+        deactivate_user(uid)
+        assert get_user_by_id(uid) is None
+
+    def test_elimina_access_log(self, tmp_db):
+        db_mod, _ = tmp_db
+        from db.users import deactivate_user, get_or_create_oauth_user, log_access
+
+        uid = get_or_create_oauth_user(
+            email="todelete2@example.com",
+            oauth_provider="google",
+            oauth_sub="sub_del2",
+        )
+        log_access(auth_method="google", user_id=uid, email="todelete2@example.com")
+        deactivate_user(uid)
+
+        with db_mod.connect() as c:
+            cur = c.execute("SELECT COUNT(*) FROM access_log WHERE user_id = ?", (uid,))
+            assert cur.fetchone()[0] == 0
+
+    def test_idempotente_usuario_inexistente(self, tmp_db):
+        from db.users import deactivate_user
+
+        deactivate_user(9999)  # no debe lanzar excepción
+
+
+class TestSetAdmin:
+    def test_dar_y_quitar_admin(self, tmp_db):
+        from db.users import get_or_create_oauth_user, is_admin, set_admin
+
+        uid = get_or_create_oauth_user(
+            email="admin_test@example.com",
+            oauth_provider="google",
+            oauth_sub="sub_admin_test",
+        )
+
+        assert not is_admin(uid)
+        set_admin(uid, True)
+        assert is_admin(uid)
+        set_admin(uid, False)
+        assert not is_admin(uid)
 
 def test_different_users_get_different_ids(tmp_db):
     import db.users as users_mod

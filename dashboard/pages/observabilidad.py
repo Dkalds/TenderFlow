@@ -228,14 +228,38 @@ def render(ctx: PageContext) -> None:
 
     # ── Audit Log ────────────────────────────────────────────────────────
     st.markdown("#### Audit Log")
-    st.caption("Últimas 200 acciones de usuario registradas.")
-    audit_rows = audit_list_recent(limit=200)
+    st.caption("Últimas 500 acciones de usuario registradas.")
+    audit_rows = audit_list_recent(limit=500)
     if audit_rows:
         audit_df = pd.DataFrame(audit_rows)
         audit_df["created_at"] = pd.to_datetime(audit_df["created_at"], errors="coerce", utc=True)
+
+        # Filtros rápidos
+        acol1, acol2, acol3 = st.columns(3)
+        with acol1:
+            acciones_disponibles = ["(todas)"] + sorted(audit_df["action"].dropna().unique().tolist())
+            filtro_accion = st.selectbox("Filtrar por acción", acciones_disponibles, key="audit_accion")
+        with acol2:
+            usuarios_disponibles = ["(todos)"] + sorted(audit_df["user_key"].dropna().unique().tolist())
+            filtro_usuario = st.selectbox("Filtrar por usuario", usuarios_disponibles, key="audit_usuario")
+        with acol3:
+            rango = st.date_input("Rango de fechas", value=[], key="audit_rango")
+
+        mask = pd.Series(True, index=audit_df.index)
+        if filtro_accion != "(todas)":
+            mask &= audit_df["action"] == filtro_accion
+        if filtro_usuario != "(todos)":
+            mask &= audit_df["user_key"] == filtro_usuario
+        if isinstance(rango, (list, tuple)) and len(rango) == 2:
+            f_ini = pd.Timestamp(rango[0], tz="UTC")
+            f_fin = pd.Timestamp(rango[1], tz="UTC") + pd.Timedelta(days=1)
+            mask &= (audit_df["created_at"] >= f_ini) & (audit_df["created_at"] < f_fin)
+
+        filtered_audit = audit_df[mask]
+        st.caption(f"{len(filtered_audit):,} registros filtrados de {len(audit_df):,}")
         data_table(
-            audit_df,
-            height=320,
+            filtered_audit,
+            height=340,
             column_config={
                 "created_at": st.column_config.DatetimeColumn("Fecha"),
                 "action": st.column_config.TextColumn("Acción"),
@@ -246,6 +270,65 @@ def render(ctx: PageContext) -> None:
         )
     else:
         st.info("Sin acciones registradas aún.")
+
+    # ── Gestión de usuarios ──────────────────────────────────────────────
+    st.markdown("#### Gestión de usuarios")
+    _render_user_management()
+
+
+def _render_user_management() -> None:
+    """Sección admin para listar, dar/quitar admin y desactivar usuarios."""
+    from db.users import deactivate_user, list_users, set_admin
+
+    try:
+        users = list_users(limit=200)
+    except Exception as exc:
+        st.warning(f"No se pudo cargar la tabla de usuarios: {exc}")
+        return
+
+    if not users:
+        st.info("No hay usuarios registrados (solo se registran accesos vía OAuth).")
+        return
+
+    users_df = pd.DataFrame(users)
+    users_df["is_admin"] = users_df["is_admin"].astype(bool)
+    users_df["last_access"] = pd.to_datetime(users_df["last_access"], errors="coerce", utc=True)
+    users_df["created_at"] = pd.to_datetime(users_df["created_at"], errors="coerce", utc=True)
+
+    data_table(
+        users_df,
+        height=280,
+        column_config={
+            "id": st.column_config.NumberColumn("ID", width="small"),
+            "email": st.column_config.TextColumn("Email"),
+            "display_name": st.column_config.TextColumn("Nombre"),
+            "oauth_provider": st.column_config.TextColumn("Proveedor"),
+            "is_admin": st.column_config.CheckboxColumn("Admin"),
+            "created_at": st.column_config.DatetimeColumn("Registrado"),
+            "last_access": st.column_config.DatetimeColumn("Último acceso"),
+        },
+    )
+
+    with st.expander("Acciones de usuario"):
+        user_options = [f"[{u['id']}] {u.get('email', '—')}" for u in users]
+        selected = st.selectbox("Usuario", user_options, key="user_mgmt_select")
+        selected_id = int(selected.split("]")[0].lstrip("["))
+
+        selected_user = next((u for u in users if u["id"] == selected_id), None)
+        if selected_user:
+            current_admin = bool(selected_user.get("is_admin"))
+            ua1, ua2 = st.columns(2)
+            with ua1:
+                new_label = "Quitar admin" if current_admin else "Dar admin"
+                if st.button(new_label, key="user_toggle_admin"):
+                    set_admin(selected_id, not current_admin)
+                    st.success(f"Usuario #{selected_id} actualizado.")
+                    st.rerun()
+            with ua2:
+                if st.button("⚠️ Desactivar usuario", key="user_deactivate", type="secondary"):
+                    deactivate_user(selected_id)
+                    st.success(f"Usuario #{selected_id} eliminado.")
+                    st.rerun()
 
 
 def _render_calidad_dato(ctx: PageContext, last_run, runs) -> None:

@@ -170,3 +170,89 @@ class TestXMLParsingPerformance:
 
         assert len(entries) == 1000
         assert elapsed < 5.0, f"Parseo XML 1K entries tardó {elapsed:.1f}s (máx 5s)"
+
+
+class TestFTSPerformance:
+    """Verifica que la búsqueda FTS5 es rápida sobre 10K registros."""
+
+    def test_fts_search_10k(self, perf_db):
+        from db.database import Licitacion, connect, upsert_licitaciones
+
+        now_iso = datetime.now(UTC).isoformat()
+        lics = [
+            Licitacion(
+                id_externo=f"FTS-{i:06d}",
+                titulo=f"Implantación SAP S/4HANA módulo {'FI' if i % 2 == 0 else 'CO'} licitación {i}",
+                descripcion=f"Consultoría ABAP desarrollo Fiori {i}",
+                fecha_extraccion=now_iso,
+            )
+            for i in range(10_000)
+        ]
+        upsert_licitaciones(lics)
+
+        t0 = time.monotonic()
+        with connect() as c:
+            # FTS5 full-text search
+            rows = c.execute(
+                "SELECT COUNT(*) FROM licitaciones_fts WHERE licitaciones_fts MATCH ?",
+                ["SAP S/4HANA"],
+            ).fetchone()
+        elapsed = time.monotonic() - t0
+
+        assert rows[0] > 0
+        assert elapsed < 2.0, f"FTS5 search tardó {elapsed:.1f}s (máx 2s)"
+
+
+class TestClusteringPerformance:
+    """Verifica que el clustering es aceptablemente rápido con TF-IDF fallback."""
+
+    def test_cluster_1k_rows_tfidf(self):
+        """Clustering sobre 1K filas con TF-IDF debe completar en <10s."""
+        import numpy as np
+        import pandas as pd
+        from unittest.mock import patch
+
+        from dashboard.clustering import _tfidf_embeddings
+
+        texts = [
+            f"Sistema SAP S/4HANA implantación módulo {'FI' if i % 3 == 0 else 'MM'} "
+            f"para organismo público {i}"
+            for i in range(1_000)
+        ]
+
+        t0 = time.monotonic()
+        embeddings = _tfidf_embeddings(texts)
+        elapsed = time.monotonic() - t0
+
+        assert embeddings.shape == (1_000, min(256, embeddings.shape[1]))
+        assert elapsed < 10.0, f"TF-IDF 1K textos tardó {elapsed:.1f}s (máx 10s)"
+
+    def test_cluster_500_rows_kmeans(self):
+        """KMeans clustering sobre 500 filas (via TF-IDF) debe terminar en <15s."""
+        import numpy as np
+        import pandas as pd
+        from unittest.mock import patch
+
+        rng = np.random.default_rng(42)
+        df = pd.DataFrame({
+            "id_externo": [f"PERF-CLUSTER-{i}" for i in range(500)],
+            "titulo": [
+                f"{'SAP ERP' if i % 4 == 0 else 'Cloud AWS'} licitación {i}"
+                for i in range(500)
+            ],
+            "descripcion": [f"Descripción proyecto {i}" for i in range(500)],
+            "importe": rng.integers(10_000, 1_000_000, 500).astype(float),
+        })
+
+        from dashboard.clustering import cluster_licitaciones
+        # Forzar cache clear para el benchmark
+        cluster_licitaciones.clear()
+
+        with patch("dashboard.clustering.embeddings_available", return_value=False):
+            t0 = time.monotonic()
+            result = cluster_licitaciones(df, n_clusters=5)
+            elapsed = time.monotonic() - t0
+
+        assert "cluster_id" in result.columns
+        assert elapsed < 15.0, f"Clustering 500 filas tardó {elapsed:.1f}s (máx 15s)"
+        cluster_licitaciones.clear()

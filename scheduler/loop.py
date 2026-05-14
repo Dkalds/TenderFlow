@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from observability import AlertLevel, configure_logging, configure_tracing, get_logger, notify
+from scheduler.anomaly_alerts import run_anomaly_checks
 from scheduler.dlq_retry import retry_failed_extractions
 from scheduler.kpi_precompute import run_kpi_precompute
 from scheduler.watchlist_alerts import check_and_notify, send_pending_digests
@@ -56,6 +57,7 @@ def _run_daily_atom() -> None:
     run_kpi_precompute()
     check_and_notify()
     retry_failed_extractions()
+    run_anomaly_checks()
 
 
 def _run_recent_bulk(months: int) -> None:
@@ -76,6 +78,7 @@ def main() -> int:
     bulk_months = _env_int("SCHEDULER_BULK_MONTHS", 3)
     dlq_interval = timedelta(minutes=_env_int("SCHEDULER_DLQ_RETRY_INTERVAL_MINUTES", 720))
     digest_interval = timedelta(minutes=_env_int("SCHEDULER_DIGEST_INTERVAL_MINUTES", 1440))
+    anomaly_interval = timedelta(minutes=_env_int("SCHEDULER_ANOMALY_INTERVAL_MINUTES", 1440))
     sleep_seconds = _env_int("SCHEDULER_POLL_SECONDS", 60)
 
     now = datetime.now(UTC)
@@ -83,12 +86,14 @@ def main() -> int:
     next_bulk = now
     next_dlq = now + timedelta(minutes=30)  # primer reintento DLQ: 30 min tras arranque
     next_digest = now + timedelta(hours=1)  # primer digest: 1 hora tras arranque
+    next_anomaly = now + timedelta(hours=2)  # primer check anomalías: 2h tras arranque
     log.info(
         "scheduler_loop_start",
         daily_interval_minutes=int(daily_interval.total_seconds() // 60),
         bulk_interval_minutes=int(bulk_interval.total_seconds() // 60),
         dlq_retry_interval_minutes=int(dlq_interval.total_seconds() // 60),
         digest_interval_minutes=int(digest_interval.total_seconds() // 60),
+        anomaly_interval_minutes=int(anomaly_interval.total_seconds() // 60),
         bulk_months=bulk_months,
     )
 
@@ -106,6 +111,9 @@ def main() -> int:
         if now >= next_digest:
             _run_job("digest_daily", lambda: send_pending_digests("daily"))
             next_digest = datetime.now(UTC) + digest_interval
+        if now >= next_anomaly:
+            _run_job("anomaly_checks", run_anomaly_checks)
+            next_anomaly = datetime.now(UTC) + anomaly_interval
         time.sleep(sleep_seconds)
 
 

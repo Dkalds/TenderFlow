@@ -28,6 +28,24 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+
+def _redact_span_text(text: str) -> str:
+    """Redacta valores sensibles antes de enviarlos como atributo de span OTel.
+
+    Reutiliza el cache de valores sensibles ya calculado por configure_logging()
+    para evitar leer os.environ en cada excepción.
+    """
+    try:
+        from observability.logging import _cached_sensitive_values
+
+        result = text
+        for sv in _cached_sensitive_values:
+            if sv and sv in result:
+                result = result.replace(sv, "***REDACTED***")
+        return result
+    except Exception:
+        return text
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 _configured = False
@@ -177,7 +195,9 @@ def traced(span_name: str | None = None) -> Callable[[F], F]:
                         from opentelemetry.trace import StatusCode
 
                         span.record_exception(exc)
-                        span.set_status(StatusCode.ERROR, str(exc))
+                        span.set_status(
+                            StatusCode.ERROR, _redact_span_text(str(exc))
+                        )
                     except Exception:
                         pass
                     raise

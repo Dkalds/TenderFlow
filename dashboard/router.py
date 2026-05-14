@@ -4,10 +4,10 @@ from __future__ import annotations
 
 SECTIONS: dict[str, list[str]] = {
     "Vista General": ["Resumen", "Tendencias", "Detalle"],
-    "Mercado": ["Órganos", "Geografía", "Proyectos & Módulos", "Tecnologías"],
+    "Mercado": ["Órganos", "Geografía", "Proyectos & Módulos", "Tecnologías", "Clusters"],
     "Competencia": ["Competidores", "Pipeline & Alertas"],
     "Personal": ["Mi Watchlist"],
-    "Ops": ["Observabilidad"],
+    "Ops": ["Observabilidad", "Calidad de Datos"],
 }
 
 SECTION_ICONS: dict[str, str] = {
@@ -30,6 +30,8 @@ PAGE_ICONS: dict[str, str] = {
     "Pipeline & Alertas": "🔔",
     "Mi Watchlist": "⭐",
     "Observabilidad": "📊",
+    "Calidad de Datos": "🔬",
+    "Clusters": "🪤",
 }
 
 PAGE_DESCRIPTIONS: dict[str, str] = {
@@ -44,4 +46,6 @@ PAGE_DESCRIPTIONS: dict[str, str] = {
     "Pipeline & Alertas": "Licitaciones en plazo, predicciones y alertas de vencimiento.",
     "Mi Watchlist": "Reglas de seguimiento personalizadas por CPV, keyword e importe.",
     "Observabilidad": "Métricas de rendimiento, logs de scraping y estado del pipeline.",
+    "Calidad de Datos": "Completitud del dataset, frescura del scraping, tasa de errores y DLQ.",
+    "Clusters": "Agrupaciones semánticas de licitaciones para detectar patrones y nichos de mercado.",
 }

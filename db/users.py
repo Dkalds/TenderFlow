@@ -87,6 +87,31 @@ def set_admin(user_id: int, is_admin_value: bool) -> None:
         )
 
 
+def list_users(limit: int = 200) -> list[dict[str, Any]]:
+    """Devuelve todos los usuarios registrados con su último acceso."""
+    with connect() as c:
+        cur = c.execute(
+            "SELECT u.id, u.email, u.display_name, u.oauth_provider, u.is_admin, "
+            "       u.created_at, "
+            "       MAX(a.logged_in_at) AS last_access "
+            "FROM users u "
+            "LEFT JOIN access_log a ON a.user_id = u.id "
+            "GROUP BY u.id "
+            "ORDER BY last_access DESC NULLS LAST "
+            "LIMIT ?",
+            (limit,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
+def deactivate_user(user_id: int) -> None:
+    """Elimina el usuario y sus entradas de acceso (borrado lógico via DELETE)."""
+    with connect() as c:
+        c.execute("DELETE FROM access_log WHERE user_id = ?", (user_id,))
+        c.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def log_access(
     *,
     auth_method: str,
