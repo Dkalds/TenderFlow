@@ -141,7 +141,11 @@ def _enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    desc_col = df["descripcion"].fillna("") if "descripcion" in df.columns else pd.Series("", index=df.index)
+    desc_col = (
+        df["descripcion"].fillna("")
+        if "descripcion" in df.columns
+        else pd.Series("", index=df.index)
+    )
     text_blob = df["titulo"].fillna("") + " " + desc_col
 
     _safe_apply(

@@ -248,5 +248,7 @@ skips = [
     "B105",  # hardcoded password — cadenas vacías como defaults, no secrets
     "B403",  # import pickle — aceptado para faiss cache interno
     "B301",  # pickle — aceptado para faiss cache interno
+    "B112",  # try-except-continue — aceptado en best-effort loops
+    "B310",  # urllib urlopen — URLs controladas internamente
 ]
 exclude_dirs = ["tests", ".agents", ".venv"]

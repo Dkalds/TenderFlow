@@ -24,7 +24,7 @@ log = get_logger(__name__)
 # ── Broker setup ──────────────────────────────────────────────────────────────
 
 
-def _setup_broker() -> Any:  # noqa: F821
+def _setup_broker() -> Any:
     try:
         import dramatiq  # type: ignore[import]
 
