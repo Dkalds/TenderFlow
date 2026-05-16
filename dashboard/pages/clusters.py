@@ -96,6 +96,13 @@ def render(ctx: PageContext) -> None:
     st.markdown("#### Distribución de importe por cluster")
     plot_df = clustered[clustered["importe"].notna()].copy()
     if not plot_df.empty:
+        max_plot_rows = 5000
+        if len(plot_df) > max_plot_rows:
+            plot_df = plot_df.sample(n=max_plot_rows, random_state=42)
+            st.caption(
+                f"Mostrando muestra aleatoria de {max_plot_rows:,} filas "
+                f"de {len(clustered[clustered['importe'].notna()]):,} para acelerar el gráfico."
+            )
         fig_box = px.box(
             plot_df,
             x="cluster_label",

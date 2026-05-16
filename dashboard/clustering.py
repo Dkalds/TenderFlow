@@ -28,6 +28,39 @@ _DEFAULT_CLUSTERS = 8
 _MAX_CLUSTERS = 20
 
 
+def _df_cache_fingerprint(df: pd.DataFrame) -> tuple[object, ...]:
+    """Fingerprint compacto para caché de clustering.
+
+    Evita el hashing profundo por defecto de Streamlit sobre DataFrames grandes.
+    Usa señales estables y baratas (shape/columnas + hash parcial de ids/fechas).
+    """
+    try:
+        cols = tuple(df.columns)
+        n_rows = len(df)
+
+        if n_rows == 0:
+            return (n_rows, cols)
+
+        import pandas as _pd
+
+        id_hash = None
+        if "id_externo" in df.columns:
+            id_hash = int(_pd.util.hash_pandas_object(df["id_externo"], index=False).sum())
+
+        date_max = None
+        if "fecha_publicacion" in df.columns:
+            date_max = str(_pd.to_datetime(df["fecha_publicacion"], errors="coerce").max())
+
+        imp_sum = None
+        if "importe" in df.columns:
+            imp_sum = float(_pd.to_numeric(df["importe"], errors="coerce").fillna(0).sum())
+
+        return (n_rows, cols, id_hash, date_max, imp_sum)
+    except Exception:
+        # Fallback ultraseguro: tamaño + columnas.
+        return (len(df), tuple(df.columns))
+
+
 def _tfidf_embeddings(texts: list[str], n_features: int = 256) -> np.ndarray:
     """Fallback: TF-IDF sparse → dense para cuando no hay sentence-transformers."""
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -128,7 +161,11 @@ def _cluster_keywords(texts: list[str], top_n: int = 3) -> str:
     return ", ".join(w for w, _ in top)
 
 
-@st.cache_data(ttl=1800, show_spinner="Calculando clusters semánticos…")  # 30 min cache
+@st.cache_data(
+    ttl=1800,
+    show_spinner="Calculando clusters semánticos…",
+    hash_funcs={pd.DataFrame: _df_cache_fingerprint},
+)  # 30 min cache
 def cluster_licitaciones(
     df: pd.DataFrame,
     n_clusters: int | None = None,
