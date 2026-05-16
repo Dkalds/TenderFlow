@@ -82,4 +82,3 @@ CMD ["python", "-m", "streamlit", "run", "dashboard/app.py", \
      "--server.enableXsrfProtection=true", \
      "--browser.gatherUsageStats=false", \
      "--server.maxUploadSize=10"]
-

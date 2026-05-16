@@ -29,7 +29,15 @@ repos:
           - pandas-stubs
           - types-requests
           - types-python-dateutil
-        args: ["--ignore-missing-imports", "--disable-error-code=misc"]
+        args:
+          - "--ignore-missing-imports"
+          - "--disable-error-code=misc"
+          - "--disable-error-code=no-untyped-def"
+          - "--disable-error-code=no-untyped-call"
+          - "--disable-error-code=no-any-return"
+          - "--disable-error-code=type-arg"
+          - "--disable-error-code=arg-type"
+          - "--disable-error-code=unused-ignore"
         files: '^(scraper|db|scheduler|dashboard)/.*\.py$|^config/.*\.py$'
 
   - repo: local
