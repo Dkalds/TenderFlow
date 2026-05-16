@@ -47,7 +47,7 @@ def render_topbar_brand(tagline: str = "Sector público · ES") -> None:
     st.markdown(
         f'<div class="topbar-brand">'
         f'<span class="brand-logo">{LOGO_SVG}</span>'
-        f'<span class="brand-name">Licitaciones SAP</span>'
+        f'<span class="brand-name">Licitaciones</span>'
         f'<span class="brand-tag">{tagline}</span>'
         f"</div>",
         unsafe_allow_html=True,
@@ -67,8 +67,8 @@ def render_topbar(last_updated: Any = None) -> bool:
     # Apertura del wrapper visual de la topbar
     st.markdown('<div class="topbar">', unsafe_allow_html=True)
 
-    col_brand, col_spacer, col_meta, col_pres, col_theme, col_refresh = st.columns(
-        [3, 5, 2.2, 0.8, 0.6, 0.6], gap="small", vertical_alignment="center"
+    col_brand, col_spacer, col_meta, col_refresh = st.columns(
+        [3, 4, 3.5, 0.8], gap="small", vertical_alignment="center"
     )
     with col_brand:
         render_topbar_brand()
@@ -87,24 +87,6 @@ def render_topbar(last_updated: Any = None) -> bool:
             "</span></div>",
             unsafe_allow_html=True,
         )
-    with col_pres:
-        # M11: Presentation mode toggle
-        _pres = st.toggle(
-            "🖥",
-            key="ui_presentation_mode",
-            value=st.session_state.get("ui_presentation_mode", False),
-            help="Modo presentación — fuentes grandes, sidebar oculto",
-            label_visibility="collapsed",
-        )
-    with col_theme:
-        # Toggle dark/light. Persistido en session_state.
-        light = st.toggle(
-            "☀",
-            key="ui_light_mode",
-            value=st.session_state.get("ui_light_mode", False),
-            help="Cambiar a tema claro / oscuro",
-            label_visibility="collapsed",
-        )
     with col_refresh:
         if st.button(
             "↻",
@@ -117,75 +99,12 @@ def render_topbar(last_updated: Any = None) -> bool:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── M11: Presentation mode CSS ────────────────────────────────────────
-    if st.session_state.get("ui_presentation_mode"):
-        st.markdown(
-            """<style>
-            [data-testid="stSidebar"] {display:none !important}
-            .stApp {font-size:1.25rem !important}
-            h1,.stMetricValue {font-size:2.2rem !important}
-            h2 {font-size:1.8rem !important}
-            h3 {font-size:1.4rem !important}
-            [data-testid="stDataFrame"] {font-size:1.1rem !important}
-            </style>""",
-            unsafe_allow_html=True,
-        )
-
-    return bool(light)
+    return False
 
 
-def render_export_popover(df: pd.DataFrame) -> None:
-    """Botón de exportación global en la topbar (popover con Excel y CSV).
-
-    Debe llamarse desde ``app.py`` después de calcular el DataFrame filtrado.
-    Se posiciona en la esquina superior derecha usando CSS fijo.
-    """
-    _ts = datetime.now(UTC).strftime("%Y%m%d_%H%M")
-
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stButton"]:has(button[title="Exportar datos filtrados"]) {
-            position: fixed; top: 10px; right: 90px; z-index: 9999;
-        }
-        div[data-testid="stButton"]:has(button[title="Exportar datos filtrados"]) button {
-            background: var(--color-bg-elev-2) !important;
-            border: 1px solid var(--color-border-card) !important;
-            color: var(--color-text-muted) !important;
-            font-size: 0.82rem !important;
-            padding: 4px 10px !important;
-            min-height: 0 !important;
-            height: 1.9em !important;
-            border-radius: 6px !important;
-        }
-        /* Posición fija del popover de exportación */
-        div[data-testid="stPopover"]:has(button[title="Exportar datos filtrados"]) {
-            position: fixed; top: 10px; right: 90px; z-index: 9999;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    with st.popover("⬇ Exportar", help="Exportar datos filtrados"):
-        st.caption(f"{len(df):,} filas filtradas")
-        st.download_button(
-            "⬇️ Excel",
-            data=to_excel_bytes(df),
-            file_name=f"licitaciones_sap_{_ts}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="global_export_xlsx",
-        )
-        st.download_button(
-            "⬇️ CSV",
-            data=df.drop(columns=["modulos"], errors="ignore")
-            .to_csv(index=False)
-            .encode("utf-8-sig"),
-            file_name=f"licitaciones_sap_{_ts}.csv",
-            mime="text/csv",
-            use_container_width=True,
-            key="global_export_csv",
-        )
+def render_export_popover(df: pd.DataFrame) -> None:  # noqa: ARG001
+    """Exportación global eliminada — función mantenida por compatibilidad."""
+    return
 
 
 # ── Backward-compat shims ────────────────────────────────────────────────
@@ -287,7 +206,8 @@ def render_notification_bell(
                     st.rerun()
 
         # ── M9: Browser push notification via JS Notification API ─────
-        if n_unread > 0 and not st.session_state.get("_browser_notif_sent"):
+        from dashboard.session_keys import BROWSER_NOTIF_SENT
+        if n_unread > 0 and not st.session_state.get(BROWSER_NOTIF_SENT):
             import streamlit.components.v1 as _stc_notif
 
             _notif_title = f"{n_unread} licitaciones nuevas"
@@ -312,7 +232,7 @@ def render_notification_bell(
                 </script>""",
                 height=0,
             )
-            st.session_state["_browser_notif_sent"] = True
+            st.session_state[BROWSER_NOTIF_SENT] = True
     except Exception:
         pass  # No romper el topbar si la DB no está lista
 

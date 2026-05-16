@@ -1,0 +1,83 @@
+name: Database Backup
+
+on:
+  schedule:
+    # Ejecutar cada día a las 03:00 UTC (fuera de ventanas de scraping)
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      include_turso:
+        description: "Incluir backup de Turso (requiere CLI instalado en runner)"
+        required: false
+        default: false
+        type: boolean
+      keep_s3:
+        description: "Número de backups a retener en S3/R2"
+        required: false
+        default: "30"
+        type: string
+
+permissions:
+  contents: read  # solo lectura sobre el repo
+
+jobs:
+  backup:
+    name: Backup SQLite → S3/R2
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt boto3
+
+      - name: Download latest SQLite DB
+        # En el runner no hay DB persistente — descargar desde Turso si está configurado.
+        # Si no hay Turso, el backup será vacío (skip) y se indica en el log.
+        # En producción, montar el volumen de datos o restaurar desde el backup anterior.
+        run: |
+          mkdir -p data
+          if [ -n "$TURSO_DATABASE_URL" ]; then
+            echo "Turso configurado — la DB será descargada en tiempo de ejecución por el script"
+          else
+            echo "Sin Turso configurado — solo se respalda la DB local si existe."
+          fi
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+
+      - name: Run backup
+        run: |
+          KEEP_S3="${{ inputs.keep_s3 || '30' }}"
+          EXTRA=""
+          if [ "${{ inputs.include_turso }}" = "true" ]; then
+            EXTRA="--turso"
+          fi
+          python scripts/backup_db.py --s3 --keep 3 --keep-s3 "${KEEP_S3}" ${EXTRA}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+          # DATA_DIR y DATABASE_PATH se resolverán desde config/settings.py
+          DATABASE_PATH: ${{ secrets.DATABASE_PATH || '' }}
+
+      - name: Upload backup artifact (fallback)
+        # Sube el backup como artefacto de GitHub Actions si el upload S3 falla.
+        # Los artefactos se retienen 90 días por defecto.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: data/backups/*.db.gz
+          retention-days: 90
+          if-no-files-found: warn

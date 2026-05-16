@@ -187,6 +187,13 @@ def render(ctx: PageContext) -> None:
     else:
         st.success("No hay fallos sin resolver en la DLQ. ✅")
 
+    # ── Cobertura de detección de módulos SAP ────────────────────────────
+    st.markdown("#### Cobertura de detección de módulos SAP")
+    if "modulos" in df.columns and not df.empty:
+        _render_sap_module_coverage(df, ctx.plotly_template)
+    else:
+        empty_state("🔍", "Sin datos de módulos", "El dataset no contiene la columna 'modulos'.")
+
     # ── Tabla de runs recientes con errores ──────────────────────────────
     if not runs.empty:
         with st.expander("Runs con errores de parseo"):
@@ -306,3 +313,44 @@ def _render_success_rate_by_week(runs: pd.DataFrame, template: str) -> None:
     fig.add_hline(y=90, line_dash="dash", line_color="green", annotation_text="Objetivo 90%")
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), yaxis=dict(range=[0, 105]))
     st.plotly_chart(fig, use_container_width=True)
+
+
+def _render_sap_module_coverage(df: pd.DataFrame, template: str) -> None:
+    """KPI + bar chart de cobertura de módulos SAP detectados."""
+    n = len(df)
+    has_specific = df["modulos"].apply(
+        lambda m: isinstance(m, list) and bool(m) and m != ["SAP (genérico)"]
+    )
+    pct_detected = float(has_specific.sum() / n * 100)
+
+    col_kpi, col_chart = st.columns([1, 3])
+    with col_kpi:
+        st.markdown(
+            kpi_card(
+                "Módulo específico detectado",
+                f"{pct_detected:.1f}%",
+                delta_up=pct_detected >= 50,
+                icon="🔍",
+                tooltip="% licitaciones con al menos un módulo SAP específico identificado (excluye 'SAP genérico').",
+            ),
+            unsafe_allow_html=True,
+        )
+    with col_chart:
+        exploded = df["modulos"].explode().dropna()
+        exploded = exploded[exploded.astype(str) != ""]
+        if not exploded.empty:
+            counts = exploded.value_counts().head(15).reset_index()
+            counts.columns = pd.Index(["módulo", "n"])
+            fig = px.bar(
+                counts.sort_values("n"),
+                x="n",
+                y="módulo",
+                orientation="h",
+                template=template,
+                labels={"n": "Nº licitaciones", "módulo": ""},
+                height=max(280, len(counts) * 26),
+            )
+            fig.update_layout(margin=dict(t=10, b=10, l=10, r=20))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No se detectaron módulos SAP en el dataset actual.")

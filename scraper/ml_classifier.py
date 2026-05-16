@@ -1,12 +1,28 @@
 """Clasificador ML para detección de licitaciones SAP.
 
-Complementa el filtro por keywords con un modelo TF-IDF + LogisticRegression
+Complementa el filtro por keywords con un modelo FeatureUnion(TF-IDF word +
+TF-IDF char_wb) + MaxAbsScaler + CalibratedClassifierCV(LogisticRegression)
 entrenado sobre los propios datos de la base de datos.
 
 Estrategia de etiquetado:
   - Positivos: licitaciones que ya pasaron el filtro de keywords (raw_keywords IS NOT NULL)
+    o con es_relevante=1 por feedback humano.
   - Negativos: licitaciones con CPV fuera del rango TI/software (no 48xxx ni 72xxx)
     y sin keywords SAP — muestra balanceada automáticamente.
+
+Mejoras respecto a la versión original:
+  1. FeatureUnion: TF-IDF word (1,2) + TF-IDF char_wb (2,4) — captura sub-palabras
+     como "S/4HANA", "netweaver" que word-tokenizer fragmenta incorrectamente.
+  2. CalibratedClassifierCV(sigmoid) — probabilidades calibradas (ECE reducido).
+  3. Split temporal si fecha_publicacion disponible; random 80/20 como fallback.
+  4. CV F1 estimate via 3-fold sobre el set de entrenamiento (pipeline sin calibración).
+  5. PR-AUC y threshold sweep → optimal_threshold almacenado en metadata.
+  6. self._threshold actualizado al optimal_threshold; fallback a settings si no entrenado.
+  7. Metadata completa guardada en el pickle: trained_at, version, metrics, threshold.
+  8. predict_proba() público (necesario para uncertainty sampling en active learning).
+  9. precompute_ml_proba() — actualiza columna ml_proba en BD para todas las licitaciones.
+ 10. CPV e importe se codifican como tokens especiales en el texto de entrenamiento y
+     predicción, permitiendo al modelo aprender señales estructurales sin cambiar la API.
 
 Uso:
     # Entrenar (una vez, o periódicamente):
@@ -20,6 +36,7 @@ Uso:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -38,26 +55,170 @@ _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pk
 MIN_TRAIN_SAMPLES = 50
 
 
+def _make_pipeline():
+    """Construye el pipeline sklearn con FeatureUnion + Calibración."""
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import FeatureUnion, Pipeline
+    from sklearn.preprocessing import MaxAbsScaler
+
+    feature_union = FeatureUnion(
+        [
+            (
+                "word",
+                TfidfVectorizer(
+                    analyzer="word",
+                    ngram_range=(1, 2),
+                    max_features=20_000,
+                    sublinear_tf=True,
+                    min_df=2,
+                    strip_accents="unicode",
+                ),
+            ),
+            (
+                "char",
+                TfidfVectorizer(
+                    analyzer="char_wb",
+                    ngram_range=(2, 4),
+                    max_features=15_000,
+                    sublinear_tf=True,
+                    min_df=2,
+                ),
+            ),
+        ]
+    )
+    base_lr = LogisticRegression(
+        C=1.0,
+        max_iter=500,
+        class_weight="balanced",
+        solver="lbfgs",
+        random_state=42,
+    )
+    return Pipeline(
+        [
+            ("features", feature_union),
+            ("scaler", MaxAbsScaler()),
+            ("clf", CalibratedClassifierCV(base_lr, cv=5, method="sigmoid")),
+        ]
+    )
+
+
 class SAPClassifier:
-    """Pipeline TF-IDF + LogisticRegression para detección de licitaciones SAP."""
+    """Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP."""
 
     def __init__(self) -> None:
+        self.pipeline = _make_pipeline()
+        self._trained = False
+        # Umbral óptimo aprendido en train(); fallback al de settings si no entrenado.
+        self._threshold: float = settings.ML_CONFIDENCE_THRESHOLD
+        # Metadata del entrenamiento (versión, métricas, timestamp).
+        self.metadata: dict[str, Any] = {}
+
+    # ── Entrenamiento ─────────────────────────────────────────────────────
+
+    def train(self, df: pd.DataFrame) -> dict[str, Any]:
+        """Entrena el clasificador con datos de la BD.
+
+        Args:
+            df: DataFrame con columnas titulo, descripcion, raw_keywords, cpv.
+                Opcionalmente: fecha_publicacion (para split temporal),
+                importe (para tokens de importe), es_relevante (label de feedback).
+
+        Returns:
+            Métricas de evaluación: accuracy, f1, pr_auc, cv_f1, optimal_threshold,
+            precision, recall, n_train, n_test, n_positive, n_negative.
+        """
+        import numpy as np
+        from sklearn.calibration import CalibratedClassifierCV
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.linear_model import LogisticRegression
-        from sklearn.pipeline import Pipeline
+        from sklearn.metrics import (
+            accuracy_score,
+            average_precision_score,
+            brier_score_loss,
+            f1_score,
+            fbeta_score,
+            precision_recall_curve,
+        )
+        from sklearn.model_selection import (
+            StratifiedKFold,
+            TimeSeriesSplit,
+            cross_val_score,
+            train_test_split,
+        )
+        from sklearn.pipeline import FeatureUnion, Pipeline
         from sklearn.preprocessing import MaxAbsScaler
 
-        self.pipeline = Pipeline(
+        # Ordenar por fecha si está disponible (split temporal)
+        _has_date = "fecha_publicacion" in df.columns and df["fecha_publicacion"].notna().any()
+        if _has_date:
+            df = df.sort_values("fecha_publicacion", na_position="first").reset_index(drop=True)
+
+        texts, labels = _build_dataset(df)
+        if len(texts) < MIN_TRAIN_SAMPLES:
+            log.warning(
+                "ml_classifier.insufficient_data",
+                n=len(texts),
+                min_required=MIN_TRAIN_SAMPLES,
+            )
+            return {"error": "insufficient_data", "n_samples": len(texts)}
+
+        n_pos_total = int(sum(1 for label in labels if label == 1))
+        n_neg_total = len(labels) - n_pos_total
+        if len(set(labels)) < 2:
+            log.warning(
+                "ml_classifier.single_class",
+                n_positive=n_pos_total,
+                n_negative=n_neg_total,
+                hint="Se necesitan ejemplos negativos (CPV fuera de 48xxx/72xxx sin keywords SAP).",
+            )
+            return {"error": "single_class", "n_positive": n_pos_total, "n_negative": n_neg_total}
+
+        # ── Split ──────────────────────────────────────────────────────────
+        if _has_date:
+            # Split temporal: últimos 20% como test (más realista que random)
+            cutoff = max(1, int(len(texts) * 0.80))
+            X_train, X_test = texts[:cutoff], texts[cutoff:]
+            y_train, y_test = labels[:cutoff], labels[cutoff:]
+            # Si el test set tiene una sola clase, caer a random split
+            if len(set(y_test)) < 2:
+                _has_date = False
+
+        if not _has_date:
+            X_train, X_test, y_train, y_test = train_test_split(
+                texts, labels, test_size=0.2, random_state=42, stratify=labels
+            )
+
+        # ── CV F1 estimate (pipeline no calibrado, más rápido) ─────────────
+        pipeline_cv = Pipeline(
             [
                 (
-                    "tfidf",
-                    TfidfVectorizer(
-                        ngram_range=(1, 2),
-                        max_features=30_000,
-                        sublinear_tf=True,
-                        min_df=2,
-                        analyzer="word",
-                        strip_accents="unicode",
+                    "features",
+                    FeatureUnion(
+                        [
+                            (
+                                "word",
+                                TfidfVectorizer(
+                                    analyzer="word",
+                                    ngram_range=(1, 2),
+                                    max_features=20_000,
+                                    sublinear_tf=True,
+                                    min_df=2,
+                                    strip_accents="unicode",
+                                ),
+                            ),
+                            (
+                                "char",
+                                TfidfVectorizer(
+                                    analyzer="char_wb",
+                                    ngram_range=(2, 4),
+                                    max_features=15_000,
+                                    sublinear_tf=True,
+                                    min_df=2,
+                                ),
+                            ),
+                        ]
                     ),
                 ),
                 ("scaler", MaxAbsScaler()),
@@ -73,94 +234,234 @@ class SAPClassifier:
                 ),
             ]
         )
-        self._trained = False
+        n_cv_splits = min(3, len(set(y_train)))  # protección datos muy pequeños
+        cv_f1: float = 0.0
+        if len(X_train) >= 10 and n_cv_splits >= 2:
+            try:
+                # TimeSeriesSplit cuando hay fechas y está habilitado en settings:
+                # respeta el orden temporal (sin shuffle) — refleja mejor el
+                # rendimiento esperado sobre datos futuros.
+                if _has_date and getattr(settings, "ML_USE_TIMESERIES_CV", True):
+                    cv_splitter: Any = TimeSeriesSplit(n_splits=n_cv_splits)
+                else:
+                    cv_splitter = StratifiedKFold(
+                        n_splits=n_cv_splits, shuffle=True, random_state=42
+                    )
+                cv_scores = cross_val_score(
+                    pipeline_cv,
+                    X_train,
+                    y_train,
+                    cv=cv_splitter,
+                    scoring="f1",
+                )
+                cv_f1 = float(np.mean(cv_scores))
+            except Exception:
+                cv_f1 = 0.0
 
-    # ── Entrenamiento ─────────────────────────────────────────────────────
-
-    def train(self, df: pd.DataFrame) -> dict[str, Any]:
-        """Entrena el clasificador con datos de la BD.
-
-        Args:
-            df: DataFrame con columnas titulo, descripcion, raw_keywords, cpv.
-
-        Returns:
-            Métricas de evaluación (accuracy, f1, n_train, n_test).
-        """
-        import numpy as np
-        from sklearn.metrics import accuracy_score, f1_score
-        from sklearn.model_selection import train_test_split
-
-        texts, labels = _build_dataset(df)
-        if len(texts) < MIN_TRAIN_SAMPLES:
-            log.warning(
-                "ml_classifier.insufficient_data",
-                n=len(texts),
-                min_required=MIN_TRAIN_SAMPLES,
-            )
-            return {"error": "insufficient_data", "n_samples": len(texts)}
-
-        n_pos = int(sum(1 for label in labels if label == 1))
-        n_neg = len(labels) - n_pos
-        if len(set(labels)) < 2:
-            log.warning(
-                "ml_classifier.single_class",
-                n_positive=n_pos,
-                n_negative=n_neg,
-                hint="Se necesitan ejemplos negativos (CPV fuera de 48xxx/72xxx sin keywords SAP).",
-            )
-            return {"error": "single_class", "n_positive": n_pos, "n_negative": n_neg}
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            texts, labels, test_size=0.2, random_state=42, stratify=labels
-        )
+        # ── Entrenamiento final (pipeline calibrado) ───────────────────────
         self.pipeline.fit(X_train, y_train)
         self._trained = True
 
+        # ── Evaluación en test set ─────────────────────────────────────────
+        proba_test = self.pipeline.predict_proba(X_test)[:, 1]
         y_pred = self.pipeline.predict(X_test)
+
         acc = float(accuracy_score(y_test, y_pred))
         f1 = float(f1_score(y_test, y_pred, zero_division=0))
-        n_pos = int(np.sum(labels))
-        n_neg = len(labels) - n_pos
 
-        metrics = {
+        # PR-AUC (más informativo que ROC-AUC en clases desbalanceadas)
+        pr_auc: float = 0.0
+        if len(set(y_test)) >= 2:
+            pr_auc = float(average_precision_score(y_test, proba_test))
+
+        # ── Calidad de calibración ────────────────────────────────────────
+        # Brier score: error cuadrático medio de las probabilidades (0=perfecto).
+        # ECE: Expected Calibration Error con 10 bins equi-anchos.
+        brier: float = float(brier_score_loss(y_test, proba_test))
+        ece: float = _expected_calibration_error(np.asarray(y_test), proba_test, n_bins=10)
+
+        # ── Threshold sweep: maximizar F-beta (β configurable) ────────────
+        beta = float(getattr(settings, "ML_FBETA", 1.0))
+        optimal_threshold = settings.ML_CONFIDENCE_THRESHOLD
+        if len(set(y_test)) >= 2:
+            precisions, recalls, thresholds = precision_recall_curve(y_test, proba_test)
+            # F_beta = (1+β²) * P*R / (β²*P + R)
+            beta_sq = beta * beta
+            denom = beta_sq * precisions[:-1] + recalls[:-1] + 1e-9
+            fbeta_scores = (1 + beta_sq) * precisions[:-1] * recalls[:-1] / denom
+            if len(fbeta_scores) > 0:
+                best_idx = int(np.argmax(fbeta_scores))
+                optimal_threshold = float(thresholds[best_idx])
+                # Clamping: no salir del rango [0.3, 0.95]
+                optimal_threshold = max(0.30, min(0.95, optimal_threshold))
+
+        self._threshold = optimal_threshold
+
+        # Métricas con el threshold óptimo
+        y_pred_opt = (proba_test >= optimal_threshold).astype(int)
+        precision_opt = float(
+            np.sum((y_pred_opt == 1) & (np.array(y_test) == 1))
+            / (np.sum(y_pred_opt == 1) + 1e-9)
+        )
+        recall_opt = float(
+            np.sum((y_pred_opt == 1) & (np.array(y_test) == 1))
+            / (np.sum(np.array(y_test) == 1) + 1e-9)
+        )
+        fbeta_opt = float(fbeta_score(y_test, y_pred_opt, beta=beta, zero_division=0))
+
+        metrics: dict[str, Any] = {
             "accuracy": round(acc, 4),
             "f1": round(f1, 4),
+            "fbeta": round(fbeta_opt, 4),
+            "beta": beta,
+            "cv_f1": round(cv_f1, 4),
+            "pr_auc": round(pr_auc, 4),
+            "brier": round(brier, 4),
+            "ece": round(ece, 4),
+            "optimal_threshold": round(optimal_threshold, 4),
+            "precision": round(precision_opt, 4),
+            "recall": round(recall_opt, 4),
             "n_train": len(X_train),
             "n_test": len(X_test),
-            "n_positive": n_pos,
-            "n_negative": n_neg,
+            "n_positive": n_pos_total,
+            "n_negative": n_neg_total,
+            "temporal_split": _has_date,
+        }
+        self.metadata = {
+            **metrics,
+            "trained_at": datetime.now(UTC).isoformat(),
         }
         log.info("ml_classifier.trained", **metrics)
+        # Append run a registry JSON para histórico de entrenamientos.
+        try:
+            _append_to_registry(self.metadata)
+        except Exception as exc:  # pragma: no cover — never block training
+            log.warning("ml_classifier.registry_append_failed", error=str(exc))
         return metrics
 
-    def predict(self, text: str) -> tuple[bool, float]:
+    def predict(self, text: str, *, cpv: str | None = None, importe: float | None = None) -> tuple[bool, float]:
         """Predice si un texto corresponde a una licitación SAP.
 
         Args:
             text: Texto combinado (título + descripción).
+            cpv: Código CPV opcional — mejora la predicción con token estructural.
+            importe: Importe en EUR opcional — añade token de rango de importe.
 
         Returns:
             (es_sap, confianza) — confianza en [0, 1].
         """
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado. Llama a train() o load() primero.")
-        proba = self.pipeline.predict_proba([text])[0]
-        # proba[1] = P(SAP)
+        augmented = _augment_text(text, cpv=cpv, importe=importe)
+        proba = self.pipeline.predict_proba([augmented])[0]
         confidence = float(proba[1])
-        return confidence >= settings.ML_CONFIDENCE_THRESHOLD, confidence
+        return confidence >= self._threshold, confidence
 
     def predict_batch(self, texts: list[str]) -> list[tuple[bool, float]]:
         """Predicción en batch (más eficiente que llamadas individuales)."""
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado.")
         probas = self.pipeline.predict_proba(texts)
-        threshold = settings.ML_CONFIDENCE_THRESHOLD
+        threshold = self._threshold
         return [(float(p[1]) >= threshold, float(p[1])) for p in probas]
+
+    def predict_proba(self, texts: list[str]):
+        """Devuelve la matriz de probabilidades sklearn (shape: [n, 2]).
+
+        Columna 0 = P(no-SAP), columna 1 = P(SAP). Idéntico a
+        sklearn.pipeline.Pipeline.predict_proba — expuesto en SAPClassifier
+        para que los endpoints de active learning puedan usarlo directamente.
+        """
+        if not self._trained:
+            raise RuntimeError("Clasificador no entrenado.")
+        return self.pipeline.predict_proba(texts)
+
+    # ── Explicabilidad ────────────────────────────────────────────────────
+
+    def explain(self, text: str, top_k: int = 5) -> dict[str, Any]:
+        """Devuelve los términos que más contribuyen a la predicción.
+
+        Con CalibratedClassifierCV, extrae el coeficiente medio de los
+        clasificadores base de cada fold y lo multiplica por la contribución
+        TF-IDF del texto. Equivalente al SHAP value para modelos lineales.
+
+        Returns:
+            Dict con ``prediction``, ``confidence``, ``top_features`` (lista
+            de ``{term, weight, contribution}``).
+        """
+        if not self._trained:
+            raise RuntimeError("Clasificador no entrenado.")
+
+        import numpy as np
+
+        proba = self.pipeline.predict_proba([text])[0]
+        confidence = float(proba[1])
+
+        # Extraer el FeatureUnion (paso "features") y el clasificador calibrado
+        feature_step = self.pipeline.named_steps.get("features")
+        clf_step = self.pipeline.named_steps.get("clf")
+
+        if feature_step is None or clf_step is None:
+            return {
+                "prediction": confidence >= self._threshold,
+                "confidence": confidence,
+                "top_features": [],
+                "warning": "No se pudieron extraer pasos del pipeline.",
+            }
+
+        # Transformar el texto a través del FeatureUnion
+        tfidf_matrix = feature_step.transform([text])
+        feature_names = feature_step.get_feature_names_out()
+
+        # CalibratedClassifierCV: extraer coef promedio de los estimadores base
+        try:
+            calibrated_classifiers = clf_step.calibrated_classifiers_
+            coefs = [cc.estimator.coef_[0] for cc in calibrated_classifiers]
+            coef = np.mean(coefs, axis=0)
+        except AttributeError:
+            # Fallback: clasificador sin calibración o estructura distinta
+            if hasattr(clf_step, "coef_"):
+                coef = clf_step.coef_[0]
+            else:
+                return {
+                    "prediction": confidence >= self._threshold,
+                    "confidence": confidence,
+                    "top_features": [],
+                    "warning": f"Clasificador {type(clf_step).__name__} no soporta explicación lineal.",
+                }
+
+        contributions = tfidf_matrix.multiply(coef).toarray().ravel()
+
+        # Top-k por valor absoluto
+        idx_sorted = sorted(
+            range(len(contributions)),
+            key=lambda i: abs(contributions[i]),
+            reverse=True,
+        )[: top_k * 2]
+        top = [
+            {
+                "term": str(feature_names[i]),
+                "weight": float(coef[i]),
+                "contribution": float(contributions[i]),
+            }
+            for i in idx_sorted
+            if abs(contributions[i]) > 1e-9
+        ][:top_k]
+
+        return {
+            "prediction": confidence >= self._threshold,
+            "confidence": confidence,
+            "top_features": top,
+        }
 
     # ── Persistencia ──────────────────────────────────────────────────────
 
     def save(self, path: Path | None = None) -> Path:
-        """Serializa el modelo a disco usando joblib (más seguro que pickle)."""
+        """Serializa el modelo a disco usando joblib (más seguro que pickle).
+
+        Guarda el objeto SAPClassifier completo (incluye pipeline entrenado,
+        _threshold óptimo y metadata) junto con un checksum SHA256.
+        """
         import hashlib
 
         import joblib
@@ -174,7 +475,13 @@ class SAPClassifier:
         checksum_path = target.with_suffix(".sha256")
         checksum_path.write_text(sha256_hash, encoding="utf-8")
 
-        log.info("ml_classifier.saved", path=str(target), sha256=sha256_hash[:16])
+        log.info(
+            "ml_classifier.saved",
+            path=str(target),
+            sha256=sha256_hash[:16],
+            threshold=self._threshold,
+            trained_at=self.metadata.get("trained_at", "unknown"),
+        )
         return target
 
     @classmethod
@@ -294,7 +601,17 @@ class SAPClassifier:
         obj = joblib.load(target)
         if not isinstance(obj, cls):
             raise TypeError(f"El archivo no contiene un SAPClassifier: {type(obj)}")
-        log.info("ml_classifier.loaded", path=str(target))
+        # Retrocompatibilidad: modelos anteriores no tienen _threshold ni metadata
+        if not hasattr(obj, "_threshold"):
+            obj._threshold = settings.ML_CONFIDENCE_THRESHOLD
+        if not hasattr(obj, "metadata"):
+            obj.metadata = {}
+        log.info(
+            "ml_classifier.loaded",
+            path=str(target),
+            threshold=obj._threshold,
+            trained_at=obj.metadata.get("trained_at", "legacy"),
+        )
         return obj
 
     @classmethod
@@ -306,31 +623,178 @@ class SAPClassifier:
 # ── Funciones auxiliares ──────────────────────────────────────────────────────
 
 
-def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
-    """Construye el dataset de entrenamiento desde el DataFrame.
+# Ruta del registro de entrenamientos (histórico de runs).
+_REGISTRY_PATH = Path(__file__).parents[1] / "data" / "models" / "registry.json"
 
-    Positivos: raw_keywords IS NOT NULL (coincidió con keywords SAP).
-    Negativos: raw_keywords IS NULL + CPV fuera del rango TI, balanceados.
+
+def _expected_calibration_error(y_true, y_proba, n_bins: int = 10) -> float:
+    """Expected Calibration Error con bins equi-anchos.
+
+    Mide la diferencia ponderada entre confianza media y accuracy real
+    en cada bin. ECE=0 → calibración perfecta; ECE alto → mal calibrado.
     """
     import numpy as np
 
-    text_col = (df["titulo"].fillna("") + " " + df["descripcion"].fillna("")).str.strip()
+    y_true_arr = np.asarray(y_true)
+    y_proba_arr = np.asarray(y_proba)
+    if len(y_true_arr) == 0:
+        return 0.0
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_idx = np.digitize(y_proba_arr, bins[1:-1])
+    ece = 0.0
+    n = len(y_true_arr)
+    for b in range(n_bins):
+        mask = bin_idx == b
+        if not mask.any():
+            continue
+        conf = float(y_proba_arr[mask].mean())
+        acc = float(y_true_arr[mask].mean())
+        ece += (mask.sum() / n) * abs(conf - acc)
+    return float(ece)
 
-    mask_pos = df["raw_keywords"].notna() & (df["raw_keywords"] != "")
-    mask_neg_cpv = df["cpv"].notna() & ~(
-        df["cpv"].str.startswith("48") | df["cpv"].str.startswith("72")
-    )
+
+def _append_to_registry(entry: dict[str, Any], path: Path | None = None) -> Path:
+    """Añade una entrada al registro de entrenamientos JSON (lista append-only).
+
+    El registro permite:
+      - Visualizar la evolución de métricas en el tiempo.
+      - Detectar regresiones automáticamente (comparar último vs penúltimo).
+      - Auditar qué modelo está en producción.
+    """
+    import json
+
+    target = path or _REGISTRY_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    history: list[dict[str, Any]] = []
+    if target.exists():
+        try:
+            raw = target.read_text(encoding="utf-8")
+            if raw.strip():
+                history = json.loads(raw)
+            if not isinstance(history, list):
+                history = []
+        except json.JSONDecodeError:
+            history = []
+    history.append(dict(entry))
+    target.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
+    return target
+
+
+def read_registry(path: Path | None = None) -> list[dict[str, Any]]:
+    """Lee el histórico de entrenamientos como lista de dicts (vacía si no existe)."""
+    import json
+
+    target = path or _REGISTRY_PATH
+    if not target.exists():
+        return []
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def _augment_text(text: str, *, cpv: str | None = None, importe: float | None = None) -> str:
+    """Añade tokens estructurales al texto para mejorar la discriminación.
+
+    CPV: Los códigos 48xxx/72xxx son señal TI fuerte → token "CPV_TI".
+         Cualquier otro CPV → token "CPV_NO_TI".
+    Importe: Se codifica en rangos logarítmicos (k€) como tokens especiales.
+
+    Estos tokens son reconocidos por el TF-IDF word vectorizer como features
+    adicionales sin cambiar la API de predict().
+    """
+    parts = [text]
+    if cpv:
+        cpv_clean = cpv.strip()[:8]
+        if cpv_clean.startswith(("48", "72")):
+            parts.append("CPV_TI CPV_TI")  # duplicado para mayor peso
+        else:
+            parts.append("CPV_NO_TI")
+    if importe and importe > 0:
+        import math
+
+        log_imp = math.log10(max(importe, 1))
+        if log_imp < 4:  # < 10k€
+            parts.append("IMPORTE_XS")
+        elif log_imp < 5:  # 10k–100k€
+            parts.append("IMPORTE_S")
+        elif log_imp < 6:  # 100k–1M€
+            parts.append("IMPORTE_M")
+        elif log_imp < 7:  # 1M–10M€
+            parts.append("IMPORTE_L")
+        else:  # > 10M€
+            parts.append("IMPORTE_XL")
+    return " ".join(parts)
+
+
+def _build_dataset(df: "pd.DataFrame") -> tuple[list[str], list[int]]:
+    """Construye el dataset de entrenamiento desde el DataFrame.
+
+    Fuentes de etiqueta (prioridad descendente):
+      1. ``es_relevante`` columna (feedback humano explícito).
+      2. ``raw_keywords`` IS NOT NULL → positivo.
+      Negativos: ``raw_keywords`` IS NULL + CPV fuera del rango TI (no 48/72).
+    Aumenta los textos con tokens CPV e importe si las columnas están presentes.
+
+    Preserva el orden del df para que el split temporal en train() sea correcto.
+    """
+    import numpy as np
+
+    has_cpv = "cpv" in df.columns
+    has_importe = "importe" in df.columns
+    has_keywords = "raw_keywords" in df.columns
+    has_relevante = "es_relevante" in df.columns
+
+    def _text_for_row(row) -> str:
+        titulo = str(row.get("titulo", "") or "")
+        desc = str(row.get("descripcion", "") or "")
+        text = (titulo + " " + desc).strip()
+        cpv = str(row.get("cpv", "") or "") if has_cpv else None
+        importe = row.get("importe") if has_importe else None
+        return _augment_text(text, cpv=cpv or None, importe=float(importe) if importe else None)
+
+    # Máscara de positivos
+    if has_relevante and not has_keywords:
+        # Solo feedback — usar es_relevante como label
+        mask_pos = df["es_relevante"].astype(bool)
+    elif has_relevante and has_keywords:
+        # Combinar: relevante=1 O raw_keywords notna
+        mask_pos = df["es_relevante"].astype(bool) | (
+            df["raw_keywords"].notna() & (df["raw_keywords"] != "")
+        )
+    elif has_keywords:
+        mask_pos = df["raw_keywords"].notna() & (df["raw_keywords"] != "")
+    else:
+        # No hay señal → vacío
+        return [], []
+
+    # Máscara de negativos: sin señal positiva + CPV no-TI
+    if has_cpv:
+        mask_neg_cpv = df["cpv"].notna() & ~(
+            df["cpv"].str.startswith("48") | df["cpv"].str.startswith("72")
+        )
+    else:
+        mask_neg_cpv = ~mask_pos  # sin CPV, usamos todo lo que no es positivo
+
     mask_neg = ~mask_pos & mask_neg_cpv
 
-    pos_texts = text_col[mask_pos].tolist()
-    neg_texts = text_col[mask_neg].tolist()
+    pos_rows = df[mask_pos]
+    neg_rows = df[mask_neg]
+
+    pos_texts = [_text_for_row(r) for r in pos_rows.to_dict("records")]
+    neg_texts_all = [_text_for_row(r) for r in neg_rows.to_dict("records")]
 
     # Balancear: máx. 2x positivos en negativos
-    max_neg = min(len(neg_texts), len(pos_texts) * 2)
-    if max_neg < len(neg_texts):
+    max_neg = min(len(neg_texts_all), len(pos_texts) * 2)
+    if max_neg < len(neg_texts_all):
         rng = np.random.default_rng(42)
-        idx = rng.choice(len(neg_texts), max_neg, replace=False)
-        neg_texts = [neg_texts[i] for i in idx]
+        # Seleccionar subset y ORDENAR los índices para preservar orden temporal del df
+        idx = rng.choice(len(neg_texts_all), max_neg, replace=False)
+        idx_sorted = sorted(idx)
+        neg_texts = [neg_texts_all[i] for i in idx_sorted]
+    else:
+        neg_texts = neg_texts_all
 
     texts = pos_texts + neg_texts
     labels = [1] * len(pos_texts) + [0] * len(neg_texts)
@@ -537,7 +1001,10 @@ def train_from_db() -> dict[str, Any]:
 
     init_db()
     with connect() as c:
-        cursor = c.execute("SELECT titulo, descripcion, raw_keywords, cpv FROM licitaciones")
+        cursor = c.execute(
+            "SELECT titulo, descripcion, raw_keywords, cpv, importe, fecha_publicacion "
+            "FROM licitaciones"
+        )
         rows = cursor.fetchall()
         cols = [d[0] for d in cursor.description]
 
@@ -549,7 +1016,211 @@ def train_from_db() -> dict[str, Any]:
     return metrics
 
 
+def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[str, int]:
+    """Pre-computa ml_proba para todas las licitaciones en la BD.
+
+    Actualiza la columna ``ml_proba`` con P(SAP) del clasificador actual.
+    Por defecto solo procesa filas donde ``ml_proba IS NULL``; con ``force=True``
+    recalcula todas.
+
+    Args:
+        batch_size: Número de filas a procesar por batch (contro memoria).
+        force: Si True, sobreescribe valores existentes.
+
+    Returns:
+        {"updated": N, "skipped_no_model": bool}
+    """
+    if not SAPClassifier.is_available():
+        log.warning("precompute_ml_proba.no_model")
+        return {"updated": 0, "skipped_no_model": True}
+
+    try:
+        clf = SAPClassifier.load()
+    except Exception as exc:
+        log.error("precompute_ml_proba.load_failed", error=str(exc))
+        return {"updated": 0, "skipped_no_model": True}
+
+    from db.database import connect
+
+    where = "" if force else "WHERE ml_proba IS NULL"
+    with connect() as c:
+        rows = c.execute(
+            f"SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones {where}"
+        ).fetchall()
+
+    if not rows:
+        log.info("precompute_ml_proba.nothing_to_update")
+        return {"updated": 0, "skipped_no_model": False}
+
+    updated = 0
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i : i + batch_size]
+        texts = [
+            _augment_text(
+                (str(r[1] or "") + " " + str(r[2] or "")).strip(),
+                cpv=str(r[3]) if r[3] else None,
+                importe=float(r[4]) if r[4] else None,
+            )
+            for r in batch
+        ]
+        try:
+            probas = clf.pipeline.predict_proba(texts)[:, 1]
+        except Exception as exc:
+            log.error("precompute_ml_proba.predict_failed", batch_start=i, error=str(exc))
+            continue
+
+        with connect() as c:
+            for row, proba in zip(batch, probas):
+                c.execute(
+                    "UPDATE licitaciones SET ml_proba = ? WHERE id_externo = ?",
+                    (float(proba), row[0]),
+                )
+            c.commit()
+        updated += len(batch)
+
+    log.info("precompute_ml_proba.done", updated=updated)
+    return {"updated": updated, "skipped_no_model": False}
+
+
 # ── CLI entry point ───────────────────────────────────────────────────────────
+
+# ── Multi-label classifier (H4) ───────────────────────────────────────────────
+
+#: Labels soportados. El label "SAP" se mapea al clasificador binario existente.
+MULTI_LABELS = ["SAP", "Cloud", "Integracion", "Mantenimiento", "RRHH"]
+
+#: Keywords para heurística de labels adicionales (se combina con modelo lineal)
+_LABEL_KEYWORDS: dict[str, list[str]] = {
+    "Cloud": ["cloud", "saas", "azure", "aws", "nube", "on-demand", "s/4hana cloud"],
+    "Integracion": [
+        "integración", "integrar", "middleware", "api", "interfaz",
+        "sistema externo", "conexion", "interoperabilidad",
+    ],
+    "Mantenimiento": [
+        "mantenimiento", "soporte", "correctivo", "preventivo", "helpdesk",
+        "servicio técnico", "licencias soporte",
+    ],
+    "RRHH": ["rrhh", "recursos humanos", "hr", "sap hr", "payroll", "nomina", "nómina"],
+}
+
+_MULTILABEL_MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_multilabel.pkl"
+
+
+class SAPMultiLabelClassifier:
+    """Clasificador multi-label para SAP/Cloud/Integración/Mantenimiento/RRHH.
+
+    Estrategia:
+      - SAP: delega en SAPClassifier (modelo binario existente).
+      - Otros labels: heurística de keywords + LogisticRegression por label.
+
+    La API es compatible con SAPClassifier para fácil sustitución.
+    """
+
+    def __init__(self) -> None:
+        self._sap_clf: SAPClassifier | None = None
+        self._label_clfs: dict[str, Any] = {}
+        self._trained = False
+
+    def _keyword_score(self, text: str, label: str) -> float:
+        """Devuelve fracción de keywords del label que aparecen en el texto."""
+        t = text.lower()
+        kws = _LABEL_KEYWORDS.get(label, [])
+        if not kws:
+            return 0.0
+        return sum(1 for kw in kws if kw in t) / len(kws)
+
+    def train(self, df: "pd.DataFrame") -> dict[str, Any]:  # noqa: F821
+        """Entrena usando el SAP binario + heurística para labels extras."""
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.pipeline import Pipeline
+
+        # Train SAP binary
+        sap = SAPClassifier()
+        metrics = sap.train(df)
+        if "error" in metrics:
+            return metrics
+        self._sap_clf = sap
+
+        texts = (df["titulo"].fillna("") + " " + df["descripcion"].fillna("")).str.strip().tolist()
+
+        # Train one LogReg per extra label using keyword heuristic as silver labels
+        for label, kws in _LABEL_KEYWORDS.items():
+            silver = [int(any(kw in t.lower() for kw in kws)) for t in texts]
+            if sum(silver) < 10:
+                continue  # skip if too few positive examples
+            pipe = Pipeline([
+                ("tfidf", TfidfVectorizer(ngram_range=(1, 2), max_features=20000, sublinear_tf=True)),
+                ("clf", LogisticRegression(C=1.0, max_iter=300, class_weight="balanced", random_state=42)),
+            ])
+            try:
+                pipe.fit(texts, silver)
+                self._label_clfs[label] = pipe
+            except Exception as exc:
+                log.warning("multilabel_train_skip", label=label, error=str(exc))
+
+        self._trained = True
+        metrics["multilabel_trained"] = list(self._label_clfs.keys())
+        return metrics
+
+    def predict_labels(self, text: str) -> dict[str, float]:
+        """Devuelve {label: confidence} para todos los labels."""
+        if not self._trained or self._sap_clf is None:
+            raise RuntimeError("Clasificador no entrenado.")
+        out: dict[str, float] = {}
+        _, sap_conf = self._sap_clf.predict(text)
+        out["SAP"] = sap_conf
+        for label, pipe in self._label_clfs.items():
+            try:
+                proba = pipe.predict_proba([text])[0][1]
+                out[label] = float(proba)
+            except Exception:
+                out[label] = self._keyword_score(text, label)
+        return out
+
+    def predict(self, text: str) -> tuple[bool, float]:
+        """Compatible with SAPClassifier.predict() — returns (is_sap, confidence)."""
+        labels = self.predict_labels(text)
+        conf = labels.get("SAP", 0.0)
+        return conf >= settings.ML_CONFIDENCE_THRESHOLD, conf
+
+    def predict_proba(self, texts: list[str]) -> "Any":
+        """Returns array-like probabilities for compatibility with H3 uncertainty sampling."""
+        import numpy as np
+
+        if not self._trained or self._sap_clf is None:
+            raise RuntimeError("Clasificador no entrenado.")
+        probas = []
+        for text in texts:
+            _, conf = self._sap_clf.predict(text)
+            probas.append([1 - conf, conf])
+        return np.array(probas)
+
+    def save(self, path: "Path | None" = None) -> "Path":
+        import joblib
+
+        target = path or _MULTILABEL_MODEL_PATH
+        target.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(self, target, compress=3)
+        log.info("multilabel_classifier.saved", path=str(target))
+        return target
+
+    @classmethod
+    def load(cls, path: "Path | None" = None) -> "SAPMultiLabelClassifier":
+        import joblib
+
+        target = path or _MULTILABEL_MODEL_PATH
+        if not target.exists():
+            raise FileNotFoundError(f"Multi-label classifier not found: {target}")
+        obj = joblib.load(target)
+        if not isinstance(obj, cls):
+            raise TypeError(f"Expected SAPMultiLabelClassifier, got {type(obj)}")
+        return obj
+
+    @classmethod
+    def is_available(cls, path: "Path | None" = None) -> bool:
+        return (path or _MULTILABEL_MODEL_PATH).exists()
+
 
 if __name__ == "__main__":
     import sys

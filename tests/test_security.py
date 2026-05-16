@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dashboard.utils.security import safe_url
 
 
@@ -66,3 +68,58 @@ class TestSafeUrl:
 
     def test_solo_espacios_devuelve_none(self):
         assert safe_url("   ") is None
+
+
+class TestTursoDatabaseUrlValidator:
+    """Valida que Settings rechaza esquemas peligrosos en TURSO_DATABASE_URL."""
+
+    def _make_settings(self, monkeypatch, url: str):
+        monkeypatch.setenv("TURSO_DATABASE_URL", url)
+        monkeypatch.setenv("TURSO_AUTH_TOKEN", "token123" if url else "")
+        from config.settings import Settings
+
+        return Settings()
+
+    def test_libsql_scheme_aceptado(self, monkeypatch):
+        s = self._make_settings(monkeypatch, "libsql://mydb.turso.io")
+        assert s.TURSO_DATABASE_URL == "libsql://mydb.turso.io"
+
+    def test_https_scheme_aceptado(self, monkeypatch):
+        s = self._make_settings(monkeypatch, "https://mydb.turso.io")
+        assert s.TURSO_DATABASE_URL == "https://mydb.turso.io"
+
+    def test_vacio_aceptado(self, monkeypatch):
+        monkeypatch.setenv("TURSO_DATABASE_URL", "")
+        monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
+        from config.settings import Settings
+
+        s = Settings()
+        assert s.TURSO_DATABASE_URL == ""
+
+    def test_file_scheme_rechazado(self, monkeypatch):
+        monkeypatch.setenv("TURSO_DATABASE_URL", "file:///etc/passwd")
+        monkeypatch.setenv("TURSO_AUTH_TOKEN", "token123")
+        from config.settings import Settings
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="esquema no permitido"):
+            Settings()
+
+    def test_javascript_scheme_rechazado(self, monkeypatch):
+        monkeypatch.setenv("TURSO_DATABASE_URL", "javascript:alert(1)")
+        monkeypatch.setenv("TURSO_AUTH_TOKEN", "token123")
+        from config.settings import Settings
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="esquema no permitido"):
+            Settings()
+
+    def test_http_scheme_rechazado(self, monkeypatch):
+        """http:// (sin TLS) no está en la allowlist para Turso."""
+        monkeypatch.setenv("TURSO_DATABASE_URL", "http://mydb.turso.io")
+        monkeypatch.setenv("TURSO_AUTH_TOKEN", "token123")
+        from config.settings import Settings
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="esquema no permitido"):
+            Settings()

@@ -229,6 +229,27 @@ def check_and_notify() -> int:
             entradas_con_coincidencias=len(matches_by_entry),
             total_coincidencias=n,
         )
+        # B5: dispara webhook a suscriptores externos (best-effort, no bloquea)
+        try:
+            from db.webhooks import trigger_event
+
+            trigger_event(
+                "watchlist_match",
+                {
+                    "recipient": recipient,
+                    "total_matches": n,
+                    "entries": [
+                        {
+                            "cpv_prefix": e["cpv_prefix"],
+                            "keyword": e.get("keyword"),
+                            "matches": [lic.get("id_externo") for lic in lics],
+                        }
+                        for e, lics in matches_by_entry
+                    ],
+                },
+            )
+        except Exception:  # noqa: BLE001
+            log.warning("webhook_trigger_failed", exc_info=True)
         log.info("watchlist_alert_sent", recipient=recipient, total=n, frequency="immediate")
         total_notified += n
 

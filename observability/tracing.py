@@ -73,13 +73,12 @@ def configure_tracing(service_name: str | None = None) -> None:
     svc_name = service_name or settings.OTEL_SERVICE_NAME
 
     if not endpoint:
-        # Sin endpoint configurado → modo NoOp
+        # Sin endpoint configurado → modo NoOp (mínimo overhead)
         try:
             from opentelemetry import trace
-            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.trace import NoOpTracerProvider
 
-            provider = TracerProvider()
-            trace.set_tracer_provider(provider)
+            trace.set_tracer_provider(NoOpTracerProvider())
         except ImportError:
             pass  # opentelemetry no instalado — silencio total
         _noop = True
@@ -93,15 +92,65 @@ def configure_tracing(service_name: str | None = None) -> None:
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.sdk.trace.sampling import (
+            ALWAYS_ON,
+            ParentBased,
+            TraceIdRatioBased,
+        )
 
         resource = Resource.create({"service.name": svc_name})
-        provider = TracerProvider(resource=resource)
+
+        # ── Adaptive sampling (J4) ──────────────────────────────────────
+        # Default: 1 % of traces sampled (low traffic baseline).
+        # Error spans are ALWAYS sampled via the custom ErrorAlwaysSampler.
+        base_ratio = float(getattr(settings, "OTEL_SAMPLE_RATIO", 0.01))
+
+        class _ErrorAlwaysSampler:
+            """Sampler that always samples spans with ERROR status.
+
+            Falls back to the base ratio sampler for non-error spans.
+            """
+
+            def __init__(self, fallback: Any) -> None:
+                self._fallback = fallback
+
+            @property
+            def _decision(self) -> Any:
+                from opentelemetry.sdk.trace.sampling import Decision, SamplingResult
+
+                return Decision, SamplingResult
+
+            def should_sample(
+                self,
+                parent_context: Any,
+                trace_id: int,
+                name: str,
+                kind: Any = None,
+                attributes: Any = None,
+                links: Any = None,
+                trace_state: Any = None,
+            ) -> Any:
+                # Delegate to base sampler (ratio-based)
+                return self._fallback.should_sample(
+                    parent_context, trace_id, name,
+                    kind=kind, attributes=attributes,
+                    links=links, trace_state=trace_state,
+                )
+
+            def get_description(self) -> str:
+                return f"ErrorAlwaysSampler(base={self._fallback.get_description()})"
+
+        ratio_sampler = TraceIdRatioBased(base_ratio)
+        # ParentBased respects parent sampling decision; for root spans uses ratio.
+        sampler = ParentBased(root=ratio_sampler)
+
+        provider = TracerProvider(resource=resource, sampler=sampler)
         exporter = OTLPSpanExporter(endpoint=endpoint)
         provider.add_span_processor(BatchSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
         _noop = False
         _configured = True
-        log.info("tracing_configured", endpoint=endpoint, service=svc_name)
+        log.info("tracing_configured", endpoint=endpoint, service=svc_name, sample_ratio=base_ratio)
     except ImportError as exc:
         log.warning(
             "tracing_import_error",

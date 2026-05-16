@@ -68,8 +68,8 @@ class TestRollbackMechanics:
         conn = _fresh_conn()
         apply_pending(conn)
         reverted = rollback(12, conn)  # rolls back all reversible versions > 12
-        # v14, v15 are irreversible → only v18, v17, v16, v13 get rolled back
-        assert reverted == [18, 17, 16, 13]
+        # v14, v15 are irreversible → v20, v19, v18, v17, v16, v13 get rolled back
+        assert reverted == [20, 19, 18, 17, 16, 13]
 
     def test_removes_version_record_from_schema_version(self):
         conn = _fresh_conn()

@@ -42,12 +42,36 @@ _SEED_LICITACIONES = [
 
 
 def _seed_db(db_mod: object) -> None:
-    """Inserta licitaciones de prueba y una extracción."""
+    """Inserta licitaciones de prueba, una extracción y un run en extraction_runs."""
     from db.database import Licitacion, log_extraccion, upsert_licitaciones
 
     lics = [Licitacion(**row) for row in _SEED_LICITACIONES]
     upsert_licitaciones(lics)
     log_extraccion("smoke-test", nuevas=len(lics), actualizadas=0, total=len(lics))
+
+    # Seed extraction_runs para que la página Calidad de Datos no quede vacía
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT OR IGNORE INTO extraction_runs "
+            "(run_id, started_at, ended_at, duration_ms, status, "
+            " months_attempted, months_ok, months_failed, "
+            " licitaciones_nuevas, licitaciones_actualizadas, "
+            " errores_parseo, errores_descarga) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                "smoke-run-001",
+                (_NOW - __import__('datetime').timedelta(hours=2)).isoformat(),
+                _NOW.isoformat(),
+                7200000,
+                "ok",
+                1, 1, 0,
+                5, 0,
+                0, 0,
+            ],
+        )
+        c.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -88,10 +112,14 @@ _PAGES = [
     "Órganos",
     "Geografía",
     "Proyectos & Módulos",
+    "Tecnologías",
     "Competidores",
     "Pipeline & Alertas",
     "Mi Watchlist",
     "Observabilidad",
+    "Calidad de Datos",
+    "Clusters",
+    "Administración",
 ]
 
 

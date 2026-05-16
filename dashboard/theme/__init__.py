@@ -12,7 +12,10 @@ from dashboard.theme.css import COMPACT_DENSITY_CSS, build_css
 from dashboard.theme.plotly_template import (
     PLOTLY_CONFIG,
     PLOTLY_TEMPLATE_NAME,
+    PLOTLY_TEMPLATE_NAME_LIGHT,
     build_plotly_template,
+    build_plotly_template_light,
+    current_plotly_template,
     get_color_sequence,
     register_plotly_template,
 )
@@ -22,10 +25,13 @@ __all__ = [
     "COMPACT_DENSITY_CSS",
     "PLOTLY_CONFIG",
     "PLOTLY_TEMPLATE_NAME",
+    "PLOTLY_TEMPLATE_NAME_LIGHT",
     "TOKENS",
     "Tokens",
     "build_css",
     "build_plotly_template",
+    "build_plotly_template_light",
+    "current_plotly_template",
     "get_color_sequence",
     "register_plotly_template",
 ]

@@ -8,6 +8,8 @@ should keep one service alive and run periodic jobs against the shared DB.
 from __future__ import annotations
 
 import os
+import signal
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -16,11 +18,15 @@ from typing import Any
 from observability import AlertLevel, configure_logging, configure_tracing, get_logger, notify
 from scheduler.anomaly_alerts import run_anomaly_checks
 from scheduler.dlq_retry import retry_failed_extractions
+from scheduler.drift_report import run_drift_report
 from scheduler.kpi_precompute import run_kpi_precompute
 from scheduler.watchlist_alerts import check_and_notify, send_pending_digests
 from scraper.pipeline import update_daily, update_recent
 
 log = get_logger(__name__)
+
+# Evento global para shutdown graceful (se activa con SIGTERM/SIGINT)
+_stop_event = threading.Event()
 
 
 def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
@@ -69,9 +75,35 @@ def _run_recent_bulk(months: int) -> None:
     check_and_notify()
 
 
+def _run_retention_cleanup() -> dict:
+    """Purga datos históricos según la política de retención."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from scripts.retention_cleanup import run_retention
+    return run_retention(
+        runs_days=90,
+        audit_days=180,
+        dlq_days=30,
+        history_days=365,
+        access_days=180,
+        idempotency_days=1,
+        webhook_deliveries_days=90,
+        apply=True,
+    )
+
+
 def main() -> int:
     configure_logging(json_logs=os.environ.get("LOG_FORMAT") == "json")
     configure_tracing()
+
+    # Registrar handlers para shutdown graceful (SIGTERM de Docker, SIGINT de Ctrl+C)
+    def _handle_signal(signum: int, frame: object) -> None:
+        log.info("scheduler_loop_shutdown_signal", signal=signum)
+        _stop_event.set()
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
 
     daily_interval = timedelta(minutes=_env_int("SCHEDULER_DAILY_INTERVAL_MINUTES", 240))
     bulk_interval = timedelta(minutes=_env_int("SCHEDULER_BULK_INTERVAL_MINUTES", 1440))
@@ -79,14 +111,18 @@ def main() -> int:
     dlq_interval = timedelta(minutes=_env_int("SCHEDULER_DLQ_RETRY_INTERVAL_MINUTES", 720))
     digest_interval = timedelta(minutes=_env_int("SCHEDULER_DIGEST_INTERVAL_MINUTES", 1440))
     anomaly_interval = timedelta(minutes=_env_int("SCHEDULER_ANOMALY_INTERVAL_MINUTES", 1440))
+    drift_interval = timedelta(minutes=_env_int("SCHEDULER_DRIFT_INTERVAL_MINUTES", 10080))  # weekly
+    retention_interval = timedelta(hours=_env_int("SCHEDULER_RETENTION_INTERVAL_HOURS", 24))
     sleep_seconds = _env_int("SCHEDULER_POLL_SECONDS", 60)
 
     now = datetime.now(UTC)
     next_daily = now
     next_bulk = now
-    next_dlq = now + timedelta(minutes=30)  # primer reintento DLQ: 30 min tras arranque
-    next_digest = now + timedelta(hours=1)  # primer digest: 1 hora tras arranque
-    next_anomaly = now + timedelta(hours=2)  # primer check anomalías: 2h tras arranque
+    next_dlq = now + timedelta(minutes=30)
+    next_digest = now + timedelta(hours=1)
+    next_anomaly = now + timedelta(hours=2)
+    next_drift = now + timedelta(hours=6)  # primer drift report: 6h tras arranque
+    next_retention = now + timedelta(hours=3)  # primer cleanup: 3h tras arranque
     log.info(
         "scheduler_loop_start",
         daily_interval_minutes=int(daily_interval.total_seconds() // 60),
@@ -94,6 +130,8 @@ def main() -> int:
         dlq_retry_interval_minutes=int(dlq_interval.total_seconds() // 60),
         digest_interval_minutes=int(digest_interval.total_seconds() // 60),
         anomaly_interval_minutes=int(anomaly_interval.total_seconds() // 60),
+        drift_interval_minutes=int(drift_interval.total_seconds() // 60),
+        retention_interval_hours=int(retention_interval.total_seconds() // 3600),
         bulk_months=bulk_months,
     )
 
@@ -114,7 +152,16 @@ def main() -> int:
         if now >= next_anomaly:
             _run_job("anomaly_checks", run_anomaly_checks)
             next_anomaly = datetime.now(UTC) + anomaly_interval
-        time.sleep(sleep_seconds)
+        if now >= next_drift:
+            _run_job("drift_report", run_drift_report)
+            next_drift = datetime.now(UTC) + drift_interval
+        if now >= next_retention:
+            _run_job("retention_cleanup", _run_retention_cleanup)
+            next_retention = datetime.now(UTC) + retention_interval
+        # Esperar el poll interval o despertar inmediatamente si llega señal de parada
+        if _stop_event.wait(timeout=sleep_seconds):
+            log.info("scheduler_loop_stopped_gracefully")
+            return 0
 
 
 if __name__ == "__main__":

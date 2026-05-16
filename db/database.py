@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     fecha_inicio        TEXT,
     fecha_fin           TEXT,
     prorroga_descripcion TEXT,
+    ml_proba            REAL,
     fecha_extraccion    TEXT NOT NULL
 );
 
@@ -98,6 +99,116 @@ CREATE TABLE IF NOT EXISTS extracciones (
     notas           TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_extr_fecha ON extracciones(fecha);
+
+CREATE TABLE IF NOT EXISTS ml_feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    expediente  TEXT NOT NULL,
+    relevante   INTEGER NOT NULL,
+    nota        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ml_feedback_expediente ON ml_feedback(expediente);
+CREATE INDEX IF NOT EXISTS idx_ml_feedback_created_at ON ml_feedback(created_at);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                TEXT NOT NULL,
+    url                 TEXT NOT NULL,
+    secret              TEXT NOT NULL,
+    event_types         TEXT NOT NULL,
+    active              INTEGER NOT NULL DEFAULT 1,
+    created_at          TEXT NOT NULL,
+    last_triggered_at   TEXT,
+    last_status         INTEGER,
+    failure_count       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_webhooks_active ON webhooks(active);
+
+CREATE TABLE IF NOT EXISTS model_versions (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                     TEXT NOT NULL,
+    version                  INTEGER NOT NULL,
+    path                     TEXT NOT NULL,
+    sha256                   TEXT NOT NULL,
+    metrics_json             TEXT NOT NULL DEFAULT '{}',
+    trained_at               TEXT NOT NULL,
+    trained_on_n_samples     INTEGER,
+    trained_on_n_feedbacks   INTEGER,
+    is_active                INTEGER NOT NULL DEFAULT 0,
+    notes                    TEXT,
+    UNIQUE (name, version)
+);
+CREATE INDEX IF NOT EXISTS idx_model_versions_active ON model_versions(name, is_active);
+
+CREATE TABLE IF NOT EXISTS totp_secrets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL UNIQUE,
+    secret     TEXT NOT NULL,
+    confirmed  INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_totp_user ON totp_secrets(user_id);
+
+CREATE TABLE IF NOT EXISTS totp_recovery_codes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    code_hash  TEXT NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0,
+    used_at    TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recovery_user ON totp_recovery_codes(user_id);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash  TEXT NOT NULL UNIQUE,
+    user_id     INTEGER NOT NULL,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    ip          TEXT,
+    user_agent  TEXT,
+    revoked     INTEGER NOT NULL DEFAULT 0,
+    revoked_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user    ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_token   ON sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS feature_flags (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL UNIQUE,
+    enabled      INTEGER NOT NULL DEFAULT 0,
+    rollout_pct  INTEGER NOT NULL DEFAULT 100,
+    user_emails  TEXT NOT NULL DEFAULT '',
+    description  TEXT,
+    updated_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feature_store (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type   TEXT NOT NULL,
+    entity_id     TEXT NOT NULL,
+    feature_name  TEXT NOT NULL,
+    value_json    TEXT NOT NULL,
+    version       TEXT NOT NULL DEFAULT 'v1',
+    computed_at   TEXT NOT NULL,
+    UNIQUE(entity_type, entity_id, feature_name, version)
+);
+CREATE INDEX IF NOT EXISTS idx_feature_store_entity ON feature_store(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_feature_store_name   ON feature_store(entity_type, feature_name);
+
+CREATE TABLE IF NOT EXISTS domain_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type   TEXT NOT NULL,
+    aggregate_id TEXT NOT NULL,
+    aggregate_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    actor_id     INTEGER,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_domain_events_aggregate ON domain_events(aggregate_type, aggregate_id);
+CREATE INDEX IF NOT EXISTS idx_domain_events_type      ON domain_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_domain_events_created   ON domain_events(created_at);
 """
 
 
@@ -144,6 +255,7 @@ class Licitacion:
     fecha_inicio: str | None = None
     fecha_fin: str | None = None
     prorroga_descripcion: str | None = None
+    ml_proba: float | None = None
     tecnologia: str | None = None  # SAP, SALESFORCE, ORACLE, MICROSOFT, etc.
     fecha_actualizacion_fuente: str | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
@@ -176,8 +288,9 @@ _pool_lock = threading.Lock()
 
 def set_db_path_override(path: str | None) -> None:
     """Establece (o limpia con None) el override de ruta de BD para tests."""
-    global _DB_PATH_OVERRIDE
+    global _DB_PATH_OVERRIDE, _db_initialized
     _DB_PATH_OVERRIDE = path
+    _db_initialized = False  # fuerza re-init en la nueva ruta
 
 
 def _create_connection() -> Any:
@@ -297,7 +410,50 @@ def connect() -> Iterator[Any]:
         _return_conn(conn)
 
 
+@contextmanager
+def connect_read() -> Iterator[Any]:
+    """Context manager de conexión de SOLO LECTURA.
+
+    Si ``TURSO_REPLICA_URL`` está configurado, conecta a la réplica Turso
+    (conexión efímera, sin pool). En caso contrario, delega en ``connect()``
+    normal (misma BD, modo read-only via PRAGMA).
+    """
+    from config import settings
+
+    replica_url = settings.TURSO_REPLICA_URL
+    if replica_url:
+        try:
+            import libsql_experimental as libsql  # type: ignore[import-not-found]
+
+            conn = libsql.connect(
+                replica_url,
+                auth_token=settings.TURSO_AUTH_TOKEN,
+            )
+            try:
+                yield conn
+            finally:
+                conn.close()
+            return
+        except ImportError:
+            pass  # fallback to local connect
+
+    # Fallback: usar pool normal con query_only pragma
+    conn = _get_conn()
+    try:
+        conn.execute("PRAGMA query_only = ON")
+        yield conn
+    finally:
+        conn.execute("PRAGMA query_only = OFF")
+        _return_conn(conn)
+
+
+_db_initialized = False
+
+
 def init_db() -> None:
+    global _db_initialized
+    if _db_initialized:
+        return
     from config import ensure_data_dirs
     from db.migrations import apply_pending
 
@@ -308,6 +464,7 @@ def init_db() -> None:
             if stmt:
                 c.execute(stmt)
         apply_pending(c)
+    _db_initialized = True
 
 
 def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:

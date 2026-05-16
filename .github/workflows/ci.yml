@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
 
       - name: Install dev dependencies
@@ -38,14 +38,15 @@ jobs:
         run: ruff format --check .
 
       - name: Type check (mypy)
-        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config/
+        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config/ api/ shared/
 
   test:
     name: Tests
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
 
@@ -70,6 +71,27 @@ jobs:
           name: coverage-xml-${{ matrix.python-version }}
           path: coverage.xml
 
+      # E5: gate de cobertura sobre el diff del PR.
+      # Falla el job si las líneas modificadas no están cubiertas al >= 80 %.
+      # Solo aplica en pull_request — no bloquea pushes a main.
+      - name: Diff coverage gate (PR only)
+        if: github.event_name == 'pull_request' && matrix.python-version == '3.13'
+        run: |
+          pip install diff-cover
+          git fetch origin ${{ github.base_ref }} --depth=1
+          diff-cover coverage.xml \
+            --compare-branch=origin/${{ github.base_ref }} \
+            --fail-under=80 \
+            --html-report=diff-cover.html
+        continue-on-error: false
+
+      - name: Upload diff-cover report
+        if: github.event_name == 'pull_request' && matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v7
+        with:
+          name: diff-cover-report
+          path: diff-cover.html
+
   pre-commit:
     name: pre-commit checks
     runs-on: ubuntu-latest
@@ -80,7 +102,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
 
       - name: Install project dependencies
@@ -98,7 +120,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
 
       - name: Install dependencies
@@ -110,6 +132,30 @@ jobs:
       - name: Audit dependencies
         run: pip-audit -r requirements.txt
 
+  migrations-dryrun:
+    name: Alembic migrations dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Generate SQL for all migrations (no apply)
+        run: |
+          alembic upgrade head --sql > /tmp/migrations.sql
+          echo "---- SQL preview (first 200 lines) ----"
+          head -n 200 /tmp/migrations.sql
+          test -s /tmp/migrations.sql
+
   docker-build:
     name: Docker build
     runs-on: ubuntu-latest
@@ -118,3 +164,7 @@ jobs:
 
       - name: Build Docker image (runtime target)
         run: docker build --target runtime --tag licitaciones-sap:ci .
+
+      - name: Smoke test (image starts)
+        run: |
+          docker run --rm --entrypoint python licitaciones-sap:ci -c "import dashboard.app, api.app; print('imports OK')"

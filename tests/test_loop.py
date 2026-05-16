@@ -66,6 +66,8 @@ class TestRunDailyAtom:
             patch("scheduler.loop.update_daily", return_value={"status": "ok"}),
             patch("scheduler.loop.run_kpi_precompute") as mock_kpi,
             patch("scheduler.loop.check_and_notify") as mock_notify,
+            patch("scheduler.loop.retry_failed_extractions"),
+            patch("scheduler.loop.run_anomaly_checks"),
         ):
             _run_daily_atom()
         mock_kpi.assert_called_once()
@@ -114,26 +116,27 @@ class TestRunRecentBulk:
 class TestMain:
     def test_main_runs_one_iteration_then_stops(self):
         """main() ejecuta al menos una iteración antes de ser interrumpido."""
-        import pytest
-
-        from scheduler.loop import main
+        from scheduler.loop import main, _stop_event
 
         call_count = {"n": 0}
 
-        def fake_sleep(_):
+        original_wait = _stop_event.wait
+
+        def fake_wait(timeout=None):
             call_count["n"] += 1
-            raise KeyboardInterrupt  # break the loop after first sleep
+            return True  # simula señal de parada → salida limpia del bucle
 
         with (
             patch("scheduler.loop.configure_logging"),
             patch("scheduler.loop._run_job"),
-            patch("scheduler.loop.time") as mock_time,
             patch("scheduler.loop.log"),
         ):
-            mock_time.monotonic.return_value = 0
-            mock_time.sleep.side_effect = fake_sleep
-
-            with pytest.raises(KeyboardInterrupt):
-                main()
+            _stop_event.wait = fake_wait
+            try:
+                result = main()
+            finally:
+                _stop_event.wait = original_wait
+                _stop_event.clear()
 
         assert call_count["n"] >= 1
+        assert result == 0

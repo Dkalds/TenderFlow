@@ -22,6 +22,8 @@ full_cov.txt
 pytest-output.txt
 pytest-run.txt
 pytest_full.log
+pytest_full.txt
+_test_result.txt
 cov80.txt
 coverage.xml
 # Temp output files generated during development

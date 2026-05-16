@@ -1,4 +1,4 @@
-.PHONY: install dev lint format typecheck test test-all scrape scrape-daily dashboard clean
+.PHONY: install dev lint format typecheck test test-all scrape scrape-daily app dashboard api doctor clean runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery
 
 # ── Instalación ──────────────────────────────────────────────────────────
 install:
@@ -43,9 +43,17 @@ scrape:
 scrape-daily:
 	python -m scheduler.run_update
 
-# ── Dashboard ────────────────────────────────────────────────────────────
+# ── Dashboard / API ──────────────────────────────────────────────────────
+## Alias principal — arranca el dashboard (equivalente a 'make dashboard')
+app:
+	PYTHONPATH=$(CURDIR) streamlit run dashboard/app.py
+
 dashboard:
-	streamlit run dashboard/app.py
+	PYTHONPATH=$(CURDIR) streamlit run dashboard/app.py
+
+## Arranca la API REST en modo desarrollo (requiere uvicorn)
+api:
+	PYTHONPATH=$(CURDIR) uvicorn api.app:app --host 0.0.0.0 --port 8080 --reload
 
 # ── Migraciones ──────────────────────────────────────────────────────────
 migrate:
@@ -54,8 +62,71 @@ migrate:
 migrate-alembic:
 	alembic upgrade head
 
+# ── Doctor: verifica entorno antes de despliegue ─────────────────────────
+doctor:
+	python scripts/doctor.py
+
 # ── Limpieza ─────────────────────────────────────────────────────────────
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	rm -f cov80.txt full_cov.txt _test_summary.txt pytest-run.txt
 	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov
+
+# ── Runbooks ejecutables ─────────────────────────────────────────────────
+# Extrae y ejecuta bloques de código bash de los runbooks Markdown.
+_run-runbook = python - <<'PYEOF' \
+&& import re, subprocess, sys, pathlib; \
+  md = pathlib.Path("$(1)").read_text(); \
+  blocks = re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL); \
+  [subprocess.run(b, shell=True, check=False) for b in blocks] \
+PYEOF
+
+runbook-backup-restore:
+	@echo "==> Runbook: backup-restore"
+	@bash docs/runbooks/backup-restore.md 2>/dev/null || python - <<'EOF'
+import re, subprocess, pathlib
+md = pathlib.Path("docs/runbooks/backup-restore.md").read_text()
+for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
+    print(f"\n--- ejecutando ---\n{block[:120]}...")
+    subprocess.run(block, shell=True)
+EOF
+
+runbook-dlq-replay:
+	@echo "==> Runbook: dlq-replay"
+	@python - <<'EOF'
+import re, subprocess, pathlib
+md = pathlib.Path("docs/runbooks/dlq-replay.md").read_text()
+for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
+    print(f"\n--- ejecutando ---\n{block[:120]}...")
+    subprocess.run(block, shell=True)
+EOF
+
+runbook-rate-limit-reset:
+	@echo "==> Runbook: rate-limit-reset"
+	@python - <<'EOF'
+import re, subprocess, pathlib
+md = pathlib.Path("docs/runbooks/rate-limit-reset.md").read_text()
+for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
+    print(f"\n--- ejecutando ---\n{block[:120]}...")
+    subprocess.run(block, shell=True)
+EOF
+
+runbook-model-rollback:
+	@echo "==> Runbook: model-rollback"
+	@python - <<'EOF'
+import re, subprocess, pathlib
+md = pathlib.Path("docs/runbooks/model-rollback.md").read_text()
+for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
+    print(f"\n--- ejecutando ---\n{block[:120]}...")
+    subprocess.run(block, shell=True)
+EOF
+
+runbook-disaster-recovery:
+	@echo "==> Runbook: disaster-recovery"
+	@python - <<'EOF'
+import re, subprocess, pathlib
+md = pathlib.Path("docs/runbooks/disaster-recovery.md").read_text()
+for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
+    print(f"\n--- ejecutando ---\n{block[:120]}...")
+    subprocess.run(block, shell=True)
+EOF

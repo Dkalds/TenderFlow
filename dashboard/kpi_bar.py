@@ -169,7 +169,7 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
     with c1:
         st.markdown(
             kpi_card(
-                "Licitaciones SAP",
+                "Licitaciones",
                 f"{k['total']:,}",
                 delta=delta_txt,
                 delta_up=delta_up,

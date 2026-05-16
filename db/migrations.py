@@ -296,6 +296,122 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
         """,
     ),
+    (
+        19,
+        "api_keys_table",
+        """
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            key_hash    TEXT UNIQUE NOT NULL,
+            name        TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            last_used   TEXT,
+            is_active   INTEGER NOT NULL DEFAULT 1,
+            expires_at  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE is_active = 1;
+        """,
+    ),
+    (
+        20,
+        "composite_indexes_ccaa_estado_fecha",
+        # Los índices se aplican de forma programática en _apply_v20_indexes
+        # porque SQLite no permite CREATE INDEX sobre una tabla que aún no existe
+        # (en entornos de test la tabla licitaciones se crea via init_db, no aquí).
+        "",
+    ),
+    (
+        21,
+        "api_keys_scopes_and_user_id",
+        # Columnas añadidas programáticamente (SQLite no soporta IF NOT EXISTS en ALTER TABLE)
+        "",
+    ),
+    (
+        22,
+        "webhook_deliveries_and_idempotency_keys",
+        """
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            webhook_id   INTEGER NOT NULL,
+            event_type   TEXT NOT NULL,
+            status_code  INTEGER NOT NULL DEFAULT 0,
+            success      INTEGER NOT NULL DEFAULT 0,
+            payload_size INTEGER NOT NULL DEFAULT 0,
+            created_at   TEXT NOT NULL,
+            FOREIGN KEY(webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_wh_del_webhook ON webhook_deliveries(webhook_id);
+        CREATE INDEX IF NOT EXISTS idx_wh_del_created ON webhook_deliveries(created_at);
+
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            idem_key      TEXT NOT NULL,
+            endpoint      TEXT NOT NULL,
+            response_json TEXT NOT NULL DEFAULT '{}',
+            created_at    TEXT NOT NULL,
+            UNIQUE(idem_key, endpoint)
+        );
+        CREATE INDEX IF NOT EXISTS idx_idem_key ON idempotency_keys(idem_key, endpoint);
+        CREATE INDEX IF NOT EXISTS idx_idem_created ON idempotency_keys(created_at);
+        """,
+    ),
+    (
+        23,
+        "ml_proba_column",
+        # Columna añadida programáticamente en _apply_v23_ml_proba porque
+        # SQLite no soporta IF NOT EXISTS en ALTER TABLE ADD COLUMN.
+        "",
+    ),
+    (
+        24,
+        "cursor_composite_index",
+        # Índice aplicado programáticamente en _apply_v24_cursor_index.
+        "",
+    ),
+    (
+        25,
+        "api_keys_prefix_and_expiry",
+        # Columnas prefix y expires_at añadidas programáticamente en _apply_v25_api_keys_prefix_expiry.
+        "",
+    ),
+    (
+        26,
+        "audit_log_hash_chain",
+        # Columnas prev_hash y this_hash en audit_log para inmutabilidad verificable.
+        "",
+    ),
+    (
+        27,
+        "csp_violations_table",
+        """
+        CREATE TABLE IF NOT EXISTS csp_violations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            blocked_uri TEXT,
+            violated_directive TEXT,
+            document_uri TEXT,
+            source_file TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_csp_created ON csp_violations(created_at);
+        """,
+    ),
+    (
+        28,
+        "api_key_tiers",
+        """
+        CREATE TABLE IF NOT EXISTS api_key_tiers (
+            tier TEXT PRIMARY KEY,
+            daily_quota INTEGER NOT NULL DEFAULT 10000,
+            per_minute_limit INTEGER NOT NULL DEFAULT 120,
+            description TEXT
+        );
+        INSERT OR IGNORE INTO api_key_tiers (tier, daily_quota, per_minute_limit, description)
+        VALUES
+            ('free',       1000,  30,  'Tier gratuito - 1k req/dia, 30 req/min'),
+            ('pro',        50000, 300, 'Tier pro - 50k req/dia, 300 req/min'),
+            ('enterprise', 0,     0,   'Sin limites (0 = sin limite)');
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -398,6 +514,14 @@ ROLLBACKS: dict[int, str] = {
         DROP INDEX IF EXISTS idx_pending_digests_recipient;
         DROP TABLE IF EXISTS pending_digests;
     """,
+    19: """
+        DROP INDEX IF EXISTS idx_api_keys_hash;
+        DROP TABLE IF EXISTS api_keys;
+    """,
+    20: """
+        DROP INDEX IF EXISTS idx_lic_estado_fecha;
+        DROP INDEX IF EXISTS idx_lic_ccaa_fecha;
+    """,
 }
 
 # Migraciones que NO se pueden revertir (solo ADD COLUMN sin DROP COLUMN)
@@ -446,6 +570,28 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 15: frequency column on watchlist_cpv
         if version == 15:
             _apply_v15_frequency(conn)
+        # Migración 20: índices compuestos en licitaciones
+        if version == 20:
+            _apply_v20_indexes(conn)
+        # Migración 21: columnas scopes y user_id en api_keys
+        if version == 21:
+            _apply_v21_api_keys_columns(conn)
+        # Migración 23: columna ml_proba en licitaciones
+        if version == 23:
+            _apply_v23_ml_proba(conn)
+        # Migración 24: índice compuesto (fecha_publicacion DESC, id_externo) para cursor
+        if version == 24:
+            _apply_v24_cursor_index(conn)
+        # Migración 25: columnas prefix y expires_at en api_keys
+        if version == 25:
+            _apply_v25_api_keys_prefix_expiry(conn)
+        # Migración 26: columnas prev_hash y this_hash en audit_log
+        if version == 26:
+            _apply_v26_audit_hash_chain(conn)
+        # Migración 27: tabla csp_violations — aplicada por SQL inline (no programática)
+        # Migración 28: tabla api_key_tiers + columna tier en api_keys
+        if version == 28:
+            _apply_v28_api_key_tiers(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -470,6 +616,110 @@ def _apply_v6_columns(conn: Any) -> None:
             raise ValueError(f"Nombre de columna no válido: {name!r}")
         if name not in cols:
             conn.execute(f"ALTER TABLE licitaciones ADD COLUMN {name} {ctype}")
+
+
+def _apply_v20_indexes(conn: Any) -> None:
+    """Crea índices compuestos en licitaciones si la tabla ya existe (idempotente)."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
+    ).fetchone()
+    if not exists:
+        return
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_lic_ccaa_fecha "
+        "ON licitaciones(ccaa, fecha_publicacion)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_lic_estado_fecha "
+        "ON licitaciones(estado, fecha_publicacion)"
+    )
+
+
+def _apply_v21_api_keys_columns(conn: Any) -> None:
+    """Añade columnas scopes y user_id a api_keys si no existen (idempotente)."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_keys'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
+    if "scopes" not in cols:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT '*'")
+    if "user_id" not in cols:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN user_id INTEGER")
+
+
+def _apply_v23_ml_proba(conn: Any) -> None:
+    """Añade columna ml_proba a licitaciones si no existe (idempotente)."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(licitaciones)").fetchall()}
+    if "ml_proba" not in cols:
+        conn.execute("ALTER TABLE licitaciones ADD COLUMN ml_proba REAL")
+
+
+def _apply_v24_cursor_index(conn: Any) -> None:
+    """Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor pagination.
+
+    Este índice permite que las queries de cursor eviten full table scans
+    en tablas grandes. Idempotente vía IF NOT EXISTS.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
+    ).fetchone()
+    if not exists:
+        return
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_lic_fecha_id "
+        "ON licitaciones(fecha_publicacion DESC, id_externo)"
+    )
+
+
+def _apply_v25_api_keys_prefix_expiry(conn: Any) -> None:
+    """Añade columnas prefix y expires_at a api_keys si no existen (idempotente)."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_keys'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
+    if "prefix" not in cols:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN prefix TEXT")
+    if "expires_at" not in cols:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN expires_at TEXT")
+
+
+def _apply_v26_audit_hash_chain(conn: Any) -> None:
+    """Añade columnas prev_hash y this_hash a audit_log para cadena de integridad."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_log'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()}
+    if "prev_hash" not in cols:
+        conn.execute("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT")
+    if "this_hash" not in cols:
+        conn.execute("ALTER TABLE audit_log ADD COLUMN this_hash TEXT")
+
+
+def _apply_v28_api_key_tiers(conn: Any) -> None:
+    """Añade columna tier a api_keys con default 'free'.
+
+    La tabla api_key_tiers ya fue creada por el SQL inline de la migración 28.
+    Aquí solo se añade la FK-compatible column en api_keys.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_keys'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
+    if "tier" not in cols:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'")
 
 
 _V7_FTS_STATEMENTS: list[str] = [

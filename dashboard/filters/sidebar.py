@@ -11,7 +11,16 @@ from dashboard.components.icons import icon
 from dashboard.components.search import render_search_autocomplete
 from dashboard.filters.apply import apply_filters
 from dashboard.filters.state import FiltersState
-from dashboard.session_keys import FILTER_KEYS, QP_LOADED
+from dashboard.session_keys import (
+    FILTER_KEYS,
+    FS_COMPARAR,
+    FS_ESTADOS,
+    FS_IMP_MIN,
+    FS_Q,
+    FS_RANGO,
+    QP_LOADED,
+    RECENT_SEARCHES,
+)
 
 # Claves de session_state que el botón "Limpiar filtros" debe resetear.
 _FILTER_STATE_KEYS = FILTER_KEYS
@@ -39,15 +48,15 @@ def _clear_filters() -> None:
 def _set_preset_activas_sap(fmin: date, fmax: date) -> None:
     """Preset: licitaciones SAP activas en los últimos 30 días."""
     today = min(datetime.now(UTC).date(), fmax)
-    st.session_state["fs_rango"] = (max(today - timedelta(days=30), fmin), today)
-    st.session_state["fs_estados"] = ["Publicada"]
+    st.session_state[FS_RANGO] = (max(today - timedelta(days=30), fmin), today)
+    st.session_state[FS_ESTADOS] = ["Publicada"]
 
 
 def _set_preset_alto_importe(fmin: date, fmax: date) -> None:
     """Preset: licitaciones con importe > 100.000 € en los últimos 90 días."""
     today = min(datetime.now(UTC).date(), fmax)
-    st.session_state["fs_rango"] = (max(today - timedelta(days=90), fmin), today)
-    st.session_state["fs_imp_min"] = 100_000
+    st.session_state[FS_RANGO] = (max(today - timedelta(days=90), fmin), today)
+    st.session_state[FS_IMP_MIN] = 100_000
 
 
 def _set_preset_nuevas_semana(fmin: date, fmax: date) -> None:
@@ -59,14 +68,14 @@ def _set_rango_preset(n_days: int, fmin: date, fmax: date) -> None:
     """Callback para botones de rango rápido — escribe en fs_rango."""
     today = min(datetime.now(UTC).date(), fmax)
     from_date = max(today - timedelta(days=n_days), fmin)
-    st.session_state["fs_rango"] = (from_date, today)
+    st.session_state[FS_RANGO] = (from_date, today)
 
 
 def _set_rango_ytd(fmin: date, fmax: date) -> None:
     """Callback para botón YTD — desde el 1 de enero del año actual."""
     today = min(datetime.now(UTC).date(), fmax)
     from_date = max(date(today.year, 1, 1), fmin)
-    st.session_state["fs_rango"] = (from_date, today)
+    st.session_state[FS_RANGO] = (from_date, today)
 
 
 def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
@@ -74,7 +83,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
     _group_header("Buscar", "search")
 
     # ── Historial de búsquedas recientes ────────────────────────────
-    _recent = st.session_state.get("_recent_searches", [])
+    _recent = st.session_state.get(RECENT_SEARCHES, [])
     if _recent:
         st.markdown(
             '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">',
@@ -86,7 +95,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
                 key=f"recent_q_{_rs[:20]}",
                 help=f"Repetir búsqueda: {_rs}",
             ):
-                st.session_state["fs_q"] = _rs
+                st.session_state[FS_Q] = _rs
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -108,10 +117,10 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
 
     # Guardar en historial si es una búsqueda nueva
     if q and q.strip():
-        _recent_list: list[str] = st.session_state.get("_recent_searches", [])
+        _recent_list: list[str] = st.session_state.get(RECENT_SEARCHES, [])
         if q not in _recent_list:
             _recent_list = [q] + [r for r in _recent_list if r != q]
-            st.session_state["_recent_searches"] = _recent_list[:_MAX_RECENT_SEARCHES]
+            st.session_state[RECENT_SEARCHES] = _recent_list[:_MAX_RECENT_SEARCHES]
 
     fmin = df_full["fecha_publicacion"].min()
     fmax = df_full["fecha_publicacion"].max()
@@ -386,6 +395,6 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
         tipos_proy=list(tipos_proy),
         tecnologias=list(tecnologias),
         importe_min=int(importe_min),
-        comparar=st.session_state.get("fs_comparar", False),
+        comparar=st.session_state.get(FS_COMPARAR, False),
         rango_b=rango_b,
     )

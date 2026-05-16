@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import html as _html
-from typing import Any
 
 import pandas as pd
 import plotly.express as px
@@ -27,10 +26,9 @@ from dashboard.stats import (
     vencen_en,
     yoy_delta,
 )
-from dashboard.utils.export import kpis_snapshot_csv
 from dashboard.utils.format import fmt_eur
 from dashboard.utils.lazy import lazy_section
-from dashboard.utils.pdf import generate_pdf
+from dashboard.session_keys import LAST_VISIT_TS
 from dashboard.utils.security import safe_url
 from observability.logging import get_logger
 
@@ -88,7 +86,7 @@ def render(ctx: PageContext) -> None:
 
     # ── Panel "Novedades desde tu última visita" ─────────────────────
     _now = pd.Timestamp.now("UTC")
-    _last_visit = st.session_state.get("_last_visit_ts")
+    _last_visit = st.session_state.get(LAST_VISIT_TS)
     if _last_visit is not None and not df.empty:
         _fpub = df["fecha_publicacion"]
         if getattr(_fpub.dt, "tz", None) is None:
@@ -116,7 +114,7 @@ def render(ctx: PageContext) -> None:
                 if len(_nuevas) > 10:
                     st.caption(f"... y {len(_nuevas) - 10} más. Usa los filtros para explorarlas.")
     # Actualizar timestamp de última visita
-    st.session_state["_last_visit_ts"] = _now
+    st.session_state[LAST_VISIT_TS] = _now
 
     # ── Banner "Para hoy" — señales accionables ─────────────────────
     _render_banner_hoy(df, adj_resumen)
@@ -361,80 +359,6 @@ def render(ctx: PageContext) -> None:
                     ),
                     unsafe_allow_html=True,
                 )
-
-            # ── Snapshot CSV ───────────────────────────────────────────
-            st.markdown("")
-            snapshot = {
-                "% PYMEs": f"{pct_pyme:.0f}%",
-                "Concentración top 10": f"{top10:.0f}%",
-                "Ofertas/adjudicación (mediana)": of_txt,
-                "Lead time pub→adj": lt_txt,
-                "HHI concentración": f"{hhi_val:,.0f} ({hhi_label})",
-                "% sin competencia": f"{ou:.0f}%",
-            }
-            csv_bytes = kpis_snapshot_csv(snapshot, titulo="Snapshot KPIs — Resumen")
-            fname = f"kpis_resumen_{pd.Timestamp.now('UTC').strftime('%Y%m%d_%H%M')}.csv"
-            st.download_button(
-                "📸 Descargar snapshot KPIs (CSV)",
-                data=csv_bytes,
-                file_name=fname,
-                mime="text/csv",
-                help="Exporta los indicadores actuales a CSV para pegarlos en un informe.",
-            )
-
-            # ── PDF Informe ejecutivo ──────────────────────────────────
-            top_pdf = (
-                df.dropna(subset=["importe"])
-                .nlargest(10, "importe")[
-                    ["titulo", "organo_contratacion", "importe", "estado_desc", "cpv"]
-                ]
-                .copy()
-            )
-            top_pdf["importe_fmt"] = top_pdf["importe"].apply(fmt_eur)
-            top_list: list[dict[str, Any]] = top_pdf.to_dict("records")  # type: ignore[assignment]
-
-            # Exportar charts como PNG — reusar fig_pie_estado ya construido
-            chart_imgs: list[tuple[str, bytes]] = []
-            try:
-                if fig_pie_estado is not None:
-                    import copy
-
-                    fig_pdf = copy.deepcopy(fig_pie_estado)
-                    fig_pdf.update_layout(
-                        showlegend=True,
-                        height=400,
-                        width=600,
-                        margin=dict(t=30, b=30, l=30, r=30),
-                    )
-                    chart_imgs.append(("Distribución por estado", fig_pdf.to_image(format="png")))
-            except Exception:
-                log.debug("chart_image_generation_failed", chart="estado")
-
-            filtros_pdf = {}
-            if hasattr(ctx, "filters") and ctx.filters:
-                f = ctx.filters
-                rango = getattr(f, "rango", None)
-                if rango:
-                    filtros_pdf["Rango"] = f"{rango[0]} → {rango[-1]}"
-                if getattr(f, "estados", None):
-                    filtros_pdf["Estado"] = str(f.estados)
-                if getattr(f, "ccaas", None):
-                    filtros_pdf["CCAA"] = str(f.ccaas)
-
-            pdf_bytes = generate_pdf(
-                kpis=snapshot,
-                filtros=filtros_pdf,
-                top_oportunidades=top_list,
-                chart_images=chart_imgs or None,
-            )
-            pdf_fname = f"informe_ejecutivo_{pd.Timestamp.now('UTC').strftime('%Y%m%d_%H%M')}.pdf"
-            st.download_button(
-                "📄 Descargar informe ejecutivo (PDF)",
-                data=pdf_bytes,
-                file_name=pdf_fname,
-                mime="application/pdf",
-                help="Genera un PDF con KPIs, top oportunidades y gráficos.",
-            )
 
     # ── Panel comparativa de periodos ──────────────────────────────
     if ctx.filters.comparar and ctx.filters.rango and ctx.filters.rango_b:

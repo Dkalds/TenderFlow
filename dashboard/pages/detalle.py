@@ -16,9 +16,11 @@ from dashboard.components.toasts import notify_error, notify_success
 from dashboard.data_loader import load_adjudicaciones
 from dashboard.kpi_config import SCORING_BAND_LEVELS
 from dashboard.pages._base import PageContext
+from dashboard.session_keys import COMPARE_IDS, LIC_FOCUS
 from dashboard.stats import risk_flags, score_oportunidad
-from dashboard.utils.export import to_excel_bytes
+from dashboard.utils.export import to_csv_bytes, to_excel_bytes
 from dashboard.utils.format import fmt_eur, highlight_match
+from dashboard.utils.pagination import paginated_df, reset_pagination
 from db.notifications import mark_read as _mark_read_notification
 from observability.logging import get_logger
 
@@ -146,17 +148,15 @@ def render(ctx: PageContext) -> None:
         st.download_button(
             "⬇️ Excel",
             data=to_excel_bytes(df),
-            file_name=f"licitaciones_sap_{_ts}.xlsx",
+            file_name=f"licitaciones_{_ts}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
     with cdl2:
         st.download_button(
             "⬇️ CSV",
-            data=df.drop(columns=["modulos"], errors="ignore")
-            .to_csv(index=False)
-            .encode("utf-8-sig"),
-            file_name=f"licitaciones_sap_{_ts}.csv",
+            data=to_csv_bytes(df),
+            file_name=f"licitaciones_{_ts}.csv",
             mime="text/csv",
         )
 
@@ -164,8 +164,18 @@ def render(ctx: PageContext) -> None:
     cols = [c for c in cols if c in df.columns]
     show = df[cols].sort_values("score", ascending=False) if "score" in cols else df[cols]
 
+    # ── Paginación server-side — envía al navegador solo la página activa ──
+    # Resetear a página 1 cuando cambian los filtros (cambio de tamaño del df)
+    _pg_key = "detalle_table"
+    _prev_len_key = "_detalle_prev_len"
+    if st.session_state.get(_prev_len_key) != len(show):
+        reset_pagination(_pg_key)
+        st.session_state[_prev_len_key] = len(show)
+
+    show_page, _ = paginated_df(show, page_size=100, key=_pg_key)
+
     event = data_table(
-        show,
+        show_page,
         height=600,
         key="detalle_table",
         selection_mode="multi-row",
@@ -217,7 +227,7 @@ def render(ctx: PageContext) -> None:
                 # Get id_externo from the original df using the selected indices
                 _orig_indices = show.index[_selected_rows[:2]]
                 _cmp_list = df.loc[_orig_indices, "id_externo"].astype(str).tolist()
-                st.session_state["_compare_ids"] = _cmp_list[:2]
+                st.session_state[COMPARE_IDS] = _cmp_list[:2]
                 st.rerun()
         with _ba3:
             if st.button("⭐ Seguir todos (watchlist)", key="bulk_watch", use_container_width=True):
@@ -264,7 +274,7 @@ def render(ctx: PageContext) -> None:
     _det_pages = max(1, (_total_det + _DETALLE_PAGE_SIZE - 1) // _DETALLE_PAGE_SIZE)
     _det_page_key = "detalle_expand_page"
     # ── M4: Deep-link auto-expand — navigate to page containing target row ──
-    _lic_focus = st.session_state.pop("_lic_focus", None)
+    _lic_focus = st.session_state.pop(LIC_FOCUS, None)
     if _lic_focus:
         _focus_idx = _df_sorted.index[_df_sorted["id_externo"] == _lic_focus]
         if len(_focus_idx):
@@ -277,7 +287,7 @@ def render(ctx: PageContext) -> None:
     _det_start = _det_cur * _DETALLE_PAGE_SIZE
 
     # ── Comparación lado a lado (M5 enhanced) ──────────────────────────────
-    _compare_ids: list[str] = st.session_state.get("_compare_ids", [])
+    _compare_ids: list[str] = st.session_state.get(COMPARE_IDS, [])
     if len(_compare_ids) == 2:
         _cmp_rows = [
             _df_sorted[_df_sorted["id_externo"] == _cid].iloc[0]
@@ -330,7 +340,7 @@ def render(ctx: PageContext) -> None:
                             st.markdown(f"{_diff_style} **{_lbl}:** {_val}")
 
                 if st.button("Limpiar comparación", key="cmp_clear"):
-                    st.session_state["_compare_ids"] = []
+                    st.session_state[COMPARE_IDS] = []
                     st.rerun()
 
     st.subheader(
@@ -383,14 +393,14 @@ def render(ctx: PageContext) -> None:
                     help="Seleccionar para comparar (máx. 2)",
                     use_container_width=True,
                 ):
-                    _cur_ids: list[str] = list(st.session_state.get("_compare_ids", []))
+                    _cur_ids: list[str] = list(st.session_state.get(COMPARE_IDS, []))
                     if _row_id in _cur_ids:
                         _cur_ids.remove(_row_id)
                     elif len(_cur_ids) < 2:
                         _cur_ids.append(_row_id)
                     else:
                         _cur_ids = [_cur_ids[1], _row_id]  # rotar: descartar el más antiguo
-                    st.session_state["_compare_ids"] = _cur_ids
+                    st.session_state[COMPARE_IDS] = _cur_ids
                     st.rerun()
                 st.markdown(badge_html, unsafe_allow_html=True)
                 st.metric("Score", f"{score_val}/100")

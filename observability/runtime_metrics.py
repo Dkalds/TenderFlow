@@ -1,0 +1,69 @@
+"""Métricas runtime de Prometheus expuestas en proceso (D1 + D2).
+
+Estas gauges/counters viven en el ``REGISTRY`` por defecto y se exponen
+vía ``/metrics`` del API. A diferencia de ``observability.prometheus`` (que
+usa textfile collector para el scheduler), estas son in-process.
+
+D2: el import de ``prometheus_client`` está protegido — si no está
+instalado, las métricas son no-ops y la app sigue funcionando.
+"""
+
+from __future__ import annotations
+
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
+try:
+    from prometheus_client import Counter, Gauge, Histogram
+
+    scraper_circuit_state = Gauge(
+        "scraper_circuit_state",
+        "Estado del circuit breaker (0=closed, 1=half-open, 2=open)",
+        ["source"],
+    )
+
+    api_cost_estimate_total = Counter(
+        "api_cost_estimate_total",
+        "Coste estimado acumulado de operaciones (USD * 1e6, micros)",
+        ["operation"],
+    )
+
+    audit_events_total = Counter(
+        "audit_events_total",
+        "Eventos de auditoría registrados",
+        ["event_type", "outcome"],
+    )
+
+    # Métricas RED (Rate, Errors, Duration)
+    http_requests_total = Counter(
+        "http_requests_total",
+        "Total de requests HTTP por método, path y status",
+        ["method", "path", "status"],
+    )
+
+    http_request_duration_seconds = Histogram(
+        "http_request_duration_seconds",
+        "Duración de requests HTTP en segundos",
+        ["method", "path"],
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+    )
+
+    _AVAILABLE = True
+except ImportError:  # pragma: no cover
+    log.warning("prometheus_client_unavailable_metrics_disabled")
+
+    class _NoopMetric:
+        def labels(self, **_: object) -> _NoopMetric:
+            return self
+
+        def set(self, _value: float) -> None: ...
+        def inc(self, _value: float = 1) -> None: ...
+        def observe(self, _value: float) -> None: ...
+
+    scraper_circuit_state = _NoopMetric()  # type: ignore[assignment]
+    api_cost_estimate_total = _NoopMetric()  # type: ignore[assignment]
+    audit_events_total = _NoopMetric()  # type: ignore[assignment]
+    http_requests_total = _NoopMetric()  # type: ignore[assignment]
+    http_request_duration_seconds = _NoopMetric()  # type: ignore[assignment]
+    _AVAILABLE = False

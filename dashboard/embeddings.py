@@ -5,6 +5,9 @@ basado en coincidencia de substrings (como portfolio_match actual).
 
 Modelo por defecto: paraphrase-multilingual-MiniLM-L12-v2
 (soporta español nativo, modelo ligero ~400 MB).
+
+El modelo activo se lee de ``config.settings.EMBEDDING_MODEL`` — se puede
+cambiar a ``paraphrase-multilingual-mpnet-base-v2`` para mayor calidad.
 """
 
 from __future__ import annotations
@@ -15,11 +18,13 @@ from typing import Any
 
 import numpy as np
 
+from config import settings
 from observability import get_logger
 
 log = get_logger(__name__)
 
-_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+# Resolved from settings at import time so lru_cache works correctly
+_MODEL_NAME = settings.EMBEDDING_MODEL
 
 # ── Lazy model loading ──────────────────────────────────────────────────
 

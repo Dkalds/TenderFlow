@@ -27,5 +27,7 @@ opentelemetry-exporter-otlp-proto-http>=1.20.0,<3
 prometheus_client>=0.19.0,<1
 # Password hashing seguro para autenticación del dashboard
 bcrypt>=4.0,<5
+# argon2-cffi: algoritmo preferido para nuevos hashes (bcrypt mantenido para compatibilidad)
+argon2-cffi>=23.1.0,<25
 # Migraciones de base de datos (Alembic gestiona v14+ tras el baseline casero)
 alembic>=1.13.0,<2

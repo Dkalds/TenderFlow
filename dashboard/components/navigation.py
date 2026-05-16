@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
-from dashboard.session_keys import NAV_PREV_PAGE, NAV_PREV_SECTION
+from dashboard.session_keys import NAV_PREV_PAGE, NAV_PREV_SECTION, NAV_SECTION, PENDING_NAV_SECTION
 
 if TYPE_CHECKING:
     from dashboard.filters.state import FiltersState
@@ -37,7 +37,7 @@ def _remove_filter(key: str, value: str | None) -> None:
 
 def _navigate_to_section(section: str) -> None:
     """Navega a la primera página de una sección actualizando session_state."""
-    st.session_state["nav_section"] = section
+    st.session_state[NAV_SECTION] = section
 
 
 def breadcrumb(section: str, page: str, description: str | None = None) -> None:
@@ -121,7 +121,7 @@ def back_button() -> None:
     ):
         # Cannot set nav_section directly after widget is instantiated.
         # Store a pending nav request that app.py consumes before the widget renders.
-        st.session_state["_pending_nav_section"] = prev_section
+        st.session_state[PENDING_NAV_SECTION] = prev_section
         # Determinar la clave del sub-nav de esa sección para restaurar la página
         nav_key = f"nav_page_{prev_section}"
         from dashboard.router import SECTIONS  # local import to avoid circular

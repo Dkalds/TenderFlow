@@ -1,0 +1,91 @@
+name: Release SDK
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SDK version to publish (e.g. 0.1.0)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  generate-sdk:
+    name: Generate & publish Python SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (FastAPI + uvicorn to export OpenAPI schema)
+        run: |
+          pip install --quiet fastapi uvicorn pydantic pydantic-settings
+
+      - name: Export OpenAPI JSON
+        run: |
+          python - <<'EOF'
+          import json, sys
+          sys.path.insert(0, ".")
+          from api.app import app
+          schema = app.openapi()
+          with open("openapi.json", "w") as f:
+              json.dump(schema, f, indent=2)
+          print(f"OpenAPI schema written: {len(json.dumps(schema))} bytes")
+          EOF
+
+      - name: Install openapi-generator-cli
+        run: |
+          npm install --global @openapitools/openapi-generator-cli@2.13.4 --quiet 2>&1 | tail -5
+
+      - name: Determine SDK version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "sdk_version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            # Strip leading 'v' from tag name
+            echo "sdk_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate Python SDK
+        run: |
+          openapi-generator-cli generate \
+            --input-spec openapi.json \
+            --generator-name python \
+            --output sdk/ \
+            --additional-properties=\
+          packageName=licitaciones_sap_sdk,\
+          projectName=licitaciones-sap-sdk,\
+          packageVersion=${{ steps.version.outputs.sdk_version }},\
+          packageUrl=https://github.com/${{ github.repository }}
+
+      - name: Build SDK wheel
+        working-directory: sdk
+        run: |
+          pip install --quiet build
+          python -m build --wheel --sdist
+
+      - name: Publish SDK to PyPI (Test)
+        working-directory: sdk
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_TOKEN }}
+        run: |
+          pip install --quiet twine
+          twine upload --repository testpypi dist/* --skip-existing
+        continue-on-error: true  # Don't fail release if TestPyPI publish fails
+
+      - name: Upload SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: licitaciones-sap-sdk-${{ steps.version.outputs.sdk_version }}
+          path: sdk/dist/
+          retention-days: 30

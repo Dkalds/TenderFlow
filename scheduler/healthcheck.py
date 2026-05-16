@@ -22,6 +22,7 @@ import sys
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 # Ensure project root is on sys.path when run as `python -m scheduler.healthcheck`
 _project_root = str(Path(__file__).resolve().parent.parent)
@@ -34,7 +35,7 @@ from observability import AlertLevel, configure_logging, get_logger, notify  # n
 log = get_logger(__name__)
 
 
-def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict:
+def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, Any]:
     init_db()
     status = "healthy"
     checks: list[dict[str, object]] = []

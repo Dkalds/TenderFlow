@@ -24,6 +24,7 @@ def empty_state(
     message: str,
     cta_label: str | None = None,
     cta_cb: Callable[[], None] | None = None,
+    illustration: str | None = None,
 ) -> None:
     """Estado vacío: icono SVG + título + mensaje + CTA opcional.
 
@@ -31,6 +32,8 @@ def empty_state(
         icon_name: clave de icono Lucide (ej. "inbox", "alert-triangle").
                    Por compatibilidad acepta también un emoji legacy: si
                    `icon_name` no está en el catálogo, se renderiza tal cual.
+        illustration: HTML/SVG inline opcional que reemplaza al icono cuando
+                      se quiere mostrar una ilustración más elaborada.
 
     Usa `role=status` y `aria-live=polite` para que lectores de pantalla lo
     anuncien cuando aparece dinámicamente.
@@ -38,7 +41,9 @@ def empty_state(
     safe_title = _html.escape(title)
     safe_msg = _html.escape(message)
 
-    if icon_name and len(icon_name) <= 2:
+    if illustration:
+        icon_html = illustration
+    elif icon_name and len(icon_name) <= 2:
         # Probable emoji legacy → mapear o renderizar como texto.
         icon_html = (
             f'<div style="font-size:2.4rem;line-height:1" aria-hidden="true">{icon_name}</div>'
@@ -190,3 +195,123 @@ def guarded_render(fn: Callable[..., Any]) -> Callable[..., Any]:
             )
 
     return wrapper
+
+
+# ── Ilustraciones SVG inline para empty states ───────────────────────────
+# Geometría abstracta ligera — evita dependencias externas y carga instantánea.
+
+_ILLUSTRATION_EMPTY_SEARCH = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none" aria-hidden="true">'
+    '<circle cx="42" cy="42" r="26" stroke="rgba(134,188,36,0.25)" stroke-width="2.5"/>'
+    '<circle cx="42" cy="42" r="14" fill="rgba(134,188,36,0.07)"/>'
+    '<path d="M62 62 L78 78" stroke="rgba(134,188,36,0.35)" stroke-width="3" stroke-linecap="round"/>'
+    '<circle cx="42" cy="36" r="3" fill="rgba(134,188,36,0.30)"/>'
+    '<path d="M35 48 Q42 54 49 48" stroke="rgba(134,188,36,0.25)" stroke-width="1.5" fill="none" stroke-linecap="round"/>'
+    '</svg>'
+)
+
+_ILLUSTRATION_EMPTY_DATA = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none" aria-hidden="true">'
+    '<rect x="16" y="56" width="12" height="24" rx="3" fill="rgba(134,188,36,0.15)" stroke="rgba(134,188,36,0.30)" stroke-width="1.5"/>'
+    '<rect x="34" y="40" width="12" height="40" rx="3" fill="rgba(134,188,36,0.20)" stroke="rgba(134,188,36,0.35)" stroke-width="1.5"/>'
+    '<rect x="52" y="28" width="12" height="52" rx="3" fill="rgba(134,188,36,0.28)" stroke="rgba(134,188,36,0.45)" stroke-width="1.5"/>'
+    '<rect x="70" y="48" width="12" height="32" rx="3" fill="rgba(134,188,36,0.15)" stroke="rgba(134,188,36,0.30)" stroke-width="1.5"/>'
+    '<path d="M22 55 L40 39 L58 27 L76 47" stroke="rgba(134,188,36,0.50)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"/>'
+    '</svg>'
+)
+
+_ILLUSTRATION_ERROR = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none" aria-hidden="true">'
+    '<circle cx="48" cy="48" r="32" stroke="rgba(226,24,54,0.20)" stroke-width="2"/>'
+    '<circle cx="48" cy="48" r="22" fill="rgba(226,24,54,0.06)"/>'
+    '<path d="M40 40 L56 56 M56 40 L40 56" stroke="rgba(226,24,54,0.55)" stroke-width="3" stroke-linecap="round"/>'
+    '</svg>'
+)
+
+ILLUSTRATIONS: dict[str, str] = {
+    "empty-search": _ILLUSTRATION_EMPTY_SEARCH,
+    "empty-data": _ILLUSTRATION_EMPTY_DATA,
+    "error": _ILLUSTRATION_ERROR,
+}
+
+
+def render_splash() -> None:
+    """Pantalla de carga mientras Streamlit inicializa datos.
+
+    Inyecta un overlay CSS que desaparece cuando la página termina de renderizar.
+    Llamar al principio de ``app.py`` o de cada página, antes de cargar datos.
+    """
+    st.markdown(
+        """
+<style>
+#splash-overlay {
+  position: fixed; inset: 0; z-index: 9998;
+  background: #0B0B0D;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 20px;
+  animation: splashFadeOut 0.4s ease-out 0.8s both;
+}
+@keyframes splashFadeOut {
+  from { opacity: 1; pointer-events: auto; }
+  to   { opacity: 0; pointer-events: none; visibility: hidden; }
+}
+.splash-logo { animation: splashBounce 0.6s cubic-bezier(0.22,1,0.36,1) both; }
+@keyframes splashBounce {
+  from { opacity: 0; transform: scale(0.85) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.splash-bar {
+  width: 160px; height: 2px;
+  background: rgba(134,188,36,0.18);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.splash-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #86BC24, transparent);
+  background-size: 200% 100%;
+  animation: splashShimmer 0.9s ease-in-out 0.1s infinite;
+}
+@keyframes splashShimmer {
+  0%   { background-position: -100% 0; }
+  100% { background-position:  200% 0; }
+}
+</style>
+<div id="splash-overlay" role="status" aria-live="polite" aria-label="Cargando…">
+  <div class="splash-logo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 32 32" fill="none">
+      <rect x="1.5" y="1.5" width="29" height="29" rx="7"
+            fill="rgba(134,188,36,0.12)" stroke="#86BC24" stroke-width="1.5"/>
+      <path d="M9 22 L9 10 L13 10 L13 17 L17 10 L21 10 L17 16 L23 22 L18 22 L13 17 L13 22 Z"
+            fill="#86BC24"/>
+    </svg>
+  </div>
+  <div class="splash-bar"><div class="splash-bar-fill"></div></div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def inject_favicon() -> None:
+    """Inyecta el favicon SVG corporativo en la pestaña del navegador.
+
+    Streamlit permite sobreescribir el favicon con ``st.set_page_config`` pero
+    sólo acepta emojis o URLs. Este helper inyecta un data-URI SVG vía JS para
+    un icono vectorial perfecto en cualquier resolución.
+    """
+    favicon_svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+        "<rect width='32' height='32' rx='7' fill='%230B0B0D'/>"
+        "<rect x='1' y='1' width='30' height='30' rx='6.5' fill='none' stroke='%2386BC24' stroke-width='1.5'/>"
+        "<path d='M8 22 L8 10 L12 10 L12 17 L16 10 L20 10 L16 16 L22 22 L17 22 L12 17 L12 22 Z' fill='%2386BC24'/>"
+        "</svg>"
+    )
+    data_uri = f"data:image/svg+xml,{favicon_svg}"
+    st.markdown(
+        f'<script>var l=document.querySelector("link[rel*=\'icon\']");'
+        f'if(!l){{l=document.createElement("link");l.rel="icon";document.head.appendChild(l);}}'
+        f'l.type="image/svg+xml";l.href="{data_uri}";</script>',
+        unsafe_allow_html=True,
+    )

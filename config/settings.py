@@ -6,7 +6,7 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -44,6 +44,16 @@ class Settings(BaseSettings):
     # ── ML ───────────────────────────────────────────────────────────────
     # Umbral de confianza para clasificar como SAP sin keywords (0.0-1.0)
     ML_CONFIDENCE_THRESHOLD: float = 0.70
+    # β para F-beta en el threshold sweep. β>1 favorece recall (FN costoso),
+    # β<1 favorece precision. 1.5 prioriza ligeramente recall (perder una
+    # licitación SAP cuesta más que una falsa alerta).
+    ML_FBETA: float = 1.5
+    # Si True, usar TimeSeriesSplit (sin shuffle) cuando hay fecha_publicacion.
+    # Refleja mejor la performance esperada en producción (datos futuros).
+    ML_USE_TIMESERIES_CV: bool = True
+    # Rangos de incertidumbre para la cola de active learning (P(SAP) ∈ [lo, hi]).
+    ML_UNCERTAINTY_LO: float = 0.30
+    ML_UNCERTAINTY_HI: float = 0.70
 
     # ── Resiliencia ───────────────────────────────────────────────────────
     # Circuit breaker: backoff exponencial entre aperturas del circuito
@@ -54,6 +64,9 @@ class Settings(BaseSettings):
     # Si está vacío, el tracing opera en modo NoOp (sin overhead)
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
     OTEL_SERVICE_NAME: str = "licitaciones-sap"
+    # Fracción de trazas a muestrear [0.0-1.0]. Las trazas con error se
+    # muestrean siempre independientemente de este valor.
+    OTEL_SAMPLE_RATIO: float = 0.01
 
     # ── OAuth ────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
@@ -66,19 +79,31 @@ class Settings(BaseSettings):
     # Si no se configura, se deriva de GOOGLE_CLIENT_SECRET como fallback.
     # En producción configura un valor aleatorio de 32+ caracteres:
     #   python -c "import secrets; print(secrets.token_hex(32))"
-    SIGNING_KEY: str = ""
+    # Orígenes CORS permitidos en prod (lista separada por comas, vacío = bloquear todo)
+    # En dev se usa "*" automáticamente.
+    # Ej: "https://dashboard.example.com,https://api.example.com"
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    # Secreto HMAC para hashear API keys (32+ chars). Si vacío usa SHA-256 plain.
+    # Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"
+    API_HMAC_SECRET: str = ""
+
+    SIGNING_KEY: SecretStr = SecretStr("")
 
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
     TURSO_AUTH_TOKEN: str = ""
     TURSO_LOCAL_DB: Path | None = None
+    # URL de la réplica de lectura Turso (opcional). Si se configura, las
+    # consultas SELECT se enrutan a la réplica para reducir latencia.
+    TURSO_REPLICA_URL: str = ""
 
     # ── Observabilidad ───────────────────────────────────────────────────
     LOG_FORMAT: str = ""
     ALERT_MIN_LEVEL: str = "warn"
     ALERT_EMAIL_TO: str = ""
     ALERT_SMTP_USER: str = ""
-    ALERT_SMTP_PASSWORD: str = ""
+    ALERT_SMTP_PASSWORD: SecretStr = SecretStr("")
     ALERT_SMTP_HOST: str = "smtp.gmail.com"
     ALERT_SMTP_PORT: int = 587
 
@@ -103,6 +128,31 @@ class Settings(BaseSettings):
     MAX_XML_SIZE_BYTES: int = 150 * 1024 * 1024
     DAILY_MAX_PAGES: int = 50
     BACKFILL_MAX_WORKERS: int = 3
+
+    # ── Embeddings / NLP ─────────────────────────────────────────────────
+    # Modelo sentence-transformers a usar. Cambiar a un modelo multilingual para
+    # soporte completo de idiomas adicionales (PT, FR, DE, IT, etc.)
+    # Opciones recomendadas:
+    #   "paraphrase-multilingual-MiniLM-L12-v2"   (~400 MB, rápido)
+    #   "paraphrase-multilingual-mpnet-base-v2"    (~1.1 GB, mejor calidad)
+    EMBEDDING_MODEL: str = "paraphrase-multilingual-MiniLM-L12-v2"
+    # Versión lógica del índice FAISS — si cambia, se regenera el índice
+    EMBEDDING_VERSION: str = "v1"
+
+    # ── API REST ─────────────────────────────────────────────────────────
+    # IPs (o rangos) que pueden acceder a /metrics sin API key (separadas por coma).
+    # Por defecto solo loopback. En producción añadir la IP del servidor Prometheus.
+    # Ej: "127.0.0.1,10.0.0.5,10.0.0.6"
+    METRICS_ALLOWED_IPS: str = "127.0.0.1"
+
+    # ── Cache (Redis opcional) ────────────────────────────────────────────
+    # Si se deja vacío se usa cache en memoria por proceso (default).
+    # Formato: redis://[:password@]host[:port][/db]
+    REDIS_URL: str = ""
+
+    # ── Cola de tareas (Dramatiq, opcional) ──────────────────────────────
+    # Si se deja vacío se usa StubBroker (ejecución síncrona, para dev/tests).
+    DRAMATIQ_BROKER_URL: str = ""
 
     # ── Validators ───────────────────────────────────────────────────────
     @model_validator(mode="after")
@@ -135,6 +185,33 @@ class Settings(BaseSettings):
                 "Genera el hash con: python scripts/hash_password.py"
             )
         return self
+
+    @model_validator(mode="after")
+    def _validate_prod_signing_key(self) -> Settings:
+        if self.ENV == "prod" and not self.SIGNING_KEY.get_secret_value():
+            raise ValueError(
+                "SIGNING_KEY es obligatorio en ENV=prod para firmar tokens CSRF/OAuth. "
+                "Genera uno con: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return self
+
+    @field_validator("TURSO_DATABASE_URL", mode="before")
+    @classmethod
+    def _validate_turso_url_scheme(cls, v: object) -> object:
+        """Rechaza esquemas peligrosos en TURSO_DATABASE_URL.
+
+        Solo se permiten ``libsql://`` y ``https://`` (embedded replica).
+        Un valor vacío indica que no se usa Turso, lo cual es válido.
+        """
+        if not isinstance(v, str) or not v:
+            return v
+        allowed = ("libsql://", "https://")
+        if not v.startswith(allowed):
+            raise ValueError(
+                f"TURSO_DATABASE_URL tiene un esquema no permitido. "
+                f"Se esperaba uno de {allowed}, se recibió: {v!r}"
+            )
+        return v
 
     @field_validator("DASHBOARD_CACHE_TTL", mode="before")
     @classmethod

@@ -259,3 +259,156 @@ def run_drift_report(*, days: int = 30, send_alert: bool = True) -> list[dict[st
         )
 
     return candidates
+
+
+# ────────────────────────── C1: Active learning loop ───────────────────────
+
+
+_RETRAIN_FEEDBACK_THRESHOLD = 50
+
+
+def maybe_retrain_classifier(
+    *, threshold: int = _RETRAIN_FEEDBACK_THRESHOLD, dry_run: bool = False
+) -> dict[str, Any]:
+    """Re-entrena el clasificador si hay suficientes feedbacks nuevos (C1).
+
+    Cuenta cuántas filas en ``ml_feedback`` son posteriores al ``trained_at``
+    de la versión activa registrada. Si supera ``threshold``, dispara
+    re-entrenamiento, registra la nueva versión en el model registry y la
+    activa automáticamente.
+
+    Args:
+        threshold: Mínimo de feedbacks nuevos para disparar el retrain.
+        dry_run: Si True, solo reporta sin entrenar.
+
+    Returns:
+        Dict con ``triggered``, ``feedbacks_new``, ``new_version`` (si aplica).
+    """
+    from db.model_registry import (
+        feedbacks_since_last_train,
+        get_active,
+        register_version,
+    )
+
+    name = "sap_classifier"
+    n_new = feedbacks_since_last_train(name)
+    active = get_active(name)
+    result: dict[str, Any] = {
+        "triggered": False,
+        "feedbacks_new": n_new,
+        "threshold": threshold,
+        "current_version": active["version"] if active else None,
+    }
+
+    if n_new < threshold:
+        log.info("active_learning.below_threshold", n_new=n_new, threshold=threshold)
+        return result
+
+    if dry_run:
+        log.info("active_learning.dry_run", n_new=n_new)
+        result["triggered"] = True
+        result["dry_run"] = True
+        return result
+
+    # Re-entrenar
+    try:
+        from pathlib import Path
+
+        from scraper.ml_classifier import SAPClassifier, precompute_ml_proba
+
+        df = _fetch_training_dataframe()
+        if df is None or df.empty:
+            log.warning("active_learning.no_data")
+            return result
+
+        clf = SAPClassifier()
+        metrics = clf.train(df)  # train() acepta df directamente
+
+        if "error" in metrics:
+            log.warning("active_learning.train_failed", metrics=metrics)
+            result["error"] = metrics.get("error")
+            return result
+
+        next_version = (active["version"] if active else 0) + 1
+        version_path = Path("data/models") / f"{name}_v{next_version}.pkl"
+        saved = clf.save(version_path)
+
+        import hashlib
+
+        sha = hashlib.sha256(saved.read_bytes()).hexdigest()
+
+        n_samples = metrics.get("n_train", 0) + metrics.get("n_test", 0)
+        new_version = register_version(
+            name=name,
+            path=str(saved),
+            sha256=sha,
+            metrics=metrics,
+            n_samples=n_samples,
+            n_feedbacks=n_new,
+            notes="active_learning_auto_retrain",
+            activate=True,
+        )
+        result["triggered"] = True
+        result["new_version"] = new_version
+        result["metrics"] = metrics
+        log.info("active_learning.retrain_ok", new_version=new_version, n_new=n_new)
+
+        notify(
+            AlertLevel.INFO,
+            f"Active learning: clasificador re-entrenado (v{new_version})",
+            f"Re-entrenamiento disparado por {n_new} feedbacks nuevos.\n"
+            f"Métricas: pr_auc={metrics.get('pr_auc')}, f1={metrics.get('f1')}, "
+            f"threshold={metrics.get('optimal_threshold')}",
+        )
+
+        # Pre-computar ml_proba para todas las licitaciones con el nuevo modelo
+        try:
+            precompute_ml_proba(force=False)
+        except Exception as precomp_exc:
+            log.warning("active_learning.precompute_failed", error=str(precomp_exc))
+
+    except Exception as exc:  # noqa: BLE001
+        log.error("active_learning.retrain_failed", error=str(exc), exc_info=True)
+        result["error"] = str(exc)
+
+    return result
+
+
+def _fetch_training_dataframe() -> Any:
+    """Construye un DataFrame con licitaciones + feedbacks para entrenamiento.
+
+    Incluye raw_keywords, cpv, importe y fecha_publicacion para que
+    _build_dataset() en ml_classifier.py pueda usar todos los features
+    disponibles (CPV tokens, importe bins, split temporal).
+    Enriquece las etiquetas con feedback humano de ml_feedback.
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        return None
+
+    with connect() as c:
+        lic = pd.read_sql_query(
+            "SELECT id_externo, titulo, descripcion, raw_keywords, cpv, "
+            "importe, fecha_publicacion, tecnologia "
+            "FROM licitaciones",
+            c,
+        )
+        fb = pd.read_sql_query("SELECT expediente, relevante FROM ml_feedback", c)
+    if lic.empty:
+        return None
+
+    # Etiqueta base: raw_keywords notna OR tecnología detectada
+    lic["es_relevante"] = (
+        (lic["raw_keywords"].notna() & (lic["raw_keywords"] != ""))
+        | ((lic["tecnologia"].notna()) & (lic["tecnologia"] != ""))
+    ).astype(int)
+
+    # Sobreescribir con feedback humano explícito (mayor prioridad)
+    if not fb.empty:
+        fb_map = dict(zip(fb["expediente"], fb["relevante"], strict=False))
+        lic["es_relevante"] = lic.apply(
+            lambda r: int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"],
+            axis=1,
+        )
+    return lic

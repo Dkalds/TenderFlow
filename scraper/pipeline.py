@@ -41,7 +41,7 @@ _DAILY_SOURCE = "place_live_atom"
 
 
 @traced("scraper.process_month")
-def process_month(year: int, month: int, *, run_id: str | None = None, force: bool = False) -> dict:
+def process_month(year: int, month: int, *, run_id: str | None = None, force: bool = False) -> dict[str, Any]:
     """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.
 
     Garantiza el cierre de la conexión DB del hilo worker actual al finalizar,
@@ -56,7 +56,7 @@ def process_month(year: int, month: int, *, run_id: str | None = None, force: bo
 
 def _process_month_impl(
     year: int, month: int, *, run_id: str | None, force: bool, fuente: str
-) -> dict:
+) -> dict[str, Any]:
     """Implementación interna de process_month (sin gestión de recursos del hilo)."""
     try:
         zip_path = download_month(year, month, force=force)
@@ -80,7 +80,7 @@ def _process_month_impl(
         return {"year": year, "month": month, "status": "no_publicado"}
 
     encontradas = []
-    adj_por_lic: dict[str, list] = {}
+    adj_por_lic: dict[str, list[Any]] = {}
     entries_error = 0
     for filename, content in iter_xml_files(zip_path):
         log.info("xml_parse_start", filename=filename)
@@ -172,7 +172,7 @@ def _summarize(results: list[dict[str, Any]], metrics: Any) -> None:
         metrics.notas = f"adj_persist_errors:{adj_errors_total}"
 
 
-def update_recent(months_back: int = 3) -> list[dict]:
+def update_recent(months_back: int = 3) -> list[dict[str, Any]]:
     """Actualiza los últimos N meses (idempotente gracias al upsert)."""
     init_db()
     today = datetime.now(UTC).date()
@@ -186,7 +186,7 @@ def update_recent(months_back: int = 3) -> list[dict]:
     return results
 
 
-def backfill(start_year: int, start_month: int) -> list[dict]:
+def backfill(start_year: int, start_month: int) -> list[dict[str, Any]]:
     """Backfill desde una fecha histórica hasta hoy (paralelo por meses)."""
     if not (1 <= start_month <= 12):
         raise ValueError(f"start_month must be 1-12, got {start_month}")
@@ -208,7 +208,7 @@ def backfill(start_year: int, start_month: int) -> list[dict]:
     log.info("backfill_start", months=len(months), workers=workers)
 
     with record_run(run_id) as metrics:
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(process_month, y, m, run_id=run_id): (y, m) for y, m in months}
             for future in as_completed(futures):
@@ -228,7 +228,7 @@ def backfill(start_year: int, start_month: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def process_daily(*, run_id: str | None = None) -> dict:
+def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
     """Procesa el feed ATOM en vivo: pagina, filtra por tecnología, persiste con historial.
 
     Returns:
@@ -278,7 +278,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
 
     # Parsear entries y filtrar por tecnología
     encontradas = []
-    adj_por_lic: dict[str, list] = {}
+    adj_por_lic: dict[str, list[Any]] = {}
     entries_error = 0
 
     for entry_elem, updated_str in entries:
@@ -371,7 +371,7 @@ def process_daily(*, run_id: str | None = None) -> dict:
 
 
 @traced("scraper.update_daily")
-def update_daily() -> dict:
+def update_daily() -> dict[str, Any]:
     """Punto de entrada para el carril diario con observabilidad."""
     init_db()
     run_id = bind_run_context(entrypoint="update_daily")

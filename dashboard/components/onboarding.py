@@ -62,7 +62,8 @@ def render_onboarding_tour() -> None:
 
     Se activa solo una vez por sesión (``session_state["_onboarding_done"]``).
     """
-    if st.session_state.get("_onboarding_done", False):
+    from dashboard.session_keys import ONBOARDING_DONE
+    if st.session_state.get(ONBOARDING_DONE, False):
         return
 
     import json
@@ -222,5 +223,6 @@ def render_onboarding_tour() -> None:
         key="_onboarding_close",
         help="Cerrar el tour de introducción",
     ):
-        st.session_state["_onboarding_done"] = True
+        from dashboard.session_keys import ONBOARDING_DONE
+        st.session_state[ONBOARDING_DONE] = True
         st.rerun()

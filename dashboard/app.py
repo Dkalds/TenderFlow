@@ -6,7 +6,8 @@ import json
 
 import streamlit as st
 
-from dashboard.auth import check_password, current_user_is_admin
+from dashboard.auth import current_user_is_admin
+from dashboard.bootstrap import bootstrap
 from dashboard.components.layout import (
     render_export_popover,
     render_notification_bell,
@@ -36,87 +37,38 @@ from dashboard.session_keys import (
     FS_Q,
     FS_RANGO,
     FS_TIPOS,
+    LIC_FOCUS,
     NAV_CUR_PAGE,
     NAV_PREV_PAGE,
     NAV_PREV_SECTION,
+    NAV_SECTION,
+    PENDING_NAV_SECTION,
     QP_LOADED,
 )
 from dashboard.theme import (
     COMPACT_DENSITY_CSS,
     TOKENS,
-    build_css,
+    current_plotly_template,
     get_color_sequence,
-    register_plotly_template,
 )
-from observability.logging import bind_session_context, configure_logging
+from observability.histograms import timed_render
 
-# ── Logging estructurado: activar antes de cualquier otra llamada ────────
-configure_logging()
-
-# ── Config & estilo ──────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Licitaciones SAP · Sector Público",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# Anti-flash: ocultar chrome nativo antes de que se renderice nada
-st.markdown(
-    "<style>"
-    '#MainMenu,footer,[data-testid="stSidebarNav"],[data-testid="stSidebarNavSeparator"],'
-    '[data-testid="stAppDeployButton"],[data-testid="stMainMenu"],'
-    '[data-testid="stDecoration"],[data-testid="stStatusWidget"]'
-    "{display:none!important;visibility:hidden!important}"
-    '[data-testid="stToolbar"]{visibility:hidden!important}'
-    '[data-testid="stExpandSidebarButton"]{visibility:visible!important;display:block!important}'
-    "</style>",
-    unsafe_allow_html=True,
-)
-
-st.markdown(build_css(TOKENS), unsafe_allow_html=True)
-st.markdown(
-    '<a class="skip-link" href="#main">Saltar al contenido</a>',
-    unsafe_allow_html=True,
-)
-
-# ── Autenticación ────────────────────────────────────────────────────────
-check_password()
-
-# ── Correlation ID de sesión (para correlacionar logs UI↔backend) ─────────
-bind_session_context()
-
-# ── Plotly premium template ─────────────────────────────────────────────
-PLOTLY_TEMPLATE = register_plotly_template(TOKENS)
-COLOR_SEQUENCE = get_color_sequence(TOKENS)
+# ── Bootstrap: logging, set_page_config, CSS, auth, Plotly templates ────
+PLOTLY_TEMPLATE, COLOR_SEQUENCE = bootstrap()
 
 # ── Carga de datos (necesaria antes del topbar para 'última actualización') ──
 df_full = load_dataframe()
 
-# ── M13: Accessibility — skip link + ARIA live region ─────────────────────
+# ── M13: Accessibility — ARIA live region ─────────────────────────────────
 st.markdown(
-    '<a href="#main-content" class="skip-link">Saltar al contenido</a>'
     '<div id="main-content" role="main" aria-live="polite"></div>',
     unsafe_allow_html=True,
 )
 
-# ── Topbar premium (logo + meta pill + theme toggle + refresh) ───────────
+# ── Topbar premium (logo + meta pill + refresh) ──────────────────────────
 _ext = load_extracciones()
 last_updated = _ext["fecha"].max() if not _ext.empty else None
-light_mode = render_topbar(last_updated=last_updated)
-
-# Aplicar atributo data-theme al <html> para activar la paleta clara.
-if light_mode:
-    st.markdown(
-        '<script>document.documentElement.setAttribute("data-theme","light");</script>'
-        "<style>html{color-scheme:light}</style>",
-        unsafe_allow_html=True,
-    )
-else:
-    st.markdown(
-        '<script>document.documentElement.removeAttribute("data-theme");</script>',
-        unsafe_allow_html=True,
-    )
+render_topbar(last_updated=last_updated)
 
 if df_full.empty:
     empty_state(
@@ -150,10 +102,12 @@ if QP_LOADED not in st.session_state:
         st.session_state[FS_RANGO] = init_filters.rango
     # Deep-link a licitación individual: ?lic=ID_EXTERNO
     if init_filters.lic_id:
-        st.session_state["_lic_focus"] = init_filters.lic_id
-        st.session_state["nav_section"] = "Vista General"
+        st.session_state[LIC_FOCUS] = init_filters.lic_id
+        st.session_state[NAV_SECTION] = "Vista General"
         st.session_state["nav_page_Vista General"] = 2  # index de "Detalle" en SECTIONS
     st.session_state[QP_LOADED] = True
+
+
 # ── Sidebar: filtros (la navegación principal vive en el top-nav) ────────
 with st.sidebar:
     render_sidebar_brand()
@@ -163,19 +117,23 @@ with st.sidebar:
 
 # ── Top-nav: secciones principales ───────────────────────────────────────
 _all_sections = list(SECTIONS.keys())
+# Secciones restringidas a administradores — se ocultan del menú para usuarios normales
+_ADMIN_ONLY_SECTIONS = {"Ops", "Admin"}
 _visible_sections = (
-    _all_sections if current_user_is_admin() else [s for s in _all_sections if s != "Ops"]
+    _all_sections
+    if current_user_is_admin()
+    else [s for s in _all_sections if s not in _ADMIN_ONLY_SECTIONS]
 )
 
 # Consume pending nav from back_button (must happen before widget instantiation)
-_pending_nav = st.session_state.pop("_pending_nav_section", None)
+_pending_nav = st.session_state.pop(PENDING_NAV_SECTION, None)
 if _pending_nav:
-    st.session_state["nav_section"] = _pending_nav
+    st.session_state[NAV_SECTION] = _pending_nav
 
 section = top_nav(
     _visible_sections,
     icons=SECTION_ICONS,
-    key="nav_section",
+    key=NAV_SECTION,
 )
 
 # ── Inyectar override de densidad compacta ────────────────────────────────
@@ -339,7 +297,7 @@ ctx = PageContext(
     df_full=df_full,
     filters=filters,
     tokens=TOKENS,
-    plotly_template=PLOTLY_TEMPLATE,
+    plotly_template=current_plotly_template(),
     color_sequence=COLOR_SEQUENCE,
 )
 
@@ -347,7 +305,8 @@ ctx = PageContext(
 @st.fragment
 def _render_page(ctx: PageContext, page: str) -> None:
     """Fragment wrapper — widget interactions inside a page don't trigger a full app rerun."""
-    PAGE_REGISTRY[page](ctx)
+    with timed_render(page):
+        PAGE_REGISTRY[page](ctx)
 
 
 _render_page(ctx, page)

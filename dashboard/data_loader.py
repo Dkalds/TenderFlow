@@ -20,6 +20,7 @@ from dashboard.normalize import normalize_company, normalize_nif
 from dashboard.utils.dates import month_start
 from db.database import connect, init_db
 from observability.logging import get_logger
+from observability.histograms import timed_query
 from shared.geo import nuts_to_ccaa
 
 log = get_logger(__name__)
@@ -80,18 +81,23 @@ def _safe_apply(
 
 
 @st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
-def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
-    """Carga base compartida entre todas las sesiones (no copiar).
+def _load_raw(limit: int | None = None) -> pd.DataFrame:
+    """Query SQL + conversiones de tipo básicas — sin enriquecimiento.
 
-    Args:
-        limit: Si se proporciona, limita el número de filas leídas de la DB
-               (útil en sesiones con datasets grandes para acelerar primera carga).
-               ``None`` (default) carga el dataset completo.
+    Cacheada por separado para que ``invalidate_caches`` pueda limpiar también
+    la capa raw y para facilitar tests unitarios del enriquecimiento.
     """
     init_db()
     with connect() as c:
+        # Columnas de resumen: excluye blobs grandes (descripcion, raw_keywords)
+        # para reducir I/O y memoria en el dashboard. Las páginas de detalle
+        # usan _load_detail() que sí selecciona todos los campos.
         sql = (
-            "SELECT * FROM licitaciones "
+            "SELECT id_externo, titulo, organo_contratacion, importe, estado, "
+            "fecha_publicacion, ccaa, nuts_code, cpv, url, tecnologia, "
+            "tipo_contrato, moneda, provincia, duracion_valor, duracion_unidad, "
+            "fecha_limite, fecha_inicio, fecha_fin, fecha_extraccion "
+            "FROM licitaciones "
             "WHERE tecnologia IS NOT NULL AND tecnologia != '' "
             "ORDER BY fecha_publicacion DESC"
         )
@@ -99,13 +105,12 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
         if limit is not None and limit > 0:
             sql += " LIMIT ?"
             params = (int(limit),)
-        cursor = c.execute(sql, params)
-        df = _rows_to_df(cursor)
+        with timed_query("load_licitaciones"):
+            cursor = c.execute(sql, params)
+            df = _rows_to_df(cursor)
     if df.empty:
         return df
 
-    # ── Tipos básicos: errores aquí son fatales (corrupción en DB) ──
-    # format="mixed" necesario: IssueDate = "2025-02-09", atom:updated = "2026-04-10T15:36:50+02:00"
     df["fecha_publicacion"] = pd.to_datetime(
         df["fecha_publicacion"],
         errors="coerce",
@@ -115,9 +120,29 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
     df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
     df["mes"] = month_start(df["fecha_publicacion"])
     df["anyo"] = df["fecha_publicacion"].dt.year
+    return df
 
-    # ── Enriquecimientos opcionales: cada uno con fallback aislado ──
-    text_blob = df["titulo"].fillna("") + " " + df["descripcion"].fillna("")
+
+def _enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Aplica enriquecimientos NLP/lookup sobre el DataFrame raw.
+
+    Función pura (sin estado global ni Streamlit) — facilita tests unitarios y
+    permite reutilizarla fuera del contexto cacheado.
+
+    Args:
+        df: DataFrame raw procedente de ``_load_raw()`` (se modifica in-place
+            y se devuelve por conveniencia).
+
+    Returns:
+        El mismo ``df`` con columnas adicionales: ``modulos``, ``modulos_str``,
+        ``tipo_proyecto``, ``cpv_desc``, ``estado_desc``,
+        ``tipo_contrato_desc``, y categorías de baja cardinalidad.
+    """
+    if df.empty:
+        return df
+
+    desc_col = df["descripcion"].fillna("") if "descripcion" in df.columns else ""
+    text_blob = df["titulo"].fillna("") + " " + desc_col
 
     _safe_apply(
         df, "modulos", detect_modules, source=text_blob, fallback=[], op_name="detect_modules"
@@ -153,12 +178,28 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
 
     _backfill_ccaa(df)
 
-    # Categorical dtypes for low-cardinality string columns — reduces memory
     for col in ("estado", "tipo_contrato", "ccaa"):
         if col in df.columns:
             df[col] = df[col].astype("category")
 
     return df
+
+
+@st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
+def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
+    """Carga base compartida entre todas las sesiones (no copiar).
+
+    Orquesta ``_load_raw()`` + ``_enrich_dataframe()``.  Al usar
+    ``@st.cache_resource`` el resultado se reutiliza entre reruns y sesiones;
+    ``load_dataframe`` hace ``.copy()`` antes de entregarlo a cada sesión.
+
+    Args:
+        limit: Si se proporciona, limita el número de filas leídas de la DB
+               (útil en sesiones con datasets grandes para acelerar primera carga).
+               ``None`` (default) carga el dataset completo.
+    """
+    df = _load_raw(limit).copy()  # copy: no mutar el objeto cacheado de _load_raw
+    return _enrich_dataframe(df)
 
 
 def load_dataframe(limit: int | None = None) -> pd.DataFrame:
@@ -307,6 +348,7 @@ def load_extracciones() -> pd.DataFrame:
 
 def invalidate_caches() -> None:
     """Fuerza recarga de todas las fuentes cacheadas en la próxima llamada."""
+    _load_raw.clear()
     _load_dataframe_shared.clear()
     load_adjudicaciones.clear()
     load_extracciones.clear()

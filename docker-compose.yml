@@ -2,8 +2,8 @@ services:
   dashboard:
     build:
       context: .
-      target: runtime
-    image: licitaciones-sap:latest
+      dockerfile: Dockerfile.dashboard
+    image: licitaciones-sap-dashboard:latest
     container_name: licitaciones-dashboard
     restart: unless-stopped
     ports:
@@ -16,18 +16,44 @@ services:
     environment:
       DB_PATH: /data/licitaciones.db
     healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5",
+             "http://localhost:8501/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: licitaciones-sap-api:latest
+    container_name: licitaciones-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - licitaciones_data:/data
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /data/licitaciones.db
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5",
+             "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      dashboard:
+        condition: service_healthy
+
   scheduler:
     build:
       context: .
-      target: runtime
-    image: licitaciones-sap:latest
+      dockerfile: Dockerfile.api
+    image: licitaciones-sap-api:latest
     container_name: licitaciones-scheduler
     restart: unless-stopped
     # El scheduler no expone puerto — solo escribe en la BD compartida
@@ -41,7 +67,13 @@ services:
       SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
       SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}
     entrypoint: ["python", "-m", "scheduler.loop"]
-    # Iniciar después del dashboard para que la BD ya esté inicializada
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import sqlite3, os; sqlite3.connect(os.environ['DB_PATH']).execute('SELECT 1').fetchone()"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       dashboard:
         condition: service_healthy
@@ -57,6 +89,13 @@ services:
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider",
+             "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       scheduler:
         condition: service_started
@@ -74,9 +113,16 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin  # pragma: allowlist secret
       GF_USERS_ALLOW_SIGN_UP: "false"
+    healthcheck:
+      test: ["CMD-SHELL",
+             "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       prometheus:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   licitaciones_data:

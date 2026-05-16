@@ -1,0 +1,148 @@
+{
+  "title": "Licitaciones SAP — SLOs",
+  "uid": "licitaciones-sap-slo",
+  "schemaVersion": 38,
+  "tags": ["slo", "licitaciones-sap"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "title": "API — Tasa de éxito (objetivo: 99.5%)",
+      "type": "stat",
+      "id": 1,
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+      "targets": [
+        {
+          "expr": "1 - (sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])))",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.99 },
+              { "color": "green", "value": 0.995 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "API — Latencia p95 (objetivo: < 300 ms)",
+      "type": "timeseries",
+      "id": 2,
+      "gridPos": { "x": 6, "y": 0, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "legendFormat": "{{route}} p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "legendFormat": "{{route}} p99",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.3 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Scraper — Última ejecución (objetivo: < 24h)",
+      "type": "stat",
+      "id": 3,
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 6 },
+      "targets": [
+        {
+          "expr": "(time() - licitaciones_sap_last_run_timestamp) / 3600",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12 },
+              { "color": "red", "value": 24 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Circuit breaker — Estado (D1)",
+      "type": "stat",
+      "id": 4,
+      "gridPos": { "x": 0, "y": 6, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "scraper_circuit_state", "legendFormat": "{{source}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "CLOSED", "color": "green" } } },
+            { "type": "value", "options": { "1": { "text": "HALF-OPEN", "color": "yellow" } } },
+            { "type": "value", "options": { "2": { "text": "OPEN", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Rate limiting — 429s por minuto",
+      "type": "timeseries",
+      "id": 5,
+      "gridPos": { "x": 6, "y": 6, "w": 12, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status=\"429\"}[1m])) by (route)",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Coste estimado acumulado (E7)",
+      "type": "stat",
+      "id": 6,
+      "gridPos": { "x": 18, "y": 6, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(api_cost_estimate_total) / 1e6",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        }
+      }
+    }
+  ]
+}

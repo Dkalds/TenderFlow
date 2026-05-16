@@ -20,7 +20,6 @@ from dashboard.components.states import empty_state, guarded_render
 from dashboard.components.tables import data_table
 from dashboard.data_loader import load_adjudicaciones
 from dashboard.pages._base import PageContext
-from dashboard.pages.competidores._utes import render_utes_section
 from dashboard.utils.dates import month_start
 from dashboard.utils.format import fmt_eur
 
@@ -688,6 +687,3 @@ def render(ctx: PageContext) -> None:
                     ),
                     url=url,
                 )
-
-    # ── Sub-apartado: UTEs (Uniones Temporales de Empresas) ──────
-    render_utes_section(ctx, adj_ci)

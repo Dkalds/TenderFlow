@@ -117,7 +117,7 @@ def _send_smtp(
 
     recipient = (to_addr or settings.ALERT_EMAIL_TO or "").strip()
     user = settings.ALERT_SMTP_USER.strip()
-    password = settings.ALERT_SMTP_PASSWORD.strip()
+    password = settings.ALERT_SMTP_PASSWORD.get_secret_value().strip()
     host = settings.ALERT_SMTP_HOST.strip()
     port = settings.ALERT_SMTP_PORT
 

@@ -58,6 +58,37 @@ jobs:
           detect-secrets scan --baseline .secrets.baseline
           detect-secrets audit .secrets.baseline --report --only-real
 
+  bandit:
+    name: Bandit SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install bandit
+        run: pip install bandit[toml]==1.8.3
+
+      - name: Run bandit
+        run: |
+          bandit -r api/ db/ scraper/ scheduler/ config/ shared/ \
+            -x tests/ \
+            --severity-level medium \
+            --confidence-level medium \
+            -f sarif \
+            -o bandit.sarif || true
+
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+
   secrets-rotation-reminder:
     name: Secrets rotation reminder
     runs-on: ubuntu-latest

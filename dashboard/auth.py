@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import os
 import time
 from typing import Any
@@ -13,31 +12,22 @@ import streamlit as st
 from config import settings
 from dashboard.session_keys import LOGIN_PWD
 from observability.logging import get_logger
+from shared.auth_core import (
+    csv_set as _csv_set,
+    generate_oauth_state as _generate_oauth_state,
+    get_signing_key as _get_signing_key,
+    oauth_email_allowed as _oauth_email_allowed,
+    oauth_email_is_admin as _oauth_email_is_admin,
+    verify_oauth_state as _verify_oauth_state,
+    verify_password as _verify_password_core,
+)
 
 log = get_logger(__name__)
 
 
 def _verify_password(candidate: str) -> bool:
-    """Verifica *candidate* contra el hash bcrypt de settings.
-
-    Requiere que ``settings.DASHBOARD_PASSWORD_HASH`` esté configurado
-    con un hash bcrypt válido. Si no hay hash, rechaza siempre con warning.
-    """
-    pw_hash = settings.DASHBOARD_PASSWORD_HASH
-    if pw_hash:
-        try:
-            import bcrypt
-
-            return bcrypt.checkpw(candidate.encode("utf-8"), pw_hash.encode("utf-8"))
-        except Exception:
-            log.warning("bcrypt_verify_failed", exc_info=True)
-            return False
-    log.warning(
-        "no_bcrypt_hash_configured",
-        hint="Configura DASHBOARD_PASSWORD_HASH con bcrypt. "
-        "Genera el hash con: python scripts/hash_password.py",
-    )
-    return False
+    """Delegado a shared.auth_core.verify_password con el hash configurado."""
+    return _verify_password_core(candidate, settings.DASHBOARD_PASSWORD_HASH)
 
 
 # Duración máxima de una sesión autenticada (segundos)
@@ -164,109 +154,10 @@ def _record_failed_attempt() -> None:
 
 
 # ---------------------------------------------------------------------------
-# OAuth state: HMAC-signed token (no depende de session_state)
+# OAuth state: delegado a shared.auth_core
+# (re-export para mantener compatibilidad con código que llame directamente
+#  a las funciones privadas de este módulo)
 # ---------------------------------------------------------------------------
-
-
-def _get_signing_key() -> bytes:
-    """Devuelve la clave para firmar/verificar el state OAuth.
-
-    Usa SIGNING_KEY si está configurada (recomendado en producción).
-    Fallback: deriva una clave de GOOGLE_CLIENT_SECRET para compatibilidad
-    con entornos que aún no tienen SIGNING_KEY configurada.
-    """
-    if settings.SIGNING_KEY:
-        return settings.SIGNING_KEY.encode()
-    # Fallback: derivar clave con HKDF-like SHA256 para no usar el secret raw
-    import hashlib
-
-    return hashlib.sha256(
-        b"oauth_state_signing_v1:" + settings.GOOGLE_CLIENT_SECRET.encode()
-    ).digest()
-
-
-def _generate_oauth_state() -> str:
-    """Genera un state OAuth firmado con HMAC.
-
-    Formato: ``{nonce}:{timestamp}:{signature}``
-
-    - ``nonce``: 16 bytes aleatorios en hex (anti-replay).
-    - ``timestamp``: Unix epoch (para expiración).
-    - ``signature``: HMAC-SHA256 truncado a 32 hex chars.
-
-    La firma se verifica en :func:`_verify_oauth_state` sin necesidad de
-    almacenar nada en ``session_state`` — que puede perderse cuando el
-    navegador sale de Streamlit para ir a Google y vuelve con el redirect.
-    """
-    nonce = os.urandom(16).hex()
-    timestamp = str(int(time.time()))
-    payload = f"{nonce}:{timestamp}"
-    signature = hmac.new(
-        _get_signing_key(),
-        payload.encode(),
-        hashlib.sha256,
-    ).hexdigest()[:32]
-    return f"{payload}:{signature}"
-
-
-def _csv_set(value: str) -> set[str]:
-    return {item.strip().lower() for item in value.split(",") if item.strip()}
-
-
-def _oauth_email_allowed(email: str) -> bool:
-    """Valida el email OAuth contra allowlists opcionales."""
-    normalized = email.strip().lower()
-    allowed_emails = _csv_set(settings.OAUTH_ALLOWED_EMAILS)
-    allowed_domains = _csv_set(settings.OAUTH_ALLOWED_DOMAINS)
-    if not allowed_emails and not allowed_domains:
-        return True
-    domain = normalized.rsplit("@", 1)[-1] if "@" in normalized else ""
-    return normalized in allowed_emails or domain in allowed_domains
-
-
-def _oauth_email_is_admin(email: str) -> bool:
-    return email.strip().lower() in _csv_set(settings.OAUTH_ADMIN_EMAILS)
-
-
-def _verify_oauth_state(
-    state: str,
-    max_age: int = _OAUTH_STATE_MAX_AGE_SECONDS,
-) -> bool:
-    """Verifica la firma y frescura de un state OAuth.
-
-    Returns True si:
-    - El formato es válido (nonce:timestamp:signature).
-    - La firma HMAC coincide.
-    - El timestamp no supera ``max_age`` segundos de antigüedad.
-    """
-    if not state:
-        return False
-    parts = state.split(":")
-    if len(parts) != 3:
-        return False
-    nonce, timestamp_str, signature = parts
-    try:
-        ts = int(timestamp_str)
-    except ValueError:
-        return False
-    if abs(time.time() - ts) > max_age:
-        return False
-    now = time.time()
-    for seen_nonce, expires_at in list(_SEEN_OAUTH_NONCES.items()):
-        if expires_at <= now:
-            _SEEN_OAUTH_NONCES.pop(seen_nonce, None)
-    if nonce in _SEEN_OAUTH_NONCES:
-        return False
-    payload = f"{nonce}:{timestamp_str}"
-    expected = hmac.new(
-        _get_signing_key(),
-        payload.encode(),
-        hashlib.sha256,
-    ).hexdigest()[:32]
-    valid = hmac.compare_digest(signature, expected)
-    if valid:
-        _SEEN_OAUTH_NONCES[nonce] = now + max_age
-    return valid
 
 
 def _handle_oauth_callback() -> bool:

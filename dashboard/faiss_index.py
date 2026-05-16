@@ -21,6 +21,7 @@ Uso:
 from __future__ import annotations
 
 import pickle
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,11 @@ log = get_logger(__name__)
 
 _INDEX_PATH = Path(__file__).parents[1] / "data" / "models" / "faiss_index.pkl"
 _MIN_TEXTS = 10  # mínimo de textos para construir un índice útil
+
+
+def _utc_iso() -> str:
+    """ISO-8601 con tz UTC (helper local para evitar import circular)."""
+    return datetime.now(UTC).isoformat()
 
 
 def _faiss_available() -> bool:
@@ -98,7 +104,13 @@ class FaissIndex:
         embeddings = encode_texts(texts).astype(np.float32)
 
         log.info("faiss_index.built", n=len(ids), dim=embeddings.shape[1])
-        return cls(ids=ids, embeddings=embeddings)
+        instance = cls(ids=ids, embeddings=embeddings)
+        # Record which model + version was used to build this index
+        from config import settings as _settings
+
+        instance.embedding_model = _settings.EMBEDDING_MODEL  # type: ignore[attr-defined]
+        instance.embedding_version = _settings.EMBEDDING_VERSION  # type: ignore[attr-defined]
+        return instance
 
     # ── Búsqueda ──────────────────────────────────────────────────────────
 
@@ -129,22 +141,45 @@ class FaissIndex:
     # ── Persistencia ──────────────────────────────────────────────────────
 
     def save(self, path: Path | None = None) -> Path:
-        """Guarda el índice en disco."""
+        """Guarda el índice en disco con metadata de versión (C4)."""
         target = path or _INDEX_PATH
         target.parent.mkdir(parents=True, exist_ok=True)
+        # C4: incluir versión + nombre del modelo de embeddings + timestamp
+        metadata = {
+            "embedding_version": getattr(self, "embedding_version", "v1"),
+            "embedding_model": getattr(self, "embedding_model", "default"),
+            "created_at": _utc_iso(),
+            "n_records": len(self.ids),
+        }
         with open(target, "wb") as f:
-            pickle.dump({"ids": self.ids, "embeddings": self.embeddings}, f, protocol=5)
-        log.info("faiss_index.saved", path=str(target), n=len(self.ids))
+            pickle.dump(
+                {
+                    "ids": self.ids,
+                    "embeddings": self.embeddings,
+                    "metadata": metadata,
+                },
+                f,
+                protocol=5,
+            )
+        log.info("faiss_index.saved", path=str(target), n=len(self.ids), **metadata)
         return target
 
     @classmethod
     def load(cls, path: Path | None = None) -> FaissIndex:
-        """Carga el índice desde disco."""
+        """Carga el índice desde disco (compatible con índices legacy sin metadata)."""
         target = path or _INDEX_PATH
         with open(target, "rb") as f:
             data = pickle.load(f)  # noqa: S301
         obj = cls(ids=data["ids"], embeddings=data["embeddings"])
-        log.info("faiss_index.loaded", path=str(target), n=len(obj.ids))
+        meta = data.get("metadata") or {}
+        obj.embedding_version = meta.get("embedding_version", "v1")  # type: ignore[attr-defined]
+        obj.embedding_model = meta.get("embedding_model", "default")  # type: ignore[attr-defined]
+        log.info(
+            "faiss_index.loaded",
+            path=str(target),
+            n=len(obj.ids),
+            embedding_version=obj.embedding_version,  # type: ignore[attr-defined]
+        )
         return obj
 
     @classmethod

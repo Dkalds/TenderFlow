@@ -75,9 +75,12 @@ def build_forecast_df(
     df = src.copy()
 
     # Vectorized duracion_meses: map unit factor then multiply
+    # Cap at 600 months (50 years) to prevent OutOfBoundsDatetime from
+    # corrupt/test data with unrealistically large duration values.
+    _MAX_DURACION_MESES = 600.0
     factor_series = df["duracion_unidad"].str.upper().map(UNIT_TO_MONTHS)
     valor_num = pd.to_numeric(df["duracion_valor"], errors="coerce")
-    df["duracion_meses"] = valor_num.where(valor_num > 0) * factor_series
+    df["duracion_meses"] = (valor_num.where(valor_num > 0) * factor_series).clip(upper=_MAX_DURACION_MESES)
 
     # Sacar datos de adjudicación agregados por licitación
     if not adjudicaciones.empty:
@@ -116,7 +119,9 @@ def build_forecast_df(
     # DateOffset(months=N) no es vectorizable (depende del calendario concreto),
     # por lo que se aproxima con 30.4375 días/mes — suficientemente preciso para
     # forecasting; la alternativa row-by-row sería O(n) con alto overhead de pandas.
-    computed_end = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    # Use datetime64[us] (pandas 3.0 default) — wider range than datetime64[ns],
+    # avoids OutOfBoundsDatetime even after the duracion_meses cap above.
+    computed_end = pd.Series(pd.NaT, index=df.index, dtype="datetime64[us]")
     valid_mask = df["duracion_meses"].notna() & df["inicio_efectivo"].notna()
     if valid_mask.any():
         dur_days = (df.loc[valid_mask, "duracion_meses"].round().astype(float) * 30.4375).astype(

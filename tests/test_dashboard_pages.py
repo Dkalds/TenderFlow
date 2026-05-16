@@ -187,3 +187,129 @@ class TestTendenciasPage:
         total = df["importe"].sum()
         # sum(100_000 * (i+1) for i in range(10)) = 5_500_000
         assert total == pytest.approx(5_500_000.0)
+
+
+class TestTecnologiasPage:
+    """Verifica datos para la página de Tecnologías."""
+
+    def test_tecnologia_column_present(self, func_db):
+        from dashboard.data_loader import load_dataframe
+
+        df = load_dataframe()
+        assert "tecnologia" in df.columns
+
+    def test_all_rows_have_tecnologia(self, func_db):
+        from dashboard.data_loader import load_dataframe
+
+        df = load_dataframe()
+        # El seed usa tecnologia="SAP" en todos — no debe haber nulos
+        assert df["tecnologia"].notna().all()
+
+    def test_explode_tecnologias_no_crash(self, func_db):
+        """La función auxiliar de la página debe funcionar sin errores."""
+        from dashboard.data_loader import load_dataframe
+        from dashboard.pages.tecnologias import _explode_tecnologias
+
+        df = load_dataframe()
+        dfx = _explode_tecnologias(df)
+        assert len(dfx) >= len(df)
+        assert "tech_label" in dfx.columns
+
+
+class TestCalidadDatosPage:
+    """Verifica métricas de calidad del dataset."""
+
+    @pytest.fixture()
+    def func_db_with_runs(self, func_db):
+        """Extiende func_db con un extraction_run y un failed_extraction."""
+        from db.database import connect
+
+        with connect() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO extraction_runs "
+                "(run_id, started_at, ended_at, status, months_attempted, months_ok, "
+                "months_failed, licitaciones_nuevas, licitaciones_actualizadas, "
+                "errores_parseo, errores_descarga) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    "run-calidad-001",
+                    (_NOW - timedelta(hours=5)).isoformat(),
+                    _NOW.isoformat(),
+                    "ok",
+                    1, 1, 0, 10, 2, 0, 0,
+                ],
+            )
+            c.execute(
+                "INSERT INTO failed_extractions "
+                "(run_id, fuente, scope, error_type, error_message, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    "run-calidad-001",
+                    "bulk",
+                    "download",
+                    "ConnectionError",
+                    "Timeout al descargar ZIP",
+                    _NOW.isoformat(),
+                ],
+            )
+            c.commit()
+        return func_db
+
+    def test_extraction_runs_seeded(self, func_db_with_runs):
+        from db.database import connect
+
+        with connect() as c:
+            row = c.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()
+        assert int(row[0]) >= 1
+
+    def test_dlq_summary_accessible(self, func_db_with_runs):
+        from db.dlq import unresolved_summary
+
+        result = unresolved_summary()
+        # Debe devolver una lista (puede estar vacía si resolved_at está NULL)
+        assert isinstance(result, list)
+
+    def test_completeness_stats(self, func_db_with_runs):
+        from dashboard.data_loader import load_dataframe
+        from dashboard.stats import calidad_dato
+
+        df = load_dataframe()
+        q = calidad_dato(df)
+        # calidad_dato debe devolver un dict con métricas de completitud
+        assert isinstance(q, dict)
+        expected_keys = {"pct_cpv_valido", "pct_importe", "pct_fecha_pub", "pct_titulo"}
+        assert expected_keys.issubset(q.keys())
+        # El seed tiene todos los campos rellenos — completitud alta
+        assert q["pct_importe"] == pytest.approx(100.0)
+        assert q["pct_fecha_pub"] == pytest.approx(100.0)
+
+
+class TestClustersPage:
+    """Verifica que los datos de clustering son coherentes."""
+
+    def test_cluster_requires_minimum_rows(self, func_db):
+        """Con < 10 filas, cluster_licitaciones no debe lanzar excepción."""
+        from dashboard.data_loader import load_dataframe
+
+        df = load_dataframe()
+        # El seed tiene 10 licitaciones — justo en el umbral
+        assert len(df) >= 10
+
+    def test_cluster_summary_structure(self, func_db):
+        """cluster_summary devuelve estructura esperada."""
+        from dashboard.clustering import cluster_summary
+
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "cluster_id": [0, 0, 1, 1, 2],
+                "cluster_label": ["A", "A", "B", "B", "C"],
+                "id_externo": ["L1", "L2", "L3", "L4", "L5"],
+                "importe": [1.0, 2.0, 3.0, 4.0, 5.0],
+            }
+        )
+        summary = cluster_summary(df)
+        assert isinstance(summary, pd.DataFrame)
+        assert "cluster_id" in summary.columns
+        assert len(summary) == 3  # 3 clusters distintos

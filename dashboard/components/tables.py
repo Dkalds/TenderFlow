@@ -17,6 +17,52 @@ except ImportError:
 _AUTO_THRESHOLD = 100  # filas por encima de las cuales se activa AgGrid en modo 'auto'
 
 
+def paginate_df(
+    df: pd.DataFrame,
+    *,
+    page_size: int = 50,
+    key: str = "table_page",
+) -> pd.DataFrame:
+    """Muestra controles prev/next y devuelve sólo las filas de la página actual.
+
+    Args:
+        df:         DataFrame completo ya filtrado.
+        page_size:  Número de filas por página.
+        key:        Clave de sesión para guardar el número de página actual.
+
+    Returns:
+        Slice del DataFrame correspondiente a la página actual.
+    """
+    total = len(df)
+    if total <= page_size:
+        return df
+
+    n_pages = max(1, (total + page_size - 1) // page_size)
+    if key not in st.session_state:
+        st.session_state[key] = 0
+
+    page: int = int(st.session_state[key])
+    page = max(0, min(page, n_pages - 1))
+    st.session_state[key] = page
+
+    col_prev, col_info, col_next = st.columns([1, 4, 1])
+    with col_prev:
+        if st.button("← Anterior", key=f"{key}_prev", disabled=page == 0):
+            st.session_state[key] = page - 1
+            st.rerun()
+    with col_info:
+        first_row = page * page_size + 1
+        last_row = min((page + 1) * page_size, total)
+        st.caption(f"Filas {first_row}–{last_row} de {total:,}  (página {page + 1}/{n_pages})")
+    with col_next:
+        if st.button("Siguiente →", key=f"{key}_next", disabled=page >= n_pages - 1):
+            st.session_state[key] = page + 1
+            st.rerun()
+
+    start = page * page_size
+    return df.iloc[start : start + page_size]
+
+
 def data_table(
     df: pd.DataFrame,
     *,

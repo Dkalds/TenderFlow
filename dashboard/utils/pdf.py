@@ -84,7 +84,7 @@ def generate_pdf(
     filtros: dict[str, str],
     top_oportunidades: list[dict[str, Any]],
     chart_images: list[tuple[str, bytes]] | None = None,
-    titulo: str = "Informe Ejecutivo — Licitaciones SAP",
+    titulo: str = "Informe Ejecutivo — Licitaciones",
 ) -> bytes:
     """Genera un PDF en memoria y devuelve los bytes.
 

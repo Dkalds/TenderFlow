@@ -75,6 +75,15 @@ class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
         new_name = str(getattr(new_state, "name", new_state))
         old_name = str(getattr(old_state, "name", old_state))
 
+        # D1: exportar estado a Prometheus (0=closed, 1=half-open, 2=open)
+        try:
+            from observability.runtime_metrics import scraper_circuit_state
+
+            mapping = {"closed": 0, "half-open": 1, "open": 2}
+            scraper_circuit_state.labels(source=cb.name).set(mapping.get(new_name, 0))
+        except Exception:  # noqa: BLE001 — métrica opcional, no debe romper el breaker
+            pass
+
         if new_name == "open":
             self._consecutive_opens += 1
             new_timeout = min(

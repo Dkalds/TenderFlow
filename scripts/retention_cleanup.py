@@ -6,6 +6,9 @@ Tablas afectadas (NO toca licitaciones ni adjudicaciones):
     - failed_extractions   — DLQ resueltos            (default: >30 días)
     - licitaciones_history — histórico de cambios     (default: >365 días)
     - access_log           — log de accesos           (default: >180 días)
+    - idempotency_keys     — claves de idempotencia   (default: >1 día)
+    - webhook_deliveries   — historial de entregas    (default: >90 días)
+    - rate_limits          — ventanas de rate limit   (expiradas — siempre)
 
 Uso:
     python scripts/retention_cleanup.py           # dry-run (muestra qué borraría)
@@ -17,13 +20,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
 def _cutoff_iso(days: int) -> str:
-    from datetime import timedelta
-
     return (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
 
@@ -48,6 +49,8 @@ def run_retention(
     dlq_days: int,
     history_days: int,
     access_days: int,
+    idempotency_days: int = 1,
+    webhook_deliveries_days: int = 90,
     apply: bool,
 ) -> dict[str, int]:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -60,6 +63,8 @@ def run_retention(
         ("audit_log", "created_at", audit_days),
         ("licitaciones_history", "changed_at", history_days),
         ("access_log", "logged_in_at", access_days),
+        ("idempotency_keys", "created_at", idempotency_days),
+        ("webhook_deliveries", "created_at", webhook_deliveries_days),
     ]
 
     with connect() as conn:
@@ -96,6 +101,25 @@ def run_retention(
             print(f"  failed_extractions: ERROR — {exc}", file=sys.stderr)
             results["failed_extractions"] = -1
 
+        # rate_limits: purgar entradas expiradas
+        try:
+            from db.rate_limits import cleanup_expired
+            if apply:
+                n_rl = cleanup_expired()
+            else:
+                import time as _time
+                now_ts = _time.time()
+                cur_rl = conn.execute(
+                    "SELECT COUNT(*) FROM rate_limits WHERE reset_at < ?", (now_ts,)
+                )
+                n_rl = cur_rl.fetchone()[0]
+            results["rate_limits"] = int(n_rl)
+            verb = "purgadas" if apply else "a purgar"
+            print(f"  rate_limits (expiradas): {n_rl:,} entradas {verb}")
+        except Exception as exc:
+            print(f"  rate_limits: ERROR — {exc}", file=sys.stderr)
+            results["rate_limits"] = -1
+
     return results
 
 
@@ -115,6 +139,13 @@ def main() -> int:
         "--history-days", type=int, default=365, help="Retención licitaciones_history (días)"
     )
     parser.add_argument("--access-days", type=int, default=180, help="Retención access_log (días)")
+    parser.add_argument(
+        "--idempotency-days", type=int, default=1, help="Retención idempotency_keys (días)"
+    )
+    parser.add_argument(
+        "--webhook-deliveries-days", type=int, default=90,
+        help="Retención webhook_deliveries (días)"
+    )
     args = parser.parse_args()
 
     mode = "APLICANDO" if args.apply else "DRY-RUN"
@@ -124,6 +155,9 @@ def main() -> int:
     print(f"  failed_extractions:   >{args.dlq_days}d (solo resueltos)")
     print(f"  licitaciones_history: >{args.history_days}d")
     print(f"  access_log:           >{args.access_days}d")
+    print(f"  idempotency_keys:     >{args.idempotency_days}d")
+    print(f"  webhook_deliveries:   >{args.webhook_deliveries_days}d")
+    print(f"  rate_limits:          expiradas")
     print()
 
     results = run_retention(
@@ -132,6 +166,8 @@ def main() -> int:
         dlq_days=args.dlq_days,
         history_days=args.history_days,
         access_days=args.access_days,
+        idempotency_days=args.idempotency_days,
+        webhook_deliveries_days=args.webhook_deliveries_days,
         apply=args.apply,
     )
 

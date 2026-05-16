@@ -477,6 +477,85 @@ dashboard/app.py             ←── Dashboard Streamlit (KPIs, páginas, filt
 
 ---
 
+### `saved_filters` — Filtros guardados por usuario
+
+Guarda configuraciones de filtros nombradas por usuario para recuperarlas luego (migración 16).
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | INTEGER PK | Autoincremental |
+| `user_key` | TEXT | Clave de usuario |
+| `name` | TEXT | Nombre del filtro guardado |
+| `filters_json` | TEXT | JSON con los valores de los filtros |
+| `created_at` | TEXT | Fecha de creación |
+
+**Constraint único:** `(user_key, name)`.
+
+---
+
+### `notification_reads` — Lecturas de notificaciones
+
+Registra qué notificaciones ha marcado como leídas cada usuario (migración 17).
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | INTEGER PK | Autoincremental |
+| `user_key` | TEXT | Clave de usuario |
+| `notification_id` | TEXT | ID de la notificación/licitación |
+| `read_at` | TEXT | Timestamp de lectura |
+
+---
+
+### `pending_digests` — Colas de emails pendientes
+
+Entradas de watchlist pendientes de enviar en el próximo ciclo de digest (migración 18).
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | INTEGER PK | Autoincremental |
+| `user_key` | TEXT | Clave de usuario |
+| `recipient_email` | TEXT | Email destinatario |
+| `entry_id` | INTEGER | ID de la entrada watchlist que hizo match |
+| `licitacion_id` | TEXT | ID de la licitación matcheada |
+| `frequency` | TEXT | Frecuencia: `immediate`, `daily`, `weekly` |
+| `matched_at` | TEXT | Cuándo se detectó el match |
+| `sent` | INTEGER | 0 = pendiente, 1 = enviado |
+
+---
+
+### `audit_log` — Log de auditoría
+
+Registro de acciones de usuarios para auditoría de seguridad (migración 18).
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | INTEGER PK | Autoincremental |
+| `user_key` | TEXT | Clave de usuario |
+| `session_hash` | TEXT | Hash de sesión (anonimizado) |
+| `action` | TEXT | Acción realizada (e.g. `login`, `filter_save`, `export`) |
+| `detail` | TEXT | Detalle adicional en formato libre |
+| `created_at` | TEXT | Timestamp generado por SQLite (`strftime(...,'now')`) |
+
+---
+
+### `api_keys` — API Keys de acceso a la REST API
+
+Almacena hashes (SHA-256) de las API Keys emitidas para la API REST (migración 19).
+El token en bruto **nunca** se guarda — solo se usa para verificar cabecera `X-API-Key`.
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | INTEGER PK | Autoincremental |
+| `key_hash` | TEXT UNIQUE | SHA-256 hex del token en bruto |
+| `name` | TEXT | Nombre descriptivo de la clave (quién la usa) |
+| `created_at` | TEXT | Fecha de creación |
+| `last_used` | TEXT | Última vez que se usó (actualizado best-effort) |
+| `is_active` | INTEGER | 1 = activa, 0 = revocada |
+
+**Índice parcial:** `idx_api_keys_hash WHERE is_active = 1` — las claves revocadas no se buscan.
+
+---
+
 ## Versiones del esquema
 
 | Versión | Descripción | Reversible |
@@ -486,15 +565,27 @@ dashboard/app.py             ←── Dashboard Streamlit (KPIs, páginas, filt
 | 3 | `watchlist_cpv.last_notified_at` | No (ALTER TABLE) |
 | 4 | `watchlist_cpv.email` | No (ALTER TABLE) |
 | 5 | `ingestion_cursors` + `licitaciones_history` | Sí |
-| 6 | Columnas extra en `licitaciones` | No (ALTER TABLE) |
-| 7 | FTS5 + triggers | Sí |
-| 8 | `users` | Sí |
+| 6 | Columnas extra en `licitaciones` (programático `_apply_v6_columns`) | No (ALTER TABLE) |
+| 7 | FTS5 + triggers `trg_fts_*` (programático `_apply_v7_fts`) | Sí |
+| 8 | `users` + `watchlist_cpv.user_id` (programático `_apply_v8_user_id`) | Sí |
 | 9 | `access_log` | Sí |
-| 10 | `users.is_admin` | No (ALTER TABLE) |
-| 11 | Índice único en `failed_extractions` | Sí |
+| 10 | `users.is_admin` (programático `_apply_v10_is_admin`) | No (ALTER TABLE) |
+| 11 | Índice único parcial en `failed_extractions` para dedup DLQ | Sí |
 | 12 | `rate_limits` | Sí |
 | 13 | `kpi_snapshots` | Sí |
+| 14 | `licitaciones.tecnologia` + backfill SAP (programático `_apply_v14_tecnologia`) | No (ALTER TABLE) |
+| 15 | `watchlist_cpv.frequency` (programático `_apply_v15_frequency`) | No (ALTER TABLE) |
+| 16 | `saved_filters` | Sí |
+| 17 | `notification_reads` | Sí |
+| 18 | `pending_digests` + `audit_log` | Sí |
+| 19 | `api_keys` (REST API key auth) | Sí |
+| 20 | índices compuestos `(ccaa, fecha_publicacion)` y `(estado, fecha_publicacion)` | Sí |
 
+> **Migraciones programáticas:** Las versiones 6, 7, 8, 10, 14 y 15 ejecutan código Python
+> adicional después del SQL (ver `_apply_v*` en `db/migrations.py`). Esto es necesario cuando
+> se requiere lógica condicional (`PRAGMA table_info`) o un rebuild de índice FTS5 que SQLite
+> no permite declarativamente.
+>
 > **Nota sobre rollbacks:** Las migraciones que solo añaden columnas (ALTER TABLE ADD COLUMN)
 > no son reversibles en SQLite < 3.35 sin reconstruir la tabla completa.
 > Para revertir esas versiones, restaura desde un backup de la BD.

@@ -65,3 +65,34 @@ QP_LOADED: Final = "_qp_loaded"
 NAV_PREV_PAGE: Final = "_prev_page"
 NAV_PREV_SECTION: Final = "_prev_section"
 NAV_CUR_PAGE: Final = "_cur_page"
+
+# ── UI / Tema ────────────────────────────────────────────────────────────
+UI_LIGHT_MODE: Final = "ui_light_mode"
+UI_PRESENTATION_MODE: Final = "ui_presentation_mode"
+UI_THEME_CHOICE: Final = "ui_theme_choice"
+
+# ── Navegación interna ───────────────────────────────────────────────────
+NAV_SECTION: Final = "nav_section"
+LIC_FOCUS: Final = "_lic_focus"
+
+# ── Notificaciones ───────────────────────────────────────────────────────
+BROWSER_NOTIF_SENT: Final = "_browser_notif_sent"
+
+# ── Onboarding ───────────────────────────────────────────────────────────
+ONBOARDING_DONE: Final = "_onboarding_done"
+
+# ── Búsquedas recientes (sidebar) ────────────────────────────────────────
+RECENT_SEARCHES: Final = "_recent_searches"
+
+# ── Navegación pendiente (back button) ───────────────────────────────────
+PENDING_NAV_SECTION: Final = "_pending_nav_section"
+
+# ── Modo Investigador ────────────────────────────────────────────────────
+INV_HISTORY: Final = "inv_history"
+INV_Q: Final = "inv_q"
+
+# ── Comparador de licitaciones ───────────────────────────────────────────
+COMPARE_IDS: Final = "_compare_ids"
+
+# ── Tracking de visita (panel "novedades") ────────────────────────────────
+LAST_VISIT_TS: Final = "_last_visit_ts"
