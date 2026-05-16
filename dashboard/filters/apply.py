@@ -57,7 +57,8 @@ def _search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
 
 
 def apply_filters(df: pd.DataFrame, state: FiltersState) -> pd.DataFrame:
-    result = df.copy()
+    # Evitar copia completa upfront: cada máscara booleana ya materializa un nuevo DataFrame.
+    result = df
     _fts_used = False
     if state.q:
         # Intentar FTS5 primero para ranking por relevancia
