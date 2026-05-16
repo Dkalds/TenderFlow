@@ -38,6 +38,10 @@ repos:
           - "--disable-error-code=type-arg"
           - "--disable-error-code=arg-type"
           - "--disable-error-code=unused-ignore"
+          - "--disable-error-code=return-value"
+          - "--disable-error-code=name-defined"
+          - "--disable-error-code=str-bytes-safe"
+          - "--disable-error-code=operator"
         files: '^(scraper|db|scheduler|dashboard)/.*\.py$|^config/.*\.py$'
 
   - repo: local

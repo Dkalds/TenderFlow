@@ -116,7 +116,7 @@ def purge_stale_features(*, older_than_days: int = 30) -> int:
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
-def feature_stats() -> dict[str, Any]:
+def feature_stats() -> list[dict[str, Any]]:
     """Estadísticas del feature store (tamaño por tipo/nombre)."""
     with connect() as c:
         rows = c.execute(
