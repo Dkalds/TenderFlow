@@ -44,6 +44,7 @@ class FeedbackRepository:
         if not row:
             return None
         import json
+
         try:
             return json.loads(row[0])
         except Exception:
@@ -51,6 +52,7 @@ class FeedbackRepository:
 
     def store_idempotency(self, key: str, response: dict[str, Any]) -> None:
         import json
+
         with connect() as c:
             c.execute(
                 "INSERT OR IGNORE INTO idempotency_keys "

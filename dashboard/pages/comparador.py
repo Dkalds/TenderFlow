@@ -71,8 +71,7 @@ def render(ctx: PageContext) -> None:
         # Format importe
         if field_key == "importe":
             values = {
-                k: fmt_eur(v) if pd.notna(v) and v is not None else "—"
-                for k, v in values.items()
+                k: fmt_eur(v) if pd.notna(v) and v is not None else "—" for k, v in values.items()
             }
         row: dict = {"Campo": field_label}
         baseline_val = next(iter(values.values()))
@@ -88,7 +87,9 @@ def render(ctx: PageContext) -> None:
     )
 
     # ── Importe bar chart ───────────────────────────────────────────────────
-    import_rows = df[df["id_externo"].isin(sel) & df["importe"].notna()][["id_externo", "importe", "titulo"]]
+    import_rows = df[df["id_externo"].isin(sel) & df["importe"].notna()][
+        ["id_externo", "importe", "titulo"]
+    ]
     if not import_rows.empty:
         import plotly.express as px
 

@@ -155,6 +155,7 @@ async def feedback_queue(
 
             def _predict() -> list:
                 from scraper.ml_classifier import SAPClassifier
+
                 clf = SAPClassifier.load()
                 probs = clf.predict_proba(texts)
                 scores = []

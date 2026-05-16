@@ -28,7 +28,9 @@ def render(ctx: PageContext) -> None:
         st.info("No hay flags configurados todavía.")
     else:
         for flag in flags:
-            with st.expander(f"{'✅' if flag['enabled'] else '❌'}  **{flag['name']}**", expanded=False):
+            with st.expander(
+                f"{'✅' if flag['enabled'] else '❌'}  **{flag['name']}**", expanded=False
+            ):
                 col1, col2, col3 = st.columns([2, 1, 1])
                 new_enabled = col1.checkbox(
                     "Activo",

@@ -230,6 +230,7 @@ def create_api_key(
     expires_at: str | None = None
     if expires_days is not None:
         from datetime import UTC, datetime, timedelta
+
         expires_at = (datetime.now(UTC) + timedelta(days=expires_days)).isoformat()
 
     with connect() as c:

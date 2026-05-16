@@ -13,6 +13,7 @@ from db.database import connect, connect_read, now_utc_iso
 class ApiKeyRepository:
     def _hash(self, raw: str) -> str:
         from config import settings
+
         secret = settings.API_HMAC_SECRET
         if secret:
             return hmac.new(secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
@@ -21,7 +22,10 @@ class ApiKeyRepository:
     def get_by_hash(self, key_hash: str) -> dict[str, Any] | None:
         with connect_read() as c:
             cols_info = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
-            select_parts = ["id", "expires_at" if "expires_at" in cols_info else "NULL AS expires_at"]
+            select_parts = [
+                "id",
+                "expires_at" if "expires_at" in cols_info else "NULL AS expires_at",
+            ]
             if "scopes" in cols_info:
                 select_parts.append("scopes")
             else:
@@ -68,9 +72,7 @@ class ApiKeyRepository:
 
     def revoke(self, key_hash: str) -> bool:
         with connect() as c:
-            cur = c.execute(
-                "UPDATE api_keys SET is_active = 0 WHERE key_hash = ?", (key_hash,)
-            )
+            cur = c.execute("UPDATE api_keys SET is_active = 0 WHERE key_hash = ?", (key_hash,))
             return bool(cur.rowcount)
 
     def get_name(self, key_hash: str) -> str | None:

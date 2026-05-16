@@ -626,12 +626,10 @@ def _apply_v20_indexes(conn: Any) -> None:
     if not exists:
         return
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_lic_ccaa_fecha "
-        "ON licitaciones(ccaa, fecha_publicacion)"
+        "CREATE INDEX IF NOT EXISTS idx_lic_ccaa_fecha ON licitaciones(ccaa, fecha_publicacion)"
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_lic_estado_fecha "
-        "ON licitaciones(estado, fecha_publicacion)"
+        "CREATE INDEX IF NOT EXISTS idx_lic_estado_fecha ON licitaciones(estado, fecha_publicacion)"
     )
 
 

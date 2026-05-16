@@ -372,12 +372,14 @@ class TestMetadataPersistence:
         model_path.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(clf, model_path, compress=3)
         import hashlib
+
         sha = hashlib.sha256(model_path.read_bytes()).hexdigest()
         model_path.with_suffix(".sha256").write_text(sha, encoding="utf-8")
 
         loaded = SAPClassifier.load(model_path)
         assert loaded._threshold == settings.ML_CONFIDENCE_THRESHOLD
         assert loaded.metadata == {}
+
 
 class TestRound2Improvements:
     """Tests para mejoras Round 2: F-beta, Brier/ECE, registry, TimeSeriesCV."""

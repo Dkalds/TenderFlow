@@ -119,9 +119,7 @@ def main() -> int:
         return 2
 
     _ensure_column()
-    pairs = find_duplicates(
-        threshold=args.threshold, window_days=args.window_days
-    )
+    pairs = find_duplicates(threshold=args.threshold, window_days=args.window_days)
     print(f"Pares duplicados encontrados: {len(pairs)} (threshold={args.threshold})")
     if args.dry_run:
         for dup, orig, s in pairs[:20]:

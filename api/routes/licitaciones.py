@@ -156,6 +156,7 @@ def _get_classifier() -> Any:
     global _classifier_cache
     if _classifier_cache is None:
         from scraper.ml_classifier import SAPClassifier
+
         _classifier_cache = SAPClassifier.load()
     return _classifier_cache
 
@@ -182,8 +183,12 @@ async def list_licitaciones(
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
     fecha_desde: str | None = Query(None, description="Fecha publicación desde (YYYY-MM-DD)"),
     fecha_hasta: str | None = Query(None, description="Fecha publicación hasta (YYYY-MM-DD)"),
-    sort: str | None = Query(None, description="Orden: fecha_publicacion (default), -importe, importe, titulo"),
-    with_total: bool = Query(True, description="Incluir total (false = más rápido para paginación)"),
+    sort: str | None = Query(
+        None, description="Orden: fecha_publicacion (default), -importe, importe, titulo"
+    ),
+    with_total: bool = Query(
+        True, description="Incluir total (false = más rápido para paginación)"
+    ),
     limit: int = Query(50, ge=1, le=_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     _ctx: AuthContext = Depends(require_api_key),
@@ -353,6 +358,7 @@ async def search_licitaciones(
         params.append(body.fecha_hasta)
 
     from db.repositories.licitaciones import _DEFAULT_SORT, _SORT_WHITELIST, _SUMMARY_COLS
+
     order = _SORT_WHITELIST.get(body.sort or "", _DEFAULT_SORT)
     where = " AND ".join(conditions)
 
@@ -537,7 +543,9 @@ class BulkGetRequest(BaseModel):
     "/licitaciones/bulk-get",
     summary="Recuperar múltiples licitaciones por ID en una sola request",
     responses={
-        200: {"description": "Lista de licitaciones encontradas (los IDs no encontrados se omiten)"},
+        200: {
+            "description": "Lista de licitaciones encontradas (los IDs no encontrados se omiten)"
+        },
         401: {"description": "API key inválida"},
         422: {"description": "Parámetros inválidos"},
     },

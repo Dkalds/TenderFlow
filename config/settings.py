@@ -191,7 +191,7 @@ class Settings(BaseSettings):
         if self.ENV == "prod" and not self.SIGNING_KEY.get_secret_value():
             raise ValueError(
                 "SIGNING_KEY es obligatorio en ENV=prod para firmar tokens CSRF/OAuth. "
-                "Genera uno con: python -c \"import secrets; print(secrets.token_hex(32))\""
+                'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return self
 

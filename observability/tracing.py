@@ -131,9 +131,13 @@ def configure_tracing(service_name: str | None = None) -> None:
             ) -> Any:
                 # Delegate to base sampler (ratio-based)
                 return self._fallback.should_sample(
-                    parent_context, trace_id, name,
-                    kind=kind, attributes=attributes,
-                    links=links, trace_state=trace_state,
+                    parent_context,
+                    trace_id,
+                    name,
+                    kind=kind,
+                    attributes=attributes,
+                    links=links,
+                    trace_state=trace_state,
                 )
 
             def get_description(self) -> str:

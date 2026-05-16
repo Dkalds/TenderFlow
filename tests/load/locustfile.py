@@ -30,9 +30,7 @@ class APIUser(HttpUser):
         """Carga la API key desde el entorno."""
         api_key = os.environ.get("LICITACIONES_API_KEY")
         if not api_key:
-            raise RuntimeError(
-                "LICITACIONES_API_KEY no configurada — abortando carga."
-            )
+            raise RuntimeError("LICITACIONES_API_KEY no configurada — abortando carga.")
         self.client.headers.update({"X-API-Key": api_key})
 
     @task(10)

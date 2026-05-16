@@ -65,10 +65,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         headers.setdefault("Content-Security-Policy", self._csp)
         # HSTS solo tiene sentido si el cliente vino por HTTPS (o detrás de proxy TLS)
-        if (
-            request.url.scheme == "https"
-            or request.headers.get("X-Forwarded-Proto") == "https"
-        ):
+        if request.url.scheme == "https" or request.headers.get("X-Forwarded-Proto") == "https":
             headers.setdefault("Strict-Transport-Security", self._hsts)
         return response
 
@@ -86,8 +83,10 @@ def _client_key(request: Request) -> str:
         return "ak:" + hashlib.sha256(api_key.encode()).hexdigest()[:16]
     # Fallback: IP del cliente (con cabecera de proxy si existe)
     forwarded = request.headers.get("X-Forwarded-For", "")
-    ip = forwarded.split(",")[0].strip() if forwarded else (
-        request.client.host if request.client else "unknown"
+    ip = (
+        forwarded.split(",")[0].strip()
+        if forwarded
+        else (request.client.host if request.client else "unknown")
     )
     return f"ip:{ip}"
 
@@ -243,9 +242,8 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             path = getattr(route, "path", None) or request.url.path.split("?")[0]
             method = request.method
             key_prefix = (request.headers.get("X-API-Key") or "")[:8] or "-"
-            client_ip = (
-                request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                or (request.client.host if request.client else "-")
+            client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
+                request.client.host if request.client else "-"
             )
 
             log.info(
@@ -265,12 +263,8 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                     http_requests_total,
                 )
 
-                http_requests_total.labels(
-                    method=method, path=path, status=str(status_code)
-                ).inc()
-                http_request_duration_seconds.labels(
-                    method=method, path=path
-                ).observe(dt_ms / 1000)
+                http_requests_total.labels(method=method, path=path, status=str(status_code)).inc()
+                http_request_duration_seconds.labels(method=method, path=path).observe(dt_ms / 1000)
             except Exception:
                 pass
 

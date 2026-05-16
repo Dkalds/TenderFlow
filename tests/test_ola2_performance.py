@@ -38,6 +38,7 @@ def app_and_client(tmp_path, monkeypatch):
 @pytest.fixture()
 def api_key(app_and_client):
     from api.auth import create_api_key
+
     return create_api_key("ola2-test", scopes="*")
 
 

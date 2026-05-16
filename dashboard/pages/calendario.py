@@ -41,9 +41,11 @@ def render(ctx: PageContext) -> None:
     # ── Aggregate ─────────────────────────────────────────────────────────
     agg = dfc.groupby(["week", "dow"]).size().reset_index(name="n")
     # Pivot: rows=dow (0-6), cols=week (1-53)
-    pivot = agg.pivot(index="dow", columns="week", values="n").reindex(
-        index=range(7), columns=range(1, 54)
-    ).fillna(0)
+    pivot = (
+        agg.pivot(index="dow", columns="week", values="n")
+        .reindex(index=range(7), columns=range(1, 54))
+        .fillna(0)
+    )
 
     dow_labels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
@@ -70,17 +72,23 @@ def render(ctx: PageContext) -> None:
 
     # ── Monthly volume bars ───────────────────────────────────────────────
     dfc["mes"] = dfc["fecha"].dt.to_period("M").astype(str)
-    mensual = dfc.groupby("mes").agg(
-        n=("id_externo", "count"),
-        importe=("importe", "sum"),
-    ).reset_index()
+    mensual = (
+        dfc.groupby("mes")
+        .agg(
+            n=("id_externo", "count"),
+            importe=("importe", "sum"),
+        )
+        .reset_index()
+    )
 
     import plotly.express as px
 
     col1, col2 = st.columns(2)
     with col1:
         fig2 = px.bar(
-            mensual, x="mes", y="n",
+            mensual,
+            x="mes",
+            y="n",
             template=ctx.plotly_template,
             color_discrete_sequence=ctx.color_sequence,
             labels={"mes": "Mes", "n": "Publicaciones"},
@@ -91,7 +99,9 @@ def render(ctx: PageContext) -> None:
 
     with col2:
         fig3 = px.bar(
-            mensual, x="mes", y="importe",
+            mensual,
+            x="mes",
+            y="importe",
             template=ctx.plotly_template,
             color_discrete_sequence=ctx.color_sequence[1:],
             labels={"mes": "Mes", "importe": "Importe total (€)"},
@@ -105,7 +115,9 @@ def render(ctx: PageContext) -> None:
     dow_agg["dia"] = dow_agg["dow"].map(dict(enumerate(dow_labels)))
     st.markdown("**Distribución por día de la semana**")
     fig4 = px.bar(
-        dow_agg, x="dia", y="n",
+        dow_agg,
+        x="dia",
+        y="n",
         template=ctx.plotly_template,
         color_discrete_sequence=ctx.color_sequence[2:],
         labels={"dia": "Día", "n": "Publicaciones"},

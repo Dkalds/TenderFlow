@@ -408,7 +408,9 @@ def _fetch_training_dataframe() -> Any:
     if not fb.empty:
         fb_map = dict(zip(fb["expediente"], fb["relevante"], strict=False))
         lic["es_relevante"] = lic.apply(
-            lambda r: int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"],
+            lambda r: (
+                int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"]
+            ),
             axis=1,
         )
     return lic

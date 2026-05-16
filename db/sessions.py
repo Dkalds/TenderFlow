@@ -95,8 +95,7 @@ def revoke_all_sessions(user_id: int) -> int:
     """Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N."""
     with connect() as c:
         cur = c.execute(
-            "UPDATE sessions SET revoked = 1, revoked_at = ? "
-            "WHERE user_id = ? AND revoked = 0",
+            "UPDATE sessions SET revoked = 1, revoked_at = ? WHERE user_id = ? AND revoked = 0",
             (now_utc_iso(), user_id),
         )
         return cur.rowcount if hasattr(cur, "rowcount") else 0

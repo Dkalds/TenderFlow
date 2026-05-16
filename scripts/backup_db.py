@@ -283,6 +283,7 @@ def main() -> int:
             print("[dry-run] Backup Turso habilitado")
         if args.s3:
             import os
+
             bucket = os.environ.get("BACKUP_S3_BUCKET", "(no configurado)")
             print(f"[dry-run] Upload S3/R2: bucket={bucket}, keep-s3={args.keep_s3}")
         print(f"[dry-run] Retener últimos {args.keep} backups locales")

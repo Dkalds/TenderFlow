@@ -79,8 +79,10 @@ def _run_retention_cleanup() -> dict:
     """Purga datos históricos según la política de retención."""
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from scripts.retention_cleanup import run_retention
+
     return run_retention(
         runs_days=90,
         audit_days=180,
@@ -111,7 +113,9 @@ def main() -> int:
     dlq_interval = timedelta(minutes=_env_int("SCHEDULER_DLQ_RETRY_INTERVAL_MINUTES", 720))
     digest_interval = timedelta(minutes=_env_int("SCHEDULER_DIGEST_INTERVAL_MINUTES", 1440))
     anomaly_interval = timedelta(minutes=_env_int("SCHEDULER_ANOMALY_INTERVAL_MINUTES", 1440))
-    drift_interval = timedelta(minutes=_env_int("SCHEDULER_DRIFT_INTERVAL_MINUTES", 10080))  # weekly
+    drift_interval = timedelta(
+        minutes=_env_int("SCHEDULER_DRIFT_INTERVAL_MINUTES", 10080)
+    )  # weekly
     retention_interval = timedelta(hours=_env_int("SCHEDULER_RETENTION_INTERVAL_HOURS", 24))
     sleep_seconds = _env_int("SCHEDULER_POLL_SECONDS", 60)
 

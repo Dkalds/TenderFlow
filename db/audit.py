@@ -70,9 +70,7 @@ def log_action(
                     ensure_ascii=False,
                     sort_keys=True,
                 )
-                this_hash = hashlib.sha256(
-                    f"{prev_hash}{row_json}".encode()
-                ).hexdigest()
+                this_hash = hashlib.sha256(f"{prev_hash}{row_json}".encode()).hexdigest()
 
                 c.execute(
                     "INSERT INTO audit_log "
@@ -233,9 +231,7 @@ def verify_hash_chain() -> dict:
                 ensure_ascii=False,
                 sort_keys=True,
             )
-            expected = hashlib.sha256(
-                f"{prev_hash or 'genesis'}{row_json}".encode()
-            ).hexdigest()
+            expected = hashlib.sha256(f"{prev_hash or 'genesis'}{row_json}".encode()).hexdigest()
 
             if expected != stored_hash:
                 return {

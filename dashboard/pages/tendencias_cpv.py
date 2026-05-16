@@ -75,13 +75,18 @@ def render(ctx: PageContext) -> None:
     dfc_cpv = dfc[dfc["cpv"] == selected_cpv].copy()
     dfc_cpv = dfc_cpv.set_index("fecha").sort_index()
 
-    agg = dfc_cpv["importe"].resample(pd_freq).agg(
-        mediana=("median"),
-        p25=lambda x: x.quantile(0.25),
-        p75=lambda x: x.quantile(0.75),
-        n="count",
-        total="sum",
-    ).dropna(how="all")
+    agg = (
+        dfc_cpv["importe"]
+        .resample(pd_freq)
+        .agg(
+            mediana=("median"),
+            p25=lambda x: x.quantile(0.25),
+            p75=lambda x: x.quantile(0.75),
+            n="count",
+            total="sum",
+        )
+        .dropna(how="all")
+    )
 
     if agg.empty:
         st.info("Datos insuficientes para el período seleccionado.")

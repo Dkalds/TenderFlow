@@ -116,9 +116,7 @@ class WebhookCreate(BaseModel):
     def validate_events(cls, v: list[str]) -> list[str]:
         invalid = [e for e in v if e not in _VALID_EVENTS]
         if invalid:
-            raise ValueError(
-                f"Eventos inválidos: {invalid}. Permitidos: {sorted(_VALID_EVENTS)}"
-            )
+            raise ValueError(f"Eventos inválidos: {invalid}. Permitidos: {sorted(_VALID_EVENTS)}")
         return v
 
 
@@ -196,9 +194,7 @@ async def create(
             log.info("webhook_create_idempotent_hit", key=idempotency_key[:16])
             return WebhookCreateResponse(**cached)
 
-    webhook_id, secret = _repo.create(
-        name=body.name, url=body.url, event_types=body.event_types
-    )
+    webhook_id, secret = _repo.create(name=body.name, url=body.url, event_types=body.event_types)
     log_event(
         event_type="webhook.created",
         user_key=ctx.key_hash[:8],
@@ -336,6 +332,7 @@ async def ping(
         raise HTTPException(status_code=500, detail="Secret no disponible.")
 
     from db.database import now_utc_iso
+
     payload = json.dumps(
         {"event": "ping", "data": {"message": "Test delivery"}, "timestamp": now_utc_iso()},
         ensure_ascii=False,

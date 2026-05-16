@@ -201,6 +201,7 @@ def current_plotly_template() -> str:
     """Devuelve el nombre del template activo según el tema de la sesión."""
     try:
         import streamlit as st
+
         if st.session_state.get("ui_light_mode", False):
             return PLOTLY_TEMPLATE_NAME_LIGHT
     except Exception:

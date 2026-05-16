@@ -77,9 +77,7 @@ def render(ctx: PageContext) -> None:
     total_importe = dff["importe"].sum()
     total_adj = len(dff)
     total_empresas = dff["nombre_norm"].nunique()
-    pyme_pct = (
-        100 * dff["es_pyme"].eq(1).sum() / max(1, dff["es_pyme"].notna().sum())
-    )
+    pyme_pct = 100 * dff["es_pyme"].eq(1).sum() / max(1, dff["es_pyme"].notna().sum())
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Adjudicaciones", f"{total_adj:,}")
@@ -172,7 +170,9 @@ def render(ctx: PageContext) -> None:
         dff2 = dff2.dropna(subset=["fecha"])
         if not dff2.empty:
             dff2["mes"] = dff2["fecha"].dt.to_period("M").astype(str)
-            evol = dff2.groupby("mes").agg(n=("id", "count"), importe=("importe", "sum")).reset_index()
+            evol = (
+                dff2.groupby("mes").agg(n=("id", "count"), importe=("importe", "sum")).reset_index()
+            )
             fig3 = px.line(
                 evol,
                 x="mes",

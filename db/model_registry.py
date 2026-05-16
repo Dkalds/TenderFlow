@@ -80,8 +80,7 @@ def register_version(
 
         if activate:
             c.execute(
-                "UPDATE model_versions SET is_active = 0 "
-                "WHERE name = ? AND version != ?",
+                "UPDATE model_versions SET is_active = 0 WHERE name = ? AND version != ?",
                 (name, next_version),
             )
 

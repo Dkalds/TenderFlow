@@ -41,7 +41,9 @@ _DAILY_SOURCE = "place_live_atom"
 
 
 @traced("scraper.process_month")
-def process_month(year: int, month: int, *, run_id: str | None = None, force: bool = False) -> dict[str, Any]:
+def process_month(
+    year: int, month: int, *, run_id: str | None = None, force: bool = False
+) -> dict[str, Any]:
     """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.
 
     Garantiza el cierre de la conexión DB del hilo worker actual al finalizar,

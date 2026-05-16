@@ -236,7 +236,13 @@ class TestCalidadDatosPage:
                     (_NOW - timedelta(hours=5)).isoformat(),
                     _NOW.isoformat(),
                     "ok",
-                    1, 1, 0, 10, 2, 0, 0,
+                    1,
+                    1,
+                    0,
+                    10,
+                    2,
+                    0,
+                    0,
                 ],
             )
             c.execute(

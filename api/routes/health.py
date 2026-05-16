@@ -55,7 +55,9 @@ async def liveness() -> dict:
     return {"status": "alive", "timestamp": datetime.now(UTC).isoformat()}
 
 
-@router.get("/ready", response_model=HealthResponse, summary="Readiness probe — dependencias listas")
+@router.get(
+    "/ready", response_model=HealthResponse, summary="Readiness probe — dependencias listas"
+)
 async def readiness() -> JSONResponse:
     """Kubernetes readiness probe. Verifica DB y devuelve 503 si degradado."""
     db_status = _check_db()

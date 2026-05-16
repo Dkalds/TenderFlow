@@ -139,8 +139,7 @@ def delete_my_data(ctx: AuthContext = Depends(require_api_key)) -> dict:
         # Anonimizar watchlist vinculada a esta key hash
         try:
             c.execute(
-                "UPDATE watchlist SET user_key = 'DELETED', name = 'DELETED' "
-                "WHERE user_key = ?",
+                "UPDATE watchlist SET user_key = 'DELETED', name = 'DELETED' WHERE user_key = ?",
                 (ctx.key_hash,),
             )
         except Exception:
@@ -238,11 +237,10 @@ def rotate_my_key(
 
     # Obtener nombre y scopes de la key actual
     with connect_read() as c:
-        row = c.execute(
-            "SELECT name, scopes FROM api_keys WHERE id = ?", (ctx.key_id,)
-        ).fetchone()
+        row = c.execute("SELECT name, scopes FROM api_keys WHERE id = ?", (ctx.key_id,)).fetchone()
     if not row:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="API key no encontrada.")
 
     name, scopes = row[0], str(row[1] or "*")

@@ -20,8 +20,8 @@ def hash_argon2(password: str) -> str:
     from argon2 import PasswordHasher
 
     ph = PasswordHasher(
-        time_cost=3,       # iteraciones
-        memory_cost=65536, # 64 MB
+        time_cost=3,  # iteraciones
+        memory_cost=65536,  # 64 MB
         parallelism=2,
         hash_len=32,
         salt_len=16,

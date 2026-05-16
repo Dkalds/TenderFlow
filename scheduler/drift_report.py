@@ -103,9 +103,7 @@ def run_drift_report() -> dict[str, Any]:
         except Exception:
             pass
 
-    results["drift_detected"] = any(
-        v.get("drift", False) for v in results["columns"].values()
-    )
+    results["drift_detected"] = any(v.get("drift", False) for v in results["columns"].values())
 
     # ── Evidently HTML report (optional) ─────────────────────────────────
     report_path: Path | None = None
@@ -132,7 +130,9 @@ def run_drift_report() -> dict[str, Any]:
     results["json_path"] = str(json_path)
 
     if results["drift_detected"]:
-        log.warning("drift_detected", columns=[k for k, v in results["columns"].items() if v.get("drift")])
+        log.warning(
+            "drift_detected", columns=[k for k, v in results["columns"].items() if v.get("drift")]
+        )
     else:
         log.info("drift_report_ok", ref_n=results["ref_n"], cur_n=results["cur_n"])
 

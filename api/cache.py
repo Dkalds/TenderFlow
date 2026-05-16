@@ -59,7 +59,7 @@ def _memory_set(key: str, value: Any, ttl: float) -> None:
     if len(_IN_MEMORY_CACHE) >= _CACHE_MAX_SIZE:
         now = time.monotonic()
         expired = [k for k, (_, exp) in _IN_MEMORY_CACHE.items() if exp < now]
-        for k in expired[:max(1, _CACHE_MAX_SIZE // 10)]:
+        for k in expired[: max(1, _CACHE_MAX_SIZE // 10)]:
             _IN_MEMORY_CACHE.pop(k, None)
     _IN_MEMORY_CACHE[key] = (value, time.monotonic() + ttl)
 

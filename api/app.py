@@ -104,6 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Cerrar pool de conexiones SQLite
     try:
         from db.database import close_pool
+
         close_pool()
         log.info("api_shutdown_db_pool_closed")
     except Exception:
@@ -248,13 +249,10 @@ try:
             """Expone métricas Prometheus. Protegido por X-API-Key o IP allowlist."""
             # IP allowlist (para scrapers internos / Prometheus server)
             _metrics_allowed_ips: set[str] = set(
-                ip.strip()
-                for ip in settings.METRICS_ALLOWED_IPS.split(",")
-                if ip.strip()
+                ip.strip() for ip in settings.METRICS_ALLOWED_IPS.split(",") if ip.strip()
             )
-            client_ip = (
-                request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                or (request.client.host if request.client else "")
+            client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
+                request.client.host if request.client else ""
             )
             if client_ip not in _metrics_allowed_ips:
                 # Requiere API key con scope metrics:read
@@ -264,6 +262,7 @@ try:
                 # Validación síncrona mínima (endpoint no async)
                 from api.auth import hash_api_key
                 from db.database import connect_read
+
                 key_hash = hash_api_key(api_key_raw)
                 try:
                     with connect_read() as c:

@@ -66,13 +66,14 @@ def _relevance_badge(score: float) -> str:
 
 # ── Helpers de texto ────────────────────────────────────────────────────────
 
+
 def _escape_fts5(query: str) -> str:
     """Escapa la query para SQLite FTS5 MATCH, previniendo inyección de operadores."""
     # Strip FTS5 special chars, tokenize, wrap each token in double-quotes
     tokens = re.sub(r'["*+\-():\^]', " ", query).split()
     if not tokens:
         return '""'
-    return " ".join(f'"{t.replace(chr(34), chr(34)*2)}"' for t in tokens[:12])
+    return " ".join(f'"{t.replace(chr(34), chr(34) * 2)}"' for t in tokens[:12])
 
 
 def _context_excerpt(text: str | None, keywords: list[str], max_chars: int = 400) -> str:
@@ -122,10 +123,12 @@ def _linkify_citations(text: str, docs: list[dict]) -> str:
 
 # ── Búsqueda ────────────────────────────────────────────────────────────────
 
+
 @st.cache_resource(show_spinner=False)
 def _load_faiss_cached() -> Any:
     """Carga el índice FAISS una sola vez y lo mantiene en memoria entre reruns."""
     from dashboard.faiss_index import FaissIndex  # type: ignore[import]
+
     return FaissIndex.load()
 
 
@@ -166,7 +169,10 @@ def _fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
 
 def _like_search(question: str, top_k: int) -> list[tuple[str, float]]:
     """LIKE fallback para cuando FTS5 no está disponible."""
-    token = next((w for w in question.split() if len(w) >= 4), question.split()[0] if question.split() else "")
+    token = next(
+        (w for w in question.split() if len(w) >= 4),
+        question.split()[0] if question.split() else "",
+    )
     if not token:
         return []
     try:
@@ -274,10 +280,12 @@ def _rag_query(
 
 # ── LLM ─────────────────────────────────────────────────────────────────────
 
+
 def _get_api_key() -> str:
     """Lee OPENAI_API_KEY desde config.secrets con fallback a os.environ."""
     try:
         from config.secrets import get_secret
+
         key = get_secret("OPENAI_API_KEY")
         if key:
             return key
@@ -308,9 +316,7 @@ def _build_prompt(question: str, context_docs: list[dict], keywords: list[str]) 
     )
 
 
-def _llm_stream(
-    question: str, docs: list[dict], model: str, keywords: list[str]
-) -> Iterator[str]:
+def _llm_stream(question: str, docs: list[dict], model: str, keywords: list[str]) -> Iterator[str]:
     """Genera tokens LLM en streaming. Yields string chunks."""
     api_key = _get_api_key()
     if not api_key:
@@ -344,6 +350,7 @@ def _llm_stream(
 
 
 # ── Render ───────────────────────────────────────────────────────────────────
+
 
 @guarded_render
 def render(ctx: PageContext) -> None:
@@ -462,9 +469,7 @@ def render(ctx: PageContext) -> None:
         else:
             # ── Badge de fuente + métricas ─────────────────────────────────
             universe_txt = (
-                f" · Universo: {len(allowed_ids):,} licitaciones"
-                if allowed_ids is not None
-                else ""
+                f" · Universo: {len(allowed_ids):,} licitaciones" if allowed_ids is not None else ""
             )
             st.caption(
                 f"Motor: **{source}** · {len(docs)} expedientes · {elapsed_search_ms} ms{universe_txt}"
@@ -557,12 +562,15 @@ def render(ctx: PageContext) -> None:
             export_set = set(selected_ids) if selected_ids else {d["id_externo"] for d in docs}
             export_docs = [d for d in docs if d["id_externo"] in export_set]
             csv_cols = [
-                "id_externo", "titulo", "organo_contratacion",
-                "importe", "ccaa", "estado", "url",
+                "id_externo",
+                "titulo",
+                "organo_contratacion",
+                "importe",
+                "ccaa",
+                "estado",
+                "url",
             ]
-            df_export = pd.DataFrame(
-                [{c: d.get(c) for c in csv_cols} for d in export_docs]
-            )
+            df_export = pd.DataFrame([{c: d.get(c) for c in csv_cols} for d in export_docs])
             buf = io.StringIO()
             df_export.to_csv(buf, index=False)
             label_suffix = " (seleccionados)" if selected_ids else " (todos)"
@@ -575,14 +583,16 @@ def render(ctx: PageContext) -> None:
             )
 
             if not api_key:
-                st.caption(
-                    "💡 Configura `OPENAI_API_KEY` para respuestas generadas por IA."
-                )
+                st.caption("💡 Configura `OPENAI_API_KEY` para respuestas generadas por IA.")
 
     # ── Historial de preguntas ────────────────────────────────────────────
     history = st.session_state.get(INV_HISTORY, [])
     # Exclude the current question's entry (last one) if it matches
-    hist_to_show = history[:-1] if (history and question and question.strip() and history[-1]["q"] == question.strip()) else history
+    hist_to_show = (
+        history[:-1]
+        if (history and question and question.strip() and history[-1]["q"] == question.strip())
+        else history
+    )
     if hist_to_show:
         st.divider()
         st.markdown("### 🕘 Historial de preguntas")

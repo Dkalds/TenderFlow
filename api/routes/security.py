@@ -62,7 +62,10 @@ async def csp_report(request: Request) -> None:
     try:
         now = now_utc_iso()
         with connect() as c:
-            tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            tables = {
+                r[0]
+                for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            }
             if "csp_violations" in tables:
                 c.execute(
                     "INSERT INTO csp_violations "
@@ -151,11 +154,13 @@ async def leaked_key_notification(
             key_prefix=token[:8],
         )
 
-        results.append({
-            "token_raw": token,
-            "token_type": token_type,
-            "label": "true_positive" if revoked else "false_positive",
-        })
+        results.append(
+            {
+                "token_raw": token,
+                "token_type": token_type,
+                "label": "true_positive" if revoked else "false_positive",
+            }
+        )
 
     return results
 

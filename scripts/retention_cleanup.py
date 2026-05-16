@@ -104,10 +104,12 @@ def run_retention(
         # rate_limits: purgar entradas expiradas
         try:
             from db.rate_limits import cleanup_expired
+
             if apply:
                 n_rl = cleanup_expired()
             else:
                 import time as _time
+
                 now_ts = _time.time()
                 cur_rl = conn.execute(
                     "SELECT COUNT(*) FROM rate_limits WHERE reset_at < ?", (now_ts,)
@@ -143,8 +145,10 @@ def main() -> int:
         "--idempotency-days", type=int, default=1, help="Retención idempotency_keys (días)"
     )
     parser.add_argument(
-        "--webhook-deliveries-days", type=int, default=90,
-        help="Retención webhook_deliveries (días)"
+        "--webhook-deliveries-days",
+        type=int,
+        default=90,
+        help="Retención webhook_deliveries (días)",
     )
     args = parser.parse_args()
 

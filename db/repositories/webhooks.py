@@ -48,7 +48,15 @@ class WebhookRepository:
             cur = c.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
             return cur.rowcount > 0
 
-    def update(self, webhook_id: int, *, name: str | None, url: str | None, event_types: list[str] | None, active: bool | None) -> bool:
+    def update(
+        self,
+        webhook_id: int,
+        *,
+        name: str | None,
+        url: str | None,
+        event_types: list[str] | None,
+        active: bool | None,
+    ) -> bool:
         """Actualiza campos opcionales. Devuelve True si encontró el registro."""
         sets: list[str] = []
         params: list[Any] = []
@@ -76,12 +84,18 @@ class WebhookRepository:
 
     def get_secret(self, webhook_id: int) -> str | None:
         with connect_read() as c:
-            row = c.execute(
-                "SELECT secret FROM webhooks WHERE id = ?", (webhook_id,)
-            ).fetchone()
+            row = c.execute("SELECT secret FROM webhooks WHERE id = ?", (webhook_id,)).fetchone()
         return str(row[0]) if row else None
 
-    def record_delivery(self, webhook_id: int, *, status_code: int, success: bool, event_type: str, payload_size: int) -> None:
+    def record_delivery(
+        self,
+        webhook_id: int,
+        *,
+        status_code: int,
+        success: bool,
+        event_type: str,
+        payload_size: int,
+    ) -> None:
         """Registra una entrega en webhook_deliveries y actualiza stats."""
         now = now_utc_iso()
         with connect() as c:
@@ -123,6 +137,7 @@ class WebhookRepository:
 
     def idempotency_get(self, key: str, endpoint: str = "webhooks") -> dict[str, Any] | None:
         import json
+
         with connect_read() as c:
             row = c.execute(
                 "SELECT response_json FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
@@ -135,8 +150,11 @@ class WebhookRepository:
         except Exception:
             return None
 
-    def idempotency_store(self, key: str, endpoint: str = "webhooks", response: dict[str, Any] | None = None) -> None:
+    def idempotency_store(
+        self, key: str, endpoint: str = "webhooks", response: dict[str, Any] | None = None
+    ) -> None:
         import json
+
         if response is None:
             response = {}
         with connect() as c:

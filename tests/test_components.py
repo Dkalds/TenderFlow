@@ -22,7 +22,11 @@ class TestPaginatedDfLogic:
         monkeypatch.setattr(st, "caption", lambda *a, **kw: None)
         monkeypatch.setattr(st, "button", lambda *a, **kw: False)
         monkeypatch.setattr(st, "selectbox", lambda *a, **kw: "1")
-        monkeypatch.setattr(st, "columns", lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))])
+        monkeypatch.setattr(
+            st,
+            "columns",
+            lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))],
+        )
         # session_state starts at page 1 (default)
         st.session_state["_pg_test_key"] = 1
 
@@ -38,7 +42,11 @@ class TestPaginatedDfLogic:
         monkeypatch.setattr(st, "caption", lambda *a, **kw: None)
         monkeypatch.setattr(st, "button", lambda *a, **kw: False)
         monkeypatch.setattr(st, "selectbox", lambda *a, **kw: "1")
-        monkeypatch.setattr(st, "columns", lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))])
+        monkeypatch.setattr(
+            st,
+            "columns",
+            lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))],
+        )
 
         from dashboard.utils.pagination import paginated_df
 
@@ -53,7 +61,11 @@ class TestPaginatedDfLogic:
         monkeypatch.setattr(st, "caption", lambda *a, **kw: None)
         monkeypatch.setattr(st, "button", lambda *a, **kw: False)
         monkeypatch.setattr(st, "selectbox", lambda *a, **kw: "3")
-        monkeypatch.setattr(st, "columns", lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))])
+        monkeypatch.setattr(
+            st,
+            "columns",
+            lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))],
+        )
         st.session_state["_pg_test_key2"] = 3
 
         from dashboard.utils.pagination import paginated_df
@@ -71,7 +83,11 @@ class TestPaginatedDfLogic:
         monkeypatch.setattr(st, "caption", lambda *a, **kw: None)
         monkeypatch.setattr(st, "button", lambda *a, **kw: False)
         monkeypatch.setattr(st, "selectbox", lambda *a, **kw: "1")
-        monkeypatch.setattr(st, "columns", lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))])
+        monkeypatch.setattr(
+            st,
+            "columns",
+            lambda n: [_FakeCol() for _ in range(n if isinstance(n, int) else len(n))],
+        )
         # Página 99 con solo 1 página disponible → debe devolver página 1
         st.session_state["_pg_test_key3"] = 99
 
@@ -151,7 +167,7 @@ class TestIcon:
         """El nombre de icono no puede inyectar scripts."""
         from dashboard.components.icons import icon
 
-        result = icon('<script>alert(1)</script>', 16)
+        result = icon("<script>alert(1)</script>", 16)
         # Icono desconocido → SVG de fallback, sin script ejecutable
         assert "<script>" not in result
 
@@ -257,7 +273,7 @@ class TestKpiCard:
         # La cadena peligrosa está escapada — no debe aparecer sin escapar
         assert '<img src=x onerror="alert(1)">' not in html
         # El escape correcto convierte " en &quot;
-        assert 'onerror=&quot;' in html or 'onerror=&#' in html
+        assert "onerror=&quot;" in html or "onerror=&#" in html
 
     def test_delta_up_shows_arrow(self):
         from dashboard.components.kpi import kpi_card
@@ -368,7 +384,7 @@ class TestTopCard:
         assert "<a " not in html
 
     def test_title_is_escaped(self):
-        html = self._call(amount="€ 0", title='<b>XSS</b>', meta="Meta", url=None)
+        html = self._call(amount="€ 0", title="<b>XSS</b>", meta="Meta", url=None)
         assert "<b>XSS</b>" not in html
         assert "&lt;b&gt;" in html
 
@@ -381,7 +397,7 @@ class TestTopCard:
         html = self._call(amount="€ 0", title="SAP", meta='<img src=x onerror="x">', url=None)
         # La cadena peligrosa debe estar escapada — no sin escapar
         assert '<img src=x onerror="x">' not in html
-        assert 'onerror=&quot;' in html or 'onerror=&#' in html
+        assert "onerror=&quot;" in html or "onerror=&#" in html
 
     def test_link_has_noopener(self):
         html = self._call(amount="€ 0", title="SAP", meta="m", url="https://example.com")

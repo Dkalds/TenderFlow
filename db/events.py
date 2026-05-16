@@ -123,6 +123,7 @@ def get_events_by_type(
 
 # ── Replay helpers ─────────────────────────────────────────────────────────────
 
+
 def replay_watchlist(user_id: int | str) -> list[dict[str, Any]]:
     """Reconstruye el estado de la watchlist de un usuario reproduciendo sus eventos.
 

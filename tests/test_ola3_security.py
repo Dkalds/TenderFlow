@@ -79,7 +79,9 @@ def test_create_api_key_stores_prefix(tmp_path, monkeypatch):
     expected_prefix = raw[:8]
 
     with db_mod.connect_read() as c:
-        row = c.execute("SELECT prefix FROM api_keys WHERE prefix = ?", (expected_prefix,)).fetchone()
+        row = c.execute(
+            "SELECT prefix FROM api_keys WHERE prefix = ?", (expected_prefix,)
+        ).fetchone()
 
     assert row is not None, f"Prefix {expected_prefix!r} no guardado en api_keys"
 
@@ -108,18 +110,22 @@ def test_log_action_writes_hash_chain(tmp_path, monkeypatch):
     with db_mod.connect_read() as c:
         cols = {r[1] for r in c.execute("PRAGMA table_info(audit_log)").fetchall()}
         has_chain = "prev_hash" in cols and "this_hash" in cols
-        rows = c.execute(
-            "SELECT prev_hash, this_hash FROM audit_log ORDER BY id ASC"
-        ).fetchall()
+        rows = c.execute("SELECT prev_hash, this_hash FROM audit_log ORDER BY id ASC").fetchall()
 
     assert has_chain, "Columnas prev_hash/this_hash no existen en audit_log"
     assert len(rows) == 2
     first_prev, first_hash = rows[0]
     second_prev, _second_hash = rows[1]
 
-    assert first_prev == "genesis", f"Primera fila debe tener prev_hash='genesis', got {first_prev!r}"
-    assert first_hash is not None and len(first_hash) == 64, "this_hash debe ser SHA-256 hex (64 chars)"
-    assert second_prev == first_hash, "prev_hash de segunda fila debe igualar this_hash de la primera"
+    assert first_prev == "genesis", (
+        f"Primera fila debe tener prev_hash='genesis', got {first_prev!r}"
+    )
+    assert first_hash is not None and len(first_hash) == 64, (
+        "this_hash debe ser SHA-256 hex (64 chars)"
+    )
+    assert second_prev == first_hash, (
+        "prev_hash de segunda fila debe igualar this_hash de la primera"
+    )
 
     db_mod.set_db_path_override(None)
     db_mod.close_pool()

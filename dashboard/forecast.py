@@ -80,7 +80,9 @@ def build_forecast_df(
     _MAX_DURACION_MESES = 600.0
     factor_series = df["duracion_unidad"].str.upper().map(UNIT_TO_MONTHS)
     valor_num = pd.to_numeric(df["duracion_valor"], errors="coerce")
-    df["duracion_meses"] = (valor_num.where(valor_num > 0) * factor_series).clip(upper=_MAX_DURACION_MESES)
+    df["duracion_meses"] = (valor_num.where(valor_num > 0) * factor_series).clip(
+        upper=_MAX_DURACION_MESES
+    )
 
     # Sacar datos de adjudicación agregados por licitación
     if not adjudicaciones.empty:

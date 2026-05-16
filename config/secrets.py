@@ -59,6 +59,7 @@ def _get_from_aws(name: str) -> str | None:
     """Lee el secreto desde AWS Secrets Manager."""
     try:
         import boto3  # type: ignore[import]
+
         client = boto3.client("secretsmanager", region_name=_AWS_REGION)
         secret_id = f"{_AWS_SECRET_PREFIX}{name}"
         response = client.get_secret_value(SecretId=secret_id)

@@ -42,8 +42,7 @@ def rotate(name: str, grace_days: int) -> int:
         cols = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
         if "expires_at" not in cols:
             print(
-                "ERROR: la columna 'expires_at' no existe. "
-                "Ejecuta: alembic upgrade head",
+                "ERROR: la columna 'expires_at' no existe. Ejecuta: alembic upgrade head",
                 file=sys.stderr,
             )
             return 2

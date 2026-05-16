@@ -81,9 +81,7 @@ def save_totp_secret(user_id: int, secret: str, *, confirmed: bool = False) -> N
 def confirm_totp(user_id: int) -> None:
     """Marca el TOTP como confirmado (tras primer uso exitoso)."""
     with connect() as c:
-        c.execute(
-            "UPDATE totp_secrets SET confirmed = 1 WHERE user_id = ?", (user_id,)
-        )
+        c.execute("UPDATE totp_secrets SET confirmed = 1 WHERE user_id = ?", (user_id,))
 
 
 def get_totp_secret(user_id: int) -> dict[str, Any] | None:
@@ -139,8 +137,7 @@ def use_recovery_code(user_id: int, code: str) -> bool:
     """Verifica y consume un recovery code. Devuelve True si válido."""
     with connect() as c:
         rows = c.execute(
-            "SELECT id, code_hash FROM totp_recovery_codes "
-            "WHERE user_id = ? AND used = 0",
+            "SELECT id, code_hash FROM totp_recovery_codes WHERE user_id = ? AND used = 0",
             (user_id,),
         ).fetchall()
         for row_id, code_hash in rows:

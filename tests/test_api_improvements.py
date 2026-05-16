@@ -32,12 +32,14 @@ def api_db(tmp_path, monkeypatch):
 @pytest.fixture()
 def api_key(api_db):
     from api.auth import create_api_key
+
     return create_api_key("test-key")
 
 
 @pytest.fixture()
 def client(api_db):
     from api.app import app
+
     return TestClient(app, raise_server_exceptions=True)
 
 
@@ -125,6 +127,7 @@ class TestApiKeyScopes:
     def test_restricted_scope_key_cannot_write_webhooks(self, api_db, client):
         """Key con scope 'licitaciones:read' no puede crear webhooks."""
         from api.auth import create_api_key
+
         raw = create_api_key("restricted", scopes="licitaciones:read")
         resp = client.post(
             "/api/v1/webhooks",
@@ -136,6 +139,7 @@ class TestApiKeyScopes:
     def test_restricted_scope_can_read_licitaciones(self, api_db, client):
         """Key con scope 'licitaciones:read' puede leer licitaciones."""
         from api.auth import create_api_key
+
         raw = create_api_key("reader", scopes="licitaciones:read")
         resp = client.get("/api/v1/licitaciones", headers={"X-API-Key": raw})
         assert resp.status_code == 200
@@ -231,26 +235,48 @@ class TestLicitacionesSearch:
     @pytest.fixture()
     def seeded(self, api_db, api_key):
         from db.database import connect
+
         with connect() as c:
             c.execute(
                 "INSERT OR IGNORE INTO licitaciones "
                 "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
                 "fecha_publicacion, ccaa, cpv, url, tecnologia, fecha_extraccion) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ["S-001", "SAP ERP AEAT", "Implantación", "AEAT", 500000.0,
-                 "PUB", "2025-01-15", "Madrid", "72000000",
-                 "https://example.com/s001", "SAP", "2025-01-01"],
+                [
+                    "S-001",
+                    "SAP ERP AEAT",
+                    "Implantación",
+                    "AEAT",
+                    500000.0,
+                    "PUB",
+                    "2025-01-15",
+                    "Madrid",
+                    "72000000",
+                    "https://example.com/s001",
+                    "SAP",
+                    "2025-01-01",
+                ],
             )
             c.execute(
                 "INSERT OR IGNORE INTO licitaciones "
                 "(id_externo, titulo, organo_contratacion, importe, estado, "
                 "fecha_publicacion, ccaa, tecnologia, fecha_extraccion) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ["S-002", "Oracle Database Cataluña", "Diputació", 120000.0,
-                 "EV", "2025-02-10", "Cataluña", "ORACLE", "2025-02-01"],
+                [
+                    "S-002",
+                    "Oracle Database Cataluña",
+                    "Diputació",
+                    120000.0,
+                    "EV",
+                    "2025-02-10",
+                    "Cataluña",
+                    "ORACLE",
+                    "2025-02-01",
+                ],
             )
 
         from api.app import app
+
         return TestClient(app), {"X-API-Key": api_key}
 
     def test_search_by_multiple_ccaa(self, seeded):
@@ -290,6 +316,7 @@ class TestETagCaching:
     @pytest.fixture()
     def lic_client(self, api_db, api_key):
         from db.database import connect
+
         with connect() as c:
             c.execute(
                 "INSERT OR IGNORE INTO licitaciones "
@@ -298,6 +325,7 @@ class TestETagCaching:
                 ["ETAG-001", "SAP Test", "PUB", "Madrid", "SAP", "2025-01-01"],
             )
         from api.app import app
+
         return TestClient(app), {"X-API-Key": api_key}
 
     def test_detail_has_etag_header(self, lic_client):

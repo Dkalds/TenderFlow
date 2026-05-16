@@ -94,8 +94,7 @@ def delete_feature(
             )
         elif version is None:
             cur = c.execute(
-                "DELETE FROM feature_store "
-                "WHERE entity_type=? AND entity_id=? AND feature_name=?",
+                "DELETE FROM feature_store WHERE entity_type=? AND entity_id=? AND feature_name=?",
                 (entity_type, entity_id, feature_name),
             )
         else:
@@ -113,9 +112,7 @@ def purge_stale_features(*, older_than_days: int = 30) -> int:
 
     cutoff = (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat()
     with connect() as c:
-        cur = c.execute(
-            "DELETE FROM feature_store WHERE computed_at < ?", (cutoff,)
-        )
+        cur = c.execute("DELETE FROM feature_store WHERE computed_at < ?", (cutoff,))
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
@@ -127,7 +124,4 @@ def feature_stats() -> dict[str, Any]:
             "FROM feature_store GROUP BY entity_type, feature_name, version "
             "ORDER BY n DESC LIMIT 100"
         ).fetchall()
-    return [
-        {"entity_type": r[0], "feature_name": r[1], "version": r[2], "n": r[3]}
-        for r in rows
-    ]
+    return [{"entity_type": r[0], "feature_name": r[1], "version": r[2], "n": r[3]} for r in rows]

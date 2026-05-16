@@ -206,6 +206,7 @@ def render_notification_bell(
 
         # ── M9: Browser push notification via JS Notification API ─────
         from dashboard.session_keys import BROWSER_NOTIF_SENT
+
         if n_unread > 0 and not st.session_state.get(BROWSER_NOTIF_SENT):
             import streamlit.components.v1 as _stc_notif
 

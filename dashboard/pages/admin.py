@@ -81,7 +81,8 @@ def _render_dlq() -> None:
     cols = st.columns([2, 2, 1])
     with cols[0]:
         fuente_sel = st.selectbox(
-            "Fuente", options=["— todas —", *sorted({r["fuente"] for r in unresolved})],
+            "Fuente",
+            options=["— todas —", *sorted({r["fuente"] for r in unresolved})],
             key="dlq_admin_fuente",
         )
     with cols[2]:
@@ -183,10 +184,10 @@ def _render_api_keys() -> None:
 
     st.divider()
     st.markdown("##### Crear nueva API Key")
-    st.caption(
-        "El token **solo se muestra una vez**. Cópialo antes de cerrar esta página."
+    st.caption("El token **solo se muestra una vez**. Cópialo antes de cerrar esta página.")
+    key_name = st.text_input(
+        "Nombre descriptivo", placeholder="ej: pipeline-produccion", key="new_api_key_name"
     )
-    key_name = st.text_input("Nombre descriptivo", placeholder="ej: pipeline-produccion", key="new_api_key_name")
     if st.button("Generar API Key", type="primary", disabled=not key_name):
         try:
             from api.auth import create_api_key
@@ -206,14 +207,20 @@ def _render_api_keys() -> None:
         st.info("No hay claves activas para revocar.")
         return
 
-    revoke_options = {f"{k['name']} (id={k['id']})": k["id"] for k in active_keys if k.get("is_active") not in (0, "🚫 Revocada")}
+    revoke_options = {
+        f"{k['name']} (id={k['id']})": k["id"]
+        for k in active_keys
+        if k.get("is_active") not in (0, "🚫 Revocada")
+    }
     if not revoke_options:
         st.info("No hay claves activas.")
         return
 
     rcol1, rcol2 = st.columns([3, 1])
     with rcol1:
-        key_sel = st.selectbox("Clave a revocar", options=list(revoke_options.keys()), key="revoke_key_sel")
+        key_sel = st.selectbox(
+            "Clave a revocar", options=list(revoke_options.keys()), key="revoke_key_sel"
+        )
     with rcol2:
         if st.button("Revocar", type="secondary", use_container_width=True):
             with connect() as c:

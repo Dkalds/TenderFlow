@@ -47,6 +47,7 @@ def _load_uncertainty_zone(lo: float, hi: float, limit: int) -> pd.DataFrame:
 def _load_registry() -> list[dict[str, Any]]:
     try:
         from scraper.ml_classifier import read_registry
+
         return read_registry()
     except Exception as exc:  # pragma: no cover
         log.warning("active_learning.registry_load_failed", error=str(exc))
@@ -77,13 +78,27 @@ def _render_model_card() -> None:
     cols2[3].metric("ECE", f"{latest.get('ece', 0):.4f}", help="Calibration error")
 
     trained_at = latest.get("trained_at", "?")
-    st.caption(f"Entrenado: {trained_at} · n_train={latest.get('n_train', '?')} · n_test={latest.get('n_test', '?')}")
+    st.caption(
+        f"Entrenado: {trained_at} · n_train={latest.get('n_train', '?')} · n_test={latest.get('n_test', '?')}"
+    )
 
     # Mini-histórico (máx. 10 entrenamientos recientes)
     if len(registry) >= 2:
         with st.expander("📈 Histórico de entrenamientos", expanded=False):
             df_hist = pd.DataFrame(registry[-10:])
-            keep = [c for c in ["trained_at", "f1", "fbeta", "pr_auc", "brier", "optimal_threshold", "n_train"] if c in df_hist.columns]
+            keep = [
+                c
+                for c in [
+                    "trained_at",
+                    "f1",
+                    "fbeta",
+                    "pr_auc",
+                    "brier",
+                    "optimal_threshold",
+                    "n_train",
+                ]
+                if c in df_hist.columns
+            ]
             st.dataframe(df_hist[keep], width="stretch", hide_index=True)
 
 

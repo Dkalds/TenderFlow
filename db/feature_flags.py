@@ -105,6 +105,7 @@ def list_flags() -> list[dict[str, Any]]:
 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
+
 def _get_flag_row(name: str) -> dict[str, Any] | None:
     with connect() as c:
         cur = c.execute(

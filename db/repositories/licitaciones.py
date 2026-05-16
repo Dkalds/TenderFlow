@@ -217,9 +217,7 @@ class LicitacionRepository:
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
         """Devuelve el registro completo o None."""
         with connect_read() as c:
-            cur = c.execute(
-                "SELECT * FROM licitaciones WHERE id_externo = ?", (id_externo,)
-            )
+            cur = c.execute("SELECT * FROM licitaciones WHERE id_externo = ?", (id_externo,))
             row = cur.fetchone()
             if row is None:
                 return None
@@ -261,6 +259,7 @@ class LicitacionRepository:
     def get_filter_options(self) -> dict[str, list[str]]:
         """Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV)."""
         with connect_read() as c:
+
             def _distinct(col: str) -> list[str]:
                 rows = c.execute(
                     f"SELECT DISTINCT {col} FROM licitaciones "
@@ -279,9 +278,7 @@ class LicitacionRepository:
     def get_last_extraction_date(self) -> str | None:
         """MAX(fecha_extraccion) para Last-Modified header."""
         with connect_read() as c:
-            row = c.execute(
-                "SELECT MAX(fecha_extraccion) FROM licitaciones"
-            ).fetchone()
+            row = c.execute("SELECT MAX(fecha_extraccion) FROM licitaciones").fetchone()
         return str(row[0]) if row and row[0] else None
 
     def get_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
@@ -295,8 +292,7 @@ class LicitacionRepository:
         placeholders = ",".join("?" * len(ids))
         with connect_read() as c:
             cur = c.execute(
-                f"SELECT {_SUMMARY_COLS} FROM licitaciones "
-                f"WHERE id_externo IN ({placeholders})",
+                f"SELECT {_SUMMARY_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})",
                 ids,
             )
             rows = rows_to_dicts(cur)

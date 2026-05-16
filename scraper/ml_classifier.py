@@ -299,8 +299,7 @@ class SAPClassifier:
         # Métricas con el threshold óptimo
         y_pred_opt = (proba_test >= optimal_threshold).astype(int)
         precision_opt = float(
-            np.sum((y_pred_opt == 1) & (np.array(y_test) == 1))
-            / (np.sum(y_pred_opt == 1) + 1e-9)
+            np.sum((y_pred_opt == 1) & (np.array(y_test) == 1)) / (np.sum(y_pred_opt == 1) + 1e-9)
         )
         recall_opt = float(
             np.sum((y_pred_opt == 1) & (np.array(y_test) == 1))
@@ -338,7 +337,9 @@ class SAPClassifier:
             log.warning("ml_classifier.registry_append_failed", error=str(exc))
         return metrics
 
-    def predict(self, text: str, *, cpv: str | None = None, importe: float | None = None) -> tuple[bool, float]:
+    def predict(
+        self, text: str, *, cpv: str | None = None, importe: float | None = None
+    ) -> tuple[bool, float]:
         """Predice si un texto corresponde a una licitación SAP.
 
         Args:
@@ -1092,12 +1093,23 @@ MULTI_LABELS = ["SAP", "Cloud", "Integracion", "Mantenimiento", "RRHH"]
 _LABEL_KEYWORDS: dict[str, list[str]] = {
     "Cloud": ["cloud", "saas", "azure", "aws", "nube", "on-demand", "s/4hana cloud"],
     "Integracion": [
-        "integración", "integrar", "middleware", "api", "interfaz",
-        "sistema externo", "conexion", "interoperabilidad",
+        "integración",
+        "integrar",
+        "middleware",
+        "api",
+        "interfaz",
+        "sistema externo",
+        "conexion",
+        "interoperabilidad",
     ],
     "Mantenimiento": [
-        "mantenimiento", "soporte", "correctivo", "preventivo", "helpdesk",
-        "servicio técnico", "licencias soporte",
+        "mantenimiento",
+        "soporte",
+        "correctivo",
+        "preventivo",
+        "helpdesk",
+        "servicio técnico",
+        "licencias soporte",
     ],
     "RRHH": ["rrhh", "recursos humanos", "hr", "sap hr", "payroll", "nomina", "nómina"],
 }
@@ -1148,10 +1160,20 @@ class SAPMultiLabelClassifier:
             silver = [int(any(kw in t.lower() for kw in kws)) for t in texts]
             if sum(silver) < 10:
                 continue  # skip if too few positive examples
-            pipe = Pipeline([
-                ("tfidf", TfidfVectorizer(ngram_range=(1, 2), max_features=20000, sublinear_tf=True)),
-                ("clf", LogisticRegression(C=1.0, max_iter=300, class_weight="balanced", random_state=42)),
-            ])
+            pipe = Pipeline(
+                [
+                    (
+                        "tfidf",
+                        TfidfVectorizer(ngram_range=(1, 2), max_features=20000, sublinear_tf=True),
+                    ),
+                    (
+                        "clf",
+                        LogisticRegression(
+                            C=1.0, max_iter=300, class_weight="balanced", random_state=42
+                        ),
+                    ),
+                ]
+            )
             try:
                 pipe.fit(texts, silver)
                 self._label_clfs[label] = pipe

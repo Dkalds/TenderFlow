@@ -62,13 +62,17 @@ def _seed_db(db_mod: object) -> None:
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 "smoke-run-001",
-                (_NOW - __import__('datetime').timedelta(hours=2)).isoformat(),
+                (_NOW - __import__("datetime").timedelta(hours=2)).isoformat(),
                 _NOW.isoformat(),
                 7200000,
                 "ok",
-                1, 1, 0,
-                5, 0,
-                0, 0,
+                1,
+                1,
+                0,
+                5,
+                0,
+                0,
+                0,
             ],
         )
         c.commit()

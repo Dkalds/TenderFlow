@@ -60,11 +60,7 @@ class _MemoryBackend:
     def keys(self, pattern: str = "*") -> list[str]:
         with self._lock:
             now = time.monotonic()
-            return [
-                k
-                for k, (_, exp) in self._store.items()
-                if exp == -1 or exp > now
-            ]
+            return [k for k, (_, exp) in self._store.items() if exp == -1 or exp > now]
 
 
 class _RedisBackend:

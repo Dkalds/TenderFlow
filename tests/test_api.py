@@ -116,10 +116,18 @@ def seeded_client(api_db, api_key, monkeypatch):
             " fecha_publicacion, ccaa, cpv, url, tecnologia, fecha_extraccion) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                "LIC-001", "Sistema SAP ERP para AEAT",
-                "Implantación SAP S/4HANA", "AEAT", 500000.0,
-                "PUB", "2025-01-15", "Madrid", "72000000",
-                "https://example.com/lic/001", "SAP", "2025-01-01",
+                "LIC-001",
+                "Sistema SAP ERP para AEAT",
+                "Implantación SAP S/4HANA",
+                "AEAT",
+                500000.0,
+                "PUB",
+                "2025-01-15",
+                "Madrid",
+                "72000000",
+                "https://example.com/lic/001",
+                "SAP",
+                "2025-01-01",
             ],
         )
         c.execute(
@@ -128,9 +136,15 @@ def seeded_client(api_db, api_key, monkeypatch):
             " fecha_publicacion, ccaa, tecnologia, fecha_extraccion) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                "LIC-002", "Mantenimiento SAP Barcelona",
-                "Diputació Barcelona", 120000.0,
-                "EV", "2025-02-10", "Cataluña", "SAP", "2025-02-01",
+                "LIC-002",
+                "Mantenimiento SAP Barcelona",
+                "Diputació Barcelona",
+                120000.0,
+                "EV",
+                "2025-02-10",
+                "Cataluña",
+                "SAP",
+                "2025-02-01",
             ],
         )
         c.commit()
@@ -147,9 +161,7 @@ class TestLicitacionesEndpoint:
         return {"X-API-Key": client._api_key}
 
     def test_list_returns_items(self, seeded_client):
-        resp = seeded_client.get(
-            "/api/v1/licitaciones", headers=self._auth(seeded_client)
-        )
+        resp = seeded_client.get("/api/v1/licitaciones", headers=self._auth(seeded_client))
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 2
@@ -183,9 +195,7 @@ class TestLicitacionesEndpoint:
         assert all(i["estado"] == "PUB" for i in data["items"])
 
     def test_get_detail_ok(self, seeded_client):
-        resp = seeded_client.get(
-            "/api/v1/licitaciones/LIC-001", headers=self._auth(seeded_client)
-        )
+        resp = seeded_client.get("/api/v1/licitaciones/LIC-001", headers=self._auth(seeded_client))
         assert resp.status_code == 200
         assert resp.json()["id_externo"] == "LIC-001"
 

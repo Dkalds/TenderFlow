@@ -35,9 +35,7 @@ def _sign(secret: str, payload: bytes) -> str:
     return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
 
 
-def create_webhook(
-    *, name: str, url: str, event_types: list[str]
-) -> tuple[int, str]:
+def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int, str]:
     """Crea un webhook nuevo y devuelve (id, secret).
 
     El secret se genera de forma criptográficamente segura y solo se devuelve
@@ -91,8 +89,7 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
     successful = 0
     with connect() as c:
         rows = c.execute(
-            "SELECT id, url, secret, event_types FROM webhooks "
-            "WHERE active = 1"
+            "SELECT id, url, secret, event_types FROM webhooks WHERE active = 1"
         ).fetchall()
 
     for wid, url, secret, events_csv in rows:
@@ -108,9 +105,7 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
             "User-Agent": "licitaciones-sap-webhook/1.0",
         }
         try:
-            resp = requests.post(
-                url, data=body, headers=headers, timeout=_DELIVERY_TIMEOUT_S
-            )
+            resp = requests.post(url, data=body, headers=headers, timeout=_DELIVERY_TIMEOUT_S)
             ok = 200 <= resp.status_code < 300
             _record_delivery(wid, resp.status_code, ok)
             if ok:

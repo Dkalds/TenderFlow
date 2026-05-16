@@ -23,36 +23,36 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Colors:
     # Base surfaces (dark mode — negro azulado, más rico que negro plano)
-    bg_base: str = "#0B0B0D"        # negro azulado corporativo
+    bg_base: str = "#0B0B0D"  # negro azulado corporativo
     bg_sidebar_top: str = "#0E0E11"
     bg_sidebar_bottom: str = "#0B0B0D"
-    bg_elev_1: str = "#111114"      # surface 1 (cards)
-    bg_elev_2: str = "#16161A"      # surface 2 (cards activas / tablas)
+    bg_elev_1: str = "#111114"  # surface 1 (cards)
+    bg_elev_2: str = "#16161A"  # surface 2 (cards activas / tablas)
     bg_hoverlabel: str = "#1C1C21"
 
     # Borders — derivados del gris medio #75787B con opacidad sobre negro azulado
-    border_subtle: str = "rgba(117,120,123,0.18)"   # #75787B @18%
-    border_card: str = "rgba(117,120,123,0.22)"     # #75787B @22%
-    border_hover: str = "rgba(134,188,36,0.35)"     # verde corporativo en hover
-    border_plot: str = "rgba(117,120,123,0.12)"     # #75787B @12%
+    border_subtle: str = "rgba(117,120,123,0.18)"  # #75787B @18%
+    border_card: str = "rgba(117,120,123,0.22)"  # #75787B @22%
+    border_hover: str = "rgba(134,188,36,0.35)"  # verde corporativo en hover
+    border_plot: str = "rgba(117,120,123,0.12)"  # #75787B @12%
     border_hoverlabel: str = "rgba(117,120,123,0.30)"  # #75787B @30%
 
     # Text — blanco corporativo + grises de la paleta oficial
-    text_primary: str = "#F0F0F0"   # blanco levemente cálido (menos harsh que #FFF)
-    text_value: str = "#FFFFFF"     # blanco puro para valores KPI
+    text_primary: str = "#F0F0F0"  # blanco levemente cálido (menos harsh que #FFF)
+    text_value: str = "#FFFFFF"  # blanco puro para valores KPI
     text_secondary: str = "#D0D0CE"  # gris claro corporativo
     text_card_title: str = "#D0D0CE"  # gris claro corporativo
-    text_muted: str = "#75787B"     # gris medio corporativo
+    text_muted: str = "#75787B"  # gris medio corporativo
     text_disabled: str = "#4A4A4A"  # gris oscuro corporativo
     text_plot_axis: str = "#75787B"  # gris medio corporativo
     text_plot_body: str = "#D0D0CE"  # gris claro corporativo
 
     # Accents — verde corporativo #86BC24
-    accent_primary: str = "#86BC24"         # verde corporativo
-    accent_primary_hover: str = "#95CC2C"   # verde más claro en hover (glow)
-    accent_secondary: str = "#A8D44C"       # verde claro complementario
+    accent_primary: str = "#86BC24"  # verde corporativo
+    accent_primary_hover: str = "#95CC2C"  # verde más claro en hover (glow)
+    accent_secondary: str = "#A8D44C"  # verde claro complementario
     accent_secondary_hover: str = "#8FBA35"
-    success: str = "#86BC24"               # verde = éxito (mismo acento)
+    success: str = "#86BC24"  # verde = éxito (mismo acento)
     success_hover: str = "#6B9B1E"
     warning: str = "#FFB627"
     danger: str = "#E21836"
@@ -124,6 +124,7 @@ class LightColors:
 @dataclass(frozen=True)
 class Spacing:
     """Escala 4-pt estricta para ritmo vertical consistente."""
+
     xs: str = "4px"
     sm: str = "8px"
     md: str = "12px"
@@ -145,6 +146,7 @@ class Radii:
 @dataclass(frozen=True)
 class Shadows:
     """Sombras de 2 capas con tinte de marca verde corporativo."""
+
     sm: str = "0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 3px rgba(0,0,0,0.32)"
     md: str = "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px -8px rgba(0,0,0,0.55), 0 2px 6px rgba(134,188,36,0.06)"
     lg: str = "0 1px 0 rgba(255,255,255,0.04) inset, 0 20px 40px -12px rgba(0,0,0,0.65), 0 4px 12px rgba(134,188,36,0.08)"
@@ -162,16 +164,16 @@ class Type:
     size_sm: str = "0.8rem"
     size_md: str = "0.95rem"
     size_lg: str = "1.1rem"
-    size_xl: str = "1.5rem"   # hero header
+    size_xl: str = "1.5rem"  # hero header
     size_2xl: str = "1.9rem"  # KPI value
     weight_regular: int = 400
     weight_medium: int = 500
     weight_semibold: int = 600
     weight_bold: int = 700
-    letter_tight: str = "-0.03em"       # display — más premium
-    letter_body: str = "-0.01em"        # body text
-    letter_kpi_label: str = "0.05em"    # labels uppercase
-    letter_display: str = "-0.03em"     # hero / KPI values
+    letter_tight: str = "-0.03em"  # display — más premium
+    letter_body: str = "-0.01em"  # body text
+    letter_kpi_label: str = "0.05em"  # labels uppercase
+    letter_display: str = "-0.03em"  # hero / KPI values
 
     # Plotly
     size_plot_body: int = 12
@@ -188,11 +190,11 @@ class Breakpoints:
 
 @dataclass(frozen=True)
 class Layout:
-    sidebar_width: str = "240px"        # estrecho = más espacio para datos
-    container_max_width: str = "1600px" # más ancho en pantallas grandes
+    sidebar_width: str = "240px"  # estrecho = más espacio para datos
+    container_max_width: str = "1600px"  # más ancho en pantallas grandes
     container_padding_top: str = "1.5rem"
     container_padding_bottom: str = "2.5rem"
-    topbar_height: str = "64px"         # más alto = más premium
+    topbar_height: str = "64px"  # más alto = más premium
 
 
 @dataclass(frozen=True)

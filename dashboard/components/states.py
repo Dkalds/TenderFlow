@@ -207,7 +207,7 @@ _ILLUSTRATION_EMPTY_SEARCH = (
     '<path d="M62 62 L78 78" stroke="rgba(134,188,36,0.35)" stroke-width="3" stroke-linecap="round"/>'
     '<circle cx="42" cy="36" r="3" fill="rgba(134,188,36,0.30)"/>'
     '<path d="M35 48 Q42 54 49 48" stroke="rgba(134,188,36,0.25)" stroke-width="1.5" fill="none" stroke-linecap="round"/>'
-    '</svg>'
+    "</svg>"
 )
 
 _ILLUSTRATION_EMPTY_DATA = (
@@ -217,7 +217,7 @@ _ILLUSTRATION_EMPTY_DATA = (
     '<rect x="52" y="28" width="12" height="52" rx="3" fill="rgba(134,188,36,0.28)" stroke="rgba(134,188,36,0.45)" stroke-width="1.5"/>'
     '<rect x="70" y="48" width="12" height="32" rx="3" fill="rgba(134,188,36,0.15)" stroke="rgba(134,188,36,0.30)" stroke-width="1.5"/>'
     '<path d="M22 55 L40 39 L58 27 L76 47" stroke="rgba(134,188,36,0.50)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"/>'
-    '</svg>'
+    "</svg>"
 )
 
 _ILLUSTRATION_ERROR = (
@@ -225,7 +225,7 @@ _ILLUSTRATION_ERROR = (
     '<circle cx="48" cy="48" r="32" stroke="rgba(226,24,54,0.20)" stroke-width="2"/>'
     '<circle cx="48" cy="48" r="22" fill="rgba(226,24,54,0.06)"/>'
     '<path d="M40 40 L56 56 M56 40 L40 56" stroke="rgba(226,24,54,0.55)" stroke-width="3" stroke-linecap="round"/>'
-    '</svg>'
+    "</svg>"
 )
 
 ILLUSTRATIONS: dict[str, str] = {
@@ -310,7 +310,7 @@ def inject_favicon() -> None:
     )
     data_uri = f"data:image/svg+xml,{favicon_svg}"
     st.markdown(
-        f'<script>var l=document.querySelector("link[rel*=\'icon\']");'
+        f"<script>var l=document.querySelector(\"link[rel*='icon']\");"
         f'if(!l){{l=document.createElement("link");l.rel="icon";document.head.appendChild(l);}}'
         f'l.type="image/svg+xml";l.href="{data_uri}";</script>',
         unsafe_allow_html=True,
