@@ -81,7 +81,7 @@ class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
 
             mapping = {"closed": 0, "half-open": 1, "open": 2}
             scraper_circuit_state.labels(source=cb.name).set(mapping.get(new_name, 0))
-        except Exception:  # noqa: BLE001 — métrica opcional, no debe romper el breaker
+        except Exception:
             pass
 
         if new_name == "open":

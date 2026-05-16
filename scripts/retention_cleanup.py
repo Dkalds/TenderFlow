@@ -157,7 +157,7 @@ def main() -> int:
     print(f"  access_log:           >{args.access_days}d")
     print(f"  idempotency_keys:     >{args.idempotency_days}d")
     print(f"  webhook_deliveries:   >{args.webhook_deliveries_days}d")
-    print(f"  rate_limits:          expiradas")
+    print("  rate_limits:          expiradas")
     print()
 
     results = run_retention(

@@ -15,7 +15,6 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -41,7 +40,7 @@ def app_and_client(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def api_key(app_and_client):
-    _, client = app_and_client
+    _, _client = app_and_client
     from api.auth import create_api_key
 
     return create_api_key("test-ola1", scopes="*")
@@ -176,6 +175,7 @@ def test_require_api_key_uses_connect_read(monkeypatch):
 
     # Llamar a require_api_key con key inválida (debe fallar pero sin usar connect)
     import asyncio
+
     from fastapi import HTTPException
 
     async def _test():

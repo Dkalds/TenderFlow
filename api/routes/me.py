@@ -17,7 +17,7 @@ import zipfile
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from api.auth import AuthContext, create_api_key, require_api_key, require_scope
+from api.auth import AuthContext, create_api_key, require_api_key
 from db.audit import log_event
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.api_keys import ApiKeyRepository

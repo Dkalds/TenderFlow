@@ -14,7 +14,7 @@ from dashboard.auth import require_admin
 from dashboard.components.states import guarded_render
 from dashboard.components.tables import data_table
 from dashboard.pages._base import PageContext
-from db.database import connect, now_utc_iso
+from db.database import connect
 from db.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
 from observability.logging import get_logger
 
@@ -81,7 +81,7 @@ def _render_dlq() -> None:
     cols = st.columns([2, 2, 1])
     with cols[0]:
         fuente_sel = st.selectbox(
-            "Fuente", options=["— todas —"] + sorted({r["fuente"] for r in unresolved}),
+            "Fuente", options=["— todas —", *sorted({r["fuente"] for r in unresolved})],
             key="dlq_admin_fuente",
         )
     with cols[2]:

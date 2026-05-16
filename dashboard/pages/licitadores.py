@@ -7,7 +7,7 @@ import plotly.express as px
 import streamlit as st
 
 from dashboard.components.states import empty_state, guarded_render
-from dashboard.normalize import normalize_company, normalize_nif
+from dashboard.normalize import normalize_company
 from dashboard.pages._base import PageContext
 from dashboard.utils.format import fmt_eur
 from db.database import connect
@@ -54,8 +54,8 @@ def render(ctx: PageContext) -> None:
     df_adj["importe"] = pd.to_numeric(df_adj["importe_adjudicado"], errors="coerce").fillna(0)
 
     # ── Global filters ─────────────────────────────────────────────────────
-    ccaas = ["Todas"] + sorted(df_adj["ccaa"].dropna().unique().tolist())
-    cpvs = ["Todos"] + sorted(df_adj["cpv"].dropna().unique().tolist())
+    ccaas = ["Todas", *sorted(df_adj["ccaa"].dropna().unique().tolist())]
+    cpvs = ["Todos", *sorted(df_adj["cpv"].dropna().unique().tolist())]
 
     col_f1, col_f2 = st.columns(2)
     with col_f1:

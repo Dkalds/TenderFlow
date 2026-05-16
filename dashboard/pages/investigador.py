@@ -161,7 +161,7 @@ def _fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
     # BM25 from SQLite FTS5 is negative: more negative = more relevant
     raw_scores = [abs(float(r[1])) for r in rows]
     max_s = max(raw_scores) if raw_scores else 1.0
-    return [(r[0], s / max_s) for r, s in zip(rows, raw_scores)]
+    return [(r[0], s / max_s) for r, s in zip(rows, raw_scores, strict=False)]
 
 
 def _like_search(question: str, top_k: int) -> list[tuple[str, float]]:
@@ -250,7 +250,6 @@ def _rag_query(
         ranked = _like_search(question, top_k)
         source = "⚪ LIKE"
 
-    score_map = dict(ranked)
     ids = [id_ for id_, _ in ranked]
     docs_map = _fetch_docs(ids, allowed_ids)
 
@@ -278,7 +277,7 @@ def _rag_query(
 def _get_api_key() -> str:
     """Lee OPENAI_API_KEY desde config.secrets con fallback a os.environ."""
     try:
-        from config.secrets import get_secret  # noqa: PLC0415
+        from config.secrets import get_secret
         key = get_secret("OPENAI_API_KEY")
         if key:
             return key

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
-from fastapi.concurrency import run_in_threadpool
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 
 from api.auth import AuthContext, require_api_key

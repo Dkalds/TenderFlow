@@ -49,7 +49,6 @@ from dashboard.theme import (
     COMPACT_DENSITY_CSS,
     TOKENS,
     current_plotly_template,
-    get_color_sequence,
 )
 from observability.histograms import timed_render
 

@@ -21,9 +21,10 @@ log = get_logger(__name__)
 
 # ── Broker setup ──────────────────────────────────────────────────────────────
 
-def _setup_broker() -> "Any":  # noqa: F821
+def _setup_broker() -> Any:  # noqa: F821
     try:
         import dramatiq  # type: ignore[import]
+
         from config import settings
 
         broker_url = getattr(settings, "DRAMATIQ_BROKER_URL", "")

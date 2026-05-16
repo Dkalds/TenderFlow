@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import secrets
 from typing import Any
 
 from argon2 import PasswordHasher
+
 from db.database import connect, now_utc_iso
 
 _ph = PasswordHasher()
@@ -151,6 +151,6 @@ def use_recovery_code(user_id: int, code: str) -> bool:
                         (now_utc_iso(), row_id),
                     )
                     return True
-            except Exception:
+            except Exception:  # noqa: S112
                 continue
     return False

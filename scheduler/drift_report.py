@@ -110,9 +110,8 @@ def run_drift_report() -> dict[str, Any]:
     # ── Evidently HTML report (optional) ─────────────────────────────────
     report_path: Path | None = None
     try:
-        from evidently import ColumnMapping  # type: ignore[import]
-        from evidently.report import Report  # type: ignore[import]
         from evidently.metric_preset import DataDriftPreset  # type: ignore[import]
+        from evidently.report import Report  # type: ignore[import]
 
         report = Report(metrics=[DataDriftPreset()])
         report.run(reference_data=df_ref, current_data=df_cur)

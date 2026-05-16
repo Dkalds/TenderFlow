@@ -12,12 +12,8 @@ Cubre:
 
 from __future__ import annotations
 
-import hashlib
-import json
-
 import pytest
 from fastapi.testclient import TestClient
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -52,8 +48,8 @@ def admin_key(tmp_path, monkeypatch):
     db_mod.close_pool()
     db_mod.init_db()
 
-    from api.auth import create_api_key
     from api.app import app
+    from api.auth import create_api_key
 
     raw = create_api_key("test-admin", scopes="*")
 
@@ -119,7 +115,7 @@ def test_log_action_writes_hash_chain(tmp_path, monkeypatch):
     assert has_chain, "Columnas prev_hash/this_hash no existen en audit_log"
     assert len(rows) == 2
     first_prev, first_hash = rows[0]
-    second_prev, second_hash = rows[1]
+    second_prev, _second_hash = rows[1]
 
     assert first_prev == "genesis", f"Primera fila debe tener prev_hash='genesis', got {first_prev!r}"
     assert first_hash is not None and len(first_hash) == 64, "this_hash debe ser SHA-256 hex (64 chars)"

@@ -248,7 +248,7 @@ def check_and_notify() -> int:
                     ],
                 },
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("webhook_trigger_failed", exc_info=True)
         log.info("watchlist_alert_sent", recipient=recipient, total=n, frequency="immediate")
         total_notified += n

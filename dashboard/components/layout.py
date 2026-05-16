@@ -15,7 +15,6 @@ import streamlit as st
 
 from dashboard.components.icons import LOGO_SVG, icon
 from dashboard.data_loader import load_extracciones
-from dashboard.utils.export import to_excel_bytes
 
 
 def _format_last_updated(ts: Any) -> str:
@@ -102,7 +101,7 @@ def render_topbar(last_updated: Any = None) -> bool:
     return False
 
 
-def render_export_popover(df: pd.DataFrame) -> None:  # noqa: ARG001
+def render_export_popover(df: pd.DataFrame) -> None:
     """Exportación global eliminada — función mantenida por compatibilidad."""
     return
 

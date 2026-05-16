@@ -23,11 +23,12 @@ Arrancar el servidor::
 from __future__ import annotations
 
 import uuid
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.errors import register_exception_handlers
 from api.middleware import (
@@ -47,7 +48,6 @@ from config import settings
 from db.database import init_db
 from observability import configure_logging, configure_tracing
 from observability.logging import get_logger
-from structlog.contextvars import bind_contextvars, clear_contextvars
 
 log = get_logger(__name__)
 
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if pending:
         log.info("api_shutdown_draining_tasks", count=len(pending))
         try:
-            done, still_running = await asyncio.wait(pending, timeout=30.0)
+            _done, still_running = await asyncio.wait(pending, timeout=30.0)
             if still_running:
                 log.warning(
                     "api_shutdown_tasks_abandoned",
@@ -297,7 +297,8 @@ async def correlation_id_middleware(
     call_next: object,
 ) -> Response:
     """Propaga X-Correlation-Id entre cliente, logs y respuesta."""
-    from collections.abc import Awaitable, Callable as _Callable
+    from collections.abc import Awaitable
+    from collections.abc import Callable as _Callable
 
     correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
 

@@ -52,7 +52,7 @@ def streamlit_server() -> object:
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-    proc = subprocess.Popen(  # noqa: S603 — comando controlado
+    proc = subprocess.Popen(
         [
             "python",
             "-m",

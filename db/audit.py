@@ -123,7 +123,7 @@ def log_event(
     if isinstance(detail, dict):
         try:
             detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:2000]
-        except Exception:  # noqa: BLE001
+        except Exception:
             detail_str = str(detail)[:2000]
     else:
         detail_str = str(detail)[:2000]
@@ -149,7 +149,7 @@ def log_event(
         from observability.runtime_metrics import audit_events_total
 
         audit_events_total.labels(event_type=event_type, outcome=outcome).inc()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 

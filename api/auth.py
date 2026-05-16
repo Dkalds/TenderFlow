@@ -152,9 +152,8 @@ async def require_api_key(
     except Exception:
         pass
 
-    if stored_hash_row:
-        if not hmac.compare_digest(str(stored_hash_row[0]), key_hash):
-            raise _UNAUTHORIZED
+    if stored_hash_row and not hmac.compare_digest(str(stored_hash_row[0]), key_hash):
+        raise _UNAUTHORIZED
 
     # Validar expiración
     if expires_at and now_utc_iso() > expires_at:

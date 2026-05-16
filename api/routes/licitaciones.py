@@ -7,8 +7,16 @@ import hashlib
 import re
 from typing import Any, Generic, TypeVar
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.auth import AuthContext, require_api_key
@@ -344,7 +352,7 @@ async def search_licitaciones(
         conditions.append("fecha_publicacion <= ?")
         params.append(body.fecha_hasta)
 
-    from db.repositories.licitaciones import _SORT_WHITELIST, _DEFAULT_SORT, _SUMMARY_COLS
+    from db.repositories.licitaciones import _DEFAULT_SORT, _SORT_WHITELIST, _SUMMARY_COLS
     order = _SORT_WHITELIST.get(body.sort or "", _DEFAULT_SORT)
     where = " AND ".join(conditions)
 
@@ -358,7 +366,7 @@ async def search_licitaciones(
             if where:
                 sql += f" WHERE {where}"
             sql += f" ORDER BY {order} LIMIT ? OFFSET ?"
-            q_params = list(params) + [limit, offset]
+            q_params = [*list(params), limit, offset]
             items = rows_to_dicts(c.execute(sql, tuple(q_params)))
         return items, total
 

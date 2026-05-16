@@ -359,8 +359,8 @@ class TestMetadataPersistence:
         """Modelos anteriores sin _threshold/metadata cargan con valores por defecto."""
         import joblib
 
-        from scraper.ml_classifier import SAPClassifier
         from config import settings
+        from scraper.ml_classifier import SAPClassifier
 
         # Simular modelo legacy sin _threshold ni metadata
         clf = SAPClassifier()

@@ -99,8 +99,9 @@ class TestTursoDatabaseUrlValidator:
     def test_file_scheme_rechazado(self, monkeypatch):
         monkeypatch.setenv("TURSO_DATABASE_URL", "file:///etc/passwd")
         monkeypatch.setenv("TURSO_AUTH_TOKEN", "token123")
-        from config.settings import Settings
         from pydantic import ValidationError
+
+        from config.settings import Settings
 
         with pytest.raises(ValidationError, match="esquema no permitido"):
             Settings()
@@ -108,8 +109,9 @@ class TestTursoDatabaseUrlValidator:
     def test_javascript_scheme_rechazado(self, monkeypatch):
         monkeypatch.setenv("TURSO_DATABASE_URL", "javascript:alert(1)")
         monkeypatch.setenv("TURSO_AUTH_TOKEN", "token123")
-        from config.settings import Settings
         from pydantic import ValidationError
+
+        from config.settings import Settings
 
         with pytest.raises(ValidationError, match="esquema no permitido"):
             Settings()
@@ -118,8 +120,9 @@ class TestTursoDatabaseUrlValidator:
         """http:// (sin TLS) no está en la allowlist para Turso."""
         monkeypatch.setenv("TURSO_DATABASE_URL", "http://mydb.turso.io")
         monkeypatch.setenv("TURSO_AUTH_TOKEN", "token123")
-        from config.settings import Settings
         from pydantic import ValidationError
+
+        from config.settings import Settings
 
         with pytest.raises(ValidationError, match="esquema no permitido"):
             Settings()

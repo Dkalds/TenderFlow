@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from db.database import connect, connect_read, fts_available
+from db.database import connect_read, fts_available
 from db.repositories.base import count_where, rows_to_dicts
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -115,7 +115,7 @@ class LicitacionRepository:
 
         with connect_read() as c:
             total = count_where(c, "licitaciones", where, tuple(params)) if with_total else -1
-            sql = f"SELECT {_SUMMARY_COLS} FROM licitaciones"  # noqa: S608
+            sql = f"SELECT {_SUMMARY_COLS} FROM licitaciones"
             if where:
                 sql += f" WHERE {where}"
             sql += f" ORDER BY {order} LIMIT ? OFFSET ?"
@@ -172,12 +172,12 @@ class LicitacionRepository:
         with connect_read() as c:
             total = -1
             if with_total:
-                count_row = c.execute(count_sql, [q] + extra_params).fetchone()
+                count_row = c.execute(count_sql, [q, *extra_params]).fetchone()
                 total = int(count_row[0]) if count_row else 0
             items = rows_to_dicts(
                 c.execute(
                     base_sql + f" ORDER BY {order} LIMIT ? OFFSET ?",
-                    [q] + extra_params + [limit, offset],
+                    [q, *extra_params, limit, offset],
                 )
             )
         return items, total
@@ -263,7 +263,7 @@ class LicitacionRepository:
         with connect_read() as c:
             def _distinct(col: str) -> list[str]:
                 rows = c.execute(
-                    f"SELECT DISTINCT {col} FROM licitaciones "  # noqa: S608
+                    f"SELECT DISTINCT {col} FROM licitaciones "
                     f"WHERE {col} IS NOT NULL AND {col} != '' "
                     f"ORDER BY {col}"
                 ).fetchall()
@@ -295,7 +295,7 @@ class LicitacionRepository:
         placeholders = ",".join("?" * len(ids))
         with connect_read() as c:
             cur = c.execute(
-                f"SELECT {_SUMMARY_COLS} FROM licitaciones "  # noqa: S608
+                f"SELECT {_SUMMARY_COLS} FROM licitaciones "
                 f"WHERE id_externo IN ({placeholders})",
                 ids,
             )

@@ -21,7 +21,7 @@ import argparse
 import sys
 from datetime import UTC, datetime, timedelta
 
-from api.auth import _hash_key, create_api_key  # noqa: PLC2701
+from api.auth import _hash_key, create_api_key
 from db.database import connect
 
 

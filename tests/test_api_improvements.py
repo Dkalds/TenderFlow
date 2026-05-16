@@ -3,9 +3,10 @@ meta/filters, licitaciones/search, webhooks PATCH/ping/deliveries."""
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 from fastapi.testclient import TestClient
-
 
 # ---------------------------------------------------------------------------
 # Fixtures compartidas
@@ -53,7 +54,7 @@ def auth(api_key):
 class TestWebhookSSRFValidation:
     """Los URLs privados/localhost deben rechazarse con 422."""
 
-    _SSRF_URLS = [
+    _SSRF_URLS: ClassVar[list[str]] = [
         "http://127.0.0.1/steal-secrets",
         "http://localhost/steal-secrets",
         "http://192.168.1.1/internal",

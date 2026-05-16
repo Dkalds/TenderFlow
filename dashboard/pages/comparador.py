@@ -9,7 +9,6 @@ from dashboard.components.states import empty_state, guarded_render
 from dashboard.pages._base import PageContext
 from dashboard.utils.format import fmt_eur
 
-
 _COMPARE_FIELDS = [
     ("id_externo", "Expediente"),
     ("titulo", "Título"),
@@ -76,7 +75,7 @@ def render(ctx: PageContext) -> None:
                 for k, v in values.items()
             }
         row: dict = {"Campo": field_label}
-        baseline_val = list(values.values())[0]
+        baseline_val = next(iter(values.values()))
         for eid, val in values.items():
             row[eid] = _highlight_diff(val, baseline_val if eid != sel[0] else None)
         table_rows.append(row)

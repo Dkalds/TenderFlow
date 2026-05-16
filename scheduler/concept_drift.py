@@ -367,7 +367,7 @@ def maybe_retrain_classifier(
         except Exception as precomp_exc:
             log.warning("active_learning.precompute_failed", error=str(precomp_exc))
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("active_learning.retrain_failed", error=str(exc), exc_info=True)
         result["error"] = str(exc)
 

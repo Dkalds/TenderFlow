@@ -129,9 +129,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         path = request.url.path
-        if path in self._exclude or path.startswith("/api/docs") or path.startswith(
-            "/api/redoc"
-        ):
+        if path in self._exclude or path.startswith(("/api/docs", "/api/redoc")):
             return await call_next(request)
 
         client = _client_key(request)
@@ -202,7 +200,7 @@ class CostTrackingMiddleware(BaseHTTPMiddleware):
                 route = request.scope.get("route")
                 op = getattr(route, "path", None) or request.url.path.split("?")[0]
                 api_cost_estimate_total.labels(operation=op).inc(int(usd * 1e6))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         return response
 
@@ -273,7 +271,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 http_request_duration_seconds.labels(
                     method=method, path=path
                 ).observe(dt_ms / 1000)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
         return response

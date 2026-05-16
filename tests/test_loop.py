@@ -116,7 +116,7 @@ class TestRunRecentBulk:
 class TestMain:
     def test_main_runs_one_iteration_then_stops(self):
         """main() ejecuta al menos una iteración antes de ser interrumpido."""
-        from scheduler.loop import main, _stop_event
+        from scheduler.loop import _stop_event, main
 
         call_count = {"n": 0}
 

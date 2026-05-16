@@ -297,9 +297,9 @@ class TestClustersPage:
 
     def test_cluster_summary_structure(self, func_db):
         """cluster_summary devuelve estructura esperada."""
-        from dashboard.clustering import cluster_summary
-
         import pandas as pd
+
+        from dashboard.clustering import cluster_summary
 
         df = pd.DataFrame(
             {

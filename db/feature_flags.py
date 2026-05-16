@@ -14,7 +14,6 @@ Uso:
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from db.database import connect, now_utc_iso

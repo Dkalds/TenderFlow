@@ -39,7 +39,8 @@ def upgrade() -> None:
     # SQLite no soporta IF NOT EXISTS para ADD COLUMN, manejarlo con try/except en op
     with op.get_context().autocommit_block():
         conn = op.get_bind()
-        existing = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(api_keys)"))}
+        result = conn.execute(sa.text("PRAGMA table_info(api_keys)"))
+        existing = {row[1] for row in result} if result is not None else set()
         if "expires_at" not in existing:
             op.add_column("api_keys", sa.Column("expires_at", sa.Text, nullable=True))
 

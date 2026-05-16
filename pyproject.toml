@@ -29,6 +29,7 @@ dependencies = [
     "bcrypt>=4.0,<5",
     "argon2-cffi>=23.1.0,<25",
     "alembic>=1.13.0,<2",
+    "fastapi>=0.110.0,<1",
 ]
 
 [project.optional-dependencies]
@@ -79,14 +80,20 @@ ignore = [
     "S110",    # try-except-pass allowed in best-effort persisters
     "PERF401", # list.append in loops is often more readable than extend
     "SIM105",  # contextlib.suppress is less explicit than try/except pass
+    "B008",    # FastAPI Depends/Query/Header in argument defaults is the canonical pattern
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S106", "S105", "S320"]
+"tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607"]
 "dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
 "dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
 "db/database.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
 "scraper/ml_classifier.py" = ["S608"]  # SQL built from internal schema-detection strings, not user input
+"db/alembic/*" = ["S608"]   # SQL in migrations is schema-only, not user-controlled
+"db/events.py" = ["S608"]   # SQL built from internal event-type constants
+"db/feature_store.py" = ["S608"]  # SQL built from internal feature-name constants
+"db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
+"dashboard/pages/investigador.py" = ["S608"]  # SQL built from validated filter params
 
 [tool.ruff.format]
 quote-style = "double"

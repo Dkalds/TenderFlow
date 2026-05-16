@@ -19,8 +19,8 @@ from dashboard.classifiers import (
 from dashboard.normalize import normalize_company, normalize_nif
 from dashboard.utils.dates import month_start
 from db.database import connect, init_db
-from observability.logging import get_logger
 from observability.histograms import timed_query
+from observability.logging import get_logger
 from shared.geo import nuts_to_ccaa
 
 log = get_logger(__name__)

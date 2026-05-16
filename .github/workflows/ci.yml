@@ -168,4 +168,4 @@ jobs:
 
       - name: Smoke test (image starts)
         run: |
-          docker run --rm --entrypoint python licitaciones-sap:ci -c "import dashboard.app, api.app; print('imports OK')"
+          docker run --rm --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"

@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import os
-import sqlite3
-import tempfile
-
 import pytest
 from fastapi.testclient import TestClient
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -277,7 +272,7 @@ class TestApiKeyExpiration:
     def test_expired_key_returns_401(self, client, api_db):
         """Una API key con expires_at en el pasado devuelve 401."""
         from api.auth import create_api_key, hash_api_key
-        from db.database import connect, now_utc_iso
+        from db.database import connect
 
         raw = create_api_key("expiring-key")
         key_hash = hash_api_key(raw)

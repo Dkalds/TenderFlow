@@ -233,7 +233,7 @@ def upload_to_azure(file_path: Path) -> bool:
             client.upload_blob(f, overwrite=True)
         print(f"[backup] Subido a azure://{container}/{blob_name}")
         return True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"[backup] ERROR upload Azure: {exc}", file=sys.stderr)
         return False
 

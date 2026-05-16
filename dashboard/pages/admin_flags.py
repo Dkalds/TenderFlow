@@ -16,7 +16,7 @@ from db.feature_flags import delete_flag, list_flags, set_flag
 
 
 @guarded_render
-def render(ctx: PageContext) -> None:  # noqa: ARG001
+def render(ctx: PageContext) -> None:
     st.title("⚑ Feature Flags")
     st.caption("Activa o desactiva funcionalidades en tiempo real sin desplegar.")
 

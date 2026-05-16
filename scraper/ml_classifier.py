@@ -130,7 +130,6 @@ class SAPClassifier:
             precision, recall, n_train, n_test, n_positive, n_negative.
         """
         import numpy as np
-        from sklearn.calibration import CalibratedClassifierCV
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.linear_model import LogisticRegression
         from sklearn.metrics import (
@@ -717,18 +716,18 @@ def _augment_text(text: str, *, cpv: str | None = None, importe: float | None = 
         log_imp = math.log10(max(importe, 1))
         if log_imp < 4:  # < 10k€
             parts.append("IMPORTE_XS")
-        elif log_imp < 5:  # 10k–100k€
+        elif log_imp < 5:  # 10k-100k€
             parts.append("IMPORTE_S")
-        elif log_imp < 6:  # 100k–1M€
+        elif log_imp < 6:  # 100k-1M€
             parts.append("IMPORTE_M")
-        elif log_imp < 7:  # 1M–10M€
+        elif log_imp < 7:  # 1M-10M€
             parts.append("IMPORTE_L")
         else:  # > 10M€
             parts.append("IMPORTE_XL")
     return " ".join(parts)
 
 
-def _build_dataset(df: "pd.DataFrame") -> tuple[list[str], list[int]]:
+def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     """Construye el dataset de entrenamiento desde el DataFrame.
 
     Fuentes de etiqueta (prioridad descendente):
@@ -1070,7 +1069,7 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
             continue
 
         with connect() as c:
-            for row, proba in zip(batch, probas):
+            for row, proba in zip(batch, probas, strict=False):
                 c.execute(
                     "UPDATE licitaciones SET ml_proba = ? WHERE id_externo = ?",
                     (float(proba), row[0]),
@@ -1129,7 +1128,7 @@ class SAPMultiLabelClassifier:
             return 0.0
         return sum(1 for kw in kws if kw in t) / len(kws)
 
-    def train(self, df: "pd.DataFrame") -> dict[str, Any]:  # noqa: F821
+    def train(self, df: pd.DataFrame) -> dict[str, Any]:
         """Entrena usando el SAP binario + heurística para labels extras."""
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.linear_model import LogisticRegression
@@ -1184,7 +1183,7 @@ class SAPMultiLabelClassifier:
         conf = labels.get("SAP", 0.0)
         return conf >= settings.ML_CONFIDENCE_THRESHOLD, conf
 
-    def predict_proba(self, texts: list[str]) -> "Any":
+    def predict_proba(self, texts: list[str]) -> Any:
         """Returns array-like probabilities for compatibility with H3 uncertainty sampling."""
         import numpy as np
 
@@ -1196,7 +1195,7 @@ class SAPMultiLabelClassifier:
             probas.append([1 - conf, conf])
         return np.array(probas)
 
-    def save(self, path: "Path | None" = None) -> "Path":
+    def save(self, path: Path | None = None) -> Path:
         import joblib
 
         target = path or _MULTILABEL_MODEL_PATH
@@ -1206,7 +1205,7 @@ class SAPMultiLabelClassifier:
         return target
 
     @classmethod
-    def load(cls, path: "Path | None" = None) -> "SAPMultiLabelClassifier":
+    def load(cls, path: Path | None = None) -> SAPMultiLabelClassifier:
         import joblib
 
         target = path or _MULTILABEL_MODEL_PATH
@@ -1218,7 +1217,7 @@ class SAPMultiLabelClassifier:
         return obj
 
     @classmethod
-    def is_available(cls, path: "Path | None" = None) -> bool:
+    def is_available(cls, path: Path | None = None) -> bool:
         return (path or _MULTILABEL_MODEL_PATH).exists()
 
 

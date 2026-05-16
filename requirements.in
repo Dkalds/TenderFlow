@@ -32,3 +32,5 @@ bcrypt>=4.0,<5
 argon2-cffi>=23.1.0,<25
 # Migraciones de base de datos (Alembic gestiona v14+ tras el baseline casero)
 alembic>=1.13.0,<2
+# API REST
+fastapi>=0.110.0,<1

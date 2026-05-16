@@ -18,7 +18,6 @@ from hypothesis import strategies as st
 
 from scraper.codice_parser import parse_summary
 
-
 # Estrategia: cualquier string Unicode razonablemente acotado.
 _text = st.text(max_size=1000)
 

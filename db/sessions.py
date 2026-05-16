@@ -15,11 +15,10 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from db.database import connect, now_utc_iso
-from datetime import UTC, datetime, timedelta
-
 
 _SESSION_TTL_HOURS = 24 * 7  # 7 días por defecto
 

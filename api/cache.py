@@ -164,7 +164,7 @@ def cache_delete(key: str) -> None:
 def cache_key(*parts: Any) -> str:
     """Genera una cache key determinista desde varios componentes."""
     raw = ":".join(str(p) for p in parts)
-    return "licsap:" + hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]  # noqa: S324
+    return "licsap:" + hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def cache_clear_all() -> None:

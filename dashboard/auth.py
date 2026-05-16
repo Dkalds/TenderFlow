@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import time
 from typing import Any
 
@@ -13,12 +12,18 @@ from config import settings
 from dashboard.session_keys import LOGIN_PWD
 from observability.logging import get_logger
 from shared.auth_core import (
-    csv_set as _csv_set,
     generate_oauth_state as _generate_oauth_state,
-    get_signing_key as _get_signing_key,
+)
+from shared.auth_core import (
     oauth_email_allowed as _oauth_email_allowed,
+)
+from shared.auth_core import (
     oauth_email_is_admin as _oauth_email_is_admin,
+)
+from shared.auth_core import (
     verify_oauth_state as _verify_oauth_state,
+)
+from shared.auth_core import (
     verify_password as _verify_password_core,
 )
 

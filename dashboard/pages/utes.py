@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import streamlit as st
-
 from dashboard.components.states import empty_state, guarded_render
 from dashboard.data_loader import load_adjudicaciones
 from dashboard.pages._base import PageContext

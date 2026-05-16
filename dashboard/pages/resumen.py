@@ -15,6 +15,7 @@ from dashboard.components.states import guarded_render
 from dashboard.data_loader import load_adjudicaciones
 from dashboard.kpi_config import KPI_FORMULAS, KPI_THRESHOLDS
 from dashboard.pages._base import PageContext
+from dashboard.session_keys import LAST_VISIT_TS
 from dashboard.stats import (
     calientes_hoy,
     compare_periods,
@@ -28,7 +29,6 @@ from dashboard.stats import (
 )
 from dashboard.utils.format import fmt_eur
 from dashboard.utils.lazy import lazy_section
-from dashboard.session_keys import LAST_VISIT_TS
 from dashboard.utils.security import safe_url
 from observability.logging import get_logger
 

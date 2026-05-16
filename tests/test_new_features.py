@@ -158,7 +158,7 @@ class TestPaginateDf:
 class _FakeCol:
     """Context manager stub for st.columns() entries."""
 
-    def __enter__(self) -> "_FakeCol":
+    def __enter__(self) -> _FakeCol:
         return self
 
     def __exit__(self, *args: object) -> None:

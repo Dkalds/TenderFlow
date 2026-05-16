@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
 
 
 class FeedbackRepository:

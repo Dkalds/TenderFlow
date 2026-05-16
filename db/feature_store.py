@@ -73,7 +73,7 @@ def get_features_bulk(
             f"SELECT entity_id, value_json FROM feature_store "
             f"WHERE entity_type=? AND feature_name=? AND version=? "
             f"AND entity_id IN ({placeholders})",
-            [entity_type, feature_name, version] + list(entity_ids),
+            [entity_type, feature_name, version, *entity_ids],
         ).fetchall()
     return {row[0]: json.loads(row[1]) for row in rows}
 

@@ -95,7 +95,7 @@ def _save_label(expediente: str, es_sap: bool) -> None:
 
 
 @guarded_render
-def render(ctx: PageContext) -> None:  # noqa: ARG001
+def render(ctx: PageContext) -> None:
     require_admin()
     st.title("🎯 Active Learning")
     st.caption(

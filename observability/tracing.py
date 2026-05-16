@@ -93,7 +93,6 @@ def configure_tracing(service_name: str | None = None) -> None:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from opentelemetry.sdk.trace.sampling import (
-            ALWAYS_ON,
             ParentBased,
             TraceIdRatioBased,
         )

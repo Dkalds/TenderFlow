@@ -6,10 +6,8 @@ from dashboard.theme.tokens import Tokens
 
 
 def build_topbar_css(t: Tokens) -> str:
-    c = t.colors
     ty = t.type
     ra = t.radii
-    la = t.layout
     return f"""
   /* ── Topbar fija premium (logo · nav · acciones) ─────────────────── */
   .topbar {{
