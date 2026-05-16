@@ -37,6 +37,18 @@ log = get_logger(__name__)
 _INDEX_PATH = Path(__file__).parents[1] / "data" / "models" / "faiss_index.pkl"
 _MIN_TEXTS = 10  # mínimo de textos para construir un índice útil
 
+try:  # pragma: no cover - fallback when Streamlit runtime no disponible
+    import streamlit as _st
+
+    _cache_resource = _st.cache_resource
+except Exception:  # pragma: no cover
+
+    def _cache_resource(*args, **kwargs):  # type: ignore[no-redef]
+        def _decorator(fn):
+            return fn
+
+        return _decorator
+
 
 def _utc_iso() -> str:
     """ISO-8601 con tz UTC (helper local para evitar import circular)."""
@@ -161,19 +173,37 @@ class FaissIndex:
                 f,
                 protocol=5,
             )
+        # Si estamos en Streamlit, invalidar la carga cacheada del índice.
+        try:
+            self.__class__._load_cached.clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         log.info("faiss_index.saved", path=str(target), n=len(self.ids), **metadata)
         return target
 
-    @classmethod
-    def load(cls, path: Path | None = None) -> FaissIndex:
-        """Carga el índice desde disco (compatible con índices legacy sin metadata)."""
-        target = path or _INDEX_PATH
-        with open(target, "rb") as f:
+    @staticmethod
+    @_cache_resource(show_spinner=False)
+    def _load_cached(path_str: str, mtime_ns: int) -> FaissIndex:
+        """Carga cacheada por ruta + mtime para compartir el índice entre reruns."""
+        _ = mtime_ns  # parte de la key de caché para invalidar al cambiar el archivo
+        with open(path_str, "rb") as f:
             data = pickle.load(f)  # noqa: S301
-        obj = cls(ids=data["ids"], embeddings=data["embeddings"])
+        obj = FaissIndex(ids=data["ids"], embeddings=data["embeddings"])
         meta = data.get("metadata") or {}
         obj.embedding_version = meta.get("embedding_version", "v1")  # type: ignore[attr-defined]
         obj.embedding_model = meta.get("embedding_model", "default")  # type: ignore[attr-defined]
+        return obj
+
+    @classmethod
+    def load(cls, path: Path | None = None) -> FaissIndex:
+        """Carga el índice desde disco con caché compartida entre sesiones.
+
+        La caché se invalida automáticamente cuando cambia el mtime del archivo.
+        Compatible con índices legacy sin metadata.
+        """
+        target = path or _INDEX_PATH
+        mtime_ns = target.stat().st_mtime_ns
+        obj = cls._load_cached(str(target), mtime_ns)
         log.info(
             "faiss_index.loaded",
             path=str(target),

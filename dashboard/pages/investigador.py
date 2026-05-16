@@ -34,6 +34,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from config import settings
 from dashboard.components.states import guarded_render
 from dashboard.pages._base import PageContext
 from dashboard.session_keys import INV_HISTORY, INV_Q
@@ -124,19 +125,28 @@ def _linkify_citations(text: str, docs: list[dict]) -> str:
 # ── Búsqueda ────────────────────────────────────────────────────────────────
 
 
-@st.cache_resource(show_spinner=False)
-def _load_faiss_cached() -> Any:
-    """Carga el índice FAISS una sola vez y lo mantiene en memoria entre reruns."""
+@st.cache_data(
+    ttl=settings.DASHBOARD_CACHE_TTL or 300,
+    max_entries=128,
+    show_spinner=False,
+)
+def _faiss_hits_cached(
+    question: str,
+    top_k: int,
+    embedding_model: str,
+) -> list[tuple[str, float]]:
+    """Cachea resultados FAISS por pregunta y modelo de embedding."""
     from dashboard.faiss_index import FaissIndex  # type: ignore[import]
 
-    return FaissIndex.load()
+    _ = embedding_model  # parte de la key de caché
+    idx = FaissIndex.load()
+    return idx.search(question, k=top_k, threshold=0.25)
 
 
 def _faiss_search(question: str, top_k: int) -> list[tuple[str, float]]:
     """Búsqueda semántica FAISS. Devuelve (id_externo, score ∈ [0,1])."""
     try:
-        idx = _load_faiss_cached()
-        return idx.search(question, k=top_k, threshold=0.25)
+        return _faiss_hits_cached(question, top_k, settings.EMBEDDING_MODEL)
     except Exception as exc:
         log.warning("investigador.faiss_failed", error=str(exc))
         return []

@@ -13,7 +13,6 @@ cambiar a ``paraphrase-multilingual-mpnet-base-v2`` para mayor calidad.
 from __future__ import annotations
 
 import re
-from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -25,6 +24,15 @@ log = get_logger(__name__)
 
 # Resolved from settings at import time so lru_cache works correctly
 _MODEL_NAME = settings.EMBEDDING_MODEL
+
+try:  # pragma: no cover - fallback when Streamlit runtime no disponible
+    import streamlit as _st
+
+    _cache_resource = _st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
+except Exception:  # pragma: no cover
+
+    def _cache_resource(fn):  # type: ignore[no-redef]
+        return fn
 
 # ── Lazy model loading ──────────────────────────────────────────────────
 
@@ -38,7 +46,7 @@ def _has_sentence_transformers() -> bool:
         return False
 
 
-@lru_cache(maxsize=1)
+@_cache_resource
 def _load_model() -> Any:
     """Carga el modelo sentence-transformers (cached en memoria)."""
     from sentence_transformers import SentenceTransformer
