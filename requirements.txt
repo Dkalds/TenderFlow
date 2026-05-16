@@ -1,6 +1,3 @@
-# Install the project itself so dashboard/, scraper/, db/, etc. are importable
-.
-
 alembic==1.18.4
     # via -r requirements.in
 altair==6.1.0

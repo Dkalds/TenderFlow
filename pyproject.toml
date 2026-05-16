@@ -29,9 +29,6 @@ dependencies = [
     "bcrypt>=4.0,<5",
     "argon2-cffi>=23.1.0,<25",
     "alembic>=1.13.0,<2",
-    "opentelemetry-api>=1.20.0,<3",
-    "opentelemetry-sdk>=1.20.0,<3",
-    "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +38,14 @@ dependencies = [
 ml = [
     "faiss-cpu>=1.7.4,<2",
     "sentence-transformers>=2.2.0,<4",
+]
+# Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
+# Instalar con: pip install licitaciones-sap[tracing]
+# Sin este extra, observability/tracing.py opera en modo NoOp sin overhead.
+tracing = [
+    "opentelemetry-api>=1.20.0,<3",
+    "opentelemetry-sdk>=1.20.0,<3",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
 ]
 
 [tool.setuptools.packages.find]
