@@ -4,21 +4,44 @@ from __future__ import annotations
 
 import pandas as pd
 
+from config import settings
 from dashboard.utils.dates import month_start
 from db.database import connect
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+try:  # pragma: no cover - fallback when Streamlit runtime no disponible
+    import streamlit as _st
 
+    _cache_resource = _st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
+except Exception:  # pragma: no cover
+
+    def _cache_resource(fn):  # type: ignore[no-redef]
+        return fn
+
+
+# Columnas usadas por las funciones de este módulo + KPIs aguas arriba.
+# Excluye blobs grandes (``descripcion``, ``raw_keywords``) para reducir I/O.
+_STATS_COLUMNS = (
+    "id_externo, titulo, organo_contratacion, importe, estado, "
+    "fecha_publicacion, ccaa, nuts_code, cpv, url, tecnologia, tipo_contrato, "
+    "moneda, provincia, fecha_limite, fecha_inicio, fecha_fin, fecha_extraccion"
+)
+
+
+@_cache_resource
 def load_dataframe() -> pd.DataFrame:
     """Carga ligera de licitaciones (sin enriquecimiento del dashboard).
 
     Delega en la capa de BD directamente. Para la versión enriquecida con
     clasificadores y caché Streamlit, usar ``dashboard.data_loader.load_dataframe``.
+
+    Cacheada con ``@st.cache_resource`` (TTL = ``DASHBOARD_CACHE_TTL``): se reutiliza
+    entre sesiones y reruns. Los consumidores no deben mutar el objeto retornado.
     """
     with connect() as c:
-        cursor = c.execute("SELECT * FROM licitaciones")
+        cursor = c.execute(f"SELECT {_STATS_COLUMNS} FROM licitaciones")  # noqa: S608
         rows = cursor.fetchall()
         cols = [d[0] for d in cursor.description]
         df = pd.DataFrame(rows, columns=cols)
@@ -448,11 +471,13 @@ def pct_multi_modulo(df: pd.DataFrame) -> float:
     """% de licitaciones con >=2 módulos SAP detectados (proyectos integrales)."""
     if df.empty or "modulos" not in df.columns:
         return 0.0
-    con_modulos = df[df["modulos"].apply(lambda m: isinstance(m, list) and len(m) > 0)]
+    # Vectorizado: longitud de cada lista (0 si no es lista).
+    lengths = df["modulos"].map(lambda m: len(m) if isinstance(m, list) else 0)
+    con_modulos = lengths[lengths > 0]
     if con_modulos.empty:
         return 0.0
-    multi = con_modulos[con_modulos["modulos"].apply(lambda m: len(m) >= 2)]
-    return float(len(multi) / len(con_modulos) * 100)
+    multi = (con_modulos >= 2).sum()
+    return float(multi / len(con_modulos) * 100)
 
 
 def _build_searchable_text(df: pd.DataFrame) -> pd.Series:
@@ -858,25 +883,33 @@ def score_oportunidad(
 
     # 3) Módulos SAP — nº de módulos detectados (cap a 5)
     if "modulos" in df.columns:
-        n_mods = df["modulos"].apply(lambda x: len(x) if isinstance(x, list) else 0)
+        n_mods = df["modulos"].map(lambda x: len(x) if isinstance(x, list) else 0)
     elif "modulos_str" in df.columns:
-        n_mods = (
-            df["modulos_str"]
-            .fillna("")
-            .apply(lambda s: len([m for m in str(s).split(",") if m.strip()]))
-        )
+        # Vectorizado: contar comas no vacías sin recorrer fila a fila.
+        ms = df["modulos_str"].fillna("").astype(str).str.strip()
+        n_mods = ms.where(ms == "", ms.str.count(",") + 1).where(ms != "", 0).astype(int)
     else:
         n_mods = pd.Series(0, index=df.index)
     out["_mod"] = (n_mods.clip(0, 5) / 5.0) * w["modulos_sap"]
 
-    # 4) Portfolio match — keywords de SAP_SERVICES_PORTFOLIO
-    kws = [k.lower() for k in SAP_SERVICES_PORTFOLIO]
-    port_match = texto.apply(lambda s: any(k in s for k in kws)).astype(float)
+    # 4) Portfolio match — keywords de SAP_SERVICES_PORTFOLIO (vectorizado)
+    import re as _re
+
+    _port_pat = "|".join(_re.escape(k.lower()) for k in SAP_SERVICES_PORTFOLIO)
+    port_match = (
+        texto.str.contains(_port_pat, regex=True, na=False).astype(float)
+        if _port_pat
+        else pd.Series(0.0, index=df.index)
+    )
     out["_port"] = port_match * w["portfolio_match"]
 
-    # 5) S/4HANA boost
-    s4_kws = [k.lower() for k in S4HANA_KEYWORDS]
-    s4_match = texto.apply(lambda s: any(k in s for k in s4_kws)).astype(float)
+    # 5) S/4HANA boost (vectorizado)
+    _s4_pat = "|".join(_re.escape(k.lower()) for k in S4HANA_KEYWORDS)
+    s4_match = (
+        texto.str.contains(_s4_pat, regex=True, na=False).astype(float)
+        if _s4_pat
+        else pd.Series(0.0, index=df.index)
+    )
     out["_s4"] = s4_match * w["s4hana_boost"]
 
     # 6) Competencia — mediana ofertas históricas en ese CPV < 3 = más atractivo

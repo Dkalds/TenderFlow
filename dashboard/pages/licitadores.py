@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from config import settings
 from dashboard.components.states import empty_state, guarded_render
 from dashboard.normalize import normalize_company
 from dashboard.pages._base import PageContext
@@ -13,21 +16,40 @@ from dashboard.utils.format import fmt_eur
 from db.database import connect
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
 def _load_adjudicaciones(ccaa_filter: tuple[str, ...] | None = None) -> pd.DataFrame:
-    """Carga adjudicaciones con datos de la licitación asociada."""
+    """Carga adjudicaciones con datos de la licitación asociada.
+
+    Si ``ccaa_filter`` se proporciona, push-down del WHERE a SQL (reduce I/O).
+    Normaliza nombres y tipos numéricos dentro de la capa cacheada para evitar
+    recalcularlo en cada rerun.
+    """
+    sql = (
+        "SELECT a.id, a.licitacion_id, a.nif, a.nombre, a.ccaa, a.provincia, "
+        "       a.importe_adjudicado, a.importe_pagable, a.fecha_adjudicacion, "
+        "       a.es_pyme, a.n_ofertas_recibidas, "
+        "       l.titulo, l.organo_contratacion, l.cpv, l.tecnologia "
+        "FROM adjudicaciones a "
+        "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+    )
+    params: tuple[Any, ...] = ()
+    if ccaa_filter:
+        placeholders = ",".join("?" for _ in ccaa_filter)
+        sql += f"WHERE a.ccaa IN ({placeholders}) "
+        params = tuple(ccaa_filter)
+    sql += "ORDER BY a.fecha_adjudicacion DESC LIMIT 10000"
+
     with connect() as c:
-        cur = c.execute(
-            "SELECT a.id, a.licitacion_id, a.nif, a.nombre, a.ccaa, a.provincia, "
-            "       a.importe_adjudicado, a.importe_pagable, a.fecha_adjudicacion, "
-            "       a.es_pyme, a.n_ofertas_recibidas, "
-            "       l.titulo, l.organo_contratacion, l.cpv, l.tecnologia "
-            "FROM adjudicaciones a "
-            "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-            "ORDER BY a.fecha_adjudicacion DESC LIMIT 10000"
-        )
+        cur = c.execute(sql, params)
         cols = [d[0] for d in cur.description]
         df = pd.DataFrame(cur.fetchall(), columns=cols)
+
+    if df.empty:
+        return df
+
+    # Pre-calcular columnas derivadas dentro de la capa cacheada
+    df["nombre_norm"] = df["nombre"].apply(normalize_company)
+    df["importe"] = pd.to_numeric(df["importe_adjudicado"], errors="coerce").fillna(0)
     return df
 
 
@@ -48,10 +70,6 @@ def render(ctx: PageContext) -> None:
             "Las adjudicaciones se importan automáticamente con el pipeline diario.",
         )
         return
-
-    # Normalize company names
-    df_adj["nombre_norm"] = df_adj["nombre"].apply(normalize_company)
-    df_adj["importe"] = pd.to_numeric(df_adj["importe_adjudicado"], errors="coerce").fillna(0)
 
     # ── Global filters ─────────────────────────────────────────────────────
     ccaas = ["Todas", *sorted(df_adj["ccaa"].dropna().unique().tolist())]

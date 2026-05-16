@@ -15,29 +15,6 @@ from dashboard.utils.format import fmt_eur
 
 
 @st.cache_data(show_spinner=False)
-def _compute_kpis_cached(
-    n_rows: int,
-    importe_total: float,
-    importe_medio: float,
-    n_organos: int,
-    n_ccaa: int,
-    delta_n: int,
-    delta_pct: float,
-    prev30_size: int,
-) -> dict[str, float | int]:
-    """Capa de caché sobre los KPIs ya calculados (evita recálculo en reruns)."""
-    return {
-        "total": n_rows,
-        "importe_total": importe_total,
-        "importe_medio": importe_medio,
-        "n_organos": n_organos,
-        "n_ccaa": n_ccaa,
-        "delta_n": delta_n,
-        "delta_pct": delta_pct,
-        "prev30_size": prev30_size,
-    }
-
-
 def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
     """Calcula los KPIs principales sobre el dataframe filtrado."""
     total = len(df)
@@ -67,17 +44,16 @@ def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
     delta_n = len(ult30) - len(prev30)
     delta_pct = (delta_n / len(prev30) * 100) if len(prev30) else 0.0
 
-    # Delegar a capa cacheada para evitar recálculo en reruns de Streamlit
-    return _compute_kpis_cached(
-        n_rows=total,
-        importe_total=importe_total,
-        importe_medio=importe_medio,
-        n_organos=n_organos,
-        n_ccaa=n_ccaa,
-        delta_n=delta_n,
-        delta_pct=delta_pct,
-        prev30_size=len(prev30),
-    )
+    return {
+        "total": total,
+        "importe_total": importe_total,
+        "importe_medio": importe_medio,
+        "n_organos": n_organos,
+        "n_ccaa": n_ccaa,
+        "delta_n": delta_n,
+        "delta_pct": delta_pct,
+        "prev30_size": len(prev30),
+    }
 
 
 @st.cache_data(ttl=60, show_spinner=False)

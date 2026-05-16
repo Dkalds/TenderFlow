@@ -116,12 +116,14 @@ def render(ctx: PageContext) -> None:
     # ── Explorar cluster ──────────────────────────────────────────────────
     st.markdown("#### Explorar licitaciones de un cluster")
     cluster_options = sorted(clustered["cluster_id"].unique())
+    # Pre-computar etiquetas O(n) una sola vez, no por cada opción del dropdown
+    label_map = (
+        clustered.drop_duplicates("cluster_id").set_index("cluster_id")["cluster_label"].to_dict()
+    )
     selected_cid = st.selectbox(
         "Selecciona cluster",
         cluster_options,
-        format_func=lambda cid: (
-            f"Cluster {cid}: {clustered.loc[clustered['cluster_id'] == cid, 'cluster_label'].iloc[0] if len(clustered[clustered['cluster_id'] == cid]) > 0 else ''}"
-        ),
+        format_func=lambda cid: f"Cluster {cid}: {label_map.get(cid, '')}",
         key="cluster_explorer",
     )
     cluster_rows = clustered[clustered["cluster_id"] == selected_cid]

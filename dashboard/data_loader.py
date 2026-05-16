@@ -248,25 +248,34 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None, show_spinner="Cargando adjudicaciones…")
-def load_adjudicaciones(limit: int | None = None) -> pd.DataFrame:
+def load_adjudicaciones(
+    limit: int | None = None,
+    ccaa_filter: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     """Carga adjudicaciones enriquecidas desde la DB.
 
     Args:
         limit: Límite opcional de filas en la query SQL.
+        ccaa_filter: Si se proporciona, push-down de ``WHERE a.ccaa IN (...)`` a SQL.
     """
     with connect() as c:
+        # Proyección explícita: excluye ``l.descripcion`` (blob grande) para reducir I/O.
         sql = (
             "SELECT a.*, l.titulo, l.organo_contratacion, l.url AS url_lic, "
-            "       l.fecha_publicacion, l.descripcion AS descripcion_lic, "
+            "       l.fecha_publicacion, "
             "       l.importe AS importe_licitacion "
             "FROM adjudicaciones a "
             "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-            "ORDER BY a.fecha_adjudicacion DESC"
         )
         params: tuple[Any, ...] = ()
+        if ccaa_filter:
+            placeholders = ",".join("?" for _ in ccaa_filter)
+            sql += f"WHERE a.ccaa IN ({placeholders}) "
+            params = tuple(ccaa_filter)
+        sql += "ORDER BY a.fecha_adjudicacion DESC"
         if limit is not None and limit > 0:
             sql += " LIMIT ?"
-            params = (int(limit),)
+            params = (*params, int(limit))
         cursor = c.execute(sql, params)
         df = _rows_to_df(cursor)
     if df.empty:
@@ -343,7 +352,8 @@ def _build_canonical_names(df: pd.DataFrame) -> pd.Series:
 @st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
 def load_extracciones() -> pd.DataFrame:
     with connect() as c:
-        cursor = c.execute("SELECT * FROM extracciones ORDER BY fecha DESC")
+        # Proyección explícita: solo columnas consumidas (topbar + footer).
+        cursor = c.execute("SELECT fecha, fuente, nuevas FROM extracciones ORDER BY fecha DESC")
         df = _rows_to_df(cursor)
     if not df.empty:
         df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
@@ -358,9 +368,9 @@ def invalidate_caches() -> None:
     load_extracciones.clear()
     # Limpiar también caches de KPI bar
     try:
-        from dashboard.kpi_bar import _compute_kpis_cached, _last_12m_series
+        from dashboard.kpi_bar import _last_12m_series, compute_kpis
 
-        _compute_kpis_cached.clear()
+        compute_kpis.clear()
         _last_12m_series.clear()
     except Exception:
         log.debug("kpi_cache_clear_failed")
