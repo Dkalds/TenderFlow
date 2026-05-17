@@ -1,10 +1,21 @@
+# ruff: noqa: E402
 """Dashboard Streamlit — Licitaciones SAP del Sector Público."""
 
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
 import streamlit as st
+
+# Streamlit Cloud puede ejecutar este archivo como script (`dashboard/app.py`).
+# En ese modo, `sys.path[0]` puede quedar apuntando a `.../dashboard`, y los
+# imports absolutos `from dashboard...` fallan o resuelven paquetes externos
+# homónimos. Forzamos el root del repo al frente del path.
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+  sys.path.insert(0, str(_PROJECT_ROOT))
 
 from dashboard.auth import current_user_is_admin
 from dashboard.bootstrap import bootstrap
@@ -143,10 +154,10 @@ df = apply_filters(df_full, filters)
 # ── Exportación global en topbar ────────────────────────────────────────
 render_export_popover(df)
 # ── Campana de notificaciones ────────────────────────────────────────────
-import hashlib as _hashlib  # noqa: E402
-import os as _os  # noqa: E402
+import hashlib as _hashlib
+import os as _os
 
-from config import settings as _settings  # noqa: E402
+from config import settings as _settings
 
 _notif_seed = _settings.DASHBOARD_PASSWORD or _os.environ.get("COMPUTERNAME", "default")
 _notif_user_key = _hashlib.sha256(_notif_seed.encode()).hexdigest()[:16]
