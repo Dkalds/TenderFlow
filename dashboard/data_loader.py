@@ -10,18 +10,17 @@ import streamlit as st
 
 from config import settings
 from dashboard.classifiers import (
+    ESTADO_LABELS,
+    TIPO_CONTRATO_LABELS,
     cpv_label,
     detect_modules,
     detect_project_type,
-    estado_label,
-    tipo_contrato_label,
 )
 from dashboard.normalize import normalize_company, normalize_nif
 from dashboard.utils.dates import month_start
-from db.database import connect, init_db
-from observability.histograms import timed_query
 from observability.logging import get_logger
 from shared.geo import nuts_to_ccaa
+from shared.schemas import validate_adjudicaciones, validate_licitaciones
 
 log = get_logger(__name__)
 
@@ -87,27 +86,10 @@ def _load_raw(limit: int | None = None) -> pd.DataFrame:
     Cacheada por separado para que ``invalidate_caches`` pueda limpiar también
     la capa raw y para facilitar tests unitarios del enriquecimiento.
     """
-    init_db()
-    with connect() as c:
-        # Columnas de resumen: excluye blobs grandes (descripcion, raw_keywords)
-        # para reducir I/O y memoria en el dashboard. Las páginas de detalle
-        # usan _load_detail() que sí selecciona todos los campos.
-        sql = (
-            "SELECT id_externo, titulo, organo_contratacion, importe, estado, "
-            "fecha_publicacion, ccaa, nuts_code, cpv, url, tecnologia, "
-            "tipo_contrato, moneda, provincia, duracion_valor, duracion_unidad, "
-            "fecha_limite, fecha_inicio, fecha_fin, fecha_extraccion "
-            "FROM licitaciones "
-            "WHERE tecnologia IS NOT NULL AND tecnologia != '' "
-            "ORDER BY fecha_publicacion DESC"
-        )
-        params: tuple[Any, ...] = ()
-        if limit is not None and limit > 0:
-            sql += " LIMIT ?"
-            params = (int(limit),)
-        with timed_query("load_licitaciones"):
-            cursor = c.execute(sql, params)
-            df = _rows_to_df(cursor)
+    from services.licitaciones import load_raw as svc_load_raw
+
+    rows = svc_load_raw(limit=limit)
+    df = pd.DataFrame(rows)
     if df.empty:
         return df
 
@@ -152,9 +134,7 @@ def _enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df, "modulos", detect_modules, source=text_blob, fallback=[], op_name="detect_modules"
     )
     try:
-        df["modulos_str"] = df["modulos"].apply(
-            lambda mods: ", ".join(mods) if isinstance(mods, list) else ""
-        )
+        df["modulos_str"] = df["modulos"].str.join(", ")
     except Exception as e:  # pragma: no cover
         log.warning("data_loader_enrichment_failed", column="modulos_str", error=str(e))
         df["modulos_str"] = ""
@@ -168,21 +148,29 @@ def _enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         op_name="detect_project_type",
     )
     _safe_apply(df, "cpv_desc", cpv_label, source=df["cpv"], fallback="", op_name="cpv_label")
-    _safe_apply(
-        df, "estado_desc", estado_label, source=df["estado"], fallback="", op_name="estado_label"
-    )
-    _safe_apply(
-        df,
-        "tipo_contrato_desc",
-        tipo_contrato_label,
-        source=df["tipo_contrato"],
-        fallback="",
-        op_name="tipo_contrato_label",
-    )
+
+    # Vectorized estado_label — simple dict lookup, much faster than .apply()
+    try:
+        stripped_estado = df["estado"].str.strip()
+        df["estado_desc"] = stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
+    except Exception as e:
+        log.warning("data_loader_enrichment_failed", column="estado_desc", op="estado_label", error=str(e))
+        df["estado_desc"] = ""
+
+    # Vectorized tipo_contrato_label — simple dict lookup
+    try:
+        stripped_tc = df["tipo_contrato"].str.strip()
+        mapped_tc = stripped_tc.map(TIPO_CONTRATO_LABELS)
+        unmapped = mapped_tc.isna() & stripped_tc.notna() & (stripped_tc != "")
+        mapped_tc[unmapped] = "Tipo " + stripped_tc[unmapped]
+        df["tipo_contrato_desc"] = mapped_tc.fillna("—")
+    except Exception as e:
+        log.warning("data_loader_enrichment_failed", column="tipo_contrato_desc", op="tipo_contrato_label", error=str(e))
+        df["tipo_contrato_desc"] = ""
 
     _backfill_ccaa(df)
 
-    for col in ("estado", "tipo_contrato", "ccaa"):
+    for col in ("ccaa", "estado", "tipo_contrato", "provincia", "tipo_proyecto"):
         if col in df.columns:
             df[col] = df[col].astype("category")
 
@@ -203,7 +191,12 @@ def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
                ``None`` (default) carga el dataset completo.
     """
     df = _load_raw(limit).copy()  # copy: no mutar el objeto cacheado de _load_raw
-    return _enrich_dataframe(df)
+    df = _enrich_dataframe(df)
+    try:
+        validate_licitaciones(df, lazy=True)
+    except Exception as _e:
+        log.warning("data_loader_schema_violation", error=str(_e))
+    return df
 
 
 def load_dataframe(limit: int | None = None) -> pd.DataFrame:
@@ -247,7 +240,11 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
     return _load_dataframe_shared(limit).copy()  # .copy() necesario: cache_resource comparte objeto
 
 
-@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None, show_spinner="Cargando adjudicaciones…")
+@st.cache_data(
+    ttl=settings.DASHBOARD_CACHE_TTL or None,
+    show_spinner="Cargando adjudicaciones…",
+    persist="disk",
+)
 def load_adjudicaciones(
     limit: int | None = None,
     ccaa_filter: tuple[str, ...] | None = None,
@@ -258,26 +255,10 @@ def load_adjudicaciones(
         limit: Límite opcional de filas en la query SQL.
         ccaa_filter: Si se proporciona, push-down de ``WHERE a.ccaa IN (...)`` a SQL.
     """
-    with connect() as c:
-        # Proyección explícita: excluye ``l.descripcion`` (blob grande) para reducir I/O.
-        sql = (
-            "SELECT a.*, l.titulo, l.organo_contratacion, l.url AS url_lic, "
-            "       l.fecha_publicacion, "
-            "       l.importe AS importe_licitacion "
-            "FROM adjudicaciones a "
-            "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-        )
-        params: tuple[Any, ...] = ()
-        if ccaa_filter:
-            placeholders = ",".join("?" for _ in ccaa_filter)
-            sql += f"WHERE a.ccaa IN ({placeholders}) "
-            params = tuple(ccaa_filter)
-        sql += "ORDER BY a.fecha_adjudicacion DESC"
-        if limit is not None and limit > 0:
-            sql += " LIMIT ?"
-            params = (*params, int(limit))
-        cursor = c.execute(sql, params)
-        df = _rows_to_df(cursor)
+    from services.adjudicaciones import load_raw_adjudicaciones
+
+    rows = load_raw_adjudicaciones(limit=limit, ccaa_filter=ccaa_filter)
+    df = pd.DataFrame(rows)
     if df.empty:
         return df
 
@@ -327,15 +308,37 @@ def load_adjudicaciones(
     )
 
     df["nombre_canonico"] = _build_canonical_names(df)
+    try:
+        validate_adjudicaciones(df, lazy=True)
+    except Exception as _e:
+        log.warning("data_loader_adj_schema_violation", error=str(_e))
     return df
 
 
 def _build_canonical_names(df: pd.DataFrame) -> pd.Series:
     """Calcula el nombre canónico (más frecuente) por ``empresa_key``.
 
-    Extraído como función separada para facilitar caché y testabilidad.
-    Si falla, devuelve ``df['nombre']`` sin canonicalizar (degradación graciosa).
+    Usa Polars para el groupby cuando está disponible (10-20× más rápido que
+    ``groupby + value_counts``). Si Polars no está instalado, cae de vuelta a
+    pandas. Si ambos fallan, devuelve ``df['nombre']`` sin canonicalizar.
     """
+    try:
+        import polars as pl
+
+        pl_df = pl.from_pandas(
+            df[["empresa_key", "nombre"]].dropna(subset=["empresa_key"])
+        )
+        # mode().first() = valor más frecuente
+        canon_pl = pl_df.group_by("empresa_key").agg(
+            pl.col("nombre").mode().first().alias("nombre_canon")
+        )
+        canon = dict(zip(canon_pl["empresa_key"].to_list(), canon_pl["nombre_canon"].to_list(), strict=False))
+        return df["empresa_key"].map(canon).fillna(df["nombre"])
+    except ImportError:
+        pass
+    except Exception as e:
+        log.warning("data_loader_canonical_polars_failed", error=str(e))
+    # Pandas fallback
     try:
         canon = (
             df.dropna(subset=["empresa_key"])
@@ -349,12 +352,12 @@ def _build_canonical_names(df: pd.DataFrame) -> pd.Series:
         return df["nombre"]
 
 
-@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
+@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None, persist="disk")
 def load_extracciones() -> pd.DataFrame:
-    with connect() as c:
-        # Proyección explícita: solo columnas consumidas (topbar + footer).
-        cursor = c.execute("SELECT fecha, fuente, nuevas FROM extracciones ORDER BY fecha DESC")
-        df = _rows_to_df(cursor)
+    from services.extraction_runs import load_extracciones as svc_load_extracciones
+
+    rows = svc_load_extracciones()
+    df = pd.DataFrame(rows)
     if not df.empty:
         df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
     return df

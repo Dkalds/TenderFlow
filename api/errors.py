@@ -173,6 +173,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         ]
         return problem_422(errors).response(instance=str(request.url))
 
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        return problem_400(str(exc), str(request.url)).response()
+
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         from observability.logging import get_logger

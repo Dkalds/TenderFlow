@@ -38,7 +38,19 @@ dependencies = [
 # NOTA: sentence-transformers arrastra PyTorch (~2 GB). No instalar en entornos sin GPU si no se usa.
 ml = [
     "faiss-cpu>=1.7.4,<2",
-    "sentence-transformers>=2.2.0,<4",
+    "sentence-transformers>=2.2.0,<3",
+]
+# Motor analítico DuckDB + Polars para hot paths (Fase 2).
+# Instalar con: pip install licitaciones-sap[fast]
+fast = [
+    "duckdb>=1.0,<2",
+    "polars>=1.0,<2",
+    "pyarrow>=16,<20",
+]
+# Validación de DataFrames con pandera.
+# Instalar con: pip install licitaciones-sap[schemas]
+schemas = [
+    "pandera>=0.18,<1",
 ]
 # Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
 # Instalar con: pip install licitaciones-sap[tracing]
@@ -94,6 +106,7 @@ ignore = [
 "db/feature_store.py" = ["S608"]  # SQL built from internal feature-name constants
 "db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
 "dashboard/pages/investigador.py" = ["S608"]  # SQL built from validated filter params
+"services/investigador/*" = ["S608"]  # SQL built from escaped FTS5 queries and placeholders
 
 [tool.ruff.format]
 quote-style = "double"
@@ -116,7 +129,6 @@ module = [
     "dashboard.auth",
     "dashboard.components.*",
     "dashboard.embeddings",
-    "dashboard.faiss_index",
     "dashboard.kpi_bar",
     "dashboard.pages.admin",
     "dashboard.pages.calidad_datos",
@@ -216,7 +228,6 @@ omit = [
     "dashboard/auth.py",
     "dashboard/router.py",
     "dashboard/stats.py",
-    "dashboard/faiss_index.py",
     "dashboard/utils/chart_helpers.py",
     "dashboard/utils/lazy.py",
     "observability/prometheus.py",
@@ -226,7 +237,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 65
+fail_under = 75
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

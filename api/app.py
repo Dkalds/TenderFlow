@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.errors import register_exception_handlers
@@ -196,6 +197,31 @@ app.add_middleware(
 # Security headers OWASP
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Request body size limit — protege contra payloads abusivos (1 MB máx.)
+try:
+    from starlette.middleware.base import BaseHTTPMiddleware as _BHTM  # noqa: N811
+
+    class _MaxBodyMiddleware(_BHTM):
+        """Rechaza requests con body > max_bytes antes de procesarlos."""
+
+        _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+
+        async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+            if request.headers.get("content-length"):
+                try:
+                    if int(request.headers["content-length"]) > self._MAX_BYTES:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"detail": "Request body demasiado grande (máx. 1 MB)."},
+                        )
+                except ValueError:
+                    pass
+            return await call_next(request)
+
+    app.add_middleware(_MaxBodyMiddleware)
+except Exception:
+    pass
+
 # Compresión Brotli / GZip
 try:
     from brotli_asgi import BrotliMiddleware
@@ -261,22 +287,14 @@ try:
                     return Response(status_code=401, content="Unauthorized")
                 # Validación síncrona mínima (endpoint no async)
                 from api.auth import hash_api_key
-                from db.database import connect_read
+                from services import auth as auth_service
 
                 key_hash = hash_api_key(api_key_raw)
-                try:
-                    with connect_read() as c:
-                        row = c.execute(
-                            "SELECT scopes FROM api_keys WHERE key_hash = ? AND is_active = 1",
-                            (key_hash,),
-                        ).fetchone()
-                    if not row:
-                        return Response(status_code=401, content="Unauthorized")
-                    scopes = str(row[0] or "*")
-                    if "*" not in scopes and "metrics:read" not in scopes:
-                        return Response(status_code=403, content="Forbidden")
-                except Exception:
+                scopes = auth_service.get_active_scopes(key_hash)
+                if scopes is None:
                     return Response(status_code=401, content="Unauthorized")
+                if "*" not in scopes and "metrics:read" not in scopes:
+                    return Response(status_code=403, content="Forbidden")
 
             return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

@@ -86,7 +86,7 @@ RECENT_SEARCHES: Final = "_recent_searches"
 
 # ── Navegación pendiente (back button) ───────────────────────────────────
 PENDING_NAV_SECTION: Final = "_pending_nav_section"
-
+PENDING_NAV_PAGE: Final = "_pending_nav_page"
 # ── Modo Investigador ────────────────────────────────────────────────────
 INV_HISTORY: Final = "inv_history"
 INV_Q: Final = "inv_q"

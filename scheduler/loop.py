@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from observability import AlertLevel, configure_logging, configure_tracing, get_logger, notify
+from scheduler.aggregates_precompute import run_aggregates_precompute
 from scheduler.anomaly_alerts import run_anomaly_checks
 from scheduler.dlq_retry import retry_failed_extractions
 from scheduler.drift_report import run_drift_report
@@ -42,18 +43,36 @@ def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
 
 
 def _run_job(name: str, fn: Callable[[], Any]) -> None:
+    timeout_s = _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
     started = time.monotonic()
-    try:
-        result = fn()
-        log.info(
-            "scheduler_loop_job_done",
-            job=name,
-            elapsed_ms=int((time.monotonic() - started) * 1000),
-            result=result,
-        )
-    except Exception as exc:
+    result_holder: list[Any] = []
+    exc_holder: list[BaseException] = []
+
+    def _target() -> None:
+        try:
+            result_holder.append(fn())
+        except Exception as exc:
+            exc_holder.append(exc)
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(timeout=timeout_s)
+
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    if t.is_alive():
+        log.error("scheduler_loop_job_timeout", job=name, timeout_s=timeout_s, elapsed_ms=elapsed_ms)
+        notify(AlertLevel.ERROR, f"Scheduler job timeout: {name}", body=f"Excedió {timeout_s}s")
+        return
+    if exc_holder:
         log.exception("scheduler_loop_job_failed", job=name)
-        notify(AlertLevel.ERROR, f"Scheduler job fallo: {name}", body=str(exc))
+        notify(AlertLevel.ERROR, f"Scheduler job fallo: {name}", body=str(exc_holder[0]))
+        return
+    log.info(
+        "scheduler_loop_job_done",
+        job=name,
+        elapsed_ms=elapsed_ms,
+        result=result_holder[0] if result_holder else None,
+    )
 
 
 def _run_daily_atom() -> None:
@@ -61,6 +80,7 @@ def _run_daily_atom() -> None:
     if result.get("status") != "ok":
         raise RuntimeError(f"daily atom failed: {result.get('status')}")
     run_kpi_precompute()
+    run_aggregates_precompute()
     check_and_notify()
     retry_failed_extractions()
     run_anomaly_checks()
@@ -72,6 +92,7 @@ def _run_recent_bulk(months: int) -> None:
     if failed:
         raise RuntimeError(f"bulk refresh failed for {len(failed)} month(s): {failed}")
     run_kpi_precompute()
+    run_aggregates_precompute()
     check_and_notify()
 
 
@@ -93,6 +114,16 @@ def _run_retention_cleanup() -> dict:
         webhook_deliveries_days=90,
         apply=True,
     )
+
+
+def _run_wal_checkpoint() -> dict[str, Any]:
+    """Ejecuta PRAGMA wal_checkpoint(TRUNCATE) para liberar espacio del WAL."""
+    from db.database import connect
+
+    with connect() as c:
+        row = c.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    result = {"blocked": row[0], "wal_pages": row[1], "checkpointed": row[2]} if row else {}
+    return result
 
 
 def main() -> int:
@@ -117,6 +148,7 @@ def main() -> int:
         minutes=_env_int("SCHEDULER_DRIFT_INTERVAL_MINUTES", 10080)
     )  # weekly
     retention_interval = timedelta(hours=_env_int("SCHEDULER_RETENTION_INTERVAL_HOURS", 24))
+    wal_interval = timedelta(hours=_env_int("SCHEDULER_WAL_CHECKPOINT_INTERVAL_HOURS", 6))
     sleep_seconds = _env_int("SCHEDULER_POLL_SECONDS", 60)
 
     now = datetime.now(UTC)
@@ -127,6 +159,7 @@ def main() -> int:
     next_anomaly = now + timedelta(hours=2)
     next_drift = now + timedelta(hours=6)  # primer drift report: 6h tras arranque
     next_retention = now + timedelta(hours=3)  # primer cleanup: 3h tras arranque
+    next_wal = now + timedelta(hours=1)  # primer WAL checkpoint: 1h tras arranque
     log.info(
         "scheduler_loop_start",
         daily_interval_minutes=int(daily_interval.total_seconds() // 60),
@@ -143,25 +176,28 @@ def main() -> int:
         now = datetime.now(UTC)
         if now >= next_daily:
             _run_job("daily_atom", _run_daily_atom)
-            next_daily = datetime.now(UTC) + daily_interval
+            next_daily = now + daily_interval
         if now >= next_bulk:
             _run_job("recent_bulk", lambda: _run_recent_bulk(bulk_months))
-            next_bulk = datetime.now(UTC) + bulk_interval
+            next_bulk = now + bulk_interval
         if now >= next_dlq:
             _run_job("dlq_retry", retry_failed_extractions)
-            next_dlq = datetime.now(UTC) + dlq_interval
+            next_dlq = now + dlq_interval
         if now >= next_digest:
             _run_job("digest_daily", lambda: send_pending_digests("daily"))
-            next_digest = datetime.now(UTC) + digest_interval
+            next_digest = now + digest_interval
         if now >= next_anomaly:
             _run_job("anomaly_checks", run_anomaly_checks)
-            next_anomaly = datetime.now(UTC) + anomaly_interval
+            next_anomaly = now + anomaly_interval
         if now >= next_drift:
             _run_job("drift_report", run_drift_report)
-            next_drift = datetime.now(UTC) + drift_interval
+            next_drift = now + drift_interval
         if now >= next_retention:
             _run_job("retention_cleanup", _run_retention_cleanup)
-            next_retention = datetime.now(UTC) + retention_interval
+            next_retention = now + retention_interval
+        if now >= next_wal:
+            _run_job("wal_checkpoint", _run_wal_checkpoint)
+            next_wal = now + wal_interval
         # Esperar el poll interval o despertar inmediatamente si llega señal de parada
         if _stop_event.wait(timeout=sleep_seconds):
             log.info("scheduler_loop_stopped_gracefully")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
 
 import pandas as pd
@@ -21,6 +22,7 @@ from dashboard.stats import risk_flags, score_oportunidad
 from dashboard.utils.export import to_csv_bytes, to_excel_bytes
 from dashboard.utils.format import fmt_eur, highlight_match
 from dashboard.utils.pagination import paginated_df, reset_pagination
+from db.notifications import mark_all_read as _mark_all_read
 from db.notifications import mark_read as _mark_read_notification
 from observability.logging import get_logger
 
@@ -68,6 +70,7 @@ def render(ctx: PageContext) -> None:
 
     # ── Flags de riesgo + score ──────────────────────────────────────────────
     # Calculados sobre df_full para tener contexto histórico completo (CPV P10, monopolio…)
+    _scoring_failed: list[str] = []
     try:
         adj_rf = load_adjudicaciones()
         rf = risk_flags(ctx.df_full, adj_rf)
@@ -77,7 +80,8 @@ def render(ctx: PageContext) -> None:
         df["riesgo_flags"] = df["riesgo_flags"].fillna("")
         df["riesgo_score"] = df["riesgo_score"].fillna(0).astype(int)
     except Exception as e:
-        log.debug("detalle_risk_flags_failed", error=str(e))
+        log.warning("detalle_risk_flags_failed", error=str(e), exc_info=True)
+        _scoring_failed.append("risk_flags")
         df = df.copy()
         df["riesgo_flags"] = ""
         df["riesgo_score"] = 0
@@ -88,11 +92,18 @@ def render(ctx: PageContext) -> None:
         df["score"] = df["score"].fillna(0).astype(int)
         df["banda"] = df["banda"].fillna("—")
     except Exception as e:
-        log.debug("detalle_score_oportunidad_failed", error=str(e))
+        log.warning("detalle_score_oportunidad_failed", error=str(e), exc_info=True)
+        _scoring_failed.append("score_oportunidad")
         df = df.copy() if "score" not in df.columns else df
         df["score"] = 0
         df["banda"] = "—"
         df["desglose"] = pd.Series([{} for _ in range(len(df))], index=df.index, dtype=object)
+
+    if _scoring_failed:
+        st.warning(
+            f"⚠️ Scoring no disponible ({', '.join(_scoring_failed)}) — mostrando datos sin ponderación.",
+            icon="⚠️",
+        )
 
     st.subheader(f"Detalle de licitaciones ({len(df)})")
     # Indicador de ranking FTS5
@@ -120,8 +131,8 @@ def render(ctx: PageContext) -> None:
 
         _all_ids = df["id_externo"].dropna().astype(str).tolist()
         _unread_ids = set(get_unread_ids(_ukey_v, _all_ids))
-    except Exception:
-        pass  # DB no lista o tabla no existe aún
+    except sqlite3.OperationalError as _e:
+        log.debug("detalle_unread_ids_unavailable", error=str(_e))  # tabla no existe aún
 
     # Añadir indicador visual al DataFrame
     if _unread_ids:
@@ -239,16 +250,16 @@ def render(ctx: PageContext) -> None:
                     _uid = _user.get("user_id") if _user else None
                     _added = 0
                     _orig_sel = df.loc[show.index[_selected_rows]]
-                    for _, _sr in _orig_sel.iterrows():
-                        _cpv_r = str(_sr.get("cpv", _sr.get("cpv_desc", "")) or "")
+                    for _sr in _orig_sel.itertuples(index=False):
+                        _cpv_r = str(getattr(_sr, "cpv", None) or getattr(_sr, "cpv_desc", None) or "")
                         _cpv_p = _cpv_r[:8].strip()
                         if _cpv_p:
                             add_entry(
                                 WatchlistEntry(
                                     user_key=_ukey_v,
                                     cpv_prefix=_cpv_p,
-                                    keyword=str(_sr.get("titulo", ""))[:60] or None,
-                                    ccaa=_sr.get("ccaa") or None,
+                                    keyword=str(getattr(_sr, "titulo", ""))[:60] or None,
+                                    ccaa=getattr(_sr, "ccaa", None) or None,
                                     user_id=_uid,
                                 )
                             )
@@ -260,8 +271,8 @@ def render(ctx: PageContext) -> None:
             if st.button("✅ Marcar como leídas", key="bulk_read", use_container_width=True):
                 try:
                     _orig_sel_r = df.loc[show.index[_selected_rows]]
-                    for _, _sr in _orig_sel_r.iterrows():
-                        _mark_read_notification(_ukey_v, str(_sr.get("id_externo", "")))
+                    _ids_to_mark = _orig_sel_r["id_externo"].dropna().astype(str).tolist()
+                    _mark_all_read(_ukey_v, _ids_to_mark)  # una sola transacción executemany
                     notify_success("Marcadas como leídas.")
                 except Exception as exc:
                     notify_error(f"Error: {exc}")

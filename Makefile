@@ -1,4 +1,4 @@
-.PHONY: install dev lint format typecheck test test-all scrape scrape-daily app dashboard api doctor clean runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery
+.PHONY: install dev lint format typecheck audit test test-all scrape scrape-daily app dashboard api doctor clean runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery
 
 # ── Instalación ──────────────────────────────────────────────────────────
 install:
@@ -19,6 +19,9 @@ format:
 
 typecheck:
 	mypy .
+
+audit:
+	pip-audit --strict --desc
 
 # ── Tests ────────────────────────────────────────────────────────────────
 test:

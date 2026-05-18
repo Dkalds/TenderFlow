@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     fecha_fin           TEXT,
     prorroga_descripcion TEXT,
     ml_proba            REAL,
+    tecnologia          TEXT,
+    fecha_actualizacion_fuente TEXT,
     fecha_extraccion    TEXT NOT NULL
 );
 
@@ -293,9 +295,66 @@ def set_db_path_override(path: str | None) -> None:
     _db_initialized = False  # fuerza re-init en la nueva ruta
 
 
+def is_turso_backend() -> bool:
+    """Indica si la conexión activa apunta a Turso/Hrana (cloud o réplica).
+
+    Centraliza la heurística usada en múltiples puntos del módulo. Devuelve
+    ``False`` cuando hay un override de ruta de tests o cuando faltan
+    credenciales de Turso (en cuyo caso se usa SQLite local).
+
+    Importante: el protocolo Hrana no soporta sentencias ``PRAGMA``; usar
+    esta función para decidir si emitirlas o no.
+    """
+    return bool(
+        not _DB_PATH_OVERRIDE
+        and settings.TURSO_DATABASE_URL
+        and settings.TURSO_AUTH_TOKEN
+    )
+
+
+def safe_pragma(conn: Any, stmt: str) -> None:
+    """Ejecuta un ``PRAGMA`` solo si el backend lo soporta (SQLite local).
+
+    No-op en Turso/Hrana. Cualquier excepción se silencia (defensive): los
+    PRAGMAs son optimizaciones, no deben romper la operación principal.
+    """
+    if is_turso_backend():
+        return
+    try:
+        conn.execute(stmt)
+    except Exception:
+        log.debug("safe_pragma_failed", extra={"stmt": stmt})
+
+
+def get_table_columns(conn: Any, table: str) -> set[str]:
+    """Devuelve el conjunto de nombres de columna de ``table``.
+
+    Funciona tanto en SQLite local (``PRAGMA table_info``) como en
+    Turso/Hrana (fallback a ``SELECT * … LIMIT 0`` + ``cursor.description``).
+    Devuelve conjunto vacío si la tabla no existe o no se puede inspeccionar.
+    """
+    # Intento 1: PRAGMA table_info (rápido en SQLite local)
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
+        if rows:
+            return {r[1] for r in rows}
+    except Exception:
+        pass
+
+    # Intento 2: cursor.description (Turso/Hrana, o PRAGMA devolvió vacío)
+    try:
+        cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")  # noqa: S608
+        if cur.description:
+            return {d[0] for d in cur.description}
+    except Exception:
+        pass
+
+    return set()
+
+
 def _create_connection() -> Any:
     """Crea una nueva conexión a la BD según la configuración actual."""
-    if not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN:
+    if is_turso_backend():
         return libsql.connect(settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN)
 
     if (
@@ -333,8 +392,7 @@ def _get_conn() -> Any:
     global _pool
 
     # Para Turso con pool_size > 1, usar el pool compartido
-    is_turso = not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
-    if is_turso and settings.DB_POOL_SIZE > 1:
+    if is_turso_backend() and settings.DB_POOL_SIZE > 1:
         if _pool is None:
             with _pool_lock:
                 if _pool is None:
@@ -364,8 +422,7 @@ def _get_conn() -> Any:
 
 def _return_conn(conn: Any) -> None:
     """Devuelve una conexión al pool (Turso) o la mantiene en thread-local."""
-    is_turso = not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN
-    if is_turso and settings.DB_POOL_SIZE > 1 and _pool is not None:
+    if is_turso_backend() and settings.DB_POOL_SIZE > 1 and _pool is not None:
         try:
             _pool.put_nowait(conn)
         except _queue_mod.Full:
@@ -437,13 +494,13 @@ def connect_read() -> Iterator[Any]:
         except ImportError:
             pass  # fallback to local connect
 
-    # Fallback: usar pool normal con query_only pragma
+    # Fallback: usar pool normal (sin pragma para Turso/Hrana)
     conn = _get_conn()
     try:
-        conn.execute("PRAGMA query_only = ON")
+        safe_pragma(conn, "PRAGMA query_only = ON")
         yield conn
     finally:
-        conn.execute("PRAGMA query_only = OFF")
+        safe_pragma(conn, "PRAGMA query_only = OFF")
         _return_conn(conn)
 
 
@@ -464,7 +521,42 @@ def init_db() -> None:
             if stmt:
                 c.execute(stmt)
         apply_pending(c)
+        _ensure_licitaciones_columns(c)
     _db_initialized = True
+
+
+def _ensure_licitaciones_columns(conn: Any) -> None:
+    """Ensure all Licitacion dataclass columns exist in the table.
+
+    Defence-in-depth: on Turso/Hrana, ``PRAGMA table_info`` and
+    ``sqlite_master`` may behave differently than local SQLite, causing
+    programmatic migrations to silently skip ``ALTER TABLE`` statements.
+    This function adds any missing columns directly.
+    """
+    expected = {f.name for f in fields(Licitacion)}
+    existing = get_table_columns(conn, "licitaciones")
+    if not existing:
+        return
+    missing = expected - existing
+    # Column type mapping from the dataclass field annotations
+    _TYPE_MAP: dict[type | str, str] = {
+        float: "REAL",
+        int: "INTEGER",
+    }
+    for col in sorted(missing):
+        # Determine SQL type from the dataclass field
+        fld = next((f for f in fields(Licitacion) if f.name == col), None)
+        if fld is None:
+            continue
+        origin = getattr(fld.type, "__origin__", None) if hasattr(fld.type, "__origin__") else None
+        base = getattr(fld.type, "__args__", (fld.type,))[0] if origin else fld.type
+        sql_type = _TYPE_MAP.get(base, "TEXT")
+        try:
+            conn.execute(f"ALTER TABLE licitaciones ADD COLUMN {col} {sql_type}")
+            log.info("ensure_column_added", column=col, sql_type=sql_type)
+        except Exception:
+            # Column may already exist (race) or name is invalid
+            log.debug("ensure_column_skip", column=col)
 
 
 def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:

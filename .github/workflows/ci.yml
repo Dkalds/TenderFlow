@@ -38,7 +38,6 @@ jobs:
         run: ruff format --check .
 
       - name: Type check (mypy)
-        continue-on-error: true
         run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config/ api/ shared/
 
   test:

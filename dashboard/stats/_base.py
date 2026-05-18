@@ -6,8 +6,8 @@ import pandas as pd
 
 from config import settings
 from dashboard.utils.dates import month_start
-from db.database import connect
 from observability.logging import get_logger
+from services.licitaciones import load_stats_dataframe as svc_load_stats
 
 log = get_logger(__name__)
 
@@ -21,30 +21,18 @@ except Exception:  # pragma: no cover
         return fn
 
 
-# Columnas usadas por las funciones de este módulo + KPIs aguas arriba.
-# Excluye blobs grandes (``descripcion``, ``raw_keywords``) para reducir I/O.
-_STATS_COLUMNS = (
-    "id_externo, titulo, organo_contratacion, importe, estado, "
-    "fecha_publicacion, ccaa, nuts_code, cpv, url, tecnologia, tipo_contrato, "
-    "moneda, provincia, fecha_limite, fecha_inicio, fecha_fin, fecha_extraccion"
-)
-
-
 @_cache_resource
 def load_dataframe() -> pd.DataFrame:
     """Carga ligera de licitaciones (sin enriquecimiento del dashboard).
 
-    Delega en la capa de BD directamente. Para la versión enriquecida con
+    Delega en la capa de servicios. Para la versión enriquecida con
     clasificadores y caché Streamlit, usar ``dashboard.data_loader.load_dataframe``.
 
     Cacheada con ``@st.cache_resource`` (TTL = ``DASHBOARD_CACHE_TTL``): se reutiliza
     entre sesiones y reruns. Los consumidores no deben mutar el objeto retornado.
     """
-    with connect() as c:
-        cursor = c.execute(f"SELECT {_STATS_COLUMNS} FROM licitaciones")  # noqa: S608
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
-        df = pd.DataFrame(rows, columns=cols)
+    rows = svc_load_stats()
+    df = pd.DataFrame(rows)
     if not df.empty:
         df["fecha_publicacion"] = pd.to_datetime(
             df["fecha_publicacion"],

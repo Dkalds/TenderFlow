@@ -7,7 +7,7 @@ import hmac
 import secrets
 from typing import Any
 
-from db.database import connect, connect_read, now_utc_iso
+from db.database import connect, connect_read, get_table_columns, now_utc_iso
 
 
 class ApiKeyRepository:
@@ -21,7 +21,7 @@ class ApiKeyRepository:
 
     def get_by_hash(self, key_hash: str) -> dict[str, Any] | None:
         with connect_read() as c:
-            cols_info = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
+            cols_info = get_table_columns(c, "api_keys")
             select_parts = [
                 "id",
                 "expires_at" if "expires_at" in cols_info else "NULL AS expires_at",
@@ -57,7 +57,7 @@ class ApiKeyRepository:
         raw = secrets.token_urlsafe(32)
         key_hash = self._hash(raw)
         with connect() as c:
-            cols_info = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
+            cols_info = get_table_columns(c, "api_keys")
             if "scopes" in cols_info:
                 c.execute(
                     "INSERT INTO api_keys (key_hash, name, created_at, is_active, scopes) VALUES (?, ?, ?, 1, ?)",

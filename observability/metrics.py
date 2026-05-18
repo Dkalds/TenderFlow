@@ -51,37 +51,24 @@ def record_run(run_id: str) -> Iterator[RunMetrics]:
 
 
 def _persist(m: RunMetrics) -> None:
-    from db.database import connect, init_db
+    from services.extraction_runs import persist_run
 
-    try:
-        init_db()
-        with connect() as c:
-            c.execute(
-                "INSERT INTO extraction_runs "
-                "(run_id, started_at, ended_at, duration_ms, status, "
-                " months_attempted, months_ok, months_failed, "
-                " licitaciones_nuevas, licitaciones_actualizadas, "
-                " adjudicaciones, errores_parseo, errores_descarga, notas) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    m.run_id,
-                    m.started_at,
-                    m.ended_at,
-                    m.duration_ms,
-                    m.status,
-                    m.months_attempted,
-                    m.months_ok,
-                    m.months_failed,
-                    m.licitaciones_nuevas,
-                    m.licitaciones_actualizadas,
-                    m.adjudicaciones,
-                    m.errores_parseo,
-                    m.errores_descarga,
-                    m.notas,
-                ),
-            )
-    except Exception as e:
-        log.warning("run_metrics_persist_failed", error=str(e), run_id=m.run_id)
+    persist_run(
+        run_id=m.run_id,
+        started_at=m.started_at,
+        ended_at=m.ended_at,
+        duration_ms=m.duration_ms,
+        status=m.status,
+        months_attempted=m.months_attempted,
+        months_ok=m.months_ok,
+        months_failed=m.months_failed,
+        licitaciones_nuevas=m.licitaciones_nuevas,
+        licitaciones_actualizadas=m.licitaciones_actualizadas,
+        adjudicaciones=m.adjudicaciones,
+        errores_parseo=m.errores_parseo,
+        errores_descarga=m.errores_descarga,
+        notas=m.notas,
+    )
 
 
 def to_dict(m: RunMetrics) -> dict[str, object]:

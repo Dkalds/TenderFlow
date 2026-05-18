@@ -1,5 +1,5 @@
 # ── Etapa 1: builder — instalar dependencias con compiladores ─────────────────
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.13.13-slim-bookworm AS builder
 
 # Buenas prácticas para Python en contenedores:
 # - PYTHONDONTWRITEBYTECODE: evita ficheros .pyc en la imagen
@@ -25,7 +25,7 @@ RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
 
 # ── Etapa 2: imagen de producción (sin compiladores) ──────────────────────────
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.13.13-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

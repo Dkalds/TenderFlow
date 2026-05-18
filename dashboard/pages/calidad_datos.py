@@ -12,8 +12,8 @@ from dashboard.components.states import empty_state, guarded_render
 from dashboard.components.tables import data_table
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
-from db.database import connect
 from db.dlq import unresolved_summary
+from services.extraction_runs import load_calidad_runs
 
 
 @guarded_render
@@ -26,13 +26,7 @@ def render(ctx: PageContext) -> None:
 
     # ── Datos de soporte ─────────────────────────────────────────────────
     df = ctx.df_full
-    with connect() as c:
-        cur = c.execute(
-            "SELECT started_at, status, errores_parseo, errores_descarga, "
-            "months_attempted, months_ok, months_failed "
-            "FROM extraction_runs ORDER BY started_at DESC LIMIT 90"
-        )
-        runs = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
+    runs = pd.DataFrame(load_calidad_runs())
 
     runs["started_at"] = pd.to_datetime(runs["started_at"], errors="coerce", utc=True)
 

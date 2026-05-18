@@ -19,9 +19,20 @@ from fastapi.responses import StreamingResponse
 
 from api.auth import AuthContext, create_api_key, require_api_key
 from db.audit import log_event
-from db.database import connect, connect_read, now_utc_iso
+from db.database import now_utc_iso
 from db.repositories.api_keys import ApiKeyRepository
 from db.sessions import revoke_all_sessions
+from services.gdpr import (
+    anonymize_user_data,
+    export_api_keys,
+    export_audit_log,
+    export_feedback,
+    export_watchlist,
+    get_key_name_and_scopes,
+    get_user_id_from_key_id,
+    list_user_keys,
+    set_key_expiry,
+)
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -32,24 +43,8 @@ _key_repo = ApiKeyRepository()
 
 
 def _get_user_id_from_key_id(key_id: int) -> int | None:
-    """Obtiene el user_id vinculado a la API key, si la columna existe."""
-    with connect_read() as c:
-        try:
-            cols = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
-            if "user_id" not in cols:
-                # Columna aún no migrada — fallback al primer usuario
-                row = c.execute("SELECT id FROM users LIMIT 1").fetchone()
-                return int(row[0]) if row else None
-            row = c.execute(
-                "SELECT user_id FROM api_keys WHERE id = ? LIMIT 1", (key_id,)
-            ).fetchone()
-            if row and row[0]:
-                return int(row[0])
-            # Si user_id es NULL, usar el primer usuario como fallback documentado
-            row = c.execute("SELECT id FROM users LIMIT 1").fetchone()
-            return int(row[0]) if row else None
-        except Exception:
-            return None
+    """Proxy a services.gdpr — compatibilidad interna."""
+    return get_user_id_from_key_id(key_id)
 
 
 @router.get(
@@ -67,45 +62,17 @@ def export_my_data(ctx: AuthContext = Depends(require_api_key)) -> StreamingResp
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        with connect_read() as c:
-            # API keys propias (solo la key autenticada, no todas las del nombre)
-            cur = c.execute(
-                "SELECT name, created_at, expires_at FROM api_keys WHERE key_hash = ?",
-                (ctx.key_hash,),
-            )
-            cols = [d[0] for d in cur.description]
-            api_keys_data = [dict(zip(cols, r, strict=False)) for r in cur.fetchall()]
-            zf.writestr("api_keys.json", json.dumps(api_keys_data, ensure_ascii=False, indent=2))
+        api_keys_data = export_api_keys(ctx.key_hash)
+        zf.writestr("api_keys.json", json.dumps(api_keys_data, ensure_ascii=False, indent=2))
 
-            # Watchlist — filtrar por key_hash (campo user_key en watchlist)
-            try:
-                cur = c.execute(
-                    "SELECT * FROM watchlist WHERE user_key = ? LIMIT 5000",
-                    (ctx.key_hash,),
-                )
-                cols = [d[0] for d in cur.description]
-                watchlist = [dict(zip(cols, r, strict=False)) for r in cur.fetchall()]
-            except Exception:
-                watchlist = []
-            zf.writestr("watchlist.json", json.dumps(watchlist, ensure_ascii=False, indent=2))
+        watchlist = export_watchlist(ctx.key_hash)
+        zf.writestr("watchlist.json", json.dumps(watchlist, ensure_ascii=False, indent=2))
 
-            # ML feedback — todo el feedback es anónimo (no hay FK a user), exportar todo
-            cur = c.execute("SELECT * FROM ml_feedback LIMIT 10000")
-            cols = [d[0] for d in cur.description]
-            feedback = [dict(zip(cols, r, strict=False)) for r in cur.fetchall()]
-            zf.writestr("feedback.json", json.dumps(feedback, ensure_ascii=False, indent=2))
+        feedback = export_feedback()
+        zf.writestr("feedback.json", json.dumps(feedback, ensure_ascii=False, indent=2))
 
-            # Audit log filtrado por user_key = key_hash (no expone datos de otros)
-            try:
-                cur = c.execute(
-                    "SELECT * FROM audit_log WHERE user_key = ? ORDER BY created_at DESC LIMIT 1000",
-                    (ctx.key_hash,),
-                )
-                cols = [d[0] for d in cur.description]
-                audit = [dict(zip(cols, r, strict=False)) for r in cur.fetchall()]
-                zf.writestr("audit.json", json.dumps(audit, ensure_ascii=False, indent=2))
-            except Exception:
-                zf.writestr("audit.json", "[]")
+        audit = export_audit_log(ctx.key_hash)
+        zf.writestr("audit.json", json.dumps(audit, ensure_ascii=False, indent=2))
 
         meta = {"exported_at": now_utc_iso(), "key_name": key_name}
         zf.writestr("metadata.json", json.dumps(meta, ensure_ascii=False, indent=2))
@@ -135,20 +102,7 @@ def delete_my_data(ctx: AuthContext = Depends(require_api_key)) -> dict:
     La identificación es por ``key_hash`` — no por nombre de usuario,
     evitando borrado accidental de datos de otros usuarios con el mismo nombre.
     """
-    with connect() as c:
-        # Anonimizar watchlist vinculada a esta key hash
-        try:
-            c.execute(
-                "UPDATE watchlist SET user_key = 'DELETED', name = 'DELETED' WHERE user_key = ?",
-                (ctx.key_hash,),
-            )
-        except Exception:
-            pass
-        # Revocar la API key por ID (no por nombre)
-        c.execute(
-            "UPDATE api_keys SET is_active = 0, last_used = ? WHERE id = ?",
-            (now_utc_iso(), ctx.key_id),
-        )
+    anonymize_user_data(ctx.key_hash, ctx.key_id)
 
     log_event(
         event_type="gdpr.delete",
@@ -192,24 +146,7 @@ def list_my_keys(ctx: AuthContext = Depends(require_api_key)) -> list[dict]:
     El ``prefix`` (primeros 8 chars del token original) permite identificar
     la key en logs/soporte sin exponer el secreto completo.
     """
-    with connect_read() as c:
-        try:
-            cols_info = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
-            select_cols = "id, name, created_at, is_active, scopes"
-            if "prefix" in cols_info:
-                select_cols += ", prefix"
-            if "expires_at" in cols_info:
-                select_cols += ", expires_at"
-            cur = c.execute(
-                f"SELECT {select_cols} FROM api_keys WHERE id = ?",  # noqa: S608
-                (ctx.key_id,),
-            )
-            col_names = [d[0] for d in cur.description]
-            rows = [dict(zip(col_names, row, strict=False)) for row in cur.fetchall()]
-        except Exception as exc:
-            log.warning("list_my_keys_error", error=str(exc))
-            rows = []
-    return rows
+    return list_user_keys(ctx.key_id)
 
 
 @router.post(
@@ -236,24 +173,17 @@ def rotate_my_key(
     from datetime import UTC, datetime, timedelta
 
     # Obtener nombre y scopes de la key actual
-    with connect_read() as c:
-        row = c.execute("SELECT name, scopes FROM api_keys WHERE id = ?", (ctx.key_id,)).fetchone()
-    if not row:
+    key_info = get_key_name_and_scopes(ctx.key_id)
+    if not key_info:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="API key no encontrada.")
 
-    name, scopes = row[0], str(row[1] or "*")
+    name, scopes = key_info
 
     # Marcar la key actual con expires_at = now + grace_days
     grace_expires = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()
-    with connect() as c:
-        cols_info = {r[1] for r in c.execute("PRAGMA table_info(api_keys)").fetchall()}
-        if "expires_at" in cols_info:
-            c.execute(
-                "UPDATE api_keys SET expires_at = ? WHERE id = ?",
-                (grace_expires, ctx.key_id),
-            )
+    set_key_expiry(ctx.key_id, grace_expires)
 
     # Crear la nueva key
     new_raw = create_api_key(

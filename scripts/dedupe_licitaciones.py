@@ -23,7 +23,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from db.database import connect
+from db.database import connect, get_table_columns
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -32,7 +32,7 @@ log = get_logger(__name__)
 def _ensure_column() -> None:
     """Añade ``duplicate_of`` a ``licitaciones`` si aún no existe."""
     with connect() as c:
-        cols = {row[1] for row in c.execute("PRAGMA table_info(licitaciones)").fetchall()}
+        cols = get_table_columns(c, "licitaciones")
         if "duplicate_of" not in cols:
             c.execute("ALTER TABLE licitaciones ADD COLUMN duplicate_of TEXT")
             c.execute(

@@ -19,9 +19,9 @@ from config.settings import settings
 from dashboard.auth import require_admin
 from dashboard.components.states import guarded_render
 from dashboard.pages._base import PageContext
-from db.database import connect
 from db.repositories.feedback import FeedbackRepository
 from observability.logging import get_logger
+from services.licitaciones import load_uncertainty_zone as svc_load_uncertainty
 
 log = get_logger(__name__)
 _repo = FeedbackRepository()
@@ -29,18 +29,7 @@ _repo = FeedbackRepository()
 
 def _load_uncertainty_zone(lo: float, hi: float, limit: int) -> pd.DataFrame:
     """Carga licitaciones con ml_proba en zona de incertidumbre, ordenadas por importe DESC."""
-    query = """
-        SELECT id_externo, titulo, organo, importe, fecha_publicacion,
-               cpv, es_sap, ml_proba
-        FROM licitaciones
-        WHERE ml_proba IS NOT NULL
-          AND ml_proba BETWEEN ? AND ?
-        ORDER BY (importe IS NULL), importe DESC, ml_proba
-        LIMIT ?
-    """
-    with connect() as conn:
-        cur = conn.execute(query, (lo, hi, limit))
-        rows = [dict(r) for r in cur.fetchall()]
+    rows = svc_load_uncertainty(lo, hi, limit)
     return pd.DataFrame(rows)
 
 

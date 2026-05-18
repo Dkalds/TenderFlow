@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from api.auth import AuthContext, require_api_key
-from db.database import connect, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -59,22 +58,9 @@ async def csp_report(request: Request) -> None:
     )
 
     # Persistir en tabla si existe
-    try:
-        now = now_utc_iso()
-        with connect() as c:
-            tables = {
-                r[0]
-                for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-            }
-            if "csp_violations" in tables:
-                c.execute(
-                    "INSERT INTO csp_violations "
-                    "(blocked_uri, violated_directive, document_uri, source_file, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (blocked_uri, violated_directive, document_uri, source_file, now),
-                )
-    except Exception as exc:
-        log.debug("csp_violation_persist_failed", error=str(exc))
+    from services.security import store_csp_violation
+
+    store_csp_violation(blocked_uri, violated_directive, document_uri, source_file)
 
 
 # ── GitHub Secret Scanning partner endpoint ───────────────────────────────────

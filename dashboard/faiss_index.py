@@ -20,10 +20,11 @@ Uso:
 
 from __future__ import annotations
 
-import pickle
+import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -34,7 +35,9 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-_INDEX_PATH = Path(__file__).parents[1] / "data" / "models" / "faiss_index.pkl"
+_INDEX_PATH = Path(__file__).parents[1] / "data" / "models" / "faiss_index.npz"
+_INDEX_PATH_LEGACY = Path(__file__).parents[1] / "data" / "models" / "faiss_index.pkl"
+_META_SUFFIX = "_meta.json"  # companion file alongside .npz
 _MIN_TEXTS = 10  # mínimo de textos para construir un índice útil
 
 try:  # pragma: no cover - fallback when Streamlit runtime no disponible
@@ -43,8 +46,8 @@ try:  # pragma: no cover - fallback when Streamlit runtime no disponible
     _cache_resource = _st.cache_resource
 except Exception:  # pragma: no cover
 
-    def _cache_resource(*args, **kwargs):  # type: ignore[no-redef]
-        def _decorator(fn):
+    def _cache_resource(*args: Any, **kwargs: Any) -> Callable[[Any], Any]:  # type: ignore[misc]
+        def _decorator(fn: Any) -> Any:
             return fn
 
         return _decorator
@@ -76,6 +79,8 @@ class FaissIndex:
         self.ids = ids
         self.embeddings = embeddings
         self._index = self._build_faiss_index(embeddings)
+        self.embedding_version: str = "v1"
+        self.embedding_model: str = "default"
 
     # ── Construcción ──────────────────────────────────────────────────────
 
@@ -120,8 +125,8 @@ class FaissIndex:
         # Record which model + version was used to build this index
         from config import settings as _settings
 
-        instance.embedding_model = _settings.EMBEDDING_MODEL  # type: ignore[attr-defined]
-        instance.embedding_version = _settings.EMBEDDING_VERSION  # type: ignore[attr-defined]
+        instance.embedding_model = _settings.EMBEDDING_MODEL
+        instance.embedding_version = _settings.EMBEDDING_VERSION
         return instance
 
     # ── Búsqueda ──────────────────────────────────────────────────────────
@@ -153,29 +158,27 @@ class FaissIndex:
     # ── Persistencia ──────────────────────────────────────────────────────
 
     def save(self, path: Path | None = None) -> Path:
-        """Guarda el índice en disco con metadata de versión (C4)."""
+        """Guarda el índice en disco (numpy .npz + JSON de metadata)."""
         target = path or _INDEX_PATH
+        # Normalizar extensión: siempre .npz
+        if target.suffix == ".pkl":
+            target = target.with_suffix(".npz")
         target.parent.mkdir(parents=True, exist_ok=True)
-        # C4: incluir versión + nombre del modelo de embeddings + timestamp
-        metadata = {
+        metadata: dict[str, Any] = {
+            "ids": self.ids,
             "embedding_version": getattr(self, "embedding_version", "v1"),
             "embedding_model": getattr(self, "embedding_model", "default"),
             "created_at": _utc_iso(),
             "n_records": len(self.ids),
         }
-        with open(target, "wb") as f:
-            pickle.dump(
-                {
-                    "ids": self.ids,
-                    "embeddings": self.embeddings,
-                    "metadata": metadata,
-                },
-                f,
-                protocol=5,
-            )
-        # Si estamos en Streamlit, invalidar la carga cacheada del índice.
+        # Guardar sólo embeddings numéricos en .npz (allow_pickle=False seguro)
+        np.savez_compressed(target, embeddings=self.embeddings)
+        # ids + metadata en JSON legible y seguro
+        meta_path = target.with_name(target.stem + _META_SUFFIX)
+        meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Invalidar caché Streamlit
         try:
-            self.__class__._load_cached.clear()  # type: ignore[attr-defined]
+            self.__class__._load_cached.clear()
         except Exception:
             pass
         log.info("faiss_index.saved", path=str(target), n=len(self.ids), **metadata)
@@ -186,36 +189,58 @@ class FaissIndex:
     def _load_cached(path_str: str, mtime_ns: int) -> FaissIndex:
         """Carga cacheada por ruta + mtime para compartir el índice entre reruns."""
         _ = mtime_ns  # parte de la key de caché para invalidar al cambiar el archivo
-        with open(path_str, "rb") as f:
-            data = pickle.load(f)  # noqa: S301
-        obj = FaissIndex(ids=data["ids"], embeddings=data["embeddings"])
-        meta = data.get("metadata") or {}
-        obj.embedding_version = meta.get("embedding_version", "v1")  # type: ignore[attr-defined]
-        obj.embedding_model = meta.get("embedding_model", "default")  # type: ignore[attr-defined]
+        p = Path(path_str)
+        if p.suffix == ".npz":
+            data = np.load(p, allow_pickle=False)
+            embeddings: np.ndarray = data["embeddings"]
+            meta_path = p.with_name(p.stem + _META_SUFFIX)
+            meta: dict[str, Any] = {}
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            ids: list[str] = meta.pop("ids", [])
+        else:
+            # Fallback legacy pickle (read-only, never write)
+            import pickle
+
+            with open(p, "rb") as f:
+                raw = pickle.load(f)  # noqa: S301
+            ids = raw["ids"]
+            embeddings = raw["embeddings"]
+            meta = raw.get("metadata") or {}
+        obj = FaissIndex(ids=ids, embeddings=embeddings)
+        obj.embedding_version = meta.get("embedding_version", "v1")
+        obj.embedding_model = meta.get("embedding_model", "default")
         return obj
 
     @classmethod
     def load(cls, path: Path | None = None) -> FaissIndex:
         """Carga el índice desde disco con caché compartida entre sesiones.
 
-        La caché se invalida automáticamente cuando cambia el mtime del archivo.
-        Compatible con índices legacy sin metadata.
+        Intenta el formato numpy (.npz) primero; si no existe, prueba el
+        legacy .pkl para compatibilidad con índices previos.
         """
         target = path or _INDEX_PATH
+        # Migración automática: si sólo existe el .pkl legacy, usarlo
+        if not target.exists() and target.suffix == ".npz" and _INDEX_PATH_LEGACY.exists():
+            target = _INDEX_PATH_LEGACY
         mtime_ns = target.stat().st_mtime_ns
-        obj = cls._load_cached(str(target), mtime_ns)
+        obj: FaissIndex = cls._load_cached(str(target), mtime_ns)
         log.info(
             "faiss_index.loaded",
             path=str(target),
             n=len(obj.ids),
-            embedding_version=obj.embedding_version,  # type: ignore[attr-defined]
+            embedding_version=obj.embedding_version,
         )
         return obj
 
     @classmethod
     def is_available(cls, path: Path | None = None) -> bool:
-        """True si existe un índice guardado en disco."""
-        return (path or _INDEX_PATH).exists()
+        """True si existe un índice guardado en disco (nuevo o legacy)."""
+        target = path or _INDEX_PATH
+        return target.exists() or _INDEX_PATH_LEGACY.exists()
 
     @classmethod
     def load_or_build(cls, df: pd.DataFrame, path: Path | None = None) -> FaissIndex:

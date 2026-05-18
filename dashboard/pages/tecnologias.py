@@ -350,22 +350,22 @@ def render(ctx: PageContext) -> None:
             sub_scored["score"] = 0
             sub_scored["banda"] = "—"
 
-        for _, row in sub_scored.head(20).iterrows():
+        for row in sub_scored.head(20).itertuples(index=False):
             meta_parts = [
-                str(row.get("estado_desc") or "—"),
-                str(row.get("banda") or "—"),
-                f"score {int(row.get('score') or 0)}/100",
+                str(getattr(row, "estado_desc", None) or "—"),
+                str(getattr(row, "banda", None) or "—"),
+                f"score {int(getattr(row, 'score', 0) or 0)}/100",
             ]
-            if row.get("ccaa"):
-                meta_parts.append(str(row["ccaa"]))
-            if row.get("organo_contratacion"):
-                meta_parts.append(str(row["organo_contratacion"])[:40])
+            if getattr(row, "ccaa", None):
+                meta_parts.append(str(row.ccaa))
+            if getattr(row, "organo_contratacion", None):
+                meta_parts.append(str(row.organo_contratacion)[:40])
             top_card(
-                amount=fmt_eur(row["importe"]),
-                title=str(row["titulo"]),
+                amount=fmt_eur(row.importe),
+                title=str(row.titulo),
                 meta=" · ".join(meta_parts),
-                url=row.get("url"),
-                highlight=str(row.get("tech_label") or "—"),
+                url=getattr(row, "url", None),
+                highlight=str(getattr(row, "tech_label", None) or "—"),
             )
     else:
         st.info("No hay licitaciones para la tecnología seleccionada.")

@@ -36,21 +36,9 @@ def _search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
     if not _check_fts() or not query.strip():
         return None
     try:
-        from db.database import connect
+        from services.licitaciones import search_fts_ids
 
-        # Construir query FTS: splitear por espacios y unir con AND
-        terms = query.strip().split()
-        fts_query = f'"{terms[0]}"' if len(terms) == 1 else " AND ".join(f'"{t}"' for t in terms)
-
-        with connect() as c:
-            cur = c.execute(
-                "SELECT f.id_externo FROM licitaciones_fts f "
-                "WHERE licitaciones_fts MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                [fts_query, limit],
-            )
-            return [row[0] for row in cur.fetchall()]
+        return search_fts_ids(query, limit=limit)
     except Exception as exc:
         log.debug("fts_search_fallback", error=str(exc), query=query)
         return None

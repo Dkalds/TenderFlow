@@ -161,21 +161,26 @@ def test_metrics_allowed_ips_declared_in_settings():
 
 
 def test_require_api_key_uses_connect_read(monkeypatch):
-    """require_api_key no debe usar connect() para reads — solo connect_read()."""
-    import api.auth as auth_mod
+    """require_api_key no debe usar connect() para reads — solo connect_read().
 
-    write_calls = []
-    original_connect = auth_mod.connect
+    Tras la migración a services.auth, api.auth ya no importa connect/connect_read
+    directamente. Verificamos que el servicio usa connect_read para lecturas.
+    """
+    import services.auth as svc_auth
+
+    write_calls: list[int] = []
+    original_connect = svc_auth.connect
 
     def spy_connect(*args, **kwargs):
         write_calls.append(1)
         return original_connect(*args, **kwargs)
 
-    monkeypatch.setattr(auth_mod, "connect", spy_connect)
+    monkeypatch.setattr(svc_auth, "connect", spy_connect)
 
     # Llamar a require_api_key con key inválida (debe fallar pero sin usar connect)
     import asyncio
 
+    import api.auth as auth_mod
     from fastapi import HTTPException
 
     async def _test():
@@ -187,8 +192,6 @@ def test_require_api_key_uses_connect_read(monkeypatch):
     asyncio.run(_test())
 
     # connect() no debería haber sido llamado para la lectura de validación
-    # (solo connect_read debería usarse)
-    # Nota: connect() SÍ se usa en _update_last_used (write) pero no en la lectura
     assert write_calls == [], (
         "require_api_key llamó a connect() para una lectura — debe usar connect_read()"
     )

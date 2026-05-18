@@ -412,6 +412,32 @@ MIGRATIONS: list[tuple[int, str, str]] = [
             ('enterprise', 0,     0,   'Sin limites (0 = sin limite)');
         """,
     ),
+    (
+        29,
+        "mat_aggregates",
+        """
+        CREATE TABLE IF NOT EXISTS mat_clusters (
+            id_externo   TEXT PRIMARY KEY,
+            cluster_id   INTEGER NOT NULL,
+            cluster_label TEXT NOT NULL DEFAULT '',
+            updated_at   TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mat_clusters_cluster_id
+            ON mat_clusters(cluster_id);
+
+        CREATE TABLE IF NOT EXISTS mat_top_empresas_ccaa (
+            ccaa         TEXT NOT NULL,
+            rank         INTEGER NOT NULL,
+            nombre_canon TEXT NOT NULL,
+            n_adj        INTEGER NOT NULL DEFAULT 0,
+            importe_total REAL NOT NULL DEFAULT 0.0,
+            updated_at   TEXT NOT NULL,
+            PRIMARY KEY (ccaa, rank)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mat_top_empresas_ccaa
+            ON mat_top_empresas_ccaa(ccaa);
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -604,18 +630,13 @@ def apply_pending(conn: Any) -> list[int]:
 
 def _apply_v6_columns(conn: Any) -> None:
     """Añade columnas extra a licitaciones si no existen (idempotente)."""
-    # Si la tabla no existe aún (e.g. test de migraciones puro), no hay nada que hacer.
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(licitaciones)").fetchall()}
     for name, ctype in _V6_COLUMNS:
         if not _VALID_COLUMN_NAME.match(name):
             raise ValueError(f"Nombre de columna no válido: {name!r}")
-        if name not in cols:
+        try:
             conn.execute(f"ALTER TABLE licitaciones ADD COLUMN {name} {ctype}")
+        except Exception:
+            pass  # Column already exists
 
 
 def _apply_v20_indexes(conn: Any) -> None:
@@ -635,28 +656,28 @@ def _apply_v20_indexes(conn: Any) -> None:
 
 def _apply_v21_api_keys_columns(conn: Any) -> None:
     """Añade columnas scopes y user_id a api_keys si no existen (idempotente)."""
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_keys'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
-    if "scopes" not in cols:
+    try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT '*'")
-    if "user_id" not in cols:
+    except Exception:
+        pass
+    try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN user_id INTEGER")
+    except Exception:
+        pass
 
 
 def _apply_v23_ml_proba(conn: Any) -> None:
-    """Añade columna ml_proba a licitaciones si no existe (idempotente)."""
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(licitaciones)").fetchall()}
-    if "ml_proba" not in cols:
+    """Añade columna ml_proba a licitaciones si no existe (idempotente).
+
+    Uses a try/except around ALTER TABLE instead of PRAGMA table_info
+    checks because Turso/Hrana may return empty results for PRAGMA and
+    sqlite_master queries inside transactions.
+    """
+    try:
         conn.execute("ALTER TABLE licitaciones ADD COLUMN ml_proba REAL")
+    except Exception:
+        # Column already exists — safe to ignore
+        pass
 
 
 def _apply_v24_cursor_index(conn: Any) -> None:
@@ -678,30 +699,26 @@ def _apply_v24_cursor_index(conn: Any) -> None:
 
 def _apply_v25_api_keys_prefix_expiry(conn: Any) -> None:
     """Añade columnas prefix y expires_at a api_keys si no existen (idempotente)."""
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_keys'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
-    if "prefix" not in cols:
+    try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN prefix TEXT")
-    if "expires_at" not in cols:
+    except Exception:
+        pass
+    try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN expires_at TEXT")
+    except Exception:
+        pass
 
 
 def _apply_v26_audit_hash_chain(conn: Any) -> None:
     """Añade columnas prev_hash y this_hash a audit_log para cadena de integridad."""
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_log'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()}
-    if "prev_hash" not in cols:
+    try:
         conn.execute("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT")
-    if "this_hash" not in cols:
+    except Exception:
+        pass
+    try:
         conn.execute("ALTER TABLE audit_log ADD COLUMN this_hash TEXT")
+    except Exception:
+        pass
 
 
 def _apply_v28_api_key_tiers(conn: Any) -> None:
@@ -710,14 +727,10 @@ def _apply_v28_api_key_tiers(conn: Any) -> None:
     La tabla api_key_tiers ya fue creada por el SQL inline de la migración 28.
     Aquí solo se añade la FK-compatible column en api_keys.
     """
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_keys'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)").fetchall()}
-    if "tier" not in cols:
+    try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'")
+    except Exception:
+        pass
 
 
 _V7_FTS_STATEMENTS: list[str] = [
@@ -772,28 +785,20 @@ def _apply_v7_fts(conn: Any) -> None:
 
 def _apply_v8_user_id(conn: Any) -> None:
     """Añade user_id a watchlist_cpv si no existe (idempotente)."""
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='watchlist_cpv'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(watchlist_cpv)").fetchall()}
-    if "user_id" not in cols:
+    try:
         conn.execute("ALTER TABLE watchlist_cpv ADD COLUMN user_id INTEGER REFERENCES users(id)")
+    except Exception:
+        pass
     # Index for user_id lookups (idempotent via IF NOT EXISTS)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wl_user_id ON watchlist_cpv(user_id)")
 
 
 def _apply_v10_is_admin(conn: Any) -> None:
     """Añade columna is_admin a users si no existe (idempotente)."""
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    if "is_admin" not in cols:
+    try:
         conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
 
 
 def _apply_v14_tecnologia(conn: Any) -> None:
@@ -802,17 +807,14 @@ def _apply_v14_tecnologia(conn: Any) -> None:
     También backfill: marca licitaciones existentes con raw_keywords como 'SAP'
     ya que antes del multi-vendor solo se extraían licitaciones SAP.
     """
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(licitaciones)").fetchall()}
-    if "tecnologia" not in cols:
+    try:
         conn.execute("ALTER TABLE licitaciones ADD COLUMN tecnologia TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tecnologia ON licitaciones(tecnologia)")
         # Backfill: todas las licitaciones existentes son SAP (pre multi-vendor)
         conn.execute("UPDATE licitaciones SET tecnologia = 'SAP' WHERE raw_keywords IS NOT NULL")
+    except Exception:
+        # Column already exists — index and backfill already applied
+        pass
 
 
 def _apply_v15_frequency(conn: Any) -> None:
@@ -820,14 +822,10 @@ def _apply_v15_frequency(conn: Any) -> None:
 
     Valores posibles: 'immediate' | 'daily' | 'weekly'. Default: 'daily'.
     """
-    exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='watchlist_cpv'"
-    ).fetchone()
-    if not exists:
-        return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(watchlist_cpv)").fetchall()}
-    if "frequency" not in cols:
+    try:
         conn.execute("ALTER TABLE watchlist_cpv ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily'")
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -909,7 +907,9 @@ def validate_schema(conn: Any) -> dict[str, bool]:
     def _col_exists(table: str, col: str) -> bool:
         if not _table_exists(table):
             return False
-        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        from db.database import get_table_columns
+
+        cols = get_table_columns(conn, table)
         return col in cols
 
     # Tablas principales

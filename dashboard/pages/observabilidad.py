@@ -14,8 +14,8 @@ from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
 from db.audit import list_recent as audit_list_recent
-from db.database import connect
 from db.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
+from services.extraction_runs import load_runs as svc_load_runs
 
 
 @guarded_render
@@ -30,15 +30,7 @@ def render(ctx: PageContext) -> None:
         "cola de fallos pendientes de resolver."
     )
 
-    with connect() as c:
-        cur = c.execute(
-            "SELECT run_id, started_at, ended_at, duration_ms, status, "
-            "months_attempted, months_ok, months_failed, "
-            "licitaciones_nuevas, licitaciones_actualizadas, "
-            "adjudicaciones, errores_parseo, errores_descarga, notas "
-            "FROM extraction_runs ORDER BY started_at DESC LIMIT 200"
-        )
-        runs = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
+    runs = pd.DataFrame(svc_load_runs())
 
     if runs.empty:
         empty_state("📉", "Sin runs registrados", "Ejecuta el pipeline para ver métricas aquí.")

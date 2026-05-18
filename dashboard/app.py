@@ -53,6 +53,7 @@ from dashboard.session_keys import (
     NAV_PREV_PAGE,
     NAV_PREV_SECTION,
     NAV_SECTION,
+    PENDING_NAV_PAGE,
     PENDING_NAV_SECTION,
     QP_LOADED,
 )
@@ -67,7 +68,9 @@ from observability.histograms import timed_render
 PLOTLY_TEMPLATE, COLOR_SEQUENCE = bootstrap()
 
 # ── Carga de datos (necesaria antes del topbar para 'última actualización') ──
-df_full = load_dataframe()
+with st.status("⏳ Cargando datos…", expanded=False) as _load_status:
+    df_full = load_dataframe()
+    _load_status.update(label="Datos listos", state="complete", expanded=False)
 
 # ── M13: Accessibility — ARIA live region ─────────────────────────────────
 st.markdown(
@@ -139,6 +142,11 @@ _visible_sections = (
 _pending_nav = st.session_state.pop(PENDING_NAV_SECTION, None)
 if _pending_nav:
     st.session_state[NAV_SECTION] = _pending_nav
+
+# Consume pending sub-page navigation (same pattern: before sub_nav widget)
+_pending_page = st.session_state.pop(PENDING_NAV_PAGE, None)
+if _pending_page:
+    st.session_state[_pending_page["key"]] = _pending_page["index"]
 
 section = top_nav(
     _visible_sections,

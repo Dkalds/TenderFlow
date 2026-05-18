@@ -39,6 +39,18 @@ pytest_output.txt
 pytest_out*.txt
 pytest_err*.txt
 *_out.txt
+# Catch-all patterns for ad-hoc test/coverage outputs
+test_*.txt
+test-*.txt
+_t*.txt
+_result*.txt
+cov_*.txt
+cov*.txt
+tmp_*.txt
+r.txt
+# Explicit allow-list for files that MUST be tracked
+!requirements.txt
+!requirements-dev.txt
 
 # Python packaging artifacts
 *.egg-info/

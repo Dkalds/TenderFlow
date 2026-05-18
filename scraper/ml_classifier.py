@@ -922,9 +922,17 @@ def seed_negatives(
             sqlite_conn.execute("PRAGMA journal_mode=WAL")
             sqlite_conn.execute("PRAGMA busy_timeout=5000")
             # Detect available columns to handle schema version differences
-            existing_cols = {
-                r[1] for r in sqlite_conn.execute("PRAGMA table_info(licitaciones)").fetchall()
-            }
+            try:
+                existing_cols = {
+                    r[1]
+                    for r in sqlite_conn.execute(
+                        "PRAGMA table_info(licitaciones)"
+                    ).fetchall()
+                }
+            except Exception:
+                # Fallback: query with LIMIT 0 and inspect cursor.description
+                cur = sqlite_conn.execute("SELECT * FROM licitaciones LIMIT 0")
+                existing_cols = {d[0] for d in (cur.description or [])}
             has_fecha_act = "fecha_actualizacion_fuente" in existing_cols
             has_tecnologia = "tecnologia" in existing_cols
 

@@ -16,9 +16,15 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from db.database import connect
 from db.watchlist import list_entries, matches_licitacion, update_last_notified
 from observability import AlertLevel, get_logger, notify
+from services.watchlist import (
+    load_pending_digests,
+    mark_digests_sent,
+    query_licitaciones_batch,
+    query_licitaciones_since,
+    store_pending_digest,
+)
 
 log = get_logger(__name__)
 
@@ -40,18 +46,7 @@ def _query_licitaciones_since(cpv_prefix: str, since_date: str) -> list[dict[str
     """Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece
     por cpv_prefix. El filtrado fino (keyword, importe, ccaa) lo hace
     matches_licitacion() en Python."""
-    pattern = cpv_prefix + "%"
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id_externo, titulo, descripcion, organo_contratacion, "
-            "cpv, importe, ccaa, estado, fecha_publicacion, url "
-            "FROM licitaciones "
-            "WHERE fecha_publicacion >= ? AND cpv LIKE ? "
-            "ORDER BY fecha_publicacion DESC",
-            (since_date, pattern),
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    return query_licitaciones_since(cpv_prefix, since_date)
 
 
 def _query_licitaciones_batch(
@@ -65,38 +60,7 @@ def _query_licitaciones_batch(
     Para entradas con ``since_date`` distintos se agrupan por fecha y se hace una
     query por grupo — normalmente 1-2 queries en vez de N.
     """
-    from collections import defaultdict
-
-    # Agrupar por since_date para minimizar queries
-    by_since: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for entry in entries:
-        raw_since = entry.get("last_notified_at") or default_since
-        by_since[str(raw_since)].append(entry)
-
-    result: dict[str, list[dict[str, Any]]] = {}
-
-    with connect() as c:
-        for since_date, grp_entries in by_since.items():
-            cpv_prefixes = [e["cpv_prefix"] for e in grp_entries]
-            placeholders = " OR ".join("cpv LIKE ?" for _ in cpv_prefixes)
-            params: list[Any] = [since_date] + [p + "%" for p in cpv_prefixes]
-            cur = c.execute(
-                "SELECT id_externo, titulo, descripcion, organo_contratacion, "  # noqa: S608
-                "cpv, importe, ccaa, estado, fecha_publicacion, url "
-                "FROM licitaciones "
-                f"WHERE fecha_publicacion >= ? AND ({placeholders}) "
-                "ORDER BY fecha_publicacion DESC",
-                params,
-            )
-            cols = [d[0] for d in cur.description]
-            rows = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
-
-            # Distribuir resultados por CPV prefix (una licitación puede coincidir
-            # con varios prefixes — matches_licitacion() hará el filtro fino)
-            for prefix in cpv_prefixes:
-                result[prefix] = [r for r in rows if (r.get("cpv") or "").startswith(prefix)]
-
-    return result
+    return query_licitaciones_batch(entries, default_since)
 
 
 def _build_body(matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> str:
@@ -133,25 +97,13 @@ def _store_pending_digests(
 ) -> int:
     """Persiste coincidencias en ``pending_digests`` para envío posterior."""
     stored = 0
-    with connect() as c:
-        for entry, lics in matches_by_entry:
-            entry_id = int(entry["id"])
-            for lic in lics:
-                try:
-                    c.execute(
-                        "INSERT OR IGNORE INTO pending_digests "
-                        "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        (user_key, recipient, entry_id, str(lic["id_externo"]), frequency, now_ts),
-                    )
-                    stored += 1
-                except Exception as exc:
-                    log.warning(
-                        "pending_digest_store_failed",
-                        entry_id=entry_id,
-                        licitacion_id=lic.get("id_externo"),
-                        error=str(exc),
-                    )
+    for entry, lics in matches_by_entry:
+        entry_id = int(entry["id"])
+        for lic in lics:
+            if store_pending_digest(
+                user_key, recipient, entry_id, str(lic["id_externo"]), frequency, now_ts
+            ):
+                stored += 1
     return stored
 
 
@@ -311,21 +263,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
     if frequency not in ("daily", "weekly"):
         raise ValueError(f"frequency debe ser 'daily' o 'weekly', no {frequency!r}")
 
-    with connect() as c:
-        cur = c.execute(
-            "SELECT pd.id, pd.recipient_email, pd.entry_id, pd.licitacion_id, pd.user_key, "
-            "       l.titulo, l.descripcion, l.organo_contratacion, "
-            "       l.cpv, l.importe, l.ccaa, l.estado, l.fecha_publicacion, l.url, "
-            "       w.cpv_prefix, w.keyword, w.min_importe, w.ccaa AS entry_ccaa "
-            "FROM pending_digests pd "
-            "LEFT JOIN licitaciones l ON l.id_externo = pd.licitacion_id "
-            "LEFT JOIN watchlist_cpv w ON w.id = pd.entry_id "
-            "WHERE pd.sent = 0 AND pd.frequency = ? "
-            "ORDER BY pd.recipient_email, pd.entry_id",
-            (frequency,),
-        )
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    rows = load_pending_digests(frequency)
 
     if not rows:
         log.debug("send_pending_digests_nothing", frequency=frequency)
@@ -386,13 +324,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
         emails_sent += 1
 
     # Marcar todos como enviados
-    if digest_ids:
-        placeholders = ",".join("?" for _ in digest_ids)
-        with connect() as c:
-            c.execute(
-                f"UPDATE pending_digests SET sent = 1 WHERE id IN ({placeholders})",  # noqa: S608
-                digest_ids,
-            )
+    mark_digests_sent(digest_ids)
 
     log.info("send_pending_digests_done", emails=emails_sent, frequency=frequency)
     return emails_sent

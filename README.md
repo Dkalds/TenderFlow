@@ -259,6 +259,14 @@ docker compose up -d
 El `docker-compose.yml` levanta dos servicios que comparten el mismo
 volumen de datos: `dashboard` (Streamlit) y `scheduler` (cron de scraping).
 
+Variables recomendadas para despliegue Docker:
+
+```dotenv
+API_HMAC_SECRET=<secreto-hmac-32+-chars>
+FORWARDED_ALLOW_IPS=<ip-o-rango-del-reverse-proxy>
+GF_SECURITY_ADMIN_PASSWORD=<password-admin-grafana>
+```
+
 ---
 
 ## Seguridad

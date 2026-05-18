@@ -38,15 +38,15 @@ def _get_from_env(name: str) -> str | None:
 def _get_from_azure(name: str) -> str | None:
     """Lee el secreto desde Azure KeyVault."""
     try:
-        from azure.identity import DefaultAzureCredential  # type: ignore[import]
-        from azure.keyvault.secrets import SecretClient  # type: ignore[import]
+        from azure.identity import DefaultAzureCredential  # type: ignore[import-not-found]
+        from azure.keyvault.secrets import SecretClient  # type: ignore[import-not-found]
 
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=_AZURE_VAULT_URL, credential=credential)
         # KeyVault names use hyphens, not underscores
         kv_name = name.replace("_", "-").lower()
         secret = client.get_secret(kv_name)
-        return secret.value
+        return secret.value  # type: ignore[no-any-return]
     except ImportError:
         log.warning("azure_keyvault_not_installed", secret_name=name)
         return _get_from_env(name)
@@ -58,12 +58,12 @@ def _get_from_azure(name: str) -> str | None:
 def _get_from_aws(name: str) -> str | None:
     """Lee el secreto desde AWS Secrets Manager."""
     try:
-        import boto3  # type: ignore[import]
+        import boto3  # type: ignore[import-not-found]
 
         client = boto3.client("secretsmanager", region_name=_AWS_REGION)
         secret_id = f"{_AWS_SECRET_PREFIX}{name}"
         response = client.get_secret_value(SecretId=secret_id)
-        return response.get("SecretString")
+        return response.get("SecretString")  # type: ignore[no-any-return]
     except ImportError:
         log.warning("boto3_not_installed", secret_name=name)
         return _get_from_env(name)

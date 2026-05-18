@@ -31,6 +31,7 @@ router = APIRouter(tags=["licitaciones"])
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MAX_LIMIT = 500
+_MAX_QUERY_LENGTH = 200
 
 # Singletons — instanciados una vez
 _lic_repo = LicitacionRepository()
@@ -43,6 +44,15 @@ def _validate_date(value: str | None, field: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Parámetro '{field}' debe tener formato YYYY-MM-DD, recibido: {value!r}",
+        )
+
+
+def _validate_query(value: str | None) -> None:
+    """Raise 422 si la query de búsqueda excede el límite de caracteres."""
+    if value is not None and len(value) > _MAX_QUERY_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Parámetro 'q' excede el máximo de {_MAX_QUERY_LENGTH} caracteres.",
         )
 
 
@@ -118,6 +128,11 @@ def _encode_cursor(fecha: str | None, id_externo: str) -> str:
 
 
 def _decode_cursor(cursor: str) -> tuple[str, str]:
+    if len(cursor) > 512:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cursor demasiado largo.",
+        )
     try:
         padding = "=" * (-len(cursor) % 4)
         raw = base64.urlsafe_b64decode(cursor + padding).decode()
@@ -177,7 +192,7 @@ def _get_classifier() -> Any:
 async def list_licitaciones(
     request: Request,
     response: Response,
-    q: str | None = Query(None, description="Búsqueda en título y descripción"),
+    q: str | None = Query(None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"),
     estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
     ccaa: str | None = Query(None, description="Comunidad Autónoma"),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
@@ -199,6 +214,7 @@ async def list_licitaciones(
     > datasets grandes. La paginación offset se mantendrá pero quedará marcada
     > como legacy en futuras versiones.
     """
+    _validate_query(q)
     _validate_date(fecha_desde, "fecha_desde")
     _validate_date(fecha_hasta, "fecha_hasta")
 
@@ -294,17 +310,17 @@ async def list_licitaciones_cursor(
 
 
 class SearchRequest(BaseModel):
-    q: str | None = None
+    q: str | None = Field(None, max_length=_MAX_QUERY_LENGTH)
     estado: list[str] | None = None
-    ccaa: list[str] | None = None
-    tecnologia: list[str] | None = None
-    importe_min: float | None = None
-    importe_max: float | None = None
+    ccaa: list[str] | None = Field(None, max_length=50)
+    tecnologia: list[str] | None = Field(None, max_length=20)
+    importe_min: float | None = Field(None, ge=0)
+    importe_max: float | None = Field(None, ge=0)
     fecha_desde: str | None = None
     fecha_hasta: str | None = None
     sort: str | None = None
-    limit: int = 50
-    offset: int = 0
+    limit: int = Field(50, ge=1, le=_MAX_LIMIT)
+    offset: int = Field(0, ge=0)
     with_total: bool = True
 
 
@@ -322,59 +338,26 @@ async def search_licitaciones(
 
     Soporta múltiples CCAA, múltiples tecnologías y rangos de importe.
     """
-    from db.database import connect_read
-    from db.repositories.base import count_where, rows_to_dicts
-
-    conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
-    params: list[Any] = []
-
-    if body.q:
-        conditions.append("(titulo LIKE ? OR descripcion LIKE ?)")
-        like = f"%{body.q}%"
-        params.extend([like, like])
-    if body.estado:
-        placeholders = ",".join("?" for _ in body.estado)
-        conditions.append(f"estado IN ({placeholders})")
-        params.extend(body.estado)
-    if body.ccaa:
-        placeholders = ",".join("?" for _ in body.ccaa)
-        conditions.append(f"ccaa IN ({placeholders})")
-        params.extend(body.ccaa)
-    if body.tecnologia:
-        placeholders = ",".join("?" for _ in body.tecnologia)
-        conditions.append(f"tecnologia IN ({placeholders})")
-        params.extend(body.tecnologia)
-    if body.importe_min is not None:
-        conditions.append("importe >= ?")
-        params.append(body.importe_min)
-    if body.importe_max is not None:
-        conditions.append("importe <= ?")
-        params.append(body.importe_max)
-    if body.fecha_desde and _DATE_RE.match(body.fecha_desde):
-        conditions.append("fecha_publicacion >= ?")
-        params.append(body.fecha_desde)
-    if body.fecha_hasta and _DATE_RE.match(body.fecha_hasta):
-        conditions.append("fecha_publicacion <= ?")
-        params.append(body.fecha_hasta)
-
-    from db.repositories.licitaciones import _DEFAULT_SORT, _SORT_WHITELIST, _SUMMARY_COLS
-
-    order = _SORT_WHITELIST.get(body.sort or "", _DEFAULT_SORT)
-    where = " AND ".join(conditions)
+    from services.licitaciones import search_advanced
 
     limit = max(1, min(body.limit, _MAX_LIMIT))
     offset = max(0, body.offset)
 
     def _run() -> tuple[list[dict[str, Any]], int]:
-        with connect_read() as c:
-            total = count_where(c, "licitaciones", where, tuple(params)) if body.with_total else -1
-            sql = f"SELECT {_SUMMARY_COLS} FROM licitaciones"  # noqa: S608
-            if where:
-                sql += f" WHERE {where}"
-            sql += f" ORDER BY {order} LIMIT ? OFFSET ?"
-            q_params = [*list(params), limit, offset]
-            items = rows_to_dicts(c.execute(sql, tuple(q_params)))
-        return items, total
+        return search_advanced(
+            q=body.q,
+            estado=body.estado,
+            ccaa=body.ccaa,
+            tecnologia=body.tecnologia,
+            importe_min=body.importe_min,
+            importe_max=body.importe_max,
+            fecha_desde=body.fecha_desde,
+            fecha_hasta=body.fecha_hasta,
+            sort=body.sort,
+            limit=limit,
+            offset=offset,
+            with_total=body.with_total,
+        )
 
     items, total = await run_db(_run)
 

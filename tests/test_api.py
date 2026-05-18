@@ -5,44 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def api_db(tmp_path, monkeypatch):
-    """DB temporal con migración 19 aplicada, cargada en el entorno de test."""
-    import db.database as db_mod
-
-    db_path = tmp_path / "test_api.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
-
-    db_mod.close_pool()
-    db_mod.set_db_path_override(str(db_path))
-
-    db_mod.init_db()
-    yield db_path
-    db_mod.close_pool()
-    db_mod.set_db_path_override(None)
-
-
-@pytest.fixture()
-def api_key(api_db):
-    """Crea una API Key en la DB de test y devuelve el token en bruto."""
-    from api.auth import create_api_key
-
-    return create_api_key("test-key")
-
-
-@pytest.fixture()
-def client(api_db):
-    """TestClient de FastAPI con DB temporal."""
-    # Re-import para que tome la DB de test
-    from api.app import app
-
-    return TestClient(app, raise_server_exceptions=True)
+# Fixtures api_db, api_key, client, auth se heredan de conftest.py
 
 
 # ---------------------------------------------------------------------------
