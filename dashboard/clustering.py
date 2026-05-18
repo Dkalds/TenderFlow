@@ -173,6 +173,10 @@ def cluster_licitaciones(
 ) -> pd.DataFrame:
     """Agrupa licitaciones por similitud semántica.
 
+    Intenta primero usar los clusters pre-computados desde ``mat_clusters``
+    (generados por el scheduler). Si no están disponibles o no cubren los IDs
+    del DataFrame actual, recalcula online.
+
     Args:
         df: DataFrame con columnas ``titulo`` y ``descripcion``.
         n_clusters: Número de clusters deseados. Si None y auto_k=False, usa DEFAULT.
@@ -191,6 +195,33 @@ def cluster_licitaciones(
         log.warning("clustering_too_few_rows", n=len(df))
         return result
 
+    # ── Fast path: usar clusters pre-computados si están disponibles ──────
+    if not auto_k and n_clusters in (None, _DEFAULT_CLUSTERS):
+        try:
+            from dashboard.data_loader import load_mat_clusters
+
+            mat = load_mat_clusters()
+            if not mat.empty and "id_externo" in mat.columns:
+                merged = result.merge(
+                    mat[["id_externo", "cluster_id", "cluster_label"]],
+                    on="id_externo",
+                    how="left",
+                    suffixes=("", "_mat"),
+                )
+                coverage = merged["cluster_id_mat"].notna().mean()
+                if coverage >= 0.8:
+                    result["cluster_id"] = merged["cluster_id_mat"].fillna(0).astype(int)
+                    result["cluster_label"] = merged["cluster_label_mat"].fillna("sin_cluster")
+                    log.info(
+                        "clustering_used_precomputed",
+                        coverage=round(coverage, 2),
+                        n_rows=len(result),
+                    )
+                    return result
+        except Exception as exc:
+            log.debug("clustering_precomputed_unavailable", error=str(exc))
+
+    # ── Online clustering ─────────────────────────────────────────────────
     desc_col = df["descripcion"].fillna("") if "descripcion" in df.columns else ""
     texts = (df["titulo"].fillna("") + " " + desc_col).tolist()
 

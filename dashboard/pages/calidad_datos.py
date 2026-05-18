@@ -10,9 +10,10 @@ import streamlit as st
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import empty_state, guarded_render
 from dashboard.components.tables import data_table
+from dashboard.data_loader import load_adjudicaciones
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
-from db.dlq import unresolved_summary
+from db.dlq import list_unresolved, unresolved_summary
 from services.extraction_runs import load_calidad_runs
 
 
@@ -178,8 +179,36 @@ def render(ctx: PageContext) -> None:
         )
         fig_dlq.update_layout(margin=dict(t=20, b=10, l=10, r=10))
         st.plotly_chart(fig_dlq, use_container_width=True)
+
+        # Tabla con los últimos 10 items del DLQ para diagnóstico rápido
+        with st.expander("🔍 Últimos 10 fallos sin resolver (detalle)"):
+            recent_dlq = list_unresolved(limit=10)
+            if recent_dlq:
+                recent_df = pd.DataFrame(recent_dlq)
+                display_cols = ["id", "fuente", "scope", "error_type", "retry_count", "created_at"]
+                display_cols = [c for c in display_cols if c in recent_df.columns]
+                data_table(
+                    recent_df[display_cols],
+                    height=300,
+                    column_config={
+                        "id": st.column_config.NumberColumn("ID", width="small"),
+                        "fuente": st.column_config.TextColumn("Fuente"),
+                        "scope": st.column_config.TextColumn("Fase"),
+                        "error_type": st.column_config.TextColumn("Tipo error"),
+                        "retry_count": st.column_config.NumberColumn("Reintentos", width="small"),
+                        "created_at": st.column_config.TextColumn("Creado"),
+                    },
+                )
+            else:
+                st.success("Sin fallos pendientes.")
     else:
         st.success("No hay fallos sin resolver en la DLQ. ✅")
+
+    # ── Cobertura de NIF normalizado ─────────────────────────────────────
+    st.markdown("#### Cobertura de adjudicatarios")
+    adj_df = load_adjudicaciones()
+    if not adj_df.empty:
+        _render_nif_coverage(adj_df)
 
     # ── Cobertura de detección de módulos SAP ────────────────────────────
     st.markdown("#### Cobertura de detección de módulos SAP")
@@ -348,3 +377,55 @@ def _render_sap_module_coverage(df: pd.DataFrame, template: str) -> None:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No se detectaron módulos SAP en el dataset actual.")
+
+
+def _render_nif_coverage(adj_df: pd.DataFrame) -> None:
+    """KPI de cobertura de NIF normalizado en adjudicaciones."""
+    nif_col = next((c for c in ("nif_adjudicatario", "nif", "cif") if c in adj_df.columns), None)
+    nombre_col = next(
+        (c for c in ("nombre_adjudicatario", "nombre_canon", "adjudicatario") if c in adj_df.columns),
+        None,
+    )
+    n = len(adj_df)
+    if n == 0:
+        st.info("Sin adjudicaciones registradas.")
+        return
+
+    cols = st.columns(2)
+    with cols[0]:
+        if nif_col:
+            # NIF válido = no nulo y con formato ES básico (letra + 8 dígitos)
+            import re
+
+            valid_nif = adj_df[nif_col].dropna().apply(
+                lambda v: bool(re.match(r"^[A-Z]\d{7}[A-Z0-9]$", str(v).strip().upper()))
+            )
+            pct_nif = float(valid_nif.sum() / n * 100)
+            st.markdown(
+                kpi_card(
+                    "NIF normalizado",
+                    f"{pct_nif:.1f}%",
+                    delta=f"{valid_nif.sum():,} / {n:,}",
+                    delta_up=pct_nif >= 80,
+                    icon="🪪",
+                    tooltip="% adjudicaciones con NIF/CIF en formato válido (letra + 8 chars).",
+                ),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("Columna NIF no encontrada en adjudicaciones.")
+    with cols[1]:
+        if nombre_col:
+            pct_nombre = float(adj_df[nombre_col].notna().sum() / n * 100)
+            st.markdown(
+                kpi_card(
+                    "Nombre adjudicatario",
+                    f"{pct_nombre:.1f}%",
+                    delta_up=pct_nombre >= 90,
+                    icon="🏢",
+                    tooltip="% adjudicaciones con nombre de adjudicatario presente.",
+                ),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("Columna nombre no encontrada en adjudicaciones.")

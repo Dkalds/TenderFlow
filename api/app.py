@@ -44,6 +44,7 @@ from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
 from api.routes.security import router as security_router
+from api.routes.watchlist_feed import router as watchlist_feed_router
 from api.routes.webhooks import router as webhooks_router
 from config import settings
 from db.database import init_db
@@ -258,6 +259,7 @@ app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(me_router, prefix="/api/v1")
 app.include_router(meta_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
+app.include_router(watchlist_feed_router, prefix="/api/v1")
 
 # ---------------------------------------------------------------------------
 # Prometheus /metrics — protegido por IP allowlist o scope metrics:read

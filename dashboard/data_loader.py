@@ -372,12 +372,53 @@ def load_extracciones() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
+def load_mat_clusters() -> pd.DataFrame:
+    """Carga los clusters pre-computados desde ``mat_clusters``.
+
+    Returns vacío si la tabla aún no ha sido poblada por el scheduler.
+    """
+    from db.database import connect_read
+
+    with connect_read() as c:
+        try:
+            cur = c.execute(
+                "SELECT id_externo, cluster_id, cluster_label, updated_at FROM mat_clusters"
+            )
+            return _rows_to_df(cur)
+        except Exception as exc:
+            log.warning("data_loader_mat_clusters_unavailable", error=str(exc))
+            return pd.DataFrame()
+
+
+@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
+def load_mat_top_empresas() -> pd.DataFrame:
+    """Carga el ranking top-N de empresas por CCAA desde ``mat_top_empresas_ccaa``.
+
+    Returns vacío si la tabla aún no ha sido poblada por el scheduler.
+    """
+    from db.database import connect_read
+
+    with connect_read() as c:
+        try:
+            cur = c.execute(
+                "SELECT ccaa, rank, nombre_canon, n_adj, importe_total, updated_at "
+                "FROM mat_top_empresas_ccaa ORDER BY ccaa, rank"
+            )
+            return _rows_to_df(cur)
+        except Exception as exc:
+            log.warning("data_loader_mat_top_empresas_unavailable", error=str(exc))
+            return pd.DataFrame()
+
+
 def invalidate_caches() -> None:
     """Fuerza recarga de todas las fuentes cacheadas en la próxima llamada."""
     _load_raw.clear()
     _load_dataframe_shared.clear()
     load_adjudicaciones.clear()
     load_extracciones.clear()
+    load_mat_clusters.clear()
+    load_mat_top_empresas.clear()
     # Limpiar también caches de KPI bar
     try:
         from dashboard.kpi_bar import _last_12m_series, compute_kpis

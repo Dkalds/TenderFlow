@@ -10,6 +10,7 @@ import streamlit as st
 from dashboard.components.cards import chart_card
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import empty_state, guarded_render
+from dashboard.forecast import forecast_volume
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import is_anomaly, kpi_sparkline_series, mes_pico, yoy_delta
@@ -202,3 +203,57 @@ def render(ctx: PageContext) -> None:
             )
             fig.update_layout(height=320, margin=dict(t=20, b=10, l=10, r=10))
             st.plotly_chart(fig, use_container_width=True)
+
+    # ── Previsión de volumen (ExponentialSmoothing / fallback lineal) ─────
+    with chart_card(
+        "Previsión de licitaciones (6 meses)",
+        subtitle="Proyección basada en suavizado exponencial. Banda = ±1.5σ histórico.",
+    ):
+        fc = forecast_volume(ctx.df_full, months_ahead=6, metric="count")
+        if fc.empty:
+            st.info("Datos insuficientes para generar previsión (mínimo 3 meses de histórico).")
+        else:
+            hist_fc = fc[fc["tipo"] == "histórico"]
+            fcast = fc[fc["tipo"] == "forecast"]
+            fig_fc = go.Figure()
+            fig_fc.add_trace(
+                go.Scatter(
+                    x=hist_fc["mes"],
+                    y=hist_fc["valor"],
+                    mode="lines+markers",
+                    name="Histórico",
+                    line=dict(color="#86BC25", width=2),
+                    marker=dict(size=5),
+                )
+            )
+            if not fcast.empty:
+                # Banda de confianza
+                fig_fc.add_trace(
+                    go.Scatter(
+                        x=pd.concat([fcast["mes"], fcast["mes"].iloc[::-1]]),
+                        y=pd.concat([fcast["upper"], fcast["lower"].iloc[::-1]]),
+                        fill="toself",
+                        fillcolor="rgba(0,163,224,0.15)",
+                        line=dict(color="rgba(0,0,0,0)"),
+                        name="Banda ±1.5σ",
+                        showlegend=True,
+                    )
+                )
+                fig_fc.add_trace(
+                    go.Scatter(
+                        x=fcast["mes"],
+                        y=fcast["valor"],
+                        mode="lines+markers",
+                        name="Previsión",
+                        line=dict(color="#00A3E0", width=2, dash="dash"),
+                        marker=dict(size=6, symbol="diamond"),
+                    )
+                )
+            fig_fc.update_layout(
+                template=ctx.plotly_template,
+                height=340,
+                margin=dict(t=20, b=10, l=10, r=10),
+                yaxis=dict(title="Nº licitaciones"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            st.plotly_chart(fig_fc, use_container_width=True)

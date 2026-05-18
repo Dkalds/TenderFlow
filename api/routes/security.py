@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
-from api.auth import AuthContext, require_api_key
+from api.auth import AuthContext, require_api_key, require_scope
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -159,7 +159,7 @@ async def leaked_key_notification(
     summary="Verificar integridad del audit log (hash chain)",
     tags=["admin"],
 )
-async def verify_audit_integrity(auth: AuthContext = Depends(require_api_key)) -> dict:
+async def verify_audit_integrity(auth: AuthContext = Depends(require_scope("admin"))) -> dict:
     """Recorre el audit log y verifica que el hash chain no ha sido alterado.
 
     Requiere autenticación + scope ``admin``.
@@ -167,8 +167,6 @@ async def verify_audit_integrity(auth: AuthContext = Depends(require_api_key)) -
     Returns:
         ``{"valid": bool, "checked": int, "first_tampered_id": int|None, "error": str|None}``
     """
-    from api.auth import require_scope
     from db.audit import verify_hash_chain
 
-    require_scope(auth, "admin")
     return verify_hash_chain()
