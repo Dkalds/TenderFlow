@@ -24,7 +24,7 @@ def render(ctx: PageContext) -> None:
     df = ctx.df
 
     cA, cB = st.columns(2)
-    with cA, chart_card("Top órganos por nº de licitaciones"):
+    with cA, chart_card("Top órganos por importe acumulado"):
         top_n = (
             df.groupby("organo_contratacion")
             .agg(n=("id_externo", "count"), importe=("importe", "sum"))
@@ -47,7 +47,7 @@ def render(ctx: PageContext) -> None:
             fig.update_xaxes(tickformat=",.0f")
             st.plotly_chart(fig, use_container_width=True)
 
-    with cB, chart_card("Top órganos por importe acumulado"):
+    with cB, chart_card("Top órganos por nº de licitaciones"):
         top_e = (
             df.groupby("organo_contratacion")
             .agg(importe=("importe", "sum"), n=("id_externo", "count"))

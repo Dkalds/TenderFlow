@@ -191,7 +191,8 @@ def cluster_licitaciones(
         log.warning("clustering_too_few_rows", n=len(df))
         return result
 
-    texts = (df["titulo"].fillna("") + " " + df["descripcion"].fillna("")).tolist()
+    desc_col = df["descripcion"].fillna("") if "descripcion" in df.columns else ""
+    texts = (df["titulo"].fillna("") + " " + desc_col).tolist()
 
     try:
         embeddings = _get_embeddings(texts)
