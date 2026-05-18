@@ -2,13 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
-
-import pytest
-
 import db.sessions as smod
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -17,7 +11,9 @@ import db.sessions as smod
 
 def _make_session(db_mod: object, user_id: int = 1, ttl_hours: int = 168) -> str:
     """Create a session via monkeypatched DB and return the raw token."""
-    return smod.create_session(user_id, ip="127.0.0.1", user_agent="test-agent", ttl_hours=ttl_hours)
+    return smod.create_session(
+        user_id, ip="127.0.0.1", user_agent="test-agent", ttl_hours=ttl_hours
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -27,11 +23,13 @@ def _make_session(db_mod: object, user_id: int = 1, ttl_hours: int = 168) -> str
 
 def test_hash_token_is_deterministic(tmp_db: object) -> None:
     import db.sessions as s
+
     assert s._hash_token("abc") == s._hash_token("abc")
 
 
 def test_hash_token_is_hex(tmp_db: object) -> None:
     import db.sessions as s
+
     h = s._hash_token("hello")
     assert len(h) == 64
     int(h, 16)  # raises ValueError if not valid hex

@@ -40,7 +40,7 @@ def rotate(name: str, grace_days: int) -> int:
     # Marcar las claves activas existentes con ese nombre como expirando
     with connect() as c:
         cols = get_table_columns(c, "api_keys")
-        if \"expires_at\" not in cols:
+        if "expires_at" not in cols:
             print(
                 "ERROR: la columna 'expires_at' no existe. Ejecuta: alembic upgrade head",
                 file=sys.stderr,

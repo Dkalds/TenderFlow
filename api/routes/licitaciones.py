@@ -192,7 +192,9 @@ def _get_classifier() -> Any:
 async def list_licitaciones(
     request: Request,
     response: Response,
-    q: str | None = Query(None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"),
+    q: str | None = Query(
+        None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"
+    ),
     estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
     ccaa: str | None = Query(None, description="Comunidad Autónoma"),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),

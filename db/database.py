@@ -305,11 +305,7 @@ def is_turso_backend() -> bool:
     Importante: el protocolo Hrana no soporta sentencias ``PRAGMA``; usar
     esta función para decidir si emitirlas o no.
     """
-    return bool(
-        not _DB_PATH_OVERRIDE
-        and settings.TURSO_DATABASE_URL
-        and settings.TURSO_AUTH_TOKEN
-    )
+    return bool(not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN)
 
 
 def safe_pragma(conn: Any, stmt: str) -> None:
@@ -335,7 +331,7 @@ def get_table_columns(conn: Any, table: str) -> set[str]:
     """
     # Intento 1: PRAGMA table_info (rápido en SQLite local)
     try:
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
         if rows:
             return {r[1] for r in rows}
     except Exception:
@@ -343,7 +339,7 @@ def get_table_columns(conn: Any, table: str) -> set[str]:
 
     # Intento 2: cursor.description (Turso/Hrana, o PRAGMA devolvió vacío)
     try:
-        cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")  # noqa: S608
+        cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")
         if cur.description:
             return {d[0] for d in cur.description}
     except Exception:

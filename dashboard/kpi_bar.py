@@ -41,8 +41,8 @@ def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
         # Normalizar timezone del dataframe: Polars requiere consistencia
         fpub = df["fecha_publicacion"]
         if getattr(fpub.dt, "tz", None) is None:
-            t30_back = (now_utc.tz_localize(None) - pd.Timedelta(days=30))
-            t60_back = (now_utc.tz_localize(None) - pd.Timedelta(days=60))
+            t30_back = now_utc.tz_localize(None) - pd.Timedelta(days=30)
+            t60_back = now_utc.tz_localize(None) - pd.Timedelta(days=60)
         else:
             t30_back = now_utc - pd.Timedelta(days=30)
             t60_back = now_utc - pd.Timedelta(days=60)

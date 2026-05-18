@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from db.database import connect, connect_read, get_table_columns, is_turso_backend, now_utc_iso
+from db.database import connect, connect_read, get_table_columns, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -61,9 +61,7 @@ def get_stored_hash(key_id: int) -> str | None:
     """Devuelve el ``key_hash`` almacenado para validación en tiempo constante."""
     try:
         with connect_read() as c:
-            row = c.execute(
-                "SELECT key_hash FROM api_keys WHERE id = ?", (key_id,)
-            ).fetchone()
+            row = c.execute("SELECT key_hash FROM api_keys WHERE id = ?", (key_id,)).fetchone()
     except Exception:
         return None
     return str(row[0]) if row else None

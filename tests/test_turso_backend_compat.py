@@ -24,8 +24,10 @@ def test_is_turso_backend_true_when_credentials_set(monkeypatch):
     db_mod.close_pool()
     db_mod.set_db_path_override(None)
 
-    with patch.object(db_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"), \
-         patch.object(db_mod.settings, "TURSO_AUTH_TOKEN", "fake-token"):
+    with (
+        patch.object(db_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
+        patch.object(db_mod.settings, "TURSO_AUTH_TOKEN", "fake-token"),
+    ):
         assert db_mod.is_turso_backend() is True
 
 
@@ -36,8 +38,10 @@ def test_is_turso_backend_false_when_token_missing(monkeypatch):
     db_mod.close_pool()
     db_mod.set_db_path_override(None)
 
-    with patch.object(db_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"), \
-         patch.object(db_mod.settings, "TURSO_AUTH_TOKEN", ""):
+    with (
+        patch.object(db_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
+        patch.object(db_mod.settings, "TURSO_AUTH_TOKEN", ""),
+    ):
         assert db_mod.is_turso_backend() is False
 
 
@@ -96,11 +100,13 @@ def test_connect_read_does_not_emit_pragmas_on_turso(tmp_db):
         calls.append(stmt)
         # No ejecutar nada (simula Hrana: safe_pragma no-op)
 
-    with patch.object(db_mod, "is_turso_backend", return_value=True), \
-         patch.object(db_mod, "safe_pragma", side_effect=recorder):
-        with db_mod.connect_read() as conn:
-            row = conn.execute("SELECT 1").fetchone()
-            assert row[0] == 1
+    with (
+        patch.object(db_mod, "is_turso_backend", return_value=True),
+        patch.object(db_mod, "safe_pragma", side_effect=recorder),
+        db_mod.connect_read() as conn,
+    ):
+        row = conn.execute("SELECT 1").fetchone()
+        assert row[0] == 1
 
     # safe_pragma se invocó (con query_only ON/OFF) pero gracias al patch
     # nada se ejecutó realmente sobre la conexión Hrana-like.

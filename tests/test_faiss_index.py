@@ -28,6 +28,7 @@ from dashboard.faiss_index import FaissIndex  # noqa: E402, I001
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_index(n: int = 20, dim: int = 32, tmp_path: Path | None = None) -> FaissIndex:
     """Crea un FaissIndex mínimo para pruebas (sin embeddings reales)."""
     ids = [f"LIC-{i:04d}" for i in range(n)]
@@ -49,13 +50,16 @@ def _save_index(idx: FaissIndex, path: Path) -> Path:
         "n_records": len(idx.ids),
     }
     with open(path, "wb") as f:
-        pickle.dump({"ids": idx.ids, "embeddings": idx.embeddings, "metadata": metadata}, f, protocol=5)
+        pickle.dump(
+            {"ids": idx.ids, "embeddings": idx.embeddings, "metadata": metadata}, f, protocol=5
+        )
     return path
 
 
 # ---------------------------------------------------------------------------
 # T1a: cache hit
 # ---------------------------------------------------------------------------
+
 
 def test_load_cached_cache_hit(tmp_path: Path) -> None:
     """_load_cached con mismo (path, mtime) debe devolver la misma instancia."""
@@ -77,6 +81,7 @@ def test_load_cached_cache_hit(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # T1b: invalidación por mtime
 # ---------------------------------------------------------------------------
+
 
 def test_load_cached_cache_invalidated_on_mtime_change(tmp_path: Path) -> None:
     """Cuando el mtime cambia, _load_cached debe devolver una instancia distinta."""
@@ -109,6 +114,7 @@ def test_load_cached_cache_invalidated_on_mtime_change(tmp_path: Path) -> None:
 # T1c: FaissIndex.load — atributos correctos
 # ---------------------------------------------------------------------------
 
+
 def test_faiss_load_metadata(tmp_path: Path) -> None:
     """load() debe restaurar embedding_version y embedding_model correctamente."""
     idx = _make_index()
@@ -131,6 +137,7 @@ def test_faiss_load_metadata(tmp_path: Path) -> None:
 # T1d: FaissIndex.save persiste metadata
 # ---------------------------------------------------------------------------
 
+
 def test_faiss_save_metadata(tmp_path: Path) -> None:
     """save() debe persistir embedding_version y embedding_model en JSON companion."""
     idx = _make_index()
@@ -146,6 +153,7 @@ def test_faiss_save_metadata(tmp_path: Path) -> None:
     assert arr["embeddings"].shape == idx.embeddings.shape
     # ids + metadata stored in companion JSON
     import json
+
     meta_path = fpath.with_name("saved_index_meta.json")
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert meta["ids"] == idx.ids
@@ -157,6 +165,7 @@ def test_faiss_save_metadata(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # T1e: FaissIndex.__init__ inicializa atributos correctamente
 # ---------------------------------------------------------------------------
+
 
 def test_faiss_index_init_defaults() -> None:
     """Los atributos de tipado deben tener defaults tras __init__."""

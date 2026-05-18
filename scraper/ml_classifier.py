@@ -924,10 +924,7 @@ def seed_negatives(
             # Detect available columns to handle schema version differences
             try:
                 existing_cols = {
-                    r[1]
-                    for r in sqlite_conn.execute(
-                        "PRAGMA table_info(licitaciones)"
-                    ).fetchall()
+                    r[1] for r in sqlite_conn.execute("PRAGMA table_info(licitaciones)").fetchall()
                 }
             except Exception:
                 # Fallback: query with LIMIT 0 and inspect cursor.description

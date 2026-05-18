@@ -52,9 +52,7 @@ def load_calidad_runs(limit: int = 90) -> list[dict[str, Any]]:
 def load_extracciones() -> list[dict[str, Any]]:
     """Carga el historial de extracciones (fecha, fuente, nuevas)."""
     with connect_read() as c:
-        cur = c.execute(
-            "SELECT fecha, fuente, nuevas FROM extracciones ORDER BY fecha DESC"
-        )
+        cur = c.execute("SELECT fecha, fuente, nuevas FROM extracciones ORDER BY fecha DESC")
         return rows_to_dicts(cur)
 
 
@@ -86,10 +84,20 @@ def persist_run(
                 " adjudicaciones, errores_parseo, errores_descarga, notas) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    run_id, started_at, ended_at, duration_ms, status,
-                    months_attempted, months_ok, months_failed,
-                    licitaciones_nuevas, licitaciones_actualizadas,
-                    adjudicaciones, errores_parseo, errores_descarga, notas,
+                    run_id,
+                    started_at,
+                    ended_at,
+                    duration_ms,
+                    status,
+                    months_attempted,
+                    months_ok,
+                    months_failed,
+                    licitaciones_nuevas,
+                    licitaciones_actualizadas,
+                    adjudicaciones,
+                    errores_parseo,
+                    errores_descarga,
+                    notas,
                 ),
             )
     except Exception as e:

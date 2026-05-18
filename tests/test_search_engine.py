@@ -17,7 +17,6 @@ from services.investigador.search_engine import (
     rag_query,
 )
 
-
 # ---------------------------------------------------------------------------
 # escape_fts5 — pure function
 # ---------------------------------------------------------------------------
@@ -115,9 +114,7 @@ def test_fts5_search_empty_rows() -> None:
 
 
 def test_fts5_search_returns_empty_on_exception() -> None:
-    with patch(
-        "services.investigador.search_engine.connect", side_effect=RuntimeError("db error")
-    ):
+    with patch("services.investigador.search_engine.connect", side_effect=RuntimeError("db error")):
         hits = fts5_search("test", top_k=5)
     assert hits == []
 
@@ -164,9 +161,7 @@ def test_like_search_short_tokens_fallback() -> None:
 
 
 def test_like_search_returns_empty_on_exception() -> None:
-    with patch(
-        "services.investigador.search_engine.connect", side_effect=RuntimeError("db error")
-    ):
+    with patch("services.investigador.search_engine.connect", side_effect=RuntimeError("db error")):
         hits = like_search("contrato", top_k=5)
     assert hits == []
 
@@ -268,9 +263,7 @@ def test_fetch_docs_all_filtered_by_allowed_ids() -> None:
 
 
 def test_fetch_docs_returns_empty_on_exception() -> None:
-    with patch(
-        "services.investigador.search_engine.connect", side_effect=RuntimeError("db down")
-    ):
+    with patch("services.investigador.search_engine.connect", side_effect=RuntimeError("db down")):
         result = fetch_docs(["lic-001"])
     assert result == {}
 

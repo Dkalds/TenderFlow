@@ -12,6 +12,7 @@ def db(tmp_db):
 
 # ── mark_read ─────────────────────────────────────────────────────────────────
 
+
 def test_mark_read_stores_notification(db):
     from db.notifications import count_unread, get_unread_ids, mark_read
 
@@ -39,6 +40,7 @@ def test_mark_read_does_not_affect_other_users(db):
 
 # ── mark_all_read ─────────────────────────────────────────────────────────────
 
+
 def test_mark_all_read_marks_multiple(db):
     from db.notifications import count_unread, mark_all_read
 
@@ -65,6 +67,7 @@ def test_mark_all_read_is_idempotent(db):
 
 # ── get_unread_ids ────────────────────────────────────────────────────────────
 
+
 def test_get_unread_ids_returns_all_when_none_read(db):
     from db.notifications import get_unread_ids
 
@@ -89,6 +92,7 @@ def test_get_unread_ids_partial_read(db):
 
 # ── count_unread ──────────────────────────────────────────────────────────────
 
+
 def test_count_unread_all_unread(db):
     from db.notifications import count_unread
 
@@ -110,6 +114,7 @@ def test_count_unread_empty_list(db):
 
 
 # ── get_last_seen_ts ──────────────────────────────────────────────────────────
+
 
 def test_get_last_seen_ts_returns_none_when_no_reads(db):
     from db.notifications import get_last_seen_ts

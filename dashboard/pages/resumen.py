@@ -100,7 +100,9 @@ def render(ctx: PageContext) -> None:
                 expanded=False,
             ):
                 for _row in (
-                    _nuevas.sort_values("fecha_publicacion", ascending=False).head(10).itertuples(index=False)
+                    _nuevas.sort_values("fecha_publicacion", ascending=False)
+                    .head(10)
+                    .itertuples(index=False)
                 ):
                     _fstr = (
                         _row.fecha_publicacion.strftime("%d/%m/%Y")

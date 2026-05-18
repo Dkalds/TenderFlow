@@ -16,7 +16,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -231,7 +230,10 @@ def test_compute_clusters_with_data(tmp_db):
     db_mod, _ = tmp_db
     _insert_licitaciones(
         db_mod,
-        [(f"L{i:03d}", f"SAP ERP módulo {i}", f"Implantación de SAP en org {i}") for i in range(12)],
+        [
+            (f"L{i:03d}", f"SAP ERP módulo {i}", f"Implantación de SAP en org {i}")
+            for i in range(12)
+        ],
     )
 
     from scheduler.aggregates_precompute import _compute_clusters
@@ -253,17 +255,19 @@ def test_compute_clusters_returns_empty_on_sklearn_missing(tmp_db):
     import scheduler.aggregates_precompute as ap_mod
 
     # Patch the sklearn import at the point of use by making it raise ImportError
-    with patch.dict(
-        sys.modules,
-        {
-            "sklearn": None,
-            "sklearn.cluster": None,
-            "sklearn.feature_extraction": None,
-            "sklearn.feature_extraction.text": None,
-        },
+    with (
+        patch.dict(
+            sys.modules,
+            {
+                "sklearn": None,
+                "sklearn.cluster": None,
+                "sklearn.feature_extraction": None,
+                "sklearn.feature_extraction.text": None,
+            },
+        ),
+        db_mod.connect() as conn,
     ):
-        with db_mod.connect() as conn:
-            result = ap_mod._compute_clusters(conn)
+        result = ap_mod._compute_clusters(conn)
 
     assert isinstance(result, list)
 
@@ -356,7 +360,6 @@ def test_run_aggregates_precompute_with_data(tmp_db):
 
 def test_run_aggregates_precompute_returns_error_on_exception():
     """Cuando connect() falla, devuelve status=error sin propagar."""
-    from unittest.mock import MagicMock
 
     import scheduler.aggregates_precompute as ap
 

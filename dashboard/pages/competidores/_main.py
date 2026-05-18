@@ -89,7 +89,6 @@ def render(ctx: PageContext) -> None:
     )
     metr_ci["cuota_pct"] = metr_ci["volumen"] / total_mercado * 100 if total_mercado else 0
 
-
     def _dep_top(s: pd.Series) -> float:
         if s.empty:
             return 0.0
@@ -199,8 +198,8 @@ def render(ctx: PageContext) -> None:
     # Si una licitación tiene varios CPV, los concatenamos explícitamente
     cpv_map = (
         df.drop_duplicates(subset=["id_externo", "cpv_desc"])
-        .groupby("id_externo")
-        ["cpv_desc"].agg(lambda x: " / ".join(sorted(set(x.dropna()))))
+        .groupby("id_externo")["cpv_desc"]
+        .agg(lambda x: " / ".join(sorted(set(x.dropna()))))
     )
     cpv_ci = sub_ci.copy()
     cpv_ci["cpv_desc"] = cpv_ci["licitacion_id"].map(cpv_map)
@@ -673,13 +672,17 @@ def render(ctx: PageContext) -> None:
                     f"({len(emp_proy)} contratos · "
                     f"{fmt_eur(emp_proy['importe_adjudicado'].sum())})"
                 )
-            for row in emp_proy.sort_values("importe_adjudicado", ascending=False).itertuples(index=False):
+            for row in emp_proy.sort_values("importe_adjudicado", ascending=False).itertuples(
+                index=False
+            ):
                 url = getattr(row, "url_lic", "#") or "#"
                 baja = getattr(row, "baja_pct", None)
                 baja_txt = f"{baja:.1f}% baja" if pd.notna(baja) else "—"
                 n_of = getattr(row, "n_ofertas_recibidas", None)
                 n_of_txt = f"{int(n_of)} ofertas" if pd.notna(n_of) else "—"
-                fecha_adj = row.fecha_adjudicacion.date() if pd.notna(row.fecha_adjudicacion) else "—"
+                fecha_adj = (
+                    row.fecha_adjudicacion.date() if pd.notna(row.fecha_adjudicacion) else "—"
+                )
                 top_card(
                     amount=fmt_eur(row.importe_adjudicado),
                     title=str(row.titulo or ""),

@@ -12,6 +12,7 @@ def db(tmp_db):
 
 # ── set_flag / get_flag ────────────────────────────────────────────────────────
 
+
 def test_set_flag_creates_new_flag(db):
     from db.feature_flags import get_flag, set_flag
 
@@ -58,6 +59,7 @@ def test_set_flag_stores_user_emails(db):
 
 
 # ── is_enabled ────────────────────────────────────────────────────────────────
+
 
 def test_is_enabled_returns_false_for_missing_flag(db):
     from db.feature_flags import is_enabled
@@ -127,6 +129,7 @@ def test_is_enabled_partial_rollout_without_email(db):
 
 # ── delete_flag ───────────────────────────────────────────────────────────────
 
+
 def test_delete_flag_returns_true_when_existed(db):
     from db.feature_flags import delete_flag, set_flag
 
@@ -149,6 +152,7 @@ def test_delete_flag_removes_flag(db):
 
 
 # ── list_flags ────────────────────────────────────────────────────────────────
+
 
 def test_list_flags_empty(db):
     from db.feature_flags import list_flags

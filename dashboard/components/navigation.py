@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
-from dashboard.session_keys import NAV_PREV_PAGE, NAV_PREV_SECTION, NAV_SECTION, PENDING_NAV_PAGE, PENDING_NAV_SECTION
+from dashboard.session_keys import (
+    NAV_PREV_PAGE,
+    NAV_PREV_SECTION,
+    NAV_SECTION,
+    PENDING_NAV_PAGE,
+    PENDING_NAV_SECTION,
+)
 
 if TYPE_CHECKING:
     from dashboard.filters.state import FiltersState

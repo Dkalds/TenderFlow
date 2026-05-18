@@ -19,6 +19,7 @@ def repo(db):
 
 # ── create ────────────────────────────────────────────────────────────────────
 
+
 def test_create_returns_raw_token(db, repo):
     raw = repo.create("test-key")
     assert isinstance(raw, str)
@@ -39,6 +40,7 @@ def test_create_with_custom_scopes(db, repo):
 
 
 # ── get_by_hash ───────────────────────────────────────────────────────────────
+
 
 def test_get_by_hash_returns_active_key(db, repo):
     raw = repo.create("active-key")
@@ -63,6 +65,7 @@ def test_get_by_hash_returns_none_after_revoke(db, repo):
 
 # ── revoke ────────────────────────────────────────────────────────────────────
 
+
 def test_revoke_returns_true_for_existing_key(db, repo):
     raw = repo.create("to-revoke")
     key_hash = repo._hash(raw)
@@ -84,6 +87,7 @@ def test_revoke_is_idempotent(db, repo):
 
 # ── get_name ──────────────────────────────────────────────────────────────────
 
+
 def test_get_name_returns_name_for_existing_key(db, repo):
     raw = repo.create("named-key")
     key_hash = repo._hash(raw)
@@ -95,6 +99,7 @@ def test_get_name_returns_none_for_unknown_hash(db, repo):
 
 
 # ── update_last_used ──────────────────────────────────────────────────────────
+
 
 def test_update_last_used_does_not_raise(db, repo):
     raw = repo.create("update-key")
@@ -110,12 +115,14 @@ def test_update_last_used_bad_id_no_raise(db, repo):
 
 # ── get_all_for_user ──────────────────────────────────────────────────────────
 
+
 def test_get_all_for_user_returns_list(db, repo):
     result = repo.get_all_for_user(999)
     assert isinstance(result, list)
 
 
 # ── _hash ─────────────────────────────────────────────────────────────────────
+
 
 def test_hash_is_deterministic(db, repo):
     h1 = repo._hash("my_secret_token")

@@ -38,10 +38,7 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_mat_clusters_cluster "
-        "ON mat_clusters(cluster_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_mat_clusters_cluster ON mat_clusters(cluster_id)")
 
     op.execute(
         """
@@ -56,10 +53,7 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_mat_top_emp_ccaa "
-        "ON mat_top_empresas_ccaa(ccaa)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_mat_top_emp_ccaa ON mat_top_empresas_ccaa(ccaa)")
 
 
 def downgrade() -> None:

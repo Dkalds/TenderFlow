@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-import llm.providers.openai_provider as oai
 import llm.providers.anthropic_provider as anth
-
+import llm.providers.openai_provider as oai
 
 # ---------------------------------------------------------------------------
 # openai_provider._build_prompt
@@ -39,13 +35,25 @@ def test_build_prompt_contains_doc_id() -> None:
 
 
 def test_build_prompt_excerpt_with_keyword() -> None:
-    docs = [{"id_externo": "X", "descripcion": "contrato sistema SAP para gestión", **{k: None for k in ["titulo", "organo_contratacion", "importe", "estado"]}}]
+    docs = [
+        {
+            "id_externo": "X",
+            "descripcion": "contrato sistema SAP para gestión",
+            **{k: None for k in ["titulo", "organo_contratacion", "importe", "estado"]},
+        }
+    ]
     prompt = oai._build_prompt("consulta", docs, ["SAP"])
     assert "SAP" in prompt
 
 
 def test_build_prompt_excerpt_no_keyword() -> None:
-    docs = [{"id_externo": "X", "descripcion": "texto largo " * 50, **{k: None for k in ["titulo", "organo_contratacion", "importe", "estado"]}}]
+    docs = [
+        {
+            "id_externo": "X",
+            "descripcion": "texto largo " * 50,
+            **{k: None for k in ["titulo", "organo_contratacion", "importe", "estado"]},
+        }
+    ]
     prompt = oai._build_prompt("consulta", docs, ["xyz_no_match"])
     assert "X" in prompt
 
@@ -57,7 +65,16 @@ def test_build_prompt_empty_docs() -> None:
 
 
 def test_build_prompt_none_descripcion() -> None:
-    docs = [{"id_externo": "X", "titulo": "T", "organo_contratacion": "O", "importe": 1.0, "estado": "VIG", "descripcion": None}]
+    docs = [
+        {
+            "id_externo": "X",
+            "titulo": "T",
+            "organo_contratacion": "O",
+            "importe": 1.0,
+            "estado": "VIG",
+            "descripcion": None,
+        }
+    ]
     prompt = oai._build_prompt("p", docs, [])
     assert "X" in prompt
 
@@ -153,13 +170,28 @@ def test_build_user_message_contains_doc_id() -> None:
 
 
 def test_build_user_message_excerpt_with_keyword() -> None:
-    docs = [{"id_externo": "X", "descripcion": "SAP implantación sistema", **{k: None for k in ["titulo", "organo_contratacion", "importe", "estado"]}}]
+    docs = [
+        {
+            "id_externo": "X",
+            "descripcion": "SAP implantación sistema",
+            **{k: None for k in ["titulo", "organo_contratacion", "importe", "estado"]},
+        }
+    ]
     msg = anth._build_user_message("consulta", docs, ["SAP"])
     assert "SAP" in msg
 
 
 def test_build_user_message_none_descripcion() -> None:
-    docs = [{"id_externo": "Y", "titulo": "T", "organo_contratacion": "O", "importe": 1.0, "estado": "VIG", "descripcion": None}]
+    docs = [
+        {
+            "id_externo": "Y",
+            "titulo": "T",
+            "organo_contratacion": "O",
+            "importe": 1.0,
+            "estado": "VIG",
+            "descripcion": None,
+        }
+    ]
     msg = anth._build_user_message("p", docs, [])
     assert "Y" in msg
 

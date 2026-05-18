@@ -251,7 +251,9 @@ def render(ctx: PageContext) -> None:
                     _added = 0
                     _orig_sel = df.loc[show.index[_selected_rows]]
                     for _sr in _orig_sel.itertuples(index=False):
-                        _cpv_r = str(getattr(_sr, "cpv", None) or getattr(_sr, "cpv_desc", None) or "")
+                        _cpv_r = str(
+                            getattr(_sr, "cpv", None) or getattr(_sr, "cpv_desc", None) or ""
+                        )
                         _cpv_p = _cpv_r[:8].strip()
                         if _cpv_p:
                             add_entry(

@@ -152,9 +152,13 @@ def _enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     # Vectorized estado_label — simple dict lookup, much faster than .apply()
     try:
         stripped_estado = df["estado"].str.strip()
-        df["estado_desc"] = stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
+        df["estado_desc"] = (
+            stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
+        )
     except Exception as e:
-        log.warning("data_loader_enrichment_failed", column="estado_desc", op="estado_label", error=str(e))
+        log.warning(
+            "data_loader_enrichment_failed", column="estado_desc", op="estado_label", error=str(e)
+        )
         df["estado_desc"] = ""
 
     # Vectorized tipo_contrato_label — simple dict lookup
@@ -165,7 +169,12 @@ def _enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         mapped_tc[unmapped] = "Tipo " + stripped_tc[unmapped]
         df["tipo_contrato_desc"] = mapped_tc.fillna("—")
     except Exception as e:
-        log.warning("data_loader_enrichment_failed", column="tipo_contrato_desc", op="tipo_contrato_label", error=str(e))
+        log.warning(
+            "data_loader_enrichment_failed",
+            column="tipo_contrato_desc",
+            op="tipo_contrato_label",
+            error=str(e),
+        )
         df["tipo_contrato_desc"] = ""
 
     _backfill_ccaa(df)
@@ -325,14 +334,14 @@ def _build_canonical_names(df: pd.DataFrame) -> pd.Series:
     try:
         import polars as pl
 
-        pl_df = pl.from_pandas(
-            df[["empresa_key", "nombre"]].dropna(subset=["empresa_key"])
-        )
+        pl_df = pl.from_pandas(df[["empresa_key", "nombre"]].dropna(subset=["empresa_key"]))
         # mode().first() = valor más frecuente
         canon_pl = pl_df.group_by("empresa_key").agg(
             pl.col("nombre").mode().first().alias("nombre_canon")
         )
-        canon = dict(zip(canon_pl["empresa_key"].to_list(), canon_pl["nombre_canon"].to_list(), strict=False))
+        canon = dict(
+            zip(canon_pl["empresa_key"].to_list(), canon_pl["nombre_canon"].to_list(), strict=False)
+        )
         return df["empresa_key"].map(canon).fillna(df["nombre"])
     except ImportError:
         pass

@@ -56,6 +56,7 @@ def _compute_top_empresas(conn: Any) -> list[dict[str, Any]]:
     try:
         from dashboard.normalize import normalize_company
     except Exception:
+
         def normalize_company(s: str) -> str:  # type: ignore[misc]
             return s.upper().strip()
 
@@ -92,7 +93,14 @@ def _persist_top_empresas(conn: Any, rows: list[dict[str, Any]]) -> None:
             "(ccaa, rank, nombre_canon, n_adj, importe_total, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (r["ccaa"], r["rank"], r["nombre_canon"], r["n_adj"], r["importe_total"], r["updated_at"])
+                (
+                    r["ccaa"],
+                    r["rank"],
+                    r["nombre_canon"],
+                    r["n_adj"],
+                    r["importe_total"],
+                    r["updated_at"],
+                )
                 for r in rows
             ],
         )
@@ -104,8 +112,7 @@ def _persist_top_empresas(conn: Any, rows: list[dict[str, Any]]) -> None:
 def _compute_clusters(conn: Any) -> list[dict[str, Any]]:
     """Calcula la asignación de clusters para todas las licitaciones."""
     rows = conn.execute(
-        "SELECT id_externo, titulo, descripcion FROM licitaciones "
-        "WHERE titulo IS NOT NULL"
+        "SELECT id_externo, titulo, descripcion FROM licitaciones WHERE titulo IS NOT NULL"
     ).fetchall()
 
     if not rows:
@@ -155,10 +162,7 @@ def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
         conn.executemany(
             "INSERT INTO mat_clusters (id_externo, cluster_id, cluster_label, updated_at) "
             "VALUES (?, ?, ?, ?)",
-            [
-                (r["id_externo"], r["cluster_id"], r["cluster_label"], r["updated_at"])
-                for r in rows
-            ],
+            [(r["id_externo"], r["cluster_id"], r["cluster_label"], r["updated_at"]) for r in rows],
         )
 
 

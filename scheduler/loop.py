@@ -60,7 +60,9 @@ def _run_job(name: str, fn: Callable[[], Any]) -> None:
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
     if t.is_alive():
-        log.error("scheduler_loop_job_timeout", job=name, timeout_s=timeout_s, elapsed_ms=elapsed_ms)
+        log.error(
+            "scheduler_loop_job_timeout", job=name, timeout_s=timeout_s, elapsed_ms=elapsed_ms
+        )
         notify(AlertLevel.ERROR, f"Scheduler job timeout: {name}", body=f"Excedió {timeout_s}s")
         return
     if exc_holder:

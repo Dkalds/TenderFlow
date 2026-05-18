@@ -12,10 +12,11 @@ log = get_logger(__name__)
 
 def _build_prompt(question: str, docs: list[dict[str, Any]], keywords: list[str]) -> str:
     """Construye el prompt RAG estándar."""
+
     def _excerpt(text: str | None, kws: list[str], max_chars: int = 300) -> str:
         if not text:
             return ""
-        text = text[:max_chars * 3]
+        text = text[: max_chars * 3]
         lower = text.lower()
         for kw in kws:
             pos = lower.find(kw.lower())
