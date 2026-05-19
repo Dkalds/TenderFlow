@@ -150,7 +150,6 @@ disallow_untyped_calls = false
 # Módulos con errores type-arg / no-any-return / no-untyped-call pre-existentes
 [[tool.mypy.overrides]]
 module = [
-    "db.rate_limits",
     "scraper.atom_live",
     "dashboard.utils.dates",
 ]
