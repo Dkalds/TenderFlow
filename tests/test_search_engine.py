@@ -275,7 +275,6 @@ def test_fetch_docs_returns_empty_on_exception() -> None:
 
 def test_rag_query_with_both_sources() -> None:
     faiss_hits = [("lic-001", 0.9)]
-    fts_hits = [("lic-001", 0.8), ("lic-002", 0.5)]
     doc_row = ("lic-001", "T1", "O1", 100.0, "D1", "http://u", "2025-01-01", "MAD", "VIG")
 
     conn_ctx = MagicMock()
@@ -293,9 +292,11 @@ def test_rag_query_with_both_sources() -> None:
     doc_cursor = _make_doc_cursor([doc_row])
     conn_ctx.execute.side_effect = [fts_cursor, doc_cursor]
 
-    with patch.dict("sys.modules", {"dashboard.faiss_index": faiss_module}):
-        with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
-            docs, source = rag_query("consultoría", top_k=5)
+    with (
+        patch.dict("sys.modules", {"dashboard.faiss_index": faiss_module}),
+        patch("services.investigador.search_engine.connect", return_value=conn_ctx),
+    ):
+        docs, source = rag_query("consultoría", top_k=5)
 
     assert "FAISS" in source
     assert isinstance(docs, list)
@@ -310,9 +311,11 @@ def test_rag_query_falls_back_to_fts_only() -> None:
     doc_cursor = _make_doc_cursor([])
     conn_ctx.execute.side_effect = [fts_cursor, doc_cursor]
 
-    with patch.dict("sys.modules", {"dashboard.faiss_index": None}):  # type: ignore[dict-item]
-        with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
-            docs, source = rag_query("test", top_k=3)
+    with (
+        patch.dict("sys.modules", {"dashboard.faiss_index": None}),  # type: ignore[dict-item]
+        patch("services.investigador.search_engine.connect", return_value=conn_ctx),
+    ):
+        _docs, source = rag_query("test", top_k=3)
 
     assert "FTS5" in source
 
@@ -331,8 +334,10 @@ def test_rag_query_falls_back_to_like() -> None:
     doc_cursor = _make_doc_cursor([])
     conn_ctx.execute.side_effect = [fts_cursor, like_cursor, doc_cursor]
 
-    with patch.dict("sys.modules", {"dashboard.faiss_index": None}):  # type: ignore[dict-item]
-        with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
-            docs, source = rag_query("consulta corta", top_k=3)
+    with (
+        patch.dict("sys.modules", {"dashboard.faiss_index": None}),  # type: ignore[dict-item]
+        patch("services.investigador.search_engine.connect", return_value=conn_ctx),
+    ):
+        _docs, source = rag_query("consulta corta", top_k=3)
 
     assert "LIKE" in source

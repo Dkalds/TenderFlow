@@ -96,17 +96,15 @@ def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
     if limit is not None and limit > 0:
         sql += " LIMIT ?"
         params.append(int(limit))
-    with timed_query("svc_load_raw"):
-        with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+    with timed_query("svc_load_raw"), connect_read() as c:
+        return rows_to_dicts(c.execute(sql, params))
 
 
 def load_stats_dataframe() -> list[dict[str, Any]]:
     """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento)."""
-    with timed_query("svc_load_stats"):
-        with connect_read() as c:
-            cur = c.execute(f"SELECT {_STATS_COLUMNS} FROM licitaciones")  # noqa: S608
-            return rows_to_dicts(cur)
+    with timed_query("svc_load_stats"), connect_read() as c:
+        cur = c.execute(f"SELECT {_STATS_COLUMNS} FROM licitaciones")  # noqa: S608
+        return rows_to_dicts(cur)
 
 
 # ── Búsquedas especializadas ─────────────────────────────────────────────
@@ -196,8 +194,8 @@ def search_advanced(
     """
     import re
 
-    from db.repositories.licitaciones import _DEFAULT_SORT, _SORT_WHITELIST, _SUMMARY_COLS
     from db.repositories.base import count_where
+    from db.repositories.licitaciones import _DEFAULT_SORT, _SORT_WHITELIST, _SUMMARY_COLS
 
     _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 

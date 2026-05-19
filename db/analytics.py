@@ -85,9 +85,7 @@ def get_connection() -> Any:
     thread-safe gracias al lock interno; las consultas son lecturas.
     """
     if not _DUCKDB_AVAILABLE:
-        raise RuntimeError(
-            "DuckDB no está instalado. Instalar con: pip install duckdb"
-        )
+        raise RuntimeError("DuckDB no está instalado. Instalar con: pip install duckdb")
     global _conn
     with _lock:
         if _conn is None:
@@ -96,9 +94,7 @@ def get_connection() -> Any:
             con.execute("INSTALL sqlite_scanner;")
             con.execute("LOAD sqlite_scanner;")
             # El parámetro read_only previene escrituras hacia el fichero SQLite.
-            con.execute(
-                f"ATTACH '{sqlite_file}' AS {_SQLITE_ALIAS} (TYPE SQLITE, READ_ONLY);"
-            )
+            con.execute(f"ATTACH '{sqlite_file}' AS {_SQLITE_ALIAS} (TYPE SQLITE, READ_ONLY);")
             _conn = con
             log.info("duckdb_attached", sqlite=str(sqlite_file))
         return _conn
@@ -143,6 +139,6 @@ def close() -> None:
         if _conn is not None:
             try:
                 _conn.close()
-            except Exception:  # noqa: BLE001 - shutdown best-effort
+            except Exception:
                 pass
             _conn = None

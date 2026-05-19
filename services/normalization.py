@@ -99,7 +99,7 @@ _UTE_PREFIX_RE = re.compile(
 )
 _UTE_TAIL_PAREN_RE = re.compile(r"\s*\([^)]*\)\s*$")
 _UTE_SPLIT_RE = re.compile(
-    r"\s*(?:\s-\s|\s–\s|\s—\s|\s/\s|/|,\s|;\s|\sY\s|\sAND\s)\s*",
+    r"\s*(?:\s-\s|\s\u2013\s|\s\u2014\s|\s/\s|/|,\s|;\s|\sY\s|\sAND\s)\s*",
     flags=re.IGNORECASE,
 )
 

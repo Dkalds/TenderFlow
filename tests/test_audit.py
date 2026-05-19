@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
-
 # ── log_event ──────────────────────────────────────────────────────────────
 
 
@@ -176,7 +173,7 @@ def test_list_recent_empty_returns_empty_list(tmp_db):
 
 def test_list_recent_returns_all_rows(tmp_db):
     """list_recent returns all logged actions when no filters applied."""
-    from db.audit import log_action, list_recent
+    from db.audit import list_recent, log_action
 
     log_action("u1", "s1", "action_a", "detail_a")
     log_action("u2", "s2", "action_b", "detail_b")
@@ -188,7 +185,7 @@ def test_list_recent_returns_all_rows(tmp_db):
 
 def test_list_recent_contains_expected_keys(tmp_db):
     """list_recent rows are dicts with id, user_key, session_hash, action, detail, created_at."""
-    from db.audit import log_action, list_recent
+    from db.audit import list_recent, log_action
 
     log_action("alice", "s1", "export_excel", "file.xlsx")
 
@@ -204,7 +201,7 @@ def test_list_recent_contains_expected_keys(tmp_db):
 
 def test_list_recent_filter_by_user_key(tmp_db):
     """list_recent with user_key filter returns only that user's actions."""
-    from db.audit import log_action, list_recent
+    from db.audit import list_recent, log_action
 
     log_action("user_a", "s1", "login", "")
     log_action("user_b", "s2", "login", "")
@@ -217,7 +214,7 @@ def test_list_recent_filter_by_user_key(tmp_db):
 
 def test_list_recent_filter_by_action(tmp_db):
     """list_recent with action filter returns only matching actions."""
-    from db.audit import log_action, list_recent
+    from db.audit import list_recent, log_action
 
     log_action("u1", "s1", "login", "")
     log_action("u2", "s2", "logout", "")
@@ -230,7 +227,7 @@ def test_list_recent_filter_by_action(tmp_db):
 
 def test_list_recent_filter_both_user_and_action(tmp_db):
     """list_recent with both filters combines them with AND."""
-    from db.audit import log_action, list_recent
+    from db.audit import list_recent, log_action
 
     log_action("alice", "s1", "login", "")
     log_action("alice", "s2", "logout", "")
@@ -244,7 +241,7 @@ def test_list_recent_filter_both_user_and_action(tmp_db):
 
 def test_list_recent_respects_limit(tmp_db):
     """list_recent respects the limit parameter."""
-    from db.audit import log_action, list_recent
+    from db.audit import list_recent, log_action
 
     for i in range(10):
         log_action("u", "s", f"action_{i}", "")
@@ -255,7 +252,7 @@ def test_list_recent_respects_limit(tmp_db):
 
 def test_list_recent_ordered_by_created_at_desc(tmp_db):
     """list_recent returns rows ordered by created_at DESC (most recent first)."""
-    from db.audit import log_action, list_recent
+    from db.audit import list_recent, log_action
 
     log_action("u", "s", "first", "")
     log_action("u", "s", "second", "")

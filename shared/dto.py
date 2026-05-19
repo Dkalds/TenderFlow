@@ -129,7 +129,9 @@ class WatchlistAlertDTO(BaseModel):
 
     user_id: str
     licitacion_id: str
-    kind: str = Field(description="estado_cambio|fecha_proxima|importe_actualizado|nueva_adjudicacion")
+    kind: str = Field(
+        description="estado_cambio|fecha_proxima|importe_actualizado|nueva_adjudicacion"
+    )
     payload: dict[str, str | int | float | None] = Field(default_factory=dict)
     created_at: datetime | None = None
 

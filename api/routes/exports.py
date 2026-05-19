@@ -66,7 +66,9 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
     story: list[Any] = []
 
     story.append(Paragraph(title, styles["Title"]))
-    story.append(Paragraph(datetime.now(UTC).strftime("Generado: %Y-%m-%d %H:%M UTC"), styles["Normal"]))
+    story.append(
+        Paragraph(datetime.now(UTC).strftime("Generado: %Y-%m-%d %H:%M UTC"), styles["Normal"])
+    )
     story.append(Spacer(1, 12))
 
     if not rows:
@@ -87,7 +89,12 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#eaf0fb")]),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#eaf0fb")],
+                    ),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#aab7c4")),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("LEFTPADDING", (0, 0), (-1, -1), 4),
@@ -131,7 +138,7 @@ def _run_export(job_id: str, filters: dict[str, Any]) -> None:
             rows_raw = conn.execute(sql, params).fetchall()
 
         cols = ["id", "titulo", "organo_contratacion", "importe", "estado", "fecha_publicacion"]
-        rows = [dict(zip(cols, r)) for r in rows_raw]
+        rows = [dict(zip(cols, r, strict=False)) for r in rows_raw]
         title = "Licitaciones SAP — Exportación"
         if filters.get("ccaa"):
             title += f" ({filters['ccaa']})"
@@ -141,7 +148,7 @@ def _run_export(job_id: str, filters: dict[str, Any]) -> None:
         _store[job_id]["status"] = "done"
         _store[job_id]["n_rows"] = len(rows)
         log.info("export_pdf.done", job_id=job_id, n_rows=len(rows), bytes=len(pdf_bytes))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _store[job_id]["status"] = "error"
         _store[job_id]["error"] = str(exc)
         log.warning("export_pdf.error", job_id=job_id, error=str(exc))

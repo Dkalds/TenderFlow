@@ -276,14 +276,18 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_oauth_domains(self) -> Settings:
         """En producción, alertar si no hay restricción de dominios/emails OAuth."""
-        if self.ENV == "prod" and self.GOOGLE_CLIENT_ID:
-            if not self.OAUTH_ALLOWED_DOMAINS and not self.OAUTH_ALLOWED_EMAILS:
-                warnings.warn(
-                    "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
-                    "OAuth habilitado en ENV=prod. Cualquier cuenta Google podrá acceder. "
-                    "Configura al menos uno de ellos para restringir el acceso.",
-                    stacklevel=2,
-                )
+        if (
+            self.ENV == "prod"
+            and self.GOOGLE_CLIENT_ID
+            and not self.OAUTH_ALLOWED_DOMAINS
+            and not self.OAUTH_ALLOWED_EMAILS
+        ):
+            warnings.warn(
+                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
+                "OAuth habilitado en ENV=prod. Cualquier cuenta Google podrá acceder. "
+                "Configura al menos uno de ellos para restringir el acceso.",
+                stacklevel=2,
+            )
         return self
 
     @field_validator("TURSO_DATABASE_URL", mode="before")

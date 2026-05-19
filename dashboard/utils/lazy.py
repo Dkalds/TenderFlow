@@ -9,7 +9,7 @@ import streamlit as st
 
 
 @contextmanager
-def lazy_section(key: str, label: str = "Cargar sección") -> Generator[bool, None, None]:
+def lazy_section(key: str, label: str = "Cargar sección") -> Generator[bool]:
     """Context manager that defers rendering until the user expands or clicks.
 
     Usage:

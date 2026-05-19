@@ -383,7 +383,11 @@ def _render_nif_coverage(adj_df: pd.DataFrame) -> None:
     """KPI de cobertura de NIF normalizado en adjudicaciones."""
     nif_col = next((c for c in ("nif_adjudicatario", "nif", "cif") if c in adj_df.columns), None)
     nombre_col = next(
-        (c for c in ("nombre_adjudicatario", "nombre_canon", "adjudicatario") if c in adj_df.columns),
+        (
+            c
+            for c in ("nombre_adjudicatario", "nombre_canon", "adjudicatario")
+            if c in adj_df.columns
+        ),
         None,
     )
     n = len(adj_df)
@@ -397,8 +401,10 @@ def _render_nif_coverage(adj_df: pd.DataFrame) -> None:
             # NIF válido = no nulo y con formato ES básico (letra + 8 dígitos)
             import re
 
-            valid_nif = adj_df[nif_col].dropna().apply(
-                lambda v: bool(re.match(r"^[A-Z]\d{7}[A-Z0-9]$", str(v).strip().upper()))
+            valid_nif = (
+                adj_df[nif_col]
+                .dropna()
+                .apply(lambda v: bool(re.match(r"^[A-Z]\d{7}[A-Z0-9]$", str(v).strip().upper())))
             )
             pct_nif = float(valid_nif.sum() / n * 100)
             st.markdown(

@@ -13,7 +13,6 @@ import os
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # provider_for
 # ---------------------------------------------------------------------------
@@ -92,9 +91,6 @@ def test_get_key_prefers_secrets_over_env(monkeypatch):
 
     with patch("llm.client.get_secret", mock_get_secret, create=True):
         # Patch the inner import inside _get_key
-        import llm.client as client_mod
-
-        original = client_mod._get_key
 
         def patched_get_key(var: str) -> str:
             try:

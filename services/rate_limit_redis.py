@@ -61,7 +61,7 @@ def _get_client() -> Any | None:
                 )
                 _client.ping()
                 log.info("ratelimit_redis_connected", url_host=url.split("@")[-1])
-            except Exception as exc:  # noqa: BLE001 - red puede fallar de mil maneras
+            except Exception as exc:
                 log.warning("ratelimit_redis_unavailable", error=str(exc))
                 _client = None
         return _client
@@ -95,7 +95,7 @@ def check_rate_limit_redis(
         pipe.zcard(key)
         pipe.expire(key, int(window_seconds) + 1)
         _, _, count, _ = pipe.execute()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("ratelimit_redis_op_failed", error=str(exc))
         return None
 

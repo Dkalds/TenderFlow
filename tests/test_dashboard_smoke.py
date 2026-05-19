@@ -180,7 +180,6 @@ PAGE_REGISTRY["{page_name}"](ctx)
 @pytest.mark.parametrize("page_name", _PAGES)
 def test_page_renders_empty_dataset(page_name: str, monkeypatch, tmp_path) -> None:
     """Cada página debe renderizar sin excepciones cuando el dataset está vacío."""
-    import os
 
     import db.database as db_mod
 

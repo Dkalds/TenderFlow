@@ -23,11 +23,12 @@ import json
 import sqlite3
 import sys
 from pathlib import Path
+from typing import Any
 
 _GENESIS = "genesis"
 
 
-def _expected_hash(prev_hash: str, row: dict) -> str:
+def _expected_hash(prev_hash: str, row: dict[str, Any]) -> str:
     """Reproduce el hash tal y como lo calcula db.audit.log_action."""
     row_json = json.dumps(row, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(f"{prev_hash}{row_json}".encode()).hexdigest()

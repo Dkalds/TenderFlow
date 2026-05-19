@@ -17,7 +17,7 @@ def chart_card(
     subtitle: str | None = None,
     *,
     exportable: bool = False,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Context manager — envuelve contenido en una chart-card glass-morphism.
 
     Renderiza una tarjeta con borde, fondo desenfocado y cabecera de título.

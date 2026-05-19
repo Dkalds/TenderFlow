@@ -22,6 +22,7 @@ from db.audit import log_event
 from db.database import now_utc_iso
 from db.repositories.api_keys import ApiKeyRepository
 from db.sessions import revoke_all_sessions
+from observability.logging import get_logger
 from services.gdpr import (
     anonymize_user_data,
     export_api_keys,
@@ -33,7 +34,6 @@ from services.gdpr import (
     list_user_keys,
     set_key_expiry,
 )
-from observability.logging import get_logger
 
 log = get_logger(__name__)
 

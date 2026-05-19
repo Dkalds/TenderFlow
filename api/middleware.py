@@ -315,10 +315,9 @@ class ETagMiddleware(BaseHTTPMiddleware):
             body += chunk
             if len(body) > self._max_bytes:
                 # Demasiado grande: devolver sin ETag (reconstruir la respuesta)
-                from starlette.responses import StreamingResponse
 
-                async def _passthrough() -> bytes:
-                    return body
+                async def _passthrough(b: bytes = body) -> bytes:
+                    return b
 
                 return Response(
                     content=body,

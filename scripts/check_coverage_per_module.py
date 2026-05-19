@@ -17,6 +17,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 # ── Umbrales por módulo (prefijo de ruta) ────────────────────────────────
 # Los módulos más críticos tienen umbrales altos; el dashboard, más bajo
@@ -67,7 +68,7 @@ def check(coverage_file: Path) -> int:
         return 1
 
     data = json.loads(coverage_file.read_text(encoding="utf-8"))
-    files: dict[str, dict] = data.get("files", {})
+    files: dict[str, dict[str, Any]] = data.get("files", {})
 
     # Acumular stats por prefijo
     by_prefix: dict[str, dict[str, int]] = {}
@@ -100,8 +101,7 @@ def check(coverage_file: Path) -> int:
         print(f"{prefix:<35} {pct:>8.1f}%  {threshold:>5}%  {status:>8}")
         if pct < threshold:
             failures.append(
-                f"  {prefix}: {pct:.1f}% < {threshold}% (faltan "
-                f"{threshold - pct:.1f} pp)"
+                f"  {prefix}: {pct:.1f}% < {threshold}% (faltan {threshold - pct:.1f} pp)"
             )
 
     print("─" * 62)

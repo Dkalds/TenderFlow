@@ -172,7 +172,11 @@ def generate_atom_feed(user_key: str, limit: int = 50) -> str:
     lics.sort(key=lambda x: x.get("fecha_publicacion") or "", reverse=True)
     lics = lics[:limit]
 
-    updated = lics[0].get("fecha_publicacion", datetime.now(UTC).isoformat()) if lics else datetime.now(UTC).isoformat()
+    updated = (
+        lics[0].get("fecha_publicacion", datetime.now(UTC).isoformat())
+        if lics
+        else datetime.now(UTC).isoformat()
+    )
     # Normalise to RFC3339
     try:
         updated_dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))

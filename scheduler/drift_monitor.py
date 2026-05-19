@@ -21,8 +21,8 @@ log = get_logger(__name__)
 # Umbrales por defecto (sobrescribibles vía settings o args).
 _PSI_WARN = 0.10
 _PSI_CRIT = 0.25
-_F1_DROP_WARN = 0.03   # caída relativa 3 %
-_F1_DROP_CRIT = 0.10   # caída relativa 10 %
+_F1_DROP_WARN = 0.03  # caída relativa 3 %
+_F1_DROP_CRIT = 0.10  # caída relativa 10 %
 
 
 @dataclass

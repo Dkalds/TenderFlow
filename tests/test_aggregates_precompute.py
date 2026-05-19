@@ -335,7 +335,7 @@ def test_persist_clusters_replaces_atomically(tmp_db):
 
 def test_run_aggregates_precompute_returns_ok_status(tmp_db):
     """run_aggregates_precompute devuelve status=ok con BD vacía."""
-    db_mod, _ = tmp_db
+    _db_mod, _ = tmp_db
     from scheduler.aggregates_precompute import run_aggregates_precompute
 
     result = run_aggregates_precompute()

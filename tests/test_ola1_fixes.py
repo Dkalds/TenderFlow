@@ -180,8 +180,9 @@ def test_require_api_key_uses_connect_read(monkeypatch):
     # Llamar a require_api_key con key inválida (debe fallar pero sin usar connect)
     import asyncio
 
-    import api.auth as auth_mod
     from fastapi import HTTPException
+
+    import api.auth as auth_mod
 
     async def _test():
         try:

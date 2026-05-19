@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
-from api.auth import AuthContext, require_api_key, require_scope
+from api.auth import AuthContext, require_scope
 from observability.logging import get_logger
 
 log = get_logger(__name__)

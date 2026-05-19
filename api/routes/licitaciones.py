@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -99,10 +99,7 @@ class AdjudicacionSummary(BaseModel):
     n_ofertas_recibidas: int | None = None
 
 
-T = TypeVar("T")
-
-
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     total: int
     limit: int
     offset: int
@@ -110,7 +107,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     deprecation_notice: str | None = None
 
 
-class CursorPaginatedResponse(BaseModel, Generic[T]):
+class CursorPaginatedResponse[T](BaseModel):
     """Respuesta con paginación por cursor (recomendada para datasets grandes)."""
 
     items: list[T]

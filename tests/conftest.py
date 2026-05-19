@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ── Auto-marking de tests por convención de nombre ──────────────────────────
 # Evita tener que anotar manualmente los ~70 tests existentes. Reglas:
 #   - test_*property* / test_parser_properties → property
@@ -19,7 +18,7 @@ _PROPERTY_TOKENS = ("property", "properties", "property_based")
 _INTEGRATION_TOKENS = ("integration_e2e",)  # explícito; resto queda como unit
 
 
-def pytest_collection_modifyitems(config, items):  # noqa: ARG001
+def pytest_collection_modifyitems(config, items):
     for item in items:
         path = str(item.fspath).lower()
         name = item.name.lower()

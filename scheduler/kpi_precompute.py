@@ -259,10 +259,10 @@ def run_kpi_export_parquet(output_dir: str = "data/parquet") -> dict[str, Any]:
                 duckdb_query(copy_sql)
                 exported.append(dest)
                 log.info("kpi_export_parquet.ok", table=table_name, dest=dest)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("kpi_export_parquet.skip", table=table_name, error=str(exc))
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("kpi_export_parquet.fallback", error=str(exc))
         return _export_parquet_pandas_fallback(output_dir)
 
@@ -289,7 +289,6 @@ def _export_parquet_pandas_fallback(output_dir: str) -> dict[str, Any]:
             dest = str(Path(output_dir) / f"{table_name}.parquet")
             try:
                 # sqlite3.Connection compatible con pandas.read_sql
-                import sqlite3
 
                 raw_conn = getattr(conn, "_conn", None) or getattr(conn, "connection", None)
                 if raw_conn is None:
@@ -298,7 +297,7 @@ def _export_parquet_pandas_fallback(output_dir: str) -> dict[str, Any]:
                 df.to_parquet(dest, index=False, engine="pyarrow")
                 exported.append(dest)
                 log.info("kpi_export_parquet_pandas.ok", table=table_name, dest=dest)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("kpi_export_parquet_pandas.skip", table=table_name, error=str(exc))
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)

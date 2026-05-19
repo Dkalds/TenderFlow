@@ -87,10 +87,11 @@ def calibrate_and_tune(
     calibrated.fit(X_train, y_train)
 
     probas = calibrated.predict_proba(X_val)[:, 1]
-    precision, recall, raw_thresholds = precision_recall_curve(y_val, probas)
+    _precision, _recall, raw_thresholds = precision_recall_curve(y_val, probas)
 
     # precision_recall_curve devuelve len(thresholds) == len(precision) - 1
-    thresholds = np.concatenate([raw_thresholds, [1.0]])
+    # (concatenación preservada por si se necesita en el futuro)
+    _ = np.concatenate([raw_thresholds, [1.0]])
 
     # Búsqueda explícita sobre malla para asegurar paso constante
     grid_t = np.arange(threshold_step, 1.0, threshold_step)

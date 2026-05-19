@@ -167,9 +167,7 @@ def _optimal_k(embeddings: np.ndarray, k_min: int = 3, k_max: int | None = None)
         km = _kmeans_factory(k, n_samples)
         labels = km.fit_predict(embeddings)
         try:
-            score = float(
-                silhouette_score(embeddings, labels, sample_size=min(1000, n_samples))
-            )
+            score = float(silhouette_score(embeddings, labels, sample_size=min(1000, n_samples)))
         except ValueError:
             score = -1.0
         if score > best_score:

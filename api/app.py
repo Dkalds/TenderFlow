@@ -69,7 +69,7 @@ configure_tracing(service_name="licitaciones-api")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Inicializa la DB al arrancar y hace graceful shutdown al parar.
 
     - Startup: ejecuta migraciones y crea tablas. Falla rápido en prod si hay error.
@@ -144,7 +144,10 @@ app = FastAPI(
         {"name": "feedback", "description": "Feedback de relevancia para active learning"},
         {"name": "webhooks", "description": "Suscripciones a notificaciones de watchlist"},
         {"name": "meta", "description": "Metadatos: valores válidos para filtros"},
-        {"name": "models", "description": "Model registry: versiones activas, histórico, activación"},
+        {
+            "name": "models",
+            "description": "Model registry: versiones activas, histórico, activación",
+        },
         {"name": "me", "description": "GDPR: exportar y eliminar mis datos"},
     ],
     contact={
@@ -209,7 +212,7 @@ app.add_middleware(ETagMiddleware)
 
 # Request body size limit — protege contra payloads abusivos (1 MB máx.)
 try:
-    from starlette.middleware.base import BaseHTTPMiddleware as _BHTM  # noqa: N811
+    from starlette.middleware.base import BaseHTTPMiddleware as _BHTM
 
     class _MaxBodyMiddleware(_BHTM):
         """Rechaza requests con body > max_bytes antes de procesarlos."""

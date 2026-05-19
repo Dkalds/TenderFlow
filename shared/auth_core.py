@@ -13,6 +13,7 @@ tareas del scheduler, y cualquier módulo sin contexto de Streamlit.
 
 from __future__ import annotations
 
+import base64 as _base64
 import hashlib
 import hmac
 import os
@@ -186,8 +187,6 @@ def oauth_email_is_admin(email: str) -> bool:
 # PKCE (Proof Key for Code Exchange — RFC 7636)
 # ---------------------------------------------------------------------------
 
-import base64 as _base64
-
 
 def generate_pkce_pair() -> tuple[str, str]:
     """Genera un par (code_verifier, code_challenge) para PKCE S256.
@@ -268,11 +267,7 @@ def validate_google_id_token(
 
     aud = id_token_claims.get("aud", "")
     # aud puede ser string o lista de strings (multi-audience)
-    aud_values: set[str]
-    if isinstance(aud, list):
-        aud_values = set(aud)
-    else:
-        aud_values = {str(aud)}
+    aud_values = set(aud) if isinstance(aud, list) else {str(aud)}
     if audience not in aud_values:
         log.warning("google_id_token_invalid_aud", aud=aud)
         return False

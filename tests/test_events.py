@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 def test_append_event_returns_positive_id(tmp_db):
     """append_event returns a positive integer event ID."""
