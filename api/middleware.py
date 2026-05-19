@@ -19,8 +19,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from db.rate_limits import check_rate_limit_db
 from observability.logging import get_logger
+from services.rate_limit_redis import check_rate_limit as _check_rate_limit
 
 log = get_logger(__name__)
 
@@ -133,7 +133,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client = _client_key(request)
         rate_key = f"api:{client}:{path}"
-        allowed = check_rate_limit_db(
+        allowed = _check_rate_limit(
             rate_key,
             max_calls=self._max,
             window_seconds=self._window,
@@ -269,3 +269,75 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 pass
 
         return response
+
+
+# ───────────────────────────── ETag caching ──────────────────────────────────
+
+
+class ETagMiddleware(BaseHTTPMiddleware):
+    """Añade ``ETag`` a respuestas GET 200 y responde 304 si ``If-None-Match`` coincide.
+
+    Sólo actúa sobre respuestas con ``Content-Type: application/json`` y
+    tamaño < ``max_bytes`` para no bloquear streams ni ficheros grandes.
+
+    El ETag es un hash SHA-1 del cuerpo, prefijado con ``W/`` (weak).
+    """
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        max_bytes: int = 512 * 1024,  # 512 KB
+    ) -> None:
+        super().__init__(app)
+        self._max_bytes = max_bytes
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        import hashlib
+
+        if request.method != "GET":
+            return await call_next(request)
+
+        response = await call_next(request)
+
+        if response.status_code != 200:
+            return response
+
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            return response
+
+        # Leer el cuerpo completo (sólo si es razonable en tamaño)
+        body = b""
+        async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+            body += chunk
+            if len(body) > self._max_bytes:
+                # Demasiado grande: devolver sin ETag (reconstruir la respuesta)
+                from starlette.responses import StreamingResponse
+
+                async def _passthrough() -> bytes:
+                    return body
+
+                return Response(
+                    content=body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type,
+                )
+
+        etag = 'W/"' + hashlib.sha1(body).hexdigest()[:24] + '"'  # noqa: S324 - sha1 for ETag only
+        if_none_match = request.headers.get("if-none-match", "")
+        if if_none_match and if_none_match == etag:
+            return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
+
+        headers = dict(response.headers)
+        headers["ETag"] = etag
+        headers["Cache-Control"] = headers.get("Cache-Control", "no-cache")
+        return Response(
+            content=body,
+            status_code=response.status_code,
+            headers=headers,
+            media_type=response.media_type,
+        )

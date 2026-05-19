@@ -53,6 +53,12 @@ tracing = [
     "opentelemetry-sdk>=1.20.0,<3",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
 ]
+# Deps opcionales para escalar el rate limiting a Redis.
+# Instalar con: pip install licitaciones-sap[scale]
+# Sin este extra, el rate limiting usa el backend SQLite por defecto.
+scale = [
+    "redis>=5.0,<6",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -204,11 +210,17 @@ filterwarnings = [
     "ignore::DeprecationWarning:libsql",
 ]
 markers = [
-    "integration: tests de integración E2E (más lentos, requieren BD completa)",
+    "unit: tests unitarios rápidos (default, sin I/O externo)",
+    "integration: tests de integración (requieren BD/FS, sin red externa)",
+    "e2e: tests end-to-end (UI/API completa, opcionalmente Playwright)",
+    "property: tests basados en propiedades (hypothesis)",
+    "load: tests de carga/benchmark (locust/pytest-benchmark)",
+    "slow: marca explícita de tests lentos (excluibles con -m 'not slow')",
 ]
 
 [tool.coverage.run]
 branch = true
+source = ["api", "db", "scraper", "scheduler", "services", "shared", "observability", "config", "dashboard", "llm"]
 omit = [
     "tests/*",
     "*/__pycache__/*",

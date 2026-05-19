@@ -99,3 +99,69 @@ class SearchResult(BaseModel):
     importe: float | None = None
     score: float = 0.0
     source: str = ""
+
+
+# ── Watchlist (F1) ──────────────────────────────────────────────────────────
+
+
+class WatchlistEntry(BaseModel):
+    """Entrada de la watchlist de un usuario.
+
+    Contrato compartido entre `services/watchlist.py`, `api/routes/watchlist_feed.py`
+    y la página `dashboard/pages/mi_watchlist.py`.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int | None = None
+    user_id: str
+    licitacion_id: str
+    note: str | None = Field(default=None, max_length=2000)
+    pinned: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class WatchlistAlertDTO(BaseModel):
+    """Alerta generada por scheduler/watchlist_alerts.py."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: str
+    licitacion_id: str
+    kind: str = Field(description="estado_cambio|fecha_proxima|importe_actualizado|nueva_adjudicacion")
+    payload: dict[str, str | int | float | None] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+
+# ── Clustering (F1) ─────────────────────────────────────────────────────────
+
+
+class ClusterSummary(BaseModel):
+    """Resumen de un cluster generado por `services/clusters.py`/`dashboard/clustering.py`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    cluster_id: int
+    label: str | None = None
+    size: int = Field(ge=0)
+    centroid_terms: list[str] = Field(default_factory=list)
+    representative_ids: list[str] = Field(default_factory=list)
+    silhouette: float | None = None
+    inertia: float | None = None
+    computed_at: datetime | None = None
+
+
+class ClusteringRunDTO(BaseModel):
+    """Metadata de una ejecución de clustering, persistida en model_registry."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    run_id: str
+    algorithm: str = "minibatch_kmeans"
+    k: int = Field(ge=2)
+    n_samples: int = Field(ge=0)
+    dataset_hash: str
+    model_artifact_uri: str | None = None
+    metrics: dict[str, float] = Field(default_factory=dict)
+    created_at: datetime | None = None

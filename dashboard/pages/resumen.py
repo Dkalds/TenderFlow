@@ -35,6 +35,7 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
+@st.fragment
 def _render_top_licitaciones(df: pd.DataFrame, adj_resumen: pd.DataFrame) -> None:
     """Renderiza el ranking principal enriquecido con adjudicaciones."""
     top = df.dropna(subset=["importe"]).nlargest(10, "importe")

@@ -1,0 +1,59 @@
+name: CHANGELOG gating
+
+on:
+  pull_request:
+    branches: ["master", "main"]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: changelog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog-required:
+    name: Verify CHANGELOG / conventional commits
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        uses: orhun/git-cliff-action@v3
+        with:
+          version: latest
+          args: --version
+
+      - name: Detect skip label
+        id: skip
+        run: |
+          labels='${{ toJSON(github.event.pull_request.labels.*.name) }}'
+          if echo "$labels" | grep -Eqi '"skip-changelog"|"docs"|"chore-no-changelog"'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate CHANGELOG fragment for this range
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # cliff.toml ya está versionado en la raíz del repo
+          git cliff --config cliff.toml --strip all "${base}..${head}" > pr_changelog.md
+          echo "── Fragmento generado ──"
+          cat pr_changelog.md
+          if [ ! -s pr_changelog.md ] || ! grep -Eq '^- ' pr_changelog.md; then
+            echo "::error::No se ha detectado ningún commit relevante (feat/fix/perf/refactor/...) en este PR. Añade un commit Conventional Commits o etiqueta el PR con 'skip-changelog'."
+            exit 1
+          fi
+
+      - name: Skip notice
+        if: steps.skip.outputs.skip == 'true'
+        run: echo "::notice::CHANGELOG gating omitido por etiqueta."

@@ -14,6 +14,8 @@ Expone los endpoints bajo ``/api/v1/``:
 * ``POST /api/v1/feedback``           — requiere X-API-Key
 * ``POST|GET|DELETE /api/v1/webhooks``— requiere X-API-Key + scope
 * ``GET|DELETE /api/v1/me``           — GDPR
+* ``POST /api/v1/exports``            — requiere X-API-Key — crea job PDF async
+* ``GET /api/v1/exports/{id}``        — requiere X-API-Key — descarga PDF
 
 Arrancar el servidor::
 
@@ -35,14 +37,17 @@ from api.errors import register_exception_handlers
 from api.middleware import (
     AccessLogMiddleware,
     CostTrackingMiddleware,
+    ETagMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
+from api.routes.exports import router as exports_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
 from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
+from api.routes.models import router as models_router
 from api.routes.security import router as security_router
 from api.routes.watchlist_feed import router as watchlist_feed_router
 from api.routes.webhooks import router as webhooks_router
@@ -139,6 +144,7 @@ app = FastAPI(
         {"name": "feedback", "description": "Feedback de relevancia para active learning"},
         {"name": "webhooks", "description": "Suscripciones a notificaciones de watchlist"},
         {"name": "meta", "description": "Metadatos: valores válidos para filtros"},
+        {"name": "models", "description": "Model registry: versiones activas, histórico, activación"},
         {"name": "me", "description": "GDPR: exportar y eliminar mis datos"},
     ],
     contact={
@@ -197,6 +203,9 @@ app.add_middleware(
 
 # Security headers OWASP
 app.add_middleware(SecurityHeadersMiddleware)
+
+# ETag para respuestas GET JSON (cache condicional, F4)
+app.add_middleware(ETagMiddleware)
 
 # Request body size limit — protege contra payloads abusivos (1 MB máx.)
 try:
@@ -258,8 +267,10 @@ app.include_router(feedback_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(me_router, prefix="/api/v1")
 app.include_router(meta_router, prefix="/api/v1")
+app.include_router(models_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
 app.include_router(watchlist_feed_router, prefix="/api/v1")
+app.include_router(exports_router, prefix="/api/v1")
 
 # ---------------------------------------------------------------------------
 # Prometheus /metrics — protegido por IP allowlist o scope metrics:read

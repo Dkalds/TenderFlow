@@ -1,26 +1,18 @@
 """Normalización de nombres de empresas y NIFs.
 
-.. deprecated::
-    La lógica ha sido migrada a ``services.normalization``.
-    Este módulo se mantiene como shim de compatibilidad hacia atrás.
-    Importa directamente de ``services.normalization`` para código nuevo.
+Lógica de dominio pura — sin dependencias de Streamlit ni de la capa web.
+Reutilizable desde scraper, API REST y dashboard.
+
+Las funciones públicas son:
+    normalize_company(name)  →  str | None
+    normalize_nif(nif)       →  str | None
+    parse_ute_members(name)  →  list[str]
 """
 
 from __future__ import annotations
 
-# Re-export from services layer — backward compatible
-from services.normalization import (
-    normalize_company,
-    normalize_nif,
-    parse_ute_members,
-)
-
-__all__ = [
-    "normalize_company",
-    "normalize_nif",
-    "parse_ute_members",
-]
-
+import re
+import unicodedata
 
 # Sufijos societarios (España + frecuentes UE) — se eliminan al final
 _LEGAL_SUFFIXES = [
@@ -72,8 +64,6 @@ def normalize_company(name: str | None) -> str | None:
     if not name or not isinstance(name, str):
         return None
     s = name.strip().upper()
-    # Re-uppercase after NFKD: some Unicode modifier letters (e.g. ᵃ U+1D43)
-    # decompose to lowercase ASCII via NFKD, violating the uppercase contract.
     s = _strip_accents(s).upper()
     # Pass 1: remove terminal legal suffixes before punctuation normalization
     while True:
@@ -85,7 +75,6 @@ def normalize_company(name: str | None) -> str | None:
     s = _PUNCT_RE.sub(" ", s)
     s = _WS_RE.sub(" ", s).strip()
     # Pass 2: punctuation removal may expose suffixes that were 'hidden' in pass 1
-    # (e.g. ":SA" → "SA" after ':' → ' '; "SA" alone is still a legal suffix).
     while True:
         new = _SUFFIX_RE.sub("", s).strip()
         if new == s:
@@ -104,14 +93,11 @@ def normalize_nif(nif: str | None) -> str | None:
 
 
 # ── UTE member extraction ────────────────────────────────────────────────
-# Regex con prefijo UTE en cualquiera de sus variantes (UTE, U.T.E., UTE:)
 _UTE_PREFIX_RE = re.compile(
     r"^\s*U\.?\s*T\.?\s*E\.?\s*[:\-\s]*",
     flags=re.IGNORECASE,
 )
-# Sufijo "(L5 Sda 25/2022)", "(LOTE 3)", referencias entre paréntesis
 _UTE_TAIL_PAREN_RE = re.compile(r"\s*\([^)]*\)\s*$")
-# Separadores entre miembros: " - ", " – ", "/", ",", " Y ", " AND "
 _UTE_SPLIT_RE = re.compile(
     r"\s*(?:\s-\s|\s–\s|\s—\s|\s/\s|/|,\s|;\s|\sY\s|\sAND\s)\s*",
     flags=re.IGNORECASE,
@@ -132,14 +118,12 @@ def parse_ute_members(name: str | None) -> list[str]:
         return []
     raw = name.strip()
     if not _UTE_PREFIX_RE.match(raw):
-        # Alternativa: "EMPRESA1, EMPRESA2 UTE" al final
         if not re.search(r"\bU\.?T\.?E\.?\s*$", raw, flags=re.IGNORECASE):
             return []
         body = re.sub(r"\bU\.?T\.?E\.?\s*$", "", raw, flags=re.IGNORECASE).strip(" ,.-")
     else:
         body = _UTE_PREFIX_RE.sub("", raw).strip()
 
-    # Quitar referencias de lote/expediente al final
     body = _UTE_TAIL_PAREN_RE.sub("", body).strip(" ,.-")
     if not body:
         return []

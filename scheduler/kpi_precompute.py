@@ -4,9 +4,13 @@ Calcula métricas clave sobre las licitaciones y las persiste en la tabla
 ``kpi_snapshots``. El dashboard puede leer estos snapshots en vez de
 recalcular sobre el DataFrame completo en cada sesión.
 
+También puede exportar agregados materializados a Parquet usando
+:mod:`db.analytics` (DuckDB opcional) para análisis offline (F2).
+
 Uso:
-    python -m scheduler.kpi_precompute          # Ejecuta el cálculo
-    python -m scheduler.kpi_precompute --latest # Muestra el último snapshot
+    python -m scheduler.kpi_precompute                    # Ejecuta el cálculo
+    python -m scheduler.kpi_precompute --latest           # Muestra el último snapshot
+    python -m scheduler.kpi_precompute --export-parquet   # Exporta agregados Parquet
 """
 
 from __future__ import annotations
@@ -194,6 +198,113 @@ def run_kpi_precompute() -> dict[str, Any]:
     return {"n_metricas": n, "elapsed_ms": elapsed_ms}
 
 
+# ── Exportación Parquet materializada (F2) ────────────────────────────────────
+
+_MAT_QUERIES: dict[str, str] = {
+    "mat_licitaciones_por_mes": (
+        "SELECT strftime('%Y-%m', fecha_publicacion) AS mes, "
+        "COUNT(*) AS n, SUM(importe) AS importe_total, AVG(importe) AS importe_medio "
+        "FROM licitaciones WHERE fecha_publicacion IS NOT NULL GROUP BY mes ORDER BY mes"
+    ),
+    "mat_licitaciones_por_ccaa": (
+        "SELECT ccaa, COUNT(*) AS n, SUM(importe) AS importe_total "
+        "FROM licitaciones WHERE ccaa IS NOT NULL GROUP BY ccaa ORDER BY n DESC"
+    ),
+    "mat_licitaciones_por_estado": (
+        "SELECT estado, COUNT(*) AS n FROM licitaciones "
+        "WHERE estado IS NOT NULL GROUP BY estado ORDER BY n DESC"
+    ),
+    "mat_top_adjudicatarios": (
+        "SELECT nombre, COUNT(*) AS n, SUM(importe_adjudicado) AS importe_total "
+        "FROM adjudicaciones WHERE nombre IS NOT NULL AND importe_adjudicado IS NOT NULL "
+        "GROUP BY nombre ORDER BY importe_total DESC LIMIT 50"
+    ),
+    "mat_licitaciones_por_tipo": (
+        "SELECT tipo_contrato, COUNT(*) AS n, SUM(importe) AS importe_total "
+        "FROM licitaciones WHERE tipo_contrato IS NOT NULL GROUP BY tipo_contrato ORDER BY n DESC"
+    ),
+}
+
+
+def run_kpi_export_parquet(output_dir: str = "data/parquet") -> dict[str, Any]:
+    """Exporta agregados materializados a Parquet usando DuckDB + SQLite (F2).
+
+    Requiere la dependencia opcional DuckDB (``pip install duckdb``).
+    Si DuckDB no está disponible, intenta exportar vía pandas como fallback.
+
+    Args:
+        output_dir: Directorio de destino para los ficheros ``.parquet``.
+
+    Returns:
+        Dict con ``exported`` (lista de paths) y ``elapsed_ms``.
+    """
+    import time
+
+    t0 = time.monotonic()
+
+    try:
+        from db.analytics import duckdb_query, has_duckdb
+
+        if not has_duckdb():
+            return _export_parquet_pandas_fallback(output_dir)
+
+        from pathlib import Path
+
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        exported: list[str] = []
+        for table_name, sql in _MAT_QUERIES.items():
+            dest = str(Path(output_dir) / f"{table_name}.parquet")
+            copy_sql = f"COPY ({sql}) TO '{dest}' (FORMAT PARQUET)"
+            try:
+                duckdb_query(copy_sql)
+                exported.append(dest)
+                log.info("kpi_export_parquet.ok", table=table_name, dest=dest)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("kpi_export_parquet.skip", table=table_name, error=str(exc))
+
+    except Exception as exc:  # noqa: BLE001
+        log.warning("kpi_export_parquet.fallback", error=str(exc))
+        return _export_parquet_pandas_fallback(output_dir)
+
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    log.info("kpi_export_parquet.done", n=len(exported), elapsed_ms=elapsed_ms)
+    return {"exported": exported, "elapsed_ms": elapsed_ms}
+
+
+def _export_parquet_pandas_fallback(output_dir: str) -> dict[str, Any]:
+    """Fallback Pandas cuando DuckDB no está disponible."""
+    import time
+    from pathlib import Path
+
+    import pandas as pd
+
+    from db.database import connect
+
+    t0 = time.monotonic()
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    exported: list[str] = []
+
+    with connect() as conn:
+        for table_name, sql in _MAT_QUERIES.items():
+            dest = str(Path(output_dir) / f"{table_name}.parquet")
+            try:
+                # sqlite3.Connection compatible con pandas.read_sql
+                import sqlite3
+
+                raw_conn = getattr(conn, "_conn", None) or getattr(conn, "connection", None)
+                if raw_conn is None:
+                    continue
+                df = pd.read_sql(sql, raw_conn)
+                df.to_parquet(dest, index=False, engine="pyarrow")
+                exported.append(dest)
+                log.info("kpi_export_parquet_pandas.ok", table=table_name, dest=dest)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("kpi_export_parquet_pandas.skip", table=table_name, error=str(exc))
+
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    return {"exported": exported, "elapsed_ms": elapsed_ms, "engine": "pandas"}
+
+
 def get_latest_snapshot(metrica: str, dimension: str = "global") -> dict[str, Any] | None:
     """Lee el snapshot más reciente de una métrica desde la BD.
 
@@ -281,6 +392,15 @@ if __name__ == "__main__":
             for k, v in data.items():
                 if k != "_computed_at":
                     print(f"  {k}: {v}")
+    elif cmd == "--export-parquet":
+        out = sys.argv[2] if len(sys.argv) > 2 else "data/parquet"
+        print(f"Exportando agregados Parquet → {out} ...")
+        result = run_kpi_export_parquet(output_dir=out)
+        exported = result.get("exported", [])
+        print(f"  Ficheros exportados: {len(exported)}")
+        for p in exported:
+            print(f"    {p}")
+        print(f"  Tiempo: {result['elapsed_ms']}ms")
     else:
-        print("Uso: python -m scheduler.kpi_precompute [run|--latest]")
+        print("Uso: python -m scheduler.kpi_precompute [run|--latest|--export-parquet [dir]]")
         sys.exit(1)

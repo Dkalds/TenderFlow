@@ -14,6 +14,20 @@
 
   "packageRules": [
     {
+      "groupName": "all non-major (minor + patch)",
+      "matchManagers": ["pip-compile", "pip_requirements", "github-actions", "dockerfile"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "schedule": ["every weekend"]
+    },
+    {
+      "groupName": "all major updates",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "prPriority": -1,
+      "schedule": ["before 6am on monday"]
+    },
+    {
       "groupName": "Python ML & Data",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackageNames": [

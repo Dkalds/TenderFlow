@@ -180,3 +180,122 @@ def oauth_email_is_admin(email: str) -> bool:
     from config import settings
 
     return email.strip().lower() in csv_set(settings.OAUTH_ADMIN_EMAILS)
+
+
+# ---------------------------------------------------------------------------
+# PKCE (Proof Key for Code Exchange — RFC 7636)
+# ---------------------------------------------------------------------------
+
+import base64 as _base64
+
+
+def generate_pkce_pair() -> tuple[str, str]:
+    """Genera un par (code_verifier, code_challenge) para PKCE S256.
+
+    Returns:
+        (code_verifier, code_challenge)
+        * ``code_verifier`` — 32 bytes aleatorios codificados en base64url.
+          Debe guardarse en sesión hasta el callback.
+        * ``code_challenge`` — SHA-256 del verifier codificado en base64url.
+          Se incluye en la URL de autorización de Google como
+          ``code_challenge`` + ``code_challenge_method=S256``.
+
+    Uso:
+        verifier, challenge = generate_pkce_pair()
+        # Guarda verifier en st.session_state['pkce_verifier']
+        # Añade a la URL: &code_challenge=<challenge>&code_challenge_method=S256
+    """
+    verifier_bytes = os.urandom(32)
+    code_verifier = _base64.urlsafe_b64encode(verifier_bytes).rstrip(b"=").decode()
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = _base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return code_verifier, code_challenge
+
+
+def verify_pkce(code_verifier: str, code_challenge: str) -> bool:
+    """Verifica que *code_verifier* corresponde a *code_challenge* (S256).
+
+    Returns True si SHA-256(base64url(code_verifier)) == code_challenge.
+    Uso en el servidor al recibir el token de intercambio.
+    """
+    if not code_verifier or not code_challenge:
+        return False
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    expected = _base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return hmac.compare_digest(expected, code_challenge)
+
+
+# ---------------------------------------------------------------------------
+# Validación de tokens de identidad Google (id_token)
+# ---------------------------------------------------------------------------
+
+# Campos obligatorios de un id_token de Google según la especificación OpenID.
+_GOOGLE_ISS_VALUES = frozenset({"accounts.google.com", "https://accounts.google.com"})
+
+
+def validate_google_id_token(
+    id_token_claims: dict,
+    *,
+    audience: str,
+    require_email_verified: bool = True,
+) -> bool:
+    """Valida los claims de un id_token de Google ya decodificado.
+
+    Sólo valida los claims (no la firma JWT — eso lo hace la librería
+    oauth o la llamada a tokeninfo). Comprueba:
+
+    * ``iss`` pertenece a los valores permitidos de Google.
+    * ``aud`` coincide con el ``client_id`` de la aplicación (``audience``).
+    * ``exp`` no ha expirado (con 60 s de margen).
+    * ``email_verified`` es ``True`` si ``require_email_verified=True``.
+
+    Args:
+        id_token_claims: Dict de claims extraído del id_token.
+        audience: ``client_id`` de Google OAuth de la aplicación.
+        require_email_verified: Si True, rechaza cuentas con email no verificado.
+
+    Returns:
+        True si los claims son válidos; False en caso contrario.
+    """
+    if not id_token_claims:
+        log.warning("google_id_token_empty_claims")
+        return False
+
+    iss = str(id_token_claims.get("iss", ""))
+    if iss not in _GOOGLE_ISS_VALUES:
+        log.warning("google_id_token_invalid_iss", iss=iss)
+        return False
+
+    aud = id_token_claims.get("aud", "")
+    # aud puede ser string o lista de strings (multi-audience)
+    aud_values: set[str]
+    if isinstance(aud, list):
+        aud_values = set(aud)
+    else:
+        aud_values = {str(aud)}
+    if audience not in aud_values:
+        log.warning("google_id_token_invalid_aud", aud=aud)
+        return False
+
+    exp = id_token_claims.get("exp")
+    if exp is None:
+        log.warning("google_id_token_missing_exp")
+        return False
+    try:
+        if int(exp) + 60 < int(time.time()):
+            log.warning("google_id_token_expired", exp=exp)
+            return False
+    except (TypeError, ValueError):
+        log.warning("google_id_token_invalid_exp", exp=exp)
+        return False
+
+    if require_email_verified:
+        email_verified = id_token_claims.get("email_verified")
+        if not email_verified:
+            log.warning(
+                "google_id_token_email_not_verified",
+                email=id_token_claims.get("email", "unknown"),
+            )
+            return False
+
+    return True
