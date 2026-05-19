@@ -29,6 +29,9 @@ log = get_logger(__name__)
 # Evento global para shutdown graceful (se activa con SIGTERM/SIGINT)
 _stop_event = threading.Event()
 
+# Registro de threads activos por nombre de job para evitar solapamiento
+_active_jobs: dict[str, threading.Thread] = {}
+
 
 def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
     raw = os.environ.get(name)
@@ -43,6 +46,12 @@ def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
 
 
 def _run_job(name: str, fn: Callable[[], Any]) -> None:
+    # Evitar solapamiento: si el job anterior sigue vivo, saltar esta ejecución
+    prev = _active_jobs.get(name)
+    if prev is not None and prev.is_alive():
+        log.warning("scheduler_loop_job_skipped_overlap", job=name)
+        return
+
     timeout_s = _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
     started = time.monotonic()
     result_holder: list[Any] = []
@@ -55,6 +64,7 @@ def _run_job(name: str, fn: Callable[[], Any]) -> None:
             exc_holder.append(exc)
 
     t = threading.Thread(target=_target, daemon=True)
+    _active_jobs[name] = t
     t.start()
     t.join(timeout=timeout_s)
 

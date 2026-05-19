@@ -40,13 +40,6 @@ ml = [
     "faiss-cpu>=1.7.4,<2",
     "sentence-transformers>=2.2.0,<3",
 ]
-# Motor analítico DuckDB + Polars para hot paths (Fase 2).
-# Instalar con: pip install licitaciones-sap[fast]
-fast = [
-    "duckdb>=1.0,<2",
-    "polars>=1.0,<2",
-    "pyarrow>=16,<20",
-]
 # Validación de DataFrames con pandera.
 # Instalar con: pip install licitaciones-sap[schemas]
 schemas = [
@@ -66,7 +59,7 @@ where = ["."]
 exclude = ["tests*", ".agents*"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 100
 exclude = [".agents"]
 
@@ -113,7 +106,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 
 # ── Módulos que PASAN mypy strict (sin override) ─────────────────────────
@@ -220,14 +213,6 @@ branch = true
 omit = [
     "tests/*",
     "*/__pycache__/*",
-    "dashboard/pages/*",
-    "dashboard/components/*",
-    "dashboard/filters/*",
-    "dashboard/theme/*",
-    "dashboard/app.py",
-    "dashboard/auth.py",
-    "dashboard/router.py",
-    "dashboard/stats.py",
     "dashboard/utils/chart_helpers.py",
     "dashboard/utils/lazy.py",
     "observability/prometheus.py",
@@ -237,7 +222,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 75
+# Reducido de 75 a 55 tras incluir dashboard en cobertura. Subir progresivamente.
+fail_under = 55
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
