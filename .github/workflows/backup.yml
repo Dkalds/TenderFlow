@@ -75,7 +75,7 @@ jobs:
         # Sube el backup como artefacto de GitHub Actions si el upload S3 falla.
         # Los artefactos se retienen 90 días por defecto.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: db-backup-${{ github.run_id }}
           path: data/backups/*.db.gz
