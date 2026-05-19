@@ -328,7 +328,8 @@ class ETagMiddleware(BaseHTTPMiddleware):
 
         etag = 'W/"' + hashlib.sha1(body).hexdigest()[:24] + '"'  # noqa: S324 - sha1 for ETag only
         if_none_match = request.headers.get("if-none-match", "")
-        if if_none_match and if_none_match == etag:
+        # RFC 7232: If-None-Match can contain multiple ETags separated by commas
+        if if_none_match and etag in {t.strip() for t in if_none_match.split(",")}:
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
 
         headers = dict(response.headers)

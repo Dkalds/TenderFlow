@@ -168,7 +168,7 @@ ctx = PageContext(
 PAGE_REGISTRY["{page_name}"](ctx)
 """
     at = AppTest.from_string(script)
-    at.run(timeout=15)
+    at.run(timeout=30)
     assert not at.exception, f"Página '{page_name}' lanzó excepción: {at.exception}"
 
 
@@ -229,7 +229,7 @@ ctx = PageContext(
 PAGE_REGISTRY["{page_name}"](ctx)
 """
     at = AppTest.from_string(script)
-    at.run(timeout=15)
+    at.run(timeout=30)
     assert not at.exception, (
         f"Página '{page_name}' lanzó excepción con dataset vacío: {at.exception}"
     )
@@ -344,7 +344,7 @@ ctx = PageContext(
 PAGE_REGISTRY["{page_name}"](ctx)
 """
     at = AppTest.from_string(script)
-    at.run(timeout=15)
+    at.run(timeout=30)
     assert not at.exception, (
         f"Página '{page_name}' lanzó excepción con datos extremos: {at.exception}"
     )

@@ -26,7 +26,9 @@ class TestSharedTypes:
         )
 
         # Todos son dict-subclasses o TypeAlias — simplemente deben importarse
-        assert JsonDict is dict or hasattr(JsonDict, "__origin__")
+        # PEP 695 `type` creates TypeAliasType; check __value__ for the underlying type
+        val = getattr(JsonDict, "__value__", JsonDict)
+        assert val is dict or hasattr(val, "__origin__")
         assert issubclass(UserRow, dict)
         assert issubclass(WatchlistRow, dict)
         assert issubclass(LicitacionRow, dict)
