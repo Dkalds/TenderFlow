@@ -201,3 +201,5 @@ watchdog==6.0.0
     # via streamlit
 websockets==16.0
     # via streamlit
+networkx==3.4.2
+    # via -r requirements.in

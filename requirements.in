@@ -36,3 +36,5 @@ alembic>=1.13.0,<2
 fastapi>=0.110.0,<1
 # Forecasting — suavizado exponencial (ExponentialSmoothing) para tendencias
 statsmodels>=0.14.0,<1
+# Análisis de redes de proveedores (partners.py)
+networkx>=3.0,<4
