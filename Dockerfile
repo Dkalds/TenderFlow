@@ -1,5 +1,5 @@
 # ── Etapa 1: builder — instalar dependencias con compiladores ─────────────────
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.13.13-slim-bookworm AS builder
 
 # Buenas prácticas para Python en contenedores:
 # - PYTHONDONTWRITEBYTECODE: evita ficheros .pyc en la imagen
@@ -14,7 +14,9 @@ WORKDIR /build
 
 # Herramientas del sistema mínimas (SQLite nativo ya incluido en slim).
 # build-essential solo se necesita en el builder; no se copia al runtime.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# apt-get upgrade: actualiza paquetes base para cubrir CVEs antes del build
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
         build-essential \
         libffi-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -25,7 +27,7 @@ RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
 
 # ── Etapa 2: imagen de producción (sin compiladores) ──────────────────────────
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.13.13-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -35,7 +37,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONHASHSEED=random
 
 # Solo libsqlite3 + curl para healthchecks (no toolchain de compilación)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# apt-get upgrade: actualiza paquetes del sistema para cubrir CVEs en la imagen base
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/* \

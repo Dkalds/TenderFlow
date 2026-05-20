@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -13,7 +11,7 @@ from dashboard.components.states import empty_state, guarded_render
 from dashboard.normalize import normalize_company
 from dashboard.pages._base import PageContext
 from dashboard.utils.format import fmt_eur
-from db.database import connect
+from services.adjudicaciones import load_licitadores as svc_load_licitadores
 
 
 @st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
@@ -24,25 +22,8 @@ def _load_adjudicaciones(ccaa_filter: tuple[str, ...] | None = None) -> pd.DataF
     Normaliza nombres y tipos numéricos dentro de la capa cacheada para evitar
     recalcularlo en cada rerun.
     """
-    sql = (
-        "SELECT a.id, a.licitacion_id, a.nif, a.nombre, a.ccaa, a.provincia, "
-        "       a.importe_adjudicado, a.importe_pagable, a.fecha_adjudicacion, "
-        "       a.es_pyme, a.n_ofertas_recibidas, "
-        "       l.titulo, l.organo_contratacion, l.cpv, l.tecnologia "
-        "FROM adjudicaciones a "
-        "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-    )
-    params: tuple[Any, ...] = ()
-    if ccaa_filter:
-        placeholders = ",".join("?" for _ in ccaa_filter)
-        sql += f"WHERE a.ccaa IN ({placeholders}) "
-        params = tuple(ccaa_filter)
-    sql += "ORDER BY a.fecha_adjudicacion DESC LIMIT 10000"
-
-    with connect() as c:
-        cur = c.execute(sql, params)
-        cols = [d[0] for d in cur.description]
-        df = pd.DataFrame(cur.fetchall(), columns=cols)
+    rows = svc_load_licitadores(ccaa_filter=ccaa_filter)
+    df = pd.DataFrame(rows)
 
     if df.empty:
         return df

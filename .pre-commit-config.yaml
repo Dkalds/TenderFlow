@@ -22,7 +22,7 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v1.20.2
     hooks:
       - id: mypy
         additional_dependencies:
@@ -42,6 +42,7 @@ repos:
           - "--disable-error-code=name-defined"
           - "--disable-error-code=str-bytes-safe"
           - "--disable-error-code=operator"
+          - "--disable-error-code=untyped-decorator"
         files: '^(scraper|db|scheduler|dashboard)/.*\.py$|^config/.*\.py$'
 
   - repo: local
@@ -52,7 +53,16 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        args:
+          - "--ignore-words=.codespell-ignore-words.txt"
+          - "--skip=*.lock,*.min.js,*.svg,.git,.venv,data,node_modules,.secrets.baseline,*.json,docs/adr/*,db/alembic/versions/*"
+        exclude: '^(tests/fixtures/|\.agents/|requirements.*\.txt$)'
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0

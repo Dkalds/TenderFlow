@@ -14,7 +14,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from db.database import connect
+from services.health import check_db
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -26,12 +26,7 @@ class HealthResponse(BaseModel):
 
 
 def _check_db() -> str:
-    try:
-        with connect() as c:
-            c.execute("SELECT 1").fetchone()
-        return "ok"
-    except Exception:
-        return "error"
+    return check_db()
 
 
 @router.get("", response_model=HealthResponse, summary="Health check (alias de /ready)")

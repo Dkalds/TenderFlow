@@ -85,6 +85,12 @@ class TestSessionTimeout:
 
 
 class TestRateLimiting:
+    @pytest.fixture(autouse=True)
+    def mock_db_rate_limits(self):
+        """Mockea la persistencia en BD para aislar los tests de session_state."""
+        with patch("db.rate_limits.record_failed_login", return_value=1):
+            yield
+
     def test_lockout_activo_llama_stop(self, mock_streamlit):
         st_mock, session = mock_streamlit
         # Simular lockout activo (expira en el futuro)

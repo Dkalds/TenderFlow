@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 from scraper.pipeline import _summarize, process_month
@@ -98,7 +99,12 @@ _BASE_PATCH = {
 
 
 def _patch_all(**overrides):
-    """Context manager que parchea todo el entorno de process_month."""
+    """Context manager que parchea todo el entorno de process_month.
+
+    También silencia db.events.append_event y scraper.pipeline.close_pool para
+    evitar que los tests unitarios abran la BD de producción o hagan checkpoints
+    WAL que bloqueen el proceso en Windows.
+    """
     defaults = {
         "scraper.pipeline.download_month": MagicMock(return_value="/fake/placsp.zip"),
         "scraper.pipeline.iter_xml_files": MagicMock(return_value=[]),
@@ -108,9 +114,17 @@ def _patch_all(**overrides):
         "scraper.pipeline.log_extraccion": MagicMock(),
         "scraper.pipeline.record_failure": MagicMock(),
         "scraper.pipeline.notify": MagicMock(),
+        "scraper.pipeline.close_pool": MagicMock(),
     }
     defaults.update(overrides)
-    return patch.multiple("scraper.pipeline", **{k.split(".")[-1]: v for k, v in defaults.items()})
+    stack = ExitStack()
+    stack.enter_context(
+        patch.multiple("scraper.pipeline", **{k.split(".")[-1]: v for k, v in defaults.items()})
+    )
+    # Impedir escrituras reales a la BD: append_event se importa lazily dentro
+    # de _process_month_impl, por eso se parchea en el módulo de origen.
+    stack.enter_context(patch("db.events.append_event"))
+    return stack
 
 
 class TestProcessMonth:

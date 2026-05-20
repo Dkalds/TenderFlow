@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
-from dashboard.session_keys import NAV_PREV_PAGE, NAV_PREV_SECTION, NAV_SECTION, PENDING_NAV_SECTION
+from dashboard.session_keys import (
+    NAV_PREV_PAGE,
+    NAV_PREV_SECTION,
+    NAV_SECTION,
+    PENDING_NAV_PAGE,
+    PENDING_NAV_SECTION,
+)
 
 if TYPE_CHECKING:
     from dashboard.filters.state import FiltersState
@@ -122,13 +128,16 @@ def back_button() -> None:
         # Cannot set nav_section directly after widget is instantiated.
         # Store a pending nav request that app.py consumes before the widget renders.
         st.session_state[PENDING_NAV_SECTION] = prev_section
-        # Determinar la clave del sub-nav de esa sección para restaurar la página
-        nav_key = f"nav_page_{prev_section}"
+        # Store the target page index as a *pending* request — app.py
+        # will apply it before the sub_nav widget is instantiated.
         from dashboard.router import SECTIONS  # local import to avoid circular
 
         pages = SECTIONS.get(prev_section, [])
         if prev_page in pages:
-            st.session_state[nav_key] = pages.index(prev_page)
+            st.session_state[PENDING_NAV_PAGE] = {
+                "key": f"nav_page_{prev_section}",
+                "index": pages.index(prev_page),
+            }
         # Limpiar historial para que el botón desaparezca en la página de destino
         st.session_state.pop(NAV_PREV_PAGE, None)
         st.session_state.pop(NAV_PREV_SECTION, None)

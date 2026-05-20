@@ -473,11 +473,11 @@ class TestRound2Improvements:
         assert read_registry(path=bad) == []
 
     def test_train_appends_to_registry(self, sample_df, tmp_path, monkeypatch):
-        from scraper import ml_classifier
+        from scraper import ml_training
         from scraper.ml_classifier import SAPClassifier, read_registry
 
         reg_path = tmp_path / "reg.json"
-        monkeypatch.setattr(ml_classifier, "_REGISTRY_PATH", reg_path)
+        monkeypatch.setattr(ml_training, "_REGISTRY_PATH", reg_path)
         clf = SAPClassifier()
         clf.train(sample_df)
         history = read_registry(path=reg_path)

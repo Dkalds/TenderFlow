@@ -303,17 +303,17 @@ def render(ctx: PageContext) -> None:
             how="left",
         )
 
-    for _, row in sub_sorted.head(30).iterrows():
+    for row in sub_sorted.head(30).itertuples(index=False):
         meta_parts = [
-            str(row.get("estado_desc") or "—"),
-            str(row.get("banda") or "—"),
-            f"score {int(row.get('score') or 0)}/100",
+            str(getattr(row, "estado_desc", None) or "—"),
+            str(getattr(row, "banda", None) or "—"),
+            f"score {int(getattr(row, 'score', 0) or 0)}/100",
         ]
-        if row.get("ccaa"):
-            meta_parts.append(str(row.get("ccaa")))
-        empresa = row.get("nombre_canonico")
-        baja = row.get("baja_pct")
-        fecha_adj = row.get("fecha_adjudicacion")
+        if getattr(row, "ccaa", None):
+            meta_parts.append(str(row.ccaa))
+        empresa = getattr(row, "nombre_canonico", None)
+        baja = getattr(row, "baja_pct", None)
+        fecha_adj = getattr(row, "fecha_adjudicacion", None)
         if empresa:
             meta_parts.append(f"🏢 {empresa}")
         if pd.notna(baja):
@@ -321,9 +321,9 @@ def render(ctx: PageContext) -> None:
         if pd.notna(fecha_adj):
             meta_parts.append(f"📅 {pd.Timestamp(fecha_adj).strftime('%d/%m/%Y')}")
         top_card(
-            amount=fmt_eur(row["importe"]),
-            title=str(row["titulo"]),
+            amount=fmt_eur(row.importe),
+            title=str(row.titulo),
             meta=" · ".join(meta_parts),
-            url=row.get("url"),
-            highlight=str(row.get("modulos_str") or "—"),
+            url=getattr(row, "url", None),
+            highlight=str(getattr(row, "modulos_str", None) or "—"),
         )

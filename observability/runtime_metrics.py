@@ -15,7 +15,7 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 try:
-    from prometheus_client import Counter, Gauge, Histogram
+    from prometheus_client import Counter, Gauge
 
     scraper_circuit_state = Gauge(
         "scraper_circuit_state",
@@ -35,18 +35,10 @@ try:
         ["event_type", "outcome"],
     )
 
-    # Métricas RED (Rate, Errors, Duration)
-    http_requests_total = Counter(
-        "http_requests_total",
-        "Total de requests HTTP por método, path y status",
-        ["method", "path", "status"],
-    )
-
-    http_request_duration_seconds = Histogram(
-        "http_request_duration_seconds",
-        "Duración de requests HTTP en segundos",
-        ["method", "path"],
-        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+    scraper_circuit_transitions_total = Counter(
+        "scraper_circuit_transitions_total",
+        "Número de transiciones del circuit breaker entre estados",
+        ["from_state", "to_state"],
     )
 
     _AVAILABLE = True
@@ -64,6 +56,5 @@ except ImportError:  # pragma: no cover
     scraper_circuit_state = _NoopMetric()  # type: ignore[assignment]
     api_cost_estimate_total = _NoopMetric()  # type: ignore[assignment]
     audit_events_total = _NoopMetric()  # type: ignore[assignment]
-    http_requests_total = _NoopMetric()  # type: ignore[assignment]
-    http_request_duration_seconds = _NoopMetric()  # type: ignore[assignment]
+    scraper_circuit_transitions_total = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False

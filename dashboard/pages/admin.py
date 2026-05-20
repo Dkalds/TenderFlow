@@ -14,9 +14,20 @@ from dashboard.auth import require_admin
 from dashboard.components.states import guarded_render
 from dashboard.components.tables import data_table
 from dashboard.pages._base import PageContext
-from db.database import connect
 from db.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
 from observability.logging import get_logger
+from services.admin import (
+    list_api_keys as svc_list_api_keys,
+)
+from services.admin import (
+    list_users as svc_list_users,
+)
+from services.admin import (
+    revoke_api_key as svc_revoke_api_key,
+)
+from services.admin import (
+    set_admin_by_email,
+)
 
 log = get_logger(__name__)
 
@@ -107,13 +118,7 @@ def _render_dlq() -> None:
 
 def _render_users() -> None:
     st.markdown("#### Usuarios registrados")
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id, email, oauth_provider, display_name, created_at, is_admin "
-            "FROM users ORDER BY created_at DESC LIMIT 200"
-        )
-        cols = [d[0] for d in cur.description]
-        users = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    users = svc_list_users()
 
     if not users:
         st.info("No hay usuarios registrados aún.")
@@ -139,14 +144,12 @@ def _render_users() -> None:
         email_sel = st.selectbox("Usuario", options=user_emails, key="admin_user_sel")
     with ucol2:
         if st.button("Hacer admin", use_container_width=True):
-            with connect() as c:
-                c.execute("UPDATE users SET is_admin = 1 WHERE email = ?", (email_sel,))
+            set_admin_by_email(email_sel, is_admin=True)
             st.success(f"'{email_sel}' ahora es administrador.")
             st.rerun()
     with ucol3:
         if st.button("Quitar admin", use_container_width=True):
-            with connect() as c:
-                c.execute("UPDATE users SET is_admin = 0 WHERE email = ?", (email_sel,))
+            set_admin_by_email(email_sel, is_admin=False)
             st.success(f"'{email_sel}' ya no es administrador.")
             st.rerun()
 
@@ -159,12 +162,7 @@ def _render_users() -> None:
 def _render_api_keys() -> None:
     st.markdown("#### API Keys activas")
     try:
-        with connect() as c:
-            cur = c.execute(
-                "SELECT id, name, created_at, last_used, is_active FROM api_keys ORDER BY created_at DESC"
-            )
-            kcols = [d[0] for d in cur.description]
-            keys = [dict(zip(kcols, row, strict=False)) for row in cur.fetchall()]
+        keys = svc_list_api_keys()
     except Exception:
         st.warning("La tabla api_keys no existe todavía. Ejecuta las migraciones de BD.")
         return
@@ -223,10 +221,6 @@ def _render_api_keys() -> None:
         )
     with rcol2:
         if st.button("Revocar", type="secondary", use_container_width=True):
-            with connect() as c:
-                c.execute(
-                    "UPDATE api_keys SET is_active = 0 WHERE id = ?",
-                    (revoke_options[key_sel],),
-                )
+            svc_revoke_api_key(revoke_options[key_sel])
             st.success(f"Clave '{key_sel}' revocada.")
             st.rerun()

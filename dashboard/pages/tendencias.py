@@ -10,10 +10,137 @@ import streamlit as st
 from dashboard.components.cards import chart_card
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import empty_state, guarded_render
+from dashboard.forecast import forecast_volume
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import is_anomaly, kpi_sparkline_series, mes_pico, yoy_delta
 from dashboard.utils.format import fmt_eur
+
+
+@st.fragment
+def _render_evolution_charts(ctx: PageContext) -> None:
+    """Gráficos de evolución mensual, heatmap, waterfall e histograma.
+
+    Decorado con ``@st.fragment`` para re-renderizarse de forma
+    independiente sin forzar un rerun completo de la página cuando
+    cambia un filtro de la barra lateral.
+    """
+    df = ctx.df
+
+    if "mes" not in df.columns or df.empty:
+        empty_state(
+            "📊",
+            "Sin datos de evolución mensual",
+            "No hay licitaciones con el campo 'mes' en el rango seleccionado.",
+        )
+        return
+
+    g = (
+        df.dropna(subset=["mes"])
+        .groupby("mes")
+        .agg(n=("id_externo", "count"), importe=("importe", "sum"))
+        .reset_index()
+    )
+
+    if g.empty:
+        empty_state(
+            "📊",
+            "Sin datos de evolución mensual",
+            "No hay licitaciones con fecha de publicación en el rango seleccionado.",
+        )
+        return
+
+    c1, c2 = st.columns(2)
+    with c1, chart_card("Licitaciones por mes"):
+        fig = px.bar(
+            g,
+            x="mes",
+            y="n",
+            template=ctx.plotly_template,
+            labels={"mes": "Mes", "n": "Nº licitaciones"},
+            color_discrete_sequence=["#86BC25"],
+        )
+        fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
+        fig.update_traces(hovertemplate="<b>%{y}</b> licitaciones<br>%{x}<extra></extra>")
+        st.plotly_chart(fig, use_container_width=True)
+    with c2, chart_card("Importe acumulado por mes"):
+        fig = px.area(
+            g,
+            x="mes",
+            y="importe",
+            template=ctx.plotly_template,
+            labels={"mes": "Mes", "importe": "Importe (€)"},
+            color_discrete_sequence=["#00A3E0"],
+        )
+        fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
+        fig.update_traces(hovertemplate="<b>%{y:,.0f} €</b><br>%{x}<extra></extra>")
+        fig.update_yaxes(tickformat=",.0f")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with chart_card("Heatmap mes × estado"):
+        if not df.empty and df["mes"].notna().any():
+            hm = (
+                df.dropna(subset=["mes"])
+                .groupby([df["mes"].dt.strftime("%Y-%m"), "estado_desc"])
+                .size()
+                .reset_index(name="n")
+            )
+            hm.columns = pd.Index(["mes", "estado", "n"])
+            pivot = hm.pivot(index="estado", columns="mes", values="n").fillna(0)
+            fig = px.imshow(
+                pivot,
+                aspect="auto",
+                template=ctx.plotly_template,
+                color_continuous_scale="Greens",
+                labels=dict(color="Licitaciones"),
+            )
+            fig.update_layout(height=350, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
+
+    with chart_card(
+        "Variación mensual (mes a mes)", subtitle="Incremento/decremento respecto al mes anterior"
+    ):
+        if not g.empty and len(g) >= 2:
+            g_sorted = g.sort_values("mes")
+            g_sorted["delta"] = g_sorted["n"].diff()
+            g_sorted = g_sorted.dropna(subset=["delta"])
+            if not g_sorted.empty:
+                measures = ["relative"] * len(g_sorted)
+                fig = go.Figure(
+                    go.Waterfall(
+                        x=g_sorted["mes"].dt.strftime("%Y-%m"),
+                        y=g_sorted["delta"],
+                        measure=measures,
+                        increasing=dict(marker=dict(color="#86BC25")),
+                        decreasing=dict(marker=dict(color="#E21836")),
+                        connector=dict(line=dict(color="rgba(255,255,255,0.08)", width=1)),
+                        textposition="outside",
+                        text=[f"{int(v):+d}" for v in g_sorted["delta"]],
+                    )
+                )
+                fig.update_layout(
+                    template=ctx.plotly_template,
+                    height=350,
+                    margin=dict(t=20, b=10, l=10, r=10),
+                )
+                fig.update_yaxes(title="Δ Licitaciones")
+                st.plotly_chart(fig, use_container_width=True)
+
+    with chart_card("Distribución de importes", subtitle="Escala logarítmica"):
+        if df["importe"].notna().any():
+            fig = px.histogram(
+                df.dropna(subset=["importe"]).assign(
+                    importe_log=lambda x: x["importe"].clip(lower=1)
+                ),
+                x="importe_log",
+                log_x=True,
+                nbins=40,
+                template=ctx.plotly_template,
+                color_discrete_sequence=["#86BC25"],
+                labels={"importe_log": "Importe (€, log)"},
+            )
+            fig.update_layout(height=320, margin=dict(t=20, b=10, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
 
 
 @guarded_render
@@ -97,108 +224,59 @@ def render(ctx: PageContext) -> None:
 
         st.markdown("")
 
-    g = (
-        df.dropna(subset=["mes"])
-        .groupby("mes")
-        .agg(n=("id_externo", "count"), importe=("importe", "sum"))
-        .reset_index()
-    )
+    # Gráficos de evolución mensual — fragmento independiente
+    _render_evolution_charts(ctx)
 
-    if g.empty:
-        empty_state(
-            "📊",
-            "Sin datos de evolución mensual",
-            "No hay licitaciones con fecha de publicación en el rango seleccionado.",
-        )
-    else:
-        c1, c2 = st.columns(2)
-        with c1, chart_card("Licitaciones por mes"):
-            fig = px.bar(
-                g,
-                x="mes",
-                y="n",
-                template=ctx.plotly_template,
-                labels={"mes": "Mes", "n": "Nº licitaciones"},
-                color_discrete_sequence=["#86BC25"],
-            )
-            fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
-            fig.update_traces(hovertemplate="<b>%{y}</b> licitaciones<br>%{x}<extra></extra>")
-            st.plotly_chart(fig, use_container_width=True)
-        with c2, chart_card("Importe acumulado por mes"):
-            fig = px.area(
-                g,
-                x="mes",
-                y="importe",
-                template=ctx.plotly_template,
-                labels={"mes": "Mes", "importe": "Importe (€)"},
-                color_discrete_sequence=["#00A3E0"],
-            )
-            fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10))
-            fig.update_traces(hovertemplate="<b>%{y:,.0f} €</b><br>%{x}<extra></extra>")
-            fig.update_yaxes(tickformat=",.0f")
-            st.plotly_chart(fig, use_container_width=True)
-
-    with chart_card("Heatmap mes × estado"):
-        if not df.empty and df["mes"].notna().any():
-            hm = (
-                df.dropna(subset=["mes"])
-                .groupby([df["mes"].dt.strftime("%Y-%m"), "estado_desc"])
-                .size()
-                .reset_index(name="n")
-            )
-            hm.columns = pd.Index(["mes", "estado", "n"])
-            pivot = hm.pivot(index="estado", columns="mes", values="n").fillna(0)
-            fig = px.imshow(
-                pivot,
-                aspect="auto",
-                template=ctx.plotly_template,
-                color_continuous_scale="Greens",
-                labels=dict(color="Licitaciones"),
-            )
-            fig.update_layout(height=350, margin=dict(t=20, b=10, l=10, r=10))
-            st.plotly_chart(fig, use_container_width=True)
-
+    # ── Previsión de volumen (ExponentialSmoothing / fallback lineal) ─────
     with chart_card(
-        "Variación mensual (mes a mes)", subtitle="Incremento/decremento respecto al mes anterior"
+        "Previsión de licitaciones (6 meses)",
+        subtitle="Proyección basada en suavizado exponencial. Banda = ±1.5σ histórico.",
     ):
-        if not g.empty and len(g) >= 2:
-            g_sorted = g.sort_values("mes")
-            g_sorted["delta"] = g_sorted["n"].diff()
-            g_sorted = g_sorted.dropna(subset=["delta"])
-            if not g_sorted.empty:
-                measures = ["relative"] * len(g_sorted)
-                fig = go.Figure(
-                    go.Waterfall(
-                        x=g_sorted["mes"].dt.strftime("%Y-%m"),
-                        y=g_sorted["delta"],
-                        measure=measures,
-                        increasing=dict(marker=dict(color="#86BC25")),
-                        decreasing=dict(marker=dict(color="#E21836")),
-                        connector=dict(line=dict(color="rgba(255,255,255,0.08)", width=1)),
-                        textposition="outside",
-                        text=[f"{int(v):+d}" for v in g_sorted["delta"]],
+        fc = forecast_volume(ctx.df_full, months_ahead=6, metric="count")
+        if fc.empty:
+            st.info("Datos insuficientes para generar previsión (mínimo 3 meses de histórico).")
+        else:
+            hist_fc = fc[fc["tipo"] == "histórico"]
+            fcast = fc[fc["tipo"] == "forecast"]
+            fig_fc = go.Figure()
+            fig_fc.add_trace(
+                go.Scatter(
+                    x=hist_fc["mes"],
+                    y=hist_fc["valor"],
+                    mode="lines+markers",
+                    name="Histórico",
+                    line=dict(color="#86BC25", width=2),
+                    marker=dict(size=5),
+                )
+            )
+            if not fcast.empty:
+                # Banda de confianza
+                fig_fc.add_trace(
+                    go.Scatter(
+                        x=pd.concat([fcast["mes"], fcast["mes"].iloc[::-1]]),
+                        y=pd.concat([fcast["upper"], fcast["lower"].iloc[::-1]]),
+                        fill="toself",
+                        fillcolor="rgba(0,163,224,0.15)",
+                        line=dict(color="rgba(0,0,0,0)"),
+                        name="Banda ±1.5σ",
+                        showlegend=True,
                     )
                 )
-                fig.update_layout(
-                    template=ctx.plotly_template,
-                    height=350,
-                    margin=dict(t=20, b=10, l=10, r=10),
+                fig_fc.add_trace(
+                    go.Scatter(
+                        x=fcast["mes"],
+                        y=fcast["valor"],
+                        mode="lines+markers",
+                        name="Previsión",
+                        line=dict(color="#00A3E0", width=2, dash="dash"),
+                        marker=dict(size=6, symbol="diamond"),
+                    )
                 )
-                fig.update_yaxes(title="Δ Licitaciones")
-                st.plotly_chart(fig, use_container_width=True)
-
-    with chart_card("Distribución de importes", subtitle="Escala logarítmica"):
-        if df["importe"].notna().any():
-            fig = px.histogram(
-                df.dropna(subset=["importe"]).assign(
-                    importe_log=lambda x: x["importe"].clip(lower=1)
-                ),
-                x="importe_log",
-                log_x=True,
-                nbins=40,
+            fig_fc.update_layout(
                 template=ctx.plotly_template,
-                color_discrete_sequence=["#86BC25"],
-                labels={"importe_log": "Importe (€, log)"},
+                height=340,
+                margin=dict(t=20, b=10, l=10, r=10),
+                yaxis=dict(title="Nº licitaciones"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
             )
-            fig.update_layout(height=320, margin=dict(t=20, b=10, l=10, r=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig_fc, use_container_width=True)

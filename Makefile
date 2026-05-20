@@ -1,4 +1,4 @@
-.PHONY: install dev lint format typecheck test test-all scrape scrape-daily app dashboard api doctor clean runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery
+.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily app dashboard api doctor clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery
 
 # ── Instalación ──────────────────────────────────────────────────────────
 install:
@@ -20,6 +20,9 @@ format:
 typecheck:
 	mypy .
 
+audit:
+	pip-audit --strict --desc
+
 # ── Tests ────────────────────────────────────────────────────────────────
 test:
 	pytest tests/ --ignore=tests/test_integration_e2e.py --ignore=tests/test_dashboard_smoke.py
@@ -36,12 +39,41 @@ test-smoke:
 test-perf:
 	pytest tests/test_performance.py -m slow --timeout=120
 
+# ── Tests por categoría (markers nuevos en F0) ───────────────────────────
+test-unit:
+	pytest tests/ -m "unit and not slow"
+
+test-e2e:
+	pytest tests/ -m e2e
+
+test-property:
+	pytest tests/ -m property
+
+test-load:
+	pytest tests/ -m load
+
+# ── Lockfile reproducible con hashes (uv) ────────────────────────────────
+# Requiere uv instalado (https://github.com/astral-sh/uv).
+# Genera requirements.txt y requirements-dev.txt con --generate-hashes.
+lock:
+	uv pip compile requirements.in -o requirements.txt --generate-hashes --quiet
+	uv pip compile requirements-dev.in -o requirements-dev.txt --generate-hashes --quiet
+
+lock-hashes: lock
+
 # ── Scraper ──────────────────────────────────────────────────────────────
 scrape:
 	python -m scheduler.run_update --backfill $(YEAR) $(MONTH)
 
 scrape-daily:
 	python -m scheduler.run_update
+
+# ── KPIs ─────────────────────────────────────────────────────────────────
+kpi:
+	python -m scheduler.kpi_precompute
+
+kpi-export-parquet:
+	python -m scheduler.kpi_precompute --export-parquet $(or $(PARQUET_DIR),data/parquet)
 
 # ── Dashboard / API ──────────────────────────────────────────────────────
 ## Alias principal — arranca el dashboard (equivalente a 'make dashboard')

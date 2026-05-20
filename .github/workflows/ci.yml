@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["master", "main"]
+    branches: ["master", "main", "develop"]
   pull_request:
-    branches: ["master", "main"]
+    branches: ["master", "main", "develop"]
 
 permissions:
   contents: read
@@ -38,7 +38,6 @@ jobs:
         run: ruff format --check .
 
       - name: Type check (mypy)
-        continue-on-error: true
         run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config/ api/ shared/
 
   test:
@@ -132,7 +131,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Audit dependencies
-        run: pip-audit -r requirements.txt
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2024-277
 
   migrations-dryrun:
     name: Alembic migrations dry-run
@@ -158,8 +157,56 @@ jobs:
           head -n 200 /tmp/migrations.sql
           test -s /tmp/migrations.sql
 
+  migrations-rollback:
+    name: Alembic migrations rollback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Run migration rollback tests
+        run: pytest tests/test_migrations_rollback.py -v --no-cov
+
+  bandit:
+    name: SAST (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit
+        # Lee la configuración de [tool.bandit] en pyproject.toml
+        run: |
+          bandit -c pyproject.toml -r api db scraper scheduler dashboard shared config \
+            --format json --output bandit-report.json || true
+          bandit -c pyproject.toml -r api db scraper scheduler dashboard shared config
+
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
   docker-build:
-    name: Docker build
+    name: Docker build + Trivy scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -170,3 +217,22 @@ jobs:
       - name: Smoke test (image starts)
         run: |
           docker run --rm --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"
+
+      - name: Trivy vulnerability scan (image)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: "licitaciones-sap:ci"
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          # Fichero de excepciones documentadas (falsos positivos / sin fix disponible)
+          trivyignores: .trivyignore
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-results
+          path: trivy-results.sarif

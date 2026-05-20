@@ -155,6 +155,56 @@ class Settings(BaseSettings):
     DRAMATIQ_BROKER_URL: str = ""
 
     # ── Validators ───────────────────────────────────────────────────────
+
+    @field_validator("ML_CONFIDENCE_THRESHOLD", mode="before")
+    @classmethod
+    def _validate_ml_threshold(cls, v: object) -> float:
+        val = float(v)  # type: ignore[arg-type]
+        if not (0.0 <= val <= 1.0):
+            raise ValueError("ML_CONFIDENCE_THRESHOLD debe estar entre 0.0 y 1.0")
+        return val
+
+    @field_validator("OTEL_SAMPLE_RATIO", mode="before")
+    @classmethod
+    def _validate_otel_sample_ratio(cls, v: object) -> float:
+        val = float(v)  # type: ignore[arg-type]
+        if not (0.0 <= val <= 1.0):
+            raise ValueError("OTEL_SAMPLE_RATIO debe estar entre 0.0 y 1.0")
+        return val
+
+    @field_validator("REQUEST_TIMEOUT", mode="before")
+    @classmethod
+    def _validate_request_timeout(cls, v: object) -> int:
+        val = int(v)  # type: ignore[arg-type]
+        if val <= 0:
+            raise ValueError("REQUEST_TIMEOUT debe ser > 0")
+        return val
+
+    @field_validator("ALERT_SMTP_PORT", mode="before")
+    @classmethod
+    def _validate_smtp_port(cls, v: object) -> int:
+        val = int(v)  # type: ignore[arg-type]
+        if not (1 <= val <= 65535):
+            raise ValueError("ALERT_SMTP_PORT debe estar entre 1 y 65535")
+        return val
+
+    @field_validator("DB_POOL_SIZE", mode="before")
+    @classmethod
+    def _validate_pool_size(cls, v: object) -> int:
+        val = int(v)  # type: ignore[arg-type]
+        if val < 1:
+            raise ValueError("DB_POOL_SIZE debe ser >= 1")
+        return val
+
+    @model_validator(mode="after")
+    def _validate_ml_uncertainty_range(self) -> Settings:
+        if self.ML_UNCERTAINTY_LO >= self.ML_UNCERTAINTY_HI:
+            raise ValueError(
+                f"ML_UNCERTAINTY_LO ({self.ML_UNCERTAINTY_LO}) debe ser menor que "
+                f"ML_UNCERTAINTY_HI ({self.ML_UNCERTAINTY_HI})"
+            )
+        return self
+
     @model_validator(mode="after")
     def _set_derived_paths(self) -> Settings:
         if self.DB_PATH is None:
@@ -192,6 +242,51 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SIGNING_KEY es obligatorio en ENV=prod para firmar tokens CSRF/OAuth. "
                 'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_api_hmac_secret(self) -> Settings:
+        """En producción, exigir HMAC secret robusto para API keys."""
+        if self.ENV == "prod":
+            if not self.API_HMAC_SECRET:
+                raise ValueError(
+                    "API_HMAC_SECRET es obligatorio en ENV=prod para hashear API keys con HMAC. "
+                    'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
+                )
+            if len(self.API_HMAC_SECRET) < 32:
+                raise ValueError(
+                    "API_HMAC_SECRET demasiado corto. Usa al menos 32 caracteres "
+                    "(recomendado: secrets.token_hex(32))."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_cors_origins(self) -> Settings:
+        """En producción, alertar si CORS_ALLOWED_ORIGINS está vacío."""
+        if self.ENV == "prod" and not self.CORS_ALLOWED_ORIGINS:
+            warnings.warn(
+                "CORS_ALLOWED_ORIGINS está vacío en ENV=prod. Todas las solicitudes "
+                "cross-origin serán bloqueadas. Configura los orígenes permitidos: "
+                'CORS_ALLOWED_ORIGINS="https://dashboard.example.com"',
+                stacklevel=2,
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_oauth_domains(self) -> Settings:
+        """En producción, alertar si no hay restricción de dominios/emails OAuth."""
+        if (
+            self.ENV == "prod"
+            and self.GOOGLE_CLIENT_ID
+            and not self.OAUTH_ALLOWED_DOMAINS
+            and not self.OAUTH_ALLOWED_EMAILS
+        ):
+            warnings.warn(
+                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
+                "OAuth habilitado en ENV=prod. Cualquier cuenta Google podrá acceder. "
+                "Configura al menos uno de ellos para restringir el acceso.",
+                stacklevel=2,
             )
         return self
 

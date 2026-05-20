@@ -156,3 +156,95 @@ def build_forecast_df(
         labels=["Ya vencido", "<3 meses", "3-6 meses", "6-12 meses", ">12 meses"],
     )
     return df.sort_values("fecha_fin_estimada")
+
+
+def forecast_volume(
+    df: pd.DataFrame,
+    months_ahead: int = 6,
+    metric: str = "count",
+) -> pd.DataFrame:
+    """Pronostica el volumen mensual de licitaciones usando suavizado exponencial.
+
+    Args:
+        df: DataFrame con columna ``fecha_publicacion``.
+        months_ahead: Número de meses a proyectar.
+        metric: ``"count"`` (número de licitaciones) o ``"sum"`` (importe total).
+
+    Returns:
+        DataFrame con columnas ``mes``, ``valor``, ``tipo`` ("histórico" | "forecast"),
+        y ``lower``/``upper`` (banda de confianza aproximada, solo para forecast).
+        Devuelve DataFrame vacío si hay <3 meses de histórico.
+    """
+    if df.empty or "fecha_publicacion" not in df.columns:
+        return pd.DataFrame()
+
+    dates = pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True)
+    work = df.assign(_fecha=dates).dropna(subset=["_fecha"])
+    if work.empty:
+        return pd.DataFrame()
+
+    work["_mes"] = work["_fecha"].dt.to_period("M").dt.to_timestamp()
+
+    if metric == "sum":
+        hist = (
+            work.groupby("_mes")["importe"]
+            .sum()
+            .rename("valor")
+            .reset_index()
+            .rename(columns={"_mes": "mes"})
+        )
+    else:
+        hist = (
+            work.groupby("_mes")
+            .size()
+            .rename("valor")
+            .reset_index()
+            .rename(columns={"_mes": "mes"})
+        )
+
+    hist = hist.sort_values("mes").reset_index(drop=True)
+    if len(hist) < 3:
+        return pd.DataFrame()
+
+    try:
+        from statsmodels.tsa.holtwinters import ExponentialSmoothing  # type: ignore[import]
+
+        n_hist = len(hist)
+        use_seasonal = n_hist >= 24  # mínimo 2 ciclos completos
+        model = ExponentialSmoothing(
+            hist["valor"].astype(float),
+            trend="add",
+            seasonal="add" if use_seasonal else None,
+            seasonal_periods=12 if use_seasonal else None,
+            initialization_method="estimated",
+        ).fit(optimized=True, disp=False)
+        forecast_vals = model.forecast(months_ahead)
+        std_err = (hist["valor"].std() or 1.0) * 1.5  # banda ~1.5σ aproximada
+    except Exception:
+        # Fallback: regresión lineal simple
+        import numpy as np
+
+        x = np.arange(len(hist), dtype=float)
+        m, b = float(np.polyfit(x, hist["valor"].astype(float), 1))
+        future_x = np.arange(len(hist), len(hist) + months_ahead, dtype=float)
+        forecast_vals = pd.Series(m * future_x + b)
+        std_err = (hist["valor"].std() or 1.0) * 1.5
+
+    # Construir tabla de salida
+    last_mes = hist["mes"].max()
+    future_months = pd.date_range(
+        start=last_mes + pd.offsets.MonthBegin(1),
+        periods=months_ahead,
+        freq="MS",
+    )
+    fc_df = pd.DataFrame(
+        {
+            "mes": future_months,
+            "valor": forecast_vals.clip(lower=0).values,
+            "tipo": "forecast",
+            "lower": (forecast_vals - std_err).clip(lower=0).values,
+            "upper": (forecast_vals + std_err).values,
+        }
+    )
+    hist_out = hist.assign(tipo="histórico", lower=None, upper=None)
+    return pd.concat([hist_out, fc_df], ignore_index=True)

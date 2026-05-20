@@ -15,6 +15,10 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
+      # Restringe qué proxies son confiables para X-Forwarded-* en uvicorn.
+      # Ajusta en producción al rango/IP de tu reverse proxy.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+    mem_limit: 512m
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5",
              "http://localhost:8501/_stcore/health"]
@@ -38,6 +42,7 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
+    mem_limit: 256m
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5",
              "http://localhost:8080/api/v1/health"]
@@ -67,6 +72,7 @@ services:
       SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
       SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}
     entrypoint: ["python", "-m", "scheduler.loop"]
+    mem_limit: 512m
     healthcheck:
       test: ["CMD", "python", "-c",
              "import sqlite3, os; sqlite3.connect(os.environ['DB_PATH']).execute('SELECT 1').fetchone()"]
@@ -111,7 +117,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin  # pragma: allowlist secret
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-change-me-in-env}
       GF_USERS_ALLOW_SIGN_UP: "false"
     healthcheck:
       test: ["CMD-SHELL",

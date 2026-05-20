@@ -89,28 +89,28 @@ def render(ctx: PageContext) -> None:
     )
     metr_ci["cuota_pct"] = metr_ci["volumen"] / total_mercado * 100 if total_mercado else 0
 
-    def _dep_cliente(key: str) -> float:
-        s = sub_ci[sub_ci["empresa_key"] == key]["organo_contratacion"]
+    def _dep_top(s: pd.Series) -> float:
         if s.empty:
             return 0.0
         return float(s.value_counts(normalize=True).iloc[0] * 100)
 
-    metr_ci["dep_cliente_pct"] = [
-        _dep_cliente(str(k))
-        for k in sub_ci.groupby("empresa_key").groups
-        if k in top_empresas.index
-    ][: len(metr_ci)]
+    dep_pct = (
+        sub_ci.groupby("empresa_key", dropna=True)["organo_contratacion"]
+        .agg(_dep_top)
+        .rename("dep_cliente_pct")
+    )
+    metr_ci = metr_ci.merge(dep_pct, left_on="empresa_key", right_index=True, how="left")
 
     st.subheader("KPIs de posición y dominio")
     kci_cols = st.columns(len(metr_ci) if len(metr_ci) <= 5 else 5)
-    for i, (_, row_m) in enumerate(metr_ci.iterrows()):
+    for i, row_m in enumerate(metr_ci.itertuples(index=False)):
         col_i = kci_cols[i % len(kci_cols)]
         with col_i:
             st.markdown(
                 kpi_card(
-                    row_m["empresa"][:22],
-                    fmt_eur(row_m["volumen"]),
-                    delta=f"{row_m['cuota_pct']:.1f}% cuota · {row_m['contratos']} contratos",
+                    row_m.empresa[:22],
+                    fmt_eur(row_m.volumen),
+                    delta=f"{row_m.cuota_pct:.1f}% cuota · {row_m.contratos} contratos",
                     delta_up=True,
                     icon="🏢",
                 ),
@@ -195,13 +195,16 @@ def render(ctx: PageContext) -> None:
 
     # ── Treemap de especialización CPV ───────────────────────────
     st.subheader("Especialización por CPV")
-    cpv_ci = sub_ci.merge(
-        df[["id_externo", "cpv_desc"]].drop_duplicates(),
-        left_on="licitacion_id",
-        right_on="id_externo",
-        how="left",
+    # Si una licitación tiene varios CPV, los concatenamos explícitamente
+    cpv_map = (
+        df.drop_duplicates(subset=["id_externo", "cpv_desc"])
+        .groupby("id_externo")["cpv_desc"]
+        .agg(lambda x: " / ".join(sorted(set(x.dropna()))))
     )
+    cpv_ci = sub_ci.copy()
+    cpv_ci["cpv_desc"] = cpv_ci["licitacion_id"].map(cpv_map)
     cpv_ci = cpv_ci.dropna(subset=["cpv_desc", "importe_adjudicado"])
+    # Si el modelo de datos evoluciona a multi-CPV real, adaptar a explode
     if not cpv_ci.empty:
         fig = px.treemap(
             cpv_ci,
@@ -473,9 +476,9 @@ def render(ctx: PageContext) -> None:
         tabla_rows = []
         for label, col, fmt_fn in _TABLA_METRICAS:
             row_d: dict = {"Métrica": label}
-            for _, emp_row in comp_metr.iterrows():
-                val = emp_row.get(col)
-                emp_name = str(emp_row["empresa"])[:22]
+            for emp_row in comp_metr.itertuples(index=False):
+                val = getattr(emp_row, col, None)
+                emp_name = str(emp_row.empresa)[:22]
                 row_d[emp_name] = fmt_fn(val) if pd.notna(val) else "—"
             tabla_rows.append(row_d)
 
@@ -515,14 +518,14 @@ def render(ctx: PageContext) -> None:
             categories = list(_RADAR_COLS.values())
             radar_fig = go.Figure()
             colors = ctx.color_sequence
-            for idx, (_, r_row) in enumerate(radar_df.iterrows()):
-                vals = [float(r_row.get(col, 0)) for col in _RADAR_COLS]
+            for idx, r_row in enumerate(radar_df.itertuples(index=False)):
+                vals = [float(getattr(r_row, col, 0)) for col in _RADAR_COLS]
                 radar_fig.add_trace(
                     go.Scatterpolar(
                         r=[*vals, vals[0]],
                         theta=[*categories, categories[0]],
                         fill="toself",
-                        name=str(r_row["empresa"])[:25],
+                        name=str(r_row.empresa)[:25],
                         opacity=0.65,
                         line=dict(color=colors[idx % len(colors)]),
                     )
@@ -669,20 +672,22 @@ def render(ctx: PageContext) -> None:
                     f"({len(emp_proy)} contratos · "
                     f"{fmt_eur(emp_proy['importe_adjudicado'].sum())})"
                 )
-            for _, row in emp_proy.sort_values("importe_adjudicado", ascending=False).iterrows():
-                url = row.get("url_lic") or "#"
-                baja = row.get("baja_pct")
+            for row in emp_proy.sort_values("importe_adjudicado", ascending=False).itertuples(
+                index=False
+            ):
+                url = getattr(row, "url_lic", "#") or "#"
+                baja = getattr(row, "baja_pct", None)
                 baja_txt = f"{baja:.1f}% baja" if pd.notna(baja) else "—"
-                n_of = row.get("n_ofertas_recibidas")
+                n_of = getattr(row, "n_ofertas_recibidas", None)
                 n_of_txt = f"{int(n_of)} ofertas" if pd.notna(n_of) else "—"
                 fecha_adj = (
-                    row["fecha_adjudicacion"].date() if pd.notna(row["fecha_adjudicacion"]) else "—"
+                    row.fecha_adjudicacion.date() if pd.notna(row.fecha_adjudicacion) else "—"
                 )
                 top_card(
-                    amount=fmt_eur(row["importe_adjudicado"]),
-                    title=str(row["titulo"] or ""),
+                    amount=fmt_eur(row.importe_adjudicado),
+                    title=str(row.titulo or ""),
                     meta=(
-                        f"{html.escape(str(row.get('organo_contratacion', '—')))} · "
+                        f"{html.escape(str(getattr(row, 'organo_contratacion', '—')))} · "
                         f"Adj: {fecha_adj} · {baja_txt} · {n_of_txt}"
                     ),
                     url=url,

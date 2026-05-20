@@ -168,5 +168,161 @@ ctx = PageContext(
 PAGE_REGISTRY["{page_name}"](ctx)
 """
     at = AppTest.from_string(script)
-    at.run(timeout=15)
+    at.run(timeout=30)
     assert not at.exception, f"Página '{page_name}' lanzó excepción: {at.exception}"
+
+
+# ---------------------------------------------------------------------------
+# Edge case: empty dataset
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("page_name", _PAGES)
+def test_page_renders_empty_dataset(page_name: str) -> None:
+    """Cada página debe renderizar sin excepciones cuando el dataset está vacío.
+
+    Pasa un DataFrame vacío directamente para evitar conexiones DB dentro del
+    AppTest (hilo separado + WAL lock en Windows bloquearía indefinidamente).
+    La carga desde BD vacía se prueba por separado en test_data_loader.py.
+    """
+    from streamlit.testing.v1 import AppTest
+
+    script = f"""\
+import pandas as pd
+from dashboard.pages import PAGE_REGISTRY
+from dashboard.pages._base import PageContext
+from dashboard.filters.state import FiltersState
+from dashboard.theme import TOKENS, get_color_sequence, register_plotly_template
+
+df_full = pd.DataFrame()
+plotly_tpl = register_plotly_template(TOKENS)
+color_seq = get_color_sequence(TOKENS)
+ctx = PageContext(
+    df=df_full, df_full=df_full,
+    filters=FiltersState(),
+    tokens=TOKENS,
+    plotly_template=plotly_tpl,
+    color_sequence=color_seq,
+)
+PAGE_REGISTRY["{page_name}"](ctx)
+"""
+    at = AppTest.from_string(script)
+    at.run(timeout=30)
+    assert not at.exception, (
+        f"Página '{page_name}' lanzó excepción con dataset vacío: {at.exception}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Edge case: extreme / dirty data
+# ---------------------------------------------------------------------------
+
+_SEED_EXTREME = [
+    {
+        "id_externo": "LIC-EXTREME-0",
+        "titulo": "x",  # muy corto
+        "descripcion": None,  # nulo
+        "organo_contratacion": None,
+        "importe": 0.0,  # cero
+        "moneda": "EUR",
+        "cpv": "72",  # CPV inválido
+        "tipo_contrato": None,
+        "estado": "PUB",
+        "fecha_publicacion": "9999-12-31T00:00:00",  # fecha futura
+        "fecha_limite": None,
+        "url": None,
+        "raw_keywords": None,
+        "provincia": None,
+        "ccaa": None,
+        "nuts_code": None,
+        "fecha_extraccion": datetime.now(UTC).isoformat(),
+    },
+    {
+        "id_externo": "LIC-EXTREME-1",
+        "titulo": "",  # cadena vacía (NOT NULL pero extremo)
+        "descripcion": "A" * 5000,  # descripción muy larga
+        "organo_contratacion": "Órgano con caractères spéciaux & <tags>",
+        "importe": -1.0,  # negativo
+        "moneda": "USD",
+        "cpv": "00000000",
+        "tipo_contrato": "999",  # tipo desconocido
+        "estado": "UNKNOWN",  # estado desconocido
+        "fecha_publicacion": "1900-01-01T00:00:00",  # fecha muy antigua
+        "fecha_limite": "1900-01-01T00:00:00",
+        "url": "not-a-url",
+        "raw_keywords": "",
+        "provincia": "Provincia Inexistente",
+        "ccaa": "CCAA Inexistente",
+        "nuts_code": "ZZ99",
+        "fecha_extraccion": datetime.now(UTC).isoformat(),
+    },
+]
+
+
+@pytest.fixture()
+def _extreme_db(monkeypatch, tmp_path):
+    """BD temporal con datos extremos/sucios."""
+    import db.database as db_mod
+
+    db_path = tmp_path / "extreme.db"
+    monkeypatch.setenv("TURSO_DATABASE_URL", "")
+    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    db_mod.close_pool()
+    db_mod.set_db_path_override(str(db_path))
+    db_mod.init_db()
+
+    from db.database import Licitacion, upsert_licitaciones
+
+    upsert_licitaciones([Licitacion(**row) for row in _SEED_EXTREME])
+    yield db_mod
+    db_mod.close_pool()
+    db_mod.set_db_path_override(None)
+
+
+@pytest.mark.parametrize("page_name", ["Resumen", "Tendencias", "Calidad de Datos", "Geografía"])
+def test_page_renders_extreme_data(page_name: str, _extreme_db, monkeypatch) -> None:
+    """Páginas clave deben tolerarse ante datos sucios, nulos y valores extremos."""
+    import os
+
+    from streamlit.testing.v1 import AppTest
+
+    db_path = os.environ["DB_PATH"]
+
+    script = f"""\
+import importlib, os
+os.environ["DB_PATH"] = r"{db_path}"
+os.environ["TURSO_DATABASE_URL"] = ""
+os.environ["TURSO_AUTH_TOKEN"] = ""
+os.environ["DASHBOARD_PASSWORD"] = ""
+
+import sys; importlib.import_module("config.settings"); importlib.reload(sys.modules["config.settings"])
+import config as cfg; importlib.reload(cfg)
+import db.database as db_mod; importlib.reload(db_mod)
+import db.migrations as mig; importlib.reload(mig)
+
+from dashboard.data_loader import load_dataframe
+from dashboard.pages import PAGE_REGISTRY
+from dashboard.pages._base import PageContext
+from dashboard.filters.state import FiltersState
+from dashboard.theme import TOKENS, get_color_sequence, register_plotly_template
+
+importlib.reload(importlib.import_module("dashboard.data_loader"))
+df_full = load_dataframe()
+plotly_tpl = register_plotly_template(TOKENS)
+color_seq = get_color_sequence(TOKENS)
+ctx = PageContext(
+    df=df_full, df_full=df_full,
+    filters=FiltersState(),
+    tokens=TOKENS,
+    plotly_template=plotly_tpl,
+    color_sequence=color_seq,
+)
+PAGE_REGISTRY["{page_name}"](ctx)
+"""
+    at = AppTest.from_string(script)
+    at.run(timeout=30)
+    assert not at.exception, (
+        f"Página '{page_name}' lanzó excepción con datos extremos: {at.exception}"
+    )

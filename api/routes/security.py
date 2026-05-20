@@ -9,8 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
-from api.auth import AuthContext, require_api_key
-from db.database import connect, now_utc_iso
+from api.auth import AuthContext, require_scope
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -59,22 +58,9 @@ async def csp_report(request: Request) -> None:
     )
 
     # Persistir en tabla si existe
-    try:
-        now = now_utc_iso()
-        with connect() as c:
-            tables = {
-                r[0]
-                for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-            }
-            if "csp_violations" in tables:
-                c.execute(
-                    "INSERT INTO csp_violations "
-                    "(blocked_uri, violated_directive, document_uri, source_file, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (blocked_uri, violated_directive, document_uri, source_file, now),
-                )
-    except Exception as exc:
-        log.debug("csp_violation_persist_failed", error=str(exc))
+    from services.security import store_csp_violation
+
+    store_csp_violation(blocked_uri, violated_directive, document_uri, source_file)
 
 
 # ── GitHub Secret Scanning partner endpoint ───────────────────────────────────
@@ -173,7 +159,7 @@ async def leaked_key_notification(
     summary="Verificar integridad del audit log (hash chain)",
     tags=["admin"],
 )
-async def verify_audit_integrity(auth: AuthContext = Depends(require_api_key)) -> dict:
+async def verify_audit_integrity(auth: AuthContext = Depends(require_scope("admin"))) -> dict:
     """Recorre el audit log y verifica que el hash chain no ha sido alterado.
 
     Requiere autenticación + scope ``admin``.
@@ -181,8 +167,6 @@ async def verify_audit_integrity(auth: AuthContext = Depends(require_api_key)) -
     Returns:
         ``{"valid": bool, "checked": int, "first_tampered_id": int|None, "error": str|None}``
     """
-    from api.auth import require_scope
     from db.audit import verify_hash_chain
 
-    require_scope(auth, "admin")
     return verify_hash_chain()

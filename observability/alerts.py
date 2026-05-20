@@ -251,23 +251,14 @@ def check_daily_lag() -> None:
 
 def check_daily_consecutive_failures() -> None:
     """Alerta si los últimos N runs del carril diario fallaron todos."""
-    from db.database import connect
+    from services.extraction_runs import load_recent_daily_statuses
 
-    try:
-        with connect() as c:
-            rows = c.execute(
-                "SELECT status FROM extraction_runs "
-                "WHERE notas LIKE 'daily|%' "
-                "ORDER BY started_at DESC LIMIT ?",
-                [_DAILY_MAX_CONSECUTIVE_FAILURES],
-            ).fetchall()
-    except Exception:
+    statuses = load_recent_daily_statuses(_DAILY_MAX_CONSECUTIVE_FAILURES)
+
+    if len(statuses) < _DAILY_MAX_CONSECUTIVE_FAILURES:
         return
 
-    if len(rows) < _DAILY_MAX_CONSECUTIVE_FAILURES:
-        return
-
-    if all(r[0] == "error" for r in rows):
+    if all(s == "error" for s in statuses):
         notify(
             AlertLevel.ERROR,
             f"Feed diario: {_DAILY_MAX_CONSECUTIVE_FAILURES} fallos consecutivos",

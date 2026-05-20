@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from db.database import connect
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -30,17 +29,12 @@ _KS_ALPHA = 0.05
 
 def _load_window(days: int, offset_days: int = 0) -> pd.DataFrame:
     """Carga licitaciones de los últimos N días (con offset)."""
-    cutoff = (datetime.now(UTC) - timedelta(days=offset_days + days)).isoformat()[:10]
-    end = (datetime.now(UTC) - timedelta(days=offset_days)).isoformat()[:10]
-    with connect() as c:
-        cur = c.execute(
-            "SELECT importe, cpv, ccaa, tecnologia, estado "
-            "FROM licitaciones "
-            "WHERE fecha_publicacion >= ? AND fecha_publicacion <= ?",
-            (cutoff, end),
-        )
-        cols = [d[0] for d in cur.description]
-        return pd.DataFrame(cur.fetchall(), columns=cols)
+    from services.licitaciones import load_drift_window
+
+    rows = load_drift_window(days, offset_days)
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
 
 
 def _ks_test(ref: pd.Series, cur: pd.Series) -> dict[str, Any]:

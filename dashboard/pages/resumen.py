@@ -35,8 +35,11 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
+@st.fragment
 def _render_top_licitaciones(df: pd.DataFrame, adj_resumen: pd.DataFrame) -> None:
     """Renderiza el ranking principal enriquecido con adjudicaciones."""
+    if "importe" not in df.columns or df.empty:
+        return
     top = df.dropna(subset=["importe"]).nlargest(10, "importe")
 
     if not adj_resumen.empty:
@@ -50,10 +53,10 @@ def _render_top_licitaciones(df: pd.DataFrame, adj_resumen: pd.DataFrame) -> Non
             how="left",
         )
 
-    for _, row in top.iterrows():
-        empresa = row.get("nombre_canonico") or ""
-        baja = row.get("baja_pct")
-        fecha_adj = row.get("fecha_adjudicacion")
+    for row in top.itertuples(index=False):
+        empresa = getattr(row, "nombre_canonico", None) or ""
+        baja = getattr(row, "baja_pct", None)
+        fecha_adj = getattr(row, "fecha_adjudicacion", None)
         parts_adj = []
         if empresa:
             parts_adj.append(f"Empresa: {empresa}")
@@ -64,18 +67,18 @@ def _render_top_licitaciones(df: pd.DataFrame, adj_resumen: pd.DataFrame) -> Non
         adj_line = " | ".join(parts_adj)
 
         meta_base = (
-            f"{row.get('organo_contratacion') or '-'} | "
-            f"{row.get('estado_desc') or '-'} | "
-            f"{row.get('tipo_proyecto') or '-'}"
+            f"{getattr(row, 'organo_contratacion', None) or '-'} | "
+            f"{getattr(row, 'estado_desc', None) or '-'} | "
+            f"{getattr(row, 'tipo_proyecto', None) or '-'}"
         )
         meta = f"{meta_base} | {adj_line}" if adj_line else meta_base
 
         top_card(
-            amount=fmt_eur(row["importe"]),
-            title=str(row["titulo"]),
+            amount=fmt_eur(row.importe),
+            title=str(row.titulo),
             meta=meta,
-            url=row.get("url"),
-            highlight=str(row.get("modulos_str") or "-"),
+            url=getattr(row, "url", None),
+            highlight=str(getattr(row, "modulos_str", None) or "-"),
         )
 
 
@@ -99,17 +102,19 @@ def render(ctx: PageContext) -> None:
                 f"📬 {len(_nuevas)} nueva{'s' if len(_nuevas) != 1 else ''} licitaci{'ones' if len(_nuevas) != 1 else 'ón'} desde tu última visita",
                 expanded=False,
             ):
-                for _, _row in (
-                    _nuevas.sort_values("fecha_publicacion", ascending=False).head(10).iterrows()
+                for _row in (
+                    _nuevas.sort_values("fecha_publicacion", ascending=False)
+                    .head(10)
+                    .itertuples(index=False)
                 ):
                     _fstr = (
-                        _row["fecha_publicacion"].strftime("%d/%m/%Y")
-                        if pd.notna(_row["fecha_publicacion"])
+                        _row.fecha_publicacion.strftime("%d/%m/%Y")
+                        if pd.notna(_row.fecha_publicacion)
                         else "—"
                     )
                     st.markdown(
-                        f"**{_fstr}** · {fmt_eur(_row.get('importe'))} · "
-                        f"{_row.get('estado_desc', '—')} — {str(_row.get('titulo', '—'))[:80]}"
+                        f"**{_fstr}** · {fmt_eur(getattr(_row, 'importe', None))} · "
+                        f"{getattr(_row, 'estado_desc', '—')} — {str(getattr(_row, 'titulo', '—'))[:80]}"
                     )
                 if len(_nuevas) > 10:
                     st.caption(f"... y {len(_nuevas) - 10} más. Usa los filtros para explorarlas.")
@@ -465,10 +470,10 @@ def _render_timeline(df: pd.DataFrame, ctx: PageContext) -> None:
         recientes_sorted = recientes.sort_values("fecha_publicacion", ascending=False)
         options = recientes_sorted["id_externo"].tolist()
         labels = [
-            f"{row['fecha_publicacion'].strftime('%d/%m')} · "
-            f"{fmt_eur(row['importe'])} · "
-            f"{str(row['titulo'])[:70]}"
-            for _, row in recientes_sorted.iterrows()
+            f"{row.fecha_publicacion.strftime('%d/%m')} · "
+            f"{fmt_eur(row.importe)} · "
+            f"{str(row.titulo)[:70]}"
+            for row in recientes_sorted.itertuples(index=False)
         ]
         label_map = dict(zip(labels, options, strict=False))
 

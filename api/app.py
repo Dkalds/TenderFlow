@@ -14,6 +14,8 @@ Expone los endpoints bajo ``/api/v1/``:
 * ``POST /api/v1/feedback``           — requiere X-API-Key
 * ``POST|GET|DELETE /api/v1/webhooks``— requiere X-API-Key + scope
 * ``GET|DELETE /api/v1/me``           — GDPR
+* ``POST /api/v1/exports``            — requiere X-API-Key — crea job PDF async
+* ``GET /api/v1/exports/{id}``        — requiere X-API-Key — descarga PDF
 
 Arrancar el servidor::
 
@@ -28,21 +30,26 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.errors import register_exception_handlers
 from api.middleware import (
     AccessLogMiddleware,
     CostTrackingMiddleware,
+    ETagMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
+from api.routes.exports import router as exports_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
 from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
+from api.routes.models import router as models_router
 from api.routes.security import router as security_router
+from api.routes.watchlist_feed import router as watchlist_feed_router
 from api.routes.webhooks import router as webhooks_router
 from config import settings
 from db.database import init_db
@@ -62,7 +69,7 @@ configure_tracing(service_name="licitaciones-api")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Inicializa la DB al arrancar y hace graceful shutdown al parar.
 
     - Startup: ejecuta migraciones y crea tablas. Falla rápido en prod si hay error.
@@ -137,6 +144,10 @@ app = FastAPI(
         {"name": "feedback", "description": "Feedback de relevancia para active learning"},
         {"name": "webhooks", "description": "Suscripciones a notificaciones de watchlist"},
         {"name": "meta", "description": "Metadatos: valores válidos para filtros"},
+        {
+            "name": "models",
+            "description": "Model registry: versiones activas, histórico, activación",
+        },
         {"name": "me", "description": "GDPR: exportar y eliminar mis datos"},
     ],
     contact={
@@ -150,15 +161,31 @@ app = FastAPI(
 # Registrar exception handlers RFC 7807
 register_exception_handlers(app)
 
-# OpenTelemetry auto-instrumentación HTTP (no-op si OTEL_EXPORTER_OTLP_ENDPOINT vacío)
+# Prometheus auto-instrumentación HTTP — métricas RED estándar por handler
+# (reemplaza los contadores manuales que existían en AccessLogMiddleware)
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator as _PFI
+
+    _PFI(
+        should_group_status_codes=False,
+        excluded_handlers=[r"/api/v1/health.*", r"/metrics"],
+    ).instrument(app)
+    log.info("prometheus_fastapi_instrumentator_enabled")
+except ImportError:
+    log.debug("prometheus_fastapi_instrumentator_unavailable")
+
+# OpenTelemetry auto-instrumentación HTTP (solo si OTEL_EXPORTER_OTLP_ENDPOINT está configurado)
 try:
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-    FastAPIInstrumentor.instrument_app(
-        app,
-        excluded_urls="health.*,metrics",
-    )
-    log.info("otel_fastapi_instrumentor_enabled")
+    if settings.OTEL_EXPORTER_OTLP_ENDPOINT:
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls="health.*,metrics",
+        )
+        log.info("otel_fastapi_instrumentor_enabled")
+    else:
+        log.debug("otel_fastapi_instrumentor_skipped", reason="OTEL_EXPORTER_OTLP_ENDPOINT_not_set")
 except ImportError:
     log.debug("otel_fastapi_instrumentor_unavailable")
 
@@ -196,6 +223,34 @@ app.add_middleware(
 # Security headers OWASP
 app.add_middleware(SecurityHeadersMiddleware)
 
+# ETag para respuestas GET JSON (cache condicional, F4)
+app.add_middleware(ETagMiddleware)
+
+# Request body size limit — protege contra payloads abusivos (1 MB máx.)
+try:
+    from starlette.middleware.base import BaseHTTPMiddleware as _BHTM
+
+    class _MaxBodyMiddleware(_BHTM):
+        """Rechaza requests con body > max_bytes antes de procesarlos."""
+
+        _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+
+        async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+            if request.headers.get("content-length"):
+                try:
+                    if int(request.headers["content-length"]) > self._MAX_BYTES:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"detail": "Request body demasiado grande (máx. 1 MB)."},
+                        )
+                except ValueError:
+                    pass
+            return await call_next(request)
+
+    app.add_middleware(_MaxBodyMiddleware)
+except Exception:
+    pass
+
 # Compresión Brotli / GZip
 try:
     from brotli_asgi import BrotliMiddleware
@@ -231,7 +286,10 @@ app.include_router(feedback_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(me_router, prefix="/api/v1")
 app.include_router(meta_router, prefix="/api/v1")
+app.include_router(models_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
+app.include_router(watchlist_feed_router, prefix="/api/v1")
+app.include_router(exports_router, prefix="/api/v1")
 
 # ---------------------------------------------------------------------------
 # Prometheus /metrics — protegido por IP allowlist o scope metrics:read
@@ -261,22 +319,14 @@ try:
                     return Response(status_code=401, content="Unauthorized")
                 # Validación síncrona mínima (endpoint no async)
                 from api.auth import hash_api_key
-                from db.database import connect_read
+                from services import auth as auth_service
 
                 key_hash = hash_api_key(api_key_raw)
-                try:
-                    with connect_read() as c:
-                        row = c.execute(
-                            "SELECT scopes FROM api_keys WHERE key_hash = ? AND is_active = 1",
-                            (key_hash,),
-                        ).fetchone()
-                    if not row:
-                        return Response(status_code=401, content="Unauthorized")
-                    scopes = str(row[0] or "*")
-                    if "*" not in scopes and "metrics:read" not in scopes:
-                        return Response(status_code=403, content="Forbidden")
-                except Exception:
+                scopes = auth_service.get_active_scopes(key_hash)
+                if scopes is None:
                     return Response(status_code=401, content="Unauthorized")
+                if "*" not in scopes and "metrics:read" not in scopes:
+                    return Response(status_code=403, content="Forbidden")
 
             return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

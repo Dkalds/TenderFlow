@@ -34,3 +34,5 @@ argon2-cffi>=23.1.0,<25
 alembic>=1.13.0,<2
 # API REST
 fastapi>=0.110.0,<1
+# Forecasting — suavizado exponencial (ExponentialSmoothing) para tendencias
+statsmodels>=0.14.0,<1

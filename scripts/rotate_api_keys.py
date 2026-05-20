@@ -22,7 +22,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 
 from api.auth import _hash_key, create_api_key
-from db.database import connect
+from db.database import connect, get_table_columns
 
 
 def rotate(name: str, grace_days: int) -> int:
@@ -39,7 +39,7 @@ def rotate(name: str, grace_days: int) -> int:
 
     # Marcar las claves activas existentes con ese nombre como expirando
     with connect() as c:
-        cols = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
+        cols = get_table_columns(c, "api_keys")
         if "expires_at" not in cols:
             print(
                 "ERROR: la columna 'expires_at' no existe. Ejecuta: alembic upgrade head",

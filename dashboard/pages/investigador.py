@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import html as _html
 import io
-import os
 import re
 import time
 from collections.abc import Iterator
@@ -38,8 +37,19 @@ from config import settings
 from dashboard.components.states import guarded_render
 from dashboard.pages._base import PageContext
 from dashboard.session_keys import INV_HISTORY, INV_Q
-from db.database import connect
 from observability.logging import get_logger
+from services.investigador.search_engine import (
+    fetch_docs as _svc_fetch_docs,
+)
+from services.investigador.search_engine import (
+    fts5_search as _svc_fts5,
+)
+from services.investigador.search_engine import (
+    hybrid_rerank as _svc_rerank,
+)
+from services.investigador.search_engine import (
+    like_search as _svc_like,
+)
 
 log = get_logger(__name__)
 
@@ -153,49 +163,13 @@ def _faiss_search(question: str, top_k: int) -> list[tuple[str, float]]:
 
 
 def _fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
-    """Búsqueda léxica FTS5/BM25. Devuelve (id_externo, score ∈ [0,1]) normalizado."""
-    escaped = _escape_fts5(question)
-    try:
-        with connect() as c:
-            cur = c.execute(
-                "SELECT l.id_externo, bm25(licitaciones_fts) AS bm25_score "
-                "FROM licitaciones_fts fts "
-                "JOIN licitaciones l ON l.id_externo = fts.id_externo "
-                f"WHERE licitaciones_fts MATCH ? ORDER BY bm25_score LIMIT {top_k * 2}",
-                [escaped],
-            )
-            rows = cur.fetchall()
-    except Exception as exc:
-        log.warning("investigador.fts5_failed", error=str(exc))
-        return []
-
-    if not rows:
-        return []
-    # BM25 from SQLite FTS5 is negative: more negative = more relevant
-    raw_scores = [abs(float(r[1])) for r in rows]
-    max_s = max(raw_scores) if raw_scores else 1.0
-    return [(r[0], s / max_s) for r, s in zip(rows, raw_scores, strict=False)]
+    """Búsqueda léxica FTS5/BM25 — delegada al servicio."""
+    return _svc_fts5(question, top_k)
 
 
 def _like_search(question: str, top_k: int) -> list[tuple[str, float]]:
-    """LIKE fallback para cuando FTS5 no está disponible."""
-    token = next(
-        (w for w in question.split() if len(w) >= 4),
-        question.split()[0] if question.split() else "",
-    )
-    if not token:
-        return []
-    try:
-        with connect() as c:
-            cur = c.execute(
-                "SELECT id_externo FROM licitaciones "
-                "WHERE titulo LIKE ? OR descripcion LIKE ? LIMIT ?",
-                [f"%{token}%", f"%{token}%", top_k],
-            )
-            return [(r[0], 0.20) for r in cur.fetchall()]
-    except Exception as exc:
-        log.warning("investigador.like_failed", error=str(exc))
-        return []
+    """LIKE fallback — delegado al servicio."""
+    return _svc_like(question, top_k)
 
 
 def _hybrid_rerank(
@@ -204,39 +178,13 @@ def _hybrid_rerank(
     alpha: float = 0.70,
     top_k: int = 10,
 ) -> list[tuple[str, float]]:
-    """Reranking híbrido: alpha·FAISS + (1-alpha)·FTS5."""
-    faiss_map = dict(faiss_hits)
-    fts_map = dict(fts_hits)
-    all_ids = set(faiss_map) | set(fts_map)
-    combined = {
-        id_: alpha * faiss_map.get(id_, 0.0) + (1 - alpha) * fts_map.get(id_, 0.0)
-        for id_ in all_ids
-    }
-    return sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]
+    """Reranking híbrido — delegado al servicio."""
+    return _svc_rerank(faiss_hits, fts_hits, alpha=alpha, top_k=top_k)
 
 
 def _fetch_docs(ids: list[str], allowed_ids: set[str] | None) -> dict[str, dict]:
-    """Recupera metadatos de la BD para una lista de IDs, filtrando por allowed_ids."""
-    if not ids:
-        return {}
-    if allowed_ids is not None:
-        ids = [i for i in ids if i in allowed_ids]
-    if not ids:
-        return {}
-    placeholders = ",".join("?" for _ in ids)
-    try:
-        with connect() as c:
-            cur = c.execute(
-                f"SELECT id_externo, titulo, organo_contratacion, importe, "
-                f"       descripcion, url, fecha_publicacion, ccaa, estado "
-                f"FROM licitaciones WHERE id_externo IN ({placeholders})",
-                ids,
-            )
-            cols = [d[0] for d in cur.description]
-            return {r[0]: dict(zip(cols, r, strict=False)) for r in cur.fetchall()}
-    except Exception as exc:
-        log.warning("investigador.fetch_docs_failed", error=str(exc))
-        return {}
+    """Recupera metadatos — delegado al servicio."""
+    return _svc_fetch_docs(ids, allowed_ids)
 
 
 def _rag_query(
@@ -291,72 +239,11 @@ def _rag_query(
 # ── LLM ─────────────────────────────────────────────────────────────────────
 
 
-def _get_api_key() -> str:
-    """Lee OPENAI_API_KEY desde config.secrets con fallback a os.environ."""
-    try:
-        from config.secrets import get_secret
-
-        key = get_secret("OPENAI_API_KEY")
-        if key:
-            return key
-    except Exception:
-        pass
-    return os.environ.get("OPENAI_API_KEY", "")
-
-
-def _build_prompt(question: str, context_docs: list[dict], keywords: list[str]) -> str:
-    context = "\n\n".join(
-        f"[{d['id_externo']}] {d.get('titulo', '')}\n"
-        f"Órgano: {d.get('organo_contratacion', '—')}\n"
-        f"Importe: {d.get('importe', '—')}\n"
-        f"Estado: {d.get('estado', '—')}\n"
-        f"Descripción: {_context_excerpt(d.get('descripcion'), keywords, 300)}"
-        for d in context_docs
-    )
-    return (
-        "Eres un asistente experto en licitaciones del sector público español. "
-        "Responde ÚNICAMENTE con información de los expedientes del contexto. "
-        "Si el contexto no contiene la respuesta, escribe exactamente: "
-        "'No encontrado en el corpus.' "
-        "Cita siempre el ID del expediente entre corchetes, ej: [EXP-2024-001]. "
-        "Si hay varios expedientes relevantes, incluye una tabla Markdown resumen al final "
-        "con columnas: Expediente | Órgano | Importe | Relevancia.\n\n"
-        f"CONTEXTO:\n{context}\n\n"
-        f"PREGUNTA: {question}"
-    )
-
-
 def _llm_stream(question: str, docs: list[dict], model: str, keywords: list[str]) -> Iterator[str]:
-    """Genera tokens LLM en streaming. Yields string chunks."""
-    api_key = _get_api_key()
-    if not api_key:
-        return
-    try:
-        from openai import OpenAI  # type: ignore[import]
+    """Genera tokens LLM en streaming delegando al proveedor correcto."""
+    from llm.client import stream_llm_response
 
-        prompt = _build_prompt(question, docs, keywords)
-        estimated_tokens = len(prompt) // 4
-        log.debug(
-            "investigador.llm_start",
-            model=model,
-            estimated_input_tokens=estimated_tokens,
-            n_docs=len(docs),
-        )
-        client = OpenAI(api_key=api_key)
-        stream = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=900,
-            temperature=0.2,
-            stream=True,
-        )
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content if chunk.choices else None
-            if delta:
-                yield delta
-    except Exception as exc:
-        log.warning("investigador.llm_failed", error=str(exc))
-        return
+    yield from stream_llm_response(question, docs, model=model, keywords=keywords)
 
 
 # ── Render ───────────────────────────────────────────────────────────────────
@@ -367,7 +254,7 @@ def render(ctx: PageContext) -> None:
     st.subheader("🔬 Modo Investigador")
     st.caption(
         "Búsqueda semántica con reranking híbrido FAISS + FTS5/BM25. "
-        "Con `OPENAI_API_KEY` obtendrás respuestas generadas por IA en tiempo real."
+        "Con `OPENAI_API_KEY` o `ANTHROPIC_API_KEY` obtendrás respuestas generadas por IA."
     )
 
     # ── Estado de sesión ──────────────────────────────────────────────────
@@ -382,11 +269,13 @@ def render(ctx: PageContext) -> None:
         with cCfg1:
             top_k: int = st.slider("Expedientes recuperados", 3, 20, 5, key="inv_top_k")
         with cCfg2:
+            from llm.client import AVAILABLE_MODELS as _LLM_MODELS
+
             llm_model: str = st.selectbox(  # type: ignore[assignment]
                 "Modelo LLM",
-                ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+                _LLM_MODELS,
                 key="inv_llm_model",
-                help="gpt-4o-mini: equilibrio coste/calidad · gpt-4o: máxima calidad",
+                help="gpt-*: OpenAI · claude-*: Anthropic (requiere ANTHROPIC_API_KEY)",
             )
         with cCfg3:
             only_filtered = st.checkbox(
@@ -486,7 +375,11 @@ def render(ctx: PageContext) -> None:
             )
 
             # ── LLM streaming ──────────────────────────────────────────────
-            api_key = _get_api_key()
+            from llm.client import _get_key, provider_for
+
+            _prov = provider_for(llm_model)
+            _key_var = "OPENAI_API_KEY" if _prov == "openai" else "ANTHROPIC_API_KEY"
+            api_key = _get_key(_key_var)
             answer_text: str = ""
             if api_key:
                 ctx_chars = sum(len(d.get("descripcion") or "") for d in docs)

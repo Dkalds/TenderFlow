@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from db.database import connect, now_utc_iso
+from db.database import get_table_columns as _get_cols
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -48,7 +49,7 @@ def log_action(
         now = now_utc_iso()
         with connect() as c:
             # Detectar si la tabla tiene columnas de hash chain (migración 26)
-            cols_info = {r[1] for r in c.execute("PRAGMA table_info(audit_log)").fetchall()}
+            cols_info = _get_cols(c, "audit_log")
             has_hash_chain = "prev_hash" in cols_info and "this_hash" in cols_info
 
             if has_hash_chain:
@@ -198,7 +199,7 @@ def verify_hash_chain() -> dict:
 
     try:
         with connect_read() as c:
-            cols_info = {r[1] for r in c.execute("PRAGMA table_info(audit_log)").fetchall()}
+            cols_info = _get_cols(c, "audit_log")
             if "prev_hash" not in cols_info or "this_hash" not in cols_info:
                 return {
                     "valid": None,

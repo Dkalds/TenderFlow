@@ -28,13 +28,13 @@ _YEARS = list(range(2022, 2027))
 def upgrade() -> None:
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_licitaciones_history_externo_date "
-        "ON licitaciones_history(id_externo, changed_at)"
+        "ON licitaciones_history(id_externo, captured_at)"
     )
     for year in _YEARS:
         op.execute(
             f"CREATE VIEW IF NOT EXISTS licitaciones_history_{year} AS "
             f"SELECT * FROM licitaciones_history "
-            f"WHERE changed_at >= '{year}-01-01' AND changed_at < '{year + 1}-01-01'"
+            f"WHERE captured_at >= '{year}-01-01' AND captured_at < '{year + 1}-01-01'"
         )
 
 

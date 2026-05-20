@@ -140,6 +140,19 @@ def _process_month_impl(
     except Exception:
         log.debug("cache_signal_failed", fuente=fuente)
 
+    # Evento de dominio: índice FAISS debe reconstruirse
+    try:
+        from db.events import append_event
+
+        append_event(
+            "faiss.index_stale",
+            "faiss_index",
+            "ml_index",
+            {"reason": "ingestion_completed", "fuente": fuente},
+        )
+    except Exception:
+        log.debug("faiss_index_stale_event_failed", fuente=fuente)
+
     return {
         "year": year,
         "month": month,
@@ -357,6 +370,19 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
         signal_cache_invalidation()
     except Exception:
         log.debug("cache_signal_failed", fuente=fuente)
+
+    # Evento de dominio: índice FAISS debe reconstruirse
+    try:
+        from db.events import append_event
+
+        append_event(
+            "faiss.index_stale",
+            "faiss_index",
+            "ml_index",
+            {"reason": "ingestion_completed", "fuente": fuente},
+        )
+    except Exception:
+        log.debug("faiss_index_stale_event_failed", fuente=fuente)
 
     return {
         "status": "ok",

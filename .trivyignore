@@ -1,0 +1,8 @@
+# .trivyignore — Excepciones documentadas para el escaneo Trivy
+#
+# Formato: un CVE por línea (opcionalmente con comentario).
+# Sólo añadir entradas con justificación explícita.
+# Revisar y actualizar trimestralmente.
+#
+# Ejemplo:
+# CVE-2023-XXXXX  # sin fix disponible en upstream; mitigado por firewall perimetral

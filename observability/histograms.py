@@ -53,7 +53,7 @@ except Exception:
 
 
 @contextmanager
-def timed_render(page: str) -> Generator[None, None, None]:
+def timed_render(page: str) -> Generator[None]:
     """Mide y registra el tiempo de render de una página.
 
     Args:
@@ -78,7 +78,7 @@ def timed_render(page: str) -> Generator[None, None, None]:
 
 
 @contextmanager
-def timed_query(query: str) -> Generator[None, None, None]:
+def timed_query(query: str) -> Generator[None]:
     """Mide y registra el tiempo de una query de BD.
 
     Args:

@@ -1,5 +1,5 @@
 # ── Etapa 1: builder ──────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.13.13-slim-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -19,7 +19,7 @@ RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
 
 # ── Etapa 2: imagen de producción — Streamlit dashboard ──────────────────────
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.13.13-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

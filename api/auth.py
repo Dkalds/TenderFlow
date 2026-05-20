@@ -26,8 +26,9 @@ from dataclasses import dataclass
 from fastapi import BackgroundTasks, Depends, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
-from db.database import connect, connect_read, now_utc_iso
+from db.database import now_utc_iso
 from observability.logging import get_logger
+from services import auth as auth_service
 
 log = get_logger(__name__)
 
@@ -106,53 +107,23 @@ async def require_api_key(
     key_hash = hash_api_key(api_key_raw)
 
     try:
-        with connect_read() as c:
-            cols_info = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
-
-            has_expires = "expires_at" in cols_info
-            has_scopes = "scopes" in cols_info
-
-            if not has_expires:
-                log.warning(
-                    "api_keys_legacy_schema",
-                    detail="Columna expires_at no encontrada. Ejecuta las migraciones pendientes.",
-                )
-
-            select_parts = ["id"]
-            select_parts.append("expires_at" if has_expires else "NULL")
-            select_parts.append("scopes" if has_scopes else "'*'")
-
-            # Usar comparación en SQL + doble chequeo en Python para defensa en profundidad.
-            # SQLite ya hace comparación directa de hashes (O(log n) con índice).
-            row = c.execute(
-                f"SELECT {', '.join(select_parts)} FROM api_keys "  # noqa: S608
-                "WHERE key_hash = ? AND is_active = 1",
-                (key_hash,),
-            ).fetchone()
+        record = auth_service.lookup_active_key(key_hash)
     except Exception as exc:
         log.warning("api_key_db_error", error=str(exc))
         raise _UNAUTHORIZED from exc
 
-    if row is None:
+    if record is None:
         # Comparación dummy para mantener tiempo constante ante timing attacks
         hmac.compare_digest(key_hash, "0" * len(key_hash))
         raise _UNAUTHORIZED
 
-    key_id: int = int(row[0])
-    expires_at: str | None = row[1]
-    scopes_str: str = str(row[2]) if row[2] else "*"
+    key_id = record.key_id
+    expires_at = record.expires_at
+    scopes_str = record.scopes
 
     # Comparar en tiempo constante (defensa extra sobre el índice DB)
-    stored_hash_row = None
-    try:
-        with connect_read() as c:
-            stored_hash_row = c.execute(
-                "SELECT key_hash FROM api_keys WHERE id = ?", (key_id,)
-            ).fetchone()
-    except Exception:
-        pass
-
-    if stored_hash_row and not hmac.compare_digest(str(stored_hash_row[0]), key_hash):
+    stored_hash = auth_service.get_stored_hash(key_id)
+    if stored_hash and not hmac.compare_digest(stored_hash, key_hash):
         raise _UNAUTHORIZED
 
     # Validar expiración
@@ -169,14 +140,7 @@ async def require_api_key(
 
 def _update_last_used(key_id: int) -> None:
     """Actualiza last_used de forma best-effort (llamado en background)."""
-    try:
-        with connect() as c:
-            c.execute(
-                "UPDATE api_keys SET last_used = ? WHERE id = ?",
-                (now_utc_iso(), key_id),
-            )
-    except Exception:
-        pass
+    auth_service.update_last_used(key_id)
 
 
 def require_scope(scope: str):
@@ -226,45 +190,24 @@ def create_api_key(
     raw = secrets.token_urlsafe(32)
     key_hash = hash_api_key(raw)
     prefix = raw[:8]  # Primeros 8 chars — suficiente para identificar sin exponer
-    now = now_utc_iso()
     expires_at: str | None = None
     if expires_days is not None:
         from datetime import UTC, datetime, timedelta
 
         expires_at = (datetime.now(UTC) + timedelta(days=expires_days)).isoformat()
 
-    with connect() as c:
-        cols_info = {row[1] for row in c.execute("PRAGMA table_info(api_keys)").fetchall()}
-        fields = ["key_hash", "name", "created_at", "is_active"]
-        values: list = [key_hash, name, now, 1]
-
-        if "scopes" in cols_info:
-            fields.append("scopes")
-            values.append(scopes)
-        if "user_id" in cols_info:
-            fields.append("user_id")
-            values.append(user_id)
-        if "prefix" in cols_info:
-            fields.append("prefix")
-            values.append(prefix)
-        if "expires_at" in cols_info and expires_at is not None:
-            fields.append("expires_at")
-            values.append(expires_at)
-
-        placeholders = ",".join("?" * len(fields))
-        c.execute(
-            f"INSERT INTO api_keys ({', '.join(fields)}) VALUES ({placeholders})",  # noqa: S608
-            values,
-        )
+    auth_service.insert_api_key(
+        key_hash=key_hash,
+        name=name,
+        scopes=scopes,
+        prefix=prefix,
+        user_id=user_id,
+        expires_at=expires_at,
+    )
     log.info("api_key_created", name=name, has_user_id=user_id is not None, prefix=prefix)
     return raw
 
 
 def revoke_api_key(key_hash: str) -> bool:
     """Desactiva una API Key por su hash. Devuelve True si se encontró."""
-    with connect() as c:
-        cur = c.execute(
-            "UPDATE api_keys SET is_active = 0 WHERE key_hash = ?",
-            (key_hash,),
-        )
-        return bool(cur.rowcount)
+    return auth_service.deactivate_key(key_hash)
