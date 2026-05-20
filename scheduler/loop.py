@@ -138,6 +138,27 @@ def _run_wal_checkpoint() -> dict[str, Any]:
     return result
 
 
+def _rebuild_faiss_if_stale() -> None:
+    """Reconstruye el índice FAISS si los datos han cambiado desde la última build.
+
+    Comprueba si el centinela ``.cache_invalidation`` es más reciente que el
+    índice FAISS. Si es así, reconstruye el índice usando los datos actuales
+    de la BD. No hace nada si FAISS no está disponible.
+    """
+    try:
+        from dashboard.faiss_index import _INDEX_PATH, _is_index_stale
+
+        if not _INDEX_PATH.exists() or _is_index_stale(_INDEX_PATH):
+            from scheduler.queue import enqueue_rebuild_embeddings
+
+            enqueue_rebuild_embeddings()
+            log.info("scheduler_faiss_rebuild_triggered")
+        else:
+            log.debug("scheduler_faiss_index_up_to_date")
+    except Exception as exc:
+        log.warning("scheduler_faiss_rebuild_failed", error=str(exc))
+
+
 def main() -> int:
     configure_logging(json_logs=os.environ.get("LOG_FORMAT") == "json")
     configure_tracing()
@@ -161,6 +182,7 @@ def main() -> int:
     )  # weekly
     retention_interval = timedelta(hours=_env_int("SCHEDULER_RETENTION_INTERVAL_HOURS", 24))
     wal_interval = timedelta(hours=_env_int("SCHEDULER_WAL_CHECKPOINT_INTERVAL_HOURS", 6))
+    faiss_interval = timedelta(minutes=_env_int("SCHEDULER_FAISS_REBUILD_INTERVAL_MINUTES", 60))
     sleep_seconds = _env_int("SCHEDULER_POLL_SECONDS", 60)
 
     now = datetime.now(UTC)
@@ -172,6 +194,7 @@ def main() -> int:
     next_drift = now + timedelta(hours=6)  # primer drift report: 6h tras arranque
     next_retention = now + timedelta(hours=3)  # primer cleanup: 3h tras arranque
     next_wal = now + timedelta(hours=1)  # primer WAL checkpoint: 1h tras arranque
+    next_faiss = now + timedelta(minutes=5)  # primer check FAISS: 5 min tras arranque
     log.info(
         "scheduler_loop_start",
         daily_interval_minutes=int(daily_interval.total_seconds() // 60),
@@ -181,6 +204,7 @@ def main() -> int:
         anomaly_interval_minutes=int(anomaly_interval.total_seconds() // 60),
         drift_interval_minutes=int(drift_interval.total_seconds() // 60),
         retention_interval_hours=int(retention_interval.total_seconds() // 3600),
+        faiss_rebuild_interval_minutes=int(faiss_interval.total_seconds() // 60),
         bulk_months=bulk_months,
     )
 
@@ -210,6 +234,9 @@ def main() -> int:
         if now >= next_wal:
             _run_job("wal_checkpoint", _run_wal_checkpoint)
             next_wal = now + wal_interval
+        if now >= next_faiss:
+            _run_job("faiss_rebuild", _rebuild_faiss_if_stale)
+            next_faiss = now + faiss_interval
         # Esperar el poll interval o despertar inmediatamente si llega señal de parada
         if _stop_event.wait(timeout=sleep_seconds):
             log.info("scheduler_loop_stopped_gracefully")

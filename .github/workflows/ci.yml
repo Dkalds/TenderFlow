@@ -157,6 +157,26 @@ jobs:
           head -n 200 /tmp/migrations.sql
           test -s /tmp/migrations.sql
 
+  migrations-rollback:
+    name: Alembic migrations rollback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Run migration rollback tests
+        run: pytest tests/test_migrations_rollback.py -v --no-cov
+
   bandit:
     name: SAST (bandit)
     runs-on: ubuntu-latest

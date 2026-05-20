@@ -19,28 +19,30 @@ def test_is_turso_backend_false_when_path_override(tmp_db):
 
 def test_is_turso_backend_true_when_credentials_set(monkeypatch):
     """Con TURSO_DATABASE_URL + token y sin override, devuelve True."""
+    import db.connection as conn_mod
     import db.database as db_mod
 
     db_mod.close_pool()
     db_mod.set_db_path_override(None)
 
     with (
-        patch.object(db_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
-        patch.object(db_mod.settings, "TURSO_AUTH_TOKEN", "fake-token"),
+        patch.object(conn_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
+        patch.object(conn_mod.settings, "TURSO_AUTH_TOKEN", "fake-token"),
     ):
         assert db_mod.is_turso_backend() is True
 
 
 def test_is_turso_backend_false_when_token_missing(monkeypatch):
     """Sin token, no se considera Turso aunque haya URL."""
+    import db.connection as conn_mod
     import db.database as db_mod
 
     db_mod.close_pool()
     db_mod.set_db_path_override(None)
 
     with (
-        patch.object(db_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
-        patch.object(db_mod.settings, "TURSO_AUTH_TOKEN", ""),
+        patch.object(conn_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
+        patch.object(conn_mod.settings, "TURSO_AUTH_TOKEN", ""),
     ):
         assert db_mod.is_turso_backend() is False
 

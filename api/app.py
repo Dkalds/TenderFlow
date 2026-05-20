@@ -161,15 +161,31 @@ app = FastAPI(
 # Registrar exception handlers RFC 7807
 register_exception_handlers(app)
 
-# OpenTelemetry auto-instrumentación HTTP (no-op si OTEL_EXPORTER_OTLP_ENDPOINT vacío)
+# Prometheus auto-instrumentación HTTP — métricas RED estándar por handler
+# (reemplaza los contadores manuales que existían en AccessLogMiddleware)
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator as _PFI
+
+    _PFI(
+        should_group_status_codes=False,
+        excluded_handlers=[r"/api/v1/health.*", r"/metrics"],
+    ).instrument(app)
+    log.info("prometheus_fastapi_instrumentator_enabled")
+except ImportError:
+    log.debug("prometheus_fastapi_instrumentator_unavailable")
+
+# OpenTelemetry auto-instrumentación HTTP (solo si OTEL_EXPORTER_OTLP_ENDPOINT está configurado)
 try:
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-    FastAPIInstrumentor.instrument_app(
-        app,
-        excluded_urls="health.*,metrics",
-    )
-    log.info("otel_fastapi_instrumentor_enabled")
+    if settings.OTEL_EXPORTER_OTLP_ENDPOINT:
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls="health.*,metrics",
+        )
+        log.info("otel_fastapi_instrumentor_enabled")
+    else:
+        log.debug("otel_fastapi_instrumentor_skipped", reason="OTEL_EXPORTER_OTLP_ENDPOINT_not_set")
 except ImportError:
     log.debug("otel_fastapi_instrumentor_unavailable")
 

@@ -20,7 +20,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from observability.logging import get_logger
-from services.rate_limit_redis import check_rate_limit as _check_rate_limit
+from services.rate_limiting import get_rate_limiter
 
 log = get_logger(__name__)
 
@@ -94,7 +94,7 @@ def _client_key(request: Request) -> str:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Rate limiting global por cliente sobre la API REST.
 
-    Usa :func:`db.rate_limits.check_rate_limit_db` como backend SQLite.
+    Usa :func:`services.rate_limiting.get_rate_limiter` como backend.
     Devuelve ``429 Too Many Requests`` con cabeceras estándar cuando se excede.
 
     Excluye paths configurables (e.g. ``/api/v1/health``) para no bloquear LBs.
@@ -133,7 +133,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client = _client_key(request)
         rate_key = f"api:{client}:{path}"
-        allowed = _check_rate_limit(
+        allowed = get_rate_limiter().check(
             rate_key,
             max_calls=self._max,
             window_seconds=self._window,
@@ -208,7 +208,7 @@ class CostTrackingMiddleware(BaseHTTPMiddleware):
 
 
 class AccessLogMiddleware(BaseHTTPMiddleware):
-    """Access log estructurado y métricas RED (Rate, Errors, Duration) por endpoint.
+    """Access log estructurado por request.
 
     Registra por request:
     - método, path, status, duración en ms
@@ -216,9 +216,8 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
     - correlation_id (si está en contextvars)
     - client IP
 
-    Publica métricas Prometheus:
-    - ``http_requests_total{method, path, status}``
-    - ``http_request_duration_seconds`` (histogram)
+    Las métricas RED (Rate, Errors, Duration) las gestiona
+    ``prometheus-fastapi-instrumentator`` (inicializado en ``api.app``).
     """
 
     async def dispatch(
@@ -255,18 +254,6 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 key_prefix=key_prefix,
                 client_ip=client_ip,
             )
-
-            # Métricas Prometheus RED
-            try:
-                from observability.runtime_metrics import (
-                    http_request_duration_seconds,
-                    http_requests_total,
-                )
-
-                http_requests_total.labels(method=method, path=path, status=str(status_code)).inc()
-                http_request_duration_seconds.labels(method=method, path=path).observe(dt_ms / 1000)
-            except Exception:
-                pass
 
         return response
 

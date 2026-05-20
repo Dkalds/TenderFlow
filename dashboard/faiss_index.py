@@ -58,6 +58,25 @@ def _utc_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _is_index_stale(index_path: Path) -> bool:
+    """True si el archivo centinela de invalidación es más reciente que el índice.
+
+    Compara el mtime del archivo ``.cache_invalidation`` (escrito por el
+    scraper) con el mtime del índice FAISS. Si el centinela es más reciente,
+    el índice está desactualizado y debe reconstruirse.
+    Si no existe el centinela (nunca hubo ingesta) devuelve False.
+    """
+    try:
+        from shared.cache_signal import _signal_path
+
+        signal = _signal_path()
+        if not signal.exists():
+            return False
+        return signal.stat().st_mtime > index_path.stat().st_mtime
+    except Exception:
+        return False
+
+
 def _faiss_available() -> bool:
     try:
         import faiss  # noqa: F401
@@ -244,7 +263,12 @@ class FaissIndex:
 
     @classmethod
     def load_or_build(cls, df: pd.DataFrame, path: Path | None = None) -> FaissIndex:
-        """Carga el índice si existe; si no, lo construye y guarda.
+        """Carga el índice si existe y no está obsoleto; si no, lo construye.
+
+        La obsolescencia se detecta comparando el mtime del archivo centinela
+        ``.cache_invalidation`` (escrito por el scraper tras cada ingesta) con
+        el mtime del índice FAISS. Si el centinela es más reciente, se fuerza
+        una reconstrucción para que el dashboard refleje los datos nuevos.
 
         Preferir ``build()`` explícito en producción para controlar cuándo
         se reconstruye. Este método es conveniente para desarrollo y tests.
@@ -252,7 +276,12 @@ class FaissIndex:
         target = path or _INDEX_PATH
         if target.exists():
             try:
-                return cls.load(target)
+                # Staleness check: reconstruir si el scraper ingirió datos nuevos
+                stale = _is_index_stale(target)
+                if stale:
+                    log.info("faiss_index.stale_rebuilding", path=str(target))
+                else:
+                    return cls.load(target)
             except Exception as e:
                 log.warning("faiss_index.load_error", error=str(e), path=str(target))
 

@@ -17,7 +17,7 @@ Requiere el extra ``[fast]``: ``pip install licitaciones-sap[fast]``
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from observability.histograms import timed_query
 from observability.logging import get_logger
@@ -96,12 +96,12 @@ class _DuckDBEngine:
         except Exception:
             pass
 
-    def execute(self, sql: str, params: list | None = None) -> duckdb.DuckDBPyRelation:
+    def execute(self, sql: str, params: list[Any] | None = None) -> duckdb.DuckDBPyRelation:
         """Ejecuta una query y devuelve la relación DuckDB (llama .df() para DataFrame)."""
         self.maybe_refresh()
         if params:
-            return self._con.execute(sql, params)  # type: ignore[return-value]
-        return self._con.execute(sql)  # type: ignore[return-value]
+            return self._con.execute(sql, params)
+        return self._con.execute(sql)
 
 
 def _build_engine() -> _DuckDBEngine | None:
