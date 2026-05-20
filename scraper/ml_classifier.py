@@ -581,7 +581,7 @@ class SAPClassifier:
 # Mantenidas para retrocompatibilidad con importadores externos.
 from scraper.ml_training import (
     _append_to_registry,
-    read_registry,
+    read_registry,  # noqa: F401  # re-export for external importers
     seed_negatives,
     train_from_db,
 )
