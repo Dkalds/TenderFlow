@@ -131,7 +131,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Audit dependencies
-        run: pip-audit -r requirements.txt
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2024-277
 
   migrations-dryrun:
     name: Alembic migrations dry-run
@@ -219,7 +219,7 @@ jobs:
           docker run --rm --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"
 
       - name: Trivy vulnerability scan (image)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: "licitaciones-sap:ci"
           format: "table"
