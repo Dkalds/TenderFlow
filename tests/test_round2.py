@@ -31,23 +31,31 @@ def _make_df() -> pd.DataFrame:
 class TestApplyFilters:
     def test_regex_chars_do_not_crash(self):
         """Una query con metacaracteres regex (e.g. 'c++') no debe fallar."""
+        from unittest.mock import patch
+
         from dashboard.filters.apply import apply_filters
         from dashboard.filters.state import FiltersState
 
         df = _make_df()
         state = FiltersState(q="c++")
-        result = apply_filters(df, state)
+        # Forzar fallback pandas (sin FTS5 real) para que el test sea determinista
+        with patch("dashboard.filters.apply._search_fts_ids", return_value=None):
+            result = apply_filters(df, state)
         assert len(result) == 1
         assert result.iloc[0]["id_externo"] == "C"
 
     def test_query_searches_organo(self):
         """La búsqueda textual también abarca organo_contratacion."""
+        from unittest.mock import patch
+
         from dashboard.filters.apply import apply_filters
         from dashboard.filters.state import FiltersState
 
         df = _make_df()
         state = FiltersState(q="AEAT")
-        result = apply_filters(df, state)
+        # Forzar fallback pandas (sin FTS5 real) para que el test sea determinista
+        with patch("dashboard.filters.apply._search_fts_ids", return_value=None):
+            result = apply_filters(df, state)
         assert len(result) == 1
         assert result.iloc[0]["id_externo"] == "B"
 

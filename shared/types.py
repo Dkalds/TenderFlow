@@ -9,11 +9,11 @@ Uso:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeAlias
 
 # ── Alias genérico ───────────────────────────────────────────────────────
 # Usar sólo cuando el shape real no está especificado. Preferir TypedDicts.
-type JsonDict = dict[str, Any]
+JsonDict: TypeAlias = dict[str, Any]
 
 
 # ── Usuarios ────────────────────────────────────────────────────────────

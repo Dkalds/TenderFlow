@@ -178,45 +178,23 @@ PAGE_REGISTRY["{page_name}"](ctx)
 
 
 @pytest.mark.parametrize("page_name", _PAGES)
-def test_page_renders_empty_dataset(page_name: str, monkeypatch, tmp_path) -> None:
-    """Cada página debe renderizar sin excepciones cuando el dataset está vacío."""
+def test_page_renders_empty_dataset(page_name: str) -> None:
+    """Cada página debe renderizar sin excepciones cuando el dataset está vacío.
 
-    import db.database as db_mod
-
-    db_path = tmp_path / "smoke_empty.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
-    monkeypatch.setenv("DASHBOARD_PASSWORD", "")
-    monkeypatch.setenv("DB_PATH", str(db_path))
-    db_mod.close_pool()
-    db_mod.set_db_path_override(str(db_path))
-    db_mod.init_db()
-    yield_path = str(db_path)
-    db_mod.close_pool()
-    db_mod.set_db_path_override(None)
-
+    Pasa un DataFrame vacío directamente para evitar conexiones DB dentro del
+    AppTest (hilo separado + WAL lock en Windows bloquearía indefinidamente).
+    La carga desde BD vacía se prueba por separado en test_data_loader.py.
+    """
     from streamlit.testing.v1 import AppTest
 
     script = f"""\
-import importlib, os
-os.environ["DB_PATH"] = r"{yield_path}"
-os.environ["TURSO_DATABASE_URL"] = ""
-os.environ["TURSO_AUTH_TOKEN"] = ""
-os.environ["DASHBOARD_PASSWORD"] = ""
-
-import sys; importlib.import_module("config.settings"); importlib.reload(sys.modules["config.settings"])
-import config as cfg; importlib.reload(cfg)
-import db.database as db_mod; importlib.reload(db_mod)
-import db.migrations as mig; importlib.reload(mig)
-
-from dashboard.data_loader import load_dataframe
+import pandas as pd
 from dashboard.pages import PAGE_REGISTRY
 from dashboard.pages._base import PageContext
 from dashboard.filters.state import FiltersState
 from dashboard.theme import TOKENS, get_color_sequence, register_plotly_template
 
-importlib.reload(importlib.import_module("dashboard.data_loader"))
-df_full = load_dataframe()
+df_full = pd.DataFrame()
 plotly_tpl = register_plotly_template(TOKENS)
 color_seq = get_color_sequence(TOKENS)
 ctx = PageContext(

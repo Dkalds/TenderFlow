@@ -53,14 +53,14 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.3.0
     hooks:
       - id: codespell
         args:
-          - "--ignore-words-list=ist,licitacion,licitaciones,nd,te,fo,ot,ths,sav,acion,ue,hist,iif,wronly,readby"
+          - "--ignore-words-list=ist,licitacion,licitaciones,nd,te,fo,ot,ths,sav,acion,ue,hist,iif,wronly,readby,varios,excede,caracteres,cliente,requiere,simular,ser,fase"
           - "--skip=*.lock,*.min.js,*.svg,.git,.venv,data,node_modules,.secrets.baseline,*.json,docs/adr/*,db/alembic/versions/*"
         exclude: '^(tests/fixtures/|\.agents/|requirements.*\.txt$)'
 

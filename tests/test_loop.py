@@ -65,6 +65,7 @@ class TestRunDailyAtom:
         with (
             patch("scheduler.loop.update_daily", return_value={"status": "ok"}),
             patch("scheduler.loop.run_kpi_precompute") as mock_kpi,
+            patch("scheduler.loop.run_aggregates_precompute"),
             patch("scheduler.loop.check_and_notify") as mock_notify,
             patch("scheduler.loop.retry_failed_extractions"),
             patch("scheduler.loop.run_anomaly_checks"),
@@ -95,6 +96,7 @@ class TestRunRecentBulk:
                 return_value=[{"status": "ok"}, {"status": "no_publicado"}],
             ),
             patch("scheduler.loop.run_kpi_precompute") as mock_kpi,
+            patch("scheduler.loop.run_aggregates_precompute"),
             patch("scheduler.loop.check_and_notify") as mock_notify,
         ):
             _run_recent_bulk(2)

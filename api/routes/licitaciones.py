@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from fastapi import (
     APIRouter,
@@ -29,6 +29,7 @@ log = get_logger(__name__)
 
 router = APIRouter(tags=["licitaciones"])
 
+_T = TypeVar("_T")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MAX_LIMIT = 500
 _MAX_QUERY_LENGTH = 200
@@ -99,18 +100,18 @@ class AdjudicacionSummary(BaseModel):
     n_ofertas_recibidas: int | None = None
 
 
-class PaginatedResponse[T](BaseModel):
+class PaginatedResponse(BaseModel, Generic[_T]):
     total: int
     limit: int
     offset: int
-    items: list[T]
+    items: list[_T]
     deprecation_notice: str | None = None
 
 
-class CursorPaginatedResponse[T](BaseModel):
+class CursorPaginatedResponse(BaseModel, Generic[_T]):
     """Respuesta con paginación por cursor (recomendada para datasets grandes)."""
 
-    items: list[T]
+    items: list[_T]
     next_cursor: str | None = None
     has_more: bool = False
     limit: int
