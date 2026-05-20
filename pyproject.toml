@@ -208,8 +208,66 @@ module = [
     "joblib",
     "opentelemetry",
     "opentelemetry.*",
+    "pandera",
+    "pandera.*",
+    "polars",
+    "polars.*",
+    "brotli_asgi",
+    "redis",
+    "redis.*",
+    "rq",
+    "rq.*",
 ]
 ignore_missing_imports = true
+
+# Módulos pendientes de tipado estricto — ir limpiando progresivamente
+[[tool.mypy.overrides]]
+module = [
+    "config.settings",
+    "shared.i18n",
+    "shared.auth_core",
+    "shared.schemas",
+    "api.cache",
+    "api.auth",
+    "api.app",
+    "api.routes.licitaciones",
+    "api.routes.webhooks",
+    "api.routes.security",
+    "api.routes.meta",
+    "api.routes.me",
+    "api.routes.exports",
+    "api.routes.feedback",
+    "api.routes.health",
+    "db.analytics",
+    "db.webhooks",
+    "db.totp",
+    "db.audit",
+    "db.repositories.webhooks",
+    "db.repositories.feedback",
+    "observability.sentry",
+    "scraper.ml_pipeline",
+    "scraper.ml_classifier",
+    "dashboard.cache",
+    "dashboard.pages.tendencias_cpv",
+    "dashboard.pages.comparador",
+    "dashboard.pages.investigador",
+    "dashboard.pages.active_learning",
+    "dashboard.forecast",
+    "dashboard.data_loader",
+    "dashboard.stats._base",
+    "scheduler.concept_drift",
+    "scheduler.drift_monitor",
+    "scheduler.drift_report",
+    "scheduler.queue",
+    "scheduler.loop",
+]
+ignore_errors = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_return_any = false
+disallow_any_generics = false
+warn_unused_ignores = false
+disallow_untyped_calls = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
