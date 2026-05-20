@@ -150,7 +150,7 @@ def render(ctx: PageContext) -> None:
 
             meta_cols = st.columns(4)
             meta_cols[0].caption(f"📁 {expediente}")
-            meta_cols[1].caption(f"🏛 {row.get('organo') or '—'}")
+            meta_cols[1].caption(f"🏛 {row.get('organo_contratacion') or '—'}")
             meta_cols[2].caption(f"💰 {importe_str}")
             meta_cols[3].caption(f"🗓 {row.get('fecha_publicacion') or '—'}")
 
