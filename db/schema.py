@@ -10,7 +10,7 @@ from dataclasses import fields
 from typing import Any
 
 import db.connection as _conn_module
-from db.connection import connect, get_table_columns, log, now_utc_iso
+from db.connection import connect, get_table_columns, log
 
 # ---------------------------------------------------------------------------
 # DDL del schema

@@ -12,8 +12,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 from config import HISTORY_TRACKED_FIELDS
-from db.connection import connect, connect_read, now_utc_iso
-
+from db.connection import connect, now_utc_iso
 
 # ---------------------------------------------------------------------------
 # Dataclasses de dominio

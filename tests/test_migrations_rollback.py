@@ -1,4 +1,4 @@
-"""Tests de rollback para las migraciones Alembic (v14–v20).
+"""Tests de rollback para las migraciones Alembic (v14-v20).
 
 Verifican que cada migración puede aplicarse (upgrade) y deshacerse
 (downgrade) limpiamente sobre una BD SQLite temporal. Esto previene
@@ -14,7 +14,6 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +91,7 @@ def _setup_baseline(db_path: Path) -> None:
 
     # Asegurarse de que no quedan conexiones abiertas al DB antes del stamp
     import gc
+
     gc.collect()
 
     # Crear los índices que Alembic v18/v19 aplican pero que db/schema.py NO incluye.
@@ -133,7 +133,7 @@ def _setup_baseline(db_path: Path) -> None:
 
 
 class TestAlembicMigrationsRollback:
-    """Verifica downgrade y re-upgrade de cada migración Alembic (v14–v20).
+    """Verifica downgrade y re-upgrade de cada migración Alembic (v14-v20).
 
     La BD de partida tiene el schema completo con todas las tablas ya creadas
     (vía ``db.schema.SCHEMA`` + custom migrations v1-v29) y Alembic sellado en
@@ -154,10 +154,10 @@ class TestAlembicMigrationsRollback:
         tables = _tables(migrated_db)
         # Tablas que deben estar presentes (introducidas por schema + migraciones)
         expected = {
-            "ml_feedback",       # v14 / schema
-            "webhooks",          # v15 / schema
-            "model_versions",    # v16 / schema
-            "totp_secrets",      # v17 / schema
+            "ml_feedback",  # v14 / schema
+            "webhooks",  # v15 / schema
+            "model_versions",  # v16 / schema
+            "totp_secrets",  # v17 / schema
         }
         for table in expected:
             assert table in tables, f"Tabla '{table}' esperada no encontrada"

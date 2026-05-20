@@ -126,8 +126,8 @@ def _create_limiter() -> RateLimiter:
 
 __all__ = [
     "RateLimiter",
-    "SqliteRateLimiter",
     "RedisRateLimiter",
+    "SqliteRateLimiter",
     "get_rate_limiter",
     "reset_rate_limiter",
 ]

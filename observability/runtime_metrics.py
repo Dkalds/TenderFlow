@@ -15,7 +15,7 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 try:
-    from prometheus_client import Counter, Gauge, Histogram
+    from prometheus_client import Counter, Gauge
 
     scraper_circuit_state = Gauge(
         "scraper_circuit_state",

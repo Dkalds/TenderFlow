@@ -97,17 +97,20 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607"]
+"tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002"]
 "dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
 "dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
-"db/database.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
-"scraper/ml_classifier.py" = ["S608"]  # SQL built from internal schema-detection strings, not user input
+"db/database.py" = ["S608", "E402", "RUF022"]  # SQL built from internal dataclass-field constants; E402 intentional facade re-exports
+"scraper/ml_classifier.py" = ["S608", "E402"]  # SQL built from internal schema-detection strings; E402 re-exports at module bottom
 "db/alembic/*" = ["S608"]   # SQL in migrations is schema-only, not user-controlled
 "db/events.py" = ["S608"]   # SQL built from internal event-type constants
 "db/feature_store.py" = ["S608"]  # SQL built from internal feature-name constants
 "db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
 "dashboard/pages/investigador.py" = ["S608"]  # SQL built from validated filter params
 "services/investigador/*" = ["S608"]  # SQL built from escaped FTS5 queries and placeholders
+"db/connection.py" = ["S608"]  # get_table_columns uses table param from internal callers only
+"db/upsert.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
+"scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings, not user input
 
 [tool.ruff.format]
 quote-style = "double"

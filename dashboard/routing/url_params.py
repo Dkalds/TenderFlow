@@ -37,27 +37,19 @@ def init_from_query_params(df_full: pd.DataFrame) -> None:
 
     if init_filters.estados:
         valid_estados = set(df_full["estado_desc"].dropna().unique())
-        st.session_state[FS_ESTADOS] = [
-            e for e in init_filters.estados if e in valid_estados
-        ]
+        st.session_state[FS_ESTADOS] = [e for e in init_filters.estados if e in valid_estados]
 
     if init_filters.ccaas:
         valid_ccaas = set(df_full["ccaa"].dropna().unique())
-        st.session_state[FS_CCAAS] = [
-            c for c in init_filters.ccaas if c in valid_ccaas
-        ]
+        st.session_state[FS_CCAAS] = [c for c in init_filters.ccaas if c in valid_ccaas]
 
     if init_filters.organos:
         valid_organos = set(df_full["organo_contratacion"].dropna().unique())
-        st.session_state[FS_ORGANOS] = [
-            o for o in init_filters.organos if o in valid_organos
-        ]
+        st.session_state[FS_ORGANOS] = [o for o in init_filters.organos if o in valid_organos]
 
     if init_filters.tipos_proy:
         valid_tipos = set(df_full["tipo_proyecto"].dropna().unique())
-        st.session_state[FS_TIPOS] = [
-            t for t in init_filters.tipos_proy if t in valid_tipos
-        ]
+        st.session_state[FS_TIPOS] = [t for t in init_filters.tipos_proy if t in valid_tipos]
 
     if init_filters.importe_min > 0:
         st.session_state[FS_IMP_MIN] = init_filters.importe_min

@@ -15,30 +15,44 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any as _Any
 
 # Re-exportar desde db.connection
 from config import settings
 from db.connection import (
-    _DB_PATH_OVERRIDE,
-    _db_initialized,
-    _local,
-    _pool,
-    _pool_lock,
     _get_conn,
     _return_conn,
     close_pool,
     connect,
-    connect_read as _connect_read_impl,
     get_table_columns,
     is_turso_backend,
     now_utc,
     now_utc_iso,
-    safe_pragma as _safe_pragma_impl,
     set_db_path_override,
 )
 
+# Re-exportar desde db.schema
+from db.schema import (
+    SCHEMA,
+    init_db,
+)
 
-from typing import Any as _Any
+# Re-exportar desde db.upsert
+from db.upsert import (
+    Adjudicacion,
+    Licitacion,
+    UpsertResult,
+    count_licitaciones,
+    fts_available,
+    get_cursor,
+    get_history,
+    log_extraccion,
+    replace_adjudicaciones,
+    search_fts,
+    set_cursor,
+    upsert_licitaciones,
+    upsert_licitaciones_with_history,
+)
 
 
 def safe_pragma(conn: _Any, stmt: str) -> None:
@@ -54,11 +68,11 @@ def safe_pragma(conn: _Any, stmt: str) -> None:
 @contextmanager
 def connect_read() -> Iterator[_Any]:
     """Wrapper de connect_read que usa safe_pragma del módulo actual."""
-    import db.connection as _conn_mod
     replica_url = settings.TURSO_REPLICA_URL
     if replica_url:
         try:
             import libsql_experimental as libsql_exp
+
             conn = libsql_exp.connect(
                 replica_url,
                 auth_token=settings.TURSO_AUTH_TOKEN,
@@ -78,38 +92,6 @@ def connect_read() -> Iterator[_Any]:
         safe_pragma(conn, "PRAGMA query_only = OFF")
         _return_conn(conn)
 
-
-# Re-exportar desde db.schema
-from db.schema import (
-    SCHEMA,
-    _ensure_licitaciones_columns,
-    init_db,
-)
-
-# Re-exportar desde db.upsert
-from db.upsert import (
-    Adjudicacion,
-    Licitacion,
-    UpsertResult,
-    _ADJ_COLS,
-    _ADJ_KEYS,
-    _ADJ_PLACEHOLDERS,
-    _HISTORY_SELECT_COLS,
-    _LIC_COLS,
-    _LIC_KEYS,
-    _LIC_PLACEHOLDERS,
-    _LIC_UPDATES,
-    count_licitaciones,
-    fts_available,
-    get_cursor,
-    get_history,
-    log_extraccion,
-    replace_adjudicaciones,
-    search_fts,
-    set_cursor,
-    upsert_licitaciones,
-    upsert_licitaciones_with_history,
-)
 
 __all__ = [
     # connection

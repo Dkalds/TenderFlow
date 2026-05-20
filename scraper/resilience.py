@@ -84,9 +84,7 @@ class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
 
             mapping = {"closed": 0, "half-open": 1, "open": 2}
             scraper_circuit_state.labels(source=cb.name).set(mapping.get(new_name, 0))
-            scraper_circuit_transitions_total.labels(
-                from_state=old_name, to_state=new_name
-            ).inc()
+            scraper_circuit_transitions_total.labels(from_state=old_name, to_state=new_name).inc()
         except Exception:
             pass
 

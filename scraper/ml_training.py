@@ -203,9 +203,26 @@ def seed_negatives(
                         fecha_fin, prorroga_descripcion{extra_cols})
                        VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'),?,NULL,?,?,?,?,?,?,?,?{extra_vals})""",
                     (
-                        row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
-                        row[9], row[11], row[12], row[13], row[14], row[15], row[16], row[17],
-                        row[18], row[19], *extra_params,
+                        row[0],
+                        row[1],
+                        row[2],
+                        row[3],
+                        row[4],
+                        row[5],
+                        row[6],
+                        row[7],
+                        row[8],
+                        row[9],
+                        row[11],
+                        row[12],
+                        row[13],
+                        row[14],
+                        row[15],
+                        row[16],
+                        row[17],
+                        row[18],
+                        row[19],
+                        *extra_params,
                     ),
                 )
                 if cur.rowcount:
@@ -215,12 +232,18 @@ def seed_negatives(
 
     log.info(
         "seed_negatives.done",
-        year=year, month=month, downloaded=downloaded, inserted=inserted,
-        skipped_ti=skipped_ti, already_exists=already_exists,
+        year=year,
+        month=month,
+        downloaded=downloaded,
+        inserted=inserted,
+        skipped_ti=skipped_ti,
+        already_exists=already_exists,
     )
     return {
-        "downloaded": downloaded, "inserted": inserted,
-        "skipped_ti": skipped_ti, "already_exists": already_exists,
+        "downloaded": downloaded,
+        "inserted": inserted,
+        "skipped_ti": skipped_ti,
+        "already_exists": already_exists,
     }
 
 
