@@ -261,7 +261,7 @@ _SEED_EXTREME = [
     },
     {
         "id_externo": "LIC-EXTREME-1",
-        "titulo": None,  # nulo
+        "titulo": "",  # cadena vacía (NOT NULL pero extremo)
         "descripcion": "A" * 5000,  # descripción muy larga
         "organo_contratacion": "Órgano con caractères spéciaux & <tags>",
         "importe": -1.0,  # negativo

@@ -27,6 +27,14 @@ def _render_evolution_charts(ctx: PageContext) -> None:
     """
     df = ctx.df
 
+    if "mes" not in df.columns or df.empty:
+        empty_state(
+            "📊",
+            "Sin datos de evolución mensual",
+            "No hay licitaciones con el campo 'mes' en el rango seleccionado.",
+        )
+        return
+
     g = (
         df.dropna(subset=["mes"])
         .groupby("mes")
