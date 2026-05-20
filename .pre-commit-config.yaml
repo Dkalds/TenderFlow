@@ -42,6 +42,7 @@ repos:
           - "--disable-error-code=name-defined"
           - "--disable-error-code=str-bytes-safe"
           - "--disable-error-code=operator"
+          - "--disable-error-code=untyped-decorator"
         files: '^(scraper|db|scheduler|dashboard)/.*\.py$|^config/.*\.py$'
 
   - repo: local

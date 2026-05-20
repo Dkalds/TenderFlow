@@ -38,6 +38,8 @@ log = get_logger(__name__)
 @st.fragment
 def _render_top_licitaciones(df: pd.DataFrame, adj_resumen: pd.DataFrame) -> None:
     """Renderiza el ranking principal enriquecido con adjudicaciones."""
+    if "importe" not in df.columns or df.empty:
+        return
     top = df.dropna(subset=["importe"]).nlargest(10, "importe")
 
     if not adj_resumen.empty:
