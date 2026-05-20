@@ -60,7 +60,7 @@ repos:
     hooks:
       - id: codespell
         args:
-          - "--ignore-words-list=ist,licitacion,licitaciones,nd,te,fo,ot,ths,sav,acion,ue,hist,iif,wronly,readby,varios,excede,caracteres,cliente,requiere,simular,ser,fase"
+          - "--ignore-words-list=ist,licitacion,licitaciones,nd,te,fo,ot,ths,sav,acion,ue,hist,iif,wronly,readby,varios,excede,caracteres,cliente,requiere,simular,ser,fase,historial,accesible,identificable,serie,avance,controles,posible,vie,visibles,oficial,anual,inmutables,diagramas,componentes,comercial,hace,mis,responde,importan,infor,abstracto,vectores,previos,comando,auxiliar,funcional,manifiesto,percentil,limite,dimensiones,asume,variantes,variante,utiliza,procede"
           - "--skip=*.lock,*.min.js,*.svg,.git,.venv,data,node_modules,.secrets.baseline,*.json,docs/adr/*,db/alembic/versions/*"
         exclude: '^(tests/fixtures/|\.agents/|requirements.*\.txt$)'
 
