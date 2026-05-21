@@ -91,6 +91,14 @@ def _run_daily_atom() -> None:
     result = update_daily()
     if result.get("status") != "ok":
         raise RuntimeError(f"daily atom failed: {result.get('status')}")
+    # Puntuar con ML las licitaciones nuevas por ruta keyword (ml_proba IS NULL)
+    # Las de ruta ML ya tienen ml_proba seteado desde _ml_classify_entry.
+    try:
+        from scraper.ml_training import precompute_ml_proba
+
+        precompute_ml_proba(force=False)
+    except Exception:
+        log.debug("daily_precompute_ml_proba_failed")
     run_kpi_precompute()
     run_aggregates_precompute()
     check_and_notify()

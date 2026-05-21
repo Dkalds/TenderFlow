@@ -9,6 +9,7 @@ from typing import Any
 from dateutil.relativedelta import relativedelta
 
 from db.database import (
+    Licitacion,
     UpsertResult,
     close_pool,
     get_cursor,
@@ -33,11 +34,108 @@ from scraper.bulk_downloader import (
     download_month,
     iter_xml_files,
 )
-from scraper.codice_parser import parse_adjudicaciones, parse_atom_bytes, parse_entry
+from scraper.codice_parser import (
+    NS,
+    parse_adjudicaciones,
+    parse_atom_bytes,
+    parse_entry,
+    parse_entry_unfiltered,
+)
 
 log = get_logger(__name__)
 
 _DAILY_SOURCE = "place_live_atom"
+
+# ── ML fallback para entries sin keywords ─────────────────────────────────
+# Solo se aplica al carril diario (ATOM feed). Las entradas TI (CPV 48/72)
+# que no tienen keywords de tecnología se pasan al modelo para decidir si
+# incluirlas o marcarlas para revisión manual.
+
+_TI_PREFIXES = ("48", "72")
+_ml_clf: Any = None
+_ml_clf_attempted: bool = False
+
+
+def _get_ml_clf() -> Any:
+    """Carga el clasificador ML una sola vez por proceso. None si no disponible."""
+    global _ml_clf, _ml_clf_attempted
+    if _ml_clf_attempted:
+        return _ml_clf
+    _ml_clf_attempted = True
+    try:
+        from scraper.ml_classifier import SAPClassifier
+
+        # En CI (GitHub Actions) el modelo no existe en disco — descargarlo
+        # del último GitHub Release si hay GITHUB_TOKEN disponible.
+        SAPClassifier.ensure_downloaded()
+        if SAPClassifier.is_available():
+            _ml_clf = SAPClassifier.load()
+            log.info("pipeline.ml_clf_loaded", threshold=_ml_clf._threshold)
+    except Exception:
+        log.debug("pipeline.ml_clf_unavailable")
+    return _ml_clf
+
+
+def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
+    """Fallback ML para entries TI (CPV 48/72) sin keywords de tecnología.
+
+    Flujo:
+      1. Comprobación rápida de CPV — descarta no-TI sin parsear.
+      2. Carga el clasificador (singleton por proceso).
+      3. Parse completo con parse_entry_unfiltered.
+      4. Score con SAPClassifier:
+           - ml_proba < ML_UNCERTAINTY_LO   → None (negativo confiable, descartar)
+           - [ML_UNCERTAINTY_LO, threshold) → incluir para revisión manual (active learning)
+           - [threshold, 1]                 → incluir como positivo confiable
+    """
+    from config import settings
+
+    # 1 — Comprobación rápida de CPV antes del parse completo
+    cpv_vals = entry_elem.xpath(
+        "./cacext:ContractFolderStatus/cac:ProcurementProject"
+        "/cac:RequiredCommodityClassification/cbc:ItemClassificationCode/text()",
+        namespaces=NS,
+    )
+    cpv = cpv_vals[0] if cpv_vals else None
+    if not cpv or not any(cpv.startswith(p) for p in _TI_PREFIXES):
+        return None
+
+    # 2 — Verificar modelo disponible antes del parse (evitar parse inútil)
+    clf = _get_ml_clf()
+    if clf is None:
+        return None
+
+    # 3 — Parse completo sin filtro de keywords
+    lic = parse_entry_unfiltered(entry_elem)
+    if lic is None:
+        return None
+
+    # 4 — Score ML con texto aumentado
+    try:
+        from scraper.ml_pipeline import _augment_text
+
+        text = _augment_text(
+            ((lic.titulo or "") + " " + (lic.descripcion or "")).strip(),
+            cpv=lic.cpv,
+            importe=lic.importe,
+        )
+        proba = float(clf.pipeline.predict_proba([text])[0][1])
+    except Exception as exc:
+        log.debug("pipeline.ml_score_failed", error=str(exc))
+        return None
+
+    lic.ml_proba = proba
+
+    if proba < settings.ML_UNCERTAINTY_LO:
+        return None  # negativo confiable → descartar
+
+    log.info(
+        "pipeline.ml_fallback_accepted",
+        id=lic.id_externo,
+        ml_proba=round(proba, 3),
+        zone="uncertain" if proba < clf._threshold else "confident",
+    )
+    return lic
 
 
 @traced("scraper.process_month")
@@ -299,6 +397,8 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
     for entry_elem, updated_str in entries:
         try:
             lic = parse_entry(entry_elem)
+            if lic is None:
+                lic = _ml_classify_entry(entry_elem)
             if lic:
                 # Actualizar fecha_actualizacion_fuente con el <updated> de la entry
                 if updated_str:

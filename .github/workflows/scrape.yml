@@ -46,6 +46,7 @@ jobs:
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+          GITHUB_TOKEN: ${{ github.token }}
           LOG_FORMAT: json
           SCRAPER_MONTHS: ${{ inputs.months || 3 }}
         run: |
