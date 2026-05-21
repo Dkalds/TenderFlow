@@ -62,8 +62,9 @@ def seed_negatives(
     year: int | None = None,
     month: int | None = None,
     max_negatives: int = 2000,
+    include_ti: bool = False,
 ) -> dict[str, int]:
-    """Descarga el bulk de un mes y persiste licitaciones con CPV no-TI como negativos.
+    """Descarga el bulk de un mes y persiste licitaciones como negativos.
 
     Estas licitaciones se guardan con raw_keywords=NULL para que el entrenamiento ML
     las use como ejemplos negativos.
@@ -72,6 +73,9 @@ def seed_negatives(
         year: Año del bulk a descargar (defecto: mes anterior).
         month: Mes del bulk a descargar (defecto: mes anterior).
         max_negatives: Máximo de negativos a insertar (para no inflar la BD).
+        include_ti: Si True, incluye licitaciones CPV 48/72 (TI) que no
+            contienen keywords SAP como "negativos difíciles" (hard negatives).
+            Esto mejora la discriminación del modelo entre TI-SAP y TI-no-SAP.
 
     Returns:
         {"downloaded": N, "inserted": M, "skipped_ti": K, "already_exists": J}
@@ -103,6 +107,11 @@ def seed_negatives(
     skipped_ti = 0
     rows_to_insert: list[tuple[Any, ...]] = []
 
+    # Si include_ti, necesitamos el filtro SAP para excluir licitaciones que sí
+    # mencionan SAP (esas serían falsos negativos, no hard negatives).
+    if include_ti:
+        from scraper.filters import matches_sap
+
     for _filename, content in iter_xml_files(zip_path):
         if len(rows_to_insert) >= max_negatives:
             break
@@ -124,9 +133,20 @@ def seed_negatives(
                         f"{project_xp}/cac:RequiredCommodityClassification"
                         f"/cbc:ItemClassificationCode",
                     )
-                    if cpv_raw and any(cpv_raw.startswith(p) for p in _TI_PREFIXES):
+                    is_ti = cpv_raw and any(cpv_raw.startswith(p) for p in _TI_PREFIXES)
+                    if is_ti and not include_ti:
                         skipped_ti += 1
                         continue
+                    if is_ti and include_ti:
+                        # Hard negative: TI sin keywords SAP
+                        # Fast XPath check before full parse
+                        titulo_raw = _text(entry, "./atom:title") or ""
+                        nombre_proy = _text(entry, f"{project_xp}/cbc:Name") or ""
+                        summary_raw = _text(entry, "./atom:summary") or ""
+                        has_sap, _ = matches_sap(titulo_raw, nombre_proy, summary_raw)
+                        if has_sap:
+                            skipped_ti += 1
+                            continue
 
                     lic = parse_entry_unfiltered(entry)
                     if lic is None:

@@ -1,0 +1,82 @@
+name: Train & publish ML model
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: "Forzar re-entrenamiento aunque el modelo exista"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write  # necesario para crear/actualizar releases
+
+jobs:
+  train:
+    name: Train classifier & upload to release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Train model
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          LOG_FORMAT: json
+        run: |
+          python -c "
+          from scraper.ml_training import seed_negatives, train_from_db, precompute_ml_proba
+          seed_negatives()
+          metrics = train_from_db()
+          print(f'Metrics: {metrics}')
+          if 'error' in metrics:
+              raise SystemExit(f'Training failed: {metrics}')
+          precompute_ml_proba(force=False)
+          "
+
+      - name: Verify model artifact
+        run: |
+          ls -lh data/models/sap_classifier.pkl
+          cat data/models/sap_classifier.sha256
+
+      - name: Get or create latest release tag
+        id: release_tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Usar el último tag existente, o crear uno modelo-only si no hay
+          TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          if [ -z "$TAG" ]; then
+            TAG="v0.0.0-model"
+            echo "No releases found, will create $TAG"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Upload model to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          # Eliminar asset anterior si existe (gh ignora si no existe)
+          gh release delete-asset "$TAG" sap_classifier.pkl --yes 2>/dev/null || true
+          gh release delete-asset "$TAG" sap_classifier.sha256 --yes 2>/dev/null || true
+          # Subir nuevos assets
+          gh release upload "$TAG" \
+            data/models/sap_classifier.pkl \
+            data/models/sap_classifier.sha256 \
+            --clobber
+          echo "Model uploaded to release $TAG"

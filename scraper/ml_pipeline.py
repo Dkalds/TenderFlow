@@ -136,15 +136,11 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     else:
         return [], []
 
-    # Máscara de negativos: sin señal positiva + CPV no-TI
-    if has_cpv:
-        mask_neg_cpv = df["cpv"].notna() & ~(
-            df["cpv"].str.startswith("48") | df["cpv"].str.startswith("72")
-        )
-    else:
-        mask_neg_cpv = ~mask_pos
-
-    mask_neg = ~mask_pos & mask_neg_cpv
+    # Máscara de negativos: sin señal positiva.
+    # Incluye CPV 48/72 (TI) sin raw_keywords como hard negatives — estas
+    # licitaciones son de TI pero no de SAP, y son cruciales para que el
+    # modelo aprenda a distinguir SAP de otros proveedores TI.
+    mask_neg = ~mask_pos
 
     pos_rows = df[mask_pos]
     neg_rows = df[mask_neg]
