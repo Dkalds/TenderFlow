@@ -15,13 +15,13 @@ def test_retry_bulk_failure_resolves_on_ok(tmp_db):
     with (
         patch("scheduler.dlq_actions.bind_run_context", return_value="retry-run"),
         patch(
-            "scheduler.dlq_actions.process_month",
-            return_value={"status": "ok", "year": 2026, "month": 1},
-        ) as process_month,
+            "scheduler.dlq_actions.dispatch_retry",
+            return_value=True,
+        ) as mock_dispatch,
     ):
         result = retry_failure(failure_id)
 
-    process_month.assert_called_once_with(2026, 1, run_id="retry-run", force=True)
+    mock_dispatch.assert_called_once_with("bulk_202601", "download", "retry-run")
     assert result["status"] == "resolved"
     assert dlq.list_unresolved() == []
 
@@ -35,10 +35,7 @@ def test_retry_bulk_failure_increments_retry_on_failure(tmp_db):
 
     with (
         patch("scheduler.dlq_actions.bind_run_context", return_value="retry-run"),
-        patch(
-            "scheduler.dlq_actions.process_month",
-            return_value={"status": "error_descarga"},
-        ),
+        patch("scheduler.dlq_actions.dispatch_retry", return_value=False),
     ):
         result = retry_failure(failure_id)
 

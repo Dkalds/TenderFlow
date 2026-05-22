@@ -1,0 +1,10 @@
+[extend]
+# Extend the default gitleaks ruleset
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    # detect-secrets baseline contains hashed secrets (not real secrets)
+    '''.secrets.baseline''',
+]
