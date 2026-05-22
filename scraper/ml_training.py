@@ -421,9 +421,9 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
             continue
 
         # Construir listas de parámetros para executemany (1 petición HTTP por tabla).
-        update_params: list[tuple] = []
-        delete_params: list[tuple] = []
-        score_params: list[tuple] = []
+        update_params: list[tuple[Any, ...]] = []
+        delete_params: list[tuple[Any, ...]] = []
+        score_params: list[tuple[Any, ...]] = []
 
         for row, pred in zip(batch, preds, strict=False):
             lic_id = row[0]

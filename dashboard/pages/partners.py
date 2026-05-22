@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
+import networkx as nx  # type: ignore[import-untyped]
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st

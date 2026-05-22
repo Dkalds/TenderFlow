@@ -122,7 +122,7 @@ def _apply_tech_prediction(lic: Licitacion) -> dict[str, Any] | None:
     lic.ml_tecnologias = ",".join(pred["predicted"]) if pred["predicted"] else None
     lic.ml_proba_max = float(pred["max_proba"])
     lic.ml_tech_principal = pred["principal"]
-    return pred
+    return pred  # type: ignore[no-any-return]
 
 
 def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
