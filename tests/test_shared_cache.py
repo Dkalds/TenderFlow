@@ -133,7 +133,7 @@ class TestMemoryBackend:
         c.set("a", 1, ttl=60)
         c.set("b", 2, ttl=60)
         c.set("expired", 0, ttl=0.001)
-        time.sleep(0.01)
+        time.sleep(0.05)
         assert sorted(c.keys()) == ["a", "b"]
 
     def test_keys_with_prefix_pattern(self):
@@ -288,13 +288,21 @@ class TestRedisBackend:
 class TestGetCache:
     """Tests para la factory singleton get_cache."""
 
+    @staticmethod
+    def _patch_no_redis():
+        """Mock settings con REDIS_URL vacío para forzar MemoryBackend."""
+        import config as config_mod
+
+        mock_s = MagicMock()
+        mock_s.REDIS_URL = ""
+        return patch.object(config_mod, "settings", mock_s)
+
     def setup_method(self):
         mod = _fresh_import()
         self.mod = mod
 
     def test_returns_memory_backend_when_no_redis_url(self):
-        with patch("shared.cache.settings", create=True) as mock_settings:
-            mock_settings.REDIS_URL = ""
+        with self._patch_no_redis():
             self.mod.reset_cache()
             c = self.mod.get_cache("test_ns")
             from shared.cache import _MemoryBackend
@@ -302,16 +310,14 @@ class TestGetCache:
             assert isinstance(c, _MemoryBackend)
 
     def test_same_namespace_returns_same_instance(self):
-        with patch("shared.cache.settings", create=True) as mock_settings:
-            mock_settings.REDIS_URL = ""
+        with self._patch_no_redis():
             self.mod.reset_cache()
             c1 = self.mod.get_cache("ns1")
             c2 = self.mod.get_cache("ns1")
             assert c1 is c2
 
     def test_different_namespace_returns_different_instance(self):
-        with patch("shared.cache.settings", create=True) as mock_settings:
-            mock_settings.REDIS_URL = ""
+        with self._patch_no_redis():
             self.mod.reset_cache()
             c1 = self.mod.get_cache("ns1")
             c2 = self.mod.get_cache("ns2")
@@ -321,20 +327,26 @@ class TestGetCache:
 class TestResetCache:
     """Tests para reset_cache."""
 
+    @staticmethod
+    def _patch_no_redis():
+        import config as config_mod
+
+        mock_s = MagicMock()
+        mock_s.REDIS_URL = ""
+        return patch.object(config_mod, "settings", mock_s)
+
     def setup_method(self):
         self.mod = _fresh_import()
 
     def test_reset_all(self):
-        with patch("shared.cache.settings", create=True) as mock_settings:
-            mock_settings.REDIS_URL = ""
+        with self._patch_no_redis():
             c1 = self.mod.get_cache("a")
             self.mod.reset_cache()
             c2 = self.mod.get_cache("a")
             assert c1 is not c2
 
     def test_reset_single_namespace(self):
-        with patch("shared.cache.settings", create=True) as mock_settings:
-            mock_settings.REDIS_URL = ""
+        with self._patch_no_redis():
             c_a = self.mod.get_cache("a")
             c_b = self.mod.get_cache("b")
             self.mod.reset_cache("a")
@@ -347,10 +359,23 @@ class TestResetCache:
 class TestTryRedis:
     """Tests para _try_redis — lógica de fallback y fail-fast en prod."""
 
+    @staticmethod
+    def _patch_settings(redis_url: str = ""):
+        """Mock ``from config import settings`` dentro de ``_try_redis``.
+
+        ``_try_redis`` hace ``from config import settings`` (el singleton real),
+        por lo que necesitamos parchear el atributo ``settings`` del módulo
+        ``config`` directamente.
+        """
+        import config as config_mod
+
+        mock_s = MagicMock()
+        mock_s.REDIS_URL = redis_url
+        return patch.object(config_mod, "settings", mock_s)
+
     def test_no_redis_url_returns_memory(self):
         mod = _fresh_import()
-        with patch("shared.cache.settings", create=True) as mock_settings:
-            mock_settings.REDIS_URL = ""
+        with self._patch_settings(redis_url=""):
             result = mod._try_redis("ns")
             from shared.cache import _MemoryBackend
 
@@ -359,11 +384,10 @@ class TestTryRedis:
     def test_redis_connection_failure_returns_memory_in_dev(self):
         mod = _fresh_import()
         with (
-            patch("shared.cache.settings", create=True) as mock_settings,
+            self._patch_settings(redis_url="redis://bad:6379/0"),
+            patch("shared.cache._RedisBackend", side_effect=ConnectionError("down")),
             patch.dict("os.environ", {"ENV": "dev"}, clear=False),
         ):
-            mock_settings.REDIS_URL = "redis://bad:6379/0"
-            # from_url lanzará error real al intentar ping
             result = mod._try_redis("ns")
             from shared.cache import _MemoryBackend
 
@@ -372,12 +396,12 @@ class TestTryRedis:
     def test_redis_connection_failure_raises_in_prod(self):
         mod = _fresh_import()
         with (
-            patch("shared.cache.settings", create=True) as mock_settings,
+            self._patch_settings(redis_url="redis://bad:6379/0"),
+            patch("shared.cache._RedisBackend", side_effect=ConnectionError("down")),
             patch.dict("os.environ", {"ENV": "prod"}, clear=False),
+            pytest.raises(RuntimeError, match="Redis no disponible en producción"),
         ):
-            mock_settings.REDIS_URL = "redis://bad:6379/0"
-            with pytest.raises(RuntimeError, match="Redis no disponible en producción"):
-                mod._try_redis("ns")
+            mod._try_redis("ns")
 
     def test_settings_import_failure_returns_memory_in_dev(self):
         mod = _fresh_import()
