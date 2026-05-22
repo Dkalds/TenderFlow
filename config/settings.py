@@ -308,6 +308,16 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_prod_redis(self) -> Settings:
+        """En producción, exigir REDIS_URL para cache compartido."""
+        if self.ENV == "prod" and not self.REDIS_URL:
+            raise ValueError(
+                "REDIS_URL es obligatorio en ENV=prod para cache compartido entre "
+                "procesos. Formato: redis://[:password@]host[:port][/db]"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_prod_oauth_domains(self) -> Settings:
         """En producción, alertar si no hay restricción de dominios/emails OAuth."""
         if (

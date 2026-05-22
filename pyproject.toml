@@ -31,6 +31,7 @@ dependencies = [
     "argon2-cffi>=23.1.0,<25",
     "alembic>=1.13.0,<2",
     "fastapi>=0.110.0,<1",
+    "redis>=5.0,<6",
 ]
 
 [project.optional-dependencies]
@@ -54,12 +55,6 @@ tracing = [
     "opentelemetry-sdk>=1.20.0,<3",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
     "opentelemetry-instrumentation-fastapi>=0.45b0,<2",
-]
-# Deps opcionales para escalar el rate limiting a Redis.
-# Instalar con: pip install licitaciones-sap[scale]
-# Sin este extra, el rate limiting usa el backend SQLite por defecto.
-scale = [
-    "redis>=5.0,<6",
 ]
 
 [tool.setuptools.packages.find]
@@ -300,8 +295,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Reducido de 55 a 50 para reflejar cobertura real tras incluir dashboard.
-fail_under = 50
+# Subido de 50 → 53 tras añadir tests Fase 1A+1B. Objetivo siguiente: 65.
+fail_under = 53
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

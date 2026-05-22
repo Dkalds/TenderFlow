@@ -9,12 +9,13 @@ services:
     ports:
       - "127.0.0.1:8501:8501"
     volumes:
-      # Base de datos SQLite persistente fuera del contenedor
       - licitaciones_data:/data
     env_file:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_BACKEND: redis
       # Restringe qué proxies son confiables para X-Forwarded-* en uvicorn.
       # Ajusta en producción al rango/IP de tu reverse proxy.
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
@@ -26,6 +27,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    depends_on:
+      redis:
+        condition: service_healthy
 
   api:
     build:
@@ -42,6 +46,8 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_BACKEND: redis
     mem_limit: 256m
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5",
@@ -51,7 +57,7 @@ services:
       retries: 3
       start_period: 20s
     depends_on:
-      dashboard:
+      redis:
         condition: service_healthy
 
   scheduler:
@@ -68,6 +74,8 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_BACKEND: redis
       SCHEDULER_DAILY_INTERVAL_MINUTES: ${SCHEDULER_DAILY_INTERVAL_MINUTES:-240}
       SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
       SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}
@@ -75,14 +83,31 @@ services:
     mem_limit: 512m
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import sqlite3, os; sqlite3.connect(os.environ['DB_PATH']).execute('SELECT 1').fetchone()"]
+             "import libsql, os; libsql.connect(os.environ['DB_PATH']).execute('SELECT 1').fetchone()"]
       interval: 60s
       timeout: 10s
       retries: 3
       start_period: 30s
     depends_on:
-      dashboard:
+      redis:
         condition: service_healthy
+
+  # ── Redis (cache compartido + rate limiting) ──────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: licitaciones-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    mem_limit: 128m
 
   # ── Monitoring (opcional): activar con `docker compose --profile monitoring up` ─
   prometheus:
@@ -132,6 +157,8 @@ services:
 
 volumes:
   licitaciones_data:
+    driver: local
+  redis_data:
     driver: local
   prometheus_data:
     driver: local
