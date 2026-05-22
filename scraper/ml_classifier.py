@@ -286,6 +286,45 @@ class SAPClassifier:
             **metrics,
             "trained_at": datetime.now(UTC).isoformat(),
         }
+
+        # ── Calibración de probabilidades + threshold tuning externo (opcional) ───
+        # Si ML_USE_CALIBRATION=True en settings, usa CalibratedClassifierCV +
+        # búsqueda F-beta sobre malla fina para refinar el umbral y mejorar las
+        # probabilidades predichas.
+        if getattr(settings, "ML_USE_CALIBRATION", False):
+            try:
+                from services.threshold_tuning import calibrate_and_tune
+
+                cost_fn = float(getattr(settings, "ML_COST_FN", 1.0))
+                cost_fp = float(getattr(settings, "ML_COST_FP", 1.0))
+                tune_result = calibrate_and_tune(
+                    base_estimator=self.pipeline,
+                    X_train=X_train,
+                    y_train=list(y_train),
+                    X_val=X_test,
+                    y_val=list(y_test),
+                    cost_fp=cost_fp,
+                    cost_fn=cost_fn,
+                )
+                # Sustituir pipeline por versión calibrada y actualizar threshold
+                self.pipeline = tune_result.calibrated  # type: ignore[assignment]
+                self._threshold = tune_result.threshold
+                metrics["optimal_threshold"] = round(tune_result.threshold, 4)
+                metrics["fbeta_calibrated"] = round(tune_result.fbeta, 4)
+                metrics["calibration_method"] = tune_result.method
+                self.metadata.update(
+                    optimal_threshold=metrics["optimal_threshold"],
+                    fbeta_calibrated=metrics["fbeta_calibrated"],
+                    calibration_method=tune_result.method,
+                )
+                log.info(
+                    "ml_classifier.calibrated",
+                    threshold=self._threshold,
+                    fbeta=tune_result.fbeta,
+                    method=tune_result.method,
+                )
+            except Exception as _cal_exc:
+                log.warning("ml_classifier.calibration_failed", error=str(_cal_exc))
         log.info("ml_classifier.trained", **metrics)
         # Append run a registry JSON para histórico de entrenamientos.
         try:
@@ -532,6 +571,22 @@ class SAPClassifier:
         import hashlib
 
         import joblib
+
+        # Si no se pasa path explícito, consultar el model registry
+        if path is None:
+            try:
+                from db.model_registry import get_active
+
+                active = get_active("sap_classifier")
+                if active and active.get("path"):
+                    path = Path(active["path"])
+                    log.info(
+                        "ml_classifier.load_from_registry",
+                        version=active.get("version"),
+                        path=str(path),
+                    )
+            except Exception as _reg_exc:
+                log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
 
         target = path or _MODEL_PATH
 

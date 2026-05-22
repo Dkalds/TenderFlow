@@ -460,6 +460,16 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         -- SQLite no soporta IF NOT EXISTS en ALTER TABLE ADD COLUMN.
         """,
     ),
+    (
+        31,
+        "dlq_last_attempt_exhausted_columns",
+        """
+        -- last_attempt_at: timestamp del último intento (para backoff correcto).
+        -- exhausted_at: timestamp en que se agotaron los reintentos (NULL = activo).
+        -- Se añaden de forma programática en _apply_v31_dlq_columns porque
+        -- SQLite no soporta IF NOT EXISTS en ALTER TABLE ADD COLUMN.
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -643,6 +653,9 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 30: columnas ml_tecnologias/ml_proba_max/ml_tech_principal
         if version == 30:
             _apply_v30_ml_tech_columns(conn)
+        # Migración 31: columnas last_attempt_at y exhausted_at en failed_extractions
+        if version == 31:
+            _apply_v31_dlq_columns(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -780,6 +793,39 @@ def _apply_v30_ml_tech_columns(conn: Any) -> None:
     try:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_ml_tech_principal ON licitaciones(ml_tech_principal)"
+        )
+    except Exception:
+        pass
+
+
+def _apply_v31_dlq_columns(conn: Any) -> None:
+    """Añade columnas last_attempt_at y exhausted_at a failed_extractions (idempotente).
+
+    ``last_attempt_at`` — timestamp del último intento de retry; usado para calcular
+                          el backoff exponencial. Se inicializa con created_at.
+    ``exhausted_at``    — timestamp en que la entrada alcanzó max_retries; NULL si activa.
+    """
+    for stmt in (
+        "ALTER TABLE failed_extractions ADD COLUMN last_attempt_at TEXT",
+        "ALTER TABLE failed_extractions ADD COLUMN exhausted_at TEXT",
+    ):
+        try:
+            conn.execute(stmt)
+        except Exception:
+            pass
+    # Inicializar last_attempt_at = created_at para entradas existentes
+    try:
+        conn.execute(
+            "UPDATE failed_extractions "
+            "SET last_attempt_at = created_at "
+            "WHERE last_attempt_at IS NULL"
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fail_exhausted "
+            "ON failed_extractions(exhausted_at) WHERE exhausted_at IS NOT NULL"
         )
     except Exception:
         pass

@@ -195,7 +195,13 @@ def search_advanced(
     import re
 
     from db.repositories.base import count_where
-    from db.repositories.licitaciones import _DEFAULT_SORT, _SORT_WHITELIST, _SUMMARY_COLS
+    from db.repositories.licitaciones import (
+        _DEFAULT_SORT,
+        _SORT_WHITELIST,
+    )
+    from db.repositories.licitaciones import (
+        _SUMMARY_COLS_STR as _SUMMARY_COLS,
+    )
 
     _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 

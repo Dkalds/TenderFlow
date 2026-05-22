@@ -131,3 +131,109 @@ def run_drift_report() -> dict[str, Any]:
         log.info("drift_report_ok", ref_n=results["ref_n"], cur_n=results["cur_n"])
 
     return results
+
+
+# ────────────────── F1 Drop — model performance degradation ───────────────
+
+
+def compute_f1_drop(
+    model_name: str = "sap_classifier",
+    *,
+    window_days: int = 30,
+    min_labelled: int = 20,
+) -> float:
+    """Estima la caída de F1 del modelo activo respecto a sus métricas de entrenamiento.
+
+    Estrategia: usa las filas con feedback humano explícito (``ml_feedback``)
+    de los últimos ``window_days`` días como ground-truth, y compara las
+    predicciones actuales del modelo contra esa etiqueta.
+
+    Args:
+        model_name:   Nombre del modelo en el registry.
+        window_days:  Ventana de feedback reciente a evaluar.
+        min_labelled: Mínimo de ejemplos etiquetados para proceder.
+
+    Returns:
+        Caída relativa de F1 (0.0 si no hay datos suficientes o no hay modelo
+        activo registrado). Positivo = degradación; negativo = mejora.
+    """
+    try:
+        from datetime import timedelta
+
+        from sklearn.metrics import f1_score  # type: ignore[import]
+
+        from db.database import connect as db_connect
+        from db.model_registry import get_active
+        from scraper.ml_classifier import SAPClassifier
+
+    except ImportError as exc:
+        log.warning("compute_f1_drop_import_error", error=str(exc))
+        return 0.0
+
+    active = get_active(model_name)
+    if active is None:
+        log.info("compute_f1_drop_no_active_model", model=model_name)
+        return 0.0
+
+    # F1 registrado en el entrenamiento
+    trained_f1 = float(active.get("metrics", {}).get("f1") or 0.0)
+    if trained_f1 <= 0.0:
+        return 0.0
+
+    # Cargar feedback reciente como ground-truth
+    since = (datetime.now(UTC) - timedelta(days=window_days)).isoformat()
+    try:
+        with db_connect() as c:
+            rows = c.execute(
+                "SELECT f.expediente, f.relevante, l.titulo, l.descripcion, "
+                "l.cpv, l.importe "
+                "FROM ml_feedback f "
+                "JOIN licitaciones l ON l.id_externo = f.expediente "
+                "WHERE f.created_at >= ?",
+                (since,),
+            ).fetchall()
+    except Exception as exc:
+        log.warning("compute_f1_drop_query_failed", error=str(exc))
+        return 0.0
+
+    if len(rows) < min_labelled:
+        log.info("compute_f1_drop_insufficient_data", n=len(rows), min=min_labelled)
+        return 0.0
+
+    # Cargar modelo activo desde registry path
+    model_path = active.get("path")
+    try:
+        from pathlib import Path
+
+        clf = SAPClassifier.load(Path(model_path)) if model_path else SAPClassifier.load()
+    except Exception as exc:
+        log.warning("compute_f1_drop_load_failed", error=str(exc))
+        return 0.0
+
+    # Predecir
+    texts = [f"{r[2] or ''} {r[3] or ''}" for r in rows]
+    cpvs = [r[4] for r in rows]
+    importes = [r[5] for r in rows]
+    y_true = [int(r[1]) for r in rows]
+
+    try:
+        preds = [
+            int(clf.predict(t, cpv, imp)[0])
+            for t, cpv, imp in zip(texts, cpvs, importes, strict=False)
+        ]
+        current_f1 = float(f1_score(y_true, preds, zero_division=0))
+    except Exception as exc:
+        log.warning("compute_f1_drop_predict_failed", error=str(exc))
+        return 0.0
+
+    drop = max(0.0, trained_f1 - current_f1)
+    relative_drop = drop / trained_f1 if trained_f1 > 0 else 0.0
+    log.info(
+        "compute_f1_drop_result",
+        model=model_name,
+        trained_f1=round(trained_f1, 4),
+        current_f1=round(current_f1, 4),
+        relative_drop=round(relative_drop, 4),
+        n_labelled=len(rows),
+    )
+    return relative_drop
