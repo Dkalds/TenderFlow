@@ -1,5 +1,5 @@
 ---
-name: pandas-data-analysis
+name: Pandas Data Analysis
 description: Master data manipulation, analysis, and visualization with Pandas, NumPy, and Matplotlib
 version: "2.1.0"
 sasmp_version: "1.3.0"

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Experiment Designer
 Production-grade tool for senior data scientist
