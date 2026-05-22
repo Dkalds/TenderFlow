@@ -111,7 +111,7 @@ class _RedisBackend:
         import redis as redis_lib
 
         self._ns = f"{namespace}:" if namespace else ""
-        self._r: redis_lib.Redis[str] = redis_lib.Redis.from_url(
+        self._r: Any = redis_lib.Redis.from_url(
             url, decode_responses=True, socket_connect_timeout=2
         )
         self._r.ping()
