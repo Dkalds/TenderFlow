@@ -11,8 +11,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from config.keywords import TECH_LABELS
+
 if TYPE_CHECKING:
     import pandas as pd
+
+_VALID_LABELS: frozenset[str] = frozenset(TECH_LABELS)
 
 
 def _make_pipeline() -> Any:
@@ -197,22 +201,68 @@ def _expected_calibration_error(y_true: Any, y_proba: Any, n_bins: int = 10) -> 
 # que aporta cero señal técnica y diluye el TF-IDF. Se combinan con stopwords
 # castellanas estándar (cargadas dinámicamente vía sklearn en _make_tech_pipeline).
 SPANISH_PROCUREMENT_STOPWORDS: list[str] = [
-    "sociedad", "anonima", "anónima", "limitada", "sl", "sa", "sau",
-    "presupuesto", "base", "licitacion", "licitación",
-    "valor", "estimado", "iva", "euros", "eur",
-    "pliego", "pliegos", "clausulas", "cláusulas",
-    "lote", "lotes", "expediente", "expedientes",
-    "adjudicatario", "adjudicación", "adjudicacion",
-    "contrato", "contratacion", "contratación",
-    "objeto", "prescripciones", "tecnicas", "técnicas",
-    "administrativas", "particulares",
-    "organo", "órgano", "contratante",
-    "procedimiento", "abierto", "restringido", "negociado",
-    "anuncio", "publicacion", "publicación",
-    "documento", "documentacion", "documentación",
-    "memoria", "informe", "expediente",
-    "ley", "real", "decreto", "articulo", "artículo",
-    "boletin", "boletín", "oficial", "estado", "doue",
+    "sociedad",
+    "anonima",
+    "anónima",
+    "limitada",
+    "sl",
+    "sa",
+    "sau",
+    "presupuesto",
+    "base",
+    "licitacion",
+    "licitación",
+    "valor",
+    "estimado",
+    "iva",
+    "euros",
+    "eur",
+    "pliego",
+    "pliegos",
+    "clausulas",
+    "cláusulas",
+    "lote",
+    "lotes",
+    "expediente",
+    "expedientes",
+    "adjudicatario",
+    "adjudicación",
+    "adjudicacion",
+    "contrato",
+    "contratacion",
+    "contratación",
+    "objeto",
+    "prescripciones",
+    "tecnicas",
+    "técnicas",
+    "administrativas",
+    "particulares",
+    "organo",
+    "órgano",
+    "contratante",
+    "procedimiento",
+    "abierto",
+    "restringido",
+    "negociado",
+    "anuncio",
+    "publicacion",
+    "publicación",
+    "documento",
+    "documentacion",
+    "documentación",
+    "memoria",
+    "informe",
+    "expediente",
+    "ley",
+    "real",
+    "decreto",
+    "articulo",
+    "artículo",
+    "boletin",
+    "boletín",
+    "oficial",
+    "estado",
+    "doue",
 ]
 
 
@@ -226,7 +276,7 @@ def _make_tech_pipeline(
 
     Args:
         fragile: Si True usa regularización más fuerte (C bajo) para tier
-            con pocos positivos (20–49 ejemplos).
+            con pocos positivos (20-49 ejemplos).
         fragile_c: Valor de C para tier frágil.
         use_domain_stopwords: Añade el set de boilerplate de licitaciones.
 
@@ -287,11 +337,11 @@ def _parse_tecnologia_csv(value: Any) -> list[str]:
     if not s:
         return []
     parts = [p.strip().upper() for p in s.split(",") if p.strip()]
-    # Deduplicar preservando orden
+    # Filtrar etiquetas desconocidas y deduplicar preservando orden
     seen: set[str] = set()
     out: list[str] = []
     for p in parts:
-        if p not in seen:
+        if p not in seen and p in _VALID_LABELS:
             seen.add(p)
             out.append(p)
     return out

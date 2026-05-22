@@ -107,12 +107,8 @@ class TechnologyClassifier:
         min_ready = int(getattr(settings, "ML_TECH_MIN_POS_READY", 50))
         min_fragile = int(getattr(settings, "ML_TECH_MIN_POS_FRAGILE", 20))
         fragile_c = float(getattr(settings, "ML_TECH_FRAGILE_C", 0.3))
-        fragile_min_precision = float(
-            getattr(settings, "ML_TECH_FRAGILE_MIN_PRECISION", 0.70)
-        )
-        default_threshold = float(
-            getattr(settings, "ML_TECH_DEFAULT_THRESHOLD", 0.50)
-        )
+        fragile_min_precision = float(getattr(settings, "ML_TECH_FRAGILE_MIN_PRECISION", 0.70))
+        default_threshold = float(getattr(settings, "ML_TECH_DEFAULT_THRESHOLD", 0.50))
 
         per_tech: dict[str, dict[str, Any]] = {}
         ml_ready_f1s: list[float] = []
@@ -131,7 +127,6 @@ class TechnologyClassifier:
 
         for j, label in enumerate(self.labels):
             n_pos = positives[j]
-            keywords = self._fallback_keywords.get(label, [])
 
             # ── Tier rules (sin modelo) ───────────────────────────────────
             if n_pos < min_fragile:
@@ -173,7 +168,7 @@ class TechnologyClassifier:
             try:
                 pipe = _make_tech_pipeline(fragile=fragile, fragile_c=fragile_c)
                 pipe.fit(X_train, y_train)
-            except Exception as exc:  # noqa: BLE001 — log + fallback
+            except Exception as exc:
                 log.warning(
                     "tech_classifier.fit_failed",
                     label=label,
@@ -204,7 +199,7 @@ class TechnologyClassifier:
                 proba_test = pipe.predict_proba(X_test)[:, 1]
                 try:
                     pr_auc = float(average_precision_score(y_test, proba_test))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pr_auc = None
                 precisions, recalls, thr = precision_recall_curve(y_test, proba_test)
                 # precision_recall_curve devuelve thr de longitud n-1
@@ -215,9 +210,7 @@ class TechnologyClassifier:
                         # Priorizar precisión sobre recall en tier frágil
                         valid = p_arr >= fragile_min_precision
                         if valid.any():
-                            f1_vals = (
-                                2 * p_arr * r_arr / (p_arr + r_arr + 1e-9)
-                            )
+                            f1_vals = 2 * p_arr * r_arr / (p_arr + r_arr + 1e-9)
                             f1_vals[~valid] = -1.0
                             best = int(np.argmax(f1_vals))
                         else:
@@ -226,14 +219,16 @@ class TechnologyClassifier:
                         f1_vals = 2 * p_arr * r_arr / (p_arr + r_arr + 1e-9)
                         best = int(np.argmax(f1_vals))
                     chosen_threshold = float(thr[best])
-                # Clamping
-                chosen_threshold = max(0.30, min(0.95, chosen_threshold))
+                # Clamping — 0.85 cap evita thresholds sobreajustados en datos
+                # con separación perfecta donde precision_recall_curve sólo
+                # evalúa probabilidades observadas (sin candidatos en el gap).
+                chosen_threshold = max(0.30, min(0.85, chosen_threshold))
                 y_pred = (proba_test >= chosen_threshold).astype(int)
                 try:
                     f1_val = float(f1_score(y_test, y_pred, zero_division=0))
                     prec_val = float(precision_score(y_test, y_pred, zero_division=0))
                     rec_val = float(recall_score(y_test, y_pred, zero_division=0))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
             self._models[label] = pipe
@@ -253,9 +248,7 @@ class TechnologyClassifier:
                 ml_ready_f1s.append(f1_val)
 
         self._trained = True
-        macro_f1_ml_ready = (
-            float(sum(ml_ready_f1s) / len(ml_ready_f1s)) if ml_ready_f1s else 0.0
-        )
+        macro_f1_ml_ready = float(sum(ml_ready_f1s) / len(ml_ready_f1s)) if ml_ready_f1s else 0.0
         n_models = len(self._models)
         n_rules = sum(1 for t in self._tier.values() if t == _TIER_RULES)
         if n_models == 0:
@@ -291,9 +284,7 @@ class TechnologyClassifier:
 
     # ── Predicción ────────────────────────────────────────────────────────
 
-    def _score_one(
-        self, augmented_text: str
-    ) -> dict[str, float]:
+    def _score_one(self, augmented_text: str) -> dict[str, float]:
         """Calcula score por tecnología (modelo o fallback rules)."""
         scores: dict[str, float] = {}
         for label in self.labels:
@@ -309,7 +300,7 @@ class TechnologyClassifier:
                     continue
                 try:
                     scores[label] = float(pipe.predict_proba([augmented_text])[0][1])
-                except Exception:  # noqa: BLE001
+                except Exception:
                     scores[label] = 0.0
         return scores
 
@@ -321,9 +312,7 @@ class TechnologyClassifier:
             except (TypeError, ValueError):
                 pass
         return float(
-            self._thresholds.get(
-                label, getattr(settings, "ML_TECH_DEFAULT_THRESHOLD", 0.50)
-            )
+            self._thresholds.get(label, getattr(settings, "ML_TECH_DEFAULT_THRESHOLD", 0.50))
         )
 
     def predict_one(
@@ -345,22 +334,16 @@ class TechnologyClassifier:
         augmented = _augment_text(text, cpv=cpv, importe=importe)
         scores = self._score_one(augmented)
         thresholds = {lbl: self._threshold_for(lbl) for lbl in self.labels}
-        predicted = [
-            lbl
-            for lbl in self.labels
-            if scores.get(lbl, 0.0) >= thresholds[lbl]
-        ]
+        predicted = [lbl for lbl in self.labels if scores.get(lbl, 0.0) >= thresholds[lbl]]
         predicted.sort(key=lambda lbl: scores.get(lbl, 0.0), reverse=True)
         if predicted:
             principal: str | None = predicted[0]
-            max_proba = scores.get(principal, 0.0)
+            max_proba = scores.get(predicted[0], 0.0)
         else:
             principal = None
             # max sobre todos los labels (informativo aunque no pase threshold)
             max_proba = max(scores.values()) if scores else 0.0
-        low_conf = [
-            lbl for lbl in predicted if self._tier.get(lbl) == _TIER_FRAGILE
-        ]
+        low_conf = [lbl for lbl in predicted if self._tier.get(lbl) == _TIER_FRAGILE]
         return {
             "scores": scores,
             "predicted": predicted,
@@ -401,9 +384,7 @@ class TechnologyClassifier:
             tier = self._tier.get(label, _TIER_RULES)
             kws = self._fallback_keywords.get(label, [])
             if tier == _TIER_RULES:
-                per_label_scores[label] = [
-                    _keyword_fallback_score(t, kws) for t in augmented
-                ]
+                per_label_scores[label] = [_keyword_fallback_score(t, kws) for t in augmented]
             else:
                 pipe = self._models.get(label)
                 if pipe is None:
@@ -412,7 +393,7 @@ class TechnologyClassifier:
                 try:
                     proba = pipe.predict_proba(augmented)
                     per_label_scores[label] = [float(p[1]) for p in proba]
-                except Exception:  # noqa: BLE001
+                except Exception:
                     per_label_scores[label] = [0.0] * n
 
         thresholds = {lbl: self._threshold_for(lbl) for lbl in self.labels}
@@ -426,13 +407,11 @@ class TechnologyClassifier:
             )
             if predicted:
                 principal: str | None = predicted[0]
-                max_proba = scores[principal]
+                max_proba = scores[predicted[0]]
             else:
                 principal = None
                 max_proba = max(scores.values()) if scores else 0.0
-            low_conf = [
-                lbl for lbl in predicted if self._tier.get(lbl) == _TIER_FRAGILE
-            ]
+            low_conf = [lbl for lbl in predicted if self._tier.get(lbl) == _TIER_FRAGILE]
             results.append(
                 {
                     "scores": scores,
@@ -474,9 +453,7 @@ class TechnologyClassifier:
         obj = joblib.load(target)
         # Aceptar instancias re-importadas vía __main__
         if type(obj).__name__ != cls.__name__:
-            raise TypeError(
-                f"El archivo no contiene un TechnologyClassifier: {type(obj)}"
-            )
+            raise TypeError(f"El archivo no contiene un TechnologyClassifier: {type(obj)}")
         return obj  # type: ignore[no-any-return]
 
     @classmethod
@@ -521,7 +498,7 @@ def train_from_db(*, db_path: Path | None = None) -> dict[str, Any]:
             "tecnologia",
             "raw_keywords",
         ]
-        df = pd.DataFrame([dict(zip(_col_names, row)) for row in cols])
+        df = pd.DataFrame([dict(zip(_col_names, row, strict=False)) for row in cols])
     else:
         import sqlite3
 

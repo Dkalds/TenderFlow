@@ -21,7 +21,6 @@ from scraper.tech_classifier import (  # noqa: E402
     TechnologyClassifier,
 )
 
-
 # ── Helpers de bajo nivel ──────────────────────────────────────────────────
 
 
@@ -98,24 +97,52 @@ class TestKeywordFallbackScore:
 # ── TechnologyClassifier (entrenamiento ligero) ─────────────────────────────
 
 
-def _make_synthetic_df() -> "pd.DataFrame":
-    """Genera un dataset sintético desbalanceado para validar los 3 tiers."""
+def _make_synthetic_df() -> pd.DataFrame:
+    """Genera un dataset sintético desbalanceado para validar los 3 tiers.
+
+    Usa vocabulario variado para evitar que las probabilidades calibradas
+    se agrupen en un rango estrecho y produzcan thresholds sobreajustados.
+    """
     rows: list[dict[str, str]] = []
+
     # SAP: 60 positivos → ml_ready (>= ML_TECH_MIN_POS_READY=50)
+    sap_templates = [
+        ("SAP S/4HANA migración módulo finanzas", "implantación abap fiori"),
+        ("Consultoría SAP ERP recursos humanos", "soporte sap hcm netweaver"),
+        ("Licencias SAP plataforma analítica", "sap bw business objects"),
+        ("Migración SAP módulo logística", "sap mm sd transporte"),
+        ("SAP integración sistemas corporativos", "sap pi po middleware"),
+        ("Desarrollo ABAP SAP a medida", "fiori launchpad ui5 netweaver"),
+        ("SAP SuccessFactors gestión talento", "rrhh nóminas formación"),
+        ("Soporte SAP basis administración", "sap solution manager solman"),
+        ("SAP Ariba aprovisionamiento digital", "compras contratos proveedores"),
+        ("SAP Analytics Cloud informes", "sac dashboard kpi cuadro mando"),
+        ("SAP BTP cloud nativo", "business technology platform apis"),
+        ("Actualización SAP ECC a S/4HANA", "upgrade migración datos legacy"),
+    ]
     for i in range(60):
+        t = sap_templates[i % len(sap_templates)]
         rows.append(
             {
-                "titulo": f"SAP S/4HANA migración módulo {i}",
-                "descripcion": "implantación abap fiori netweaver",
+                "titulo": f"{t[0]} {i}",
+                "descripcion": t[1],
                 "tecnologia": "SAP",
             }
         )
     # SALESFORCE: 25 positivos → fragile (entre 20 y 50)
+    sf_templates = [
+        ("Salesforce CRM implantación", "sales cloud service cloud"),
+        ("Salesforce Einstein analytics", "apex visualforce lightning"),
+        ("Salesforce Marketing Cloud campaña", "pardot automatización email"),
+        ("Salesforce integración MuleSoft", "api gateway conectores datos"),
+        ("Salesforce CPQ presupuestos", "commerce cloud b2b ventas"),
+    ]
     for i in range(25):
+        t = sf_templates[i % len(sf_templates)]
         rows.append(
             {
-                "titulo": f"salesforce einstein crm proyecto {i}",
-                "descripcion": "apex visualforce lightning",
+                "titulo": f"{t[0]} {i}",
+                "descripcion": t[1],
                 "tecnologia": "SALESFORCE",
             }
         )
@@ -128,12 +155,23 @@ def _make_synthetic_df() -> "pd.DataFrame":
                 "tecnologia": "META4",
             }
         )
-    # Negativos genéricos
+    # Negativos genéricos (variados para evitar clustering extremo)
+    neg_templates = [
+        ("Servicio limpieza edificio", "mantenimiento jardinería"),
+        ("Suministro material oficina", "papelería mobiliario equipo"),
+        ("Obras reforma instalaciones", "albañilería electricidad fontanería"),
+        ("Vigilancia seguridad privada", "control accesos cámaras alarmas"),
+        ("Transporte escolar rutas", "autobuses conductores horarios"),
+        ("Catering comedor hospital", "alimentación dietas menús"),
+        ("Gestión residuos recogida", "reciclaje contenedores vertedero"),
+        ("Consultoría medioambiental impacto", "evaluación sostenibilidad huella"),
+    ]
     for i in range(80):
+        t = neg_templates[i % len(neg_templates)]
         rows.append(
             {
-                "titulo": f"servicio limpieza edificio {i}",
-                "descripcion": "mantenimiento jardinería",
+                "titulo": f"{t[0]} {i}",
+                "descripcion": t[1],
                 "tecnologia": "",
             }
         )
