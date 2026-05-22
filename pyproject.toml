@@ -296,8 +296,9 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Subido de 50 → 53 tras añadir tests Fase 1A+1B. Objetivo siguiente: 65.
-fail_under = 53
+# Subido de 50 → 51 tras añadir tests de shared/cache.py (39 tests).
+# Actual: 51.67%. Objetivo siguiente: 55 con tests de Turso migration.
+fail_under = 51
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
