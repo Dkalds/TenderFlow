@@ -54,6 +54,8 @@ _DAILY_SOURCE = "place_live_atom"
 _TI_PREFIXES = ("48", "72")
 _ml_clf: Any = None
 _ml_clf_attempted: bool = False
+_tech_clf: Any = None
+_tech_clf_attempted: bool = False
 
 
 def _get_ml_clf() -> Any:
@@ -74,6 +76,53 @@ def _get_ml_clf() -> Any:
     except Exception:
         log.debug("pipeline.ml_clf_unavailable")
     return _ml_clf
+
+
+def _get_tech_clf() -> Any:
+    """Carga el TechnologyClassifier multi-label si está habilitado (singleton)."""
+    global _tech_clf, _tech_clf_attempted
+    if _tech_clf_attempted:
+        return _tech_clf
+    _tech_clf_attempted = True
+    from config import settings as _settings
+
+    if not getattr(_settings, "ML_TECH_ENABLED", False):
+        return None
+    try:
+        from scraper.tech_classifier import TechnologyClassifier
+
+        if TechnologyClassifier.is_available():
+            _tech_clf = TechnologyClassifier.load()
+            log.info(
+                "pipeline.tech_clf_loaded",
+                n_models=len(_tech_clf._models),
+                practices=list(getattr(_settings, "ML_TECH_GATING_PRACTICES", [])),
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.debug("pipeline.tech_clf_unavailable", error=str(exc))
+    return _tech_clf
+
+
+def _apply_tech_prediction(lic: Licitacion) -> dict[str, Any] | None:
+    """Anota ``lic`` con ml_tecnologias / ml_proba_max / ml_tech_principal.
+
+    Devuelve el dict de predicción (con ``scores`` y ``thresholds``) para que
+    los llamadores puedan persistirlo en ``licitacion_tecnologia_score``.
+    Si el clasificador multi-tech está deshabilitado o falla, devuelve None.
+    """
+    tech_clf = _get_tech_clf()
+    if tech_clf is None:
+        return None
+    try:
+        text = ((lic.titulo or "") + " " + (lic.descripcion or "")).strip()
+        pred = tech_clf.predict_one(text, cpv=lic.cpv, importe=lic.importe)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("pipeline.tech_predict_failed", id=lic.id_externo, error=str(exc))
+        return None
+    lic.ml_tecnologias = ",".join(pred["predicted"]) if pred["predicted"] else None
+    lic.ml_proba_max = float(pred["max_proba"])
+    lic.ml_tech_principal = pred["principal"]
+    return pred
 
 
 def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
@@ -126,7 +175,23 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
 
     lic.ml_proba = proba
 
-    if proba < settings.ML_UNCERTAINTY_LO:
+    # Anotación multi-tecnología (no-op si ML_TECH_ENABLED=False).
+    tech_pred = _apply_tech_prediction(lic)
+
+    # Gating extendido: aceptar si alguna práctica activa supera su threshold.
+    accepted_by_tech: str | None = None
+    if tech_pred is not None:
+        practices = set(getattr(settings, "ML_TECH_GATING_PRACTICES", []) or [])
+        # SAP siempre se decide por ``proba`` (P(SAP) del binario) — no por el
+        # tech_clf — para preservar compatibilidad con el threshold histórico.
+        for label in tech_pred.get("predicted", []):
+            if label == "SAP":
+                continue
+            if label in practices:
+                accepted_by_tech = label
+                break
+
+    if proba < settings.ML_UNCERTAINTY_LO and accepted_by_tech is None:
         return None  # negativo confiable → descartar
 
     log.info(
@@ -134,6 +199,8 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
         id=lic.id_externo,
         ml_proba=round(proba, 3),
         zone="uncertain" if proba < clf._threshold else "confident",
+        accepted_by_tech=accepted_by_tech,
+        ml_tech_principal=lic.ml_tech_principal,
     )
     return lic
 

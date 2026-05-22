@@ -12,7 +12,8 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 _SUMMARY_COLS = (
     "id_externo, titulo, organo_contratacion, importe, estado, "
-    "fecha_publicacion, ccaa, cpv, url, tecnologia"
+    "fecha_publicacion, ccaa, cpv, url, tecnologia, "
+    "ml_tecnologias, ml_proba_max, ml_tech_principal"
 )
 
 _SORT_WHITELIST: dict[str, str] = {
@@ -39,6 +40,8 @@ class LicitacionRepository:
         estado: str | None = None,
         ccaa: str | None = None,
         tecnologia: str | None = None,
+        tecnologia_predicha: str | None = None,
+        min_proba_tech: float | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         only_classified: bool = True,
@@ -62,6 +65,34 @@ class LicitacionRepository:
         if tecnologia:
             conditions.append("tecnologia = ?")
             params.append(tecnologia)
+        if tecnologia_predicha:
+            if min_proba_tech is not None:
+                # Filtro fuerte: requiere score >= min_proba_tech en
+                # licitacion_tecnologia_score. Subquery EXISTS para no
+                # multiplicar filas.
+                conditions.append(
+                    "EXISTS (SELECT 1 FROM licitacion_tecnologia_score s "
+                    "WHERE s.licitacion_id = licitaciones.id_externo "
+                    "AND s.tecnologia = ? AND s.probabilidad >= ?)"
+                )
+                params.extend([tecnologia_predicha, float(min_proba_tech)])
+            else:
+                # Filtro suave: la tecnología aparece en ml_tech_principal o
+                # en el CSV ml_tecnologias.
+                conditions.append(
+                    "(ml_tech_principal = ? OR ml_tecnologias = ? "
+                    "OR ml_tecnologias LIKE ? OR ml_tecnologias LIKE ? "
+                    "OR ml_tecnologias LIKE ?)"
+                )
+                params.extend(
+                    [
+                        tecnologia_predicha,
+                        tecnologia_predicha,
+                        f"{tecnologia_predicha},%",
+                        f"%,{tecnologia_predicha},%",
+                        f"%,{tecnologia_predicha}",
+                    ]
+                )
         if fecha_desde and _DATE_RE.match(fecha_desde):
             conditions.append("fecha_publicacion >= ?")
             params.append(fecha_desde)
@@ -80,6 +111,8 @@ class LicitacionRepository:
         estado: str | None = None,
         ccaa: str | None = None,
         tecnologia: str | None = None,
+        tecnologia_predicha: str | None = None,
+        min_proba_tech: float | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         limit: int = 50,
@@ -94,6 +127,8 @@ class LicitacionRepository:
             estado=estado,
             ccaa=ccaa,
             tecnologia=tecnologia,
+            tecnologia_predicha=tecnologia_predicha,
+            min_proba_tech=min_proba_tech,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
         )
@@ -299,3 +334,19 @@ class LicitacionRepository:
         # Preservar orden del input
         order = {id_: i for i, id_ in enumerate(ids)}
         return sorted(rows, key=lambda r: order.get(r.get("id_externo", ""), 999))
+
+    def tech_scores_for(self, id_externo: str) -> list[dict[str, Any]]:
+        """Devuelve scores por tecnología desde ``licitacion_tecnologia_score``.
+
+        Ordenado por probabilidad DESC. Lista vacía si la licitación no tiene
+        scores (p. ej., precompute aún no ejecutado o ML_TECH_ENABLED=False).
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT tecnologia, probabilidad, threshold_aplicado, computed_at "
+                "FROM licitacion_tecnologia_score "
+                "WHERE licitacion_id = ? "
+                "ORDER BY probabilidad DESC",
+                (id_externo,),
+            )
+            return rows_to_dicts(cur)

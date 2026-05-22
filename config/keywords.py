@@ -272,3 +272,8 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "baan",
     ],
 }
+
+# Lista canónica de etiquetas de tecnología (orden estable por inserción del dict).
+# Consumida por ``scraper.tech_classifier`` para construir el matriz de labels
+# y por la persistencia de scores en ``licitacion_tecnologia_score``.
+TECH_LABELS: list[str] = list(TECHNOLOGY_KEYWORDS.keys())

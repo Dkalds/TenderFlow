@@ -71,6 +71,9 @@ class LicitacionSummary(BaseModel):
     cpv: str | None = None
     url: str | None = None
     tecnologia: str | None = None
+    ml_tecnologias: str | None = None
+    ml_proba_max: float | None = None
+    ml_tech_principal: str | None = None
 
 
 class LicitacionDetail(LicitacionSummary):
@@ -196,6 +199,23 @@ async def list_licitaciones(
     estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
     ccaa: str | None = Query(None, description="Comunidad Autónoma"),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
+    tecnologia_predicha: str | None = Query(
+        None,
+        description=(
+            "Filtra por tecnología predicha por el clasificador multi-label "
+            "(ml_tech_principal o cualquiera en ml_tecnologias). Combinable "
+            "con min_proba_tech para usar la tabla licitacion_tecnologia_score."
+        ),
+    ),
+    min_proba_tech: float | None = Query(
+        None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Si se especifica junto con tecnologia_predicha, sólo devuelve "
+            "licitaciones cuyo score para esa tecnología es >= este umbral."
+        ),
+    ),
     fecha_desde: str | None = Query(None, description="Fecha publicación desde (YYYY-MM-DD)"),
     fecha_hasta: str | None = Query(None, description="Fecha publicación hasta (YYYY-MM-DD)"),
     sort: str | None = Query(
@@ -228,6 +248,8 @@ async def list_licitaciones(
         estado=estado,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        tecnologia_predicha=tecnologia_predicha,
+        min_proba_tech=min_proba_tech,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         limit=limit,
@@ -462,6 +484,29 @@ async def explain_licitacion(
         "tecnologia": tecnologia,
         "explanation": explanation,
     }
+
+
+@router.get(
+    "/licitaciones/{id_externo}/tech-scores",
+    summary="Scores multi-tecnología del clasificador (ML_TECH)",
+    responses={
+        401: {"description": "API key inválida"},
+        404: {"description": "No encontrado o sin scores"},
+    },
+)
+async def get_tech_scores(
+    id_externo: str,
+    _ctx: AuthContext = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Devuelve los scores por tecnología desde ``licitacion_tecnologia_score``.
+
+    Cada item incluye ``tecnologia``, ``probabilidad``, ``threshold_aplicado`` y
+    ``computed_at``. Lista vacía si la licitación aún no ha sido puntuada por
+    el clasificador multi-label (p. ej., ``ML_TECH_ENABLED=False`` o el job
+    ``precompute_ml_tecnologias`` no se ha ejecutado todavía).
+    """
+    scores = await run_db(_lic_repo.tech_scores_for, id_externo)
+    return {"id_externo": id_externo, "scores": scores}
 
 
 # ── /adjudicaciones ───────────────────────────────────────────────────────

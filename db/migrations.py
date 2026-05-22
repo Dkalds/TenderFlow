@@ -438,6 +438,28 @@ MIGRATIONS: list[tuple[int, str, str]] = [
             ON mat_top_empresas_ccaa(ccaa);
         """,
     ),
+    (
+        30,
+        "ml_tecnologias_multilabel",
+        """
+        CREATE TABLE IF NOT EXISTS licitacion_tecnologia_score (
+            licitacion_id      TEXT NOT NULL,
+            tecnologia         TEXT NOT NULL,
+            probabilidad       REAL NOT NULL,
+            threshold_aplicado REAL NOT NULL,
+            computed_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (licitacion_id, tecnologia),
+            FOREIGN KEY (licitacion_id) REFERENCES licitaciones(id_externo) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_lts_tecnologia
+            ON licitacion_tecnologia_score(tecnologia, probabilidad DESC);
+        CREATE INDEX IF NOT EXISTS idx_lts_lic
+            ON licitacion_tecnologia_score(licitacion_id);
+        -- Las columnas ml_tecnologias / ml_proba_max / ml_tech_principal se
+        -- añaden de forma programática en _apply_v30_ml_tech_columns porque
+        -- SQLite no soporta IF NOT EXISTS en ALTER TABLE ADD COLUMN.
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -551,7 +573,7 @@ ROLLBACKS: dict[int, str] = {
 }
 
 # Migraciones que NO se pueden revertir (solo ADD COLUMN sin DROP COLUMN)
-_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10, 14, 15}
+_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10, 14, 15, 30}
 
 
 def current_version(conn: Any) -> int:
@@ -618,6 +640,9 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 28: tabla api_key_tiers + columna tier en api_keys
         if version == 28:
             _apply_v28_api_key_tiers(conn)
+        # Migración 30: columnas ml_tecnologias/ml_proba_max/ml_tech_principal
+        if version == 30:
+            _apply_v30_ml_tech_columns(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -729,6 +754,34 @@ def _apply_v28_api_key_tiers(conn: Any) -> None:
     """
     try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'")
+    except Exception:
+        pass
+
+
+def _apply_v30_ml_tech_columns(conn: Any) -> None:
+    """Añade columnas multi-tecnología a licitaciones (idempotente).
+
+    ``ml_tecnologias``       — CSV de etiquetas predichas, ordenadas por probabilidad.
+    ``ml_proba_max``         — Probabilidad máxima entre todas las tecnologías.
+    ``ml_tech_principal``    — Etiqueta con mayor probabilidad (routing al equipo).
+
+    ``ml_proba`` se mantiene intacta (= P(SAP)) por compatibilidad con el
+    pipeline y dashboard existentes.
+    """
+    for stmt in (
+        "ALTER TABLE licitaciones ADD COLUMN ml_tecnologias TEXT",
+        "ALTER TABLE licitaciones ADD COLUMN ml_proba_max REAL",
+        "ALTER TABLE licitaciones ADD COLUMN ml_tech_principal TEXT",
+    ):
+        try:
+            conn.execute(stmt)
+        except Exception:
+            pass
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ml_tech_principal "
+            "ON licitaciones(ml_tech_principal)"
+        )
     except Exception:
         pass
 

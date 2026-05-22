@@ -99,6 +99,18 @@ def _run_daily_atom() -> None:
         precompute_ml_proba(force=False)
     except Exception:
         log.debug("daily_precompute_ml_proba_failed")
+    # Multi-tecnología (feature-flagged): pobla ml_tecnologias/ml_proba_max
+    # y la tabla licitacion_tecnologia_score. No-op si ML_TECH_ENABLED=False
+    # o si TechnologyClassifier no está disponible en disco.
+    try:
+        from config import settings as _settings
+
+        if getattr(_settings, "ML_TECH_ENABLED", False):
+            from scraper.ml_training import precompute_ml_tecnologias
+
+            precompute_ml_tecnologias(force=False)
+    except Exception:
+        log.debug("daily_precompute_ml_tecnologias_failed")
     run_kpi_precompute()
     run_aggregates_precompute()
     check_and_notify()

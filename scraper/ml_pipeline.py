@@ -187,3 +187,175 @@ def _expected_calibration_error(y_true: Any, y_proba: Any, n_bins: int = 10) -> 
         acc = float(y_true_arr[mask].mean())
         ece += (mask.sum() / n) * abs(conf - acc)
     return float(ece)
+
+
+# ---------------------------------------------------------------------------
+# Multi-label support (technology classifier)
+# ---------------------------------------------------------------------------
+
+# Stopwords de dominio: boilerplate frecuente en pliegos de licitaciones del SP
+# que aporta cero señal técnica y diluye el TF-IDF. Se combinan con stopwords
+# castellanas estándar (cargadas dinámicamente vía sklearn en _make_tech_pipeline).
+SPANISH_PROCUREMENT_STOPWORDS: list[str] = [
+    "sociedad", "anonima", "anónima", "limitada", "sl", "sa", "sau",
+    "presupuesto", "base", "licitacion", "licitación",
+    "valor", "estimado", "iva", "euros", "eur",
+    "pliego", "pliegos", "clausulas", "cláusulas",
+    "lote", "lotes", "expediente", "expedientes",
+    "adjudicatario", "adjudicación", "adjudicacion",
+    "contrato", "contratacion", "contratación",
+    "objeto", "prescripciones", "tecnicas", "técnicas",
+    "administrativas", "particulares",
+    "organo", "órgano", "contratante",
+    "procedimiento", "abierto", "restringido", "negociado",
+    "anuncio", "publicacion", "publicación",
+    "documento", "documentacion", "documentación",
+    "memoria", "informe", "expediente",
+    "ley", "real", "decreto", "articulo", "artículo",
+    "boletin", "boletín", "oficial", "estado", "doue",
+]
+
+
+def _make_tech_pipeline(
+    *,
+    fragile: bool = False,
+    fragile_c: float = 0.3,
+    use_domain_stopwords: bool = True,
+) -> Any:
+    """Pipeline para una sola tecnología (binario, OneVsRest-friendly).
+
+    Args:
+        fragile: Si True usa regularización más fuerte (C bajo) para tier
+            con pocos positivos (20–49 ejemplos).
+        fragile_c: Valor de C para tier frágil.
+        use_domain_stopwords: Añade el set de boilerplate de licitaciones.
+
+    Returns:
+        sklearn Pipeline calibrado (TF-IDF word + MaxAbsScaler + CalibratedLR).
+    """
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import MaxAbsScaler
+
+    stop_words = SPANISH_PROCUREMENT_STOPWORDS if use_domain_stopwords else None
+
+    # Para reconocimiento de proveedores (SAP, Oracle, Salesforce…) los word
+    # n-grams son suficientes: son nombres propios que aparecen como tokens
+    # completos. El char_wb se omite porque en textos largos de licitaciones
+    # genera vocabularios enormes y ralentiza drásticamente el entrenamiento.
+    vectorizer = TfidfVectorizer(
+        analyzer="word",
+        ngram_range=(1, 2),
+        max_features=15_000,
+        sublinear_tf=True,
+        min_df=2,
+        strip_accents="unicode",
+        stop_words=stop_words,
+    )
+    c_value = fragile_c if fragile else 1.0
+    base_lr = LogisticRegression(
+        C=c_value,
+        max_iter=300,
+        class_weight="balanced",
+        solver="lbfgs",
+        random_state=42,
+    )
+    return Pipeline(
+        [
+            ("features", vectorizer),
+            ("scaler", MaxAbsScaler()),
+            ("clf", CalibratedClassifierCV(base_lr, cv=3, method="sigmoid")),
+        ]
+    )
+
+
+def _parse_tecnologia_csv(value: Any) -> list[str]:
+    """Normaliza el valor CSV de la columna ``tecnologia`` a una lista de labels.
+
+    Tolera None, NaN, strings vacíos, espacios y mayúsculas inconsistentes.
+    """
+    if value is None:
+        return []
+    if isinstance(value, float):  # NaN
+        import math
+
+        if math.isnan(value):
+            return []
+    s = str(value).strip()
+    if not s:
+        return []
+    parts = [p.strip().upper() for p in s.split(",") if p.strip()]
+    # Deduplicar preservando orden
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def _build_multilabel_dataset(
+    df: pd.DataFrame,
+    labels: list[str],
+) -> tuple[list[str], Any, list[int]]:
+    """Construye (textos_aumentados, Y_binaria, positivos_por_label).
+
+    Args:
+        df: DataFrame con columnas titulo, descripcion, tecnologia (CSV).
+            Opcionalmente: cpv, importe.
+        labels: Lista canónica de tecnologías (orden columnar de Y).
+
+    Returns:
+        ``texts``: lista de strings (título + descripción + tokens estructurales).
+        ``Y``: matriz numpy shape ``(n, len(labels))`` con 0/1.
+        ``positives``: nº de positivos por label (mismo orden que ``labels``).
+    """
+    import numpy as np
+
+    has_cpv = "cpv" in df.columns
+    has_importe = "importe" in df.columns
+    has_tecnologia = "tecnologia" in df.columns
+
+    label_to_idx = {lbl: i for i, lbl in enumerate(labels)}
+    n_rows = len(df)
+    Y = np.zeros((n_rows, len(labels)), dtype=np.int8)
+    texts: list[str] = []
+
+    rows = df.to_dict("records")
+    for i, row in enumerate(rows):
+        titulo = str(row.get("titulo", "") or "")
+        desc = str(row.get("descripcion", "") or "")
+        base = (titulo + " " + desc).strip()
+        cpv = str(row.get("cpv", "") or "") if has_cpv else None
+        importe_val = row.get("importe") if has_importe else None
+        try:
+            importe_f = float(importe_val) if importe_val else None
+        except (TypeError, ValueError):
+            importe_f = None
+        texts.append(_augment_text(base[:1000], cpv=cpv or None, importe=importe_f))
+
+        if has_tecnologia:
+            for tag in _parse_tecnologia_csv(row.get("tecnologia")):
+                idx = label_to_idx.get(tag)
+                if idx is not None:
+                    Y[i, idx] = 1
+
+    positives = [int(Y[:, j].sum()) for j in range(len(labels))]
+    return texts, Y, positives
+
+
+def _keyword_fallback_score(text: str, keywords: list[str]) -> float:
+    """Fracción de keywords del label presentes en el texto (en minúsculas).
+
+    Usado para tecnologías en tier "rules" (sin modelo entrenado por falta
+    de positivos). Devuelve un valor en ``[0, 1]`` apto para usarse como
+    proxy de probabilidad — no calibrado, pero monótono en señal.
+    """
+    if not keywords:
+        return 0.0
+    t = text.lower()
+    matches = sum(1 for kw in keywords if kw.lower() in t)
+    return matches / len(keywords)

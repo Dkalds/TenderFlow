@@ -64,6 +64,11 @@ class Licitacion:
     prorroga_descripcion: str | None = None
     ml_proba: float | None = None
     tecnologia: str | None = None  # SAP, SALESFORCE, ORACLE, MICROSOFT, etc.
+    # Multi-tech ML (poblado por scraper.tech_classifier). ml_proba se mantiene
+    # como P(SAP) por compatibilidad; estos campos son aditivos.
+    ml_tecnologias: str | None = None  # CSV ordenado por probabilidad
+    ml_proba_max: float | None = None
+    ml_tech_principal: str | None = None
     fecha_actualizacion_fuente: str | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 

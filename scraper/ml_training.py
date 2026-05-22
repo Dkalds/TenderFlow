@@ -358,3 +358,142 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
 
     log.info("precompute_ml_proba.done", updated=updated)
     return {"updated": updated, "skipped_no_model": False}
+
+
+def precompute_ml_tecnologias(
+    *, batch_size: int = 500, force: bool = False
+) -> dict[str, Any]:
+    """Pre-computa ml_tecnologias/ml_proba_max/ml_tech_principal en BD.
+
+    Pobla también la tabla normalizada ``licitacion_tecnologia_score`` con un
+    score por tecnología (modelo o fallback rules). Por defecto solo procesa
+    filas donde ``ml_proba_max IS NULL``; con ``force=True`` recalcula todas.
+
+    Args:
+        batch_size: Número de filas por batch (control de memoria).
+        force: Si True, sobreescribe valores existentes.
+
+    Returns:
+        ``{"updated": N, "scores_inserted": M, "skipped_no_model": bool}``.
+    """
+    from scraper.tech_classifier import TechnologyClassifier
+
+    if not TechnologyClassifier.is_available():
+        log.warning("precompute_ml_tecnologias.no_model")
+        return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
+
+    try:
+        clf = TechnologyClassifier.load()
+    except Exception as exc:  # noqa: BLE001
+        log.error("precompute_ml_tecnologias.load_failed", error=str(exc))
+        return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
+
+    from db.database import connect
+
+    where = "" if force else "WHERE ml_proba_max IS NULL"
+    with connect() as c:
+        rows = c.execute(
+            f"SELECT id_externo, titulo, descripcion, cpv, importe "
+            f"FROM licitaciones {where}"
+        ).fetchall()
+
+    if not rows:
+        log.info("precompute_ml_tecnologias.nothing_to_update")
+        return {"updated": 0, "scores_inserted": 0, "skipped_no_model": False}
+
+    updated = 0
+    scores_inserted = 0
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i : i + batch_size]
+        items = [
+            {
+                "text": (str(r[1] or "") + " " + str(r[2] or "")).strip(),
+                "cpv": str(r[3]) if r[3] else None,
+                "importe": float(r[4]) if r[4] else None,
+            }
+            for r in batch
+        ]
+        try:
+            preds = clf.predict_batch(items)
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "precompute_ml_tecnologias.predict_failed",
+                batch_start=i,
+                error=str(exc),
+            )
+            continue
+
+        # Construir listas de parámetros para executemany (1 petición HTTP por tabla).
+        update_params: list[tuple] = []
+        delete_params: list[tuple] = []
+        score_params: list[tuple] = []
+
+        for row, pred in zip(batch, preds, strict=False):
+            lic_id = row[0]
+            ml_tecnologias = ",".join(pred["predicted"]) if pred["predicted"] else None
+            update_params.append(
+                (ml_tecnologias, float(pred["max_proba"]), pred["principal"], lic_id)
+            )
+            if force:
+                delete_params.append((lic_id,))
+            for label, score in pred["scores"].items():
+                if score <= 0.0:
+                    continue
+                thr = pred["thresholds"].get(label, 0.5)
+                score_params.append((lic_id, label, float(score), float(thr)))
+                scores_inserted += 1
+
+        # Enviar el batch como un único executescript para minimizar round-trips
+        # HTTP a Turso (cada execute() individual es una petición HTTP separada).
+        def _esc(s: str) -> str:
+            return s.replace("'", "''")
+
+        def _sql_str(v: str | None) -> str:
+            return f"'{_esc(v)}'" if v else "NULL"
+
+        stmts: list[str] = []
+        if force and delete_params:
+            for (lic_id,) in delete_params:
+                stmts.append(
+                    f"DELETE FROM licitacion_tecnologia_score "
+                    f"WHERE licitacion_id = '{_esc(lic_id)}'"
+                )
+        for ml_tec, proba, principal, lic_id in update_params:
+            stmts.append(
+                f"UPDATE licitaciones SET "
+                f"ml_tecnologias = {_sql_str(ml_tec)}, "
+                f"ml_proba_max = {proba!r}, "
+                f"ml_tech_principal = {_sql_str(principal)} "
+                f"WHERE id_externo = '{_esc(lic_id)}'"
+            )
+        for lic_id, label, score, thr in score_params:
+            stmts.append(
+                f"INSERT OR REPLACE INTO licitacion_tecnologia_score "
+                f"(licitacion_id, tecnologia, probabilidad, "
+                f" threshold_aplicado, computed_at) "
+                f"VALUES ('{_esc(lic_id)}', '{_esc(label)}', {score!r}, "
+                f"{thr!r}, datetime('now'))"
+            )
+
+        if stmts:
+            script = "BEGIN;\n" + ";\n".join(stmts) + ";\nCOMMIT;"
+            with connect() as c:
+                c.executescript(script)
+        updated += len(batch)
+        log.debug(
+            "precompute_ml_tecnologias.batch_done",
+            batch_start=i,
+            batch_size=len(batch),
+            scores=len(score_params),
+        )
+
+    log.info(
+        "precompute_ml_tecnologias.done",
+        updated=updated,
+        scores_inserted=scores_inserted,
+    )
+    return {
+        "updated": updated,
+        "scores_inserted": scores_inserted,
+        "skipped_no_model": False,
+    }

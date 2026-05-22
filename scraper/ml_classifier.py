@@ -556,7 +556,10 @@ class SAPClassifier:
             )
 
         obj = joblib.load(target)
-        if not isinstance(obj, cls):
+        # Compatibilidad con modelos guardados ejecutando el script como __main__:
+        # en ese caso el tipo es '__main__.SAPClassifier' en lugar de
+        # 'scraper.ml_classifier.SAPClassifier'. Se acepta si el nombre de clase coincide.
+        if not isinstance(obj, cls) and type(obj).__name__ != cls.__name__:
             raise TypeError(f"El archivo no contiene un SAPClassifier: {type(obj)}")
         # Retrocompatibilidad: modelos anteriores no tienen _threshold ni metadata
         if not hasattr(obj, "_threshold"):
@@ -624,7 +627,15 @@ _MULTILABEL_MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_mu
 class SAPMultiLabelClassifier:
     """Clasificador multi-label para SAP/Cloud/Integración/Mantenimiento/RRHH.
 
-    Estrategia:
+    .. deprecated:: v30
+        Reemplazado por :class:`scraper.tech_classifier.TechnologyClassifier`,
+        que clasifica directamente contra las 13 tecnologías reales de la
+        columna ``tecnologia`` (SAP, ORACLE, SALESFORCE, MICROSOFT, …) usando
+        un OneVsRest con tres tiers (ml_ready / fragile / rules). Esta clase
+        se mantiene únicamente por compatibilidad con código legacy y será
+        eliminada en una futura versión.
+
+    Estrategia (legacy):
       - SAP: delega en SAPClassifier (modelo binario existente).
       - Otros labels: heurística de keywords + LogisticRegression por label.
 
@@ -632,6 +643,14 @@ class SAPMultiLabelClassifier:
     """
 
     def __init__(self) -> None:
+        import warnings
+
+        warnings.warn(
+            "SAPMultiLabelClassifier está obsoleto desde v30. Usa "
+            "scraper.tech_classifier.TechnologyClassifier en su lugar.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._sap_clf: SAPClassifier | None = None
         self._label_clfs: dict[str, Any] = {}
         self._trained = False
@@ -796,11 +815,81 @@ if __name__ == "__main__":
             f"  Ya existían : {seed_result['already_exists']}\n"
             "\nAhora puedes entrenar: python -m scraper.ml_classifier train"
         )
+    elif cmd == "precompute":
+        import argparse
+
+        parser_pre = argparse.ArgumentParser(prog="ml_classifier precompute")
+        parser_pre.add_argument(
+            "--force", action="store_true", help="Recalcular incluso filas ya clasificadas"
+        )
+        args_pre = parser_pre.parse_args(sys.argv[2:])
+        from scraper.ml_training import precompute_ml_proba
+
+        print("Precomputando ml_proba para licitaciones pendientes...")
+        result = precompute_ml_proba(force=args_pre.force)
+        print(f"  Actualizadas : {result.get('updated', 0)}")
+        if result.get("skipped_no_model"):
+            print("  [AVISO] No hay modelo disponible.")
     elif cmd == "info":
         if SAPClassifier.is_available():
             print(f"Modelo disponible: {_MODEL_PATH}")
         else:
             print("No hay modelo entrenado. Ejecuta: python -m scraper.ml_classifier train")
+    elif cmd == "train-tech":
+        from scraper.tech_classifier import _MODEL_PATH as _TECH_MODEL_PATH
+        from scraper.tech_classifier import train_from_db as _train_tech_from_db
+
+        print("Entrenando TechnologyClassifier multi-label desde la BD...")
+        tech_metrics = _train_tech_from_db()
+        if "error" in tech_metrics:
+            print(f"\n[ERROR] {tech_metrics}")
+        else:
+            print(f"  macro_f1_ml_ready : {tech_metrics.get('macro_f1_ml_ready')}")
+            print(f"  n_models          : {tech_metrics.get('n_models')}")
+            print(f"  n_rules_fallback  : {tech_metrics.get('n_rules_fallback')}")
+            print(f"  n_train / n_test  : {tech_metrics.get('n_train')} / {tech_metrics.get('n_test')}")
+            print("\nDesglose por tecnología:")
+            per_tech = tech_metrics.get("per_tech", {})
+            for label, info in per_tech.items():
+                tier = info.get("tier")
+                n_pos = info.get("n_positive")
+                f1 = info.get("f1")
+                prec = info.get("precision")
+                rec = info.get("recall")
+                thr = info.get("threshold")
+                f1_s = f"{f1:.3f}" if isinstance(f1, float) else "—"
+                prec_s = f"{prec:.3f}" if isinstance(prec, float) else "—"
+                rec_s = f"{rec:.3f}" if isinstance(rec, float) else "—"
+                print(
+                    f"  - {label:<12} tier={tier:<9} n+={n_pos:<5} "
+                    f"thr={thr:<5} F1={f1_s} P={prec_s} R={rec_s}"
+                )
+            print(f"\nModelo guardado en: {_TECH_MODEL_PATH}")
+    elif cmd == "precompute-tech":
+        import argparse
+
+        parser_pt = argparse.ArgumentParser(prog="ml_classifier precompute-tech")
+        parser_pt.add_argument(
+            "--force",
+            action="store_true",
+            help="Recalcular incluso filas ya clasificadas",
+        )
+        args_pt = parser_pt.parse_args(sys.argv[2:])
+        from scraper.ml_training import precompute_ml_tecnologias
+
+        print("Precomputando ml_tecnologias/ml_proba_max para licitaciones pendientes...")
+        tech_result = precompute_ml_tecnologias(force=args_pt.force)
+        print(f"  Actualizadas      : {tech_result.get('updated', 0)}")
+        print(f"  Scores insertados : {tech_result.get('scores_inserted', 0)}")
+        if tech_result.get("skipped_no_model"):
+            print(
+                "  [AVISO] No hay TechnologyClassifier entrenado. "
+                "Ejecuta primero: python -m scraper.ml_classifier train-tech"
+            )
     else:
-        print(f"Comando desconocido: {cmd}. Usa 'train', 'seed-negatives' o 'info'.")
+        print(
+            f"Comando desconocido: {cmd}. "
+            "Usa 'train', 'precompute', 'seed-negatives', 'info', "
+            "'train-tech' o 'precompute-tech'."
+        )
         sys.exit(1)
