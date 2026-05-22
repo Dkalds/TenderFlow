@@ -847,7 +847,9 @@ if __name__ == "__main__":
             print(f"  macro_f1_ml_ready : {tech_metrics.get('macro_f1_ml_ready')}")
             print(f"  n_models          : {tech_metrics.get('n_models')}")
             print(f"  n_rules_fallback  : {tech_metrics.get('n_rules_fallback')}")
-            print(f"  n_train / n_test  : {tech_metrics.get('n_train')} / {tech_metrics.get('n_test')}")
+            print(
+                f"  n_train / n_test  : {tech_metrics.get('n_train')} / {tech_metrics.get('n_test')}"
+            )
             print("\nDesglose por tecnología:")
             per_tech = tech_metrics.get("per_tech", {})
             for label, info in per_tech.items():

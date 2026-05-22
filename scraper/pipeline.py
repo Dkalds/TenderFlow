@@ -98,7 +98,7 @@ def _get_tech_clf() -> Any:
                 n_models=len(_tech_clf._models),
                 practices=list(getattr(_settings, "ML_TECH_GATING_PRACTICES", [])),
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.debug("pipeline.tech_clf_unavailable", error=str(exc))
     return _tech_clf
 
@@ -116,7 +116,7 @@ def _apply_tech_prediction(lic: Licitacion) -> dict[str, Any] | None:
     try:
         text = ((lic.titulo or "") + " " + (lic.descripcion or "")).strip()
         pred = tech_clf.predict_one(text, cpv=lic.cpv, importe=lic.importe)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.debug("pipeline.tech_predict_failed", id=lic.id_externo, error=str(exc))
         return None
     lic.ml_tecnologias = ",".join(pred["predicted"]) if pred["predicted"] else None

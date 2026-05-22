@@ -360,9 +360,7 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
     return {"updated": updated, "skipped_no_model": False}
 
 
-def precompute_ml_tecnologias(
-    *, batch_size: int = 500, force: bool = False
-) -> dict[str, Any]:
+def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> dict[str, Any]:
     """Pre-computa ml_tecnologias/ml_proba_max/ml_tech_principal en BD.
 
     Pobla también la tabla normalizada ``licitacion_tecnologia_score`` con un
@@ -384,7 +382,7 @@ def precompute_ml_tecnologias(
 
     try:
         clf = TechnologyClassifier.load()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("precompute_ml_tecnologias.load_failed", error=str(exc))
         return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
 
@@ -393,8 +391,7 @@ def precompute_ml_tecnologias(
     where = "" if force else "WHERE ml_proba_max IS NULL"
     with connect() as c:
         rows = c.execute(
-            f"SELECT id_externo, titulo, descripcion, cpv, importe "
-            f"FROM licitaciones {where}"
+            f"SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones {where}"
         ).fetchall()
 
     if not rows:
@@ -415,7 +412,7 @@ def precompute_ml_tecnologias(
         ]
         try:
             preds = clf.predict_batch(items)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.error(
                 "precompute_ml_tecnologias.predict_failed",
                 batch_start=i,
@@ -443,42 +440,30 @@ def precompute_ml_tecnologias(
                 score_params.append((lic_id, label, float(score), float(thr)))
                 scores_inserted += 1
 
-        # Enviar el batch como un único executescript para minimizar round-trips
-        # HTTP a Turso (cada execute() individual es una petición HTTP separada).
-        def _esc(s: str) -> str:
-            return s.replace("'", "''")
-
-        def _sql_str(v: str | None) -> str:
-            return f"'{_esc(v)}'" if v else "NULL"
-
-        stmts: list[str] = []
-        if force and delete_params:
-            for (lic_id,) in delete_params:
-                stmts.append(
-                    f"DELETE FROM licitacion_tecnologia_score "
-                    f"WHERE licitacion_id = '{_esc(lic_id)}'"
+        # Persistir batch con queries parametrizadas (seguro contra SQL injection).
+        # executemany agrupa operaciones, minimizando round-trips HTTP a Turso.
+        with connect() as c:
+            if force and delete_params:
+                c.executemany(
+                    "DELETE FROM licitacion_tecnologia_score WHERE licitacion_id = ?",
+                    delete_params,
                 )
-        for ml_tec, proba, principal, lic_id in update_params:
-            stmts.append(
-                f"UPDATE licitaciones SET "
-                f"ml_tecnologias = {_sql_str(ml_tec)}, "
-                f"ml_proba_max = {proba!r}, "
-                f"ml_tech_principal = {_sql_str(principal)} "
-                f"WHERE id_externo = '{_esc(lic_id)}'"
+            c.executemany(
+                "UPDATE licitaciones SET "
+                "ml_tecnologias = ?, "
+                "ml_proba_max = ?, "
+                "ml_tech_principal = ? "
+                "WHERE id_externo = ?",
+                update_params,
             )
-        for lic_id, label, score, thr in score_params:
-            stmts.append(
-                f"INSERT OR REPLACE INTO licitacion_tecnologia_score "
-                f"(licitacion_id, tecnologia, probabilidad, "
-                f" threshold_aplicado, computed_at) "
-                f"VALUES ('{_esc(lic_id)}', '{_esc(label)}', {score!r}, "
-                f"{thr!r}, datetime('now'))"
+            c.executemany(
+                "INSERT OR REPLACE INTO licitacion_tecnologia_score "
+                "(licitacion_id, tecnologia, probabilidad, "
+                " threshold_aplicado, computed_at) "
+                "VALUES (?, ?, ?, ?, datetime('now'))",
+                score_params,
             )
-
-        if stmts:
-            script = "BEGIN;\n" + ";\n".join(stmts) + ";\nCOMMIT;"
-            with connect() as c:
-                c.executescript(script)
+            c.commit()
         updated += len(batch)
         log.debug(
             "precompute_ml_tecnologias.batch_done",

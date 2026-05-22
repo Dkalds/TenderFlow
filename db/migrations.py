@@ -779,8 +779,7 @@ def _apply_v30_ml_tech_columns(conn: Any) -> None:
             pass
     try:
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_ml_tech_principal "
-            "ON licitaciones(ml_tech_principal)"
+            "CREATE INDEX IF NOT EXISTS idx_ml_tech_principal ON licitaciones(ml_tech_principal)"
         )
     except Exception:
         pass

@@ -212,7 +212,7 @@ def render(ctx: PageContext) -> None:
             for row_start in range(0, len(items), _COLS_PER_ROW):
                 row_items = items[row_start : row_start + _COLS_PER_ROW]
                 btn_cols = st.columns(len(row_items))
-                for col, (tech_key, tech_label) in zip(btn_cols, row_items):
+                for col, (tech_key, tech_label) in zip(btn_cols, row_items, strict=False):
                     # Añadir probabilidad ML al label del botón si está disponible
                     p = ml_probas.get(tech_key)
                     btn_text = f"{tech_label} {p:.0%}" if p is not None else tech_label
