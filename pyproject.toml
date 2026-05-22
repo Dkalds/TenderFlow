@@ -160,6 +160,7 @@ module = [
     "scraper.atom_live",
     "dashboard.utils.dates",
     "services.rate_limit_redis",
+    "shared.cache",
 ]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false

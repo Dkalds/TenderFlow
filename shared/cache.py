@@ -108,10 +108,12 @@ class _RedisBackend:
     """Cache Redis con serialización JSON. Falla en silencio a Memory."""
 
     def __init__(self, url: str, namespace: str = "") -> None:
-        import redis as redis_lib  # type: ignore[import]
+        import redis as redis_lib
 
         self._ns = f"{namespace}:" if namespace else ""
-        self._r = redis_lib.from_url(url, decode_responses=True, socket_connect_timeout=2)
+        self._r: redis_lib.Redis[str] = redis_lib.Redis.from_url(
+            url, decode_responses=True, socket_connect_timeout=2
+        )
         self._r.ping()
 
     def _k(self, key: str) -> str:
@@ -160,7 +162,7 @@ class _RedisBackend:
     def keys(self, pattern: str = "*") -> list[str]:
         try:
             full_pattern = f"{self._ns}{pattern}"
-            result = []
+            result: list[str] = []
             cursor = 0
             ns_len = len(self._ns)
             while True:
