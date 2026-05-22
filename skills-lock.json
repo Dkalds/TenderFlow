@@ -1,6 +1,16 @@
 {
   "version": 1,
   "skills": {
+    "fastapi-python": {
+      "source": "mindrally/skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "3d70c712ec1122ecbc03d78435f8b316b605c490d56e6e7d8cc5eebdf0c92792"
+    },
+    "fastapi-templates": {
+      "source": "wshobson/agents",
+      "sourceType": "autoskills-registry",
+      "computedHash": "c8e98f955a805e73243713c24b8a5d41eb79fcdd7b950656bd27bef690cb295a"
+    },
     "machine-learning": {
       "source": "pluginagentmarketplace/custom-plugin-python",
       "sourceType": "autoskills-registry",
@@ -45,6 +55,16 @@
       "source": "davila7/claude-code-templates",
       "sourceType": "autoskills-registry",
       "computedHash": "e221c094ccf0de522e17582aaa026e3443d12199e6460b483fda2ce2c1548ce7"
+    },
+    "sqlalchemy": {
+      "source": "bobmatnyc/claude-mpm-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "ded166c2fb361a403bc76d9d4ca0ecd653fd42ccd1f3d535d0341e736347a1b7"
+    },
+    "sqlalchemy-alembic-expert-best-practices-code-review": {
+      "source": "wispbit-ai/skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "fe76e624bdfe84923c1a3e03f54d23d1c6216c21aa43dd7a2c06b09a93b5bb39"
     }
   }
 }

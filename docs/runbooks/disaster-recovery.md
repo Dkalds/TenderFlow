@@ -72,7 +72,7 @@ Descarga y procesa los últimos 7 días para llenar el gap.
 ## 6. Levantar servicios
 
 ```bash
-make start
+docker compose up -d
 ```
 
 ## 7. Smoke test completo

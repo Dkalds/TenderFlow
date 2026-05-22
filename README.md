@@ -56,56 +56,115 @@ licitaciones-sap/
 ├── config/                       # Configuración modular
 │   ├── settings.py               #   Variables de entorno (pydantic-settings)
 │   ├── keywords.py               #   SAP_KEYWORDS, TECHNOLOGY_KEYWORDS
-│   └── constants.py              #   URLs PLACSP, CPV_PREFIXES_TI, campos histórico
-├── shared/
-│   └── geo.py                    # NUTS3 → CCAA (compartido entre scraper y dashboard)
-├── db/
-│   ├── database.py               # SQLite/Turso, upsert, historial, extracciones
-│   ├── migrations.py             # Migraciones DDL idempotentes
-│   ├── watchlist.py              # Persistencia de watchlist de usuario
-│   ├── dlq.py                    # Dead Letter Queue para items fallidos
-│   └── rate_limits.py            # Rate limiting en BD
-├── scraper/
-│   ├── pipeline.py               # Orquestador principal (bulk + daily)
-│   ├── bulk_downloader.py        # Descarga ZIPs mensuales de PLACSP
-│   ├── codice_parser.py          # Parser ATOM/CODICE (formato UBL)
-│   ├── atom_live.py              # Feed ATOM en vivo (cada 4h)
-│   ├── filters.py                # Detección de keywords por tecnología
-│   ├── ml_classifier.py          # Clasificador ML TF-IDF + LogisticRegression
-│   └── resilience.py             # Circuit breaker, reintentos, timeouts
-├── dashboard/
-│   ├── app.py                    # Entry point Streamlit
-│   ├── auth.py                   # Password + Google OAuth 2.0
-│   ├── data_loader.py            # Carga y enriquecimiento con caché
-│   ├── classifiers.py            # CPV, módulos SAP, tipo de proyecto
-│   ├── normalize.py              # Normalización de empresas y NIFs
-│   ├── forecast.py               # Predicción de tendencias
-│   ├── faiss_index.py            # Búsqueda semántica con FAISS (opcional)
-│   ├── embeddings.py             # Generación de embeddings (opcional)
-│   ├── kpi_bar.py                # Barra de KPIs reutilizable
-│   ├── stats/                    # Funciones estadísticas (kpis, por_mes, ...)
-│   ├── components/               # Cards, KPIs, navegación, toasts, iconos
-│   ├── filters/                  # Estado de filtros y sidebar
-│   ├── pages/                    # Una página Streamlit por sección
-│   ├── theme/                    # Tokens de diseño, CSS, plantilla Plotly
-│   └── utils/                    # Exportación PDF/Excel, formato, seguridad
-├── scheduler/
-│   ├── run_update.py             # Entry point para cron / GitHub Actions
-│   ├── healthcheck.py            # Verificación de frescura de datos
-│   ├── watchlist_alerts.py       # Alertas por watchlist (batch optimizado)
-│   └── kpi_precompute.py         # Pre-cómputo de KPIs pesados
-├── observability/
-│   ├── logging.py                # Structlog configurado, redacción de secretos
-│   ├── alerts.py                 # Envío de alertas por email / nivel
-│   └── prometheus.py             # Métricas Prometheus (textfile + HTTP)
-├── .github/workflows/
-│   ├── ci.yml                    # Lint, tipos, tests, pre-commit, audit, docker build
-│   ├── scrape.yml                # Bulk mensual (diario 06:00 UTC)
-│   ├── scrape-daily.yml          # Feed ATOM en vivo (cada 4h)
-│   └── healthcheck.yml           # Healthcheck (cada 6h)
+│   ├── constants.py              #   URLs PLACSP, CPV_PREFIXES_TI, campos histórico
+│   └── secrets.py                #   Gestión segura de secretos
+├── shared/                       # Utilidades cross-cutting (sin lógica de negocio)
+│   ├── auth_core.py              #   Crypto de auth (argon2/bcrypt, HMAC, PKCE)
+│   ├── dto.py                    #   DTOs Pydantic v2 (contrato API ↔ dashboard)
+│   ├── geo.py                    #   NUTS3 → CCAA
+│   ├── i18n.py                   #   Internacionalización (es/en)
+│   ├── schemas.py                #   Esquemas pandera para validación de DataFrames
+│   ├── signing.py                #   Rotación de claves de firma (kid/JWKS)
+│   ├── types.py                  #   TypedDicts y alias compartidos
+│   └── cache_signal.py           #   Señal de invalidación scraper → dashboard
+├── services/                     # Capa de dominio (lógica de negocio pura)
+│   ├── licitaciones.py           #   Reglas y agregaciones de licitaciones
+│   ├── normalization.py          #   Normalización de empresas y NIFs
+│   ├── classification.py         #   Clasificación por CPV, módulos, tecnología
+│   ├── clusters.py               #   Clustering de licitaciones
+│   ├── analytics_engine.py       #   Motor analítico DuckDB
+│   ├── rate_limiting.py          #   Rate limiting (SQLite backend)
+│   ├── rate_limit_redis.py       #   Rate limiting (Redis backend, opcional)
+│   ├── investigador/             #   Motor de búsqueda FTS5
+│   └── ...                       #   admin, auth, gdpr, health, security, watchlist
+├── db/                           # Persistencia y acceso a datos
+│   ├── connection.py             #   Conexión SQLite/Turso con pool
+│   ├── database.py               #   Fachada principal (init, connect, upsert)
+│   ├── upsert.py                 #   Upsert idempotente con historial
+│   ├── migrations.py             #   Migraciones DDL caseras (v1–v20)
+│   ├── repositories/             #   Patrón Repository (licitaciones, adjudicaciones, ...)
+│   ├── alembic/                  #   Migraciones Alembic (DDL versionadas)
+│   ├── watchlist.py              #   Persistencia de watchlist
+│   ├── dlq.py                    #   Dead Letter Queue
+│   ├── rate_limits.py            #   Rate limiting persistente en BD
+│   ├── model_registry.py         #   Registro de versiones de modelos ML
+│   ├── feature_flags.py          #   Feature flags
+│   ├── audit.py                  #   Log de auditoría (SHA-256 encadenado)
+│   └── ...                       #   analytics, events, users, sessions, webhooks, totp
+├── api/                          # API REST (FastAPI)
+│   ├── app.py                    #   Composición de routers + middlewares
+│   ├── auth.py                   #   Autenticación por X-API-Key + scopes
+│   ├── middleware.py             #   CSP/HSTS, rate-limit, cost, access log
+│   └── routes/                   #   Endpoints: licitaciones, meta, models, webhooks, ...
+├── scraper/                      # Pipeline de extracción de datos
+│   ├── pipeline.py               #   Orquestador principal (bulk + daily)
+│   ├── bulk_downloader.py        #   Descarga ZIPs mensuales de PLACSP
+│   ├── codice_parser.py          #   Parser ATOM/CODICE (formato UBL)
+│   ├── atom_live.py              #   Feed ATOM en vivo (cada 4h)
+│   ├── filters.py                #   Detección de keywords por tecnología
+│   ├── ml_classifier.py          #   Clasificador ML TF-IDF + LogisticRegression
+│   ├── ml_training.py            #   Entrenamiento y re-cómputo de ml_proba
+│   ├── ml_pipeline.py            #   Pipeline ML de extremo a extremo
+│   └── resilience.py             #   Circuit breaker, reintentos, timeouts
+├── dashboard/                    # UI analítica (Streamlit)
+│   ├── app.py                    #   Entry point Streamlit
+│   ├── auth.py                   #   Password + Google OAuth 2.0
+│   ├── data_loader.py            #   Carga y enriquecimiento con caché
+│   ├── router.py                 #   Router de páginas
+│   ├── clustering.py             #   Clustering de licitaciones (MiniBatchKMeans)
+│   ├── forecast.py               #   Predicción de tendencias
+│   ├── faiss_index.py            #   Búsqueda semántica con FAISS (opcional)
+│   ├── components/               #   Cards, KPIs, navegación, toasts, iconos
+│   ├── filters/                  #   Estado de filtros y sidebar
+│   ├── pages/                    #   Una página Streamlit por sección (~20 páginas)
+│   ├── stats/                    #   Funciones estadísticas
+│   ├── theme/                    #   Tokens de diseño, CSS, plantilla Plotly
+│   └── utils/                    #   Exportación PDF/Excel, formato, geo, seguridad
+├── scheduler/                    # Tareas programadas
+│   ├── loop.py                   #   Bucle principal del scheduler (Docker)
+│   ├── run_update.py             #   Entry point para cron / GitHub Actions
+│   ├── kpi_precompute.py         #   Pre-cómputo de KPIs pesados
+│   ├── watchlist_alerts.py       #   Alertas por watchlist (batch optimizado)
+│   ├── drift_monitor.py          #   Detección de concept drift + alertas
+│   ├── anomaly_alerts.py         #   Alertas de anomalías (frescura, cobertura)
+│   ├── healthcheck.py            #   Verificación de frescura de datos
+│   └── dlq_retry.py              #   Reintento automático de DLQ
+├── observability/                # Logging, métricas, trazas
+│   ├── logging.py                #   Structlog (JSON/consola), redacción de secretos
+│   ├── alerts.py                 #   Envío de alertas por email / nivel
+│   ├── metrics.py                #   Métricas de sistema (kpi_snapshots)
+│   ├── prometheus.py             #   Métricas Prometheus (textfile + HTTP)
+│   ├── tracing.py                #   OpenTelemetry (OTLP, opcional)
+│   ├── sentry.py                 #   Sentry (opt-in)
+│   └── grafana/                  #   Dashboards Grafana (RED, SLO)
+├── llm/                          # Integración con LLMs (opcional)
+│   ├── client.py                 #   Cliente unificado
+│   └── providers/                #   OpenAI, Anthropic
+├── scripts/                      # Scripts de mantenimiento
+│   ├── doctor.py                 #   Verificación de entorno
+│   ├── backup_db.py              #   Backup de la BD
+│   ├── retrain.py                #   Reentrenamiento del modelo ML
+│   ├── rotate_api_keys.py        #   Rotación de API keys
+│   └── ...                       #   dedupe, hash_password, retention, coverage
+├── docs/                         # Documentación técnica
+│   ├── adr/                      #   Architecture Decision Records (ADR-001..007)
+│   ├── runbooks/                 #   Playbooks operativos (backup, DLQ, DR, ...)
+│   ├── c4-architecture.md        #   Diagramas C4 (Mermaid)
+│   ├── database-schema.md        #   Esquema ER + tablas + queries
+│   ├── sli-slo.md                #   SLIs/SLOs del sistema
+│   └── SECURITY.md               #   Prácticas de seguridad y rotación
+├── tests/                        # Tests (unit, integration, e2e, property, load)
+├── .github/workflows/            # CI/CD
+│   ├── ci.yml                    #   Lint, tipos, tests, pre-commit, audit, docker build
+│   ├── security.yml              #   Semgrep SAST + Trivy + rotation reminder
+│   ├── scrape.yml                #   Bulk mensual (diario 06:00 UTC)
+│   ├── scrape-daily.yml          #   Feed ATOM en vivo (cada 4h)
+│   ├── healthcheck.yml           #   Healthcheck (cada 6h)
+│   ├── train-model.yml           #   Entrenamiento programado del clasificador
+│   └── ...                       #   backup, changelog, release, release-sdk
 ├── Dockerfile                    # Multi-stage build (deps + runtime)
-├── docker-compose.yml            # dashboard + scheduler compartiendo volumen
-└── data/                         # BD SQLite + ZIPs descargados (gitignored)
+├── docker-compose.yml            # dashboard + api + scheduler (+ monitoring opcional)
+└── data/                         # BD SQLite + modelos + métricas (gitignored)
 ```
 
 ---
@@ -256,8 +315,10 @@ cp .env.example .env   # edita con tus credenciales
 docker compose up -d
 ```
 
-El `docker-compose.yml` levanta dos servicios que comparten el mismo
-volumen de datos: `dashboard` (Streamlit) y `scheduler` (cron de scraping).
+El `docker-compose.yml` levanta tres servicios principales que comparten el mismo
+volumen de datos: `dashboard` (Streamlit), `api` (FastAPI REST) y `scheduler`
+(cron de scraping). Opcionalmente, con `--profile monitoring`, también
+Prometheus y Grafana.
 
 Variables recomendadas para despliegue Docker:
 
@@ -319,7 +380,7 @@ ruff format .
 # Tipos
 mypy dashboard/ scraper/ db/ scheduler/ observability/ config/
 
-# Tests con cobertura (umbral: 80%)
+# Tests con cobertura (umbral: 50%)
 pytest
 
 # Pre-commit hooks
