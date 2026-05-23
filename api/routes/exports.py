@@ -203,7 +203,10 @@ def get_export(
             },
         )
     if job["status"] == "error":
-        raise HTTPException(status_code=500, detail=f"Error generando PDF: {job['error']}")
+        log.error("export_pdf.client_poll_error", job_id=job_id, error=job["error"])
+        raise HTTPException(
+            status_code=500, detail="Error generando PDF. Consulte los logs del servidor."
+        )
     # pending o running
     from fastapi.responses import JSONResponse
 

@@ -264,3 +264,56 @@ def check_daily_consecutive_failures() -> None:
             f"Feed diario: {_DAILY_MAX_CONSECUTIVE_FAILURES} fallos consecutivos",
             body="Los últimos runs del carril diario han fallado todos.",
         )
+
+
+# ---------------------------------------------------------------------------
+# Alerta de modelo ML obsoleto (D2)
+# ---------------------------------------------------------------------------
+
+_MODEL_STALENESS_DAYS = 30
+
+
+def check_ml_model_staleness() -> None:
+    """Alerta si el modelo ML SAP tiene más de ``_MODEL_STALENESS_DAYS`` días.
+
+    Lee ``metadata["trained_at"]`` del clasificador. Si el fichero no existe
+    o no tiene metadatos, registra un warning sin alertar.
+    """
+    from datetime import datetime
+    from pathlib import Path
+
+    model_path = Path("models/sap_classifier.pkl")
+    if not model_path.exists():
+        log.debug("ml_staleness_check_no_model", path=str(model_path))
+        return
+
+    try:
+        import joblib
+
+        clf = joblib.load(model_path)
+        trained_at_raw = getattr(clf, "metadata", {}).get("trained_at")
+        if not trained_at_raw:
+            log.debug("ml_staleness_check_no_trained_at")
+            return
+
+        trained_dt = datetime.fromisoformat(str(trained_at_raw).replace("Z", "+00:00"))
+        now = datetime.now(UTC)
+        if trained_dt.tzinfo is None:
+            trained_dt = trained_dt.replace(tzinfo=UTC)
+        age_days = (now - trained_dt).total_seconds() / 86400
+    except Exception as exc:
+        log.warning("ml_staleness_check_error", error=str(exc))
+        return
+
+    if age_days > _MODEL_STALENESS_DAYS:
+        notify(
+            AlertLevel.WARN,
+            f"Modelo ML SAP obsoleto ({age_days:.0f} días)",
+            body=(
+                f"El clasificador SAP fue entrenado hace {age_days:.0f} días "
+                f"(umbral: {_MODEL_STALENESS_DAYS}d). Considera re-entrenar "
+                f"con datos recientes."
+            ),
+            model_age_days=round(age_days, 1),
+            trained_at=trained_at_raw,
+        )

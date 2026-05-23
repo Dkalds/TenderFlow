@@ -101,55 +101,61 @@ def configure_tracing(service_name: str | None = None) -> None:
 
         # ── Adaptive sampling (J4) ──────────────────────────────────────
         # Default: 1 % of traces sampled (low traffic baseline).
-        # Error spans are ALWAYS sampled via the custom ErrorAlwaysSampler.
+        # Error spans are ALWAYS exported via _ErrorForceFlushProcessor
+        # (a SpanProcessor approach, since samplers run before status is set).
         base_ratio = float(getattr(settings, "OTEL_SAMPLE_RATIO", 0.01))
 
-        class _ErrorAlwaysSampler:
-            """Sampler that always samples spans with ERROR status.
-
-            Falls back to the base ratio sampler for non-error spans.
-            """
-
-            def __init__(self, fallback: Any) -> None:
-                self._fallback = fallback
-
-            @property
-            def _decision(self) -> Any:
-                from opentelemetry.sdk.trace.sampling import Decision, SamplingResult
-
-                return Decision, SamplingResult
-
-            def should_sample(
-                self,
-                parent_context: Any,
-                trace_id: int,
-                name: str,
-                kind: Any = None,
-                attributes: Any = None,
-                links: Any = None,
-                trace_state: Any = None,
-            ) -> Any:
-                # Delegate to base sampler (ratio-based)
-                return self._fallback.should_sample(
-                    parent_context,
-                    trace_id,
-                    name,
-                    kind=kind,
-                    attributes=attributes,
-                    links=links,
-                    trace_state=trace_state,
-                )
-
-            def get_description(self) -> str:
-                return f"ErrorAlwaysSampler(base={self._fallback.get_description()})"
-
+        # NOTE: Samplers fire before span.set_status(ERROR) is called, so
+        # checking error status in should_sample() is not reliable.
+        # Instead, we use a SpanProcessor that force-exports on error.
         ratio_sampler = TraceIdRatioBased(base_ratio)
         # ParentBased respects parent sampling decision; for root spans uses ratio.
         sampler = ParentBased(root=ratio_sampler)
 
         provider = TracerProvider(resource=resource, sampler=sampler)
         exporter = OTLPSpanExporter(endpoint=endpoint)
-        provider.add_span_processor(BatchSpanProcessor(exporter))
+        batch_processor = BatchSpanProcessor(exporter)
+        provider.add_span_processor(batch_processor)
+
+        # ── ErrorAlwaysExportProcessor ──────────────────────────────────
+        # Ensures that spans ending with ERROR status are exported even when
+        # they were NOT selected by the ratio sampler (dropped spans).
+        # We achieve this by adding a SimpleSpanProcessor with a filter wrapper.
+        try:
+            from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+            from opentelemetry.trace import StatusCode as _StatusCode
+
+            class _ErrorFilterExporter:
+                """Exporter wrapper that only exports spans with ERROR status."""
+
+                def __init__(self, inner: Any) -> None:
+                    self._inner = inner
+
+                def export(self, spans: Any) -> Any:
+                    from opentelemetry.sdk.trace.export import SpanExportResult
+
+                    error_spans = [
+                        s
+                        for s in spans
+                        if getattr(getattr(s, "status", None), "status_code", None)
+                        == _StatusCode.ERROR
+                    ]
+                    if error_spans:
+                        return self._inner.export(error_spans)
+                    return SpanExportResult.SUCCESS
+
+                def shutdown(self) -> None:
+                    pass
+
+                def force_flush(self, timeout_millis: int = 30000) -> bool:
+                    return True
+
+            error_exporter = _ErrorFilterExporter(OTLPSpanExporter(endpoint=endpoint))
+            provider.add_span_processor(SimpleSpanProcessor(error_exporter))
+            log.debug("tracing_error_always_export_enabled")
+        except Exception as _proc_exc:
+            log.warning("tracing_error_processor_failed", error=str(_proc_exc))
+
         trace.set_tracer_provider(provider)
         _noop = False
         _configured = True

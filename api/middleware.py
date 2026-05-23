@@ -73,22 +73,62 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # ───────────────────────────── Rate limiting ────────────────────────────────
 
 
+def _trusted_client_ip(request: Request) -> str:
+    """Extrae la IP real del cliente validando proxies de confianza.
+
+    Solo honra ``X-Forwarded-For`` si la conexión TCP directa viene de una IP
+    en ``FORWARDED_ALLOW_IPS`` (configurado en settings). Esto evita que un
+    cliente externo inyecte una IP falsa en la cabecera y eluda el rate-limit
+    basado en IP.
+
+    Returns:
+        IP del cliente (string). Nunca lanza — devuelve "unknown" ante errores.
+    """
+    try:
+        from config import settings
+
+        allowed_proxies: set[str] = {
+            ip.strip()
+            for ip in getattr(settings, "FORWARDED_ALLOW_IPS", "127.0.0.1").split(",")
+            if ip.strip()
+        }
+        direct_ip = request.client.host if request.client else None
+
+        if direct_ip and direct_ip in allowed_proxies:
+            # Petición viene de un proxy de confianza — honrar XFF
+            forwarded = request.headers.get("X-Forwarded-For", "")
+            if forwarded:
+                # Tomar la IP más a la izquierda (cliente original)
+                return forwarded.split(",")[0].strip() or direct_ip
+        return direct_ip or "unknown"
+    except Exception:
+        return "unknown"
+
+
 def _client_key(request: Request) -> str:
-    """Identifica al cliente por API-Key (preferido) o por IP (fallback).
+    """Identifica al cliente por API-Key (preferido) o por IP verificada (fallback).
 
     La API-Key se hashea para no almacenar el token en la tabla rate_limits.
+    La IP se obtiene a través de ``_trusted_client_ip`` que solo honra
+    ``X-Forwarded-For`` si la petición viene de un proxy de confianza.
     """
     api_key = request.headers.get("X-API-Key")
     if api_key:
         return "ak:" + hashlib.sha256(api_key.encode()).hexdigest()[:16]
-    # Fallback: IP del cliente (con cabecera de proxy si existe)
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    ip = (
-        forwarded.split(",")[0].strip()
-        if forwarded
-        else (request.client.host if request.client else "unknown")
-    )
+    # Fallback: IP verificada del cliente
+    ip = _trusted_client_ip(request)
     return f"ip:{ip}"
+
+
+# Endpoints que consumen más CPU/IO reciben un rate limit más bajo.
+# Paths no listados usan el default del middleware.
+_HEAVY_ENDPOINT_LIMITS: dict[str, int] = {
+    "/api/v1/exports": 20,
+    "/api/v1/feedback/queue": 30,
+    "/api/v1/licitaciones/explain": 30,
+    "/api/v1/models/activate": 10,
+    "/api/v1/search/semantic": 30,
+}
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -99,9 +139,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     Excluye paths configurables (e.g. ``/api/v1/health``) para no bloquear LBs.
 
+    Los endpoints pesados (inferencia ML, exports) tienen un límite inferior
+    configurable en ``_HEAVY_ENDPOINT_LIMITS``.
+
     Args:
         app: Aplicación ASGI a envolver.
-        max_calls: Máximo de requests permitidas en la ventana.
+        max_calls: Máximo de requests permitidas en la ventana (endpoints estándar).
         window_seconds: Tamaño de la ventana en segundos.
         exclude_paths: Iterable de paths exactos a excluir (e.g. health, docs).
     """
@@ -133,9 +176,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client = _client_key(request)
         rate_key = f"api:{client}:{path}"
+        # Endpoints pesados (ML inference, exports) tienen límite inferior.
+        effective_max = _HEAVY_ENDPOINT_LIMITS.get(path, self._max)
         allowed = get_rate_limiter().check(
             rate_key,
-            max_calls=self._max,
+            max_calls=effective_max,
             window_seconds=self._window,
         )
         if not allowed:
@@ -144,12 +189,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 content={
                     "detail": "Rate limit excedido. Intenta de nuevo más tarde.",
-                    "limit": self._max,
+                    "limit": effective_max,
                     "window_seconds": self._window,
                 },
                 headers={
                     "Retry-After": str(int(self._window)),
-                    "X-RateLimit-Limit": str(self._max),
+                    "X-RateLimit-Limit": str(effective_max),
                     "X-RateLimit-Window": str(int(self._window)),
                 },
             )

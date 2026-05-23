@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.auth import require_api_key
+from api.auth import require_api_key, require_scope
 from db.model_registry import activate_version, get_active, list_versions
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -41,7 +41,7 @@ def list_model_versions(
 def activate_model_version(
     name: str,
     version: int,
-    _ctx: Any = Depends(require_api_key),
+    _ctx: Any = Depends(require_scope("admin")),
 ) -> dict[str, Any]:
     """Activa la ``version`` indicada. Requiere API key con scope admin."""
     ok = activate_version(name, version)

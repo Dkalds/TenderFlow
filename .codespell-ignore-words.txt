@@ -75,3 +75,9 @@ falso
 aceptable
 usera
 usere
+vas
+comandos
+implementes
+convencional
+doble
+sucesor

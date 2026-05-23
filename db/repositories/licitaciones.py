@@ -1,18 +1,58 @@
-"""Repository para licitaciones."""
+"""Repository para licitaciones.
+
+Las queries complejas usan SQLAlchemy Core para construcción type-safe
+(ver :mod:`db.models`). Las queries simples por PK usan SQL directo.
+"""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
+from sqlalchemy import Select, and_, func, or_, select, text
+
 from db.database import connect_read, fts_available
-from db.repositories.base import count_where, rows_to_dicts
+from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
+from db.repositories.base import rows_to_dicts
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-_SUMMARY_COLS = (
+# Columnas devueltas en listados (resumen)
+_SUMMARY_COLS = [
+    licitaciones.c.id_externo,
+    licitaciones.c.titulo,
+    licitaciones.c.organo_contratacion,
+    licitaciones.c.importe,
+    licitaciones.c.estado,
+    licitaciones.c.fecha_publicacion,
+    licitaciones.c.ccaa,
+    licitaciones.c.cpv,
+    licitaciones.c.url,
+    licitaciones.c.tecnologia,
+    licitaciones.c.ml_tecnologias,
+    licitaciones.c.ml_proba_max,
+    licitaciones.c.ml_tech_principal,
+]
+
+_SORT_MAP: dict[str, Any] = {
+    "fecha_publicacion": licitaciones.c.fecha_publicacion.desc(),
+    "-fecha_publicacion": licitaciones.c.fecha_publicacion.asc(),
+    "importe": licitaciones.c.importe.asc(),
+    "-importe": licitaciones.c.importe.desc(),
+    "titulo": licitaciones.c.titulo.asc(),
+    "-titulo": licitaciones.c.titulo.desc(),
+}
+
+_DEFAULT_ORDER = licitaciones.c.fecha_publicacion.desc()
+
+# ---------------------------------------------------------------------------
+# Backward-compat string aliases (used by services/licitaciones.py)
+# ---------------------------------------------------------------------------
+
+_SUMMARY_COLS_STR = (
     "id_externo, titulo, organo_contratacion, importe, estado, "
-    "fecha_publicacion, ccaa, cpv, url, tecnologia"
+    "fecha_publicacion, ccaa, cpv, url, tecnologia, "
+    "ml_tecnologias, ml_proba_max, ml_tech_principal"
 )
 
 _SORT_WHITELIST: dict[str, str] = {
@@ -33,43 +73,78 @@ class LicitacionRepository:
     # ── helpers ──────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _build_filters(
+    def _base_filters(
         *,
         q: str | None = None,
         estado: str | None = None,
         ccaa: str | None = None,
         tecnologia: str | None = None,
+        tecnologia_predicha: str | None = None,
+        min_proba_tech: float | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         only_classified: bool = True,
-    ) -> tuple[str, list[Any]]:
-        conditions: list[str] = []
-        params: list[Any] = []
+    ) -> list[Any]:
+        """Devuelve lista de cláusulas SA Core para WHERE."""
+        clauses = []
 
         if only_classified:
-            conditions.append("tecnologia IS NOT NULL AND tecnologia != ''")
+            clauses.append(
+                and_(
+                    licitaciones.c.tecnologia.isnot(None),
+                    licitaciones.c.tecnologia != "",
+                )
+            )
 
         if q:
-            conditions.append("(titulo LIKE ? OR descripcion LIKE ?)")
             like = f"%{q}%"
-            params.extend([like, like])
+            clauses.append(
+                or_(
+                    licitaciones.c.titulo.like(like),
+                    licitaciones.c.descripcion.like(like),
+                )
+            )
         if estado:
-            conditions.append("estado = ?")
-            params.append(estado)
+            clauses.append(licitaciones.c.estado == estado)
         if ccaa:
-            conditions.append("ccaa = ?")
-            params.append(ccaa)
+            clauses.append(licitaciones.c.ccaa == ccaa)
         if tecnologia:
-            conditions.append("tecnologia = ?")
-            params.append(tecnologia)
-        if fecha_desde and _DATE_RE.match(fecha_desde):
-            conditions.append("fecha_publicacion >= ?")
-            params.append(fecha_desde)
-        if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            conditions.append("fecha_publicacion <= ?")
-            params.append(fecha_hasta)
+            clauses.append(licitaciones.c.tecnologia == tecnologia)
 
-        return " AND ".join(conditions), params
+        if tecnologia_predicha:
+            if min_proba_tech is not None:
+                # Subquery EXISTS en licitacion_tecnologia_score
+                sub = (
+                    select(text("1"))
+                    .select_from(licitacion_tecnologia_score)
+                    .where(
+                        and_(
+                            licitacion_tecnologia_score.c.licitacion_id
+                            == licitaciones.c.id_externo,
+                            licitacion_tecnologia_score.c.tecnologia == tecnologia_predicha,
+                            licitacion_tecnologia_score.c.probabilidad >= float(min_proba_tech),
+                        )
+                    )
+                )
+                clauses.append(sub.exists())
+            else:
+                t = tecnologia_predicha
+                clauses.append(
+                    or_(
+                        licitaciones.c.ml_tech_principal == t,
+                        licitaciones.c.ml_tecnologias == t,
+                        licitaciones.c.ml_tecnologias.like(f"{t},%"),
+                        licitaciones.c.ml_tecnologias.like(f"%,{t},%"),
+                        licitaciones.c.ml_tecnologias.like(f"%,{t}"),
+                    )
+                )
+
+        if fecha_desde and _DATE_RE.match(fecha_desde):
+            clauses.append(licitaciones.c.fecha_publicacion >= fecha_desde)
+        if fecha_hasta and _DATE_RE.match(fecha_hasta):
+            clauses.append(licitaciones.c.fecha_publicacion <= fecha_hasta)
+
+        return clauses
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -80,6 +155,8 @@ class LicitacionRepository:
         estado: str | None = None,
         ccaa: str | None = None,
         tecnologia: str | None = None,
+        tecnologia_predicha: str | None = None,
+        min_proba_tech: float | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         limit: int = 50,
@@ -88,12 +165,14 @@ class LicitacionRepository:
         with_total: bool = True,
     ) -> tuple[list[dict[str, Any]], int]:
         """Devuelve (items, total).  Si ``with_total=False`` total==-1."""
-        order = _SORT_WHITELIST.get(sort or "", _DEFAULT_SORT)
-        where, params = self._build_filters(
+        order = _SORT_MAP.get(sort or "", _DEFAULT_ORDER)
+        clauses = self._base_filters(
             q=q,
             estado=estado,
             ccaa=ccaa,
             tecnologia=tecnologia,
+            tecnologia_predicha=tecnologia_predicha,
+            min_proba_tech=min_proba_tech,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
         )
@@ -113,14 +192,23 @@ class LicitacionRepository:
                 with_total=with_total,
             )
 
+        # Query SA Core
+        base: Select[Any] = select(*_SUMMARY_COLS).select_from(licitaciones)
+        if clauses:
+            base = base.where(and_(*clauses))
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        data_stmt = base.order_by(order).limit(limit).offset(offset)
+
+        count_sql, count_params = compile_query(count_stmt)
+        data_sql, data_params = compile_query(data_stmt)
+
         with connect_read() as c:
-            total = count_where(c, "licitaciones", where, tuple(params)) if with_total else -1
-            sql = f"SELECT {_SUMMARY_COLS} FROM licitaciones"
-            if where:
-                sql += f" WHERE {where}"
-            sql += f" ORDER BY {order} LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            items = rows_to_dicts(c.execute(sql, tuple(params)))
+            total = -1
+            if with_total:
+                row = c.execute(count_sql, count_params).fetchone()
+                total = int(row[0]) if row else 0
+            items = rows_to_dicts(c.execute(data_sql, data_params))
 
         return items, total
 
@@ -135,9 +223,10 @@ class LicitacionRepository:
         fecha_hasta: str | None,
         limit: int,
         offset: int,
-        order: str,
+        order: Any,
         with_total: bool,
     ) -> tuple[list[dict[str, Any]], int]:
+        """Búsqueda FTS5: usa SQL directo porque FTS MATCH no tiene soporte SA."""
         extra_conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
         extra_params: list[Any] = []
         if estado:
@@ -156,9 +245,15 @@ class LicitacionRepository:
             extra_conditions.append("l.fecha_publicacion <= ?")
             extra_params.append(fecha_hasta)
 
+        # Compilar order clause a string para insertar en FTS SQL
+        compiled_order = str(order.compile(dialect=_DIALECT))
+        # SA prefija la tabla: "licitaciones.fecha_publicacion DESC" → quitar prefijo
+        compiled_order = compiled_order.replace("licitaciones.", "l.")
+
         extra_where = " AND ".join(extra_conditions)
+        col_list = ", ".join(f"l.{c.key}" for c in _SUMMARY_COLS)
         base_sql = (
-            f"SELECT {', '.join('l.' + c.strip() for c in _SUMMARY_COLS.split(','))} "
+            f"SELECT {col_list} "
             "FROM licitaciones l "
             "JOIN licitaciones_fts f ON l.rowid = f.rowid "
             f"WHERE licitaciones_fts MATCH ? AND {extra_where}"
@@ -176,7 +271,7 @@ class LicitacionRepository:
                 total = int(count_row[0]) if count_row else 0
             items = rows_to_dicts(
                 c.execute(
-                    base_sql + f" ORDER BY {order} LIMIT ? OFFSET ?",
+                    base_sql + f" ORDER BY {compiled_order} LIMIT ? OFFSET ?",
                     [q, *extra_params, limit, offset],
                 )
             )
@@ -191,28 +286,39 @@ class LicitacionRepository:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Paginación por cursor (fecha_publicacion, id_externo) DESC."""
-        conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
-        params: list[Any] = []
+        clauses = [
+            and_(
+                licitaciones.c.tecnologia.isnot(None),
+                licitaciones.c.tecnologia != "",
+            )
+        ]
 
         if tecnologia:
-            conditions.append("tecnologia = ?")
-            params.append(tecnologia)
+            clauses.append(licitaciones.c.tecnologia == tecnologia)
 
         if cursor_fecha is not None and cursor_id is not None:
-            conditions.append(
-                "(fecha_publicacion < ? OR (fecha_publicacion = ? AND id_externo < ?))"
+            clauses.append(
+                or_(
+                    licitaciones.c.fecha_publicacion < cursor_fecha,
+                    and_(
+                        licitaciones.c.fecha_publicacion == cursor_fecha,
+                        licitaciones.c.id_externo < cursor_id,
+                    ),
+                )
             )
-            params.extend([cursor_fecha, cursor_fecha, cursor_id])
 
-        where = " AND ".join(conditions)
-        sql = (
-            f"SELECT {_SUMMARY_COLS} FROM licitaciones WHERE {where} "
-            "ORDER BY fecha_publicacion DESC, id_externo DESC LIMIT ?"
+        stmt = (
+            select(*_SUMMARY_COLS)
+            .where(and_(*clauses))
+            .order_by(
+                licitaciones.c.fecha_publicacion.desc(),
+                licitaciones.c.id_externo.desc(),
+            )
+            .limit(limit + 1)
         )
-        params.append(limit + 1)
-
+        sql, params = compile_query(stmt)
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, tuple(params)))
+            return rows_to_dicts(c.execute(sql, params))
 
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
         """Devuelve el registro completo o None."""
@@ -237,10 +343,11 @@ class LicitacionRepository:
         """Licitaciones no presentes en ml_feedback para active learning."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id_externo, titulo, descripcion "
-                "FROM licitaciones "
-                "WHERE id_externo NOT IN (SELECT expediente FROM ml_feedback) "
-                "ORDER BY fecha_publicacion DESC LIMIT ?",
+                "SELECT l.id_externo, l.titulo, l.descripcion "
+                "FROM licitaciones l "
+                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "WHERE f.expediente IS NULL "
+                "ORDER BY l.fecha_publicacion DESC LIMIT ?",
                 (limit,),
             )
             return rows_to_dicts(cur)
@@ -248,9 +355,10 @@ class LicitacionRepository:
     def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id_externo, titulo "
-                "FROM licitaciones "
-                "WHERE id_externo NOT IN (SELECT expediente FROM ml_feedback) "
+                "SELECT l.id_externo, l.titulo "
+                "FROM licitaciones l "
+                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "WHERE f.expediente IS NULL "
                 "ORDER BY RANDOM() LIMIT ?",
                 (limit,),
             )
@@ -258,9 +366,13 @@ class LicitacionRepository:
 
     def get_filter_options(self) -> dict[str, list[str]]:
         """Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV)."""
+        _ALLOWED_FILTER_COLS = {"estado", "ccaa", "tecnologia", "cpv"}
+
         with connect_read() as c:
 
             def _distinct(col: str) -> list[str]:
+                if col not in _ALLOWED_FILTER_COLS:
+                    raise ValueError(f"Columna no permitida para filtro: {col}")
                 rows = c.execute(
                     f"SELECT DISTINCT {col} FROM licitaciones "
                     f"WHERE {col} IS NOT NULL AND {col} != '' "
@@ -290,12 +402,28 @@ class LicitacionRepository:
         if not ids:
             return []
         placeholders = ",".join("?" * len(ids))
-        with connect_read() as c:
-            cur = c.execute(
-                f"SELECT {_SUMMARY_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})",
+        col_names = ", ".join(col.key for col in _SUMMARY_COLS)
+        with connect_read() as conn:
+            cur = conn.execute(
+                f"SELECT {col_names} FROM licitaciones WHERE id_externo IN ({placeholders})",
                 ids,
             )
             rows = rows_to_dicts(cur)
-        # Preservar orden del input
         order = {id_: i for i, id_ in enumerate(ids)}
         return sorted(rows, key=lambda r: order.get(r.get("id_externo", ""), 999))
+
+    def tech_scores_for(self, id_externo: str) -> list[dict[str, Any]]:
+        """Devuelve scores por tecnología desde ``licitacion_tecnologia_score``."""
+        stmt = (
+            select(
+                licitacion_tecnologia_score.c.tecnologia,
+                licitacion_tecnologia_score.c.probabilidad,
+                licitacion_tecnologia_score.c.threshold_aplicado,
+                licitacion_tecnologia_score.c.computed_at,
+            )
+            .where(licitacion_tecnologia_score.c.licitacion_id == id_externo)
+            .order_by(licitacion_tecnologia_score.c.probabilidad.desc())
+        )
+        sql, params = compile_query(stmt)
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))

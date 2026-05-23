@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import queue as _queue_mod
+import re
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -97,13 +98,29 @@ def safe_pragma(conn: Any, stmt: str) -> None:
         log.debug("safe_pragma_failed", extra={"stmt": stmt})
 
 
+# Whitelist de identificadores SQL válidos: solo alfanuméricos y guiones bajos.
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(name: str) -> str:
+    """Valida que ``name`` sea un identificador SQL seguro (previene inyección)."""
+    if not _SAFE_IDENTIFIER_RE.match(name):
+        raise ValueError(f"Identificador SQL no válido: {name!r}")
+    return name
+
+
 def get_table_columns(conn: Any, table: str) -> set[str]:
     """Devuelve el conjunto de nombres de columna de ``table``.
 
     Funciona tanto en SQLite local (``PRAGMA table_info``) como en
     Turso/Hrana (fallback a ``SELECT * … LIMIT 0`` + ``cursor.description``).
     Devuelve conjunto vacío si la tabla no existe o no se puede inspeccionar.
+
+    Raises:
+        ValueError: si ``table`` contiene caracteres no válidos.
     """
+    _validate_identifier(table)
+
     # Intento 1: PRAGMA table_info (rápido en SQLite local)
     try:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()

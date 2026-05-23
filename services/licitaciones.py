@@ -114,8 +114,8 @@ def load_uncertainty_zone(lo: float, hi: float, limit: int) -> list[dict[str, An
     """Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)."""
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo, titulo, organo_contratacion, importe, fecha_publicacion, "
-            "cpv, ml_proba FROM licitaciones "
+            "SELECT id_externo, titulo, descripcion, organo_contratacion, importe, "
+            "fecha_publicacion, cpv, ml_proba FROM licitaciones "
             "WHERE ml_proba IS NOT NULL AND ml_proba BETWEEN ? AND ? "
             "ORDER BY (importe IS NULL), importe DESC, ml_proba LIMIT ?",
             (lo, hi, limit),
@@ -195,7 +195,13 @@ def search_advanced(
     import re
 
     from db.repositories.base import count_where
-    from db.repositories.licitaciones import _DEFAULT_SORT, _SORT_WHITELIST, _SUMMARY_COLS
+    from db.repositories.licitaciones import (
+        _DEFAULT_SORT,
+        _SORT_WHITELIST,
+    )
+    from db.repositories.licitaciones import (
+        _SUMMARY_COLS_STR as _SUMMARY_COLS,
+    )
 
     _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 

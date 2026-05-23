@@ -9,10 +9,13 @@ Antes de usar Alembic, asegúrate de que el sistema casero haya aplicado
 todas sus migraciones (`db.migrations.apply_pending`).
 """
 
+import logging
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from db.models import metadata
 
 config = context.config
 
@@ -22,17 +25,17 @@ try:
 
     db_url = f"sqlite:///{settings.DB_PATH}"
     config.set_main_option("sqlalchemy.url", db_url)
-except Exception as e:
-    import logging
-
-    logging.getLogger(__name__).debug(
-        "alembic_config_fallback", exc_info=e
-    )  # fallback a alembic.ini
+except Exception:
+    logging.getLogger(__name__).warning(
+        "Could not import config.settings; falling back to alembic.ini URL",
+        exc_info=True,
+    )
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = None
+# SQLAlchemy Core MetaData from db/models.py — enables autogenerate support.
+target_metadata = metadata
 
 
 def run_migrations_offline() -> None:

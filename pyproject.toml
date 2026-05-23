@@ -31,6 +31,7 @@ dependencies = [
     "argon2-cffi>=23.1.0,<25",
     "alembic>=1.13.0,<2",
     "fastapi>=0.110.0,<1",
+    "redis>=5.0,<6",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,11 @@ ml = [
 schemas = [
     "pandera>=0.18,<1",
 ]
+# Deps opcionales para embeddings pre-entrenados en el pipeline ML.
+# Instalar con: pip install licitaciones-sap[ml-embeddings]
+ml-embeddings = [
+    "sentence-transformers>=2.0,<4",
+]
 # Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
 # Instalar con: pip install licitaciones-sap[tracing]
 # Sin este extra, observability/tracing.py opera en modo NoOp sin overhead.
@@ -54,12 +60,6 @@ tracing = [
     "opentelemetry-sdk>=1.20.0,<3",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
     "opentelemetry-instrumentation-fastapi>=0.45b0,<2",
-]
-# Deps opcionales para escalar el rate limiting a Redis.
-# Instalar con: pip install licitaciones-sap[scale]
-# Sin este extra, el rate limiting usa el backend SQLite por defecto.
-scale = [
-    "redis>=5.0,<6",
 ]
 
 [tool.setuptools.packages.find]
@@ -118,7 +118,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 strict = true
 
 # ── Módulos que PASAN mypy strict (sin override) ─────────────────────────
@@ -131,7 +131,6 @@ strict = true
 [[tool.mypy.overrides]]
 module = [
     "dashboard.app",
-    "dashboard.auth",
     "dashboard.components.*",
     "dashboard.embeddings",
     "dashboard.kpi_bar",
@@ -165,6 +164,7 @@ module = [
     "scraper.atom_live",
     "dashboard.utils.dates",
     "services.rate_limit_redis",
+    "shared.cache",
 ]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
@@ -293,15 +293,14 @@ omit = [
     "*/__pycache__/*",
     "dashboard/utils/chart_helpers.py",
     "dashboard/utils/lazy.py",
-    "observability/prometheus.py",
-    "observability/tracing.py",
     "scripts/*",
     "scheduler/register_daily_task_windows.ps1",
 ]
 
 [tool.coverage.report]
-# Reducido de 55 a 50 para reflejar cobertura real tras incluir dashboard.
-fail_under = 50
+# Subido de 51 → 55 tras añadir tests de threshold_tuning, model_registry,
+# feature_store, drift_report y reincluir observability en coverage.
+fail_under = 55
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

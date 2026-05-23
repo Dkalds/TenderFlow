@@ -22,7 +22,7 @@ import urllib.parse
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 
-from api.auth import AuthContext, require_api_key, require_scope
+from api.auth import AuthContext, require_scope
 from api.concurrency import run_db
 from db.audit import log_event
 from db.repositories.webhooks import WebhookRepository
@@ -227,7 +227,7 @@ async def create(
     responses={401: {"description": "API key inválida"}},
 )
 async def list_all(
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: AuthContext = Depends(require_scope("webhooks:read")),
 ) -> list[dict]:
     return _repo.list_all()
 
@@ -239,7 +239,7 @@ async def list_all(
 )
 async def get_one(
     webhook_id: int,
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: AuthContext = Depends(require_scope("webhooks:read")),
 ) -> dict:
     wh = _repo.get_by_id(webhook_id)
     if wh is None:
@@ -382,7 +382,7 @@ async def ping(
 async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: AuthContext = Depends(require_scope("webhooks:read")),
 ) -> list[dict]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     if _repo.get_by_id(webhook_id) is None:

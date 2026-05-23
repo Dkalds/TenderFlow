@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     prorroga_descripcion TEXT,
     ml_proba            REAL,
     tecnologia          TEXT,
+    ml_tecnologias      TEXT,
+    ml_proba_max        REAL,
+    ml_tech_principal   TEXT,
     fecha_actualizacion_fuente TEXT,
     fecha_extraccion    TEXT NOT NULL
 );
@@ -50,6 +53,21 @@ CREATE INDEX IF NOT EXISTS idx_organo    ON licitaciones(organo_contratacion);
 CREATE INDEX IF NOT EXISTS idx_estado    ON licitaciones(estado);
 CREATE INDEX IF NOT EXISTS idx_cpv       ON licitaciones(cpv);
 CREATE INDEX IF NOT EXISTS idx_ccaa      ON licitaciones(ccaa);
+CREATE INDEX IF NOT EXISTS idx_ml_tech_principal ON licitaciones(ml_tech_principal);
+
+CREATE TABLE IF NOT EXISTS licitacion_tecnologia_score (
+    licitacion_id      TEXT NOT NULL,
+    tecnologia         TEXT NOT NULL,
+    probabilidad       REAL NOT NULL,
+    threshold_aplicado REAL NOT NULL,
+    computed_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (licitacion_id, tecnologia),
+    FOREIGN KEY (licitacion_id) REFERENCES licitaciones(id_externo) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_lts_tecnologia
+    ON licitacion_tecnologia_score(tecnologia, probabilidad DESC);
+CREATE INDEX IF NOT EXISTS idx_lts_lic
+    ON licitacion_tecnologia_score(licitacion_id);
 
 CREATE TABLE IF NOT EXISTS adjudicaciones (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,

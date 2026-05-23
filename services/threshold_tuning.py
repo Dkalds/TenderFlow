@@ -68,6 +68,16 @@ def calibrate_and_tune(
 ) -> ThresholdTuningResult:
     """Calibra el estimador y busca el umbral que maximiza F-beta sensible a coste.
 
+    .. warning:: Double calibration risk
+
+        The main SAP classification pipeline (``_make_pipeline()``) already
+        wraps the base LogisticRegression in ``CalibratedClassifierCV``.
+        Calling this function on an already-calibrated pipeline applies a
+        **second** layer of calibration, which can degrade probability
+        estimates (oversmoothing, loss of sharpness). Only use this function
+        when the upstream pipeline does **NOT** include
+        ``CalibratedClassifierCV``.
+
     Args:
         base_estimator: Clasificador ``fit/predict_proba`` ya entrenado.
         X_train, y_train: Datos para la calibración (cv-fold interno).

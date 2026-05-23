@@ -314,7 +314,8 @@ def maybe_retrain_classifier(
     try:
         from pathlib import Path
 
-        from scraper.ml_classifier import SAPClassifier, precompute_ml_proba
+        from scraper.ml_classifier import SAPClassifier
+        from scraper.ml_training import precompute_ml_proba
 
         df = _fetch_training_dataframe()
         if df is None or df.empty:
@@ -338,6 +339,73 @@ def maybe_retrain_classifier(
         sha = hashlib.sha256(saved.read_bytes()).hexdigest()
 
         n_samples = metrics.get("n_train", 0) + metrics.get("n_test", 0)
+
+        # Promotion gate: multi-metric check (F1, PR-AUC, Brier score)
+        new_f1 = float(metrics.get("f1") or 0.0)
+        old_metrics = (active or {}).get("metrics", {}) if active else {}
+        old_f1 = float(old_metrics.get("f1") or 0.0)
+
+        new_pr_auc = float(metrics.get("pr_auc") or 0.0)
+        old_pr_auc = old_metrics.get("pr_auc")
+
+        new_brier = float(metrics.get("brier") or 1.0)
+        old_brier = old_metrics.get("brier")
+
+        # Log all metrics comparison
+        log.info(
+            "active_learning.promotion_gate_comparison",
+            old_f1=round(old_f1, 4),
+            new_f1=round(new_f1, 4),
+            old_pr_auc=round(float(old_pr_auc), 4) if old_pr_auc is not None else None,
+            new_pr_auc=round(new_pr_auc, 4),
+            old_brier=round(float(old_brier), 4) if old_brier is not None else None,
+            new_brier=round(new_brier, 4),
+        )
+
+        failed_metrics: list[str] = []
+
+        # F1 gate
+        if old_f1 > 0.0 and new_f1 < old_f1 - 0.02:
+            failed_metrics.append(f"f1 ({new_f1:.4f} < {old_f1:.4f} - 0.02)")
+
+        # PR-AUC gate
+        if old_pr_auc is not None:
+            old_pr_auc_f = float(old_pr_auc)
+            if new_pr_auc < old_pr_auc_f - 0.03:
+                failed_metrics.append(f"pr_auc ({new_pr_auc:.4f} < {old_pr_auc_f:.4f} - 0.03)")
+        else:
+            log.warning(
+                "active_learning.promotion_gate_skip_pr_auc",
+                reason="metric not available in previous model",
+            )
+
+        # Brier score gate (lower is better)
+        if old_brier is not None:
+            old_brier_f = float(old_brier)
+            if new_brier > old_brier_f + 0.05:
+                failed_metrics.append(f"brier ({new_brier:.4f} > {old_brier_f:.4f} + 0.05)")
+        else:
+            log.warning(
+                "active_learning.promotion_gate_skip_brier",
+                reason="metric not available in previous model",
+            )
+
+        should_activate = (old_f1 == 0.0 and old_pr_auc is None and old_brier is None) or len(
+            failed_metrics
+        ) == 0
+        if not should_activate:
+            log.warning(
+                "active_learning.promotion_gate_rejected",
+                failed_metrics=failed_metrics,
+                new_f1=round(new_f1, 4),
+                old_f1=round(old_f1, 4),
+            )
+            result["promotion_rejected"] = True
+            result["new_f1"] = new_f1
+            result["old_f1"] = old_f1
+            result["failed_metrics"] = failed_metrics
+            return result
+
         new_version = register_version(
             name=name,
             path=str(saved),
@@ -414,3 +482,88 @@ def _fetch_training_dataframe() -> Any:
             axis=1,
         )
     return lic
+
+
+# ────────────────── PSI — Population Stability Index ───────────────────────
+
+
+def compute_psi(
+    *,
+    feature: str = "importe",
+    ref_days: int = 90,
+    cur_days: int = 7,
+    n_bins: int = 10,
+    eps: float = 1e-6,
+) -> float:
+    """Calcula el Population Stability Index (PSI) para una feature numérica.
+
+    Compara la distribución de ``feature`` en la ventana de referencia
+    (``ref_days`` días antes de la ventana actual) contra la ventana actual
+    (``cur_days`` días).  Un PSI < 0.10 es estable; 0.10-0.25 requiere
+    seguimiento; > 0.25 indica drift significativo.
+
+    Args:
+        feature:  Columna numérica de la tabla ``licitaciones``.
+        ref_days: Tamaño de la ventana de referencia (días).
+        cur_days: Tamaño de la ventana actual (días).
+        n_bins:   Número de bins para discretizar.
+        eps:      Pequeño valor para evitar log(0).
+
+    Returns:
+        PSI como float. Devuelve 0.0 si no hay datos suficientes.
+    """
+
+    try:
+        import numpy as np
+    except ImportError:
+        log.warning("compute_psi_numpy_unavailable")
+        return 0.0
+
+    try:
+        from services.licitaciones import load_drift_window
+
+        ref_rows = load_drift_window(ref_days, offset_days=cur_days)
+        cur_rows = load_drift_window(cur_days)
+    except Exception as exc:
+        log.warning("compute_psi_load_failed", error=str(exc))
+        return 0.0
+
+    if not ref_rows or not cur_rows:
+        return 0.0
+
+    ref_vals = np.array(
+        [r.get(feature) for r in ref_rows if r.get(feature) is not None], dtype=float
+    )
+    cur_vals = np.array(
+        [r.get(feature) for r in cur_rows if r.get(feature) is not None], dtype=float
+    )
+
+    if len(ref_vals) < 10 or len(cur_vals) < 5:
+        return 0.0
+
+    # Calcular bins sobre la distribución de referencia
+    bin_edges = np.percentile(ref_vals, np.linspace(0, 100, n_bins + 1))
+    # Evitar bins duplicados en percentiles
+    bin_edges = np.unique(bin_edges)
+    if len(bin_edges) < 2:
+        return 0.0
+
+    ref_counts, _ = np.histogram(ref_vals, bins=bin_edges)
+    cur_counts, _ = np.histogram(cur_vals, bins=bin_edges)
+
+    ref_pct = ref_counts / ref_counts.sum()
+    cur_pct = cur_counts / cur_counts.sum()
+
+    # Aplicar eps para evitar log(0)
+    ref_pct = np.where(ref_pct == 0, eps, ref_pct)
+    cur_pct = np.where(cur_pct == 0, eps, cur_pct)
+
+    psi = float(np.sum((cur_pct - ref_pct) * np.log(cur_pct / ref_pct)))
+    log.debug(
+        "compute_psi_result",
+        feature=feature,
+        psi=round(psi, 4),
+        ref_n=len(ref_vals),
+        cur_n=len(cur_vals),
+    )
+    return max(0.0, psi)

@@ -1,0 +1,326 @@
+"""Tests para config/settings.py — validadores Pydantic y derivación de rutas."""
+
+from __future__ import annotations
+
+import warnings
+
+import pytest
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def make_settings(**kwargs):
+    """Instancia Settings con overrides de env vars."""
+    import os
+    from unittest.mock import patch
+
+    env = {
+        "ENV": "dev",
+        "DASHBOARD_PASSWORD_HASH": "",
+        "SIGNING_KEY": "",
+        "API_HMAC_SECRET": "",
+        **kwargs,
+    }
+    with patch.dict(os.environ, env, clear=False):
+        import config.settings as _mod
+
+        return _mod.Settings(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Valores por defecto y tipos básicos
+# ---------------------------------------------------------------------------
+
+
+def test_default_env_is_dev():
+    from config.settings import Settings
+
+    s = Settings()
+    assert s.ENV == "dev"
+
+
+def test_default_ml_threshold():
+    from config.settings import Settings
+
+    s = Settings()
+    assert 0.0 < s.ML_CONFIDENCE_THRESHOLD <= 1.0
+
+
+def test_default_paths_derived(tmp_path):
+    """DB_PATH y DOWNLOADS_DIR se derivan de DATA_DIR si no se configuran."""
+    from config.settings import Settings
+
+    s = Settings(DATA_DIR=tmp_path)
+    assert tmp_path / "licitaciones.db" == s.DB_PATH
+    assert tmp_path / "downloads" == s.DOWNLOADS_DIR
+
+
+def test_explicit_db_path_not_overridden(tmp_path):
+    """Si DB_PATH se configura explícitamente, no se sobreescribe."""
+    custom = tmp_path / "custom.db"
+    from config.settings import Settings
+
+    s = Settings(DATA_DIR=tmp_path, DB_PATH=custom)
+    assert custom == s.DB_PATH
+
+
+# ---------------------------------------------------------------------------
+# Validators de umbrales
+# ---------------------------------------------------------------------------
+
+
+def test_ml_confidence_threshold_valid():
+    from config.settings import Settings
+
+    s = Settings(ML_CONFIDENCE_THRESHOLD=0.5)
+    assert s.ML_CONFIDENCE_THRESHOLD == 0.5
+
+
+def test_ml_confidence_threshold_zero_valid():
+    from config.settings import Settings
+
+    s = Settings(ML_CONFIDENCE_THRESHOLD=0.0)
+    assert s.ML_CONFIDENCE_THRESHOLD == 0.0
+
+
+def test_ml_confidence_threshold_one_valid():
+    from config.settings import Settings
+
+    s = Settings(ML_CONFIDENCE_THRESHOLD=1.0)
+    assert s.ML_CONFIDENCE_THRESHOLD == 1.0
+
+
+def test_ml_confidence_threshold_out_of_range_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match=r"0\.0 y 1\.0"):
+        Settings(ML_CONFIDENCE_THRESHOLD=1.5)
+
+
+def test_ml_confidence_threshold_negative_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception):  # noqa: B017
+        Settings(ML_CONFIDENCE_THRESHOLD=-0.1)
+
+
+def test_otel_sample_ratio_valid():
+    from config.settings import Settings
+
+    s = Settings(OTEL_SAMPLE_RATIO=0.05)
+    assert pytest.approx(0.05) == s.OTEL_SAMPLE_RATIO
+
+
+def test_otel_sample_ratio_out_of_range():
+    from config.settings import Settings
+
+    with pytest.raises(Exception):  # noqa: B017
+        Settings(OTEL_SAMPLE_RATIO=1.5)
+
+
+def test_request_timeout_positive():
+    from config.settings import Settings
+
+    s = Settings(REQUEST_TIMEOUT=60)
+    assert s.REQUEST_TIMEOUT == 60
+
+
+def test_request_timeout_zero_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception):  # noqa: B017
+        Settings(REQUEST_TIMEOUT=0)
+
+
+def test_smtp_port_valid():
+    from config.settings import Settings
+
+    s = Settings(ALERT_SMTP_PORT=587)
+    assert s.ALERT_SMTP_PORT == 587
+
+
+def test_smtp_port_out_of_range_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception):  # noqa: B017
+        Settings(ALERT_SMTP_PORT=99999)
+
+
+def test_pool_size_min_1():
+    from config.settings import Settings
+
+    s = Settings(DB_POOL_SIZE=1)
+    assert s.DB_POOL_SIZE == 1
+
+
+def test_pool_size_zero_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception):  # noqa: B017
+        Settings(DB_POOL_SIZE=0)
+
+
+# ---------------------------------------------------------------------------
+# Cross-field validator: ML_UNCERTAINTY rango
+# ---------------------------------------------------------------------------
+
+
+def test_ml_uncertainty_range_valid():
+    from config.settings import Settings
+
+    s = Settings(ML_UNCERTAINTY_LO=0.2, ML_UNCERTAINTY_HI=0.8)
+    assert s.ML_UNCERTAINTY_LO < s.ML_UNCERTAINTY_HI
+
+
+def test_ml_uncertainty_range_invalid_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="ML_UNCERTAINTY_LO"):
+        Settings(ML_UNCERTAINTY_LO=0.8, ML_UNCERTAINTY_HI=0.2)
+
+
+def test_ml_uncertainty_equal_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception):  # noqa: B017
+        Settings(ML_UNCERTAINTY_LO=0.5, ML_UNCERTAINTY_HI=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Producción: validadores de hardening
+# ---------------------------------------------------------------------------
+
+
+def test_prod_requires_password_hash():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="DASHBOARD_PASSWORD_HASH"):
+        Settings(
+            ENV="prod", DASHBOARD_PASSWORD_HASH="", SIGNING_KEY="x" * 32, API_HMAC_SECRET="x" * 32
+        )
+
+
+def test_prod_requires_signing_key():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="SIGNING_KEY"):
+        Settings(
+            ENV="prod",
+            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
+            SIGNING_KEY="",
+            API_HMAC_SECRET="x" * 32,
+        )
+
+
+def test_prod_requires_api_hmac_secret():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="API_HMAC_SECRET"):
+        Settings(
+            ENV="prod",
+            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
+            SIGNING_KEY="x" * 32,
+            API_HMAC_SECRET="",
+        )
+
+
+def test_prod_api_hmac_secret_too_short():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="32 caracteres"):
+        Settings(
+            ENV="prod",
+            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
+            SIGNING_KEY="x" * 32,
+            API_HMAC_SECRET="short",  # pragma: allowlist secret
+        )
+
+
+def test_prod_valid_config():
+    """Configuración mínima válida en prod no lanza excepción."""
+    from config.settings import Settings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(
+            ENV="prod",
+            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
+            SIGNING_KEY="x" * 32,
+            API_HMAC_SECRET="y" * 32,
+            REDIS_URL="redis://localhost:6379/0",
+        )
+    assert s.ENV == "prod"
+
+
+# ---------------------------------------------------------------------------
+# Turso URL scheme validator
+# ---------------------------------------------------------------------------
+
+
+def test_turso_valid_libsql_scheme():
+    from config.settings import Settings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(TURSO_DATABASE_URL="libsql://mydb.turso.io", TURSO_AUTH_TOKEN="tok")
+    assert s.TURSO_DATABASE_URL == "libsql://mydb.turso.io"
+
+
+def test_turso_valid_https_scheme():
+    from config.settings import Settings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(TURSO_DATABASE_URL="https://mydb.turso.io", TURSO_AUTH_TOKEN="tok")
+    assert s.TURSO_DATABASE_URL.startswith("https://")
+
+
+def test_turso_invalid_scheme_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="esquema no permitido"):
+        Settings(TURSO_DATABASE_URL="sqlite:///bad.db", TURSO_AUTH_TOKEN="tok")
+
+
+def test_turso_empty_url_ok():
+    from config.settings import Settings
+
+    s = Settings(TURSO_DATABASE_URL="", TURSO_AUTH_TOKEN="")
+    assert s.TURSO_DATABASE_URL == ""
+
+
+def test_turso_incomplete_pair_warns():
+    """URL sin token o token sin URL emite warning y resetea ambos."""
+    from config.settings import Settings
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        s = Settings(TURSO_DATABASE_URL="libsql://x.turso.io", TURSO_AUTH_TOKEN="")
+    assert s.TURSO_DATABASE_URL == ""
+    assert s.TURSO_AUTH_TOKEN == ""
+    assert any("Turso" in str(warning.message) for warning in w)
+
+
+# ---------------------------------------------------------------------------
+# ensure_data_dirs
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_data_dirs_creates_directories(tmp_path):
+    import sys
+
+    # Ensure module is loaded
+    import config.settings  # noqa: F401
+    from config.settings import Settings, ensure_data_dirs
+
+    mod = sys.modules["config.settings"]
+    s = Settings(DATA_DIR=tmp_path / "data_new")
+    original = mod.__dict__["_settings"]
+    mod.__dict__["_settings"] = s
+    try:
+        ensure_data_dirs()
+        assert (tmp_path / "data_new").exists()
+    finally:
+        mod.__dict__["_settings"] = original

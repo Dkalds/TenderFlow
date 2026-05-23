@@ -55,6 +55,37 @@ class Settings(BaseSettings):
     ML_UNCERTAINTY_LO: float = 0.30
     ML_UNCERTAINTY_HI: float = 0.70
 
+    # ── ML Multi-Tecnología (OneVsRest sobre la columna `tecnologia`) ─────
+    # Master switch: si False, el pipeline y el scheduler no usan el clasificador
+    # multi-tecnología; ml_proba (=P(SAP)) sigue gobernando el gating.
+    ML_TECH_ENABLED: bool = False
+    # Prácticas activas para gating extendido. Por defecto sólo SAP, lo que
+    # equivale al comportamiento histórico (no se aceptan licitaciones por
+    # otras tecnologías hasta que la práctica correspondiente se active).
+    ML_TECH_GATING_PRACTICES: list[str] = ["SAP"]
+    # Threshold por defecto cuando una tecnología no tiene threshold optimizado.
+    ML_TECH_DEFAULT_THRESHOLD: float = 0.50
+    # Overrides por tecnología (en JSON via ENV). Si está vacío, se usan los
+    # thresholds aprendidos en train() y persistidos en el pickle del modelo.
+    ML_TECH_THRESHOLDS: dict[str, float] = {}
+    # Tiers según número de positivos por tecnología:
+    #   - ml_ready  : ≥ MIN_POS_READY   → LR calibrada normal
+    #   - fragile   : ≥ MIN_POS_FRAGILE → LR con C reducido + threshold conservador
+    #   - rules     : por debajo        → fallback a keywords curadas
+    ML_TECH_MIN_POS_READY: int = 50
+    ML_TECH_MIN_POS_FRAGILE: int = 20
+    # Regularización LogReg para tier frágil (más fuerte = menos overfit).
+    ML_TECH_FRAGILE_C: float = 0.3
+    # Precisión mínima exigida al elegir threshold del tier frágil.
+    ML_TECH_FRAGILE_MIN_PRECISION: float = 0.70
+    # Reentrenamiento semanal automático (cron en scheduler.loop).
+    ML_TECH_AUTO_RETRAIN: bool = False
+    # Si True, train() ejecuta RandomizedSearchCV para buscar hiperparámetros.
+    ML_TUNE_ON_TRAIN: bool = False
+    # Si True, usa sentence-transformers embeddings como feature adicional en el
+    # pipeline ML. Requiere: pip install licitaciones-sap[ml-embeddings]
+    ML_USE_EMBEDDINGS: bool = False
+
     # ── Resiliencia ───────────────────────────────────────────────────────
     # Circuit breaker: backoff exponencial entre aperturas del circuito
     BREAKER_BASE_TIMEOUT: int = 60  # segundos — primer timeout tras apertura
@@ -164,6 +195,14 @@ class Settings(BaseSettings):
             raise ValueError("ML_CONFIDENCE_THRESHOLD debe estar entre 0.0 y 1.0")
         return val
 
+    @field_validator("ML_TECH_DEFAULT_THRESHOLD", mode="before")
+    @classmethod
+    def _validate_ml_tech_default_threshold(cls, v: object) -> float:
+        val = float(v)  # type: ignore[arg-type]
+        if not (0.0 <= val <= 1.0):
+            raise ValueError("ML_TECH_DEFAULT_THRESHOLD debe estar entre 0.0 y 1.0")
+        return val
+
     @field_validator("OTEL_SAMPLE_RATIO", mode="before")
     @classmethod
     def _validate_otel_sample_ratio(cls, v: object) -> float:
@@ -270,6 +309,16 @@ class Settings(BaseSettings):
                 "cross-origin serán bloqueadas. Configura los orígenes permitidos: "
                 'CORS_ALLOWED_ORIGINS="https://dashboard.example.com"',
                 stacklevel=2,
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_redis(self) -> Settings:
+        """En producción, exigir REDIS_URL para cache compartido."""
+        if self.ENV == "prod" and not self.REDIS_URL:
+            raise ValueError(
+                "REDIS_URL es obligatorio en ENV=prod para cache compartido entre "
+                "procesos. Formato: redis://[:password@]host[:port][/db]"
             )
         return self
 

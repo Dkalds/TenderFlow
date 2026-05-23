@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Feature Engineering Pipeline
 Production-grade tool for senior data scientist

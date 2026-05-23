@@ -60,5 +60,23 @@ r.txt
 dist/
 build/
 
+# Ad-hoc dev artifacts
+_r*.txt
+ci_jobs.json
+.tmp/
+
+# Tool caches
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+
 # Editor config
 .vscode/
+
+# graphify - local-only files (graph.json, GRAPH_REPORT.md, graph.html are committed)
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/cache/
+graphify-out/.graphify_*

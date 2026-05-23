@@ -33,6 +33,15 @@ class FeedbackRepository:
             return {"total": 0, "positivos": 0, "negativos": 0, "last_feedback_at": None}
         return dict(zip(["total", "positivos", "negativos", "last_feedback_at"], row, strict=False))
 
+    def labeled_expedientes(self, prefix: str = "active_learning_dashboard:") -> set[str]:
+        """Devuelve expedientes ya etiquetados (por prefijo de nota)."""
+        with connect_read() as c:
+            rows = c.execute(
+                "SELECT DISTINCT expediente FROM ml_feedback WHERE nota LIKE ? || '%'",
+                (prefix,),
+            ).fetchall()
+        return {str(r[0]) for r in rows}
+
     def exists_idempotency(self, key: str) -> dict[str, Any] | None:
         """Devuelve la respuesta cacheada si la idempotency key ya existe."""
         with connect_read() as c:

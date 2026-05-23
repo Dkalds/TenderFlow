@@ -47,6 +47,8 @@ from scraper.ml_pipeline import (
     _build_dataset,
     _expected_calibration_error,
     _make_pipeline,
+    _make_pipeline_with_embeddings,
+    _tune_pipeline,
 )
 
 if TYPE_CHECKING:
@@ -65,7 +67,13 @@ class SAPClassifier:
     """Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP."""
 
     def __init__(self) -> None:
-        self.pipeline = _make_pipeline()
+        use_embeddings = getattr(settings, "ML_USE_EMBEDDINGS", False)
+        if use_embeddings:
+            self.pipeline = _make_pipeline_with_embeddings()
+            log.info("ml_classifier.init", pipeline_variant="embeddings")
+        else:
+            self.pipeline = _make_pipeline()
+            log.info("ml_classifier.init", pipeline_variant="tfidf_only")
         self._trained = False
         # Umbral óptimo aprendido en train(); fallback al de settings si no entrenado.
         self._threshold: float = settings.ML_CONFIDENCE_THRESHOLD
@@ -215,8 +223,22 @@ class SAPClassifier:
                 cv_f1 = 0.0
 
         # ── Entrenamiento final (pipeline calibrado) ───────────────────────
-        self.pipeline.fit(X_train, y_train)
-        self._trained = True
+        tune_on_train = bool(getattr(settings, "ML_TUNE_ON_TRAIN", False))
+        best_params: dict[str, Any] | None = None
+        if tune_on_train:
+            log.info("ml_classifier.tuning_start")
+            try:
+                tuned_pipeline, best_params = _tune_pipeline(X_train, y_train)
+                self.pipeline = tuned_pipeline
+                self._trained = True
+                log.info("ml_classifier.tuning_done", best_params=best_params)
+            except Exception as _tune_exc:
+                log.warning("ml_classifier.tuning_failed", error=str(_tune_exc))
+                self.pipeline.fit(X_train, y_train)
+                self._trained = True
+        else:
+            self.pipeline.fit(X_train, y_train)
+            self._trained = True
 
         # ── Evaluación en test set ─────────────────────────────────────────
         proba_test = self.pipeline.predict_proba(X_test)[:, 1]
@@ -286,6 +308,52 @@ class SAPClassifier:
             **metrics,
             "trained_at": datetime.now(UTC).isoformat(),
         }
+        if best_params is not None:
+            self.metadata["best_params"] = best_params
+
+        # ── Calibración de probabilidades + threshold tuning externo (opcional) ───
+        # Si ML_USE_CALIBRATION=True en settings, usa CalibratedClassifierCV +
+        # búsqueda F-beta sobre malla fina para refinar el umbral y mejorar las
+        # probabilidades predichas.
+        if getattr(settings, "ML_USE_CALIBRATION", False):
+            log.warning(
+                "double_calibration_risk",
+                detail="Pipeline already uses CalibratedClassifierCV. "
+                "Enabling ML_USE_CALIBRATION may degrade probability estimates.",
+            )
+            try:
+                from services.threshold_tuning import calibrate_and_tune
+
+                cost_fn = float(getattr(settings, "ML_COST_FN", 1.0))
+                cost_fp = float(getattr(settings, "ML_COST_FP", 1.0))
+                tune_result = calibrate_and_tune(
+                    base_estimator=self.pipeline,
+                    X_train=X_train,
+                    y_train=list(y_train),
+                    X_val=X_test,
+                    y_val=list(y_test),
+                    cost_fp=cost_fp,
+                    cost_fn=cost_fn,
+                )
+                # Sustituir pipeline por versión calibrada y actualizar threshold
+                self.pipeline = tune_result.calibrated  # type: ignore[assignment]
+                self._threshold = tune_result.threshold
+                metrics["optimal_threshold"] = round(tune_result.threshold, 4)
+                metrics["fbeta_calibrated"] = round(tune_result.fbeta, 4)
+                metrics["calibration_method"] = tune_result.method
+                self.metadata.update(
+                    optimal_threshold=metrics["optimal_threshold"],
+                    fbeta_calibrated=metrics["fbeta_calibrated"],
+                    calibration_method=tune_result.method,
+                )
+                log.info(
+                    "ml_classifier.calibrated",
+                    threshold=self._threshold,
+                    fbeta=tune_result.fbeta,
+                    method=tune_result.method,
+                )
+            except Exception as _cal_exc:
+                log.warning("ml_classifier.calibration_failed", error=str(_cal_exc))
         log.info("ml_classifier.trained", **metrics)
         # Append run a registry JSON para histórico de entrenamientos.
         try:
@@ -309,29 +377,128 @@ class SAPClassifier:
         """
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado. Llama a train() o load() primero.")
+        import time
+
+        from observability.runtime_metrics import ml_inference_duration_seconds
+
+        t0 = time.perf_counter()
         augmented = _augment_text(text, cpv=cpv, importe=importe)
         proba = self.pipeline.predict_proba([augmented])[0]
+        ml_inference_duration_seconds.labels(method="predict").observe(time.perf_counter() - t0)
         confidence = float(proba[1])
         return confidence >= self._threshold, confidence
 
-    def predict_batch(self, texts: list[str]) -> list[tuple[bool, float]]:
-        """Predicción en batch (más eficiente que llamadas individuales)."""
+    def predict_batch(
+        self,
+        texts: list[str],
+        *,
+        cpvs: list[str | None] | None = None,
+        importes: list[float | None] | None = None,
+    ) -> list[tuple[bool, float]]:
+        """Predicción en batch (más eficiente que llamadas individuales).
+
+        Args:
+            texts: Textos combinados (título + descripción).
+            cpvs: Lista paralela de códigos CPV (opcional). Mejora la
+                predicción con tokens estructurales vía ``_augment_text``.
+            importes: Lista paralela de importes EUR (opcional). Codifica
+                rangos logarítmicos como tokens.
+
+        Si ``cpvs`` o ``importes`` no se proporcionan, se usa el texto tal
+        cual (backward compatible).
+        """
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado.")
-        probas = self.pipeline.predict_proba(texts)
+        import time
+
+        from observability.runtime_metrics import ml_inference_duration_seconds
+
+        t0 = time.perf_counter()
+        augmented = [
+            _augment_text(
+                t,
+                cpv=cpvs[i] if cpvs and i < len(cpvs) else None,
+                importe=importes[i] if importes and i < len(importes) else None,
+            )
+            for i, t in enumerate(texts)
+        ]
+        probas = self.pipeline.predict_proba(augmented)
+        ml_inference_duration_seconds.labels(method="predict_batch").observe(
+            time.perf_counter() - t0
+        )
         threshold = self._threshold
         return [(float(p[1]) >= threshold, float(p[1])) for p in probas]
 
-    def predict_proba(self, texts: list[str]):
+    def predict_proba(self, texts: list[str], *, entity_ids: list[str] | None = None):
         """Devuelve la matriz de probabilidades sklearn (shape: [n, 2]).
 
         Columna 0 = P(no-SAP), columna 1 = P(SAP). Idéntico a
         sklearn.pipeline.Pipeline.predict_proba — expuesto en SAPClassifier
         para que los endpoints de active learning puedan usarlo directamente.
+
+        If ``entity_ids`` is provided (same length as ``texts``), results are
+        cached in the feature store keyed by entity_id and model version.
+        Cached values are returned without recomputation when the version
+        matches.
         """
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado.")
-        return self.pipeline.predict_proba(texts)
+
+        model_version = self.metadata.get("trained_at", "unknown")
+
+        # ── Feature store cache: lookup ────────────────────────────────
+        cached_indices: dict[int, list[float]] = {}
+        if entity_ids is not None and len(entity_ids) == len(texts):
+            try:
+                from db import feature_store
+
+                cached = feature_store.get_features_bulk(
+                    "licitacion",
+                    entity_ids,
+                    "ml_proba",
+                    version=model_version,
+                )
+                for i, eid in enumerate(entity_ids):
+                    if eid in cached:
+                        cached_indices[i] = cached[eid]
+            except Exception as _fs_exc:
+                log.warning("ml_classifier.feature_store_lookup_failed", error=str(_fs_exc))
+
+        # ── Compute only uncached texts ────────────────────────────────
+        import numpy as np
+
+        uncached_indices = [i for i in range(len(texts)) if i not in cached_indices]
+
+        if uncached_indices:
+            uncached_texts = [texts[i] for i in uncached_indices]
+            computed = self.pipeline.predict_proba(uncached_texts)
+        else:
+            computed = np.empty((0, 2))
+
+        # ── Assemble full result matrix ────────────────────────────────
+        result = np.zeros((len(texts), 2))
+        for j, idx in enumerate(uncached_indices):
+            result[idx] = computed[j]
+        for idx, val in cached_indices.items():
+            result[idx] = val
+
+        # ── Feature store cache: store new results ─────────────────────
+        if entity_ids is not None and len(entity_ids) == len(texts) and uncached_indices:
+            try:
+                from db import feature_store
+
+                for idx in uncached_indices:
+                    feature_store.set_feature(
+                        "licitacion",
+                        entity_ids[idx],
+                        "ml_proba",
+                        result[idx].tolist(),
+                        version=model_version,
+                    )
+            except Exception as _fs_exc:
+                log.warning("ml_classifier.feature_store_write_failed", error=str(_fs_exc))
+
+        return result
 
     # ── Explicabilidad ────────────────────────────────────────────────────
 
@@ -533,6 +700,22 @@ class SAPClassifier:
 
         import joblib
 
+        # Si no se pasa path explícito, consultar el model registry
+        if path is None:
+            try:
+                from db.model_registry import get_active
+
+                active = get_active("sap_classifier")
+                if active and active.get("path"):
+                    path = Path(active["path"])
+                    log.info(
+                        "ml_classifier.load_from_registry",
+                        version=active.get("version"),
+                        path=str(path),
+                    )
+            except Exception as _reg_exc:
+                log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
+
         target = path or _MODEL_PATH
 
         # Verificar integridad con SHA256
@@ -556,7 +739,10 @@ class SAPClassifier:
             )
 
         obj = joblib.load(target)
-        if not isinstance(obj, cls):
+        # Compatibilidad con modelos guardados ejecutando el script como __main__:
+        # en ese caso el tipo es '__main__.SAPClassifier' en lugar de
+        # 'scraper.ml_classifier.SAPClassifier'. Se acepta si el nombre de clase coincide.
+        if not isinstance(obj, cls) and type(obj).__name__ != cls.__name__:
             raise TypeError(f"El archivo no contiene un SAPClassifier: {type(obj)}")
         # Retrocompatibilidad: modelos anteriores no tienen _threshold ni metadata
         if not hasattr(obj, "_threshold"):
@@ -624,7 +810,15 @@ _MULTILABEL_MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_mu
 class SAPMultiLabelClassifier:
     """Clasificador multi-label para SAP/Cloud/Integración/Mantenimiento/RRHH.
 
-    Estrategia:
+    .. deprecated:: v30
+        Reemplazado por :class:`scraper.tech_classifier.TechnologyClassifier`,
+        que clasifica directamente contra las 13 tecnologías reales de la
+        columna ``tecnologia`` (SAP, ORACLE, SALESFORCE, MICROSOFT, …) usando
+        un OneVsRest con tres tiers (ml_ready / fragile / rules). Esta clase
+        se mantiene únicamente por compatibilidad con código legacy y será
+        eliminada en una futura versión.
+
+    Estrategia (legacy):
       - SAP: delega en SAPClassifier (modelo binario existente).
       - Otros labels: heurística de keywords + LogisticRegression por label.
 
@@ -632,6 +826,14 @@ class SAPMultiLabelClassifier:
     """
 
     def __init__(self) -> None:
+        import warnings
+
+        warnings.warn(
+            "SAPMultiLabelClassifier está obsoleto desde v30. Usa "
+            "scraper.tech_classifier.TechnologyClassifier en su lugar.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._sap_clf: SAPClassifier | None = None
         self._label_clfs: dict[str, Any] = {}
         self._trained = False
@@ -796,11 +998,83 @@ if __name__ == "__main__":
             f"  Ya existían : {seed_result['already_exists']}\n"
             "\nAhora puedes entrenar: python -m scraper.ml_classifier train"
         )
+    elif cmd == "precompute":
+        import argparse
+
+        parser_pre = argparse.ArgumentParser(prog="ml_classifier precompute")
+        parser_pre.add_argument(
+            "--force", action="store_true", help="Recalcular incluso filas ya clasificadas"
+        )
+        args_pre = parser_pre.parse_args(sys.argv[2:])
+        from scraper.ml_training import precompute_ml_proba
+
+        print("Precomputando ml_proba para licitaciones pendientes...")
+        result = precompute_ml_proba(force=args_pre.force)
+        print(f"  Actualizadas : {result.get('updated', 0)}")
+        if result.get("skipped_no_model"):
+            print("  [AVISO] No hay modelo disponible.")
     elif cmd == "info":
         if SAPClassifier.is_available():
             print(f"Modelo disponible: {_MODEL_PATH}")
         else:
             print("No hay modelo entrenado. Ejecuta: python -m scraper.ml_classifier train")
+    elif cmd == "train-tech":
+        from scraper.tech_classifier import _MODEL_PATH as _TECH_MODEL_PATH
+        from scraper.tech_classifier import train_from_db as _train_tech_from_db
+
+        print("Entrenando TechnologyClassifier multi-label desde la BD...")
+        tech_metrics = _train_tech_from_db()
+        if "error" in tech_metrics:
+            print(f"\n[ERROR] {tech_metrics}")
+        else:
+            print(f"  macro_f1_ml_ready : {tech_metrics.get('macro_f1_ml_ready')}")
+            print(f"  n_models          : {tech_metrics.get('n_models')}")
+            print(f"  n_rules_fallback  : {tech_metrics.get('n_rules_fallback')}")
+            print(
+                f"  n_train / n_test  : {tech_metrics.get('n_train')} / {tech_metrics.get('n_test')}"
+            )
+            print("\nDesglose por tecnología:")
+            per_tech = tech_metrics.get("per_tech", {})
+            for label, info in per_tech.items():
+                tier = info.get("tier")
+                n_pos = info.get("n_positive")
+                f1 = info.get("f1")
+                prec = info.get("precision")
+                rec = info.get("recall")
+                thr = info.get("threshold")
+                f1_s = f"{f1:.3f}" if isinstance(f1, float) else "—"
+                prec_s = f"{prec:.3f}" if isinstance(prec, float) else "—"
+                rec_s = f"{rec:.3f}" if isinstance(rec, float) else "—"
+                print(
+                    f"  - {label:<12} tier={tier:<9} n+={n_pos:<5} "
+                    f"thr={thr:<5} F1={f1_s} P={prec_s} R={rec_s}"
+                )
+            print(f"\nModelo guardado en: {_TECH_MODEL_PATH}")
+    elif cmd == "precompute-tech":
+        import argparse
+
+        parser_pt = argparse.ArgumentParser(prog="ml_classifier precompute-tech")
+        parser_pt.add_argument(
+            "--force",
+            action="store_true",
+            help="Recalcular incluso filas ya clasificadas",
+        )
+        args_pt = parser_pt.parse_args(sys.argv[2:])
+        from scraper.ml_training import precompute_ml_tecnologias
+
+        print("Precomputando ml_tecnologias/ml_proba_max para licitaciones pendientes...")
+        tech_result = precompute_ml_tecnologias(force=args_pt.force)
+        print(f"  Actualizadas      : {tech_result.get('updated', 0)}")
+        print(f"  Scores insertados : {tech_result.get('scores_inserted', 0)}")
+        if tech_result.get("skipped_no_model"):
+            print(
+                "  [AVISO] No hay TechnologyClassifier entrenado. "
+                "Ejecuta primero: python -m scraper.ml_classifier train-tech"
+            )
     else:
-        print(f"Comando desconocido: {cmd}. Usa 'train', 'seed-negatives' o 'info'.")
+        print(
+            f"Comando desconocido: {cmd}. "
+            "Usa 'train', 'precompute', 'seed-negatives', 'info', "
+            "'train-tech' o 'precompute-tech'."
+        )
         sys.exit(1)
