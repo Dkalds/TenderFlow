@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt pyproject.toml ./
-RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
+RUN pip install --prefix=/install --no-cache-dir -r requirements.txt \
+    && pip install --prefix=/install --no-cache-dir --no-deps "starlette>=1.0.1"
 
 
 # ── Etapa 2: imagen de producción — Streamlit dashboard ──────────────────────
