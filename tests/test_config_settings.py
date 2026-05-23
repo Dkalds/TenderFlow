@@ -249,6 +249,7 @@ def test_prod_valid_config():
             DASHBOARD_PASSWORD_HASH="$2b$12$abc",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,
+            REDIS_URL="redis://localhost:6379/0",
         )
     assert s.ENV == "prod"
 

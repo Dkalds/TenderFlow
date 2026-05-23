@@ -84,7 +84,7 @@ class LicitacionRepository:
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         only_classified: bool = True,
-    ) -> list:
+    ) -> list[Any]:
         """Devuelve lista de cláusulas SA Core para WHERE."""
         clauses = []
 
@@ -193,7 +193,7 @@ class LicitacionRepository:
             )
 
         # Query SA Core
-        base: Select = select(*_SUMMARY_COLS).select_from(licitaciones)
+        base: Select[Any] = select(*_SUMMARY_COLS).select_from(licitaciones)
         if clauses:
             base = base.where(and_(*clauses))
 

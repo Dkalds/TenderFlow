@@ -27,6 +27,8 @@ Patrón de uso::
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import (
     Column,
     Float,
@@ -124,7 +126,7 @@ adjudicaciones = Table(
 _DIALECT = _sqlite_dialect.dialect()
 
 
-def compile_query(stmt) -> tuple[str, list]:
+def compile_query(stmt: Any) -> tuple[str, list[Any]]:
     """Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.
 
     Usa el dialecto SQLite con parámetros posicionales (``?``) compatibles con
@@ -141,7 +143,7 @@ def compile_query(stmt) -> tuple[str, list]:
         compile_kwargs={"literal_binds": False},
     )
     sql: str = str(compiled)
-    raw_params: dict = compiled.params
+    raw_params: dict[str, Any] = compiled.params
 
     # SA SQLite dialect ya emite ? posicionales; el orden está en positiontup.
     position_tup = getattr(compiled, "positiontup", None)
