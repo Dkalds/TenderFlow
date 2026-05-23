@@ -184,36 +184,31 @@ def seed_negatives(
     inserted = 0
     already_exists = 0
     if rows_to_insert:
-        import sqlite3
+        from db.database import connect, get_table_columns
 
-        from config import settings as _settings
-
-        db_file = str(_settings.DB_PATH)
-        with sqlite3.connect(db_file) as sqlite_conn:
-            sqlite_conn.execute("PRAGMA journal_mode=WAL")
-            sqlite_conn.execute("PRAGMA busy_timeout=5000")
-            try:
-                existing_cols = {
-                    r[1] for r in sqlite_conn.execute("PRAGMA table_info(licitaciones)").fetchall()
-                }
-            except Exception:
-                cur = sqlite_conn.execute("SELECT * FROM licitaciones LIMIT 0")
+        try:
+            with connect() as _conn:
+                existing_cols = set(get_table_columns(_conn, "licitaciones"))
+        except Exception:
+            with connect() as _c:
+                cur = _c.execute("SELECT * FROM licitaciones LIMIT 0")
                 existing_cols = {d[0] for d in (cur.description or [])}
-            has_fecha_act = "fecha_actualizacion_fuente" in existing_cols
-            has_tecnologia = "tecnologia" in existing_cols
+        has_fecha_act = "fecha_actualizacion_fuente" in existing_cols
+        has_tecnologia = "tecnologia" in existing_cols
 
-            for row in rows_to_insert:
-                extra_cols = ""
-                extra_vals = ""
-                extra_params: list[Any] = []
-                if has_fecha_act:
-                    extra_cols += ", fecha_actualizacion_fuente"
-                    extra_vals += ", ?"
-                    extra_params.append(row[10])
-                if has_tecnologia:
-                    extra_cols += ", tecnologia"
-                    extra_vals += ", NULL"
-                cur = sqlite_conn.execute(
+        for row in rows_to_insert:
+            extra_cols = ""
+            extra_vals = ""
+            extra_params: list[Any] = []
+            if has_fecha_act:
+                extra_cols += ", fecha_actualizacion_fuente"
+                extra_vals += ", ?"
+                extra_params.append(row[10])
+            if has_tecnologia:
+                extra_cols += ", tecnologia"
+                extra_vals += ", NULL"
+            with connect() as c:
+                cur = c.execute(
                     f"""INSERT OR IGNORE INTO licitaciones
                        (id_externo, titulo, descripcion, organo_contratacion,
                         importe, moneda, cpv, tipo_contrato, estado,
@@ -348,11 +343,10 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
             continue
 
         with connect() as c:
-            for row, proba in zip(batch, probas, strict=False):
-                c.execute(
-                    "UPDATE licitaciones SET ml_proba = ? WHERE id_externo = ?",
-                    (float(proba), row[0]),
-                )
+            c.executemany(
+                "UPDATE licitaciones SET ml_proba = ? WHERE id_externo = ?",
+                [(float(proba), row[0]) for row, proba in zip(batch, probas, strict=False)],
+            )
             c.commit()
         updated += len(batch)
 

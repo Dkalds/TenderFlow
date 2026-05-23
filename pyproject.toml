@@ -47,6 +47,11 @@ ml = [
 schemas = [
     "pandera>=0.18,<1",
 ]
+# Deps opcionales para embeddings pre-entrenados en el pipeline ML.
+# Instalar con: pip install licitaciones-sap[ml-embeddings]
+ml-embeddings = [
+    "sentence-transformers>=2.0,<4",
+]
 # Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
 # Instalar con: pip install licitaciones-sap[tracing]
 # Sin este extra, observability/tracing.py opera en modo NoOp sin overhead.
@@ -113,7 +118,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 strict = true
 
 # ── Módulos que PASAN mypy strict (sin override) ─────────────────────────
@@ -126,7 +131,6 @@ strict = true
 [[tool.mypy.overrides]]
 module = [
     "dashboard.app",
-    "dashboard.auth",
     "dashboard.components.*",
     "dashboard.embeddings",
     "dashboard.kpi_bar",
@@ -289,16 +293,14 @@ omit = [
     "*/__pycache__/*",
     "dashboard/utils/chart_helpers.py",
     "dashboard/utils/lazy.py",
-    "observability/prometheus.py",
-    "observability/tracing.py",
     "scripts/*",
     "scheduler/register_daily_task_windows.ps1",
 ]
 
 [tool.coverage.report]
-# Subido de 50 → 51 tras añadir tests de shared/cache.py (39 tests).
-# Actual: 51.67%. Objetivo siguiente: 55 con tests de Turso migration.
-fail_under = 51
+# Subido de 51 → 55 tras añadir tests de threshold_tuning, model_registry,
+# feature_store, drift_report y reincluir observability en coverage.
+fail_under = 55
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

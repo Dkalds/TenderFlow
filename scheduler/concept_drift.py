@@ -340,21 +340,70 @@ def maybe_retrain_classifier(
 
         n_samples = metrics.get("n_train", 0) + metrics.get("n_test", 0)
 
-        # Promotion gate: solo activar si nuevo F1 >= F1 anterior - epsilon
+        # Promotion gate: multi-metric check (F1, PR-AUC, Brier score)
         new_f1 = float(metrics.get("f1") or 0.0)
-        old_f1 = float((active or {}).get("metrics", {}).get("f1") or 0.0) if active else 0.0
-        _F1_EPSILON = 0.02  # tolerancia de degradación permitida
-        should_activate = (old_f1 == 0.0) or (new_f1 >= old_f1 - _F1_EPSILON)
+        old_metrics = (active or {}).get("metrics", {}) if active else {}
+        old_f1 = float(old_metrics.get("f1") or 0.0)
+
+        new_pr_auc = float(metrics.get("pr_auc") or 0.0)
+        old_pr_auc = old_metrics.get("pr_auc")
+
+        new_brier = float(metrics.get("brier") or 1.0)
+        old_brier = old_metrics.get("brier")
+
+        # Log all metrics comparison
+        log.info(
+            "active_learning.promotion_gate_comparison",
+            old_f1=round(old_f1, 4),
+            new_f1=round(new_f1, 4),
+            old_pr_auc=round(float(old_pr_auc), 4) if old_pr_auc is not None else None,
+            new_pr_auc=round(new_pr_auc, 4),
+            old_brier=round(float(old_brier), 4) if old_brier is not None else None,
+            new_brier=round(new_brier, 4),
+        )
+
+        failed_metrics: list[str] = []
+
+        # F1 gate
+        if old_f1 > 0.0 and new_f1 < old_f1 - 0.02:
+            failed_metrics.append(f"f1 ({new_f1:.4f} < {old_f1:.4f} - 0.02)")
+
+        # PR-AUC gate
+        if old_pr_auc is not None:
+            old_pr_auc_f = float(old_pr_auc)
+            if new_pr_auc < old_pr_auc_f - 0.03:
+                failed_metrics.append(f"pr_auc ({new_pr_auc:.4f} < {old_pr_auc_f:.4f} - 0.03)")
+        else:
+            log.warning(
+                "active_learning.promotion_gate_skip_pr_auc",
+                reason="metric not available in previous model",
+            )
+
+        # Brier score gate (lower is better)
+        if old_brier is not None:
+            old_brier_f = float(old_brier)
+            if new_brier > old_brier_f + 0.05:
+                failed_metrics.append(f"brier ({new_brier:.4f} > {old_brier_f:.4f} + 0.05)")
+        else:
+            log.warning(
+                "active_learning.promotion_gate_skip_brier",
+                reason="metric not available in previous model",
+            )
+
+        should_activate = (old_f1 == 0.0 and old_pr_auc is None and old_brier is None) or len(
+            failed_metrics
+        ) == 0
         if not should_activate:
             log.warning(
                 "active_learning.promotion_gate_rejected",
+                failed_metrics=failed_metrics,
                 new_f1=round(new_f1, 4),
                 old_f1=round(old_f1, 4),
-                epsilon=_F1_EPSILON,
             )
             result["promotion_rejected"] = True
             result["new_f1"] = new_f1
             result["old_f1"] = old_f1
+            result["failed_metrics"] = failed_metrics
             return result
 
         new_version = register_version(

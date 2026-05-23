@@ -131,7 +131,7 @@ jobs:
           image-ref: ${{ matrix.image.tag }}
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true
-          exit-code: "0"   # avisa pero no bloquea (cambiar a "1" tras endurecer)
+          exit-code: "1"   # bloquea build en vulnerabilidades CRITICAL/HIGH
           format: "sarif"
           output: "trivy-${{ matrix.image.tag }}.sarif"
 

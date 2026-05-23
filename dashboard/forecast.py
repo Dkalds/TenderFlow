@@ -217,7 +217,7 @@ def forecast_volume(
             seasonal="add" if use_seasonal else None,
             seasonal_periods=12 if use_seasonal else None,
             initialization_method="estimated",
-        ).fit(optimized=True, disp=False)
+        ).fit(optimized=True)
         forecast_vals = model.forecast(months_ahead)
         std_err = (hist["valor"].std() or 1.0) * 1.5  # banda ~1.5σ aproximada
     except Exception:
@@ -225,7 +225,8 @@ def forecast_volume(
         import numpy as np
 
         x = np.arange(len(hist), dtype=float)
-        m, b = float(np.polyfit(x, hist["valor"].astype(float), 1))
+        coeffs = np.polyfit(x, hist["valor"].astype(float), 1)
+        m, b = float(coeffs[0]), float(coeffs[1])
         future_x = np.arange(len(hist), len(hist) + months_ahead, dtype=float)
         forecast_vals = pd.Series(m * future_x + b)
         std_err = (hist["valor"].std() or 1.0) * 1.5

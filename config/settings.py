@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     ML_TECH_FRAGILE_MIN_PRECISION: float = 0.70
     # Reentrenamiento semanal automático (cron en scheduler.loop).
     ML_TECH_AUTO_RETRAIN: bool = False
+    # Si True, train() ejecuta RandomizedSearchCV para buscar hiperparámetros.
+    ML_TUNE_ON_TRAIN: bool = False
+    # Si True, usa sentence-transformers embeddings como feature adicional en el
+    # pipeline ML. Requiere: pip install licitaciones-sap[ml-embeddings]
+    ML_USE_EMBEDDINGS: bool = False
 
     # ── Resiliencia ───────────────────────────────────────────────────────
     # Circuit breaker: backoff exponencial entre aperturas del circuito

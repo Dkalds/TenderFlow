@@ -85,7 +85,7 @@ def render(ctx: PageContext) -> None:
             ticket_medio=("importe_adjudicado", "mean"),
             organos=("organo_contratacion", "nunique"),
         )
-        .reset_index(drop=True)
+        .reset_index()
     )
     metr_ci["cuota_pct"] = metr_ci["volumen"] / total_mercado * 100 if total_mercado else 0
 

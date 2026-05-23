@@ -470,6 +470,15 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         -- SQLite no soporta IF NOT EXISTS en ALTER TABLE ADD COLUMN.
         """,
     ),
+    (
+        32,
+        "performance_indexes",
+        """
+        -- Índices de rendimiento para consultas frecuentes.
+        -- Se aplican programáticamente en _apply_v32_perf_indexes
+        -- para tolerar la ausencia de tablas en entornos de test.
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -580,6 +589,12 @@ ROLLBACKS: dict[int, str] = {
         DROP INDEX IF EXISTS idx_lic_estado_fecha;
         DROP INDEX IF EXISTS idx_lic_ccaa_fecha;
     """,
+    32: """
+        DROP INDEX IF EXISTS idx_lic_tecnologia;
+        DROP INDEX IF EXISTS idx_lic_ml_proba;
+        DROP INDEX IF EXISTS idx_adj_nombre_importe;
+        DROP INDEX IF EXISTS idx_adj_ccaa_nombre;
+    """,
 }
 
 # Migraciones que NO se pueden revertir (solo ADD COLUMN sin DROP COLUMN)
@@ -656,6 +671,9 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 31: columnas last_attempt_at y exhausted_at en failed_extractions
         if version == 31:
             _apply_v31_dlq_columns(conn)
+        # Migración 32: índices de rendimiento (programático, tolera tablas ausentes)
+        if version == 32:
+            _apply_v32_perf_indexes(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -674,7 +692,8 @@ def _apply_v6_columns(conn: Any) -> None:
         try:
             conn.execute(f"ALTER TABLE licitaciones ADD COLUMN {name} {ctype}")
         except Exception:
-            pass  # Column already exists
+            log.warning("migration_step_error", version=6, column=name, exc_info=True)
+            # Column already exists
 
 
 def _apply_v20_indexes(conn: Any) -> None:
@@ -697,11 +716,11 @@ def _apply_v21_api_keys_columns(conn: Any) -> None:
     try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT '*'")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=21, column="scopes", exc_info=True)
     try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN user_id INTEGER")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=21, column="user_id", exc_info=True)
 
 
 def _apply_v23_ml_proba(conn: Any) -> None:
@@ -715,7 +734,7 @@ def _apply_v23_ml_proba(conn: Any) -> None:
         conn.execute("ALTER TABLE licitaciones ADD COLUMN ml_proba REAL")
     except Exception:
         # Column already exists — safe to ignore
-        pass
+        log.warning("migration_step_error", version=23, column="ml_proba", exc_info=True)
 
 
 def _apply_v24_cursor_index(conn: Any) -> None:
@@ -740,11 +759,11 @@ def _apply_v25_api_keys_prefix_expiry(conn: Any) -> None:
     try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN prefix TEXT")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=25, column="prefix", exc_info=True)
     try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN expires_at TEXT")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=25, column="expires_at", exc_info=True)
 
 
 def _apply_v26_audit_hash_chain(conn: Any) -> None:
@@ -752,11 +771,11 @@ def _apply_v26_audit_hash_chain(conn: Any) -> None:
     try:
         conn.execute("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=26, column="prev_hash", exc_info=True)
     try:
         conn.execute("ALTER TABLE audit_log ADD COLUMN this_hash TEXT")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=26, column="this_hash", exc_info=True)
 
 
 def _apply_v28_api_key_tiers(conn: Any) -> None:
@@ -768,7 +787,7 @@ def _apply_v28_api_key_tiers(conn: Any) -> None:
     try:
         conn.execute("ALTER TABLE api_keys ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=28, column="tier", exc_info=True)
 
 
 def _apply_v30_ml_tech_columns(conn: Any) -> None:
@@ -789,13 +808,15 @@ def _apply_v30_ml_tech_columns(conn: Any) -> None:
         try:
             conn.execute(stmt)
         except Exception:
-            pass
+            log.warning("migration_step_error", version=30, stmt=stmt[:60], exc_info=True)
     try:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_ml_tech_principal ON licitaciones(ml_tech_principal)"
         )
     except Exception:
-        pass
+        log.warning(
+            "migration_step_error", version=30, operation="idx_ml_tech_principal", exc_info=True
+        )
 
 
 def _apply_v31_dlq_columns(conn: Any) -> None:
@@ -812,7 +833,7 @@ def _apply_v31_dlq_columns(conn: Any) -> None:
         try:
             conn.execute(stmt)
         except Exception:
-            pass
+            log.warning("migration_step_error", version=31, stmt=stmt[:60], exc_info=True)
     # Inicializar last_attempt_at = created_at para entradas existentes
     try:
         conn.execute(
@@ -821,14 +842,48 @@ def _apply_v31_dlq_columns(conn: Any) -> None:
             "WHERE last_attempt_at IS NULL"
         )
     except Exception:
-        pass
+        log.warning(
+            "migration_step_error", version=31, operation="backfill_last_attempt_at", exc_info=True
+        )
     try:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_fail_exhausted "
             "ON failed_extractions(exhausted_at) WHERE exhausted_at IS NOT NULL"
         )
     except Exception:
-        pass
+        log.warning(
+            "migration_step_error", version=31, operation="idx_fail_exhausted", exc_info=True
+        )
+
+
+def _apply_v32_perf_indexes(conn: Any) -> None:
+    """Crea índices de rendimiento en licitaciones y adjudicaciones (idempotente).
+
+    Tolera la ausencia de tablas (entornos de test sin schema completo).
+    """
+    _INDEX_STMTS = [
+        (
+            "idx_lic_tecnologia",
+            "CREATE INDEX IF NOT EXISTS idx_lic_tecnologia ON licitaciones(tecnologia)",
+        ),
+        (
+            "idx_lic_ml_proba",
+            "CREATE INDEX IF NOT EXISTS idx_lic_ml_proba ON licitaciones(ml_proba)",
+        ),
+        (
+            "idx_adj_nombre_importe",
+            "CREATE INDEX IF NOT EXISTS idx_adj_nombre_importe ON adjudicaciones(nombre, importe_adjudicado)",
+        ),
+        (
+            "idx_adj_ccaa_nombre",
+            "CREATE INDEX IF NOT EXISTS idx_adj_ccaa_nombre ON adjudicaciones(ccaa, nombre)",
+        ),
+    ]
+    for name, stmt in _INDEX_STMTS:
+        try:
+            conn.execute(stmt)
+        except Exception:
+            log.warning("migration_step_error", version=32, operation=name, exc_info=True)
 
 
 _V7_FTS_STATEMENTS: list[str] = [
@@ -886,7 +941,7 @@ def _apply_v8_user_id(conn: Any) -> None:
     try:
         conn.execute("ALTER TABLE watchlist_cpv ADD COLUMN user_id INTEGER REFERENCES users(id)")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=8, column="user_id", exc_info=True)
     # Index for user_id lookups (idempotent via IF NOT EXISTS)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wl_user_id ON watchlist_cpv(user_id)")
 
@@ -896,7 +951,7 @@ def _apply_v10_is_admin(conn: Any) -> None:
     try:
         conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=10, column="is_admin", exc_info=True)
 
 
 def _apply_v14_tecnologia(conn: Any) -> None:
@@ -912,7 +967,7 @@ def _apply_v14_tecnologia(conn: Any) -> None:
         conn.execute("UPDATE licitaciones SET tecnologia = 'SAP' WHERE raw_keywords IS NOT NULL")
     except Exception:
         # Column already exists — index and backfill already applied
-        pass
+        log.warning("migration_step_error", version=14, column="tecnologia", exc_info=True)
 
 
 def _apply_v15_frequency(conn: Any) -> None:
@@ -923,7 +978,7 @@ def _apply_v15_frequency(conn: Any) -> None:
     try:
         conn.execute("ALTER TABLE watchlist_cpv ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily'")
     except Exception:
-        pass
+        log.warning("migration_step_error", version=15, column="frequency", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

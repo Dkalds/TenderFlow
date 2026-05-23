@@ -120,6 +120,17 @@ def _client_key(request: Request) -> str:
     return f"ip:{ip}"
 
 
+# Endpoints que consumen más CPU/IO reciben un rate limit más bajo.
+# Paths no listados usan el default del middleware.
+_HEAVY_ENDPOINT_LIMITS: dict[str, int] = {
+    "/api/v1/exports": 20,
+    "/api/v1/feedback/queue": 30,
+    "/api/v1/licitaciones/explain": 30,
+    "/api/v1/models/activate": 10,
+    "/api/v1/search/semantic": 30,
+}
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Rate limiting global por cliente sobre la API REST.
 
@@ -128,9 +139,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     Excluye paths configurables (e.g. ``/api/v1/health``) para no bloquear LBs.
 
+    Los endpoints pesados (inferencia ML, exports) tienen un límite inferior
+    configurable en ``_HEAVY_ENDPOINT_LIMITS``.
+
     Args:
         app: Aplicación ASGI a envolver.
-        max_calls: Máximo de requests permitidas en la ventana.
+        max_calls: Máximo de requests permitidas en la ventana (endpoints estándar).
         window_seconds: Tamaño de la ventana en segundos.
         exclude_paths: Iterable de paths exactos a excluir (e.g. health, docs).
     """
@@ -162,9 +176,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client = _client_key(request)
         rate_key = f"api:{client}:{path}"
+        # Endpoints pesados (ML inference, exports) tienen límite inferior.
+        effective_max = _HEAVY_ENDPOINT_LIMITS.get(path, self._max)
         allowed = get_rate_limiter().check(
             rate_key,
-            max_calls=self._max,
+            max_calls=effective_max,
             window_seconds=self._window,
         )
         if not allowed:
@@ -173,12 +189,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 content={
                     "detail": "Rate limit excedido. Intenta de nuevo más tarde.",
-                    "limit": self._max,
+                    "limit": effective_max,
                     "window_seconds": self._window,
                 },
                 headers={
                     "Retry-After": str(int(self._window)),
-                    "X-RateLimit-Limit": str(self._max),
+                    "X-RateLimit-Limit": str(effective_max),
                     "X-RateLimit-Window": str(int(self._window)),
                 },
             )

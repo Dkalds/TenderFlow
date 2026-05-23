@@ -94,7 +94,12 @@ class TechnologyClassifier:
             precision_score,
             recall_score,
         )
-        from sklearn.model_selection import train_test_split
+        from sklearn.model_selection import (
+            RepeatedStratifiedKFold,
+            StratifiedKFold,
+            cross_val_score,
+            train_test_split,
+        )
 
         if "tecnologia" not in df.columns:
             return {"error": "missing_tecnologia_column"}
@@ -188,6 +193,44 @@ class TechnologyClassifier:
                 }
                 continue
 
+            # ── Cross-validation F1 ───────────────────────────────────────
+            cv_f1_mean: float | None = None
+            cv_f1_std: float | None = None
+            if n_pos >= 30 and len(set(y_train)) >= 2:
+                try:
+                    cv_splitter = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+                    cv_pipe = _make_tech_pipeline(fragile=fragile, fragile_c=fragile_c)
+                    cv_scores = cross_val_score(
+                        cv_pipe, X_train, y_train, cv=cv_splitter, scoring="f1"
+                    )
+                    cv_f1_mean = float(np.mean(cv_scores))
+                    cv_f1_std = float(np.std(cv_scores))
+                    log.info(
+                        "tech_classifier.cv_f1",
+                        label=label,
+                        cv_f1_mean=round(cv_f1_mean, 4),
+                        cv_f1_std=round(cv_f1_std, 4),
+                    )
+                except Exception as _cv_exc:
+                    log.warning("tech_classifier.cv_failed", label=label, error=str(_cv_exc))
+            elif n_pos >= 15 and len(set(y_train)) >= 2:
+                try:
+                    cv_splitter = RepeatedStratifiedKFold(n_splits=2, n_repeats=3, random_state=42)
+                    cv_pipe = _make_tech_pipeline(fragile=fragile, fragile_c=fragile_c)
+                    cv_scores = cross_val_score(
+                        cv_pipe, X_train, y_train, cv=cv_splitter, scoring="f1"
+                    )
+                    cv_f1_mean = float(np.mean(cv_scores))
+                    cv_f1_std = float(np.std(cv_scores))
+                    log.info(
+                        "tech_classifier.cv_f1",
+                        label=label,
+                        cv_f1_mean=round(cv_f1_mean, 4),
+                        cv_f1_std=round(cv_f1_std, 4),
+                    )
+                except Exception as _cv_exc:
+                    log.warning("tech_classifier.cv_failed", label=label, error=str(_cv_exc))
+
             # ── Threshold tuning ──────────────────────────────────────────
             chosen_threshold: float = default_threshold
             f1_val: float | None = None
@@ -238,14 +281,21 @@ class TechnologyClassifier:
                 "tier": tier,
                 "n_positive": n_pos,
                 "threshold": round(chosen_threshold, 4),
-                "f1": round(f1_val, 4) if f1_val is not None else None,
+                "f1": round(cv_f1_mean, 4)
+                if cv_f1_mean is not None
+                else (round(f1_val, 4) if f1_val is not None else None),
+                "f1_cv_mean": round(cv_f1_mean, 4) if cv_f1_mean is not None else None,
+                "f1_cv_std": round(cv_f1_std, 4) if cv_f1_std is not None else None,
+                "f1_single_split": round(f1_val, 4) if f1_val is not None else None,
                 "precision": round(prec_val, 4) if prec_val is not None else None,
                 "recall": round(rec_val, 4) if rec_val is not None else None,
                 "pr_auc": round(pr_auc, 4) if pr_auc is not None else None,
             }
             per_tech[label] = entry
-            if tier == _TIER_ML_READY and f1_val is not None:
-                ml_ready_f1s.append(f1_val)
+            if tier == _TIER_ML_READY:
+                reported_f1 = cv_f1_mean if cv_f1_mean is not None else f1_val
+                if reported_f1 is not None:
+                    ml_ready_f1s.append(reported_f1)
 
         self._trained = True
         macro_f1_ml_ready = float(sum(ml_ready_f1s) / len(ml_ready_f1s)) if ml_ready_f1s else 0.0
@@ -450,6 +500,18 @@ class TechnologyClassifier:
         target = path or _MODEL_PATH
         if not target.exists():
             raise FileNotFoundError(f"TechnologyClassifier no encontrado: {target}")
+
+        # Verificar integridad SHA-256 si el sidecar existe
+        sha_path = target.with_suffix(".sha256")
+        if sha_path.exists():
+            expected = sha_path.read_text(encoding="utf-8").strip()
+            actual = hashlib.sha256(target.read_bytes()).hexdigest()
+            if actual != expected:
+                raise ValueError(
+                    f"Checksum SHA-256 inválido para {target}: "
+                    f"esperado={expected[:16]}…, actual={actual[:16]}…"
+                )
+
         obj = joblib.load(target)
         # Aceptar instancias re-importadas vía __main__
         if type(obj).__name__ != cls.__name__:

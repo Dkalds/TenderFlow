@@ -162,3 +162,23 @@ for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
     print(f"\n--- ejecutando ---\n{block[:120]}...")
     subprocess.run(block, shell=True)
 EOF
+
+# ── Extras ───────────────────────────────────────────────────────────────────
+
+.PHONY: docker-build security coverage-html pre-commit
+
+docker-build:  ## Build all Docker images
+	docker compose build
+
+security:  ## Run security scanners locally (bandit + semgrep)
+	bandit -r api db scraper scheduler services shared config observability llm -q
+	@echo "bandit OK"
+	semgrep --config auto --quiet api db scraper scheduler services shared config observability llm || true
+	@echo "semgrep done"
+
+coverage-html:  ## Generate HTML coverage report
+	pytest tests/ -x -q --cov=. --cov-report=html --ignore=tests/test_integration_e2e.py --ignore=tests/test_dashboard_smoke.py -m "not slow"
+	@echo "Coverage report: htmlcov/index.html"
+
+pre-commit:  ## Run all pre-commit hooks
+	pre-commit run --all-files

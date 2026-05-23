@@ -112,7 +112,8 @@ def _persist_top_empresas(conn: Any, rows: list[dict[str, Any]]) -> None:
 def _compute_clusters(conn: Any) -> list[dict[str, Any]]:
     """Calcula la asignación de clusters para todas las licitaciones."""
     rows = conn.execute(
-        "SELECT id_externo, titulo, descripcion FROM licitaciones WHERE titulo IS NOT NULL"
+        "SELECT id_externo, titulo, SUBSTR(descripcion, 1, 500) "
+        "FROM licitaciones WHERE titulo IS NOT NULL"
     ).fetchall()
 
     if not rows:

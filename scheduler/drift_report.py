@@ -49,6 +49,72 @@ def _ks_test(ref: pd.Series, cur: pd.Series) -> dict[str, Any]:
     return {"statistic": float(stat), "p_value": float(pval), "drift": pval < _KS_ALPHA}
 
 
+def _prediction_drift(
+    conn: Any,
+    window_days: int = 14,
+) -> dict[str, Any]:
+    """KS test on ml_proba distribution: last N days vs previous N days."""
+    from datetime import timedelta
+
+    from scipy import stats as sp_stats  # type: ignore[import]
+
+    now = datetime.now(UTC)
+    recent_since = (now - timedelta(days=window_days)).isoformat()
+    previous_since = (now - timedelta(days=window_days * 2)).isoformat()
+
+    try:
+        recent_rows = conn.execute(
+            "SELECT ml_proba FROM licitaciones "
+            "WHERE fecha_publicacion >= ? AND ml_proba IS NOT NULL",
+            (recent_since,),
+        ).fetchall()
+        previous_rows = conn.execute(
+            "SELECT ml_proba FROM licitaciones "
+            "WHERE fecha_publicacion >= ? AND fecha_publicacion < ? AND ml_proba IS NOT NULL",
+            (previous_since, recent_since),
+        ).fetchall()
+    except Exception as exc:
+        log.warning("prediction_drift_query_failed", error=str(exc))
+        return {
+            "drift_detected": False,
+            "ks_statistic": 0.0,
+            "p_value": 1.0,
+            "mean_recent": 0.0,
+            "mean_previous": 0.0,
+            "n_recent": 0,
+            "n_previous": 0,
+            "error": str(exc),
+        }
+
+    import numpy as np
+
+    recent = np.array([float(r[0]) for r in recent_rows if r[0] is not None])
+    previous = np.array([float(r[0]) for r in previous_rows if r[0] is not None])
+
+    if len(recent) < 5 or len(previous) < 5:
+        return {
+            "drift_detected": False,
+            "ks_statistic": 0.0,
+            "p_value": 1.0,
+            "mean_recent": float(recent.mean()) if len(recent) else 0.0,
+            "mean_previous": float(previous.mean()) if len(previous) else 0.0,
+            "n_recent": len(recent),
+            "n_previous": len(previous),
+            "reason": "insufficient_data",
+        }
+
+    stat, pval = sp_stats.ks_2samp(recent, previous)
+    return {
+        "drift_detected": pval < _KS_ALPHA,
+        "ks_statistic": float(stat),
+        "p_value": float(pval),
+        "mean_recent": float(recent.mean()),
+        "mean_previous": float(previous.mean()),
+        "n_recent": len(recent),
+        "n_previous": len(previous),
+    }
+
+
 def run_drift_report() -> dict[str, Any]:
     """Genera informe de drift. Devuelve resumen con flags de alerta."""
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -98,6 +164,26 @@ def run_drift_report() -> dict[str, Any]:
             pass
 
     results["drift_detected"] = any(v.get("drift", False) for v in results["columns"].values())
+
+    # ── Prediction distribution drift (ml_proba) ─────────────────────────
+    try:
+        from db.connection import connect_read
+
+        with connect_read() as conn:
+            pred_drift = _prediction_drift(conn)
+        results["prediction_drift"] = pred_drift
+        if pred_drift.get("drift_detected"):
+            results["drift_detected"] = True
+            log.warning("prediction_drift_detected", **pred_drift)
+        else:
+            log.info(
+                "prediction_drift_ok",
+                n_recent=pred_drift["n_recent"],
+                n_previous=pred_drift["n_previous"],
+            )
+    except Exception as exc:
+        log.warning("prediction_drift_failed", error=str(exc))
+        results["prediction_drift"] = {"error": str(exc)}
 
     # ── Evidently HTML report (optional) ─────────────────────────────────
     report_path: Path | None = None

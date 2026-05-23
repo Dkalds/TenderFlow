@@ -343,10 +343,11 @@ class LicitacionRepository:
         """Licitaciones no presentes en ml_feedback para active learning."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id_externo, titulo, descripcion "
-                "FROM licitaciones "
-                "WHERE id_externo NOT IN (SELECT expediente FROM ml_feedback) "
-                "ORDER BY fecha_publicacion DESC LIMIT ?",
+                "SELECT l.id_externo, l.titulo, l.descripcion "
+                "FROM licitaciones l "
+                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "WHERE f.expediente IS NULL "
+                "ORDER BY l.fecha_publicacion DESC LIMIT ?",
                 (limit,),
             )
             return rows_to_dicts(cur)
@@ -354,9 +355,10 @@ class LicitacionRepository:
     def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id_externo, titulo "
-                "FROM licitaciones "
-                "WHERE id_externo NOT IN (SELECT expediente FROM ml_feedback) "
+                "SELECT l.id_externo, l.titulo "
+                "FROM licitaciones l "
+                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "WHERE f.expediente IS NULL "
                 "ORDER BY RANDOM() LIMIT ?",
                 (limit,),
             )
@@ -364,9 +366,13 @@ class LicitacionRepository:
 
     def get_filter_options(self) -> dict[str, list[str]]:
         """Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV)."""
+        _ALLOWED_FILTER_COLS = {"estado", "ccaa", "tecnologia", "cpv"}
+
         with connect_read() as c:
 
             def _distinct(col: str) -> list[str]:
+                if col not in _ALLOWED_FILTER_COLS:
+                    raise ValueError(f"Columna no permitida para filtro: {col}")
                 rows = c.execute(
                     f"SELECT DISTINCT {col} FROM licitaciones "
                     f"WHERE {col} IS NOT NULL AND {col} != '' "
