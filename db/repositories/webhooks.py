@@ -2,24 +2,48 @@
 
 from __future__ import annotations
 
-import secrets
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
+
+
+def _get_webhook_master_key() -> str:
+    """Obtiene la clave maestra para derivar secretos de webhook."""
+    from config.settings import settings
+
+    key = settings.WEBHOOK_SIGNING_KEY.get_secret_value()
+    if not key:
+        key = settings.SIGNING_KEY.get_secret_value()
+    return key
 
 
 class WebhookRepository:
     def create(self, *, name: str, url: str, event_types: list[str]) -> tuple[int, str]:
-        secret = secrets.token_urlsafe(32)
         now = now_utc_iso()
+        master_key = _get_webhook_master_key()
+
         with connect() as c:
             cur = c.execute(
                 "INSERT INTO webhooks (name, url, secret, event_types, active, created_at) "
                 "VALUES (?, ?, ?, ?, 1, ?)",
-                (name, url, secret, ",".join(event_types), now),
+                (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
             )
             webhook_id = int(cur.lastrowid or 0)
+
+        if master_key:
+            secret = derive_webhook_secret(master_key, webhook_id)
+        else:
+            import secrets as _secrets
+
+            secret = _secrets.token_urlsafe(32)
+            with connect() as c:
+                c.execute(
+                    "UPDATE webhooks SET secret = ? WHERE id = ?",
+                    (secret, webhook_id),
+                )
+
         return webhook_id, secret
 
     def list_all(self) -> list[dict[str, Any]]:
@@ -83,9 +107,21 @@ class WebhookRepository:
             return cur.rowcount > 0
 
     def get_secret(self, webhook_id: int) -> str | None:
+        """Get the effective signing secret for a webhook.
+
+        For derived secrets, re-derives from the master key.
+        For legacy secrets, returns the stored value.
+        """
         with connect_read() as c:
             row = c.execute("SELECT secret FROM webhooks WHERE id = ?", (webhook_id,)).fetchone()
-        return str(row[0]) if row else None
+        if not row:
+            return None
+        stored = str(row[0])
+        if is_derived_secret(stored):
+            master_key = _get_webhook_master_key()
+            if master_key:
+                return derive_webhook_secret(master_key, webhook_id)
+        return stored
 
     def record_delivery(
         self,
@@ -99,7 +135,6 @@ class WebhookRepository:
         """Registra una entrega en webhook_deliveries y actualiza stats."""
         now = now_utc_iso()
         with connect() as c:
-            # Tabla webhook_deliveries (creada por migración 21)
             try:
                 c.execute(
                     "INSERT INTO webhook_deliveries "

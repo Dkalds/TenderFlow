@@ -7,4 +7,8 @@ description = "Global allowlist"
 paths = [
     # detect-secrets baseline contains hashed secrets (not real secrets)
     '''.secrets.baseline''',
+    # RFC docs contain example/redacted passwords in code snippets
+    '''docs/rfc/.*\.md''',
+    # Test files use dummy/fixture passwords for validation testing
+    '''tests/test_unit_settings_security\.py''',
 ]

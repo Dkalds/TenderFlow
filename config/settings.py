@@ -129,6 +129,11 @@ class Settings(BaseSettings):
 
     SIGNING_KEY: SecretStr = SecretStr("")
 
+    # Clave maestra para derivar secretos de webhook (HMAC-SHA256).
+    # Si vacío, se deriva de SIGNING_KEY como fallback.
+    # Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"
+    WEBHOOK_SIGNING_KEY: SecretStr = SecretStr("")
+
     # Clave Fernet para cifrar secretos TOTP at-rest. Obligatoria en prod.
     # Genera una con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
@@ -302,6 +307,20 @@ class Settings(BaseSettings):
                 "SIGNING_KEY es obligatorio en ENV=prod para firmar tokens CSRF/OAuth. "
                 'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_webhook_signing_key(self) -> Settings:
+        """En producción, exigir WEBHOOK_SIGNING_KEY o SIGNING_KEY como fallback."""
+        if self.ENV in ("prod", "staging"):
+            wk = self.WEBHOOK_SIGNING_KEY.get_secret_value()
+            sk = self.SIGNING_KEY.get_secret_value()
+            if not wk and not sk:
+                raise ValueError(
+                    "WEBHOOK_SIGNING_KEY (o SIGNING_KEY como fallback) es obligatorio "
+                    "en ENV=prod para derivar secretos de webhook. "
+                    'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
+                )
         return self
 
     @model_validator(mode="after")

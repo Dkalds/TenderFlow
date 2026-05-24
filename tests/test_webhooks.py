@@ -44,6 +44,18 @@ class TestCreateWebhook:
         assert isinstance(wid, int) and wid > 0
         assert isinstance(secret, str) and len(secret) > 16
 
+    def test_secret_not_stored_plaintext_with_master_key(self, tmp_db):
+        """When a master key is configured, the DB stores the sentinel."""
+        db_mod, _ = tmp_db
+        with patch("db.webhooks._get_webhook_master_key", return_value="test-master-key-long!!"):
+            wid, secret = _create_sample(db_mod)
+        # Check DB has sentinel, not the actual secret
+        from db.database import connect
+        with connect() as c:
+            row = c.execute("SELECT secret FROM webhooks WHERE id = ?", (wid,)).fetchone()
+        assert row[0] == "derived:v1"
+        assert secret != "derived:v1"
+
 
 class TestListWebhooks:
     def test_excludes_secret(self, tmp_db):
@@ -110,6 +122,26 @@ class TestTriggerEvent:
         count = wh_mod.trigger_event("any_event", {})
         assert count == 1
 
+    @patch("db.webhooks.requests.post")
+    def test_derived_secret_produces_valid_signature(self, mock_post, tmp_db):
+        """Verify that derived secrets produce consistent HMAC signatures."""
+        db_mod, _ = tmp_db
+        master_key = "test-master-key-for-hmac-derivation!!"  # pragma: allowlist secret
+        with patch("db.webhooks._get_webhook_master_key", return_value=master_key):
+            _wid, secret = _create_sample(db_mod)
+            mock_post.return_value = MagicMock(status_code=200)
+            wh_mod.trigger_event("watchlist_match", {"id": 1})
+
+        call_kwargs = mock_post.call_args
+        headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
+        sig_header = headers["X-Webhook-Signature"]
+        assert sig_header.startswith("sha256=")
+
+        # Verify the signature matches what the user would compute with their secret
+        body = call_kwargs.kwargs.get("data") or call_kwargs[1].get("data", b"")
+        expected_sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        assert sig_header == f"sha256={expected_sig}"
+
 
 class TestRecordDelivery:
     def test_resets_failure_count_on_success(self, tmp_db):
@@ -142,3 +174,19 @@ class TestRecordDelivery:
         hook = next(r for r in rows if r["id"] == wid)
         assert hook["active"] == 0
         assert hook["failure_count"] >= wh_mod._MAX_FAILURES_BEFORE_DISABLE
+
+
+class TestResolveSecret:
+    def test_legacy_secret_passthrough(self):
+        """Legacy plaintext secrets are returned as-is."""
+        result = wh_mod._resolve_secret(1, "plaintext-secret-value")
+        assert result == "plaintext-secret-value"
+
+    def test_derived_secret_resolved(self):
+        """Derived sentinel triggers re-derivation from master key."""
+        master_key = "test-master-key-long-enough!!!!!"  # pragma: allowlist secret
+        with patch("db.webhooks._get_webhook_master_key", return_value=master_key):
+            result = wh_mod._resolve_secret(1, "derived:v1")
+        from shared.crypto import derive_webhook_secret
+        expected = derive_webhook_secret(master_key, 1)
+        assert result == expected

@@ -1,18 +1,31 @@
-"""Cifrado simétrico para secretos TOTP at-rest.
+"""Criptografía compartida: derivación de secretos de webhook + cifrado TOTP.
 
-Usa Fernet (AES-128-CBC + HMAC-SHA256) de la librería ``cryptography``.
-La clave se lee de ``TOTP_ENCRYPTION_KEY`` (env var / settings).
+Webhook secrets (issue #49):
+    En lugar de almacenar secretos en texto plano en la BD, derivamos la clave
+    de firma de cada webhook a partir de una clave maestra del servidor:
 
-En modo dev (sin clave configurada) se genera una clave efímera con warning.
-En producción la clave es **obligatoria**.
+        signing_key = HMAC-SHA256(master_key, "webhook-v1:{webhook_id}")
 
-Generar una clave válida::
+    El secreto derivado se devuelve al usuario una sola vez en la creación.
+    En cada entrega, se re-deriva desde la master key + webhook_id.
 
-    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+TOTP encryption (issue #43):
+    Usa Fernet (AES-128-CBC + HMAC-SHA256) de la librería ``cryptography``.
+    La clave se lee de ``TOTP_ENCRYPTION_KEY`` (env var / settings).
+
+    En modo dev (sin clave configurada) se genera una clave efímera con warning.
+    En producción la clave es **obligatoria**.
+
+    Generar una clave válida::
+
+        python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import os
 import warnings
 from functools import lru_cache
@@ -22,6 +35,37 @@ from cryptography.fernet import Fernet, InvalidToken
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+# ── Webhook secret derivation ────────────────────────────────────────────
+
+_DERIVATION_PREFIX = "webhook-v1"
+
+# Sentinel value stored in DB instead of the real secret.
+DERIVED_SECRET_SENTINEL = "derived:v1"  # noqa: S105  # pragma: allowlist secret
+
+
+def derive_webhook_secret(master_key: str, webhook_id: int) -> str:
+    """Derive a per-webhook signing key from the server master key.
+
+    Returns a URL-safe base64 string suitable for HMAC signing.
+    """
+    if not master_key:
+        raise ValueError("master_key must not be empty")
+    context = f"{_DERIVATION_PREFIX}:{webhook_id}".encode()
+    derived = hmac.new(
+        master_key.encode("utf-8"),
+        context,
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(derived).rstrip(b"=").decode("ascii")
+
+
+def is_derived_secret(secret: str) -> bool:
+    """Check whether a stored secret is the derivation sentinel."""
+    return secret.startswith("derived:")
+
+
+# ── TOTP encryption ─────────────────────────────────────────────────────
 
 
 class TOTPDecryptionError(Exception):
@@ -110,9 +154,12 @@ def is_encrypted(value: str) -> bool:
 
 
 __all__ = [
+    "DERIVED_SECRET_SENTINEL",
     "TOTPDecryptionError",
     "decrypt_totp_secret",
+    "derive_webhook_secret",
     "encrypt_totp_secret",
+    "is_derived_secret",
     "is_encrypted",
     "reload_encryption_key",
 ]
