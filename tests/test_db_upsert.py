@@ -311,3 +311,51 @@ def test_get_history_with_changes(db):
     history = get_history("TEST-001")
     assert len(history) == 1
     assert "snapshot_json" in history[0]
+
+
+# ---------------------------------------------------------------------------
+# Chunking
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_result_merge():
+    from db.upsert import UpsertResult
+
+    a = UpsertResult(inserted=["A"], modified=["B"], unchanged=["C"])
+    b = UpsertResult(inserted=["D"], modified=[], unchanged=["E", "F"])
+    a.merge(b)
+    assert a.inserted == ["A", "D"]
+    assert a.modified == ["B"]
+    assert a.unchanged == ["C", "E", "F"]
+    assert a.nuevas == 2
+    assert a.actualizadas == 4
+
+
+def test_upsert_with_history_chunking(db):
+    """Batch mayor que chunk_size se divide en múltiples transacciones."""
+    from db.upsert import upsert_licitaciones_with_history
+
+    lics = [make_licitacion(id_externo=f"CHUNK-{i:03d}") for i in range(7)]
+    result = upsert_licitaciones_with_history(lics, source="test", chunk_size=3)
+
+    # 7 items con chunk_size=3 → 3 chunks (3+3+1)
+    assert result.nuevas == 7
+    assert len(result.inserted) == 7
+    assert result.actualizadas == 0
+
+
+def test_upsert_with_history_chunking_idempotent(db):
+    """Re-ejecutar un upsert chunked no duplica registros."""
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    lics = [make_licitacion(id_externo=f"IDEM-{i:03d}") for i in range(5)]
+    upsert_licitaciones_with_history(lics, source="first", chunk_size=2)
+    result = upsert_licitaciones_with_history(lics, source="second", chunk_size=2)
+
+    assert result.nuevas == 0
+    assert len(result.unchanged) == 5
+
+    with connect() as c:
+        count = c.execute("SELECT COUNT(*) FROM licitaciones WHERE id_externo LIKE 'IDEM-%'").fetchone()[0]
+    assert count == 5

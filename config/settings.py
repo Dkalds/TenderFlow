@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     # pipeline ML. Requiere: pip install licitaciones-sap[ml-embeddings]
     ML_USE_EMBEDDINGS: bool = False
 
+    # ── DB / Upsert ──────────────────────────────────────────────────────
+    # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk
+    # se ejecuta en su propia transacción, liberando el write lock entre chunks.
+    UPSERT_CHUNK_SIZE: int = 500
+
     # ── Resiliencia ───────────────────────────────────────────────────────
     # Circuit breaker: backoff exponencial entre aperturas del circuito
     BREAKER_BASE_TIMEOUT: int = 60  # segundos — primer timeout tras apertura
