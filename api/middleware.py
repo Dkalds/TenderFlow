@@ -157,6 +157,8 @@ _HEAVY_ENDPOINT_LIMITS: dict[str, int] = {
     "/api/v1/licitaciones/explain": 30,
     "/api/v1/models/activate": 10,
     "/api/v1/search/semantic": 30,
+    "/api/v1/ask": 10,
+    "/api/v1/ask/models": 30,
 }
 
 
