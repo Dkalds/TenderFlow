@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 
-from api.auth import require_api_key
+from api.auth import AuthContext, require_api_key
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -163,7 +163,7 @@ def create_export(
     ccaa: str | None = None,
     estado: str | None = None,
     q: str | None = None,
-    _auth: Any = Depends(require_api_key),
+    ctx: AuthContext = Depends(require_api_key),
 ) -> dict[str, str]:
     """Crea un job de exportación PDF asíncrono.
 
@@ -177,6 +177,7 @@ def create_export(
         "created_at": time.monotonic(),
         "pdf": None,
         "error": None,
+        "owner": ctx.key_hash,
     }
     filters = {k: v for k, v in {"ccaa": ccaa, "estado": estado, "q": q}.items() if v}
     background_tasks.add_task(_run_export, job_id, filters)
@@ -187,12 +188,14 @@ def create_export(
 @router.get("/{job_id}")
 def get_export(
     job_id: str,
-    _auth: Any = Depends(require_api_key),
+    ctx: AuthContext = Depends(require_api_key),
 ) -> Response:
     """Sondea el estado del job. Devuelve el PDF cuando ``status=done``."""
     job = _store.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job no encontrado o expirado.")
+    if job.get("owner") != ctx.key_hash:
+        raise HTTPException(status_code=403, detail="Forbidden.")
     if job["status"] == "done" and job["pdf"]:
         return Response(
             content=job["pdf"],
@@ -216,10 +219,15 @@ def get_export(
 @router.delete("/{job_id}", status_code=204)
 def delete_export(
     job_id: str,
-    _auth: Any = Depends(require_api_key),
+    ctx: AuthContext = Depends(require_api_key),
 ) -> None:
     """Elimina un job de exportación de la memoria."""
-    _store.pop(job_id, None)
+    job = _store.get(job_id)
+    if job is None:
+        return
+    if job.get("owner") != ctx.key_hash:
+        raise HTTPException(status_code=403, detail="Forbidden.")
+    del _store[job_id]
 
 
 __all__ = ["router"]

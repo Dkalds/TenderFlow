@@ -44,18 +44,18 @@ def test_get_user_id_from_key_id_returns_user(tmp_db):
 
     uid = get_user_id_from_key_id(7)
     assert uid is not None
-    # Should be 42 if user_id col exists, otherwise first user id
+    # Should be 42 if user_id col exists, otherwise None (#44)
     assert isinstance(uid, int)
 
 
 def test_get_user_id_from_key_id_missing_key(tmp_db):
+    """When key doesn't exist, must return None — never an arbitrary user (#44)."""
     db_mod, _ = tmp_db
     _seed_user_and_key(db_mod, user_id=1, key_id=1, key_hash="k2")
     from services.gdpr import get_user_id_from_key_id
 
     uid = get_user_id_from_key_id(9999)
-    # Falls back to first user
-    assert uid == 1 or uid is None
+    assert uid is None, "Must return None for missing key, not fallback to first user"
 
 
 # ---------------------------------------------------------------------------
@@ -195,3 +195,62 @@ def test_set_key_expiry(tmp_db):
     # If expires_at column exists, should be set
     if row:
         assert row[0] == "2030-01-01T00:00:00Z" or row[0] is None
+
+# ---------------------------------------------------------------------------
+# Security: get_user_id_from_key_id NEVER returns arbitrary user (#44)
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_id_from_key_id_null_user_id_returns_none(tmp_db):
+    """When user_id column exists but is NULL, must return None (#44)."""
+    db_mod, _ = tmp_db
+    # Seed a user so there IS a user in the DB (the old bug would return this)
+    with connect() as c:
+        c.execute(
+            "INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)",
+            (99, "victim@test.com", now_utc_iso()),
+        )
+        cols = db_mod.get_table_columns(c, "api_keys")
+        if "user_id" in cols:
+            # Insert key with NULL user_id
+            base = "INSERT INTO api_keys (id, key_hash, name, created_at, is_active"
+            vals: list[object] = [77, "nullkey", "null-key", now_utc_iso(), 1]
+            if "scopes" in cols:
+                base += ", scopes"
+                vals.append("read")
+            if "prefix" in cols:
+                base += ", prefix"
+                vals.append("lsp_")
+            if "expires_at" in cols:
+                base += ", expires_at"
+                vals.append(None)
+            # user_id deliberately omitted → NULL
+            base += ") VALUES (" + ",".join("?" for _ in vals) + ")"
+            c.execute(base, vals)
+
+    from services.gdpr import get_user_id_from_key_id
+
+    uid = get_user_id_from_key_id(77)
+    assert uid is None, (
+        f"Expected None for NULL user_id, got {uid} — "
+        "this would be a GDPR violation (operating on wrong user)"
+    )
+
+
+def test_get_user_id_from_key_id_never_returns_other_user(tmp_db):
+    """Regression: with multiple users, must never return someone else's id (#44)."""
+    db_mod, _ = tmp_db
+    _seed_user_and_key(db_mod, user_id=10, key_id=10, key_hash="own")
+    # Add another user (potential victim of the old bug)
+    with connect() as c:
+        c.execute(
+            "INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)",
+            (1, "other@test.com", now_utc_iso()),
+        )
+
+    from services.gdpr import get_user_id_from_key_id
+
+    # Query for a non-existent key
+    uid = get_user_id_from_key_id(9999)
+    assert uid is None, f"Got user_id={uid} for non-existent key — GDPR violation"
+    # user_id=1 (the 'other' user) must never be returned

@@ -16,21 +16,34 @@ log = get_logger(__name__)
 
 
 def get_user_id_from_key_id(key_id: int) -> int | None:
-    """Obtiene el ``user_id`` vinculado a la API key, si la columna existe."""
+    """Obtiene el ``user_id`` vinculado a la API key, si la columna existe.
+
+    Returns ``None`` (never an arbitrary user) when the column is missing
+    or the value is NULL.  See issue #44.
+    """
     with connect_read() as c:
         try:
             cols = get_table_columns(c, "api_keys")
             if "user_id" not in cols:
-                row = c.execute("SELECT id FROM users LIMIT 1").fetchone()
-                return int(row[0]) if row else None
+                log.warning(
+                    "gdpr_no_user_id_column",
+                    key_id=key_id,
+                    msg="api_keys table lacks user_id column; cannot resolve user",
+                )
+                return None
             row = c.execute(
                 "SELECT user_id FROM api_keys WHERE id = ? LIMIT 1", (key_id,)
             ).fetchone()
             if row and row[0]:
                 return int(row[0])
-            row = c.execute("SELECT id FROM users LIMIT 1").fetchone()
-            return int(row[0]) if row else None
+            log.warning(
+                "gdpr_user_id_null_or_missing_key",
+                key_id=key_id,
+                msg="user_id is NULL or key not found; returning None",
+            )
+            return None
         except Exception:
+            log.exception("gdpr_get_user_id_error", key_id=key_id)
             return None
 
 

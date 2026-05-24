@@ -2,6 +2,22 @@
 
 from __future__ import annotations
 
+import pytest
+from cryptography.fernet import Fernet
+
+
+@pytest.fixture(autouse=True)
+def _set_encryption_key(monkeypatch):
+    """Configura una clave Fernet válida para todos los tests de TOTP."""
+    key = Fernet.generate_key().decode()
+    monkeypatch.setenv("TOTP_ENCRYPTION_KEY", key)
+    from shared.crypto import reload_encryption_key
+
+    reload_encryption_key()
+    yield
+    reload_encryption_key()
+
+
 # ---------------------------------------------------------------------------
 # generate_totp_secret
 # ---------------------------------------------------------------------------
@@ -45,6 +61,25 @@ def test_save_and_get_totp_secret(tmp_db):
     assert result is not None
     assert result["secret"] == "MYSECRET"  # pragma: allowlist secret
     assert result["confirmed"] is False
+
+
+def test_secret_stored_encrypted_in_db(tmp_db):
+    """Verifica que el secreto se almacena cifrado en la BD, no en texto plano."""
+    _, _ = tmp_db
+    from db.totp import save_totp_secret
+
+    save_totp_secret(1, "PLAINTEXT_SECRET")
+
+    from db.database import connect
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT secret FROM totp_secrets WHERE user_id = ?", (1,)
+        ).fetchone()
+    assert row is not None
+    raw_value = row[0]
+    assert raw_value != "PLAINTEXT_SECRET"  # pragma: allowlist secret
+    assert raw_value.startswith("gAAAAA")  # Fernet prefix
 
 
 def test_confirm_totp(tmp_db):
@@ -137,4 +172,29 @@ def test_save_totp_upsert_overwrites(tmp_db):
     result = get_totp_secret(1)
     assert result is not None
     assert result["secret"] == "SECOND"  # pragma: allowlist secret
+    assert result["confirmed"] is True
+
+
+# ---------------------------------------------------------------------------
+# backward compatibility — legacy unencrypted secrets
+# ---------------------------------------------------------------------------
+
+
+def test_get_totp_secret_reads_legacy_plaintext(tmp_db):
+    """Secretos legacy (sin cifrar) se leen correctamente."""
+    _, _ = tmp_db
+    from db.database import connect, now_utc_iso
+    from db.totp import get_totp_secret
+
+    # Insertar directamente sin cifrar (simula dato legacy)
+    with connect() as c:
+        c.execute(
+            "INSERT INTO totp_secrets (user_id, secret, confirmed, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (99, "LEGACY_PLAIN_SECRET", 1, now_utc_iso()),
+        )
+
+    result = get_totp_secret(99)
+    assert result is not None
+    assert result["secret"] == "LEGACY_PLAIN_SECRET"  # pragma: allowlist secret
     assert result["confirmed"] is True

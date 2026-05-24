@@ -118,3 +118,50 @@ def test_redact_span_text_empty_input():
 
     result = _redact_span_text("")
     assert result == ""
+
+
+# ── Bug #56: bypass sin configure_tracing ─────────────────────────────────────
+
+
+def test_traced_bypasses_without_configure():
+    """@traced debe hacer bypass si configure_tracing() nunca se llamó (issue #56)."""
+    _reset_tracing()
+
+    from observability.tracing import traced
+
+    call_log: list[str] = []
+
+    @traced("test.unconfigured")
+    def my_func(x: int) -> int:
+        call_log.append("called")
+        return x * 2
+
+    result = my_func(5)
+    assert result == 10
+    assert call_log == ["called"]
+
+
+def test_traced_bypasses_noop_configured(monkeypatch):
+    """@traced debe hacer bypass cuando _noop=True y _configured=True."""
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    _reset_tracing()
+
+    from observability.tracing import configure_tracing, traced
+
+    configure_tracing()
+
+    import observability.tracing as tracing_mod
+
+    assert tracing_mod._noop is True
+    assert tracing_mod._configured is True
+
+    call_log: list[str] = []
+
+    @traced("test.noop_configured")
+    def my_func() -> str:
+        call_log.append("called")
+        return "ok"
+
+    result = my_func()
+    assert result == "ok"
+    assert call_log == ["called"]

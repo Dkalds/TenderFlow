@@ -58,12 +58,18 @@ def lookup_active_key(key_hash: str) -> ApiKeyRecord | None:
 
 
 def get_stored_hash(key_id: int) -> str | None:
-    """Devuelve el ``key_hash`` almacenado para validación en tiempo constante."""
+    """Devuelve el ``key_hash`` almacenado para validación en tiempo constante.
+
+    Raises:
+        Exception: Re-raises any DB error after logging so callers can
+        distinguish "key not found" (``None``) from "DB unavailable".
+    """
     try:
         with connect_read() as c:
             row = c.execute("SELECT key_hash FROM api_keys WHERE id = ?", (key_id,)).fetchone()
-    except Exception:
-        return None
+    except Exception as exc:
+        log.error("get_stored_hash_db_error", key_id=key_id, error=str(exc))
+        raise
     return str(row[0]) if row else None
 
 
