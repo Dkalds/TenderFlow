@@ -192,18 +192,21 @@ jobs:
           MODO NIGHTLY — pipeline simplificado para P3 risk-bajo:
           1. Este ítem es P3/bajo riesgo, NO necesita RFC formal ni issue de GitHub.
           2. Ya estás en el branch '${BRANCH_NAME}' — trabaja directamente en él.
-          3. Leé los files de partida del ítem, entendé el contexto con graphify query.
-          4. Delegá implementación al agente coder.
-          5. Delegá tests al agente test_engineer.
+          IMPORTANTE — entorno CI headless: NO uses el Task tool ni invoques subagentes.
+          Hacé todo vos mismo en este único contexto. Los roles (architect, coder, etc.)
+          son guías conceptuales que aplicás directamente, no agentes a invocar.
+
+          3. Leé los files de partida del ítem.
+          4. Implementá los cambios de código vos mismo (rol coder). Respetá path_denylist de docs/agents/coder.md
+          5. Escribí o verificá tests en tests/ (rol test_engineer). Respetá auto-marking de conftest.py.
           6. Corre gates: make lint && make typecheck && make test-unit
-             - Si fallan, reintenta max 3 veces con el coder.
-             - Si siguen fallando, termina con exit code 1.
+             - Si fallan, reintentá max 3 veces corrigiendo vos mismo.
+             - Si siguen fallando, terminá con exit code 1.
           7. Si todo verde: git add -A && git commit -m 'feat: ${ITEM_TITLE} [agent:nightly]'
              NO hagas git push. El workflow lo hace después.
-          8. Delegá review al reviewer (solo comentarios, no cambios).
-          9. Delegá triage al security_triage.
-          10. Termina respondiendo con un JSON en la última línea con este formato exacto:
-              {\"status\": \"success\", \"files_changed\": N, \"tests_added\": N, \"review_notes\": \"...\"}
+          8. Revisá el diff vos mismo (rol reviewer + security_triage): anotá observaciones.
+          9. Terminá respondiendo con un JSON en la última línea con este formato exacto:
+             {\"status\": \"success\", \"files_changed\": N, \"tests_added\": N, \"review_notes\": \"...\"}
 
           Límite de costo: ${{ env.OPENCODE_MAX_COST_USD }} USD."
 

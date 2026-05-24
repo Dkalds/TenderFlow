@@ -142,20 +142,39 @@ jobs:
 
           URL del issue: ${ISSUE_URL}
 
-          Seguí el pipeline completo definido en docs/agents/orchestrator.md:
-          1. Leé el issue completo: gh issue view ${ISSUE_NUMBER} --json title,body,labels,comments
-          2. Delega RFC al architect
-          3. Gestiona review cycle
-          4. Delega implementación al coder
-          5. Delega tests al test_engineer
-          6. Corre gates: make lint && make typecheck && make test-unit
-          7. Si todo verde: git push + gh pr create --draft
-          8. Delega review inline a reviewer y security_triage
-          9. Recuerda: NO hacer merge. El merge lo hace el humano.
-          10. Al final: volcar discussion a docs/adr/discussions/${ISSUE_NUMBER}-slug.md
+          IMPORTANTE — entorno CI headless: NO uses el Task tool ni invoques subagentes.
+          Hacé todo vos mismo en este único contexto. Los roles (architect, coder, etc.)
+          son guías conceptuales que aplicás directamente, no agentes a invocar.
 
-          Límite de costo: ${{ env.OPENCODE_MAX_COST_USD }} USD. Limit de steps: 60 (configurado en el agente).
-          Si algún gate falla tras 4 reintentos → label agent:blocked y terminar."
+          Pipeline completo (todo en este contexto, sin Task/subagentes):
+
+          1. Leé el issue: gh issue view ${ISSUE_NUMBER} --json title,body,labels,comments
+          2. Leé docs/agents/orchestrator.md y AGENTS.md secciones 2,3,5,6
+          3. Crea el RFC en docs/rfc/ siguiendo el formato de docs/rfc/README.md
+             gh issue comment ${ISSUE_NUMBER} --body 'RFC draft creado en docs/rfc/...'
+             gh issue edit ${ISSUE_NUMBER} --remove-label agent:rfc-needed --add-label agent:rfc-draft
+          4. Revisá el RFC vos mismo (rol reviewer): checklist invariantes AGENTS.md §3
+             gh issue edit ${ISSUE_NUMBER} --remove-label agent:rfc-draft --add-label agent:rfc-approved
+          5. Crea el branch: git checkout -b agent/issue-${ISSUE_NUMBER}-slug
+             gh issue edit ${ISSUE_NUMBER} --add-label agent:implementing
+          6. Implementá los cambios de código (rol coder). Respetá path_denylist de docs/agents/coder.md
+          7. Escribí o verificá tests en tests/ (rol test_engineer). Respetá auto-marking de conftest.py
+             gh issue edit ${ISSUE_NUMBER} --remove-label agent:implementing --add-label agent:testing
+          8. Corré gates:
+             make lint || exit 1
+             make typecheck || exit 1
+             make test-unit || exit 1
+          9. Si todo verde:
+             git add -A && git commit -m 'feat: descripcion [issue #${ISSUE_NUMBER}]'
+             git push -u origin agent/issue-${ISSUE_NUMBER}-slug
+             gh pr create --draft --title 'agent: titulo' --body 'descripcion' --label 'agent:human-review-required'
+             gh issue edit ${ISSUE_NUMBER} --add-label agent:human-review-required
+          10. Revisá el diff (rol reviewer + security_triage): comentá en el PR con gh pr comment
+          11. Volcá la discusión a docs/adr/discussions/${ISSUE_NUMBER}-slug.md y commiteá
+
+          Límite: ${{ env.OPENCODE_MAX_COST_USD }} USD. Si un gate falla 4 veces:
+          gh issue edit ${ISSUE_NUMBER} --add-label agent:blocked
+          y terminá."
 
       - name: Save graphify cache
         if: always()
