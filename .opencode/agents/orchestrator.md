@@ -1,6 +1,6 @@
 ---
 description: Coordina el ciclo completo RFC→código→tests→review→PR. Delega via Task/subagent. Sin Edit/Write directo.
-mode: subagent
+mode: primary
 model: github-copilot/claude-opus-4.6
 temperature: 0.1
 steps: 60

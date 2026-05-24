@@ -243,14 +243,16 @@ def generate_opencode_agent(meta: dict[str, object], body: str) -> str:
     description = str(meta.get("description", ""))
     model_tier = str(meta.get("model_tier", "sonnet"))
     tool_class = str(meta.get("tool_class", "read_only"))
+    # mode: respeta el canon si está explícito, sino subagent por defecto
+    mode = str(meta.get("mode", "subagent"))
 
-    model = MODEL_TIER_TO_OPENCODE.get(model_tier, "anthropic/claude-sonnet-4-20250514")
+    model = MODEL_TIER_TO_OPENCODE.get(model_tier, "github-copilot/claude-sonnet-4.6")
     steps = TOOL_CLASS_TO_STEPS.get(tool_class, 20)
     permission_block = TOOL_CLASS_TO_OPENCODE_PERMISSION.get(tool_class, "")
 
     fm = f"""---
 description: {description}
-mode: subagent
+mode: {mode}
 model: {model}
 temperature: 0.1
 steps: {steps}

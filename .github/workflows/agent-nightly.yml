@@ -154,10 +154,26 @@ jobs:
           git checkout -b "$BRANCH_NAME"
           echo "Branch creado: $BRANCH_NAME"
 
+      - name: Configure OpenCode Copilot auth
+        env:
+          OPENCODE_GITHUB_COPILOT_TOKEN: ${{ secrets.OPENCODE_GITHUB_COPILOT_TOKEN }}
+        run: |
+          mkdir -p ~/.local/share/opencode
+          cat > ~/.local/share/opencode/auth.json <<EOF
+          {
+            "github-copilot": {
+              "type": "oauth",
+              "access": "${OPENCODE_GITHUB_COPILOT_TOKEN}",
+              "refresh": "${OPENCODE_GITHUB_COPILOT_TOKEN}",
+              "expires": 0
+            }
+          }
+          EOF
+
       - name: Run Orchestrator (P3 risk-bajo → implementación directa)
         if: inputs.dry_run != true
         env:
-          GITHUB_COPILOT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_COPILOT_TOKEN: ${{ secrets.OPENCODE_GITHUB_COPILOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ITEM_JSON: ${{ steps.pick.outputs.item }}
           ITEM_SLUG: ${{ steps.pick.outputs.slug }}

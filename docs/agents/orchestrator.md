@@ -4,6 +4,7 @@ model_tier: opus
 tool_class: orchestrate
 path_denylist: []
 description: Coordina el ciclo completo RFC→código→tests→review→PR. Delega via Task/subagent. Sin Edit/Write directo.
+mode: primary
 ---
 
 # Orchestrator

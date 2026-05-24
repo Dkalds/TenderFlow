@@ -108,10 +108,26 @@ jobs:
             --remove-label "agent:rfc-needed" \
             --add-label "agent:queued" || true
 
+      - name: Configure OpenCode Copilot auth
+        env:
+          OPENCODE_GITHUB_COPILOT_TOKEN: ${{ secrets.OPENCODE_GITHUB_COPILOT_TOKEN }}
+        run: |
+          mkdir -p ~/.local/share/opencode
+          cat > ~/.local/share/opencode/auth.json <<EOF
+          {
+            "github-copilot": {
+              "type": "oauth",
+              "access": "${OPENCODE_GITHUB_COPILOT_TOKEN}",
+              "refresh": "${OPENCODE_GITHUB_COPILOT_TOKEN}",
+              "expires": 0
+            }
+          }
+          EOF
+
       - name: Run Orchestrator
         if: steps.budget.outputs.budget_exceeded == 'false'
         env:
-          GITHUB_COPILOT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_COPILOT_TOKEN: ${{ secrets.OPENCODE_GITHUB_COPILOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
