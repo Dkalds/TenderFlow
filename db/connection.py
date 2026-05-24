@@ -261,16 +261,26 @@ def _get_conn() -> Any:
 def _return_conn(conn: Any) -> None:
     """Devuelve una conexión al pool (Turso) o la mantiene en thread-local."""
     global _pool_active
-    if is_turso_backend() and settings.DB_POOL_SIZE > 1 and _pool is not None:
+    if not (is_turso_backend() and settings.DB_POOL_SIZE > 1):
+        return
+    with _pool_lock:
+        pool = _pool
+    if pool is None:
+        # Pool fue cerrado por close_pool(); cerrar la conexión huérfana.
         try:
-            _pool.put_nowait(conn)
-        except _queue_mod.Full:
-            with _pool_lock:
-                _pool_active -= 1
-            try:
-                conn.close()
-            except Exception:
-                pass
+            conn.close()
+        except Exception:
+            pass
+        return
+    try:
+        pool.put_nowait(conn)
+    except _queue_mod.Full:
+        with _pool_lock:
+            _pool_active -= 1
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def close_pool() -> None:
@@ -284,16 +294,21 @@ def close_pool() -> None:
             log.debug("connection_close_failed")
         _local.conn = None
 
-    # Vaciar pool compartido (Turso)
-    if _pool is not None:
-        while not _pool.empty():
+    # Vaciar pool compartido (Turso) — swap-then-drain para evitar race condition.
+    # Adquirimos el lock solo para nullear _pool (impide nuevas conexiones),
+    # luego drenamos fuera del lock para evitar deadlock.
+    with _pool_lock:
+        pool = _pool
+        if pool is not None:
+            _pool = None
+            _pool_active = 0
+    if pool is not None:
+        while not pool.empty():
             try:
-                c = _pool.get_nowait()
+                c = pool.get_nowait()
                 c.close()
             except Exception:
                 pass
-        _pool = None
-        _pool_active = 0
 
 
 # ---------------------------------------------------------------------------
