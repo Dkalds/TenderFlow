@@ -124,8 +124,19 @@ async def require_api_key(
     scopes_str = record.scopes
 
     # Comparar en tiempo constante (defensa extra sobre el índice DB)
-    stored_hash = auth_service.get_stored_hash(key_id)
-    if stored_hash and not hmac.compare_digest(stored_hash, key_hash):
+    try:
+        stored_hash = auth_service.get_stored_hash(key_id)
+    except Exception as exc:
+        log.error("get_stored_hash_db_error_in_auth", key_id=key_id, error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio temporalmente no disponible.",
+        ) from exc
+    if stored_hash is None:
+        # Key not found by id — dummy compare to keep constant time
+        hmac.compare_digest(key_hash, "0" * len(key_hash))
+        raise _UNAUTHORIZED
+    if not hmac.compare_digest(stored_hash, key_hash):
         raise _UNAUTHORIZED
 
     # Validar expiración
