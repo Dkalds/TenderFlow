@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from api.auth import AuthContext, require_scope
+from api.middleware import _trusted_client_ip
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
 
@@ -41,9 +42,7 @@ async def csp_report(request: Request) -> None:
     Rate limiting: 10 reportes/min por IP para mitigar flood/DoS.
     """
     # Rate limiting por IP — los browsers legítimos envían muy pocos reportes
-    client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
-        request.client.host if request.client else "unknown"
-    )
+    client_ip = _trusted_client_ip(request)
     if not get_rate_limiter().check(f"csp:{client_ip}", max_calls=10, window_seconds=60):
         log.warning("csp_report_rate_limited", client_ip=client_ip)
         return  # Responder 204 de todas formas (no revelar al cliente el rate limit)

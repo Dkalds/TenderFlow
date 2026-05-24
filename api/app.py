@@ -41,6 +41,7 @@ from api.middleware import (
     ETagMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
+    _trusted_client_ip,
 )
 from api.routes.ask import router as ask_router
 from api.routes.exports import router as exports_router
@@ -338,9 +339,7 @@ try:
             _metrics_allowed_ips: set[str] = set(
                 ip.strip() for ip in settings.METRICS_ALLOWED_IPS.split(",") if ip.strip()
             )
-            client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
-                request.client.host if request.client else ""
-            )
+            client_ip = _trusted_client_ip(request)
             if client_ip not in _metrics_allowed_ips:
                 # Requiere API key con scope metrics:read
                 api_key_raw = request.headers.get("X-API-Key")

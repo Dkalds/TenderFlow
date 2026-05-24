@@ -322,9 +322,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             # para evitar reducir el espacio de brute-force en los logs.
             raw_key = request.headers.get("X-API-Key") or ""
             key_prefix = hashlib.sha256(raw_key.encode()).hexdigest()[:12] if raw_key else "-"
-            client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
-                request.client.host if request.client else "-"
-            )
+            client_ip = _trusted_client_ip(request)
 
             log.info(
                 "http_request",
