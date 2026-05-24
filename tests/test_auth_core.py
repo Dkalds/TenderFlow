@@ -51,7 +51,7 @@ def test_redis_nonce_store_add_and_contains():
     """Usa mock de Redis — verifica llamadas a set() y exists()."""
     store = _make_redis_store_with_mock()
     store._client.set.return_value = True
-    store.add("abc")
+    store.add("abc", ttl_seconds=300)
     store._client.set.assert_called_once()
     store._client.exists.return_value = 1
     assert store.contains("abc")
