@@ -30,7 +30,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator as _PFI
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
@@ -230,46 +229,79 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(ETagMiddleware)
 
 # Request body size limit — protege contra payloads abusivos (1 MB máx.)
+# Raw ASGI middleware (evita anti-pattern BaseHTTPMiddleware y atributo privado _body).
 try:
-    from starlette.middleware.base import BaseHTTPMiddleware as _BHTM
+    from starlette.types import ASGIApp as _ASGIApp
+    from starlette.types import Receive as _Receive
+    from starlette.types import Scope as _Scope
+    from starlette.types import Send as _Send
 
-    class _MaxBodyMiddleware(_BHTM):
-        """Rechaza requests con body > max_bytes.
+    class _MaxBodyMiddleware:
+        """Rechaza requests con body > 1 MB usando raw ASGI.
 
-        Comprueba Content-Length (fast path) y también lee el body en streaming
-        para proteger contra requests chunked que omiten Content-Length.
+        Comprueba Content-Length (fast path) y acumula tamaño en streaming
+        (slow path) sin buffering completo del body.
         """
 
         _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+        _413_BODY = b'{"detail":"Request body demasiado grande (m\\u00e1x. 1 MB)."}'
 
-        async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        def __init__(self, app: _ASGIApp) -> None:
+            self.app = app
+
+        async def __call__(self, scope: _Scope, receive: _Receive, send: _Send) -> None:
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
             # Fast path: rechazar inmediatamente si Content-Length lo delata
-            cl = request.headers.get("content-length")
-            if cl:
+            headers = dict(scope.get("headers") or [])
+            cl_raw = headers.get(b"content-length")
+            if cl_raw is not None:
                 try:
-                    if int(cl) > self._MAX_BYTES:
-                        return JSONResponse(
-                            status_code=413,
-                            content={"detail": "Request body demasiado grande (máx. 1 MB)."},
-                        )
-                except ValueError:
+                    if int(cl_raw) > self._MAX_BYTES:
+                        await self._send_413(send)
+                        return
+                except (ValueError, UnicodeDecodeError):
                     pass
 
-            # Slow path: para requests chunked (sin Content-Length), leer el body
-            # en streaming y abortar si excede el límite.
-            if request.method in ("POST", "PUT", "PATCH") and not cl:
-                body = b""
-                async for chunk in request.stream():
-                    body += chunk
-                    if len(body) > self._MAX_BYTES:
-                        return JSONResponse(
-                            status_code=413,
-                            content={"detail": "Request body demasiado grande (máx. 1 MB)."},
-                        )
-                # Inyectar el body ya leído para que call_next pueda accederlo
-                request._body = body  # type: ignore[attr-defined]
+            # Slow path: para requests con body, envolver receive para contar bytes
+            method = scope.get("method", "")
+            if method in ("POST", "PUT", "PATCH"):
+                body_size = 0
+                max_bytes = self._MAX_BYTES
+                rejected = False
 
-            return await call_next(request)
+                async def limiting_receive() -> dict:  # type: ignore[type-arg]
+                    nonlocal body_size, rejected
+                    message = await receive()
+                    if message.get("type") == "http.request":
+                        body_size += len(message.get("body", b""))
+                        if body_size > max_bytes:
+                            rejected = True
+                            raise _BodyTooLargeError
+                    return message
+
+                try:
+                    await self.app(scope, limiting_receive, send)
+                except _BodyTooLargeError:
+                    await self._send_413(send)
+            else:
+                await self.app(scope, receive, send)
+
+        async def _send_413(self, send: _Send) -> None:
+            await send({
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    [b"content-type", b"application/json"],
+                    [b"content-length", str(len(self._413_BODY)).encode()],
+                ],
+            })
+            await send({"type": "http.response.body", "body": self._413_BODY})
+
+    class _BodyTooLargeError(Exception):
+        """Señal interna para abortar el pipeline cuando el body excede el límite."""
 
     app.add_middleware(_MaxBodyMiddleware)
 except Exception:
