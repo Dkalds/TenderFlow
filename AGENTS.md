@@ -45,7 +45,7 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 
 ## 3. Invariantes que nunca romper
 
-1. **Typing strict en core**: `config/*`, `db.database`, `db.users`, `shared/*`, `dashboard.bootstrap` pasan mypy strict. Si tocás estos módulos, mantenelos strict — no añadas `# type: ignore` ni `Any` sin justificar.
+1. **Typing strict en core**: `db.database`, `db.users`, `dashboard.bootstrap` pasan mypy strict. `config/*` y `shared/*` están en proceso de migración a strict (ver bloque de overrides en `pyproject.toml`). Si tocás estos módulos, **no empeores** el estado de typing — no añadas `# type: ignore` ni `Any` sin justificar, y priorizá cerrar overrides existentes sobre abrir nuevos.
 2. **Upsert idempotente**: cualquier escritura desde scraper debe poder re-ejecutarse sin duplicar (ver `db/upsert.py`).
 3. **Migraciones append-only**: nunca modificar migraciones alembic ya commiteadas. Siempre nueva revisión.
 4. **Auto-marking de tests**: `tests/conftest.py` aplica markers (unit/integration/e2e/property/load) por nombre de archivo. **No marcar a mano** — renombrar el test si necesitás otro marker.
@@ -122,3 +122,40 @@ Para todo lo demás (editar código de feature, añadir tests, refactor local), 
 - Runbooks (incident, DLQ, backup, disaster recovery): [docs/runbooks/](docs/runbooks/)
 - SLI/SLO: [docs/sli-slo.md](docs/sli-slo.md)
 - Security: [docs/SECURITY.md](docs/SECURITY.md)
+
+---
+
+## 8. Sistema multi-agente
+
+Los roles canónicos viven en `docs/agents/<role>.md` (tool-agnostic). Editá ahí y corrés el sync; nunca edités los archivos generados directamente.
+
+| Tool | Destino generado | Cómo se usa |
+|---|---|---|
+| Claude Code | `.claude/agents/<role>.md` | Task tool con `subagent_type: <role>`, o `/agents <role>` |
+| OpenCode | `.opencode/agents/<role>.md` | `@<role>` en TUI, o `opencode run --agent <role>` en CLI |
+| Copilot | Sección "Perfiles de trabajo" en `.github/copilot-instructions.md` | Copiar-pegar el prompt del rol al inicio del chat |
+
+**Sincronizar**: `python scripts/sync_agents.py`
+**Verificar drift**: `python scripts/sync_agents.py --check` (también corre en CI job `agents-sync-check`)
+
+### Roles disponibles
+
+| Rol | Modelo | Responsabilidad |
+|---|---|---|
+| `orchestrator` | Opus | Coordina el ciclo completo RFC→código→tests→gates→PR |
+| `architect` | Opus | Diseña RFCs y ADRs. Solo escribe en `docs/rfc/` y `docs/adr/discussions/` |
+| `coder` | Sonnet | Implementa código. Respeta path_denylist estrictamente |
+| `test_engineer` | Sonnet | Escribe tests en `tests/`. Respeta auto-marking de conftest.py |
+| `reviewer` | Haiku | Revisa diffs. Read-only. |
+| `security_triage` | Haiku | Triage bandit/gitleaks/trivy. Read-only. |
+
+### Pipeline async PR-based
+
+Ver `docs/rfc/README.md` (ciclo de vida de RFCs) y `docs/adr/discussions/README.md` (log append-only).
+
+**Activación**:
+- Manual: abrí un issue y poné el label `agent:rfc-needed` → el workflow `agent-on-issue.yml` arranca en ≤60s.
+- Nocturno: `agent-nightly.yml` (solo `workflow_dispatch` hasta que 3 PRs pasen review sin cambios mayores).
+- Local: `Task` con el orchestrator desde Claude Code u `opencode run --agent orchestrator` desde CLI.
+
+**Merge siempre requiere humano** — el orchestrator nunca llama `gh pr merge`. Ver §6.

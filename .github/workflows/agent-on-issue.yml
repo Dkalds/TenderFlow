@@ -1,0 +1,161 @@
+name: Agent — On Issue
+
+on:
+  issues:
+    types: [labeled]
+
+# Anti-spam: no procesar el mismo issue en paralelo
+concurrency:
+  group: agent-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  OPENCODE_VERSION: "latest"
+  AGENT_DAILY_BUDGET: "10"
+  OPENCODE_MAX_COST_USD: "5"
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  orchestrate:
+    # Solo procesar si el label agregado es agent:rfc-needed
+    if: github.event.label.name == 'agent:rfc-needed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          pip install --quiet uv
+          uv pip install --system -r requirements.txt 2>/dev/null || pip install -e ".[dev]" --quiet || true
+
+      - name: Install OpenCode CLI
+        run: |
+          npm install -g opencode-ai@${{ env.OPENCODE_VERSION }} 2>/dev/null || \
+          curl -fsSL https://opencode.ai/install | bash
+          opencode --version
+
+      - name: Restore graphify cache
+        uses: actions/cache@v4
+        with:
+          path: graphify-out/
+          key: graphify-${{ github.sha }}
+          restore-keys: |
+            graphify-
+
+      - name: Verify agents sync (drift guard)
+        run: python scripts/sync_agents.py --check
+
+      - name: Check daily budget
+        id: budget
+        run: |
+          # Leer contador diario desde GitHub Actions cache o variable
+          TODAY=$(date -u +%Y-%m-%d)
+          BUDGET_KEY="agent-daily-count-${TODAY}"
+          COUNT_FILE=".github/agent-state/daily-count.json"
+
+          mkdir -p .github/agent-state
+          if [ -f "$COUNT_FILE" ]; then
+            DATE_IN_FILE=$(python3 -c "import json; d=json.load(open('$COUNT_FILE')); print(d.get('date',''))")
+            COUNT=$(python3 -c "import json; d=json.load(open('$COUNT_FILE')); print(d.get('count',0))")
+          else
+            DATE_IN_FILE=""
+            COUNT=0
+          fi
+
+          if [ "$DATE_IN_FILE" != "$TODAY" ]; then
+            COUNT=0
+          fi
+
+          if [ "$COUNT" -ge "${{ env.AGENT_DAILY_BUDGET }}" ]; then
+            echo "budget_exceeded=true" >> $GITHUB_OUTPUT
+            echo "count=$COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "budget_exceeded=false" >> $GITHUB_OUTPUT
+            NEW_COUNT=$((COUNT + 1))
+            python3 -c "
+          import json
+          with open('$COUNT_FILE', 'w') as f:
+              json.dump({'date': '$TODAY', 'count': $NEW_COUNT}, f)
+          "
+            echo "count=$NEW_COUNT" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post budget exceeded comment
+        if: steps.budget.outputs.budget_exceeded == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "⏸️ **Agent pospuesto**: se alcanzó el límite diario de ${{ env.AGENT_DAILY_BUDGET }} issues/día. Este issue será procesado automáticamente mañana cuando el workflow nocturno lo seleccione, o podés re-agregar el label \`agent:rfc-needed\` mañana."
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "agent:rfc-needed" \
+            --add-label "agent:queued" || true
+
+      - name: Run Orchestrator
+        if: steps.budget.outputs.budget_exceeded == 'false'
+        env:
+          GITHUB_COPILOT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          opencode run \
+            --agent orchestrator \
+            --model github-copilot/claude-opus-4.6 \
+            --dangerously-skip-permissions \
+            "Procesá el issue #${ISSUE_NUMBER}: '${ISSUE_TITLE}'.
+
+          URL del issue: ${ISSUE_URL}
+
+          Seguí el pipeline completo definido en docs/agents/orchestrator.md:
+          1. Leé el issue completo: gh issue view ${ISSUE_NUMBER} --json title,body,labels,comments
+          2. Delega RFC al architect
+          3. Gestiona review cycle
+          4. Delega implementación al coder
+          5. Delega tests al test_engineer
+          6. Corre gates: make lint && make typecheck && make test-unit
+          7. Si todo verde: git push + gh pr create --draft
+          8. Delega review inline a reviewer y security_triage
+          9. Recuerda: NO hacer merge. El merge lo hace el humano.
+          10. Al final: volcar discussion a docs/adr/discussions/${ISSUE_NUMBER}-slug.md
+
+          Límite de costo: ${{ env.OPENCODE_MAX_COST_USD }} USD. Limit de steps: 60 (configurado en el agente).
+          Si algún gate falla tras 4 reintentos → label agent:blocked y terminar."
+
+      - name: Save graphify cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: graphify-out/
+          key: graphify-${{ github.sha }}
+
+      - name: Post failure comment
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "❌ **Agent workflow falló**: ver [logs del run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+          Para reintentar: remové y re-agregá el label \`agent:rfc-needed\`."
+          gh issue edit ${{ github.event.issue.number }} \
+            --add-label "agent:blocked" || true

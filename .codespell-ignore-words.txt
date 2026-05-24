@@ -3,6 +3,10 @@ licitacion
 licitaciones
 nd
 te
+elegible
+hagas
+autor
+implemente
 fo
 ot
 ths
