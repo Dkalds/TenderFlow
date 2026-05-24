@@ -57,6 +57,17 @@ def main() -> None:
             print("Las contraseñas no coinciden.", file=sys.stderr)
             sys.exit(1)
 
+    # Verificar fortaleza de la contraseña
+    try:
+        from shared.password_policy import check_password_strength
+
+        result = check_password_strength(password, min_length=16, label="password")
+        if not result.is_strong:
+            print(f"⚠️  Advertencia: {result.summary}", file=sys.stderr)
+            print("Considera usar una contraseña más fuerte.", file=sys.stderr)
+    except ImportError:
+        pass  # shared no disponible fuera del proyecto
+
     if args.algo == "argon2":
         try:
             hashed = hash_argon2(password)

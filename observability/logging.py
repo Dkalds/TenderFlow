@@ -31,8 +31,13 @@ from structlog.contextvars import (
 _SENSITIVE_ENV_VARS = (
     "TURSO_AUTH_TOKEN",
     "DASHBOARD_PASSWORD",
+    "DASHBOARD_PASSWORD_HASH",
     "ALERT_SMTP_PASSWORD",
     "GOOGLE_CLIENT_SECRET",
+    "API_HMAC_SECRET",
+    "SIGNING_KEY",
+    "REDIS_PASSWORD",
+    "GF_SECURITY_ADMIN_PASSWORD",
 )
 
 # Claves de event_dict cuyo valor SIEMPRE se redacta (independiente del contenido).
