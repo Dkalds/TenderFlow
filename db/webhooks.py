@@ -9,6 +9,10 @@ HMAC-SHA256 al ``url`` registrado. La firma viaja en la cabecera
 
 Las entregas son **best-effort**: timeout de 5s, reintentos limitados,
 ``failure_count`` se incrementa para detectar webhooks moribundos.
+
+**Seguridad (issue #49)**: los secretos de nuevos webhooks se derivan de una
+clave maestra del servidor via HMAC. No se almacenan en texto plano.
+Webhooks legacy (pre-derivación) siguen funcionando con su secret almacenado.
 """
 
 from __future__ import annotations
@@ -16,18 +20,43 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import secrets
 from typing import Any
 
 import requests
 
 from db.database import connect, now_utc_iso
 from observability.logging import get_logger
+from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
 
 log = get_logger(__name__)
 
 _DELIVERY_TIMEOUT_S = 5.0
 _MAX_FAILURES_BEFORE_DISABLE = 10
+
+
+def _get_webhook_master_key() -> str:
+    """Obtiene la clave maestra para derivar secretos de webhook."""
+    from config.settings import settings
+
+    key = settings.WEBHOOK_SIGNING_KEY.get_secret_value()
+    if not key:
+        key = settings.SIGNING_KEY.get_secret_value()
+    return key
+
+
+def _resolve_secret(webhook_id: int, stored_secret: str) -> str:
+    """Resuelve el secreto de firma para un webhook.
+
+    Si el secreto almacenado es el sentinel de derivación, re-deriva desde
+    la clave maestra. Si es un secreto legacy en texto plano, lo usa tal cual.
+    """
+    if is_derived_secret(stored_secret):
+        master_key = _get_webhook_master_key()
+        if not master_key:
+            log.error("webhook_no_master_key", webhook_id=webhook_id)
+            return stored_secret
+        return derive_webhook_secret(master_key, webhook_id)
+    return stored_secret
 
 
 def _sign(secret: str, payload: bytes) -> str:
@@ -38,20 +67,37 @@ def _sign(secret: str, payload: bytes) -> str:
 def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int, str]:
     """Crea un webhook nuevo y devuelve (id, secret).
 
-    El secret se genera de forma criptográficamente segura y solo se devuelve
-    en la creación. Después se almacena para firmar payloads pero no se
-    expone vía API.
+    El secret se deriva de la clave maestra del servidor + webhook_id.
+    Solo se devuelve en la creación — no se almacena en texto plano.
+    Si no hay clave maestra configurada (dev), se genera un secret aleatorio
+    como fallback (legacy behavior).
     """
-    secret = secrets.token_urlsafe(32)
     now = now_utc_iso()
+    master_key = _get_webhook_master_key()
+
     with connect() as c:
+        # Insert with placeholder; we need the ID to derive the secret
         cur = c.execute(
             "INSERT INTO webhooks "
             "(name, url, secret, event_types, active, created_at) "
             "VALUES (?, ?, ?, ?, 1, ?)",
-            (name, url, secret, ",".join(event_types), now),
+            (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
         )
         webhook_id = int(cur.lastrowid or 0)
+
+    if master_key:
+        secret = derive_webhook_secret(master_key, webhook_id)
+    else:
+        # Dev fallback: generate random secret (legacy behavior)
+        import secrets as _secrets
+
+        secret = _secrets.token_urlsafe(32)
+        with connect() as c:
+            c.execute(
+                "UPDATE webhooks SET secret = ? WHERE id = ?",
+                (secret, webhook_id),
+            )
+
     log.info("webhook_created", webhook_id=webhook_id, url=url, events=event_types)
     return webhook_id, secret
 
@@ -92,11 +138,12 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
             "SELECT id, url, secret, event_types FROM webhooks WHERE active = 1"
         ).fetchall()
 
-    for wid, url, secret, events_csv in rows:
+    for wid, url, stored_secret, events_csv in rows:
         events = {e.strip() for e in events_csv.split(",")}
         if event_type not in events and "*" not in events:
             continue
 
+        secret = _resolve_secret(wid, stored_secret)
         signature = _sign(secret, body)
         headers = {
             "Content-Type": "application/json",
