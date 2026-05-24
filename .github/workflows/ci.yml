@@ -218,7 +218,7 @@ jobs:
         run: |
           docker run --rm --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"
 
-      - name: Trivy vulnerability scan (image)
+      - name: Trivy vulnerability scan (image) — tabla en consola
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: "licitaciones-sap:ci"
@@ -230,9 +230,34 @@ jobs:
           # Fichero de excepciones documentadas (falsos positivos / sin fix disponible)
           trivyignores: .trivyignore
 
+      - name: Trivy vulnerability scan (image) — SARIF para upload
+        if: always()
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: "licitaciones-sap:ci"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          trivyignores: .trivyignore
+
       - name: Upload Trivy SARIF
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: trivy-results
           path: trivy-results.sarif
+
+  agents-sync-check:
+    name: Agents Sync Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify agents canon is in sync with generated files
+        run: python scripts/sync_agents.py --check

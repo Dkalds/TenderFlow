@@ -1,0 +1,323 @@
+name: Agent — Nightly
+
+on:
+  # Activar cron solo cuando 3 PRs consecutivas pasen review sin cambios mayores.
+  # Por ahora: solo workflow_dispatch para dry-runs manuales controlados.
+  # Para activar cron: descomentar las 2 líneas siguientes y hacer commit.
+  # schedule:
+  #   - cron: '0 4 * * *'   # 04:00 UTC = 06:00 Madrid
+  workflow_dispatch:
+    inputs:
+      force_slug:
+        description: 'Forzar un slug específico del backlog (opcional)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry-run: no crear PR, solo mostrar qué haría'
+        type: boolean
+        default: false
+
+concurrency:
+  group: agent-nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  OPENCODE_VERSION: "latest"
+  OPENCODE_MAX_COST_USD: "5"
+  PYTHON_VERSION: "3.13"
+  # Prefijo obligatorio para branches del nightly
+  BRANCH_PREFIX: "agent/nightly-"
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          pip install --quiet uv
+          uv pip install --system -r requirements.txt 2>/dev/null || pip install -e ".[dev]" --quiet || true
+
+      - name: Install OpenCode CLI
+        run: |
+          npm install -g opencode-ai@${{ env.OPENCODE_VERSION }} 2>/dev/null || \
+          curl -fsSL https://opencode.ai/install | bash
+          echo "OpenCode version: $(opencode --version)"
+
+      - name: Restore graphify cache
+        uses: actions/cache@v4
+        with:
+          path: graphify-out/
+          key: graphify-nightly-${{ github.sha }}
+          restore-keys: |
+            graphify-nightly-
+            graphify-
+
+      - name: Restore attempted-items state
+        uses: actions/cache@v4
+        with:
+          path: .github/agent-state/
+          key: agent-state-${{ github.run_id }}
+          restore-keys: |
+            agent-state-
+
+      - name: Verify agents sync (drift guard)
+        run: python scripts/sync_agents.py --check
+
+      - name: Pick backlog item
+        id: pick
+        env:
+          FORCE_SLUG: ${{ inputs.force_slug }}
+        run: |
+          mkdir -p .github/agent-state
+
+          if [ -n "$FORCE_SLUG" ]; then
+            # Modo forzado: buscar el ítem por slug en el backlog
+            ITEM=$(python scripts/agent_pick_item.py --list | \
+              python3 -c "
+          import json, sys, os
+          items = json.load(sys.stdin)
+          slug = os.environ['FORCE_SLUG']
+          match = next((i for i in items if i['slug'] == slug), None)
+          if match:
+              print(json.dumps(match))
+          else:
+              print('null')
+          ")
+            if [ "$ITEM" = "null" ] || [ -z "$ITEM" ]; then
+              echo "ERROR: slug '$FORCE_SLUG' no encontrado en el backlog elegible." >&2
+              exit 1
+            fi
+          else
+            ITEM=$(python scripts/agent_pick_item.py)
+          fi
+
+          echo "item=$ITEM" >> $GITHUB_OUTPUT
+
+          # Extraer campos individuales
+          SLUG=$(echo "$ITEM" | python3 -c "import json,sys; print(json.load(sys.stdin)['slug'])")
+          TITLE=$(echo "$ITEM" | python3 -c "import json,sys; print(json.load(sys.stdin)['title'])")
+          PRIORITY=$(echo "$ITEM" | python3 -c "import json,sys; print(json.load(sys.stdin)['priority'])")
+          AUTO=$(echo "$ITEM" | python3 -c "import json,sys; print(json.load(sys.stdin).get('auto_discovered', False))")
+
+          echo "slug=$SLUG" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "priority=$PRIORITY" >> $GITHUB_OUTPUT
+          echo "auto_discovered=$AUTO" >> $GITHUB_OUTPUT
+
+          echo "Item elegido: [$PRIORITY] $TITLE (slug: $SLUG)"
+
+      - name: Mark item as attempted
+        run: |
+          python scripts/agent_pick_item.py --mark-attempted "${{ steps.pick.outputs.slug }}"
+
+      - name: Save attempted-items state
+        uses: actions/cache@v4
+        with:
+          path: .github/agent-state/
+          key: agent-state-${{ github.run_id }}
+
+      - name: Pre-flight checks
+        run: |
+          # Verificar que el branch prefix no existe ya
+          BRANCH="${{ env.BRANCH_PREFIX }}${{ steps.pick.outputs.slug }}"
+          if git ls-remote --exit-code --heads origin "$BRANCH" 2>/dev/null; then
+            echo "WARNING: branch $BRANCH ya existe en origin. Usando timestamp."
+            TS=$(date -u +%Y%m%d-%H%M)
+            echo "BRANCH_NAME=${BRANCH}-${TS}" >> $GITHUB_ENV
+          else
+            echo "BRANCH_NAME=$BRANCH" >> $GITHUB_ENV
+          fi
+
+      - name: Create feature branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+          echo "Branch creado: $BRANCH_NAME"
+
+      - name: Run Orchestrator (P3 risk-bajo → implementación directa)
+        if: inputs.dry_run != true
+        env:
+          GITHUB_COPILOT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ITEM_JSON: ${{ steps.pick.outputs.item }}
+          ITEM_SLUG: ${{ steps.pick.outputs.slug }}
+          ITEM_TITLE: ${{ steps.pick.outputs.title }}
+          BRANCH_NAME: ${{ env.BRANCH_NAME }}
+        run: |
+          opencode run \
+            --agent orchestrator \
+            --model github-copilot/claude-opus-4.6 \
+            --dangerously-skip-permissions \
+            "Implementá el ítem del backlog: '${ITEM_TITLE}' (slug: ${ITEM_SLUG}).
+
+          Contexto completo del ítem:
+          ${ITEM_JSON}
+
+          MODO NIGHTLY — pipeline simplificado para P3 risk-bajo:
+          1. Este ítem es P3/bajo riesgo, NO necesita RFC formal ni issue de GitHub.
+          2. Ya estás en el branch '${BRANCH_NAME}' — trabaja directamente en él.
+          3. Leé los files de partida del ítem, entendé el contexto con graphify query.
+          4. Delegá implementación al agente coder.
+          5. Delegá tests al agente test_engineer.
+          6. Corre gates: make lint && make typecheck && make test-unit
+             - Si fallan, reintenta max 3 veces con el coder.
+             - Si siguen fallando, termina con exit code 1.
+          7. Si todo verde: git add -A && git commit -m 'feat: ${ITEM_TITLE} [agent:nightly]'
+             NO hagas git push. El workflow lo hace después.
+          8. Delegá review al reviewer (solo comentarios, no cambios).
+          9. Delegá triage al security_triage.
+          10. Termina respondiendo con un JSON en la última línea con este formato exacto:
+              {\"status\": \"success\", \"files_changed\": N, \"tests_added\": N, \"review_notes\": \"...\"}
+
+          Límite de costo: ${{ env.OPENCODE_MAX_COST_USD }} USD."
+
+      - name: Dry-run summary
+        if: inputs.dry_run == true
+        run: |
+          echo "=== DRY RUN ==="
+          echo "Ítem elegido: ${{ steps.pick.outputs.title }}"
+          echo "Slug: ${{ steps.pick.outputs.slug }}"
+          echo "Branch que se crearía: ${{ env.BRANCH_NAME }}"
+          echo "Auto-discovered: ${{ steps.pick.outputs.auto_discovered }}"
+          echo "No se ejecutó el orchestrator (dry_run=true)"
+
+      - name: Run CI gates
+        if: inputs.dry_run != true
+        run: |
+          echo "--- make lint ---"
+          make lint
+
+          echo "--- make typecheck ---"
+          make typecheck
+
+          echo "--- make test-unit ---"
+          make test-unit
+
+      - name: Verify diff does not touch denylist paths
+        if: inputs.dry_run != true
+        run: |
+          DENYLIST=(
+            "db/alembic/"
+            ".github/workflows/"
+            ".env"
+            "pyproject.toml"
+            "requirements"
+            ".secrets.baseline"
+            ".gitleaks.toml"
+          )
+
+          CHANGED=$(git diff --name-only HEAD~1 2>/dev/null || git diff --cached --name-only)
+
+          for path in "${DENYLIST[@]}"; do
+            if echo "$CHANGED" | grep -q "$path"; then
+              echo "ERROR: el agente modificó path prohibido: $path" >&2
+              echo "Archivos cambiados:" >&2
+              echo "$CHANGED" >&2
+              exit 1
+            fi
+          done
+
+          # Verificar que el branch tiene el prefijo correcto
+          CURRENT_BRANCH=$(git branch --show-current)
+          if [[ "$CURRENT_BRANCH" != agent/nightly-* ]]; then
+            echo "ERROR: branch no tiene prefijo agent/nightly-: $CURRENT_BRANCH" >&2
+            exit 1
+          fi
+
+          echo "Denylist check OK. Branch: $CURRENT_BRANCH"
+
+      - name: Push branch
+        if: inputs.dry_run != true
+        run: |
+          git push -u origin "$BRANCH_NAME"
+
+      - name: Create draft PR
+        if: inputs.dry_run != true
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ITEM_TITLE: ${{ steps.pick.outputs.title }}
+          ITEM_SLUG: ${{ steps.pick.outputs.slug }}
+          ITEM_PRIORITY: ${{ steps.pick.outputs.priority }}
+          AUTO_DISCOVERED: ${{ steps.pick.outputs.auto_discovered }}
+        run: |
+          # Obtener costo del run
+          COST=$(opencode stats --days 1 2>/dev/null | grep -oP 'Total cost: \$\K[0-9.]+' | head -1 || echo "N/A")
+
+          # Resumen del diff
+          DIFF_SUMMARY=$(git diff --stat origin/main..HEAD 2>/dev/null | tail -5)
+
+          PR_BODY="## Agent Nightly PR
+
+          **Ítem**: ${ITEM_TITLE}
+          **Prioridad**: ${ITEM_PRIORITY}
+          **Auto-discovered**: ${AUTO_DISCOVERED}
+          **Costo estimado del run**: \$${COST} USD
+
+          ## Cambios
+
+          \`\`\`
+          ${DIFF_SUMMARY}
+          \`\`\`
+
+          ## Gates CI
+          - [x] \`make lint\` pasó
+          - [x] \`make typecheck\` pasó
+          - [x] \`make test-unit\` pasó
+          - [x] Denylist check pasó
+
+          ## Review pendiente
+
+          El agente \`reviewer\` y \`security_triage\` dejaron comentarios inline.
+          **El merge requiere aprobación humana** (AGENTS.md §6).
+
+          ---
+          *Generado por agent-nightly workflow — [ver run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
+
+          PR_URL=$(gh pr create \
+            --draft \
+            --title "agent: ${ITEM_TITLE}" \
+            --body "$PR_BODY" \
+            --label "agent:nightly" \
+            --label "agent:human-review-required" \
+            --base main)
+
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "PR creado: $PR_URL"
+
+      - name: Save graphify cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: graphify-out/
+          key: graphify-nightly-${{ github.sha }}
+
+      - name: Post failure summary
+        if: failure() && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ITEM_SLUG: ${{ steps.pick.outputs.slug }}
+          ITEM_TITLE: ${{ steps.pick.outputs.title }}
+        run: |
+          echo "❌ Nightly agent falló para ítem: ${ITEM_TITLE} (${ITEM_SLUG})"
+          echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
