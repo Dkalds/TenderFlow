@@ -52,9 +52,12 @@ ENV DB_PATH=/data/licitaciones.db \
 
 EXPOSE 8080
 
+RUN chmod +x docker-entrypoint-api.sh
+
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl --fail --silent --max-time 5 http://localhost:8080/health || exit 1
 
-CMD ["sh", "-c", "python -m uvicorn api.app:app --host 0.0.0.0 --port 8080 --workers 2 --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS}"]
+ENTRYPOINT ["docker-entrypoint-api.sh"]
+CMD ["--workers", "2"]
