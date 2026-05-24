@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from pydantic import SecretStr
+
 
 def test_is_turso_backend_false_when_path_override(tmp_db):
     """Con override de tests, nunca se considera backend Turso."""
@@ -27,7 +29,7 @@ def test_is_turso_backend_true_when_credentials_set(monkeypatch):
 
     with (
         patch.object(conn_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
-        patch.object(conn_mod.settings, "TURSO_AUTH_TOKEN", "fake-token"),
+        patch.object(conn_mod.settings, "TURSO_AUTH_TOKEN", SecretStr("fake-token")),
     ):
         assert db_mod.is_turso_backend() is True
 
@@ -42,14 +44,14 @@ def test_is_turso_backend_false_when_token_missing(monkeypatch):
 
     with (
         patch.object(conn_mod.settings, "TURSO_DATABASE_URL", "libsql://fake.turso.io"),
-        patch.object(conn_mod.settings, "TURSO_AUTH_TOKEN", ""),
+        patch.object(conn_mod.settings, "TURSO_AUTH_TOKEN", SecretStr("")),
     ):
         assert db_mod.is_turso_backend() is False
 
 
 def test_safe_pragma_skips_when_turso_backend():
     """``safe_pragma`` no debe ejecutar nada si is_turso_backend() es True."""
-    import db.database as db_mod
+    import db.connection as conn_mod
 
     executed: list[str] = []
 
@@ -57,8 +59,8 @@ def test_safe_pragma_skips_when_turso_backend():
         def execute(self, stmt: str):
             executed.append(stmt)
 
-    with patch.object(db_mod, "is_turso_backend", return_value=True):
-        db_mod.safe_pragma(FakeConn(), "PRAGMA query_only = ON")
+    with patch.object(conn_mod, "is_turso_backend", return_value=True):
+        conn_mod.safe_pragma(FakeConn(), "PRAGMA query_only = ON")
 
     assert executed == []
 

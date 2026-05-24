@@ -9,9 +9,11 @@ import hashlib
 
 def test_hash_api_key_plain_sha256(monkeypatch):
     """Sin API_HMAC_SECRET usa SHA-256 plain."""
+    from pydantic import SecretStr
+
     import config as _cfg
 
-    monkeypatch.setattr(_cfg.settings, "API_HMAC_SECRET", "")
+    monkeypatch.setattr(_cfg.settings, "API_HMAC_SECRET", SecretStr(""))
 
     from api.auth import hash_api_key
 
@@ -24,9 +26,11 @@ def test_hash_api_key_hmac_with_secret(monkeypatch):
     """Con API_HMAC_SECRET usa HMAC-SHA256."""
     import hmac as _hmac
 
+    from pydantic import SecretStr
+
     import config as _cfg
 
-    monkeypatch.setattr(_cfg.settings, "API_HMAC_SECRET", "supersecret")
+    monkeypatch.setattr(_cfg.settings, "API_HMAC_SECRET", SecretStr("supersecret"))
 
     from api.auth import hash_api_key
 

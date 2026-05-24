@@ -60,7 +60,7 @@ class _TTLCacheNonceStore:
     def __init__(self, ttl: int = _OAUTH_STATE_MAX_AGE_SECONDS) -> None:
         self._ttl = ttl
         try:
-            from cachetools import TTLCache  # type: ignore[import-untyped]
+            from cachetools import TTLCache
 
             self._cache: Any = TTLCache(maxsize=10_000, ttl=ttl)
             self._use_ttlcache = True

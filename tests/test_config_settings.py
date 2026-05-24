@@ -250,6 +250,7 @@ def test_prod_valid_config():
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,
             REDIS_URL="redis://localhost:6379/0",
+            REDIS_PASSWORD="prod-redis-password",
         )
     assert s.ENV == "prod"
 
@@ -299,7 +300,7 @@ def test_turso_incomplete_pair_warns():
         warnings.simplefilter("always")
         s = Settings(TURSO_DATABASE_URL="libsql://x.turso.io", TURSO_AUTH_TOKEN="")
     assert s.TURSO_DATABASE_URL == ""
-    assert s.TURSO_AUTH_TOKEN == ""
+    assert s.TURSO_AUTH_TOKEN.get_secret_value() == ""
     assert any("Turso" in str(warning.message) for warning in w)
 
 
