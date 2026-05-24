@@ -187,33 +187,74 @@ jobs:
           # Detectar branch creado por el agente (prefijo agent/issue-<N>-)
           AGENT_BRANCH=$(git branch --list "agent/issue-${ISSUE_NUMBER}-*" | head -1 | sed 's/^[* ]*//')
           if [ -z "$AGENT_BRANCH" ]; then
-            echo "No agent branch found — agent may not have created one."
+            echo "::warning::No agent branch found — agent may not have created one."
             echo "pr_created=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           echo "Agent branch detected: $AGENT_BRANCH"
 
+          # Verificar que hay commits diferentes a master
+          DIFF_COUNT=$(git rev-list --count "origin/master..${AGENT_BRANCH}" 2>/dev/null || echo "0")
+          if [ "$DIFF_COUNT" -eq 0 ]; then
+            echo "::warning::Branch $AGENT_BRANCH has no new commits vs master — skipping PR."
+            echo "pr_created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "Branch has $DIFF_COUNT new commit(s)"
+
           # Configurar git identity para el push
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
-          # Push
-          git push -u origin "$AGENT_BRANCH"
+          # Push con retry (rate limiting protection)
+          for attempt in 1 2 3; do
+            if git push -u origin "$AGENT_BRANCH" 2>&1; then
+              echo "Push succeeded on attempt $attempt"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::git push failed after 3 attempts"
+              echo "pr_created=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            echo "Push attempt $attempt failed, retrying in $((attempt * 5))s..."
+            sleep $((attempt * 5))
+          done
 
           # Crear PR draft (si ya existe uno para este branch, usarlo)
-          EXISTING_PR=$(gh pr list --head "$AGENT_BRANCH" --json url --jq '.[0].url' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
+          EXISTING_PR=$(gh pr list --head "$AGENT_BRANCH" --json url --jq '.[0].url' 2>&1) || true
+          if [ -n "$EXISTING_PR" ] && echo "$EXISTING_PR" | grep -q "^https://"; then
             PR_URL="$EXISTING_PR"
             echo "PR ya existente: $PR_URL"
           else
-            PR_BODY="Closes #${ISSUE_NUMBER}\n\nGenerado automaticamente por el pipeline agent-on-issue."
-            PR_URL=$(gh pr create \
-              --draft \
-              --head "$AGENT_BRANCH" \
-              --base master \
-              --title "agent: ${ISSUE_TITLE} [#${ISSUE_NUMBER}]" \
-              --body "$PR_BODY" \
-              --label "agent:human-review-required" 2>/dev/null) || true
+            # Body con newlines reales usando printf
+            PR_BODY=$(printf "Closes #%s\n\nGenerado automaticamente por el pipeline agent-on-issue." "$ISSUE_NUMBER")
+
+            # Crear PR con retry (rate limiting protection)
+            PR_URL=""
+            for attempt in 1 2 3; do
+              PR_URL=$(gh pr create \
+                --draft \
+                --head "$AGENT_BRANCH" \
+                --base master \
+                --title "agent: ${ISSUE_TITLE} [#${ISSUE_NUMBER}]" \
+                --body "$PR_BODY" \
+                --label "agent:human-review-required" 2>&1) && break
+              echo "::warning::PR create attempt $attempt failed: $PR_URL"
+              PR_URL=""
+              if [ "$attempt" -lt 3 ]; then
+                sleep $((attempt * 10))
+              fi
+            done
+
+            if [ -z "$PR_URL" ] || ! echo "$PR_URL" | grep -q "^https://"; then
+              echo "::error::Failed to create PR after 3 attempts. Last output: $PR_URL"
+              echo "pr_created=false" >> $GITHUB_OUTPUT
+              # Still comment the failure on the issue
+              gh issue comment "$ISSUE_NUMBER" \
+                --body "⚠️ Branch \`$AGENT_BRANCH\` pusheado pero falló la creación del PR draft. Crear manualmente: \`gh pr create --draft --head $AGENT_BRANCH --base master\`" || true
+              exit 1
+            fi
             echo "PR creado: $PR_URL"
           fi
 
