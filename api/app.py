@@ -199,6 +199,11 @@ except ImportError:
 _cors_origins: list[str]
 if settings.ENV == "dev":
     _cors_origins = ["*"]
+    log.warning(
+        "cors_wildcard_enabled",
+        env=settings.ENV,
+        hint="CORS allow_origins=['*'] is active. Set ENV=prod or CORS_ALLOWED_ORIGINS to restrict.",
+    )
 elif settings.CORS_ALLOWED_ORIGINS:
     _cors_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
 else:

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     )
 
     # ── Entorno ──────────────────────────────────────────────────────────
-    ENV: Literal["dev", "staging", "prod"] = "dev"
+    ENV: Literal["dev", "staging", "prod"] = "prod"
 
     # ── Rutas ────────────────────────────────────────────────────────────
     DATA_DIR: Path = _DEFAULT_DATA_DIR
@@ -321,7 +321,6 @@ class Settings(BaseSettings):
                 )
         return self
 
-
     @model_validator(mode="after")
     def _validate_prod_signing_key_strength(self) -> Settings:
         """En producción, exigir SIGNING_KEY con longitud mínima de 32 chars."""
@@ -345,7 +344,9 @@ class Settings(BaseSettings):
         dash_pw = self.DASHBOARD_PASSWORD.get_secret_value()
         if dash_pw:
             result = check_password_strength(
-                dash_pw, min_length=16, label="DASHBOARD_PASSWORD",
+                dash_pw,
+                min_length=16,
+                label="DASHBOARD_PASSWORD",
             )
             if not result.is_strong:
                 raise ValueError(
@@ -359,7 +360,9 @@ class Settings(BaseSettings):
         gf_pw = self.GF_SECURITY_ADMIN_PASSWORD.get_secret_value()
         if gf_pw:
             result = check_password_strength(
-                gf_pw, min_length=16, label="GF_SECURITY_ADMIN_PASSWORD",
+                gf_pw,
+                min_length=16,
+                label="GF_SECURITY_ADMIN_PASSWORD",
             )
             if not result.is_strong:
                 raise ValueError(
