@@ -5,14 +5,12 @@ Cubre:
        la *misma* instancia (sin volver a deserializar).
 - T1b: invalidación de cache — cuando el mtime cambia, _load_cached devuelve
        una instancia *distinta* (cache miss).
-- T1c: FaissIndex.load_or_build con índice en disco carga correctamente.
+- T1c: FaissIndex.load con índice en disco carga correctamente.
 - T1d: FaissIndex.save() persiste metadata (embedding_version, embedding_model).
 """
 
 from __future__ import annotations
 
-import pickle
-import time
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +19,7 @@ import pytest
 faiss = pytest.importorskip("faiss", reason="faiss-cpu no instalado; omitiendo tests FAISS")
 
 # Importar DESPUÉS de confirmar que faiss está disponible
-from dashboard.faiss_index import FaissIndex  # noqa: E402, I001
+from dashboard.faiss_index import FaissIndex  # noqa: I001
 
 
 # ---------------------------------------------------------------------------
@@ -41,19 +39,9 @@ def _make_index(n: int = 20, dim: int = 32, tmp_path: Path | None = None) -> Fai
 
 
 def _save_index(idx: FaissIndex, path: Path) -> Path:
-    """Guarda el índice usando pickle directamente (evita clear() de Streamlit)."""
+    """Guarda el índice en formato .npz usando FaissIndex.save()."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    metadata = {
-        "embedding_version": idx.embedding_version,
-        "embedding_model": idx.embedding_model,
-        "created_at": "2025-01-01T00:00:00+00:00",
-        "n_records": len(idx.ids),
-    }
-    with open(path, "wb") as f:
-        pickle.dump(
-            {"ids": idx.ids, "embeddings": idx.embeddings, "metadata": metadata}, f, protocol=5
-        )
-    return path
+    return idx.save(path)
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +52,7 @@ def _save_index(idx: FaissIndex, path: Path) -> Path:
 def test_load_cached_cache_hit(tmp_path: Path) -> None:
     """_load_cached con mismo (path, mtime) debe devolver la misma instancia."""
     idx = _make_index()
-    fpath = tmp_path / "test_index.pkl"
+    fpath = tmp_path / "test_index.npz"
     _save_index(idx, fpath)
 
     # Limpiar cache del módulo para asegurar estado fresco
@@ -86,7 +74,7 @@ def test_load_cached_cache_hit(tmp_path: Path) -> None:
 def test_load_cached_cache_invalidated_on_mtime_change(tmp_path: Path) -> None:
     """Cuando el mtime cambia, _load_cached debe devolver una instancia distinta."""
     idx = _make_index()
-    fpath = tmp_path / "test_index.pkl"
+    fpath = tmp_path / "test_index.npz"
     _save_index(idx, fpath)
 
     FaissIndex._load_cached.clear()
@@ -94,13 +82,10 @@ def test_load_cached_cache_invalidated_on_mtime_change(tmp_path: Path) -> None:
     mtime_old = fpath.stat().st_mtime_ns
     first = FaissIndex._load_cached(str(fpath), mtime_old)
 
-    # Esperar y re-escribir para asegurar mtime diferente
-    time.sleep(0.05)
+    # Re-escribir para asegurar mtime diferente; forzar diferencia si la
+    # resolución del filesystem no cambia en tiempo real.
     _save_index(idx, fpath)
     mtime_new = fpath.stat().st_mtime_ns
-
-    # En sistemas con resolución baja puede que mtime no cambie en 50 ms;
-    # forzar diferencia manualmente si es necesario.
     if mtime_new == mtime_old:
         mtime_new = mtime_old + 1
 
@@ -121,7 +106,7 @@ def test_faiss_load_metadata(tmp_path: Path) -> None:
     idx.embedding_version = "v42"
     idx.embedding_model = "test-model"
 
-    fpath = tmp_path / "meta_index.pkl"
+    fpath = tmp_path / "meta_index.npz"
     _save_index(idx, fpath)
 
     FaissIndex._load_cached.clear()
@@ -174,3 +159,99 @@ def test_faiss_index_init_defaults() -> None:
     assert idx.embedding_model == "default"
     assert len(idx.ids) == 20
     assert idx.embeddings.shape == (20, 32)
+
+
+# ---------------------------------------------------------------------------
+# T2a: FaissIndex.update() — actualización incremental
+# ---------------------------------------------------------------------------
+
+
+def test_update_adds_new_entries() -> None:
+    """update() añade IDs nuevos al índice sin duplicar los existentes."""
+    from unittest.mock import patch
+
+    import pandas as pd
+
+    idx = _make_index(n=10, dim=32)
+    n_original = len(idx.ids)
+
+    # 5 IDs nuevos
+    new_ids = [f"NEW-{i:04d}" for i in range(5)]
+    df_new = pd.DataFrame(
+        {
+            "id_externo": new_ids,
+            "titulo": [f"Nuevo {i}" for i in range(5)],
+            "descripcion": ["desc"] * 5,
+        }
+    )
+
+    rng = np.random.default_rng(99)
+    fake_embs = rng.standard_normal((5, 32)).astype(np.float32)
+    norms = np.linalg.norm(fake_embs, axis=1, keepdims=True)
+    fake_embs = fake_embs / norms
+
+    with patch("dashboard.embeddings.encode_texts", return_value=fake_embs):
+        added = idx.update(df_new)
+
+    assert added == 5
+    assert len(idx.ids) == n_original + 5
+    assert all(nid in idx.ids for nid in new_ids)
+
+
+def test_update_skips_existing_ids() -> None:
+    """update() no duplica IDs que ya están en el índice."""
+
+    import pandas as pd
+
+    idx = _make_index(n=10, dim=32)
+
+    # DataFrame con IDs ya existentes
+    existing_ids = idx.ids[:3]
+    df_existing = pd.DataFrame(
+        {
+            "id_externo": existing_ids,
+            "titulo": ["Titulo"] * 3,
+            "descripcion": ["desc"] * 3,
+        }
+    )
+
+    added = idx.update(df_existing)
+    assert added == 0
+    assert len(idx.ids) == 10  # sin cambios
+
+
+def test_update_no_new_entries_returns_zero() -> None:
+    """update() con DataFrame vacío retorna 0."""
+    import pandas as pd
+
+    idx = _make_index(n=10, dim=32)
+    df_empty = pd.DataFrame({"id_externo": [], "titulo": [], "descripcion": []})
+    added = idx.update(df_empty)
+    assert added == 0
+
+
+def test_update_embeddings_shape_consistent() -> None:
+    """Tras update(), la shape de embeddings es consistente con len(ids)."""
+    from unittest.mock import patch
+
+    import pandas as pd
+
+    idx = _make_index(n=10, dim=32)
+    new_ids = ["EXTRA-001", "EXTRA-002"]
+    df_new = pd.DataFrame(
+        {
+            "id_externo": new_ids,
+            "titulo": ["T1", "T2"],
+            "descripcion": ["D1", "D2"],
+        }
+    )
+
+    rng = np.random.default_rng(7)
+    fake_embs = rng.standard_normal((2, 32)).astype(np.float32)
+    fake_embs = fake_embs / np.linalg.norm(fake_embs, axis=1, keepdims=True)
+
+    with patch("dashboard.embeddings.encode_texts", return_value=fake_embs):
+        idx.update(df_new)
+
+    assert idx.embeddings.shape[0] == len(idx.ids)
+    assert idx.embeddings.shape[1] == 32

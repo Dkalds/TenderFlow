@@ -134,7 +134,9 @@ import os as _os
 
 from config import settings as _settings
 
-_notif_seed = _settings.DASHBOARD_PASSWORD or _os.environ.get("COMPUTERNAME", "default")
+_notif_seed = _settings.DASHBOARD_PASSWORD.get_secret_value() or _os.environ.get(
+    "COMPUTERNAME", "default"
+)
 _notif_user_key = _hashlib.sha256(_notif_seed.encode()).hexdigest()[:16]
 render_notification_bell(df_full, _notif_user_key)
 # ── Sincronizar filtros activos → URL (compartible) ────────────────────────

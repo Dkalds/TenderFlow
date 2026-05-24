@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from api.auth import AuthContext, require_scope
 from observability.logging import get_logger
+from services.rate_limiting import get_rate_limiter
 
 log = get_logger(__name__)
 
@@ -37,7 +38,16 @@ async def csp_report(request: Request) -> None:
 
     Almacena en tabla ``csp_violations`` si existe, y loguea en modo estructurado.
     Sin autenticación (el navegador lo envía directamente).
+    Rate limiting: 10 reportes/min por IP para mitigar flood/DoS.
     """
+    # Rate limiting por IP — los browsers legítimos envían muy pocos reportes
+    client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
+        request.client.host if request.client else "unknown"
+    )
+    if not get_rate_limiter().check(f"csp:{client_ip}", max_calls=10, window_seconds=60):
+        log.warning("csp_report_rate_limited", client_ip=client_ip)
+        return  # Responder 204 de todas formas (no revelar al cliente el rate limit)
+
     try:
         body = await request.json()
     except Exception:
@@ -97,10 +107,10 @@ async def leaked_key_notification(
     # Verificar firma GitHub (ECDSA P-256) — si API_HMAC_SECRET está configurado
     # se usa como fallback para tests. En producción se debería usar la clave pública
     # de GitHub descargada de https://api.github.com/meta/public_keys/secret_scanning
-    if settings.API_HMAC_SECRET and x_github_public_key_signature:
+    if settings.API_HMAC_SECRET.get_secret_value() and x_github_public_key_signature:
         try:
             expected = hmac.new(
-                settings.API_HMAC_SECRET.encode(),
+                settings.API_HMAC_SECRET.get_secret_value().encode(),
                 body_bytes,
                 hashlib.sha256,
             ).hexdigest()

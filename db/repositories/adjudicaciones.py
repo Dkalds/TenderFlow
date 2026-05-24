@@ -47,9 +47,9 @@ class AdjudicacionRepository:
         where = " AND ".join(conditions)
         with connect_read() as c:
             total = count_where(c, "adjudicaciones", where, tuple(params)) if with_total else -1
-            sql = f"SELECT {_SUMMARY_COLS} FROM adjudicaciones"  # noqa: S608
+            sql = "SELECT " + _SUMMARY_COLS + " FROM adjudicaciones"
             if where:
-                sql += f" WHERE {where}"
+                sql += " WHERE " + where
             sql += " ORDER BY fecha_adjudicacion DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
             items = rows_to_dicts(c.execute(sql, tuple(params)))

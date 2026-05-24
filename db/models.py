@@ -140,7 +140,7 @@ def compile_query(stmt: Any) -> tuple[str, list[Any]]:
     """
     compiled = stmt.compile(
         dialect=_DIALECT,
-        compile_kwargs={"literal_binds": False},
+        compile_kwargs={"literal_binds": False, "render_postcompile": True},
     )
     sql: str = str(compiled)
     raw_params: dict[str, Any] = compiled.params

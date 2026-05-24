@@ -31,6 +31,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator as _PFI
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.errors import register_exception_handlers
@@ -41,6 +42,7 @@ from api.middleware import (
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
+from api.routes.ask import router as ask_router
 from api.routes.exports import router as exports_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
@@ -151,6 +153,10 @@ app = FastAPI(
             "description": "Model registry: versiones activas, histórico, activación",
         },
         {"name": "me", "description": "GDPR: exportar y eliminar mis datos"},
+        {
+            "name": "ask",
+            "description": "RAG + LLM: preguntas en lenguaje natural sobre licitaciones",
+        },
     ],
     contact={
         "name": "licitaciones-sap maintainers",
@@ -164,17 +170,12 @@ app = FastAPI(
 register_exception_handlers(app)
 
 # Prometheus auto-instrumentación HTTP — métricas RED estándar por handler
-# (reemplaza los contadores manuales que existían en AccessLogMiddleware)
-try:
-    from prometheus_fastapi_instrumentator import Instrumentator as _PFI
-
-    _PFI(
-        should_group_status_codes=False,
-        excluded_handlers=[r"/api/v1/health.*", r"/metrics"],
-    ).instrument(app)
-    log.info("prometheus_fastapi_instrumentator_enabled")
-except ImportError:
-    log.debug("prometheus_fastapi_instrumentator_unavailable")
+# (prometheus-fastapi-instrumentator es dependencia hard; no usar try/except aquí)
+_PFI(
+    should_group_status_codes=False,
+    excluded_handlers=[r"/api/v1/health.*", r"/metrics"],
+).instrument(app)
+log.info("prometheus_fastapi_instrumentator_enabled")
 
 # OpenTelemetry auto-instrumentación HTTP (solo si OTEL_EXPORTER_OTLP_ENDPOINT está configurado)
 try:
@@ -233,25 +234,46 @@ try:
     from starlette.middleware.base import BaseHTTPMiddleware as _BHTM
 
     class _MaxBodyMiddleware(_BHTM):
-        """Rechaza requests con body > max_bytes antes de procesarlos."""
+        """Rechaza requests con body > max_bytes.
+
+        Comprueba Content-Length (fast path) y también lee el body en streaming
+        para proteger contra requests chunked que omiten Content-Length.
+        """
 
         _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
 
         async def dispatch(self, request: Request, call_next):  # type: ignore[override]
-            if request.headers.get("content-length"):
+            # Fast path: rechazar inmediatamente si Content-Length lo delata
+            cl = request.headers.get("content-length")
+            if cl:
                 try:
-                    if int(request.headers["content-length"]) > self._MAX_BYTES:
+                    if int(cl) > self._MAX_BYTES:
                         return JSONResponse(
                             status_code=413,
                             content={"detail": "Request body demasiado grande (máx. 1 MB)."},
                         )
                 except ValueError:
                     pass
+
+            # Slow path: para requests chunked (sin Content-Length), leer el body
+            # en streaming y abortar si excede el límite.
+            if request.method in ("POST", "PUT", "PATCH") and not cl:
+                body = b""
+                async for chunk in request.stream():
+                    body += chunk
+                    if len(body) > self._MAX_BYTES:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"detail": "Request body demasiado grande (máx. 1 MB)."},
+                        )
+                # Inyectar el body ya leído para que call_next pueda accederlo
+                request._body = body  # type: ignore[attr-defined]
+
             return await call_next(request)
 
     app.add_middleware(_MaxBodyMiddleware)
 except Exception:
-    pass
+    log.warning("max_body_middleware_unavailable", exc_info=True)
 
 # Compresión Brotli / GZip
 try:
@@ -296,6 +318,7 @@ app.include_router(search_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
 app.include_router(watchlist_feed_router, prefix="/api/v1")
 app.include_router(exports_router, prefix="/api/v1")
+app.include_router(ask_router, prefix="/api/v1")
 
 # ---------------------------------------------------------------------------
 # Prometheus /metrics — protegido por IP allowlist o scope metrics:read

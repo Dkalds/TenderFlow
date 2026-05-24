@@ -95,8 +95,6 @@ class SAPClassifier:
             precision, recall, n_train, n_test, n_positive, n_negative.
         """
         import numpy as np
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        from sklearn.linear_model import LogisticRegression
         from sklearn.metrics import (
             accuracy_score,
             average_precision_score,
@@ -111,8 +109,6 @@ class SAPClassifier:
             cross_val_score,
             train_test_split,
         )
-        from sklearn.pipeline import FeatureUnion, Pipeline
-        from sklearn.preprocessing import MaxAbsScaler
 
         # Ordenar por fecha si está disponible (split temporal)
         _has_date = "fecha_publicacion" in df.columns and df["fecha_publicacion"].notna().any()
@@ -155,49 +151,9 @@ class SAPClassifier:
             )
 
         # ── CV F1 estimate (pipeline no calibrado, más rápido) ─────────────
-        pipeline_cv = Pipeline(
-            [
-                (
-                    "features",
-                    FeatureUnion(
-                        [
-                            (
-                                "word",
-                                TfidfVectorizer(
-                                    analyzer="word",
-                                    ngram_range=(1, 2),
-                                    max_features=20_000,
-                                    sublinear_tf=True,
-                                    min_df=2,
-                                    strip_accents="unicode",
-                                ),
-                            ),
-                            (
-                                "char",
-                                TfidfVectorizer(
-                                    analyzer="char_wb",
-                                    ngram_range=(2, 4),
-                                    max_features=15_000,
-                                    sublinear_tf=True,
-                                    min_df=2,
-                                ),
-                            ),
-                        ]
-                    ),
-                ),
-                ("scaler", MaxAbsScaler()),
-                (
-                    "clf",
-                    LogisticRegression(
-                        C=1.0,
-                        max_iter=500,
-                        class_weight="balanced",
-                        solver="lbfgs",
-                        random_state=42,
-                    ),
-                ),
-            ]
-        )
+        from scraper.ml_pipeline import _make_pipeline as _make_ml_pipeline
+
+        pipeline_cv = _make_ml_pipeline(calibrate=False)
         n_cv_splits = min(3, len(set(y_train)))  # protección datos muy pequeños
         cv_f1: float = 0.0
         if len(X_train) >= 10 and n_cv_splits >= 2:
@@ -731,6 +687,17 @@ class SAPClassifier:
                 )
             log.info("ml_classifier.checksum_verified", path=str(target))
         else:
+            # En producción, el checksum es obligatorio para prevenir la carga
+            # de modelos comprometidos (joblib.load ejecuta código arbitrario).
+            from config import settings as _s
+
+            if getattr(_s, "ENV", "dev") == "prod":
+                raise RuntimeError(
+                    f"Fichero de checksum no encontrado: {checksum_path}. "
+                    "En producción, el checksum SHA256 es obligatorio para verificar "
+                    "la integridad del modelo antes de deserializarlo. "
+                    "Re-entrena con save() para generar el fichero .sha256."
+                )
             log.warning(
                 "ml_classifier.no_checksum_file",
                 path=str(checksum_path),
@@ -777,177 +744,6 @@ from scraper.ml_training import (
 # ── Multi-label classifier (H4) ───────────────────────────────────────────────
 
 #: Labels soportados. El label "SAP" se mapea al clasificador binario existente.
-MULTI_LABELS = ["SAP", "Cloud", "Integracion", "Mantenimiento", "RRHH"]
-
-#: Keywords para heurística de labels adicionales (se combina con modelo lineal)
-_LABEL_KEYWORDS: dict[str, list[str]] = {
-    "Cloud": ["cloud", "saas", "azure", "aws", "nube", "on-demand", "s/4hana cloud"],
-    "Integracion": [
-        "integración",
-        "integrar",
-        "middleware",
-        "api",
-        "interfaz",
-        "sistema externo",
-        "conexion",
-        "interoperabilidad",
-    ],
-    "Mantenimiento": [
-        "mantenimiento",
-        "soporte",
-        "correctivo",
-        "preventivo",
-        "helpdesk",
-        "servicio técnico",
-        "licencias soporte",
-    ],
-    "RRHH": ["rrhh", "recursos humanos", "hr", "sap hr", "payroll", "nomina", "nómina"],
-}
-
-_MULTILABEL_MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_multilabel.pkl"
-
-
-class SAPMultiLabelClassifier:
-    """Clasificador multi-label para SAP/Cloud/Integración/Mantenimiento/RRHH.
-
-    .. deprecated:: v30
-        Reemplazado por :class:`scraper.tech_classifier.TechnologyClassifier`,
-        que clasifica directamente contra las 13 tecnologías reales de la
-        columna ``tecnologia`` (SAP, ORACLE, SALESFORCE, MICROSOFT, …) usando
-        un OneVsRest con tres tiers (ml_ready / fragile / rules). Esta clase
-        se mantiene únicamente por compatibilidad con código legacy y será
-        eliminada en una futura versión.
-
-    Estrategia (legacy):
-      - SAP: delega en SAPClassifier (modelo binario existente).
-      - Otros labels: heurística de keywords + LogisticRegression por label.
-
-    La API es compatible con SAPClassifier para fácil sustitución.
-    """
-
-    def __init__(self) -> None:
-        import warnings
-
-        warnings.warn(
-            "SAPMultiLabelClassifier está obsoleto desde v30. Usa "
-            "scraper.tech_classifier.TechnologyClassifier en su lugar.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._sap_clf: SAPClassifier | None = None
-        self._label_clfs: dict[str, Any] = {}
-        self._trained = False
-
-    def _keyword_score(self, text: str, label: str) -> float:
-        """Devuelve fracción de keywords del label que aparecen en el texto."""
-        t = text.lower()
-        kws = _LABEL_KEYWORDS.get(label, [])
-        if not kws:
-            return 0.0
-        return sum(1 for kw in kws if kw in t) / len(kws)
-
-    def train(self, df: pd.DataFrame) -> dict[str, Any]:
-        """Entrena usando el SAP binario + heurística para labels extras."""
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.pipeline import Pipeline
-
-        # Train SAP binary
-        sap = SAPClassifier()
-        metrics = sap.train(df)
-        if "error" in metrics:
-            return metrics
-        self._sap_clf = sap
-
-        texts = (df["titulo"].fillna("") + " " + df["descripcion"].fillna("")).str.strip().tolist()
-
-        # Train one LogReg per extra label using keyword heuristic as silver labels
-        for label, kws in _LABEL_KEYWORDS.items():
-            silver = [int(any(kw in t.lower() for kw in kws)) for t in texts]
-            if sum(silver) < 10:
-                continue  # skip if too few positive examples
-            pipe = Pipeline(
-                [
-                    (
-                        "tfidf",
-                        TfidfVectorizer(ngram_range=(1, 2), max_features=20000, sublinear_tf=True),
-                    ),
-                    (
-                        "clf",
-                        LogisticRegression(
-                            C=1.0, max_iter=300, class_weight="balanced", random_state=42
-                        ),
-                    ),
-                ]
-            )
-            try:
-                pipe.fit(texts, silver)
-                self._label_clfs[label] = pipe
-            except Exception as exc:
-                log.warning("multilabel_train_skip", label=label, error=str(exc))
-
-        self._trained = True
-        metrics["multilabel_trained"] = list(self._label_clfs.keys())
-        return metrics
-
-    def predict_labels(self, text: str) -> dict[str, float]:
-        """Devuelve {label: confidence} para todos los labels."""
-        if not self._trained or self._sap_clf is None:
-            raise RuntimeError("Clasificador no entrenado.")
-        out: dict[str, float] = {}
-        _, sap_conf = self._sap_clf.predict(text)
-        out["SAP"] = sap_conf
-        for label, pipe in self._label_clfs.items():
-            try:
-                proba = pipe.predict_proba([text])[0][1]
-                out[label] = float(proba)
-            except Exception:
-                out[label] = self._keyword_score(text, label)
-        return out
-
-    def predict(self, text: str) -> tuple[bool, float]:
-        """Compatible with SAPClassifier.predict() — returns (is_sap, confidence)."""
-        labels = self.predict_labels(text)
-        conf = labels.get("SAP", 0.0)
-        return conf >= settings.ML_CONFIDENCE_THRESHOLD, conf
-
-    def predict_proba(self, texts: list[str]) -> Any:
-        """Returns array-like probabilities for compatibility with H3 uncertainty sampling."""
-        import numpy as np
-
-        if not self._trained or self._sap_clf is None:
-            raise RuntimeError("Clasificador no entrenado.")
-        probas = []
-        for text in texts:
-            _, conf = self._sap_clf.predict(text)
-            probas.append([1 - conf, conf])
-        return np.array(probas)
-
-    def save(self, path: Path | None = None) -> Path:
-        import joblib
-
-        target = path or _MULTILABEL_MODEL_PATH
-        target.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self, target, compress=3)
-        log.info("multilabel_classifier.saved", path=str(target))
-        return target
-
-    @classmethod
-    def load(cls, path: Path | None = None) -> SAPMultiLabelClassifier:
-        import joblib
-
-        target = path or _MULTILABEL_MODEL_PATH
-        if not target.exists():
-            raise FileNotFoundError(f"Multi-label classifier not found: {target}")
-        obj = joblib.load(target)
-        if not isinstance(obj, cls):
-            raise TypeError(f"Expected SAPMultiLabelClassifier, got {type(obj)}")
-        return obj
-
-    @classmethod
-    def is_available(cls, path: Path | None = None) -> bool:
-        return (path or _MULTILABEL_MODEL_PATH).exists()
-
 
 if __name__ == "__main__":
     import sys

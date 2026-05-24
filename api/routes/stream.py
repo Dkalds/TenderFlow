@@ -74,8 +74,8 @@ def _fetch_recent(since_ts: float, limit: int) -> list[dict[str, Any]]:
                 "SELECT id_externo, titulo, organo_contratacion, importe, "
                 "       url, fecha_publicacion, ccaa, estado "
                 "FROM licitaciones "
-                "WHERE created_at >= ? OR updated_at >= ? "
-                "ORDER BY COALESCE(updated_at, created_at) DESC "
+                "WHERE fecha_extraccion >= ? OR fecha_actualizacion_fuente >= ? "
+                "ORDER BY COALESCE(fecha_actualizacion_fuente, fecha_extraccion) DESC "
                 "LIMIT ?",
                 (since_iso, since_iso, limit),
             )

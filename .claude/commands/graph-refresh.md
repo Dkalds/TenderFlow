@@ -1,0 +1,20 @@
+---
+description: Actualiza el knowledge graph (graphify) y verifica que se refrescó
+---
+
+Re-extrae el código y actualiza `graphify-out/graph.json`. Esto es AST-only (gratis, sin API).
+
+Pasos:
+
+1. Captura mtime actual de `graphify-out/graph.json` (si existe).
+2. Ejecuta: `graphify update .`
+3. Si hubo refactor grande (renames, eliminación de módulos), reintenta con: `graphify update . --force`
+4. Verifica que `mtime` de `graph.json` cambió. Si no cambió y había edits a .py recientes, reportá warning.
+5. Si existe `graphify-out/.graph_stale` (flag dejado por el hook PostToolUse), borrarlo: `rm graphify-out/.graph_stale`.
+
+Reportá:
+- Tamaño antes/después de `graph.json`.
+- Si hubo cambio de número de nodos (extraer de `manifest.json` si existe).
+- Cualquier warning de graphify (output stderr).
+
+No corras esto en bucle si falla — si hay error real, mostralo y pará.

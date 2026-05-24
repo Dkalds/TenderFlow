@@ -14,7 +14,7 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RATE_LIMIT_BACKEND: redis
       # Restringe qué proxies son confiables para X-Forwarded-* en uvicorn.
       # Ajusta en producción al rango/IP de tu reverse proxy.
@@ -53,7 +53,7 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RATE_LIMIT_BACKEND: redis
     mem_limit: 256m
     security_opt:
@@ -88,7 +88,7 @@ services:
       - .env
     environment:
       DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RATE_LIMIT_BACKEND: redis
       SCHEDULER_DAILY_INTERVAL_MINUTES: ${SCHEDULER_DAILY_INTERVAL_MINUTES:-240}
       SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
@@ -120,9 +120,9 @@ services:
     restart: unless-stopped
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3

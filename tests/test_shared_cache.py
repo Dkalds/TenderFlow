@@ -57,7 +57,7 @@ class TestMemoryBackend:
     def test_expired_entry_returns_none(self):
         c = self._make()
         c.set("k", "v", ttl=0.001)
-        time.sleep(0.01)
+        time.sleep(0.05)
         assert c.get("k") is None
 
     def test_negative_ttl_means_no_expiry(self):
@@ -98,8 +98,7 @@ class TestMemoryBackend:
         c.set("expired", "x", ttl=0.001)
         c.set("b", 2, ttl=60)
         c.set("c", 3, ttl=60)
-        time.sleep(0.01)
-        # "expired" ya expiró, se limpia antes de evictar LRU
+        time.sleep(0.05)
         c.set("d", 4, ttl=60)
         assert c.get("b") == 2  # "b" no se evictó
         assert c.get("d") == 4

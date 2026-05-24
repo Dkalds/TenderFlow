@@ -53,6 +53,7 @@ _DB_PATH_OVERRIDE: str | None = None
 # TURSO_DATABASE_URL configurada (>1 conexión). Para SQLite local, thread-local basta.
 _pool: _queue_mod.Queue[Any] | None = None
 _pool_lock = threading.Lock()
+_pool_active: int = 0  # conexiones vivas (idle en queue + en uso)
 
 # Bandera de inicialización: evita ejecutar init_db() más de una vez por proceso.
 # db.schema.init_db() la pone a True; set_db_path_override() la resetea.
@@ -81,7 +82,11 @@ def is_turso_backend() -> bool:
     Importante: el protocolo Hrana no soporta sentencias ``PRAGMA``; usar
     esta función para decidir si emitirlas o no.
     """
-    return bool(not _DB_PATH_OVERRIDE and settings.TURSO_DATABASE_URL and settings.TURSO_AUTH_TOKEN)
+    return bool(
+        not _DB_PATH_OVERRIDE
+        and settings.TURSO_DATABASE_URL
+        and settings.TURSO_AUTH_TOKEN.get_secret_value()
+    )
 
 
 def safe_pragma(conn: Any, stmt: str) -> None:
@@ -148,7 +153,9 @@ def get_table_columns(conn: Any, table: str) -> set[str]:
 def _create_connection() -> Any:
     """Crea una nueva conexión a la BD según la configuración actual."""
     if is_turso_backend():
-        return libsql.connect(settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN)
+        return libsql.connect(
+            settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN.get_secret_value()
+        )
 
     if (
         not _DB_PATH_OVERRIDE
@@ -163,6 +170,7 @@ def _create_connection() -> Any:
     conn = libsql.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.commit()
     return conn
 
@@ -182,7 +190,7 @@ def _get_conn() -> Any:
     Para Turso cloud usa un pool con health-check. Para SQLite local usa
     thread-local (1 conexión por hilo, WAL permite lecturas concurrentes).
     """
-    global _pool
+    global _pool, _pool_active
 
     # Para Turso con pool_size > 1, usar el pool compartido
     if is_turso_backend() and settings.DB_POOL_SIZE > 1:
@@ -190,19 +198,56 @@ def _get_conn() -> Any:
             with _pool_lock:
                 if _pool is None:
                     _pool = _queue_mod.Queue(maxsize=settings.DB_POOL_SIZE)
-        # Intentar obtener del pool
+        # 1. Intentar obtener una conexión idle (no bloqueante)
         try:
             conn = _pool.get_nowait()
             if _health_check(conn):
                 return conn
-            # Conexión muerta — crear nueva
+            # Conexión muerta — descontar y crear nueva abajo
+            with _pool_lock:
+                _pool_active -= 1
             try:
                 conn.close()
             except Exception:
                 pass
         except _queue_mod.Empty:
             pass
-        return _create_connection()
+
+        # 2. Si no hay idle, intentar crear una nueva si no alcanzamos el límite
+        with _pool_lock:
+            if _pool_active < settings.DB_POOL_SIZE:
+                _pool_active += 1
+                create_new = True
+            else:
+                create_new = False
+
+        if create_new:
+            return _create_connection()
+
+        # 3. Pool lleno — esperar a que alguien devuelva una conexión
+        acquire_timeout = getattr(settings, "DB_POOL_TIMEOUT", 10.0)
+        try:
+            conn = _pool.get(timeout=acquire_timeout)
+            if _health_check(conn):
+                return conn
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return _create_connection()
+        except _queue_mod.Empty:
+            log.warning(
+                "db_pool_acquire_timeout",
+                pool_size=settings.DB_POOL_SIZE,
+                timeout_s=acquire_timeout,
+            )
+            from observability.runtime_metrics import db_pool_acquire_timeout_total
+
+            db_pool_acquire_timeout_total.inc()
+            raise RuntimeError(
+                f"No se pudo obtener una conexión DB del pool en {acquire_timeout}s. "
+                "El pool está saturado. Considera aumentar DB_POOL_SIZE."
+            ) from None
 
     # SQLite local / tests: thread-local (una conexión por hilo)
     conn = getattr(_local, "conn", None)
@@ -215,10 +260,13 @@ def _get_conn() -> Any:
 
 def _return_conn(conn: Any) -> None:
     """Devuelve una conexión al pool (Turso) o la mantiene en thread-local."""
+    global _pool_active
     if is_turso_backend() and settings.DB_POOL_SIZE > 1 and _pool is not None:
         try:
             _pool.put_nowait(conn)
         except _queue_mod.Full:
+            with _pool_lock:
+                _pool_active -= 1
             try:
                 conn.close()
             except Exception:
@@ -227,7 +275,7 @@ def _return_conn(conn: Any) -> None:
 
 def close_pool() -> None:
     """Cierra la conexión del hilo actual y vacía el pool compartido."""
-    global _pool
+    global _pool, _pool_active
     conn = getattr(_local, "conn", None)
     if conn is not None:
         try:
@@ -245,6 +293,7 @@ def close_pool() -> None:
             except Exception:
                 pass
         _pool = None
+        _pool_active = 0
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +330,7 @@ def connect_read() -> Iterator[Any]:
 
             conn = libsql_exp.connect(
                 replica_url,
-                auth_token=settings.TURSO_AUTH_TOKEN,
+                auth_token=settings.TURSO_AUTH_TOKEN.get_secret_value(),
             )
             try:
                 yield conn

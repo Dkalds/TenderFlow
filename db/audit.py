@@ -177,15 +177,15 @@ def list_recent(
     params.append(limit)
     with connect() as c:
         cur = c.execute(
-            f"SELECT id, user_key, session_hash, action, detail, created_at "  # noqa: S608
-            f"FROM audit_log {where} ORDER BY created_at DESC LIMIT ?",
+            "SELECT id, user_key, session_hash, action, detail, created_at "
+            "FROM audit_log " + where + " ORDER BY created_at DESC LIMIT ?",
             params,
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
-def verify_hash_chain() -> dict:
+def verify_hash_chain() -> dict[str, object]:
     """Verifica la integridad del audit log recalculando el hash chain.
 
     Returns:

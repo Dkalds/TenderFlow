@@ -48,6 +48,44 @@ try:
         buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
     )
 
+    # ── Scheduler ─────────────────────────────────────────────────────────────
+    scheduler_job_total = Counter(
+        "scheduler_job_total",
+        "Número de ejecuciones de jobs del scheduler",
+        ["job", "status"],  # status: success | timeout | error | skipped
+    )
+
+    scheduler_job_duration_seconds = Histogram(
+        "scheduler_job_duration_seconds",
+        "Duración de ejecución de jobs del scheduler",
+        ["job"],
+        buckets=(1.0, 5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0),
+    )
+
+    # ── DB pool ───────────────────────────────────────────────────────────────
+    db_pool_size = Gauge(
+        "db_pool_size",
+        "Tamaño configurado del pool de conexiones DB",
+    )
+
+    db_pool_acquire_timeout_total = Counter(
+        "db_pool_acquire_timeout_total",
+        "Número de veces que el pool de conexiones DB agotó el timeout de adquisición",
+    )
+
+    # ── FAISS rebuild ─────────────────────────────────────────────────────────
+    faiss_rebuild_total = Counter(
+        "faiss_rebuild_total",
+        "Número de reconstrucciones del índice FAISS",
+        ["status"],  # status: success | error
+    )
+
+    faiss_rebuild_duration_seconds = Histogram(
+        "faiss_rebuild_duration_seconds",
+        "Duración de reconstrucción del índice FAISS",
+        buckets=(5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0),
+    )
+
     _AVAILABLE = True
 except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
@@ -65,4 +103,10 @@ except ImportError:  # pragma: no cover
     audit_events_total = _NoopMetric()  # type: ignore[assignment]
     scraper_circuit_transitions_total = _NoopMetric()  # type: ignore[assignment]
     ml_inference_duration_seconds = _NoopMetric()  # type: ignore[assignment]
+    scheduler_job_total = _NoopMetric()  # type: ignore[assignment]
+    scheduler_job_duration_seconds = _NoopMetric()  # type: ignore[assignment]
+    db_pool_size = _NoopMetric()  # type: ignore[assignment]
+    db_pool_acquire_timeout_total = _NoopMetric()  # type: ignore[assignment]
+    faiss_rebuild_total = _NoopMetric()  # type: ignore[assignment]
+    faiss_rebuild_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False

@@ -296,7 +296,10 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
         )
 
         _sf_seed = _settings.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
-        _sf_user_key = hashlib.sha256(_sf_seed.encode()).hexdigest()[:16]
+        _sf_seed_str = (
+            _sf_seed.get_secret_value() if hasattr(_sf_seed, "get_secret_value") else str(_sf_seed)
+        )
+        _sf_user_key = hashlib.sha256(_sf_seed_str.encode()).hexdigest()[:16]
         _saved = list_saved_filters(_sf_user_key)
 
         # Botones para cargar cada búsqueda guardada

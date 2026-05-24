@@ -1,6 +1,6 @@
 """Middlewares ASGI personalizados para la API REST.
 
-* :class:`SecurityHeadersMiddleware` — Añade cabeceras de seguridad OWASP.
+* :class:`SecurityHeadersMiddleware` — Añade cabeceras de seguridad OWASP (ASGI puro).
 * :class:`RateLimitMiddleware`       — Rate limiting per-API-Key sobre SQLite.
 * :class:`CostTrackingMiddleware`    — Estima coste por request (Prometheus).
 * :class:`AccessLogMiddleware`       — Access log estructurado con métricas RED.
@@ -17,7 +17,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
@@ -28,10 +28,14 @@ log = get_logger(__name__)
 # ───────────────────────────── Security headers ─────────────────────────────
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
     """Añade cabeceras de seguridad recomendadas por OWASP.
 
-    Aplicado a todas las respuestas. Cabeceras añadidas:
+    Implementado como middleware ASGI puro para evitar el overhead de
+    ``BaseHTTPMiddleware`` (que bufferiza el body completo). Este middleware
+    solo necesita interceptar los headers de la respuesta, no el body.
+
+    Cabeceras añadidas:
     - ``X-Content-Type-Options: nosniff``
     - ``X-Frame-Options: DENY``
     - ``Referrer-Policy: strict-origin-when-cross-origin``
@@ -47,27 +51,52 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         csp: str = "default-src 'none'; frame-ancestors 'none'; report-uri /api/v1/security/csp-report",
         hsts_max_age: int = 31_536_000,  # 1 año
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._csp = csp
         self._hsts = f"max-age={hsts_max_age}; includeSubDomains"
-
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        response = await call_next(request)
-        headers = response.headers
-        headers.setdefault("X-Content-Type-Options", "nosniff")
-        headers.setdefault("X-Frame-Options", "DENY")
-        headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        headers.setdefault(
-            "Permissions-Policy",
-            "geolocation=(), microphone=(), camera=(), payment=(), usb=()",
+        # Pre-compute header pairs as bytes for performance
+        self._base_headers: list[tuple[bytes, bytes]] = [
+            (b"x-content-type-options", b"nosniff"),
+            (b"x-frame-options", b"DENY"),
+            (b"referrer-policy", b"strict-origin-when-cross-origin"),
+            (
+                b"permissions-policy",
+                b"geolocation=(), microphone=(), camera=(), payment=(), usb=()",
+            ),
+            (b"content-security-policy", csp.encode()),
+        ]
+        self._hsts_header: tuple[bytes, bytes] = (
+            b"strict-transport-security",
+            self._hsts.encode(),
         )
-        headers.setdefault("Content-Security-Policy", self._csp)
-        # HSTS solo tiene sentido si el cliente vino por HTTPS (o detrás de proxy TLS)
-        if request.url.scheme == "https" or request.headers.get("X-Forwarded-Proto") == "https":
-            headers.setdefault("Strict-Transport-Security", self._hsts)
-        return response
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Detectar si es HTTPS (directo o detrás de proxy)
+        is_https = scope.get("scheme") == "https"
+        if not is_https:
+            # Check X-Forwarded-Proto en los headers de la request
+            for header_name, header_value in scope.get("headers", []):
+                if header_name == b"x-forwarded-proto" and header_value == b"https":
+                    is_https = True
+                    break
+
+        async def _send_with_security_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                existing_names = {h[0].lower() for h in headers}
+                for name, value in self._base_headers:
+                    if name not in existing_names:
+                        headers.append((name, value))
+                if is_https and b"strict-transport-security" not in existing_names:
+                    headers.append(self._hsts_header)
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, _send_with_security_headers)
 
 
 # ───────────────────────────── Rate limiting ────────────────────────────────
@@ -175,9 +204,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client = _client_key(request)
-        rate_key = f"api:{client}:{path}"
+        # Usar route template (e.g. "/api/v1/licitaciones/{id}") en lugar del path
+        # literal para evitar que un atacante eluda el rate limit variando path params.
+        route = request.scope.get("route")
+        rate_path = getattr(route, "path", None) or path
+        rate_key = f"api:{client}:{rate_path}"
         # Endpoints pesados (ML inference, exports) tienen límite inferior.
-        effective_max = _HEAVY_ENDPOINT_LIMITS.get(path, self._max)
+        effective_max = _HEAVY_ENDPOINT_LIMITS.get(rate_path, self._max)
         allowed = get_rate_limiter().check(
             rate_key,
             max_calls=effective_max,
@@ -285,7 +318,10 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             route = request.scope.get("route")
             path = getattr(route, "path", None) or request.url.path.split("?")[0]
             method = request.method
-            key_prefix = (request.headers.get("X-API-Key") or "")[:8] or "-"
+            # Usar hash prefix en lugar de los primeros caracteres del API key
+            # para evitar reducir el espacio de brute-force en los logs.
+            raw_key = request.headers.get("X-API-Key") or ""
+            key_prefix = hashlib.sha256(raw_key.encode()).hexdigest()[:12] if raw_key else "-"
             client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
                 request.client.host if request.client else "-"
             )

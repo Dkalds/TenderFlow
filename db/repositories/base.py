@@ -31,8 +31,8 @@ def count_where(conn: Any, table: str, where: str, params: tuple[Any, ...]) -> i
     """SELECT COUNT(*) con cláusula WHERE opcional. Tabla whitelisted."""
     if table not in _ALLOWED_TABLES:
         raise ValueError(f"Tabla no permitida: {table!r}")
-    sql = f"SELECT COUNT(*) FROM {table}"  # noqa: S608
+    sql = "SELECT COUNT(*) FROM " + table
     if where:
-        sql += f" WHERE {where}"
+        sql += " WHERE " + where
     row = conn.execute(sql, params).fetchone()
     return int(row[0] if row else 0)

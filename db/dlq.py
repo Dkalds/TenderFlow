@@ -204,7 +204,7 @@ def sweep_exhausted(max_retries: int) -> list[dict[str, Any]]:
     placeholders = ",".join("?" * len(ids))
     with connect() as c:
         c.execute(
-            f"UPDATE failed_extractions SET exhausted_at = ? WHERE id IN ({placeholders})",  # noqa: S608
+            "UPDATE failed_extractions SET exhausted_at = ? WHERE id IN (" + placeholders + ")",
             [now, *ids],
         )
 

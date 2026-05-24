@@ -1,0 +1,33 @@
+# Worktrees (duplicate copies of the entire project)
+.claude/worktrees/
+
+# Virtual environments and caches
+.venv/
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+htmlcov/
+
+# Build/packaging artifacts
+*.egg-info/
+dist/
+build/
+
+# Data downloads and generated models (rebuilt on demand)
+data/downloads/
+data/models/
+data/metrics/
+data/*.db
+data/*.db-*
+data/*.log
+
+# Tool caches and temp files
+.tmp/
+*.pyc
+*.py.new
+*.py.bak
+
+# Git internals
+.git/

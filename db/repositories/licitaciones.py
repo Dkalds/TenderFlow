@@ -412,6 +412,77 @@ class LicitacionRepository:
         order = {id_: i for i, id_ in enumerate(ids)}
         return sorted(rows, key=lambda r: order.get(r.get("id_externo", ""), 999))
 
+    def search_advanced(
+        self,
+        *,
+        q: str | None = None,
+        estado: list[str] | None = None,
+        ccaa: list[str] | None = None,
+        tecnologia: list[str] | None = None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+        sort: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        with_total: bool = True,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Búsqueda avanzada con criterios complejos (multi-valor, rangos de importe).
+
+        Extiende ``list_paginated`` con soporte para listas de estado/ccaa/tecnologia
+        (IN clause) y rangos de importe. Usada por el endpoint POST /licitaciones/search.
+        """
+        order = _SORT_MAP.get(sort or "", _DEFAULT_ORDER)
+        clauses: list[Any] = [
+            and_(
+                licitaciones.c.tecnologia.isnot(None),
+                licitaciones.c.tecnologia != "",
+            )
+        ]
+
+        if q:
+            like = f"%{q}%"
+            clauses.append(
+                or_(
+                    licitaciones.c.titulo.like(like),
+                    licitaciones.c.descripcion.like(like),
+                )
+            )
+        if estado:
+            clauses.append(licitaciones.c.estado.in_(estado))
+        if ccaa:
+            clauses.append(licitaciones.c.ccaa.in_(ccaa))
+        if tecnologia:
+            clauses.append(licitaciones.c.tecnologia.in_(tecnologia))
+        if importe_min is not None:
+            clauses.append(licitaciones.c.importe >= importe_min)
+        if importe_max is not None:
+            clauses.append(licitaciones.c.importe <= importe_max)
+        if fecha_desde and _DATE_RE.match(fecha_desde):
+            clauses.append(licitaciones.c.fecha_publicacion >= fecha_desde)
+        if fecha_hasta and _DATE_RE.match(fecha_hasta):
+            clauses.append(licitaciones.c.fecha_publicacion <= fecha_hasta)
+
+        base: Select[Any] = select(*_SUMMARY_COLS).select_from(licitaciones)
+        if clauses:
+            base = base.where(and_(*clauses))
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        data_stmt = base.order_by(order).limit(limit).offset(offset)
+
+        count_sql, count_params = compile_query(count_stmt)
+        data_sql, data_params = compile_query(data_stmt)
+
+        with connect_read() as c:
+            total = -1
+            if with_total:
+                row = c.execute(count_sql, count_params).fetchone()
+                total = int(row[0]) if row else 0
+            items = rows_to_dicts(c.execute(data_sql, data_params))
+
+        return items, total
+
     def tech_scores_for(self, id_externo: str) -> list[dict[str, Any]]:
         """Devuelve scores por tecnología desde ``licitacion_tecnologia_score``."""
         stmt = (

@@ -44,7 +44,7 @@ def lookup_active_key(key_hash: str) -> ApiKeyRecord | None:
         select_parts.append("expires_at" if "expires_at" in cols else "NULL")
         select_parts.append("scopes" if "scopes" in cols else "'*'")
         row = c.execute(
-            f"SELECT {', '.join(select_parts)} FROM api_keys "  # noqa: S608
+            "SELECT " + ", ".join(select_parts) + " FROM api_keys "
             "WHERE key_hash = ? AND is_active = 1",
             (key_hash,),
         ).fetchone()
@@ -110,7 +110,7 @@ def insert_api_key(
 
         placeholders = ",".join("?" * len(fields))
         c.execute(
-            f"INSERT INTO api_keys ({', '.join(fields)}) VALUES ({placeholders})",  # noqa: S608
+            "INSERT INTO api_keys (" + ", ".join(fields) + ") VALUES (" + placeholders + ")",
             values,
         )
 

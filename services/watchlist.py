@@ -26,7 +26,7 @@ def query_licitaciones_since(cpv_prefix: str, since_date: str) -> list[dict[str,
     pattern = cpv_prefix + "%"
     with connect_read() as c:
         cur = c.execute(
-            f"SELECT {_WATCHLIST_LIC_COLS} FROM licitaciones "  # noqa: S608
+            "SELECT " + _WATCHLIST_LIC_COLS + " FROM licitaciones "
             "WHERE fecha_publicacion >= ? AND cpv LIKE ? "
             "ORDER BY fecha_publicacion DESC",
             (since_date, pattern),
@@ -53,8 +53,8 @@ def query_licitaciones_batch(
             placeholders = " OR ".join("cpv LIKE ?" for _ in cpv_prefixes)
             params: list[Any] = [since_date] + [p + "%" for p in cpv_prefixes]
             cur = c.execute(
-                f"SELECT {_WATCHLIST_LIC_COLS} FROM licitaciones "  # noqa: S608
-                f"WHERE fecha_publicacion >= ? AND ({placeholders}) "
+                "SELECT " + _WATCHLIST_LIC_COLS + " FROM licitaciones "
+                "WHERE fecha_publicacion >= ? AND (" + placeholders + ") "
                 "ORDER BY fecha_publicacion DESC",
                 params,
             )
@@ -119,7 +119,7 @@ def mark_digests_sent(digest_ids: list[int]) -> None:
     with connect() as c:
         placeholders = ",".join("?" for _ in digest_ids)
         c.execute(
-            f"UPDATE pending_digests SET sent = 1 WHERE id IN ({placeholders})",  # noqa: S608
+            "UPDATE pending_digests SET sent = 1 WHERE id IN (" + placeholders + ")",
             digest_ids,
         )
 

@@ -1,33 +1,81 @@
-"""Capa de persistencia SQLite / Turso (libSQL) para licitaciones.
+"""Fachada de persistencia SQLite / Turso (libSQL) para licitaciones.
 
-Este módulo es una **fachada** que re-exporta los símbolos públicos de los
-sub-módulos especializados:
+Este módulo es el **punto de entrada único** al subsistema de base de datos.
+Re-exporta todos los símbolos públicos de los tres submódulos especializados,
+permitiendo que los importadores usen ``from db.database import X`` sin
+necesidad de conocer la organización interna.
 
-- ``db.connection``  — pool, ``connect()``, ``connect_read()``, helpers
-- ``db.schema``      — DDL ``SCHEMA``, ``init_db()``
-- ``db.upsert``      — dataclasses, operaciones de escritura, historial, FTS
+Mantener este módulo como fachada preserva la compatibilidad hacia atrás: si
+en el futuro un símbolo se mueve entre submódulos, los importadores existentes
+no requieren cambios.
 
-Mantener este módulo como punto de entrada único preserva la compatibilidad
-con todos los importadores existentes sin necesidad de cambios en ellos.
+Submódulos y símbolos reexportados
+-----------------------------------
+
+**db.connection** — pool de conexiones, context managers y helpers de bajo
+nivel:
+
+- ``connect()``             — context manager de escritura (commit/rollback).
+- ``connect_read()``        — context manager de solo lectura; usa réplica
+                              Turso si ``TURSO_REPLICA_URL`` está configurado.
+- ``close_pool()``          — cierra conexiones del hilo actual y vacía el pool.
+- ``get_table_columns()``   — inspección de columnas (PRAGMA + fallback Hrana).
+- ``is_turso_backend()``    — True si la conexión activa es Turso/libSQL cloud.
+- ``now_utc()``             — datetime UTC aware (reemplaza datetime.utcnow()).
+- ``now_utc_iso()``         — ISO 8601 del instante actual en UTC.
+- ``safe_pragma()``         — ejecuta PRAGMA solo si el backend lo soporta.
+- ``set_db_path_override()``— override de ruta para tests (evita reload).
+
+**db.schema** — DDL y bootstrapping:
+
+- ``SCHEMA``    — string con todos los ``CREATE TABLE`` e índices del proyecto.
+- ``init_db()`` — aplica el schema y migraciones pendientes; idempotente.
+
+**db.upsert** — dataclasses de dominio y operaciones de escritura:
+
+- ``Licitacion``                      — dataclass de una licitación PLACSP.
+- ``Adjudicacion``                    — dataclass de una adjudicación.
+- ``UpsertResult``                    — resultado enriquecido de upsert con
+                                        historial (inserted/modified/unchanged).
+- ``upsert_licitaciones()``           — bulk upsert sin historial; devuelve
+                                        (nuevas, actualizadas).
+- ``upsert_licitaciones_with_history()``— upsert con snapshot en
+                                        ``licitaciones_history``.
+- ``replace_adjudicaciones()``        — reemplaza adjudicaciones de una
+                                        licitación (idempotente: DELETE + INSERT).
+- ``count_licitaciones()``            — total de filas en la tabla.
+- ``log_extraccion()``                — registra una ejecución de extracción.
+- ``get_cursor()`` / ``set_cursor()`` — lectura/escritura del cursor de
+                                        ingesta por fuente.
+- ``get_history()``                   — historial de cambios de una licitación.
+- ``fts_available()``                 — True si la tabla FTS5 existe.
+- ``search_fts()``                    — búsqueda full-text con paginación.
+
+Uso típico
+----------
+
+    from db.database import connect, init_db, upsert_licitaciones, Licitacion
+
+    init_db()
+    with connect() as conn:
+        ...
+
+Ver también: ``db.users`` para operaciones de usuarios/auth (módulo hermano,
+no reexportado aquí).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
-from typing import Any as _Any
-
 # Re-exportar desde db.connection
-from config import settings
 from db.connection import (
-    _get_conn,
-    _return_conn,
     close_pool,
     connect,
+    connect_read,
     get_table_columns,
     is_turso_backend,
     now_utc,
     now_utc_iso,
+    safe_pragma,
     set_db_path_override,
 )
 
@@ -53,45 +101,6 @@ from db.upsert import (
     upsert_licitaciones,
     upsert_licitaciones_with_history,
 )
-
-
-def safe_pragma(conn: _Any, stmt: str) -> None:
-    """Wrapper de safe_pragma que usa is_turso_backend del módulo actual."""
-    if is_turso_backend():
-        return
-    try:
-        conn.execute(stmt)
-    except Exception:
-        pass
-
-
-@contextmanager
-def connect_read() -> Iterator[_Any]:
-    """Wrapper de connect_read que usa safe_pragma del módulo actual."""
-    replica_url = settings.TURSO_REPLICA_URL
-    if replica_url:
-        try:
-            import libsql_experimental as libsql_exp
-
-            conn = libsql_exp.connect(
-                replica_url,
-                auth_token=settings.TURSO_AUTH_TOKEN,
-            )
-            try:
-                yield conn
-            finally:
-                conn.close()
-            return
-        except ImportError:
-            pass
-    conn = _get_conn()
-    try:
-        safe_pragma(conn, "PRAGMA query_only = ON")
-        yield conn
-    finally:
-        safe_pragma(conn, "PRAGMA query_only = OFF")
-        _return_conn(conn)
-
 
 __all__ = [
     # connection

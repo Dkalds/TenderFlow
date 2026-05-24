@@ -75,6 +75,9 @@ htmlcov/
 # Editor config
 .vscode/
 
+# Claude worktrees (local-only)
+.claude/worktrees/
+
 # graphify - local-only files (graph.json, GRAPH_REPORT.md, graph.html are committed)
 graphify-out/manifest.json
 graphify-out/cost.json

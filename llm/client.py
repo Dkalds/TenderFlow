@@ -2,13 +2,19 @@
 
 Interfaz pública:
     stream_llm_response(question, docs, model, keywords) -> Iterator[str]
-    available_models() -> list[str]
     provider_for(model) -> str  # "openai" | "anthropic" | "unknown"
+
+Hardening (B11):
+    - Valida ``model`` contra ``AVAILABLE_MODELS`` — lanza ``ValueError`` si desconocido.
+    - Valida longitud de ``question`` (3-2000 chars) y cantidad de docs (<=50).
+    - ``_get_key`` loguea warning si el secreto no puede leerse, en vez de silenciar.
+    - Prometheus histogram ``llm_request_duration_seconds`` para latencia end-to-end.
 """
 
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -16,11 +22,13 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-# Mapeo prefijo → proveedor
+# ── Configuración de modelos ───────────────────────────────────────────────────
+
+# Prefijos para despacho de proveedor
 _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-")
 _ANTHROPIC_PREFIXES = ("claude-",)
 
-# Modelos mostrados en el selectbox del dashboard
+# Modelos mostrados en el selectbox del dashboard y aceptados por el endpoint /ask
 AVAILABLE_MODELS: list[str] = [
     "gpt-4o-mini",
     "gpt-4o",
@@ -28,6 +36,48 @@ AVAILABLE_MODELS: list[str] = [
     "claude-sonnet-4-5",
     "claude-haiku-4-5",
 ]
+
+# Límites de entrada
+_MAX_QUESTION_LEN = 2000
+_MIN_QUESTION_LEN = 3
+_MAX_DOCS = 50
+
+
+# ── Prometheus histogram (opcional — no falla si prometheus no está instalado) ─
+
+
+def _get_llm_histogram() -> Any:
+    """Devuelve el histogram Prometheus para latencia LLM, o un stub si no disponible."""
+    try:
+        from prometheus_client import Histogram
+
+        return Histogram(
+            "llm_request_duration_seconds",
+            "Latencia end-to-end de peticiones LLM (desde llamada hasta primer token)",
+            ["model", "provider", "status"],
+            buckets=[0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0],
+        )
+    except Exception:
+        return None
+
+
+# Inicialización lazy del histogram para evitar errores en imports tempranos
+_llm_histogram: Any = None
+_llm_histogram_init = False
+
+
+def _histogram() -> Any:
+    global _llm_histogram, _llm_histogram_init
+    if not _llm_histogram_init:
+        _llm_histogram_init = True
+        try:
+            _llm_histogram = _get_llm_histogram()
+        except Exception:
+            pass
+    return _llm_histogram
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 
 def provider_for(model: str) -> str:
@@ -40,16 +90,47 @@ def provider_for(model: str) -> str:
 
 
 def _get_key(env_var: str) -> str:
-    """Lee una clave de config.secrets con fallback a os.environ."""
+    """Lee una clave de config.secrets con fallback a os.environ.
+
+    Loguea warning si la lectura desde secrets falla (en vez de silenciarla),
+    para facilitar diagnóstico de problemas de configuración.
+    """
     try:
         from config.secrets import get_secret
 
         key = get_secret(env_var)
         if key:
             return key
-    except Exception:
-        pass
-    return os.environ.get(env_var, "")
+    except Exception as exc:
+        log.warning("llm_client.secret_read_failed", env_var=env_var, error=str(exc))
+    val = os.environ.get(env_var, "")
+    if not val:
+        log.debug("llm_client.api_key_empty", env_var=env_var)
+    return val
+
+
+def _validate_request(question: str, docs: list[dict[str, Any]], model: str) -> None:
+    """Valida los parámetros de entrada antes de llamar al proveedor.
+
+    Raises:
+        ValueError: Si alguno de los parámetros es inválido.
+    """
+    if model not in AVAILABLE_MODELS:
+        raise ValueError(
+            f"Modelo '{model}' no disponible. Modelos soportados: {', '.join(AVAILABLE_MODELS)}"
+        )
+    if not question or len(question) < _MIN_QUESTION_LEN:
+        raise ValueError(f"La pregunta debe tener al menos {_MIN_QUESTION_LEN} caracteres.")
+    if len(question) > _MAX_QUESTION_LEN:
+        raise ValueError(
+            f"La pregunta excede el máximo de {_MAX_QUESTION_LEN} caracteres "
+            f"(recibido: {len(question)})."
+        )
+    if len(docs) > _MAX_DOCS:
+        raise ValueError(f"Se proporcionaron {len(docs)} documentos; el máximo es {_MAX_DOCS}.")
+
+
+# ── API pública ────────────────────────────────────────────────────────────────
 
 
 def stream_llm_response(
@@ -61,23 +142,53 @@ def stream_llm_response(
     """Genera tokens LLM en streaming delegando al proveedor correcto.
 
     Args:
-        question: Pregunta del usuario.
+        question: Pregunta del usuario (3-2000 caracteres).
         docs: Lista de dicts con claves ``id_externo``, ``titulo``,
               ``organo_contratacion``, ``importe``, ``estado``, ``descripcion``.
-        model: Nombre del modelo (p.ej. ``gpt-4o-mini``, ``claude-sonnet-4-5``).
+              Máximo 50 documentos.
+        model: Nombre del modelo. Debe estar en ``AVAILABLE_MODELS``.
         keywords: Palabras clave para el extracto contextual.
 
     Yields:
         Fragmentos de texto del modelo a medida que llegan.
+
+    Raises:
+        ValueError: Si ``model`` no está en ``AVAILABLE_MODELS``, o si
+                    ``question`` está fuera de rango, o si hay demasiados docs.
     """
+    _validate_request(question, docs, model)
+
     p = provider_for(model)
-    if p == "openai":
-        from llm.providers.openai_provider import stream as _stream
+    t0 = time.monotonic()
+    status = "ok"
 
-        yield from _stream(question, docs, model, keywords, _get_key("OPENAI_API_KEY"))
-    elif p == "anthropic":
-        from llm.providers.anthropic_provider import stream as _stream
+    try:
+        if p == "openai":
+            from llm.providers.openai_provider import stream as _stream
 
-        yield from _stream(question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"))
-    else:
-        log.warning("llm_client.unknown_model", model=model)
+            yield from _stream(question, docs, model, keywords, _get_key("OPENAI_API_KEY"))
+        elif p == "anthropic":
+            from llm.providers.anthropic_provider import stream as _stream
+
+            yield from _stream(question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"))
+        else:
+            # No debería llegar aquí gracias a _validate_request, pero por seguridad:
+            raise ValueError(f"Proveedor desconocido para modelo '{model}'")
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        elapsed = time.monotonic() - t0
+        hist = _histogram()
+        if hist is not None:
+            try:
+                hist.labels(model=model, provider=p, status=status).observe(elapsed)
+            except Exception:
+                pass
+        log.debug(
+            "llm_client.stream_done",
+            model=model,
+            provider=p,
+            elapsed_ms=int(elapsed * 1000),
+            status=status,
+        )

@@ -110,18 +110,80 @@ def download_month(year: int, month: int, force: bool = False) -> Path | None:
 
 
 def iter_xml_files(zip_path: Path) -> Iterator[tuple[str, bytes]]:
-    """Itera sobre los XML contenidos en el ZIP descargado."""
+    """Itera sobre los XML contenidos en el ZIP descargado.
+
+    Protección contra ZIP bombs:
+    - Verifica ratio compresión (compress_size vs file_size > 100:1 → skip).
+    - Limita el número de entradas procesadas a 10 000 para evitar zip bombs
+      con millones de entradas vacías.
+    - Lee en streaming con un contador de bytes para no confiar en file_size
+      del header (puede ser spoofeado).
+    """
+    _MAX_ENTRIES = 10_000
+    _MAX_RATIO = 100  # si descomprimido/comprimido > 100, sospechoso
+    _CHUNK_SIZE = 65_536  # 64 KB por chunk
+
     with zipfile.ZipFile(zip_path) as zf:
-        for name in zf.namelist():
-            if name.lower().endswith(".atom") or name.lower().endswith(".xml"):
-                info = zf.getinfo(name)
-                if info.file_size > settings.MAX_XML_SIZE_BYTES:
+        entries = zf.namelist()
+        if len(entries) > _MAX_ENTRIES:
+            log.warning(
+                "zip_too_many_entries",
+                path=str(zip_path),
+                count=len(entries),
+                limit=_MAX_ENTRIES,
+            )
+            entries = entries[:_MAX_ENTRIES]
+
+        for name in entries:
+            if not (name.lower().endswith(".atom") or name.lower().endswith(".xml")):
+                continue
+
+            info = zf.getinfo(name)
+
+            # Comprobar ratio de compresión usando el tamaño comprimido real
+            # (no el file_size del header, que puede ser spoofeado)
+            if info.compress_size > 0 and info.file_size > 0:
+                ratio = info.file_size / info.compress_size
+                if ratio > _MAX_RATIO:
                     log.warning(
-                        "zip_member_too_large",
+                        "zip_member_suspicious_ratio",
                         name=name,
+                        compress_size=info.compress_size,
                         file_size=info.file_size,
-                        limit=settings.MAX_XML_SIZE_BYTES,
+                        ratio=round(ratio, 1),
+                        limit=_MAX_RATIO,
                     )
                     continue
-                with zf.open(name) as f:
-                    yield name, f.read()
+
+            # Verificar tamaño declarado en header (primera línea de defensa)
+            if info.file_size > settings.MAX_XML_SIZE_BYTES:
+                log.warning(
+                    "zip_member_too_large",
+                    name=name,
+                    file_size=info.file_size,
+                    limit=settings.MAX_XML_SIZE_BYTES,
+                )
+                continue
+
+            # Leer en streaming contando bytes reales (segunda línea de defensa)
+            chunks: list[bytes] = []
+            total_read = 0
+            with zf.open(name) as f:
+                while True:
+                    chunk = f.read(_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    total_read += len(chunk)
+                    if total_read > settings.MAX_XML_SIZE_BYTES:
+                        log.warning(
+                            "zip_member_exceeded_during_read",
+                            name=name,
+                            read_so_far=total_read,
+                            limit=settings.MAX_XML_SIZE_BYTES,
+                        )
+                        chunks = []
+                        break
+                    chunks.append(chunk)
+
+            if chunks:
+                yield name, b"".join(chunks)

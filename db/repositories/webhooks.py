@@ -77,7 +77,7 @@ class WebhookRepository:
         params.append(webhook_id)
         with connect() as c:
             cur = c.execute(
-                f"UPDATE webhooks SET {', '.join(sets)} WHERE id = ?",  # noqa: S608
+                "UPDATE webhooks SET " + ", ".join(sets) + " WHERE id = ?",
                 tuple(params),
             )
             return cur.rowcount > 0

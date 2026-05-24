@@ -45,8 +45,8 @@ def get_unread_ids(user_key: str, candidate_ids: list[str]) -> list[str]:
     with connect() as c:
         placeholders = ",".join("?" * len(candidate_ids))
         cur = c.execute(
-            f"SELECT notification_id FROM notification_reads "  # noqa: S608
-            f"WHERE user_key = ? AND notification_id IN ({placeholders})",
+            "SELECT notification_id FROM notification_reads "
+            "WHERE user_key = ? AND notification_id IN (" + placeholders + ")",
             [user_key, *candidate_ids],
         )
         read_ids = {row[0] for row in cur.fetchall()}

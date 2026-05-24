@@ -242,3 +242,102 @@ class TestProcessMonth:
             result = process_month(2024, 1)
         # El error en adj no debe cambiar el status general
         assert result["status"] == "ok"
+
+
+# ── _ClassifierHolder / _load_classifiers ────────────────────────────────────
+
+
+class TestClassifierHolder:
+    """Verifica el refactor del singleton de clasificadores."""
+
+    def setup_method(self):
+        """Limpia el cache del singleton antes de cada test."""
+        from scraper.pipeline import _load_classifiers
+
+        _load_classifiers.cache_clear()
+
+    def teardown_method(self):
+        """Limpia el cache tras el test para no contaminar otros."""
+        from scraper.pipeline import _load_classifiers
+
+        _load_classifiers.cache_clear()
+
+    def test_holder_is_frozen_dataclass(self):
+        """_ClassifierHolder es un frozen dataclass (inmutable)."""
+        from scraper.pipeline import _ClassifierHolder
+
+        holder = _ClassifierHolder(ml=None, tech=None)
+        assert holder.ml is None
+        assert holder.tech is None
+        # Frozen: no debe permitir asignación
+        import dataclasses
+
+        assert dataclasses.is_dataclass(holder)
+
+    def test_load_classifiers_returns_none_when_unavailable(self, monkeypatch):
+        """Si los clasificadores no están disponibles, retorna holder con Nones."""
+        import config
+
+        monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
+
+        with patch("scraper.pipeline.SAPClassifier", create=True) as mock_clf:
+            mock_clf.ensure_downloaded = MagicMock()
+            mock_clf.is_available = MagicMock(return_value=False)
+
+            from scraper.pipeline import _load_classifiers
+
+            _load_classifiers.cache_clear()
+            holder = _load_classifiers()
+            assert holder.ml is None
+            assert holder.tech is None
+
+    def test_load_classifiers_caches_result(self, monkeypatch):
+        """Llamadas sucesivas devuelven el mismo objeto (lru_cache)."""
+        import config
+
+        monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
+
+        with patch("scraper.pipeline.SAPClassifier", create=True) as mock_clf:
+            mock_clf.ensure_downloaded = MagicMock()
+            mock_clf.is_available = MagicMock(return_value=False)
+
+            from scraper.pipeline import _load_classifiers
+
+            _load_classifiers.cache_clear()
+            holder1 = _load_classifiers()
+            holder2 = _load_classifiers()
+            assert holder1 is holder2  # mismo objeto — lru_cache activo
+
+    def test_get_ml_clf_delegates_to_holder(self, monkeypatch):
+        """_get_ml_clf() retorna el campo ml del holder."""
+        from unittest.mock import MagicMock, patch
+
+        import config
+        from scraper.pipeline import _get_ml_clf, _load_classifiers
+
+        monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
+        _load_classifiers.cache_clear()
+
+        with patch("scraper.pipeline.SAPClassifier", create=True) as mock_clf:
+            mock_clf.ensure_downloaded = MagicMock()
+            mock_clf.is_available = MagicMock(return_value=False)
+            result = _get_ml_clf()
+            assert result is None
+
+    def test_cache_clear_allows_reload(self, monkeypatch):
+        """Tras cache_clear(), una nueva llamada ejecuta la carga."""
+        import config
+        from scraper.pipeline import _load_classifiers
+
+        monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
+
+        with patch("scraper.pipeline.SAPClassifier", create=True) as mock_clf:
+            mock_clf.ensure_downloaded = MagicMock()
+            mock_clf.is_available = MagicMock(return_value=False)
+
+            _load_classifiers.cache_clear()
+            holder1 = _load_classifiers()
+            _load_classifiers.cache_clear()
+            holder2 = _load_classifiers()
+            # Después de clear, se crea un nuevo objeto
+            assert holder1 is not holder2

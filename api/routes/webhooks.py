@@ -194,7 +194,9 @@ async def create(
             log.info("webhook_create_idempotent_hit", key=idempotency_key[:16])
             return WebhookCreateResponse(**cached)
 
-    webhook_id, secret = _repo.create(name=body.name, url=body.url, event_types=body.event_types)
+    webhook_id, secret = await run_db(
+        _repo.create, name=body.name, url=body.url, event_types=body.event_types
+    )
     log_event(
         event_type="webhook.created",
         user_key=ctx.key_hash[:8],
@@ -317,6 +319,7 @@ async def ping(
     ctx: AuthContext = Depends(require_scope("webhooks:write")),
 ) -> dict:
     """Envía un payload de prueba al URL del webhook para verificar conectividad."""
+    import asyncio as _asyncio
     import hashlib
     import hmac as _hmac
     import json
@@ -340,7 +343,8 @@ async def ping(
     sig = _hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
 
     try:
-        resp = requests.post(
+        resp = await _asyncio.to_thread(
+            requests.post,
             str(wh["url"]),
             data=payload,
             headers={

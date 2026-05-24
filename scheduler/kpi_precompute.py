@@ -373,33 +373,41 @@ if __name__ == "__main__":
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
     if cmd == "run":
-        print("Calculando KPIs...")
+        log.info("kpi_precompute.starting")
         result = run_kpi_precompute()
-        print(f"  Métricas calculadas: {result['n_metricas']}")
-        print(f"  Tiempo: {result['elapsed_ms']}ms")
+        log.info(
+            "kpi_precompute.done",
+            n_metricas=result["n_metricas"],
+            elapsed_ms=result["elapsed_ms"],
+        )
     elif cmd == "--latest":
         from db.database import init_db
 
         init_db()
         data = get_all_latest()
         if not data:
-            print(
-                "No hay snapshots disponibles. Ejecuta primero: python -m scheduler.kpi_precompute"
-            )
+            log.warning("kpi_precompute.no_snapshots")
         else:
-            print(f"Snapshot de: {data.get('_computed_at')}")
+            log.info("kpi_precompute.latest_snapshot", computed_at=data.get("_computed_at"))
             for k, v in data.items():
                 if k != "_computed_at":
-                    print(f"  {k}: {v}")
+                    log.info("kpi_precompute.metric", key=k, value=v)
     elif cmd == "--export-parquet":
         out = sys.argv[2] if len(sys.argv) > 2 else "data/parquet"
-        print(f"Exportando agregados Parquet → {out} ...")
+        log.info("kpi_precompute.export_parquet.starting", output_dir=out)
         result = run_kpi_export_parquet(output_dir=out)
         exported = result.get("exported", [])
-        print(f"  Ficheros exportados: {len(exported)}")
+        log.info(
+            "kpi_precompute.export_parquet.done",
+            n_files=len(exported),
+            elapsed_ms=result["elapsed_ms"],
+        )
         for p in exported:
-            print(f"    {p}")
-        print(f"  Tiempo: {result['elapsed_ms']}ms")
+            log.info("kpi_precompute.export_parquet.file", path=p)
     else:
-        print("Uso: python -m scheduler.kpi_precompute [run|--latest|--export-parquet [dir]]")
+        log.error(
+            "kpi_precompute.unknown_command",
+            cmd=cmd,
+            usage="python -m scheduler.kpi_precompute [run|--latest|--export-parquet [dir]]",
+        )
         sys.exit(1)

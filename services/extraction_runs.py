@@ -31,8 +31,7 @@ def load_runs(limit: int = 200) -> list[dict[str, Any]]:
     """Carga las últimas extraction runs (columnas completas para observabilidad)."""
     with connect_read() as c:
         cur = c.execute(
-            f"SELECT {_FULL_COLUMNS} FROM extraction_runs "  # noqa: S608
-            "ORDER BY started_at DESC LIMIT ?",
+            "SELECT " + _FULL_COLUMNS + " FROM extraction_runs ORDER BY started_at DESC LIMIT ?",
             (limit,),
         )
         return rows_to_dicts(cur)
@@ -42,8 +41,7 @@ def load_calidad_runs(limit: int = 90) -> list[dict[str, Any]]:
     """Carga runs con columnas de calidad (subconjunto para calidad_datos)."""
     with connect_read() as c:
         cur = c.execute(
-            f"SELECT {_CALIDAD_COLUMNS} FROM extraction_runs "  # noqa: S608
-            "ORDER BY started_at DESC LIMIT ?",
+            "SELECT " + _CALIDAD_COLUMNS + " FROM extraction_runs ORDER BY started_at DESC LIMIT ?",
             (limit,),
         )
         return rows_to_dicts(cur)

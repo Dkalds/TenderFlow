@@ -21,7 +21,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
@@ -61,7 +63,7 @@ def hash_api_key(raw: str) -> str:
     """HMAC-SHA256 (con server secret si configurado) o SHA-256 plain."""
     from config import settings
 
-    secret = settings.API_HMAC_SECRET
+    secret = settings.API_HMAC_SECRET.get_secret_value()
     if secret:
         return hmac.new(secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -143,7 +145,7 @@ def _update_last_used(key_id: int) -> None:
     auth_service.update_last_used(key_id)
 
 
-def require_scope(scope: str):
+def require_scope(scope: str) -> Callable[..., Coroutine[Any, Any, AuthContext]]:
     """Factory de dependencias que require un scope específico.
 
     Uso::

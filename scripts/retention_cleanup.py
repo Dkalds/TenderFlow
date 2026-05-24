@@ -1,4 +1,7 @@
-"""Política de retención de datos — purga registros antiguos de tablas de soporte.
+"""Política de retención de datos — script CLI.
+
+La lógica de retención vive en ``scheduler.retention``. Este script es el
+entrypoint CLI para ejecución manual o desde cron externo.
 
 Tablas afectadas (NO toca licitaciones ni adjudicaciones):
     - extraction_runs      — runs del pipeline        (default: >90 días)
@@ -20,109 +23,14 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+# Asegurar que el root del proyecto está en sys.path para importación standalone
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
-def _cutoff_iso(days: int) -> str:
-    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
-
-
-def _count_and_delete(conn, table: str, date_col: str, cutoff: str, *, apply: bool) -> int:
-    cur = conn.execute(
-        f"SELECT COUNT(*) FROM {table} WHERE {date_col} < ?",  # noqa: S608
-        (cutoff,),
-    )
-    count = cur.fetchone()[0]
-    if apply and count > 0:
-        conn.execute(
-            f"DELETE FROM {table} WHERE {date_col} < ?",  # noqa: S608
-            (cutoff,),
-        )
-    return int(count)
-
-
-def run_retention(
-    *,
-    runs_days: int,
-    audit_days: int,
-    dlq_days: int,
-    history_days: int,
-    access_days: int,
-    idempotency_days: int = 1,
-    webhook_deliveries_days: int = 90,
-    apply: bool,
-) -> dict[str, int]:
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from db.database import connect
-
-    results: dict[str, int] = {}
-
-    rules = [
-        ("extraction_runs", "started_at", runs_days),
-        ("audit_log", "created_at", audit_days),
-        ("licitaciones_history", "changed_at", history_days),
-        ("access_log", "logged_in_at", access_days),
-        ("idempotency_keys", "created_at", idempotency_days),
-        ("webhook_deliveries", "created_at", webhook_deliveries_days),
-    ]
-
-    with connect() as conn:
-        for table, col, days in rules:
-            cutoff = _cutoff_iso(days)
-            try:
-                n = _count_and_delete(conn, table, col, cutoff, apply=apply)
-                results[table] = n
-                verb = "purgados" if apply else "a purgar"
-                print(f"  {table}: {n:,} registros {verb} (>{days}d, antes de {cutoff[:10]})")
-            except Exception as exc:
-                print(f"  {table}: ERROR — {exc}", file=sys.stderr)
-                results[table] = -1
-
-        # DLQ: solo resueltos
-        cutoff_dlq = _cutoff_iso(dlq_days)
-        try:
-            cur = conn.execute(
-                "SELECT COUNT(*) FROM failed_extractions "
-                "WHERE resolved_at IS NOT NULL AND resolved_at < ?",
-                (cutoff_dlq,),
-            )
-            n_dlq = cur.fetchone()[0]
-            if apply and n_dlq > 0:
-                conn.execute(
-                    "DELETE FROM failed_extractions "
-                    "WHERE resolved_at IS NOT NULL AND resolved_at < ?",
-                    (cutoff_dlq,),
-                )
-            results["failed_extractions"] = int(n_dlq)
-            verb = "purgados" if apply else "a purgar"
-            print(f"  failed_extractions (resueltos): {n_dlq:,} registros {verb} (>{dlq_days}d)")
-        except Exception as exc:
-            print(f"  failed_extractions: ERROR — {exc}", file=sys.stderr)
-            results["failed_extractions"] = -1
-
-        # rate_limits: purgar entradas expiradas
-        try:
-            from db.rate_limits import cleanup_expired
-
-            if apply:
-                n_rl = cleanup_expired()
-            else:
-                import time as _time
-
-                now_ts = _time.time()
-                cur_rl = conn.execute(
-                    "SELECT COUNT(*) FROM rate_limits WHERE reset_at < ?", (now_ts,)
-                )
-                n_rl = cur_rl.fetchone()[0]
-            results["rate_limits"] = int(n_rl)
-            verb = "purgadas" if apply else "a purgar"
-            print(f"  rate_limits (expiradas): {n_rl:,} entradas {verb}")
-        except Exception as exc:
-            print(f"  rate_limits: ERROR — {exc}", file=sys.stderr)
-            results["rate_limits"] = -1
-
-    return results
+from scheduler.retention import run_retention  # noqa: E402
 
 
 def main() -> int:

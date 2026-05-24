@@ -6,13 +6,23 @@ orden ascendente y la versión actual queda registrada en ``schema_version``.
 Rollbacks: cada versión puede tener asociada una función ``down`` en
 ``ROLLBACKS`` que deshace los cambios. Se ejecutan en orden descendente.
 
+.. deprecated::
+   **Este módulo gestiona v1-v32 (sistema legado)**. El sistema de migraciones
+   canónico del proyecto es **Alembic** (``db/alembic/``). Desde v22 en
+   adelante, todas las migraciones nuevas se crean en Alembic.
+
+   Plan de consolidación:
+   - v1-v13: cubiertos por el baseline Alembic ``baseline001``
+   - v14-v32: cubiertos por las migraciones Alembic v14-v22+
+   - Este módulo se mantiene en modo lectura/compatibilidad para bases de datos
+     existentes que todavía lo usen. No añadir nuevas migraciones aquí.
+
+   Para nuevas migraciones: ``alembic revision --autogenerate -m "descripcion"``
+
 .. note::
 
-   Este sistema gestiona las migraciones **v1-v13** (baseline). Las
-   migraciones nuevas (v14+) se gestionan con **Alembic** (ver
-   ``db/alembic/``). Para bases de datos existentes, ejecutar
-   ``apply_pending()`` antes de ``alembic stamp head`` y luego
-   ``alembic upgrade head``.
+   Para bases de datos existentes sin Alembic, ejecutar ``apply_pending()``
+   antes de ``alembic stamp head`` y luego ``alembic upgrade head``.
 """
 
 from __future__ import annotations

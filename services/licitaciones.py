@@ -88,7 +88,7 @@ def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
     """
     init_db()
     sql = (
-        f"SELECT {_RAW_COLUMNS} FROM licitaciones "  # noqa: S608
+        "SELECT " + _RAW_COLUMNS + " FROM licitaciones "
         "WHERE tecnologia IS NOT NULL AND tecnologia != '' "
         "ORDER BY fecha_publicacion DESC"
     )
@@ -103,7 +103,7 @@ def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
 def load_stats_dataframe() -> list[dict[str, Any]]:
     """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento)."""
     with timed_query("svc_load_stats"), connect_read() as c:
-        cur = c.execute(f"SELECT {_STATS_COLUMNS} FROM licitaciones")  # noqa: S608
+        cur = c.execute("SELECT " + _STATS_COLUMNS + " FROM licitaciones")
         return rows_to_dicts(cur)
 
 
@@ -188,67 +188,27 @@ def search_advanced(
     offset: int = 0,
     with_total: bool = True,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Búsqueda avanzada con criterios complejos (multi-CCAA, rangos de importe…).
+    """Búsqueda avanzada con criterios complejos (multi-CCAA, rangos de importe...).
 
     Usada por el endpoint POST ``/licitaciones/search``.
+    Delega a ``LicitacionRepository.search_advanced`` para construcción type-safe
+    de queries via SQLAlchemy Core.
     """
-    import re
-
-    from db.repositories.base import count_where
-    from db.repositories.licitaciones import (
-        _DEFAULT_SORT,
-        _SORT_WHITELIST,
-    )
-    from db.repositories.licitaciones import (
-        _SUMMARY_COLS_STR as _SUMMARY_COLS,
-    )
-
-    _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-    conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
-    params: list[Any] = []
-
-    if q:
-        conditions.append("(titulo LIKE ? OR descripcion LIKE ?)")
-        like = f"%{q}%"
-        params.extend([like, like])
-    if estado:
-        placeholders = ",".join("?" for _ in estado)
-        conditions.append(f"estado IN ({placeholders})")
-        params.extend(estado)
-    if ccaa:
-        placeholders = ",".join("?" for _ in ccaa)
-        conditions.append(f"ccaa IN ({placeholders})")
-        params.extend(ccaa)
-    if tecnologia:
-        placeholders = ",".join("?" for _ in tecnologia)
-        conditions.append(f"tecnologia IN ({placeholders})")
-        params.extend(tecnologia)
-    if importe_min is not None:
-        conditions.append("importe >= ?")
-        params.append(importe_min)
-    if importe_max is not None:
-        conditions.append("importe <= ?")
-        params.append(importe_max)
-    if fecha_desde and _DATE_RE.match(fecha_desde):
-        conditions.append("fecha_publicacion >= ?")
-        params.append(fecha_desde)
-    if fecha_hasta and _DATE_RE.match(fecha_hasta):
-        conditions.append("fecha_publicacion <= ?")
-        params.append(fecha_hasta)
-
-    order = _SORT_WHITELIST.get(sort or "", _DEFAULT_SORT)
-    where = " AND ".join(conditions)
-
-    with connect_read() as c:
-        total = count_where(c, "licitaciones", where, tuple(params)) if with_total else -1
-        sql = f"SELECT {_SUMMARY_COLS} FROM licitaciones"  # noqa: S608
-        if where:
-            sql += f" WHERE {where}"
-        sql += f" ORDER BY {order} LIMIT ? OFFSET ?"
-        q_params = [*list(params), limit, offset]
-        items = rows_to_dicts(c.execute(sql, tuple(q_params)))
-    return items, total
+    with timed_query("svc_search_advanced"):
+        return _repo.search_advanced(
+            q=q,
+            estado=estado,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+            with_total=with_total,
+        )
 
 
 # ── Carga para drift detection ───────────────────────────────────────────

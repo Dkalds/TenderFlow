@@ -47,10 +47,6 @@ _MAX_LOCKOUT_SECONDS = 60
 _DB_MAX_ATTEMPTS = 5
 _DB_WINDOW_SECONDS = 300.0
 
-# Tiempo máximo de validez del state OAuth (10 minutos)
-_OAUTH_STATE_MAX_AGE_SECONDS = 600
-_SEEN_OAUTH_NONCES: dict[str, float] = {}
-
 """Flujos de autenticación:"""
 
 
@@ -69,7 +65,7 @@ def _client_key() -> str:
 
 def oauth_configured() -> bool:
     """True si las credenciales de Google OAuth están configuradas."""
-    return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET)
+    return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET.get_secret_value())
 
 
 def _audit(action: str, detail: str = "") -> None:
@@ -80,7 +76,11 @@ def _audit(action: str, detail: str = "") -> None:
         from db.audit import log_action
 
         # user_key opaco basado en la contraseña o id de sesión
-        seed = settings.DASHBOARD_PASSWORD_HASH or settings.DASHBOARD_PASSWORD or "anonymous"
+        seed = (
+            settings.DASHBOARD_PASSWORD_HASH
+            or settings.DASHBOARD_PASSWORD.get_secret_value()
+            or "anonymous"
+        )
         user_key = hashlib.sha256(seed.encode()).hexdigest()[:16]
         session_hash = _client_key()
         log_action(user_key, session_hash, action, detail)
@@ -96,9 +96,12 @@ def _get_password() -> str:
     La verificación real la hace :func:`_verify_password`.
     """
     try:
-        return st.secrets.get("DASHBOARD_PASSWORD", "") or settings.DASHBOARD_PASSWORD
+        return (
+            st.secrets.get("DASHBOARD_PASSWORD", "")
+            or settings.DASHBOARD_PASSWORD.get_secret_value()
+        )
     except FileNotFoundError:
-        return settings.DASHBOARD_PASSWORD
+        return settings.DASHBOARD_PASSWORD.get_secret_value()
 
 
 def _has_password_configured() -> bool:
@@ -201,7 +204,7 @@ def _handle_oauth_callback() -> bool:
             data={
                 "code": code,
                 "client_id": settings.GOOGLE_CLIENT_ID,
-                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
                 "redirect_uri": settings.OAUTH_REDIRECT_URI,
                 "grant_type": "authorization_code",
             },

@@ -79,6 +79,7 @@ Guía operativa completa para agentes trabajando en `licitaciones-sap`. Compleme
 | Decisión | Regla |
 |---|---|
 | ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md)). En `scraper/ml_*` se permite SQL manual (S608 ya suppressed). |
+| ¿Cómo importar desde `db/`? | **Siempre** `from db.database import X` (fachada única). Nunca `from db.connection import ...` ni `from db.upsert import ...` directamente desde código fuera de `db/`. Así los importadores quedan aislados de la organización interna. Ver docstring de `db/database.py` para el catálogo completo de símbolos por submódulo. |
 | ¿Servicio vs repositorio directo en la ruta? | Siempre vía servicio. La ruta solo orquesta auth, validación, serialización. |
 | ¿Cache en dashboard? | `@st.cache_data` por defecto. Invalidación cross-process vía `shared/cache_signal.py` (señal scraper → dashboard). |
 | ¿Cómo añado settings? | Campo nuevo en `config/settings.py` con `Field(...)` + default seguro + entry en `.env.example`. Nunca leer `os.environ` directo. |

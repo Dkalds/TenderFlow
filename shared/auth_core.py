@@ -9,6 +9,11 @@ dashboard y la API REST:
 
 Al no importar ``streamlit``, puede usarse de forma segura en tests unitarios,
 tareas del scheduler, y cualquier módulo sin contexto de Streamlit.
+
+**Nonce store para anti-replay OAuth**:
+Por defecto usa un ``cachetools.TTLCache`` en memoria (proceso único, testing).
+Si ``REDIS_URL`` está configurado, usa Redis compartido con TTL automático, lo
+que evita replay attacks en despliegues multi-proceso/multi-contenedor.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ import hashlib
 import hmac
 import os
 import time
+from typing import Any, Protocol
 
 from observability.logging import get_logger
 
@@ -25,7 +31,131 @@ log = get_logger(__name__)
 
 # Tiempo máximo de validez del state OAuth (10 minutos)
 _OAUTH_STATE_MAX_AGE_SECONDS = 600
-_SEEN_OAUTH_NONCES: dict[str, float] = {}
+
+
+# ---------------------------------------------------------------------------
+# Nonce store — abstracción sobre TTLCache (in-process) o Redis (multi-process)
+# ---------------------------------------------------------------------------
+
+
+class _NonceStore(Protocol):
+    """Protocolo mínimo del almacén de nonces anti-replay."""
+
+    def contains(self, nonce: str) -> bool:
+        """Devuelve True si el nonce ya fue visto (y no expiró)."""
+        ...
+
+    def add(self, nonce: str, ttl_seconds: int) -> None:
+        """Registra el nonce con tiempo de vida *ttl_seconds*."""
+        ...
+
+
+class _TTLCacheNonceStore:
+    """Almacén en memoria usando cachetools.TTLCache (single-process).
+
+    Máximo 10 000 nonces concurrentes — cubre cualquier carga razonable.
+    Si cachetools no está instalado, cae a dict con limpieza lazy.
+    """
+
+    def __init__(self, ttl: int = _OAUTH_STATE_MAX_AGE_SECONDS) -> None:
+        self._ttl = ttl
+        try:
+            from cachetools import TTLCache  # type: ignore[import-untyped]
+
+            self._cache: Any = TTLCache(maxsize=10_000, ttl=ttl)
+            self._use_ttlcache = True
+        except ImportError:
+            # Fallback: dict con limpieza lazy (comportamiento previo)
+            self._cache = {}
+            self._use_ttlcache = False
+
+    def contains(self, nonce: str) -> bool:
+        if self._use_ttlcache:
+            return nonce in self._cache
+        # Limpieza lazy
+        now = time.time()
+        self._cache = {k: v for k, v in self._cache.items() if v > now}
+        return nonce in self._cache
+
+    def add(self, nonce: str, ttl_seconds: int) -> None:
+        if self._use_ttlcache:
+            self._cache[nonce] = True
+        else:
+            self._cache[nonce] = time.time() + ttl_seconds
+
+
+class _RedisNonceStore:
+    """Almacén Redis con TTL automático — correcto en despliegues multi-proceso.
+
+    Usa SETNX (set-if-not-exists) + EXPIRE para garantizar atomicidad: si dos
+    workers reciben el mismo nonce en paralelo, solo uno podrá registrarlo.
+    """
+
+    def __init__(self, redis_url: str) -> None:
+        import redis as _redis
+
+        self._client = _redis.Redis.from_url(
+            redis_url,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+            decode_responses=True,
+        )
+        self._prefix = "oauth_nonce:"
+
+    def contains(self, nonce: str) -> bool:
+        try:
+            return bool(self._client.exists(f"{self._prefix}{nonce}"))
+        except Exception:
+            log.warning("redis_nonce_store_read_error", exc_info=True)
+            return False  # fail-open: si Redis falla, no bloquear el login
+
+    def add(self, nonce: str, ttl_seconds: int) -> None:
+        try:
+            key = f"{self._prefix}{nonce}"
+            # SETNX + EXPIRE atómico: si la key ya existe, set_nx devuelve False
+            self._client.set(key, "1", nx=True, ex=ttl_seconds)
+        except Exception:
+            log.warning("redis_nonce_store_write_error", exc_info=True)
+
+
+# Singleton del store — se inicializa una vez por proceso en la primera llamada.
+_nonce_store: _NonceStore | None = None
+
+
+def _get_nonce_store() -> _NonceStore:
+    """Devuelve el almacén de nonces adecuado según la configuración."""
+    global _nonce_store
+    if _nonce_store is not None:
+        return _nonce_store
+
+    try:
+        from config import settings as _settings
+
+        redis_url = getattr(_settings, "REDIS_URL", "")
+        if redis_url:
+            try:
+                store: _NonceStore = _RedisNonceStore(redis_url)
+                log.info("oauth_nonce_store", backend="redis")
+                _nonce_store = store
+                return _nonce_store
+            except Exception:
+                log.warning(
+                    "oauth_nonce_store_redis_fallback",
+                    hint="Redis no disponible; usando TTLCache en memoria.",
+                    exc_info=True,
+                )
+    except Exception:
+        pass
+
+    _nonce_store = _TTLCacheNonceStore()
+    log.debug("oauth_nonce_store", backend="ttlcache")
+    return _nonce_store
+
+
+def _reset_nonce_store() -> None:
+    """Resetea el singleton del nonce store. Uso exclusivo en tests."""
+    global _nonce_store
+    _nonce_store = None
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +202,7 @@ def verify_password(candidate: str, pw_hash: str) -> bool:
     try:
         import bcrypt
 
-        return bcrypt.checkpw(candidate.encode("utf-8"), pw_hash.encode("utf-8"))
+        return bool(bcrypt.checkpw(candidate.encode("utf-8"), pw_hash.encode("utf-8")))
     except Exception:
         log.warning("bcrypt_verify_failed", exc_info=True)
         return False
@@ -94,7 +224,7 @@ def get_signing_key() -> bytes:
     if settings.SIGNING_KEY.get_secret_value():
         return settings.SIGNING_KEY.get_secret_value().encode()
     return hashlib.sha256(
-        b"oauth_state_signing_v1:" + settings.GOOGLE_CLIENT_SECRET.encode()
+        b"oauth_state_signing_v1:" + settings.GOOGLE_CLIENT_SECRET.get_secret_value().encode()
     ).digest()
 
 
@@ -120,8 +250,12 @@ def verify_oauth_state(
 ) -> bool:
     """Verifica la firma y frescura de un state OAuth.
 
-    Returns True si el formato es válido, la firma HMAC coincide y el
-    timestamp no supera *max_age* segundos de antigüedad.
+    Returns True si el formato es válido, la firma HMAC coincide, el
+    timestamp no supera *max_age* segundos de antigüedad y el nonce no
+    ha sido visto antes (anti-replay).
+
+    El almacén de nonces es compartido entre procesos cuando REDIS_URL
+    está configurado, evitando ataques de replay en despliegues multi-proceso.
     """
     if not state:
         return False
@@ -135,12 +269,12 @@ def verify_oauth_state(
         return False
     if abs(time.time() - ts) > max_age:
         return False
-    now = time.time()
-    for seen_nonce, expires_at in list(_SEEN_OAUTH_NONCES.items()):
-        if expires_at <= now:
-            _SEEN_OAUTH_NONCES.pop(seen_nonce, None)
-    if nonce in _SEEN_OAUTH_NONCES:
+
+    store = _get_nonce_store()
+    if store.contains(nonce):
+        log.warning("oauth_nonce_replay_detected", nonce=nonce[:8] + "...")
         return False
+
     payload = f"{nonce}:{timestamp_str}"
     expected = hmac.new(
         get_signing_key(),
@@ -149,7 +283,7 @@ def verify_oauth_state(
     ).hexdigest()[:32]
     valid = hmac.compare_digest(signature, expected)
     if valid:
-        _SEEN_OAUTH_NONCES[nonce] = now + max_age
+        store.add(nonce, max_age)
     return valid
 
 
@@ -233,7 +367,7 @@ _GOOGLE_ISS_VALUES = frozenset({"accounts.google.com", "https://accounts.google.
 
 
 def validate_google_id_token(
-    id_token_claims: dict,
+    id_token_claims: dict[str, object],
     *,
     audience: str,
     require_email_verified: bool = True,
@@ -277,7 +411,7 @@ def validate_google_id_token(
         log.warning("google_id_token_missing_exp")
         return False
     try:
-        if int(exp) + 60 < int(time.time()):
+        if int(str(exp)) + 60 < int(time.time()):
             log.warning("google_id_token_expired", exp=exp)
             return False
     except (TypeError, ValueError):

@@ -124,7 +124,9 @@ def render(ctx: PageContext) -> None:
 
     from config import settings as _cfg
 
-    _seed_v = _cfg.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
+    _seed_v = _cfg.DASHBOARD_PASSWORD.get_secret_value() or os.environ.get(
+        "COMPUTERNAME", "default"
+    )
     _ukey_v = hashlib.sha256(_seed_v.encode()).hexdigest()[:16]
     try:
         from db.notifications import get_unread_ids
@@ -465,7 +467,7 @@ def render(ctx: PageContext) -> None:
                         from dashboard.auth import get_current_user
                         from db.watchlist import WatchlistEntry, add_entry
 
-                        _seed = settings.DASHBOARD_PASSWORD or os.environ.get(
+                        _seed = settings.DASHBOARD_PASSWORD.get_secret_value() or os.environ.get(
                             "COMPUTERNAME", "default"
                         )
                         _ukey = hashlib.sha256(_seed.encode()).hexdigest()[:16]

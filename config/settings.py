@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     )
 
     # ── Entorno ──────────────────────────────────────────────────────────
-    ENV: Literal["dev", "prod"] = "dev"
+    ENV: Literal["dev", "staging", "prod"] = "dev"
 
     # ── Rutas ────────────────────────────────────────────────────────────
     DATA_DIR: Path = _DEFAULT_DATA_DIR
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     DOWNLOADS_DIR: Path | None = None
 
     # ── Dashboard ────────────────────────────────────────────────────────
-    DASHBOARD_PASSWORD: str = ""
+    DASHBOARD_PASSWORD: SecretStr = SecretStr("")
     DASHBOARD_PASSWORD_HASH: str = ""  # bcrypt hash — requerido en ENV=prod
     DASHBOARD_CACHE_TTL: int = 300
 
@@ -58,7 +58,9 @@ class Settings(BaseSettings):
     # ── ML Multi-Tecnología (OneVsRest sobre la columna `tecnologia`) ─────
     # Master switch: si False, el pipeline y el scheduler no usan el clasificador
     # multi-tecnología; ml_proba (=P(SAP)) sigue gobernando el gating.
-    ML_TECH_ENABLED: bool = False
+    # Activado en producción (2026-05-23) — requiere TechnologyClassifier en disco.
+    # Si el modelo no existe, el pipeline cae silenciosamente a modo keywords.
+    ML_TECH_ENABLED: bool = True
     # Prácticas activas para gating extendido. Por defecto sólo SAP, lo que
     # equivale al comportamiento histórico (no se aceptan licitaciones por
     # otras tecnologías hasta que la práctica correspondiente se active).
@@ -79,7 +81,8 @@ class Settings(BaseSettings):
     # Precisión mínima exigida al elegir threshold del tier frágil.
     ML_TECH_FRAGILE_MIN_PRECISION: float = 0.70
     # Reentrenamiento semanal automático (cron en scheduler.loop).
-    ML_TECH_AUTO_RETRAIN: bool = False
+    # Activado (2026-05-23) — si hay ≥50 nuevos feedbacks, reentrenar y evaluar.
+    ML_TECH_AUTO_RETRAIN: bool = True
     # Si True, train() ejecuta RandomizedSearchCV para buscar hiperparámetros.
     ML_TUNE_ON_TRAIN: bool = False
     # Si True, usa sentence-transformers embeddings como feature adicional en el
@@ -101,7 +104,7 @@ class Settings(BaseSettings):
 
     # ── OAuth ────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_CLIENT_SECRET: SecretStr = SecretStr("")
     OAUTH_REDIRECT_URI: str = "http://localhost:8501"
     OAUTH_ALLOWED_EMAILS: str = ""
     OAUTH_ALLOWED_DOMAINS: str = ""
@@ -117,13 +120,13 @@ class Settings(BaseSettings):
 
     # Secreto HMAC para hashear API keys (32+ chars). Si vacío usa SHA-256 plain.
     # Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"
-    API_HMAC_SECRET: str = ""
+    API_HMAC_SECRET: SecretStr = SecretStr("")
 
     SIGNING_KEY: SecretStr = SecretStr("")
 
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
-    TURSO_AUTH_TOKEN: str = ""
+    TURSO_AUTH_TOKEN: SecretStr = SecretStr("")
     TURSO_LOCAL_DB: Path | None = None
     # URL de la réplica de lectura Turso (opcional). Si se configura, las
     # consultas SELECT se enrutan a la réplica para reducir latencia.
@@ -180,6 +183,9 @@ class Settings(BaseSettings):
     # Si se deja vacío se usa cache en memoria por proceso (default).
     # Formato: redis://[:password@]host[:port][/db]
     REDIS_URL: str = ""
+    # Contraseña de Redis. En producción debe coincidir con --requirepass del servidor.
+    # Genera una con: python -c "import secrets; print(secrets.token_hex(32))"
+    REDIS_PASSWORD: SecretStr = SecretStr("")
 
     # ── Cola de tareas (Dramatiq, opcional) ──────────────────────────────
     # Si se deja vacío se usa StubBroker (ejecución síncrona, para dev/tests).
@@ -214,7 +220,7 @@ class Settings(BaseSettings):
     @field_validator("REQUEST_TIMEOUT", mode="before")
     @classmethod
     def _validate_request_timeout(cls, v: object) -> int:
-        val = int(v)  # type: ignore[arg-type]
+        val = int(str(v))
         if val <= 0:
             raise ValueError("REQUEST_TIMEOUT debe ser > 0")
         return val
@@ -222,7 +228,7 @@ class Settings(BaseSettings):
     @field_validator("ALERT_SMTP_PORT", mode="before")
     @classmethod
     def _validate_smtp_port(cls, v: object) -> int:
-        val = int(v)  # type: ignore[arg-type]
+        val = int(str(v))
         if not (1 <= val <= 65535):
             raise ValueError("ALERT_SMTP_PORT debe estar entre 1 y 65535")
         return val
@@ -230,7 +236,7 @@ class Settings(BaseSettings):
     @field_validator("DB_POOL_SIZE", mode="before")
     @classmethod
     def _validate_pool_size(cls, v: object) -> int:
-        val = int(v)  # type: ignore[arg-type]
+        val = int(str(v))
         if val < 1:
             raise ValueError("DB_POOL_SIZE debe ser >= 1")
         return val
@@ -256,19 +262,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_turso_pair(self) -> Settings:
-        if bool(self.TURSO_DATABASE_URL) ^ bool(self.TURSO_AUTH_TOKEN):
+        url = self.TURSO_DATABASE_URL
+        token = self.TURSO_AUTH_TOKEN.get_secret_value()
+        if bool(url) ^ bool(token):
             warnings.warn(
                 "Configuración Turso incompleta: se necesitan TURSO_DATABASE_URL y "
                 "TURSO_AUTH_TOKEN juntas. Se usará SQLite local como fallback.",
                 stacklevel=2,
             )
             self.TURSO_DATABASE_URL = ""
-            self.TURSO_AUTH_TOKEN = ""
+            self.TURSO_AUTH_TOKEN = SecretStr("")
         return self
 
     @model_validator(mode="after")
     def _validate_prod_password(self) -> Settings:
-        if self.ENV == "prod" and not self.DASHBOARD_PASSWORD_HASH:
+        if self.ENV in ("prod", "staging") and not self.DASHBOARD_PASSWORD_HASH:
             raise ValueError(
                 "DASHBOARD_PASSWORD_HASH (hash bcrypt) es obligatorio en ENV=prod. "
                 "Genera el hash con: python scripts/hash_password.py"
@@ -277,7 +285,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_signing_key(self) -> Settings:
-        if self.ENV == "prod" and not self.SIGNING_KEY.get_secret_value():
+        if self.ENV in ("prod", "staging") and not self.SIGNING_KEY.get_secret_value():
             raise ValueError(
                 "SIGNING_KEY es obligatorio en ENV=prod para firmar tokens CSRF/OAuth. "
                 'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
@@ -287,13 +295,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_api_hmac_secret(self) -> Settings:
         """En producción, exigir HMAC secret robusto para API keys."""
-        if self.ENV == "prod":
-            if not self.API_HMAC_SECRET:
+        if self.ENV in ("prod", "staging"):
+            secret = self.API_HMAC_SECRET.get_secret_value()
+            if not secret:
                 raise ValueError(
                     "API_HMAC_SECRET es obligatorio en ENV=prod para hashear API keys con HMAC. "
                     'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
                 )
-            if len(self.API_HMAC_SECRET) < 32:
+            if len(secret) < 32:
                 raise ValueError(
                     "API_HMAC_SECRET demasiado corto. Usa al menos 32 caracteres "
                     "(recomendado: secrets.token_hex(32))."
@@ -303,7 +312,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_cors_origins(self) -> Settings:
         """En producción, alertar si CORS_ALLOWED_ORIGINS está vacío."""
-        if self.ENV == "prod" and not self.CORS_ALLOWED_ORIGINS:
+        if self.ENV in ("prod", "staging") and not self.CORS_ALLOWED_ORIGINS:
             warnings.warn(
                 "CORS_ALLOWED_ORIGINS está vacío en ENV=prod. Todas las solicitudes "
                 "cross-origin serán bloqueadas. Configura los orígenes permitidos: "
@@ -315,10 +324,19 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_redis(self) -> Settings:
         """En producción, exigir REDIS_URL para cache compartido."""
-        if self.ENV == "prod" and not self.REDIS_URL:
+        if self.ENV in ("prod", "staging") and not self.REDIS_URL:
             raise ValueError(
-                "REDIS_URL es obligatorio en ENV=prod para cache compartido entre "
+                "REDIS_URL es obligatorio en ENV=prod/staging para cache compartido entre "
                 "procesos. Formato: redis://[:password@]host[:port][/db]"
+            )
+        if (
+            self.ENV in ("prod", "staging")
+            and self.REDIS_URL
+            and not self.REDIS_PASSWORD.get_secret_value()
+        ):
+            raise ValueError(
+                "REDIS_PASSWORD es obligatorio en ENV=prod. "
+                'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return self
 
@@ -326,7 +344,7 @@ class Settings(BaseSettings):
     def _validate_prod_oauth_domains(self) -> Settings:
         """En producción, alertar si no hay restricción de dominios/emails OAuth."""
         if (
-            self.ENV == "prod"
+            self.ENV in ("prod", "staging")
             and self.GOOGLE_CLIENT_ID
             and not self.OAUTH_ALLOWED_DOMAINS
             and not self.OAUTH_ALLOWED_EMAILS
@@ -360,7 +378,7 @@ class Settings(BaseSettings):
     @field_validator("DASHBOARD_CACHE_TTL", mode="before")
     @classmethod
     def _parse_cache_ttl(cls, v: object) -> int:
-        return int(v)  # type: ignore[call-overload, no-any-return]
+        return int(str(v))
 
 
 def _load() -> Settings:

@@ -7,6 +7,7 @@ should keep one service alive and run periodic jobs against the shared DB.
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import signal
 import threading
@@ -29,8 +30,18 @@ log = get_logger(__name__)
 # Evento global para shutdown graceful (se activa con SIGTERM/SIGINT)
 _stop_event = threading.Event()
 
-# Registro de threads activos por nombre de job para evitar solapamiento
+# Registro de threads activos por nombre de job para evitar solapamiento (jobs ligeros)
 _active_jobs: dict[str, threading.Thread] = {}
+
+# Registro de futures activos por nombre de job para jobs pesados (ProcessPoolExecutor)
+_active_heavy_futures: dict[str, concurrent.futures.Future[Any]] = {}
+
+# Registro de fallos consecutivos por job para backoff exponencial
+_consecutive_failures: dict[str, int] = {}
+_MAX_BACKOFF_MULTIPLIER = 8  # máximo 8x el intervalo original
+
+# Jobs que se ejecutan en proceso separado (cancellables en timeout)
+_HEAVY_JOBS = frozenset({"daily_atom", "recent_bulk", "retention_cleanup", "faiss_rebuild"})
 
 
 def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
@@ -45,12 +56,91 @@ def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
     return max(value, min_value)
 
 
-def _run_job(name: str, fn: Callable[[], Any]) -> None:
+def _run_heavy_job(name: str, fn: Callable[[], Any]) -> bool:
+    """Ejecuta un job pesado en un proceso separado (cancellable en timeout).
+
+    A diferencia de threads, los procesos pueden terminarse al exceder el
+    timeout, evitando zombie workers que consumen recursos indefinidamente.
+    """
+    from observability.runtime_metrics import scheduler_job_duration_seconds, scheduler_job_total
+
+    # Evitar solapamiento: si el future anterior sigue activo, saltar
+    prev_future = _active_heavy_futures.get(name)
+    if prev_future is not None and not prev_future.done():
+        log.warning("scheduler_loop_job_skipped_overlap", job=name)
+        scheduler_job_total.labels(job=name, status="skipped").inc()
+        return False
+
+    timeout_s = _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
+    started = time.monotonic()
+
+    executor = concurrent.futures.ProcessPoolExecutor(max_workers=1)
+    future = executor.submit(fn)
+    _active_heavy_futures[name] = future
+
+    try:
+        future.result(timeout=timeout_s)
+    except concurrent.futures.TimeoutError:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        log.error(
+            "scheduler_loop_job_timeout", job=name, timeout_s=timeout_s, elapsed_ms=elapsed_ms
+        )
+        notify(AlertLevel.ERROR, f"Scheduler job timeout: {name}", body=f"Excedió {timeout_s}s")
+        future.cancel()
+        # Forzar terminación del proceso subyacente
+        try:
+            for proc in executor._processes.values():  # type: ignore[attr-defined]
+                proc.kill()
+        except Exception:
+            pass
+        _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
+        scheduler_job_total.labels(job=name, status="timeout").inc()
+        scheduler_job_duration_seconds.labels(job=name).observe(time.monotonic() - started)
+        return False
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
+        failures = _consecutive_failures[name]
+        log.error(
+            "scheduler_loop_job_failed",
+            job=name,
+            consecutive_failures=failures,
+            error=str(exc),
+            elapsed_ms=elapsed_ms,
+        )
+        notify(AlertLevel.ERROR, f"Scheduler job fallo: {name}", body=str(exc))
+        scheduler_job_total.labels(job=name, status="error").inc()
+        scheduler_job_duration_seconds.labels(job=name).observe(time.monotonic() - started)
+        return False
+    finally:
+        executor.shutdown(wait=False)
+
+    elapsed_s = time.monotonic() - started
+    _consecutive_failures.pop(name, None)
+    log.info("scheduler_loop_job_done", job=name, elapsed_ms=int(elapsed_s * 1000))
+    scheduler_job_total.labels(job=name, status="success").inc()
+    scheduler_job_duration_seconds.labels(job=name).observe(elapsed_s)
+    return True
+
+
+def _run_job(name: str, fn: Callable[[], Any]) -> bool:
+    """Ejecuta un job ligero en un thread con timeout. Devuelve True si tuvo éxito.
+
+    Para jobs pesados (daily_atom, recent_bulk, retention_cleanup, faiss_rebuild)
+    usa ``_run_heavy_job`` que emplea un proceso separado cancellable en timeout.
+
+    Trackea fallos consecutivos por nombre de job para permitir backoff exponencial
+    en el loop principal.
+    """
+    if name in _HEAVY_JOBS:
+        return _run_heavy_job(name, fn)
+
+    # Jobs ligeros: thread daemon con join(timeout)
     # Evitar solapamiento: si el job anterior sigue vivo, saltar esta ejecución
     prev = _active_jobs.get(name)
     if prev is not None and prev.is_alive():
         log.warning("scheduler_loop_job_skipped_overlap", job=name)
-        return
+        return False
 
     timeout_s = _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
     started = time.monotonic()
@@ -68,23 +158,63 @@ def _run_job(name: str, fn: Callable[[], Any]) -> None:
     t.start()
     t.join(timeout=timeout_s)
 
-    elapsed_ms = int((time.monotonic() - started) * 1000)
+    from observability.runtime_metrics import scheduler_job_duration_seconds, scheduler_job_total
+
+    elapsed_s = time.monotonic() - started
+    elapsed_ms = int(elapsed_s * 1000)
     if t.is_alive():
         log.error(
             "scheduler_loop_job_timeout", job=name, timeout_s=timeout_s, elapsed_ms=elapsed_ms
         )
         notify(AlertLevel.ERROR, f"Scheduler job timeout: {name}", body=f"Excedió {timeout_s}s")
-        return
+        _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
+        scheduler_job_total.labels(job=name, status="timeout").inc()
+        scheduler_job_duration_seconds.labels(job=name).observe(elapsed_s)
+        return False
     if exc_holder:
-        log.exception("scheduler_loop_job_failed", job=name)
+        _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
+        failures = _consecutive_failures[name]
+        log.exception(
+            "scheduler_loop_job_failed",
+            job=name,
+            consecutive_failures=failures,
+        )
         notify(AlertLevel.ERROR, f"Scheduler job fallo: {name}", body=str(exc_holder[0]))
-        return
+        scheduler_job_total.labels(job=name, status="error").inc()
+        scheduler_job_duration_seconds.labels(job=name).observe(elapsed_s)
+        return False
+    # Éxito — resetear contador de fallos
+    _consecutive_failures.pop(name, None)
     log.info(
         "scheduler_loop_job_done",
         job=name,
         elapsed_ms=elapsed_ms,
         result=result_holder[0] if result_holder else None,
     )
+    scheduler_job_total.labels(job=name, status="success").inc()
+    scheduler_job_duration_seconds.labels(job=name).observe(elapsed_s)
+    return True
+
+
+def _backoff_interval(name: str, base_interval: timedelta) -> timedelta:
+    """Calcula intervalo con backoff exponencial basado en fallos consecutivos.
+
+    Tras N fallos consecutivos, el próximo intento se demora min(2^N, MAX) * base.
+    Esto evita que un job permanentemente roto spamee alertas en cada ciclo.
+    """
+    failures = _consecutive_failures.get(name, 0)
+    if failures == 0:
+        return base_interval
+    multiplier = min(2**failures, _MAX_BACKOFF_MULTIPLIER)
+    backed_off = base_interval * multiplier
+    log.info(
+        "scheduler_loop_backoff",
+        job=name,
+        failures=failures,
+        multiplier=multiplier,
+        next_attempt_minutes=int(backed_off.total_seconds() // 60),
+    )
+    return backed_off
 
 
 def _run_daily_atom() -> None:
@@ -128,13 +258,9 @@ def _run_recent_bulk(months: int) -> None:
     check_and_notify()
 
 
-def _run_retention_cleanup() -> dict:
+def _run_retention_cleanup() -> dict[str, int]:
     """Purga datos históricos según la política de retención."""
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from scripts.retention_cleanup import run_retention
+    from scheduler.retention import run_retention
 
     return run_retention(
         runs_days=90,
@@ -146,6 +272,12 @@ def _run_retention_cleanup() -> dict:
         webhook_deliveries_days=90,
         apply=True,
     )
+
+
+def _run_recent_bulk_default() -> None:
+    """Wrapper top-level para ProcessPoolExecutor — lee bulk_months del entorno."""
+    months = _env_int("SCHEDULER_BULK_MONTHS", 3)
+    _run_recent_bulk(months)
 
 
 def _run_wal_checkpoint() -> dict[str, Any]:
@@ -232,31 +364,31 @@ def main() -> int:
         now = datetime.now(UTC)
         if now >= next_daily:
             _run_job("daily_atom", _run_daily_atom)
-            next_daily = now + daily_interval
+            next_daily = now + _backoff_interval("daily_atom", daily_interval)
         if now >= next_bulk:
-            _run_job("recent_bulk", lambda: _run_recent_bulk(bulk_months))
-            next_bulk = now + bulk_interval
+            _run_job("recent_bulk", _run_recent_bulk_default)
+            next_bulk = now + _backoff_interval("recent_bulk", bulk_interval)
         if now >= next_dlq:
             _run_job("dlq_retry", retry_failed_extractions)
-            next_dlq = now + dlq_interval
+            next_dlq = now + _backoff_interval("dlq_retry", dlq_interval)
         if now >= next_digest:
             _run_job("digest_daily", lambda: send_pending_digests("daily"))
-            next_digest = now + digest_interval
+            next_digest = now + _backoff_interval("digest_daily", digest_interval)
         if now >= next_anomaly:
             _run_job("anomaly_checks", run_anomaly_checks)
-            next_anomaly = now + anomaly_interval
+            next_anomaly = now + _backoff_interval("anomaly_checks", anomaly_interval)
         if now >= next_drift:
             _run_job("drift_report", run_drift_report)
-            next_drift = now + drift_interval
+            next_drift = now + _backoff_interval("drift_report", drift_interval)
         if now >= next_retention:
             _run_job("retention_cleanup", _run_retention_cleanup)
-            next_retention = now + retention_interval
+            next_retention = now + _backoff_interval("retention_cleanup", retention_interval)
         if now >= next_wal:
             _run_job("wal_checkpoint", _run_wal_checkpoint)
-            next_wal = now + wal_interval
+            next_wal = now + _backoff_interval("wal_checkpoint", wal_interval)
         if now >= next_faiss:
             _run_job("faiss_rebuild", _rebuild_faiss_if_stale)
-            next_faiss = now + faiss_interval
+            next_faiss = now + _backoff_interval("faiss_rebuild", faiss_interval)
         # Esperar el poll interval o despertar inmediatamente si llega señal de parada
         if _stop_event.wait(timeout=sleep_seconds):
             log.info("scheduler_loop_stopped_gracefully")

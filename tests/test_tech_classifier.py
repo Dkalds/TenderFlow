@@ -8,13 +8,13 @@ pd = pytest.importorskip("pandas")
 np = pytest.importorskip("numpy")
 pytest.importorskip("sklearn")
 
-from config.keywords import TECH_LABELS  # noqa: E402
-from scraper.ml_pipeline import (  # noqa: E402
+from config.keywords import TECH_LABELS
+from scraper.ml_pipeline import (
     _build_multilabel_dataset,
     _keyword_fallback_score,
     _parse_tecnologia_csv,
 )
-from scraper.tech_classifier import (  # noqa: E402
+from scraper.tech_classifier import (
     _TIER_FRAGILE,
     _TIER_ML_READY,
     _TIER_RULES,

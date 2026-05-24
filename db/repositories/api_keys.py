@@ -14,7 +14,7 @@ class ApiKeyRepository:
     def _hash(self, raw: str) -> str:
         from config import settings
 
-        secret = settings.API_HMAC_SECRET
+        secret = settings.API_HMAC_SECRET.get_secret_value()
         if secret:
             return hmac.new(secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
         return hashlib.sha256(raw.encode()).hexdigest()
@@ -31,7 +31,7 @@ class ApiKeyRepository:
             else:
                 select_parts.append("'*' AS scopes")
             row = c.execute(
-                f"SELECT {', '.join(select_parts)} FROM api_keys "  # noqa: S608
+                "SELECT " + ", ".join(select_parts) + " FROM api_keys "
                 "WHERE key_hash = ? AND is_active = 1",
                 (key_hash,),
             ).fetchone()

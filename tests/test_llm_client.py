@@ -150,7 +150,9 @@ def test_stream_llm_response_dispatches_to_openai(monkeypatch):
     with patch("llm.providers.openai_provider.stream", fake_openai_stream):
         from llm.client import stream_llm_response
 
-        result = list(stream_llm_response("q", [], model="gpt-4o-mini", keywords=[]))
+        result = list(
+            stream_llm_response("pregunta de prueba", [], model="gpt-4o-mini", keywords=[])
+        )
 
     assert result == chunks
 
@@ -165,17 +167,52 @@ def test_stream_llm_response_dispatches_to_anthropic(monkeypatch):
     with patch("llm.providers.anthropic_provider.stream", fake_anthropic_stream):
         from llm.client import stream_llm_response
 
-        result = list(stream_llm_response("q", [], model="claude-sonnet-4-5", keywords=[]))
+        result = list(
+            stream_llm_response("pregunta de prueba", [], model="claude-sonnet-4-5", keywords=[])
+        )
 
     assert result == chunks
 
 
-def test_stream_llm_response_unknown_model_yields_nothing():
-    """Con modelo desconocido, no genera tokens (sin excepción)."""
+def test_stream_llm_response_unknown_model_raises_value_error():
+    """Con modelo desconocido, lanza ValueError (B11 hardening)."""
+    import pytest
+
     from llm.client import stream_llm_response
 
-    result = list(stream_llm_response("q", [], model="unknown-model-xyz", keywords=[]))
-    assert result == []
+    with pytest.raises(ValueError, match="no disponible"):
+        list(stream_llm_response("q", [], model="unknown-model-xyz", keywords=[]))
+
+
+def test_stream_llm_response_question_too_short_raises():
+    """Pregunta demasiado corta lanza ValueError."""
+    import pytest
+
+    from llm.client import stream_llm_response
+
+    with pytest.raises(ValueError, match="al menos"):
+        list(stream_llm_response("ab", [], model="gpt-4o-mini", keywords=[]))
+
+
+def test_stream_llm_response_question_too_long_raises():
+    """Pregunta demasiado larga lanza ValueError."""
+    import pytest
+
+    from llm.client import stream_llm_response
+
+    with pytest.raises(ValueError, match="excede el máximo"):
+        list(stream_llm_response("x" * 2001, [], model="gpt-4o-mini", keywords=[]))
+
+
+def test_stream_llm_response_too_many_docs_raises():
+    """Demasiados documentos de contexto lanza ValueError."""
+    import pytest
+
+    from llm.client import stream_llm_response
+
+    docs = [{"id_externo": f"L{i}"} for i in range(51)]
+    with pytest.raises(ValueError, match="máximo"):
+        list(stream_llm_response("pregunta válida", docs, model="gpt-4o-mini", keywords=[]))
 
 
 def test_stream_llm_response_passes_api_key(monkeypatch):
@@ -190,6 +227,6 @@ def test_stream_llm_response_passes_api_key(monkeypatch):
     with patch("llm.providers.openai_provider.stream", fake_stream):
         from llm.client import stream_llm_response
 
-        list(stream_llm_response("q", [], model="gpt-4o-mini", keywords=[]))
+        list(stream_llm_response("pregunta de prueba", [], model="gpt-4o-mini", keywords=[]))
 
     assert received_key[0] == "test-openai-key"

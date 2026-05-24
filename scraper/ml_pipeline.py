@@ -49,9 +49,15 @@ class SentenceEmbeddingTransformer(BaseEstimator, TransformerMixin):
         return self._model.encode(texts, batch_size=self.batch_size, show_progress_bar=False)
 
 
-def _make_pipeline() -> Any:
-    """Construye el pipeline sklearn con FeatureUnion + Calibración."""
-    from sklearn.calibration import CalibratedClassifierCV
+def _make_pipeline(*, calibrate: bool = True) -> Any:
+    """Construye el pipeline sklearn con FeatureUnion + LogReg.
+
+    Args:
+        calibrate: Si True (default), envuelve el clasificador en
+            ``CalibratedClassifierCV`` para obtener probabilidades calibradas.
+            Si False, usa LogisticRegression directamente (más rápido, útil para
+            CV y scoring donde la calibración no es necesaria).
+    """
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import FeatureUnion, Pipeline
@@ -89,11 +95,19 @@ def _make_pipeline() -> Any:
         solver="lbfgs",
         random_state=42,
     )
+    clf_step: Any
+    if calibrate:
+        from sklearn.calibration import CalibratedClassifierCV
+
+        clf_step = CalibratedClassifierCV(base_lr, cv=5, method="sigmoid")
+    else:
+        clf_step = base_lr
+
     return Pipeline(
         [
             ("features", feature_union),
             ("scaler", MaxAbsScaler()),
-            ("clf", CalibratedClassifierCV(base_lr, cv=5, method="sigmoid")),
+            ("clf", clf_step),
         ]
     )
 

@@ -37,6 +37,9 @@ visibles
 oficial
 anual
 inmutables
+inmutable
+viceversa
+abandones
 diagramas
 componentes
 comercial

@@ -207,5 +207,6 @@ if __name__ == "__main__":
     import sys
 
     result = run_aggregates_precompute()
+    log.info("aggregates_precompute.result", **{k: v for k, v in result.items() if k != "error"})
     print(json.dumps(result, indent=2))
     sys.exit(0 if result.get("status") == "ok" else 1)

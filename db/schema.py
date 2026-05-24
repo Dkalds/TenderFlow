@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     cpv                 TEXT,
     tipo_contrato       TEXT,
     estado              TEXT,
-    fecha_publicacion   TEXT,
-    fecha_limite        TEXT,
+    fecha_publicacion   TEXT CHECK(fecha_publicacion IS NULL OR fecha_publicacion GLOB '????-??-??*'),
+    fecha_limite        TEXT CHECK(fecha_limite IS NULL OR fecha_limite GLOB '????-??-??*'),
     url                 TEXT,
     raw_keywords        TEXT,
     provincia           TEXT,
@@ -36,15 +36,15 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     nuts_code           TEXT,
     duracion_valor      REAL,
     duracion_unidad     TEXT,
-    fecha_inicio        TEXT,
-    fecha_fin           TEXT,
+    fecha_inicio        TEXT CHECK(fecha_inicio IS NULL OR fecha_inicio GLOB '????-??-??*'),
+    fecha_fin           TEXT CHECK(fecha_fin IS NULL OR fecha_fin GLOB '????-??-??*'),
     prorroga_descripcion TEXT,
     ml_proba            REAL,
     tecnologia          TEXT,
     ml_tecnologias      TEXT,
     ml_proba_max        REAL,
     ml_tech_principal   TEXT,
-    fecha_actualizacion_fuente TEXT,
+    fecha_actualizacion_fuente TEXT CHECK(fecha_actualizacion_fuente IS NULL OR fecha_actualizacion_fuente GLOB '????-??-??*'),
     fecha_extraccion    TEXT NOT NULL
 );
 
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS adjudicaciones (
     nuts_code               TEXT,
     importe_adjudicado      REAL,
     importe_pagable         REAL,
-    fecha_adjudicacion      TEXT,
+    fecha_adjudicacion      TEXT CHECK(fecha_adjudicacion IS NULL OR fecha_adjudicacion GLOB '????-??-??*'),
     es_pyme                 INTEGER,
     n_ofertas_recibidas     INTEGER,
     oferta_minima           REAL,
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS adjudicaciones (
     result_description      TEXT,
     fecha_extraccion        TEXT NOT NULL,
     UNIQUE(licitacion_id, nif, importe_adjudicado),
-    FOREIGN KEY(licitacion_id) REFERENCES licitaciones(id_externo)
+    FOREIGN KEY(licitacion_id) REFERENCES licitaciones(id_externo) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_adj_lic    ON adjudicaciones(licitacion_id);
 CREATE INDEX IF NOT EXISTS idx_adj_nif    ON adjudicaciones(nif);

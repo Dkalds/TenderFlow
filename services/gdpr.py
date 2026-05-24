@@ -104,7 +104,7 @@ def list_user_keys(key_id: int) -> list[dict[str, Any]]:
             if "expires_at" in cols_info:
                 select_cols += ", expires_at"
             cur = c.execute(
-                f"SELECT {select_cols} FROM api_keys WHERE id = ?",  # noqa: S608
+                "SELECT " + select_cols + " FROM api_keys WHERE id = ?",
                 (key_id,),
             )
             return rows_to_dicts(cur)

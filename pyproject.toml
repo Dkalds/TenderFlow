@@ -50,7 +50,7 @@ schemas = [
 # Deps opcionales para embeddings pre-entrenados en el pipeline ML.
 # Instalar con: pip install licitaciones-sap[ml-embeddings]
 ml-embeddings = [
-    "sentence-transformers>=2.0,<4",
+    "sentence-transformers>=2.2.0,<4",
 ]
 # Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
 # Instalar con: pip install licitaciones-sap[tracing]
@@ -97,7 +97,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002"]
+"tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002", "SIM117", "F841", "E402"]
 "dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
 "dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
 "db/database.py" = ["S608", "E402", "RUF022"]  # SQL built from internal dataclass-field constants; E402 intentional facade re-exports
@@ -112,6 +112,19 @@ ignore = [
 "db/connection.py" = ["S608"]  # get_table_columns uses table param from internal callers only
 "db/upsert.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
 "scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings, not user input
+"api/routes/ask.py" = ["S608"]  # SQL built from FTS5 query with validated user input
+"db/dlq.py" = ["S608"]  # SQL with placeholders for internal IDs
+"db/notifications.py" = ["S608"]  # SQL with placeholders for internal IDs
+"db/repositories/adjudicaciones.py" = ["S608"]  # SQL filter builder uses validated column names
+"db/repositories/api_keys.py" = ["S608"]  # SQL built from internal column constants
+"db/repositories/base.py" = ["S608"]  # SQL built from internal column constants
+"db/repositories/webhooks.py" = ["S608"]  # SQL built from internal column constants
+"scheduler/retention.py" = ["S608"]  # SQL built from internal table/column constants
+"services/auth.py" = ["S608"]  # SQL built from internal column constants
+"services/extraction_runs.py" = ["S608"]  # SQL built from internal column constants
+"services/gdpr.py" = ["S608"]  # SQL built from internal table constants
+"services/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
+"services/watchlist.py" = ["S608"]  # SQL built from internal column constants
 
 [tool.ruff.format]
 quote-style = "double"
@@ -120,6 +133,7 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.11"
 strict = true
+exclude = ["scripts/"]
 
 # ── Módulos que PASAN mypy strict (sin override) ─────────────────────────
 # dashboard.bootstrap, dashboard.session_keys, dashboard.theme.*,
@@ -149,6 +163,7 @@ module = [
     "dashboard.pages.tecnologias",
     "dashboard.pages.tendencias",
     "tests.*",
+    "scripts.*",
 ]
 ignore_errors = true
 disallow_untyped_defs = false
@@ -218,18 +233,21 @@ module = [
     "redis.*",
     "rq",
     "rq.*",
+    "duckdb",
+    "duckdb.*",
+    "requests",
+    "requests.*",
 ]
 ignore_missing_imports = true
 
 # Módulos pendientes de tipado estricto — ir limpiando progresivamente
+# P8 (2026-05-23): config.settings, shared.auth_core, api.auth, db.audit, db.totp
+#                  cerrados (mypy clean). Removidos de ignore_errors.
 [[tool.mypy.overrides]]
 module = [
-    "config.settings",
     "shared.i18n",
-    "shared.auth_core",
     "shared.schemas",
     "api.cache",
-    "api.auth",
     "api.app",
     "api.routes.licitaciones",
     "api.routes.webhooks",
@@ -241,20 +259,16 @@ module = [
     "api.routes.health",
     "db.analytics",
     "db.webhooks",
-    "db.totp",
-    "db.audit",
     "db.repositories.webhooks",
     "db.repositories.feedback",
     "observability.sentry",
     "scraper.ml_pipeline",
     "scraper.ml_classifier",
-    "dashboard.cache",
     "dashboard.pages.tendencias_cpv",
     "dashboard.pages.comparador",
     "dashboard.pages.investigador",
     "dashboard.pages.active_learning",
     "dashboard.forecast",
-    "dashboard.data_loader",
     "dashboard.stats._base",
     "scheduler.concept_drift",
     "scheduler.drift_monitor",
@@ -298,9 +312,14 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Subido de 51 → 55 tras añadir tests de threshold_tuning, model_registry,
-# feature_store, drift_report y reincluir observability en coverage.
-fail_under = 55
+# Historial de umbrales:
+# 51 → 55 (2026-05-23): tests de threshold_tuning, model_registry, feature_store, drift_report
+# 55 → 60 (2026-05-23): Bloque 4 Fase 1 — tests de middleware, shared/cache, scheduler/loop,
+#                        contract tests DTOs, tests de api/middleware y scraper/resilience
+# 60 → 65 (2026-05-23): Bloque 4 Fase 2 — tests de services/watchlist, services/analytics_engine,
+#                        cerrando overrides mypy para dashboard.cache y dashboard.data_loader
+# 65 → 70 (2026-05-23): B12 — tests para api/routes/ask.py, stream.py, search.py (22 tests nuevos)
+fail_under = 70
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

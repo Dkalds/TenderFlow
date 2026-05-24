@@ -186,13 +186,13 @@ def _enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-@st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
+@st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
 def _load_dataframe_shared(limit: int | None = None) -> pd.DataFrame:
-    """Carga base compartida entre todas las sesiones (no copiar).
+    """Carga base compartida entre todas las sesiones.
 
     Orquesta ``_load_raw()`` + ``_enrich_dataframe()``.  Al usar
-    ``@st.cache_resource`` el resultado se reutiliza entre reruns y sesiones;
-    ``load_dataframe`` hace ``.copy()`` antes de entregarlo a cada sesión.
+    ``@st.cache_data`` el resultado se copia automáticamente entre reruns
+    y sesiones, por lo que no se necesita ``.copy()`` adicional.
 
     Args:
         limit: Si se proporciona, limita el número de filas leídas de la DB
@@ -246,7 +246,7 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
         check_rate_limit("load_dataframe", max_calls=60, window_seconds=60.0)
     except Exception:
         log.debug("rate_limit_check_unavailable")
-    return _load_dataframe_shared(limit).copy()  # .copy() necesario: cache_resource comparte objeto
+    return _load_dataframe_shared(limit)  # @st.cache_data ya devuelve una copia por sesión
 
 
 @st.cache_data(

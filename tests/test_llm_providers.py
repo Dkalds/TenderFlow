@@ -270,3 +270,77 @@ def test_anthropic_stream_skips_empty_text() -> None:
         result = list(anth.stream("q", DOCS, "claude-sonnet", [], "ant-fake"))
 
     assert result == ["real content"]
+
+
+# ── B11: Tests de retry y timeout ─────────────────────────────────────────────
+
+
+def test_openai_stream_retries_on_connection_error() -> None:
+    """openai_provider.stream reintenta ante ConnectionError (máx 3 intentos)."""
+    call_count = [0]
+
+    mock_openai_module = MagicMock()
+
+    def failing_create(*args, **kwargs):
+        call_count[0] += 1
+        raise ConnectionError("network unreachable")
+
+    mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = failing_create
+
+    with patch.dict("sys.modules", {"openai": mock_openai_module}):
+        with patch("time.sleep"):  # no esperar en tests
+            result = list(oai.stream("pregunta", DOCS, "gpt-4o", [], "sk-fake"))
+
+    assert result == []
+    assert call_count[0] == 3  # 3 intentos
+
+
+def test_openai_stream_no_retry_on_non_retryable_error() -> None:
+    """openai_provider.stream no reintenta si el error no es recuperable."""
+    call_count = [0]
+
+    mock_openai_module = MagicMock()
+
+    def failing_create(*args, **kwargs):
+        call_count[0] += 1
+        raise ValueError("invalid model")  # no retryable
+
+    mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = failing_create
+
+    with patch.dict("sys.modules", {"openai": mock_openai_module}):
+        result = list(oai.stream("pregunta", DOCS, "gpt-4o", [], "sk-fake"))
+
+    assert result == []
+    assert call_count[0] == 1  # solo 1 intento
+
+
+def test_anthropic_stream_retries_on_connection_error() -> None:
+    """anthropic_provider.stream reintenta ante ConnectionError."""
+    call_count = [0]
+
+    mock_anthropic_module = MagicMock()
+
+    def failing_stream(*args, **kwargs):
+        call_count[0] += 1
+        raise ConnectionError("network unreachable")
+
+    mock_anthropic_module.Anthropic.return_value.messages.stream.side_effect = failing_stream
+
+    with patch.dict("sys.modules", {"anthropic": mock_anthropic_module}), patch("time.sleep"):
+        result = list(anth.stream("pregunta", DOCS, "claude-sonnet", [], "ant-fake"))
+
+    assert result == []
+    assert call_count[0] == 3
+
+
+def test_openai_stream_warning_on_missing_key() -> None:
+    """openai_provider.stream emite warning cuando api_key está vacía."""
+    # api_key="" → early return, sin llamar a OpenAI
+    result = list(oai.stream("pregunta", DOCS, "gpt-4o", [], ""))
+    assert result == []
+
+
+def test_anthropic_stream_warning_on_missing_key() -> None:
+    """anthropic_provider.stream emite warning cuando api_key está vacía."""
+    result = list(anth.stream("pregunta", DOCS, "claude-sonnet", [], ""))
+    assert result == []

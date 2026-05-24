@@ -21,9 +21,9 @@ _ph = PasswordHasher()
 def generate_totp_secret() -> str:
     """Genera un secret TOTP base32 compatible con Google Authenticator."""
     try:
-        import pyotp  # type: ignore[import]
+        import pyotp  # type: ignore[import-not-found]
 
-        return pyotp.random_base32()
+        return str(pyotp.random_base32())
     except ImportError:
         # Fallback: generate 20 random bytes encoded as base32
         import base64
@@ -35,10 +35,10 @@ def generate_totp_secret() -> str:
 def get_totp_uri(secret: str, email: str, issuer: str = "Licitaciones-SAP") -> str:
     """Genera el URI otpauth:// para codificar como QR."""
     try:
-        import pyotp  # type: ignore[import]
+        import pyotp
 
         totp = pyotp.TOTP(secret)
-        return totp.provisioning_uri(name=email, issuer_name=issuer)
+        return str(totp.provisioning_uri(name=email, issuer_name=issuer))
     except ImportError:
         from urllib.parse import quote
 
@@ -53,10 +53,10 @@ def verify_totp(secret: str, code: str) -> bool:
     if not secret or not code:
         return False
     try:
-        import pyotp  # type: ignore[import]
+        import pyotp
 
         totp = pyotp.TOTP(secret)
-        return totp.verify(code, valid_window=1)
+        return bool(totp.verify(code, valid_window=1))
     except ImportError:
         return False
 

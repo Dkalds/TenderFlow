@@ -89,29 +89,29 @@ def test_safe_pragma_silences_exceptions(tmp_db):
 
 
 def test_connect_read_does_not_emit_pragmas_on_turso(tmp_db):
-    """Regresión: ``connect_read()`` no debe emitir PRAGMA en Turso/Hrana.
+    """Regresión: ``connect_read()`` invoca ``safe_pragma`` con query_only ON/OFF.
 
-    Patcheamos ``safe_pragma`` para grabar invocaciones y simulamos backend
-    Turso. El context manager debe abrir/cerrar sin emitir PRAGMA alguno.
+    Tras la refactorización de db.database como fachada pura (P2-4),
+    ``connect_read`` y ``safe_pragma`` residen en ``db.connection``.
+    El patch debe apuntar al módulo canónico para capturar las invocaciones.
     """
     db_mod, _ = tmp_db
+    import db.connection as conn_mod
 
     calls: list[str] = []
 
     def recorder(conn, stmt):
         calls.append(stmt)
-        # No ejecutar nada (simula Hrana: safe_pragma no-op)
+        # No ejecutar nada — simula safe_pragma no-op
 
     with (
-        patch.object(db_mod, "is_turso_backend", return_value=True),
-        patch.object(db_mod, "safe_pragma", side_effect=recorder),
+        patch.object(conn_mod, "safe_pragma", side_effect=recorder),
         db_mod.connect_read() as conn,
     ):
         row = conn.execute("SELECT 1").fetchone()
         assert row[0] == 1
 
-    # safe_pragma se invocó (con query_only ON/OFF) pero gracias al patch
-    # nada se ejecutó realmente sobre la conexión Hrana-like.
+    # connect_read debe invocar safe_pragma con query_only ON y OFF
     assert any("query_only" in c.lower() for c in calls)
 
 

@@ -7,6 +7,13 @@ en cada inicio del dashboard.
 Dependencia: faiss-cpu (o faiss-gpu).
 Fallback: si FAISS no está disponible, usa ``smart_match`` de embeddings.py.
 
+**Actualizaciones incrementales**:
+En lugar de reconstruir el índice completo en cada ingesta, ``update()``
+añade solo los vectores nuevos/modificados al índice existente. La
+reconstrucción completa sigue disponible como ``build()`` y se ejecuta
+automáticamente si el índice no existe o si se detecta que más del
+``_FULL_REBUILD_THRESHOLD`` de los IDs están desactualizados.
+
 Uso:
     # Construir o actualizar el índice (tras un scraping):
     python -m dashboard.faiss_index build
@@ -21,12 +28,14 @@ Uso:
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from filelock import FileLock
 
 from observability.logging import get_logger
 
@@ -36,9 +45,11 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 _INDEX_PATH = Path(__file__).parents[1] / "data" / "models" / "faiss_index.npz"
-_INDEX_PATH_LEGACY = Path(__file__).parents[1] / "data" / "models" / "faiss_index.pkl"
+_INDEX_LOCK_PATH = _INDEX_PATH.with_suffix(".lock")  # filelock para rebuild concurrente
 _META_SUFFIX = "_meta.json"  # companion file alongside .npz
 _MIN_TEXTS = 10  # mínimo de textos para construir un índice útil
+# Si más del 20% de los IDs son nuevos/modificados, reconstruir completo
+_FULL_REBUILD_THRESHOLD = 0.20
 
 try:  # pragma: no cover - fallback when Streamlit runtime no disponible
     import streamlit as _st
@@ -148,6 +159,67 @@ class FaissIndex:
         instance.embedding_version = _settings.EMBEDDING_VERSION
         return instance
 
+    def update(self, df_new: pd.DataFrame) -> int:
+        """Añade entradas nuevas/modificadas al índice existente sin reconstruirlo.
+
+        Compara los IDs de ``df_new`` con los IDs ya indexados. Solo encodea y
+        añade los IDs que no están en el índice actual. Los IDs modificados
+        (que ya existen) no se actualizan en esta llamada — para actualizar
+        embeddings de entradas existentes, usar ``build()``.
+
+        Si la proporción de IDs nuevos supera ``_FULL_REBUILD_THRESHOLD``,
+        lanza una advertencia sugiriendo una reconstrucción completa.
+
+        Args:
+            df_new: DataFrame con columnas id_externo, titulo, descripcion.
+                    Puede incluir entradas ya indexadas (se filtrarán).
+
+        Returns:
+            Número de entradas añadidas al índice.
+        """
+        from dashboard.embeddings import encode_texts
+
+        existing_ids = set(self.ids)
+        df_clean = df_new.dropna(subset=["id_externo"]).copy()
+        df_add = df_clean[~df_clean["id_externo"].isin(existing_ids)]
+
+        if df_add.empty:
+            log.debug("faiss_index.update_no_new_entries")
+            return 0
+
+        n_new = len(df_add)
+        n_total = len(existing_ids)
+        ratio = n_new / max(n_total, 1)
+
+        if ratio > _FULL_REBUILD_THRESHOLD:
+            log.warning(
+                "faiss_index.update_large_batch",
+                n_new=n_new,
+                n_existing=n_total,
+                ratio=round(ratio, 2),
+                hint="Considera hacer una reconstrucción completa con FaissIndex.build()",
+            )
+
+        texts = (
+            (df_add["titulo"].fillna("") + " " + df_add["descripcion"].fillna(""))
+            .str.strip()
+            .tolist()
+        )
+        new_ids = df_add["id_externo"].tolist()
+
+        log.info("faiss_index.update_encoding", n=len(texts))
+        new_embeddings = encode_texts(texts).astype(np.float32)
+
+        # Añadir al índice FAISS existente (IndexFlatIP soporta add() incremental)
+        self._index.add(new_embeddings)  # type: ignore[attr-defined]
+
+        # Actualizar listas internas
+        self.ids = self.ids + new_ids
+        self.embeddings = np.vstack([self.embeddings, new_embeddings])
+
+        log.info("faiss_index.update_done", added=n_new, total=len(self.ids))
+        return n_new
+
     # ── Búsqueda ──────────────────────────────────────────────────────────
 
     def search(self, query: str, k: int = 10, threshold: float = 0.4) -> list[tuple[str, float]]:
@@ -177,11 +249,14 @@ class FaissIndex:
     # ── Persistencia ──────────────────────────────────────────────────────
 
     def save(self, path: Path | None = None) -> Path:
-        """Guarda el índice en disco (numpy .npz + JSON de metadata)."""
+        """Guarda el índice en disco (numpy .npz + JSON de metadata).
+
+        Usa escritura atómica (write-to-tmp + os.replace) y un FileLock para
+        prevenir condiciones de carrera cuando múltiples procesos reconstruyen
+        el índice simultáneamente.
+        """
         target = path or _INDEX_PATH
-        # Normalizar extensión: siempre .npz
-        if target.suffix == ".pkl":
-            target = target.with_suffix(".npz")
+        lock_path = target.with_suffix(".lock")
         target.parent.mkdir(parents=True, exist_ok=True)
         metadata: dict[str, Any] = {
             "ids": self.ids,
@@ -190,11 +265,26 @@ class FaissIndex:
             "created_at": _utc_iso(),
             "n_records": len(self.ids),
         }
-        # Guardar sólo embeddings numéricos en .npz (allow_pickle=False seguro)
-        np.savez_compressed(target, embeddings=self.embeddings)
-        # ids + metadata en JSON legible y seguro
-        meta_path = target.with_name(target.stem + _META_SUFFIX)
-        meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        with FileLock(str(lock_path), timeout=120):
+            # Escritura atómica: escribir a .tmp y luego renombrar.
+            # np.savez_compressed añade ".npz" automáticamente si el path no
+            # termina en ".npz", así que usamos un directorio temporal explícito.
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(dir=target.parent, suffix=".npz", delete=False) as tf:
+                tmp_npz = Path(tf.name)
+            np.savez_compressed(str(tmp_npz.with_suffix("")), embeddings=self.embeddings)
+            os.replace(tmp_npz, target)
+
+            # ids + metadata en JSON legible y seguro
+            meta_path = target.with_name(target.stem + _META_SUFFIX)
+            tmp_meta = meta_path.with_suffix(".json.tmp")
+            tmp_meta.write_text(
+                json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            os.replace(tmp_meta, meta_path)
+
         # Invalidar caché Streamlit
         try:
             self.__class__._load_cached.clear()
@@ -209,26 +299,23 @@ class FaissIndex:
         """Carga cacheada por ruta + mtime para compartir el índice entre reruns."""
         _ = mtime_ns  # parte de la key de caché para invalidar al cambiar el archivo
         p = Path(path_str)
-        if p.suffix == ".npz":
-            data = np.load(p, allow_pickle=False)
-            embeddings: np.ndarray = data["embeddings"]
-            meta_path = p.with_name(p.stem + _META_SUFFIX)
-            meta: dict[str, Any] = {}
-            if meta_path.exists():
-                try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
-            ids: list[str] = meta.pop("ids", [])
-        else:
-            # Fallback legacy pickle (read-only, never write)
-            import pickle
-
-            with open(p, "rb") as f:
-                raw = pickle.load(f)  # noqa: S301
-            ids = raw["ids"]
-            embeddings = raw["embeddings"]
-            meta = raw.get("metadata") or {}
+        if p.suffix != ".npz":
+            raise ValueError(
+                f"Formato de índice no soportado: '{p.suffix}'. "
+                "Solo se admite el formato .npz. "
+                "Si tienes un índice legacy .pkl, ejecútalo a través de: "
+                "python -m dashboard.faiss_index build"
+            )
+        data = np.load(p, allow_pickle=False)
+        embeddings: np.ndarray = data["embeddings"]
+        meta_path = p.with_name(p.stem + _META_SUFFIX)
+        meta: dict[str, Any] = {}
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        ids: list[str] = meta.pop("ids", [])
         obj = FaissIndex(ids=ids, embeddings=embeddings)
         obj.embedding_version = meta.get("embedding_version", "v1")
         obj.embedding_model = meta.get("embedding_model", "default")
@@ -238,13 +325,17 @@ class FaissIndex:
     def load(cls, path: Path | None = None) -> FaissIndex:
         """Carga el índice desde disco con caché compartida entre sesiones.
 
-        Intenta el formato numpy (.npz) primero; si no existe, prueba el
-        legacy .pkl para compatibilidad con índices previos.
+        Solo admite el formato numpy (.npz). El formato legacy .pkl fue
+        eliminado en 2026-05 por riesgo de ejecución arbitraria de código.
+        Si solo tienes un .pkl, reconstruye el índice con:
+            python -m dashboard.faiss_index build
         """
         target = path or _INDEX_PATH
-        # Migración automática: si sólo existe el .pkl legacy, usarlo
-        if not target.exists() and target.suffix == ".npz" and _INDEX_PATH_LEGACY.exists():
-            target = _INDEX_PATH_LEGACY
+        if not target.exists():
+            raise FileNotFoundError(
+                f"No se encontró el índice FAISS en '{target}'. "
+                "Genera uno con: python -m dashboard.faiss_index build"
+            )
         mtime_ns = target.stat().st_mtime_ns
         obj: FaissIndex = cls._load_cached(str(target), mtime_ns)
         log.info(
@@ -257,9 +348,9 @@ class FaissIndex:
 
     @classmethod
     def is_available(cls, path: Path | None = None) -> bool:
-        """True si existe un índice guardado en disco (nuevo o legacy)."""
+        """True si existe un índice guardado en disco (formato .npz)."""
         target = path or _INDEX_PATH
-        return target.exists() or _INDEX_PATH_LEGACY.exists()
+        return target.exists()
 
     @classmethod
     def load_or_build(cls, df: pd.DataFrame, path: Path | None = None) -> FaissIndex:
@@ -267,8 +358,15 @@ class FaissIndex:
 
         La obsolescencia se detecta comparando el mtime del archivo centinela
         ``.cache_invalidation`` (escrito por el scraper tras cada ingesta) con
-        el mtime del índice FAISS. Si el centinela es más reciente, se fuerza
-        una reconstrucción para que el dashboard refleje los datos nuevos.
+        el mtime del índice FAISS.
+
+        **Estrategia de actualización**:
+        - Si el índice no existe → ``build()`` completo.
+        - Si el índice existe y está stale y hay pocos IDs nuevos (≤ 20%) →
+          ``update()`` incremental (más rápido).
+        - Si el índice existe y está stale y hay muchos IDs nuevos (> 20%) →
+          ``build()`` completo.
+        - Si el índice existe y no está stale → ``load()`` directo.
 
         Preferir ``build()`` explícito en producción para controlar cuándo
         se reconstruye. Este método es conveniente para desarrollo y tests.
@@ -276,12 +374,37 @@ class FaissIndex:
         target = path or _INDEX_PATH
         if target.exists():
             try:
-                # Staleness check: reconstruir si el scraper ingirió datos nuevos
                 stale = _is_index_stale(target)
-                if stale:
-                    log.info("faiss_index.stale_rebuilding", path=str(target))
-                else:
+                if not stale:
                     return cls.load(target)
+
+                # Índice stale — intentar actualización incremental primero
+                log.info("faiss_index.stale_detected", path=str(target))
+                existing = cls.load(target)
+                existing_ids = set(existing.ids)
+                df_clean = df.dropna(subset=["id_externo"])
+                new_ids = set(df_clean["id_externo"].tolist()) - existing_ids
+                ratio = len(new_ids) / max(len(existing_ids), 1)
+
+                if ratio <= _FULL_REBUILD_THRESHOLD and new_ids:
+                    # Pocos IDs nuevos: actualización incremental
+                    log.info(
+                        "faiss_index.incremental_update",
+                        n_new=len(new_ids),
+                        ratio=round(ratio, 2),
+                    )
+                    df_new_only = df_clean[df_clean["id_externo"].isin(new_ids)]
+                    added = existing.update(df_new_only)
+                    if added > 0:
+                        existing.save(target)
+                    return existing
+                else:
+                    # Muchos IDs nuevos o ninguno nuevo: reconstrucción completa
+                    log.info(
+                        "faiss_index.full_rebuild",
+                        n_new=len(new_ids),
+                        ratio=round(ratio, 2),
+                    )
             except Exception as e:
                 log.warning("faiss_index.load_error", error=str(e), path=str(target))
 
@@ -333,9 +456,14 @@ def rebuild_index(df: pd.DataFrame) -> FaissIndex | None:
     Si FAISS no está disponible o los embeddings no están instalados,
     loguea un aviso y retorna None sin propagar la excepción.
     """
+    import time
+
+    from observability.runtime_metrics import faiss_rebuild_duration_seconds, faiss_rebuild_total
+
     if not _faiss_available():
         log.info("faiss_index.skip_rebuild", reason="faiss not installed")
         return None
+    started = time.monotonic()
     try:
         from dashboard.embeddings import embeddings_available
 
@@ -344,9 +472,15 @@ def rebuild_index(df: pd.DataFrame) -> FaissIndex | None:
             return None
         idx = FaissIndex.build(df)
         idx.save()
+        elapsed = time.monotonic() - started
+        faiss_rebuild_total.labels(status="success").inc()
+        faiss_rebuild_duration_seconds.observe(elapsed)
         return idx
     except Exception as e:
+        elapsed = time.monotonic() - started
         log.warning("faiss_index.rebuild_error", error=str(e))
+        faiss_rebuild_total.labels(status="error").inc()
+        faiss_rebuild_duration_seconds.observe(elapsed)
         return None
 
 

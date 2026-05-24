@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import functools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from typing import Any
@@ -46,61 +48,108 @@ log = get_logger(__name__)
 
 _DAILY_SOURCE = "place_live_atom"
 
+
+def _signal_post_ingestion(fuente: str) -> None:
+    """Señaliza al dashboard y FAISS que hubo nueva ingestión de datos.
+
+    Combina dos operaciones que se repiten en process_month y process_daily:
+    1. Invalidación de caché del dashboard (shared.cache_signal).
+    2. Evento de dominio ``faiss.index_stale`` para reconstrucción del índice.
+
+    Fail-open: cualquier error se loguea como debug sin propagar.
+    """
+    try:
+        from shared.cache_signal import signal_cache_invalidation
+
+        signal_cache_invalidation()
+    except Exception:
+        log.debug("cache_signal_failed", fuente=fuente)
+
+    try:
+        from db.events import append_event
+
+        append_event(
+            "faiss.index_stale",
+            "faiss_index",
+            "ml_index",
+            {"reason": "ingestion_completed", "fuente": fuente},
+        )
+    except Exception:
+        log.debug("faiss_index_stale_event_failed", fuente=fuente)
+
+
 # ── ML fallback para entries sin keywords ─────────────────────────────────
 # Solo se aplica al carril diario (ATOM feed). Las entradas TI (CPV 48/72)
 # que no tienen keywords de tecnología se pasan al modelo para decidir si
 # incluirlas o marcarlas para revisión manual.
 
 _TI_PREFIXES = ("48", "72")
-_ml_clf: Any = None
-_ml_clf_attempted: bool = False
-_tech_clf: Any = None
-_tech_clf_attempted: bool = False
 
 
-def _get_ml_clf() -> Any:
-    """Carga el clasificador ML una sola vez por proceso. None si no disponible."""
-    global _ml_clf, _ml_clf_attempted
-    if _ml_clf_attempted:
-        return _ml_clf
-    _ml_clf_attempted = True
+@dataclasses.dataclass(frozen=True)
+class _ClassifierHolder:
+    """Contenedor inmutable de los clasificadores ML cargados para este proceso.
+
+    Reemplaza los 4 módule-level globals mutables (_ml_clf, _ml_clf_attempted,
+    _tech_clf, _tech_clf_attempted) por un dataclass thread-safe cargado una
+    sola vez via ``functools.lru_cache``. El cache puede limpiarse en tests
+    llamando a ``_load_classifiers.cache_clear()``.
+    """
+
+    ml: Any  # SAPClassifier | None
+    tech: Any  # TechnologyClassifier | None
+
+
+@functools.lru_cache(maxsize=1)
+def _load_classifiers() -> _ClassifierHolder:
+    """Carga SAPClassifier y TechnologyClassifier una sola vez por proceso.
+
+    Thread-safe gracias a ``lru_cache``: si dos hilos invocan esta función
+    simultáneamente, solo uno ejecutará el cuerpo y el otro esperará el resultado.
+    Para tests: ``_load_classifiers.cache_clear()`` antes de cada test que necesite
+    inyectar mocks.
+    """
+    from config import settings as _settings
+
+    # ── SAP binario ────────────────────────────────────────────────────────
+    ml: Any = None
     try:
         from scraper.ml_classifier import SAPClassifier
 
-        # En CI (GitHub Actions) el modelo no existe en disco — descargarlo
-        # del último GitHub Release si hay GITHUB_TOKEN disponible.
         SAPClassifier.ensure_downloaded()
         if SAPClassifier.is_available():
-            _ml_clf = SAPClassifier.load()
-            log.info("pipeline.ml_clf_loaded", threshold=_ml_clf._threshold)
+            ml = SAPClassifier.load()
+            log.info("pipeline.ml_clf_loaded", threshold=ml._threshold)
     except Exception:
         log.debug("pipeline.ml_clf_unavailable")
-    return _ml_clf
+
+    # ── Multi-tecnología (solo si ML_TECH_ENABLED) ─────────────────────────
+    tech: Any = None
+    if getattr(_settings, "ML_TECH_ENABLED", False):
+        try:
+            from scraper.tech_classifier import TechnologyClassifier
+
+            if TechnologyClassifier.is_available():
+                tech = TechnologyClassifier.load()
+                log.info(
+                    "pipeline.tech_clf_loaded",
+                    n_models=len(tech._models),
+                    practices=list(getattr(_settings, "ML_TECH_GATING_PRACTICES", [])),
+                )
+        except Exception as exc:
+            log.debug("pipeline.tech_clf_unavailable", error=str(exc))
+
+    return _ClassifierHolder(ml=ml, tech=tech)
+
+
+def _get_ml_clf() -> Any:
+    """Devuelve el SAPClassifier cargado. None si no disponible."""
+    return _load_classifiers().ml
 
 
 def _get_tech_clf() -> Any:
-    """Carga el TechnologyClassifier multi-label si está habilitado (singleton)."""
-    global _tech_clf, _tech_clf_attempted
-    if _tech_clf_attempted:
-        return _tech_clf
-    _tech_clf_attempted = True
-    from config import settings as _settings
-
-    if not getattr(_settings, "ML_TECH_ENABLED", False):
-        return None
-    try:
-        from scraper.tech_classifier import TechnologyClassifier
-
-        if TechnologyClassifier.is_available():
-            _tech_clf = TechnologyClassifier.load()
-            log.info(
-                "pipeline.tech_clf_loaded",
-                n_models=len(_tech_clf._models),
-                practices=list(getattr(_settings, "ML_TECH_GATING_PRACTICES", [])),
-            )
-    except Exception as exc:
-        log.debug("pipeline.tech_clf_unavailable", error=str(exc))
-    return _tech_clf
+    """Devuelve el TechnologyClassifier cargado. None si deshabilitado o no disponible."""
+    return _load_classifiers().tech
 
 
 def _apply_tech_prediction(lic: Licitacion) -> dict[str, Any] | None:
@@ -297,26 +346,8 @@ def _process_month_impl(
     except Exception:
         log.debug("prometheus_instrumentation_failed", fuente=fuente)
 
-    # Señal de invalidación de caché para el dashboard
-    try:
-        from shared.cache_signal import signal_cache_invalidation
-
-        signal_cache_invalidation()
-    except Exception:
-        log.debug("cache_signal_failed", fuente=fuente)
-
-    # Evento de dominio: índice FAISS debe reconstruirse
-    try:
-        from db.events import append_event
-
-        append_event(
-            "faiss.index_stale",
-            "faiss_index",
-            "ml_index",
-            {"reason": "ingestion_completed", "fuente": fuente},
-        )
-    except Exception:
-        log.debug("faiss_index_stale_event_failed", fuente=fuente)
+    # Señal de invalidación de caché + evento FAISS
+    _signal_post_ingestion(fuente)
 
     return {
         "year": year,
@@ -530,26 +561,8 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
         entries_seen=meta["entries_seen"],
     )
 
-    # Señal de invalidación de caché para el dashboard
-    try:
-        from shared.cache_signal import signal_cache_invalidation
-
-        signal_cache_invalidation()
-    except Exception:
-        log.debug("cache_signal_failed", fuente=fuente)
-
-    # Evento de dominio: índice FAISS debe reconstruirse
-    try:
-        from db.events import append_event
-
-        append_event(
-            "faiss.index_stale",
-            "faiss_index",
-            "ml_index",
-            {"reason": "ingestion_completed", "fuente": fuente},
-        )
-    except Exception:
-        log.debug("faiss_index_stale_event_failed", fuente=fuente)
+    # Señal de invalidación de caché + evento FAISS
+    _signal_post_ingestion(fuente)
 
     return {
         "status": "ok",
@@ -567,19 +580,24 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
 
 @traced("scraper.update_daily")
 def update_daily() -> dict[str, Any]:
-    """Punto de entrada para el carril diario con observabilidad."""
+    """Punto de entrada para el carril diario con observabilidad.
+
+    Garantiza el cierre de la conexión DB del hilo worker actual al finalizar,
+    independientemente del resultado (éxito o error).
+    """
     init_db()
     run_id = bind_run_context(entrypoint="update_daily")
-    with record_run(run_id) as metrics:
-        result = process_daily(run_id=run_id)
-        if result["status"] == "ok":
-            metrics.status = "ok"
-            metrics.licitaciones_nuevas = len(result.get("inserted", []))
-            metrics.licitaciones_actualizadas = len(result.get("modified", [])) + len(
-                result.get("unchanged", [])
-            )
-        else:
-            metrics.status = "error"
-            metrics.months_failed = 1
-        metrics.notas = f"daily|{result['status']}"
-    return result
+    try:
+        with record_run(run_id) as metrics:
+            result = process_daily(run_id=run_id)
+            if result["status"] == "ok":
+                metrics.status = "ok"
+                metrics.licitaciones_nuevas = len(result.get("inserted", []))
+                metrics.licitaciones_actualizadas = len(result.get("modified", []))
+            else:
+                metrics.status = "error"
+                metrics.months_failed = 1
+            metrics.notas = f"daily|{result['status']}"
+        return result
+    finally:
+        close_pool()
