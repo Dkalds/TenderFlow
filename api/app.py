@@ -88,8 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log.info("api_startup_ok")
     except Exception as exc:
         log.error("api_startup_db_error", error=str(exc))
-        if settings.ENV == "prod":
-            raise  # fail fast en producción
+        raise  # fail fast en todos los entornos
 
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
     app.state.pending_background_tasks: set[asyncio.Task] = set()
