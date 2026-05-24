@@ -8,10 +8,14 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx  # type: ignore[import-untyped]
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+
+try:
+    import networkx as nx  # type: ignore[import-untyped]
+except ModuleNotFoundError:  # pragma: no cover
+    nx = None  # type: ignore[assignment]
 
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import empty_state, guarded_render
@@ -33,6 +37,12 @@ _SAP_KEYWORDS = ["SAP", "ERP", "S/4HANA", "HANA", "BASIS", "ABAP", "Fiori", "BW"
 
 def _render_graph_tab(ctx: PageContext, adj: pd.DataFrame) -> None:
     """Network graph interactivo de co-adjudicaciones en UTEs."""
+    if nx is None:  # pragma: no cover
+        st.warning(
+            "La librería `networkx` no está instalada. El grafo de partners no está disponible."
+        )
+        return
+
     c1, c2 = st.columns(2)
     min_contratos = c1.slider("Mín. contratos juntos", 1, 10, 2, key="graph_min")
     top_nodes = c2.slider("Máx. empresas en grafo", 10, 150, 50, key="graph_top")
