@@ -89,6 +89,10 @@ class _RedisNonceStore:
 
     Usa SETNX (set-if-not-exists) + EXPIRE para garantizar atomicidad: si dos
     workers reciben el mismo nonce en paralelo, solo uno podrá registrarlo.
+
+    Incluye un fallback ``_TTLCacheNonceStore`` en memoria: si Redis no está
+    disponible, delega al fallback para mantener protección anti-replay
+    dentro del mismo proceso (fail-closed, no fail-open).
     """
 
     def __init__(self, redis_url: str) -> None:
@@ -101,15 +105,21 @@ class _RedisNonceStore:
             decode_responses=True,
         )
         self._prefix = "oauth_nonce:"
+        self._fallback = _TTLCacheNonceStore()
 
     def contains(self, nonce: str) -> bool:
         try:
-            return bool(self._client.exists(f"{self._prefix}{nonce}"))
+            found_in_redis = bool(self._client.exists(f"{self._prefix}{nonce}"))
+            if found_in_redis:
+                return True
+            return self._fallback.contains(nonce)
         except Exception:
             log.warning("redis_nonce_store_read_error", exc_info=True)
-            return False  # fail-open: si Redis falla, no bloquear el login
+            return self._fallback.contains(nonce)
 
     def add(self, nonce: str, ttl_seconds: int) -> None:
+        # Always write to in-memory fallback so it's available if Redis fails later
+        self._fallback.add(nonce, ttl_seconds)
         try:
             key = f"{self._prefix}{nonce}"
             # SETNX + EXPIRE atómico: si la key ya existe, set_nx devuelve False

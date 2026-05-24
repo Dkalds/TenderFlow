@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     )
 
     # ── Entorno ──────────────────────────────────────────────────────────
-    ENV: Literal["dev", "staging", "prod"] = "dev"
+    ENV: Literal["dev", "staging", "prod"] = "prod"
 
     # ── Rutas ────────────────────────────────────────────────────────────
     DATA_DIR: Path = _DEFAULT_DATA_DIR
@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     # pipeline ML. Requiere: pip install licitaciones-sap[ml-embeddings]
     ML_USE_EMBEDDINGS: bool = False
 
+    # ── DB / Upsert ──────────────────────────────────────────────────────
+    # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk
+    # se ejecuta en su propia transacción, liberando el write lock entre chunks.
+    UPSERT_CHUNK_SIZE: int = 500
+
     # ── Resiliencia ───────────────────────────────────────────────────────
     # Circuit breaker: backoff exponencial entre aperturas del circuito
     BREAKER_BASE_TIMEOUT: int = 60  # segundos — primer timeout tras apertura
@@ -129,6 +134,10 @@ class Settings(BaseSettings):
     # Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"
     WEBHOOK_SIGNING_KEY: SecretStr = SecretStr("")
 
+    # Clave Fernet para cifrar secretos TOTP at-rest. Obligatoria en prod.
+    # Genera una con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
+
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
     TURSO_AUTH_TOKEN: SecretStr = SecretStr("")
@@ -145,6 +154,9 @@ class Settings(BaseSettings):
     ALERT_SMTP_PASSWORD: SecretStr = SecretStr("")
     ALERT_SMTP_HOST: str = "smtp.gmail.com"
     ALERT_SMTP_PORT: int = 587
+
+    # ── Grafana ─────────────────────────────────────────────────────────
+    GF_SECURITY_ADMIN_PASSWORD: SecretStr = SecretStr("")
 
     # ── Anomaly detection ────────────────────────────────────────────────
     # Activar detección de anomalías en el scheduler
@@ -326,6 +338,70 @@ class Settings(BaseSettings):
                     "API_HMAC_SECRET demasiado corto. Usa al menos 32 caracteres "
                     "(recomendado: secrets.token_hex(32))."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_signing_key_strength(self) -> Settings:
+        """En producción, exigir SIGNING_KEY con longitud mínima de 32 chars."""
+        if self.ENV in ("prod", "staging"):
+            key = self.SIGNING_KEY.get_secret_value()
+            if key and len(key) < 32:
+                raise ValueError(
+                    "SIGNING_KEY demasiado corto. Usa al menos 32 caracteres "
+                    '(recomendado: python -c "import secrets; print(secrets.token_hex(32))").'
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_password_not_weak(self) -> Settings:
+        """En producción, rechazar contraseñas débiles conocidas."""
+        if self.ENV not in ("prod", "staging"):
+            return self
+        from shared.password_policy import check_password_strength
+
+        # Validar DASHBOARD_PASSWORD si se usa (legacy, sin hash)
+        dash_pw = self.DASHBOARD_PASSWORD.get_secret_value()
+        if dash_pw:
+            result = check_password_strength(
+                dash_pw,
+                min_length=16,
+                label="DASHBOARD_PASSWORD",
+            )
+            if not result.is_strong:
+                raise ValueError(
+                    f"DASHBOARD_PASSWORD es débil: {result.summary}. "
+                    "Usa una contraseña de al menos 16 caracteres con mayúsculas, "
+                    "minúsculas, dígitos y caracteres especiales. "
+                    "Mejor aún: usa DASHBOARD_PASSWORD_HASH con argon2/bcrypt."
+                )
+
+        # Validar GF_SECURITY_ADMIN_PASSWORD
+        gf_pw = self.GF_SECURITY_ADMIN_PASSWORD.get_secret_value()
+        if gf_pw:
+            result = check_password_strength(
+                gf_pw,
+                min_length=16,
+                label="GF_SECURITY_ADMIN_PASSWORD",
+            )
+            if not result.is_strong:
+                raise ValueError(
+                    f"GF_SECURITY_ADMIN_PASSWORD es débil: {result.summary}. "
+                    "Usa una contraseña de al menos 16 caracteres."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_smtp_password(self) -> Settings:
+        """En producción, exigir SMTP password si hay destinatarios de alertas."""
+        if (
+            self.ENV in ("prod", "staging")
+            and self.ALERT_EMAIL_TO
+            and not self.ALERT_SMTP_PASSWORD.get_secret_value()
+        ):
+            raise ValueError(
+                "ALERT_SMTP_PASSWORD es obligatorio cuando ALERT_EMAIL_TO está "
+                "configurado en ENV=prod. Configura un app password de Gmail."
+            )
         return self
 
     @model_validator(mode="after")

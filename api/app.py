@@ -41,6 +41,7 @@ from api.middleware import (
     ETagMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
+    _trusted_client_ip,
 )
 from api.routes.ask import router as ask_router
 from api.routes.exports import router as exports_router
@@ -88,8 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log.info("api_startup_ok")
     except Exception as exc:
         log.error("api_startup_db_error", error=str(exc))
-        if settings.ENV == "prod":
-            raise  # fail fast en producción
+        raise  # fail fast en todos los entornos
 
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
     app.state.pending_background_tasks: set[asyncio.Task] = set()
@@ -199,6 +199,11 @@ except ImportError:
 _cors_origins: list[str]
 if settings.ENV == "dev":
     _cors_origins = ["*"]
+    log.warning(
+        "cors_wildcard_enabled",
+        env=settings.ENV,
+        hint="CORS allow_origins=['*'] is active. Set ENV=prod or CORS_ALLOWED_ORIGINS to restrict.",
+    )
 elif settings.CORS_ALLOWED_ORIGINS:
     _cors_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
 else:
@@ -338,9 +343,7 @@ try:
             _metrics_allowed_ips: set[str] = set(
                 ip.strip() for ip in settings.METRICS_ALLOWED_IPS.split(",") if ip.strip()
             )
-            client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
-                request.client.host if request.client else ""
-            )
+            client_ip = _trusted_client_ip(request)
             if client_ip not in _metrics_allowed_ips:
                 # Requiere API key con scope metrics:read
                 api_key_raw = request.headers.get("X-API-Key")

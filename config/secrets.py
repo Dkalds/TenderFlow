@@ -94,7 +94,10 @@ def get_secret(name: str, default: str | None = None) -> str | None:
         value = _get_from_env(name)
 
     result = value if value is not None else default
-    _cache[name] = result
+    if result is not None:
+        _cache[name] = result
+    else:
+        log.debug("secret_not_cached", secret_name=name, reason="resolved_to_none")
     return result
 
 

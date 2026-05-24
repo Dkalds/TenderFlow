@@ -156,7 +156,7 @@ services:
       start_period: 20s
     depends_on:
       scheduler:
-        condition: service_started
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana-oss:11.1.0

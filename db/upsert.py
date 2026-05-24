@@ -241,43 +241,38 @@ class UpsertResult:
     def actualizadas(self) -> int:
         return len(self.modified) + len(self.unchanged)
 
+    def merge(self, other: UpsertResult) -> None:
+        """Acumula resultados de otro UpsertResult en este."""
+        self.inserted.extend(other.inserted)
+        self.modified.extend(other.modified)
+        self.unchanged.extend(other.unchanged)
 
-def upsert_licitaciones_with_history(
-    items: Iterable[Licitacion],
+
+def _upsert_chunk(
+    chunk: list[Licitacion],
     source: str,
 ) -> UpsertResult:
-    """Inserta/actualiza licitaciones y registra cambios en licitaciones_history.
-
-    Compara campos clave (HISTORY_TRACKED_FIELDS) con el registro existente.
-    Si hay diff, guarda un snapshot del estado *anterior* en licitaciones_history.
-    """
+    """Procesa un chunk de licitaciones en una sola transacción."""
     result = UpsertResult(inserted=[], modified=[], unchanged=[])
 
-    batch = list(items)
-    if not batch:
-        return result
-
-    # Bulk pre-fetch: un único SELECT IN (...) en lugar de N SELECTs individuales
     col_names = [c.strip() for c in _HISTORY_SELECT_COLS.split(",")]
     with connect() as c:
-        placeholders = ", ".join("?" for _ in batch)
-        ids = [lic.id_externo for lic in batch]
+        placeholders = ", ".join("?" for _ in chunk)
+        ids = [lic.id_externo for lic in chunk]
         existing_rows = c.execute(
             f"SELECT {_HISTORY_SELECT_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})",
             ids,
         ).fetchall()
-        # Construir dict {id_externo: old_record} para lookup O(1) por item
         existing: dict[str, dict[str, Any]] = {
             row[0]: dict(zip(col_names, row, strict=False)) for row in existing_rows
         }
 
-        for lic in batch:
+        for lic in chunk:
             data = asdict(lic)
             vals = [data[k] for k in _LIC_KEYS]
             old_record = existing.get(lic.id_externo)
 
             if old_record is not None:
-                # Detectar campos que cambiaron
                 changed: list[str] = [
                     field_name
                     for field_name in HISTORY_TRACKED_FIELDS
@@ -285,10 +280,7 @@ def upsert_licitaciones_with_history(
                 ]
 
                 if changed:
-                    # Guardar snapshot del estado ANTERIOR
                     snapshot = json.dumps(old_record, ensure_ascii=False, default=str)
-                    # Limitar tamaño del snapshot para prevenir almacenamiento
-                    # excesivo por payloads maliciosos en el feed
                     if len(snapshot) > 50_000:
                         snapshot = snapshot[:50_000] + "...(truncado)"
                     c.execute(
@@ -309,12 +301,40 @@ def upsert_licitaciones_with_history(
             else:
                 result.inserted.append(lic.id_externo)
 
-            # UPSERT (siempre, incluso si unchanged — actualiza fecha_extraccion)
             c.execute(
                 f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
                 f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
                 vals,
             )
+
+    return result
+
+
+def upsert_licitaciones_with_history(
+    items: Iterable[Licitacion],
+    source: str,
+    *,
+    chunk_size: int = 500,
+) -> UpsertResult:
+    """Inserta/actualiza licitaciones y registra cambios en licitaciones_history.
+
+    Compara campos clave (HISTORY_TRACKED_FIELDS) con el registro existente.
+    Si hay diff, guarda un snapshot del estado *anterior* en licitaciones_history.
+
+    El batch se divide en chunks de ``chunk_size`` elementos, cada uno en su
+    propia transacción SQLite, para liberar el write lock entre chunks y evitar
+    bloqueos prolongados en backfills grandes.
+    """
+    result = UpsertResult(inserted=[], modified=[], unchanged=[])
+
+    batch = list(items)
+    if not batch:
+        return result
+
+    for i in range(0, len(batch), chunk_size):
+        chunk = batch[i : i + chunk_size]
+        chunk_result = _upsert_chunk(chunk, source)
+        result.merge(chunk_result)
 
     return result
 
