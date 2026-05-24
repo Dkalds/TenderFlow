@@ -49,8 +49,12 @@ def test_ttlcache_nonce_store_expiry_lazy():
 
 def test_redis_nonce_store_add_and_contains():
     """Usa mock de Redis — verifica llamadas a set() y exists()."""
-    with patch("shared.auth_core.redis") as mock_redis_mod:  # type: ignore[attr-defined]
-        pass  # no usamos el patch sobre el módulo — inyectamos directamente
+    store = _make_redis_store_with_mock()
+    store._client.set.return_value = True
+    store.add("abc")
+    store._client.set.assert_called_once()
+    store._client.exists.return_value = 1
+    assert store.contains("abc")
 
 
 def _make_redis_store_with_mock():
