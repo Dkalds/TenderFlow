@@ -24,6 +24,33 @@ from dashboard.theme import (
 from observability import configure_logging, configure_tracing
 from observability.logging import bind_session_context
 
+_METRICS_SERVER_STARTED = False
+
+_DASHBOARD_METRICS_PORT = 9092
+
+
+def start_metrics_server(port: int = _DASHBOARD_METRICS_PORT) -> bool:
+    """Arranca un servidor HTTP para exponer métricas Prometheus.
+
+    Usa ``prometheus_client.start_http_server`` en un hilo daemon.
+    Es idempotente: si ya se arrancó, no hace nada.
+
+    Returns:
+        ``True`` si el servidor se arrancó (o ya estaba corriendo).
+    """
+    global _METRICS_SERVER_STARTED
+    if _METRICS_SERVER_STARTED:
+        return True
+    try:
+        from prometheus_client import start_http_server
+
+        start_http_server(port)
+        _METRICS_SERVER_STARTED = True
+        return True
+    except (ImportError, OSError):
+        return False
+
+
 
 def bootstrap() -> tuple[str, list[str]]:
     """Inicializa el proceso del dashboard.
@@ -37,6 +64,7 @@ def bootstrap() -> tuple[str, list[str]]:
     # ── Observabilidad ──────────────────────────────────────────────────
     configure_logging()
     configure_tracing(service_name="licitaciones-dashboard")
+    start_metrics_server()
 
     # ── Page config (debe ser la primera llamada st.*) ──────────────────
     st.set_page_config(

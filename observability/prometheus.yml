@@ -16,3 +16,11 @@ scrape_configs:
       - targets: ["api:8080"]
         labels:
           service: "api"
+
+  - job_name: "licitaciones-dashboard"
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["dashboard:9092"]
+        labels:
+          service: "dashboard"
