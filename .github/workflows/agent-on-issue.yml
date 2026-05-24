@@ -164,17 +164,59 @@ jobs:
              make lint || exit 1
              make typecheck || exit 1
              make test-unit || exit 1
-          9. Si todo verde:
-             git add -A && git commit -m 'feat: descripcion [issue #${ISSUE_NUMBER}]'
-             git push -u origin agent/issue-${ISSUE_NUMBER}-slug
-             gh pr create --draft --title 'agent: titulo' --body 'descripcion' --label 'agent:human-review-required'
-             gh issue edit ${ISSUE_NUMBER} --add-label agent:human-review-required
-          10. Revisá el diff (rol reviewer + security_triage): comentá en el PR con gh pr comment
+           9. Si todo verde:
+              git add -A && git commit -m 'feat: descripcion [issue #${ISSUE_NUMBER}]'
+              NO hagas git push ni gh pr create — el workflow CI los ejecuta después automáticamente.
+              gh issue edit ${ISSUE_NUMBER} --add-label agent:human-review-required
+           10. Revisá el diff vos mismo (rol reviewer + security_triage):
+              gh issue comment ${ISSUE_NUMBER} --body '### Review notes\n...'
           11. Volcá la discusión a docs/adr/discussions/${ISSUE_NUMBER}-slug.md y commiteá
 
           Límite: ${{ env.OPENCODE_MAX_COST_USD }} USD. Si un gate falla 4 veces:
           gh issue edit ${ISSUE_NUMBER} --add-label agent:blocked
           y terminá."
+
+      - name: Push branch & create draft PR
+        if: steps.budget.outputs.budget_exceeded == 'false'
+        id: push_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          # Detectar branch creado por el agente (prefijo agent/issue-<N>-)
+          AGENT_BRANCH=$(git branch --list "agent/issue-${ISSUE_NUMBER}-*" | head -1 | xargs)
+          if [ -z "$AGENT_BRANCH" ]; then
+            echo "No agent branch found — agent may not have created one."
+            echo "pr_created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "Agent branch detected: $AGENT_BRANCH"
+
+          # Configurar git identity para el push
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          # Push
+          git push -u origin "$AGENT_BRANCH"
+
+          # Crear PR draft
+          PR_BODY="Closes #${ISSUE_NUMBER}\n\nGenerado automaticamente por el pipeline agent-on-issue."
+          PR_URL=$(gh pr create \
+            --draft \
+            --head "$AGENT_BRANCH" \
+            --base master \
+            --title "agent: ${ISSUE_TITLE} [#${ISSUE_NUMBER}]" \
+            --body "$PR_BODY" \
+            --label "agent:human-review-required" 2>&1 | tail -1)
+
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+
+          # Comentar en el issue con el link al PR
+          gh issue comment "$ISSUE_NUMBER" \
+            --body "PR draft creado: $PR_URL — revisión humana requerida antes del merge."
+          gh issue edit "$ISSUE_NUMBER" --add-label "agent:human-review-required" || true
 
       - name: Save graphify cache
         if: always()
