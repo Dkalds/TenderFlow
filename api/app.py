@@ -275,15 +275,13 @@ try:
             if method in ("POST", "PUT", "PATCH"):
                 body_size = 0
                 max_bytes = self._MAX_BYTES
-                rejected = False
 
                 async def limiting_receive() -> dict:  # type: ignore[type-arg]
-                    nonlocal body_size, rejected
+                    nonlocal body_size
                     message = await receive()
                     if message.get("type") == "http.request":
                         body_size += len(message.get("body", b""))
                         if body_size > max_bytes:
-                            rejected = True
                             raise _BodyTooLargeError
                     return message
 
@@ -295,14 +293,16 @@ try:
                 await self.app(scope, receive, send)
 
         async def _send_413(self, send: _Send) -> None:
-            await send({
-                "type": "http.response.start",
-                "status": 413,
-                "headers": [
-                    [b"content-type", b"application/json"],
-                    [b"content-length", str(len(self._413_BODY)).encode()],
-                ],
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 413,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                        [b"content-length", str(len(self._413_BODY)).encode()],
+                    ],
+                }
+            )
             await send({"type": "http.response.body", "body": self._413_BODY})
 
     class _BodyTooLargeError(Exception):
