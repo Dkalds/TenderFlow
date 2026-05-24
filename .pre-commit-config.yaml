@@ -29,6 +29,7 @@ repos:
           - pandas-stubs
           - types-requests
           - types-python-dateutil
+          - types-cachetools
         args:
           - "--ignore-missing-imports"
           - "--disable-error-code=misc"
