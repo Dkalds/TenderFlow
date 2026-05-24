@@ -185,7 +185,7 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
           # Detectar branch creado por el agente (prefijo agent/issue-<N>-)
-          AGENT_BRANCH=$(git branch --list "agent/issue-${ISSUE_NUMBER}-*" | head -1 | xargs)
+          AGENT_BRANCH=$(git branch --list "agent/issue-${ISSUE_NUMBER}-*" | head -1 | sed 's/^[* ]*//')
           if [ -z "$AGENT_BRANCH" ]; then
             echo "No agent branch found — agent may not have created one."
             echo "pr_created=false" >> $GITHUB_OUTPUT
