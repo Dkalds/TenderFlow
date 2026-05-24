@@ -229,7 +229,7 @@ def traced(span_name: str | None = None) -> Callable[[F], F]:
 
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            if _noop and not _configured:
+            if not _configured or _noop:
                 # No se ha llamado configure_tracing(); ejecutar sin tracing
                 return fn(*args, **kwargs)
 
