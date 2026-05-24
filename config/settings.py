@@ -124,6 +124,10 @@ class Settings(BaseSettings):
 
     SIGNING_KEY: SecretStr = SecretStr("")
 
+    # Clave Fernet para cifrar secretos TOTP at-rest. Obligatoria en prod.
+    # Genera una con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
+
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
     TURSO_AUTH_TOKEN: SecretStr = SecretStr("")

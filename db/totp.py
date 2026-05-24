@@ -9,6 +9,12 @@ from typing import Any
 from argon2 import PasswordHasher
 
 from db.database import connect, now_utc_iso
+from shared.crypto import (
+    TOTPDecryptionError,
+    decrypt_totp_secret,
+    encrypt_totp_secret,
+    is_encrypted,
+)
 
 _ph = PasswordHasher()
 
@@ -67,14 +73,15 @@ def verify_totp(secret: str, code: str) -> bool:
 
 
 def save_totp_secret(user_id: int, secret: str, *, confirmed: bool = False) -> None:
-    """Guarda o actualiza el TOTP secret del usuario (NO confirmado por defecto)."""
+    """Guarda o actualiza el TOTP secret del usuario (cifrado at-rest)."""
+    encrypted = encrypt_totp_secret(secret)
     with connect() as c:
         c.execute(
             "INSERT INTO totp_secrets (user_id, secret, confirmed, created_at) "
             "VALUES (?, ?, ?, ?) "
             "ON CONFLICT(user_id) DO UPDATE SET secret=excluded.secret, "
             "confirmed=excluded.confirmed",
-            (user_id, secret, 1 if confirmed else 0, now_utc_iso()),
+            (user_id, encrypted, 1 if confirmed else 0, now_utc_iso()),
         )
 
 
@@ -85,14 +92,35 @@ def confirm_totp(user_id: int) -> None:
 
 
 def get_totp_secret(user_id: int) -> dict[str, Any] | None:
-    """Devuelve {secret, confirmed} o None si no tiene TOTP configurado."""
+    """Devuelve {secret, confirmed} o None si no tiene TOTP configurado.
+
+    El secreto se descifra transparentemente. Si el valor almacenado no está
+    cifrado (legacy), se devuelve tal cual para compatibilidad hacia atrás.
+    """
     with connect() as c:
         row = c.execute(
             "SELECT secret, confirmed FROM totp_secrets WHERE user_id = ?", (user_id,)
         ).fetchone()
     if row is None:
         return None
-    return {"secret": row[0], "confirmed": bool(row[1])}
+
+    raw_secret: str = row[0]
+    if is_encrypted(raw_secret):
+        try:
+            plaintext = decrypt_totp_secret(raw_secret)
+        except TOTPDecryptionError:
+            # Log pero no crashear — devolver None para forzar re-setup
+            from observability.logging import get_logger
+
+            get_logger(__name__).error(
+                "totp_decryption_failed", user_id=user_id
+            )
+            return None
+    else:
+        # Legacy: secreto sin cifrar — compatibilidad hacia atrás
+        plaintext = raw_secret
+
+    return {"secret": plaintext, "confirmed": bool(row[1])}
 
 
 def delete_totp(user_id: int) -> None:
