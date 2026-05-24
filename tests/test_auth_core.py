@@ -59,11 +59,12 @@ def test_redis_nonce_store_add_and_contains():
 
 def _make_redis_store_with_mock():
     """Crea un _RedisNonceStore con cliente Redis mockeado."""
-    from shared.auth_core import _RedisNonceStore
+    from shared.auth_core import _RedisNonceStore, _TTLCacheNonceStore
 
     store = _RedisNonceStore.__new__(_RedisNonceStore)
     store._prefix = "oauth_nonce:"
     store._client = MagicMock()
+    store._fallback = _TTLCacheNonceStore()
     return store
 
 
@@ -86,18 +87,45 @@ def test_redis_nonce_store_add_calls_set_nx():
     store._client.set.assert_called_once_with("oauth_nonce:nonce_xyz", "1", nx=True, ex=600)
 
 
-def test_redis_nonce_store_contains_fail_open():
-    """Si Redis lanza excepción, contains() devuelve False (fail-open)."""
+def test_redis_nonce_store_contains_uses_fallback_on_error():
+    """Si Redis lanza excepción, contains() delega al fallback in-memory (fail-closed)."""
     store = _make_redis_store_with_mock()
     store._client.exists.side_effect = ConnectionError("Redis down")
+    # Nonce not in fallback → False (but via fallback, not fail-open)
     assert not store.contains("nonce123")
+    # Add to fallback, then verify contains returns True even with Redis down
+    store._fallback.add("nonce123", 600)
+    assert store.contains("nonce123")
 
 
 def test_redis_nonce_store_add_fail_silent():
-    """Si Redis lanza excepción en add(), no propaga."""
+    """Si Redis lanza excepción en add(), no propaga y escribe al fallback."""
     store = _make_redis_store_with_mock()
     store._client.set.side_effect = ConnectionError("Redis down")
     store.add("nonce_xyz", 600)  # no debe lanzar
+    # Verify fallback has the nonce
+    assert store._fallback.contains("nonce_xyz")
+
+
+def test_redis_nonce_store_add_always_writes_fallback():
+    """add() escribe al fallback incluso cuando Redis funciona."""
+    store = _make_redis_store_with_mock()
+    store._client.set.return_value = True
+    store.add("nonce_abc", 300)
+    assert store._fallback.contains("nonce_abc")
+
+
+def test_redis_nonce_store_replay_detected_via_fallback_on_redis_failure():
+    """Anti-replay funciona via fallback cuando Redis cae después del add()."""
+    store = _make_redis_store_with_mock()
+    store._client.set.return_value = True
+    store._client.exists.return_value = 0
+    # First: add nonce (writes to both Redis and fallback)
+    store.add("replay_nonce", 600)
+    # Now Redis goes down
+    store._client.exists.side_effect = ConnectionError("Redis down")
+    # contains() should find it in fallback
+    assert store.contains("replay_nonce")
 
 
 # ---------------------------------------------------------------------------
