@@ -124,7 +124,7 @@ class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
 
 placsp_breaker = pybreaker.CircuitBreaker(
     fail_max=5,
-    reset_timeout=60 * 5,
+    reset_timeout=settings.BREAKER_BASE_TIMEOUT,
     exclude=[ValueError],
     listeners=[
         _AdaptiveBackoffListener(

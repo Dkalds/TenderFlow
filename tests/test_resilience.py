@@ -6,6 +6,7 @@ import pybreaker
 import pytest
 import requests
 
+from config import settings
 from scraper.resilience import _is_transient, http_retry, placsp_breaker
 
 
@@ -95,3 +96,37 @@ def test_breaker_opens_after_consecutive_failures():
 def test_placsp_breaker_exported():
     assert placsp_breaker.name == "placsp"
     assert placsp_breaker.fail_max == 5
+
+
+def test_placsp_breaker_initial_timeout_matches_setting():
+    """Verify reset_timeout is aligned with BREAKER_BASE_TIMEOUT, not a stale literal."""
+    assert placsp_breaker.reset_timeout == settings.BREAKER_BASE_TIMEOUT
+
+
+def test_adaptive_backoff_doubles_on_consecutive_opens():
+    """Verify adaptive backoff doubles timeout on each open, resets on close."""
+    from scraper.resilience import _AdaptiveBackoffListener
+
+    listener = _AdaptiveBackoffListener(base_timeout=60, max_timeout=480)
+    cb = pybreaker.CircuitBreaker(
+        fail_max=2,
+        reset_timeout=60,
+        listeners=[listener],
+        name="test_adaptive",
+    )
+
+    class _FakeState:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    # First open: timeout = 60 * 2^0 = 60
+    listener.state_change(cb, _FakeState("closed"), _FakeState("open"))
+    assert cb.reset_timeout == 60
+
+    # Second open: timeout = 60 * 2^1 = 120
+    listener.state_change(cb, _FakeState("half-open"), _FakeState("open"))
+    assert cb.reset_timeout == 120
+
+    # Close resets
+    listener.state_change(cb, _FakeState("half-open"), _FakeState("closed"))
+    assert cb.reset_timeout == 60
