@@ -206,6 +206,41 @@ class TestRateLimitMiddleware:
         limiter.check.assert_not_called()
 
 
+    def test_ask_endpoint_in_heavy_limits(self):
+        """Verify /api/v1/ask is rate-limited to 10 req/min (issue #58)."""
+        from api.middleware import _HEAVY_ENDPOINT_LIMITS
+
+        assert "/api/v1/ask" in _HEAVY_ENDPOINT_LIMITS
+        assert _HEAVY_ENDPOINT_LIMITS["/api/v1/ask"] == 10
+
+    def test_ask_models_endpoint_in_heavy_limits(self):
+        """Verify /api/v1/ask/models is rate-limited to 30 req/min."""
+        from api.middleware import _HEAVY_ENDPOINT_LIMITS
+
+        assert "/api/v1/ask/models" in _HEAVY_ENDPOINT_LIMITS
+        assert _HEAVY_ENDPOINT_LIMITS["/api/v1/ask/models"] == 30
+
+    @patch("api.middleware.get_rate_limiter")
+    @patch("api.middleware._client_key", return_value="ip:1.2.3.4")
+    def test_ask_endpoint_uses_heavy_limit(self, _ck, mock_rl):
+        """The middleware must pass max_calls=10 for /api/v1/ask."""
+        limiter = MagicMock()
+        limiter.check.return_value = True
+        mock_rl.return_value = limiter
+
+        async def _handler(request):
+            return JSONResponse({"ok": True})
+
+        app = Starlette(
+            routes=[Route("/api/v1/ask", _handler, methods=["GET", "POST"])],
+        )
+        app.add_middleware(RateLimitMiddleware)
+        client = TestClient(app)
+        client.post("/api/v1/ask")
+        limiter.check.assert_called_once()
+        call_kwargs = limiter.check.call_args
+        assert call_kwargs.kwargs.get("max_calls") == 10 or call_kwargs[1].get("max_calls") == 10
+
 # ── ETagMiddleware ───────────────────────────────────────────────────────────
 
 
