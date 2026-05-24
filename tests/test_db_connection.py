@@ -114,3 +114,96 @@ def test_is_turso_backend_false_without_url(tmp_db):
 
     # tmp_db setea _DB_PATH_OVERRIDE → not _DB_PATH_OVERRIDE es False → retorna False
     assert is_turso_backend() is False
+
+
+# ── close_pool thread-safety ─────────────────────────────────────────────────
+
+
+def test_unit_close_pool_clears_thread_local(tmp_db):
+    """close_pool() cierra la conexión thread-local y la limpia."""
+    db_mod, _ = tmp_db
+
+    from db import connection as conn_mod
+
+    # Ensure a thread-local connection exists
+    with db_mod.connect() as c:
+        c.execute("SELECT 1")
+
+    # Now close_pool should clear it
+    db_mod.close_pool()
+    assert getattr(conn_mod._local, "conn", None) is None
+
+
+def test_unit_close_pool_nullifies_pool_under_lock(tmp_db):
+    """close_pool() sets _pool to None atomically under _pool_lock."""
+    import queue as _queue_mod
+
+    from db import connection as conn_mod
+
+    # Simulate a pool existing (even in SQLite-local mode for test purposes)
+    fake_pool: _queue_mod.Queue[object] = _queue_mod.Queue(maxsize=4)
+    original_pool = conn_mod._pool
+    original_active = conn_mod._pool_active
+    try:
+        conn_mod._pool = fake_pool  # type: ignore[assignment]
+        conn_mod._pool_active = 0
+
+        conn_mod.close_pool()
+
+        assert conn_mod._pool is None
+        assert conn_mod._pool_active == 0
+    finally:
+        conn_mod._pool = original_pool
+        conn_mod._pool_active = original_active
+
+
+def test_unit_close_pool_drains_queued_connections(tmp_db):
+    """close_pool() drains and closes all connections in the pool."""
+    import queue as _queue_mod
+    from unittest.mock import MagicMock
+
+    from db import connection as conn_mod
+
+    fake_pool: _queue_mod.Queue[object] = _queue_mod.Queue(maxsize=4)
+    mock_conn1 = MagicMock()
+    mock_conn2 = MagicMock()
+    fake_pool.put(mock_conn1)
+    fake_pool.put(mock_conn2)
+
+    original_pool = conn_mod._pool
+    original_active = conn_mod._pool_active
+    try:
+        conn_mod._pool = fake_pool  # type: ignore[assignment]
+        conn_mod._pool_active = 2
+
+        conn_mod.close_pool()
+
+        mock_conn1.close.assert_called_once()
+        mock_conn2.close.assert_called_once()
+        assert conn_mod._pool is None
+        assert conn_mod._pool_active == 0
+    finally:
+        conn_mod._pool = original_pool
+        conn_mod._pool_active = original_active
+
+
+def test_unit_return_conn_closes_orphan_when_pool_none(tmp_db):
+    """_return_conn closes the connection if _pool was already nullified."""
+    from unittest.mock import MagicMock, patch
+
+    from db import connection as conn_mod
+
+    mock_conn = MagicMock()
+
+    original_pool = conn_mod._pool
+    try:
+        conn_mod._pool = None
+
+        # Patch is_turso_backend to return True so _return_conn enters pool path
+        with patch.object(conn_mod, "is_turso_backend", return_value=True):
+            with patch.object(conn_mod.settings, "DB_POOL_SIZE", 4):
+                conn_mod._return_conn(mock_conn)
+
+        mock_conn.close.assert_called_once()
+    finally:
+        conn_mod._pool = original_pool
