@@ -168,15 +168,22 @@ async def licitaciones_stream(
     # Soporte para reconexión: Last-Event-ID contiene el timestamp del último evento
     last_event_id_header = request.headers.get("Last-Event-ID", "")
     try:
-        last_event_ts = float(last_event_id_header) if last_event_id_header else 0.0
-    except ValueError:
+        _ts = float(last_event_id_header) if last_event_id_header else 0.0
+        # Guard contra NaN/Inf inyectados vía header (Semgrep: nan-injection)
+        import math
+
+        last_event_ts = _ts if math.isfinite(_ts) else 0.0
+    except (ValueError, OverflowError):
         last_event_ts = 0.0
 
     # batch desde query param con límite
-    batch_size = min(
-        int(request.query_params.get("batch", str(_DEFAULT_BATCH))),
-        _DEFAULT_BATCH * 2,
-    )
+    try:
+        batch_size = min(
+            int(request.query_params.get("batch", str(_DEFAULT_BATCH))),
+            _DEFAULT_BATCH * 2,
+        )
+    except (ValueError, OverflowError):
+        batch_size = _DEFAULT_BATCH
 
     log.info(
         "stream.connected",

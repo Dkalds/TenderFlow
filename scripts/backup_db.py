@@ -77,6 +77,15 @@ def backup_turso(backup_dir: Path) -> Path | None:
         return None
 
     db_name = turso_url.rstrip("/").split("/")[-1]
+    # Validar que el nombre de BD es un identificador seguro (Semgrep: subprocess-tainted-env)
+    import re
+
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}", db_name):
+        print(
+            f"[backup] Nombre de BD Turso inválido: {db_name!r}. Verifica TURSO_DATABASE_URL.",
+            file=sys.stderr,
+        )
+        return None
     backup_dir.mkdir(parents=True, exist_ok=True)
     dest = backup_dir / f"turso_{db_name}_{_timestamp()}.db"
 
