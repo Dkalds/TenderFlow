@@ -78,11 +78,13 @@ jobs:
       # Solo aplica en pull_request — no bloquea pushes a main.
       - name: Diff coverage gate (PR only)
         if: github.event_name == 'pull_request' && matrix.python-version == '3.13'
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           pip install diff-cover
-          git fetch origin ${{ github.base_ref }} --depth=1
+          git fetch origin "$BASE_REF" --depth=1
           diff-cover coverage.xml \
-            --compare-branch=origin/${{ github.base_ref }} \
+            --compare-branch="origin/$BASE_REF" \
             --fail-under=80 \
             --html-report=diff-cover.html
         continue-on-error: false
