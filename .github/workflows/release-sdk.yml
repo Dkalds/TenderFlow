@@ -18,10 +18,10 @@ jobs:
     name: Generate & publish Python SDK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -86,7 +86,7 @@ jobs:
         continue-on-error: true  # Don't fail release if TestPyPI publish fails
 
       - name: Upload SDK artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: licitaciones-sap-sdk-${{ steps.version.outputs.sdk_version }}
           path: sdk/dist/

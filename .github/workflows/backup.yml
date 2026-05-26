@@ -28,10 +28,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: "pip"
@@ -76,7 +76,7 @@ jobs:
         # Sube el backup como artefacto de GitHub Actions si el upload S3 falla.
         # Los artefactos se retienen 90 días por defecto.
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ github.run_id }}
           path: data/backups/*.db.gz

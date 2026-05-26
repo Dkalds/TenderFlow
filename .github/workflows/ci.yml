@@ -18,9 +18,9 @@ jobs:
     name: Lint & Type check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
@@ -48,11 +48,11 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -67,7 +67,7 @@ jobs:
         run: pytest --cov=. --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage XML
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-xml-${{ matrix.python-version }}
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload diff-cover report
         if: github.event_name == 'pull_request' && matrix.python-version == '3.13'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: diff-cover-report
           path: diff-cover.html
@@ -100,11 +100,11 @@ jobs:
     name: pre-commit checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
@@ -121,9 +121,9 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
@@ -141,9 +141,9 @@ jobs:
     name: Alembic migrations dry-run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
@@ -165,9 +165,9 @@ jobs:
     name: Alembic migrations rollback
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
@@ -185,9 +185,9 @@ jobs:
     name: SAST (bandit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
@@ -204,7 +204,7 @@ jobs:
 
       - name: Upload bandit report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: bandit-report
           path: bandit-report.json
@@ -213,7 +213,7 @@ jobs:
     name: Docker build + Trivy scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Build Docker image (runtime target)
         run: docker build --target runtime --tag licitaciones-sap:ci .
@@ -248,7 +248,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: trivy-results
           path: trivy-results.sarif
