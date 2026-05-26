@@ -32,6 +32,8 @@ click==8.3.3
     #   uvicorn
 colorama==0.4.6
     # via click
+cryptography==46.0.7
+    # via -r requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
 fastapi==0.136.0
