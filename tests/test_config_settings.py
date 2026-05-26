@@ -246,6 +246,8 @@ def test_prod_valid_config():
         warnings.simplefilter("ignore")
         s = Settings(
             ENV="prod",
+            DASHBOARD_PASSWORD="",
+            GF_SECURITY_ADMIN_PASSWORD="",
             DASHBOARD_PASSWORD_HASH="$2b$12$abc",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,

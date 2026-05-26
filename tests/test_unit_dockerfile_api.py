@@ -21,8 +21,28 @@ def test_entrypoint_script_exists() -> None:
 
 def test_entrypoint_script_is_executable() -> None:
     entrypoint = ROOT / "docker-entrypoint-api.sh"
-    mode = entrypoint.stat().st_mode
-    assert mode & stat.S_IXUSR, "docker-entrypoint-api.sh must be executable"
+    import platform
+    import subprocess
+
+    if platform.system() == "Windows":
+        # On Windows, check git's executable bit tracking instead of filesystem permissions
+        result = subprocess.run(
+            ["git", "ls-files", "--stage", "docker-entrypoint-api.sh"],
+            capture_output=True,
+            text=True,
+            cwd=str(ROOT),
+        )
+        assert result.returncode == 0 and result.stdout.strip(), (
+            "docker-entrypoint-api.sh must be tracked by git"
+        )
+        # Git executable bit: mode 100755 vs 100644
+        git_mode = result.stdout.split()[0]
+        assert git_mode == "100755", (
+            f"docker-entrypoint-api.sh must be executable in git (got {git_mode})"
+        )
+    else:
+        mode = entrypoint.stat().st_mode
+        assert mode & stat.S_IXUSR, "docker-entrypoint-api.sh must be executable"
 
 
 def test_entrypoint_uses_exec() -> None:

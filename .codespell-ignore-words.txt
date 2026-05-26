@@ -92,3 +92,4 @@ validador
 contener
 imposible
 arquitectural
+assertIn

@@ -151,7 +151,14 @@ class TestHealthEndpoints:
         assert resp.json()["status"] == "alive"
 
     def test_readiness_200_when_db_ok(self, client):
-        resp = client.get("/api/v1/health/ready")
+        from unittest.mock import patch
+
+        with (
+            patch("api.routes.health._check_db", return_value="ok"),
+            patch("api.routes.health._check_redis", return_value="unconfigured"),
+            patch("api.routes.health._check_disk", return_value="ok"),
+        ):
+            resp = client.get("/api/v1/health/ready")
         assert resp.status_code == 200
         assert resp.json()["db"] == "ok"
 
