@@ -90,3 +90,5 @@ doble
 sucesor
 validador
 contener
+imposible
+arquitectural

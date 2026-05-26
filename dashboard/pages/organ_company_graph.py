@@ -7,6 +7,8 @@ de importe, conteo y frecuencia temporal.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -14,7 +16,7 @@ import streamlit as st
 try:
     import networkx as nx  # type: ignore[import-untyped]
 except ModuleNotFoundError:  # pragma: no cover
-    nx = None  # type: ignore[assignment]
+    nx = None  # type: ignore[assignment,unused-ignore]
 
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import empty_state, guarded_render
@@ -32,7 +34,7 @@ _EMPRESA_COLOR = "#2ca02c"  # verde
 
 
 def _build_figure(
-    graph: dict,
+    graph: dict[str, Any],
     ctx: PageContext,
 ) -> go.Figure:
     """Construye la figura Plotly del grafo bipartito."""
@@ -193,7 +195,7 @@ def _build_figure(
     return fig
 
 
-def _render_detail_table(graph: dict) -> None:
+def _render_detail_table(graph: dict[str, Any]) -> None:
     """Tabla de detalle de aristas del grafo."""
     if not graph["edges"]:
         return

@@ -7,6 +7,7 @@ constant-time comparison when stored_hash is None.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,8 +49,7 @@ class TestGetStoredHashPropagatesErrors:
 class TestApiAuthHandlesDbError:
     """api/auth.py require_api_key must return 503 on DB error from get_stored_hash."""
 
-    @pytest.mark.asyncio
-    async def test_db_error_returns_503(self) -> None:
+    def test_db_error_returns_503(self) -> None:
         from fastapi import HTTPException
 
         from api.auth import require_api_key
@@ -66,11 +66,10 @@ class TestApiAuthHandlesDbError:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await require_api_key(api_key_raw="test-key")
+                asyncio.run(require_api_key(api_key_raw="test-key"))
             assert exc_info.value.status_code == 503
 
-    @pytest.mark.asyncio
-    async def test_none_hash_still_returns_401(self) -> None:
+    def test_none_hash_still_returns_401(self) -> None:
         from fastapi import HTTPException
 
         from api.auth import require_api_key
@@ -84,5 +83,5 @@ class TestApiAuthHandlesDbError:
             patch("api.auth.auth_service.get_stored_hash", return_value=None),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await require_api_key(api_key_raw="test-key")
+                asyncio.run(require_api_key(api_key_raw="test-key"))
             assert exc_info.value.status_code == 401
