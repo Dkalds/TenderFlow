@@ -10,10 +10,12 @@ import re
 import time
 from typing import Any
 
-from db.database import connect
+from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+_repo = LicitacionRepository()
 
 
 def escape_fts5(query: str) -> str:
@@ -38,47 +40,12 @@ def faiss_search(question: str, top_k: int, embedding_model: str) -> list[tuple[
 
 def fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
     """Búsqueda léxica FTS5/BM25. Devuelve (id_externo, score ∈ [0,1]) normalizado."""
-    escaped = escape_fts5(question)
-    try:
-        with connect() as c:
-            cur = c.execute(
-                "SELECT l.id_externo, bm25(licitaciones_fts) AS bm25_score "
-                "FROM licitaciones_fts fts "
-                "JOIN licitaciones l ON l.id_externo = fts.id_externo "
-                f"WHERE licitaciones_fts MATCH ? ORDER BY bm25_score LIMIT {top_k * 2}",
-                [escaped],
-            )
-            rows = cur.fetchall()
-    except Exception as exc:
-        log.warning("search_engine.fts5_failed", error=str(exc))
-        return []
-
-    if not rows:
-        return []
-    raw_scores = [abs(float(r[1])) for r in rows]
-    max_s = max(raw_scores) if raw_scores else 1.0
-    return [(r[0], s / max_s) for r, s in zip(rows, raw_scores, strict=False)]
+    return _repo.fts5_bm25_search(question, top_k)
 
 
 def like_search(question: str, top_k: int) -> list[tuple[str, float]]:
     """LIKE fallback para cuando FTS5 no está disponible."""
-    token = next(
-        (w for w in question.split() if len(w) >= 4),
-        question.split()[0] if question.split() else "",
-    )
-    if not token:
-        return []
-    try:
-        with connect() as c:
-            cur = c.execute(
-                "SELECT id_externo FROM licitaciones "
-                "WHERE titulo LIKE ? OR descripcion LIKE ? LIMIT ?",
-                [f"%{token}%", f"%{token}%", top_k],
-            )
-            return [(r[0], 0.20) for r in cur.fetchall()]
-    except Exception as exc:
-        log.warning("search_engine.like_failed", error=str(exc))
-        return []
+    return _repo.like_fallback_search(question, top_k)
 
 
 def hybrid_rerank(
@@ -100,26 +67,7 @@ def hybrid_rerank(
 
 def fetch_docs(ids: list[str], allowed_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
     """Recupera metadatos de la BD para una lista de IDs, filtrando por allowed_ids."""
-    if not ids:
-        return {}
-    if allowed_ids is not None:
-        ids = [i for i in ids if i in allowed_ids]
-    if not ids:
-        return {}
-    placeholders = ",".join("?" for _ in ids)
-    try:
-        with connect() as c:
-            cur = c.execute(
-                f"SELECT id_externo, titulo, organo_contratacion, importe, "
-                f"       descripcion, url, fecha_publicacion, ccaa, estado "
-                f"FROM licitaciones WHERE id_externo IN ({placeholders})",
-                ids,
-            )
-            cols = [d[0] for d in cur.description]
-            return {r[0]: dict(zip(cols, r, strict=False)) for r in cur.fetchall()}
-    except Exception as exc:
-        log.warning("search_engine.fetch_docs_failed", error=str(exc))
-        return {}
+    return _repo.fetch_metadata_by_ids(ids, allowed_ids)
 
 
 def rag_query(

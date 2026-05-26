@@ -57,6 +57,4 @@ def test_entrypoint_expands_forwarded_allow_ips() -> None:
     """Entrypoint must reference FORWARDED_ALLOW_IPS for env var expansion."""
     entrypoint = ROOT / "docker-entrypoint-api.sh"
     content = entrypoint.read_text()
-    assert "FORWARDED_ALLOW_IPS" in content, (
-        "entrypoint must reference FORWARDED_ALLOW_IPS env var"
-    )
+    assert "FORWARDED_ALLOW_IPS" in content, "entrypoint must reference FORWARDED_ALLOW_IPS env var"

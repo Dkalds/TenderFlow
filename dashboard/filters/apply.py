@@ -11,29 +11,14 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-# ── Cache del estado FTS5 (evitar consultar sqlite_master en cada rerun) ──
-_fts_available: bool | None = None
-
-
-def _check_fts() -> bool:
-    """Comprueba una sola vez si FTS5 está disponible."""
-    global _fts_available
-    if _fts_available is None:
-        try:
-            from db.database import fts_available
-
-            _fts_available = fts_available()
-        except Exception:
-            _fts_available = False
-    return _fts_available
-
 
 def _search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
     """Busca con FTS5 y devuelve id_externo ordenados por bm25 rank.
 
     Returns None si FTS no está disponible o la query falla (fallback a str.contains).
+    La comprobación de ``fts_available`` se hace internamente en el repository.
     """
-    if not _check_fts() or not query.strip():
+    if not query.strip():
         return None
     try:
         from services.licitaciones import search_fts_ids

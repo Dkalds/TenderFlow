@@ -196,6 +196,7 @@ def test_set_key_expiry(tmp_db):
     if row:
         assert row[0] == "2030-01-01T00:00:00Z" or row[0] is None
 
+
 # ---------------------------------------------------------------------------
 # Security: get_user_id_from_key_id NEVER returns arbitrary user (#44)
 # ---------------------------------------------------------------------------

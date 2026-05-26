@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +15,9 @@ from services.investigador.search_engine import (
     like_search,
     rag_query,
 )
+
+# Module-level _repo for patching (delegates to LicitacionRepository)
+_REPO_PATH = "services.investigador.search_engine._repo"
 
 # ---------------------------------------------------------------------------
 # escape_fts5 — pure function
@@ -73,24 +75,13 @@ def test_faiss_search_returns_empty_on_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
-# fts5_search
+# fts5_search — delegates to _repo.fts5_bm25_search
 # ---------------------------------------------------------------------------
 
 
-def _make_fts5_cursor(rows: list[tuple[Any, ...]]) -> MagicMock:
-    cur = MagicMock()
-    cur.fetchall.return_value = rows
-    return cur
-
-
 def test_fts5_search_returns_normalised_scores() -> None:
-    rows = [("lic-A", -10.0), ("lic-B", -5.0)]
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-    conn_ctx.execute.return_value = _make_fts5_cursor(rows)
-
-    with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
+    with patch(_REPO_PATH) as mock_repo:
+        mock_repo.fts5_bm25_search.return_value = [("lic-A", 1.0), ("lic-B", 0.5)]
         hits = fts5_search("licitacion", top_k=5)
 
     assert len(hits) == 2
@@ -102,37 +93,29 @@ def test_fts5_search_returns_normalised_scores() -> None:
 
 
 def test_fts5_search_empty_rows() -> None:
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-    conn_ctx.execute.return_value = _make_fts5_cursor([])
-
-    with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
+    with patch(_REPO_PATH) as mock_repo:
+        mock_repo.fts5_bm25_search.return_value = []
         hits = fts5_search("nothing", top_k=5)
 
     assert hits == []
 
 
 def test_fts5_search_returns_empty_on_exception() -> None:
-    with patch("services.investigador.search_engine.connect", side_effect=RuntimeError("db error")):
+    with patch(_REPO_PATH) as mock_repo:
+        # Repo handles exceptions internally and returns []
+        mock_repo.fts5_bm25_search.return_value = []
         hits = fts5_search("test", top_k=5)
     assert hits == []
 
 
 # ---------------------------------------------------------------------------
-# like_search
+# like_search — delegates to _repo.like_fallback_search
 # ---------------------------------------------------------------------------
 
 
 def test_like_search_returns_hits() -> None:
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-    cur = MagicMock()
-    cur.fetchall.return_value = [("lic-001",), ("lic-002",)]
-    conn_ctx.execute.return_value = cur
-
-    with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
+    with patch(_REPO_PATH) as mock_repo:
+        mock_repo.like_fallback_search.return_value = [("lic-001", 0.20), ("lic-002", 0.20)]
         hits = like_search("contrato largo palabra", top_k=10)
 
     assert len(hits) == 2
@@ -146,22 +129,18 @@ def test_like_search_empty_query() -> None:
 
 
 def test_like_search_short_tokens_fallback() -> None:
-    """When first word >= 4 chars is missing, use first token as fallback."""
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-    cur = MagicMock()
-    cur.fetchall.return_value = []
-    conn_ctx.execute.return_value = cur
-
-    with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
-        hits = like_search("ab cd", top_k=5)  # both tokens < 4 chars, falls back to first
+    """When all tokens < 4 chars, repo uses first token as fallback."""
+    with patch(_REPO_PATH) as mock_repo:
+        mock_repo.like_fallback_search.return_value = []
+        hits = like_search("ab cd", top_k=5)
 
     assert hits == []
 
 
 def test_like_search_returns_empty_on_exception() -> None:
-    with patch("services.investigador.search_engine.connect", side_effect=RuntimeError("db error")):
+    with patch(_REPO_PATH) as mock_repo:
+        # Repo handles exceptions internally and returns []
+        mock_repo.like_fallback_search.return_value = []
         hits = like_search("contrato", top_k=5)
     assert hits == []
 
@@ -205,35 +184,24 @@ def test_hybrid_rerank_fts_only() -> None:
 
 
 # ---------------------------------------------------------------------------
-# fetch_docs
+# fetch_docs — delegates to _repo.fetch_metadata_by_ids
 # ---------------------------------------------------------------------------
 
 
-def _make_doc_cursor(rows: list[tuple[Any, ...]]) -> MagicMock:
-    cur = MagicMock()
-    cur.fetchall.return_value = rows
-    cur.description = [
-        ("id_externo",),
-        ("titulo",),
-        ("organo_contratacion",),
-        ("importe",),
-        ("descripcion",),
-        ("url",),
-        ("fecha_publicacion",),
-        ("ccaa",),
-        ("estado",),
-    ]
-    return cur
-
-
 def test_fetch_docs_returns_dict() -> None:
-    row = ("lic-001", "Titulo X", "Org Y", 1000.0, "Desc", "http://x", "2025-01-01", "MAD", "VIG")
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-    conn_ctx.execute.return_value = _make_doc_cursor([row])
-
-    with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
+    doc = {
+        "id_externo": "lic-001",
+        "titulo": "Titulo X",
+        "organo_contratacion": "Org Y",
+        "importe": 1000.0,
+        "descripcion": "Desc",
+        "url": "http://x",
+        "fecha_publicacion": "2025-01-01",
+        "ccaa": "MAD",
+        "estado": "VIG",
+    }
+    with patch(_REPO_PATH) as mock_repo:
+        mock_repo.fetch_metadata_by_ids.return_value = {"lic-001": doc}
         result = fetch_docs(["lic-001"])
 
     assert "lic-001" in result
@@ -245,16 +213,13 @@ def test_fetch_docs_empty_ids() -> None:
 
 
 def test_fetch_docs_filters_allowed_ids() -> None:
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-    conn_ctx.execute.return_value = _make_doc_cursor([])
-
-    with patch("services.investigador.search_engine.connect", return_value=conn_ctx):
+    with patch(_REPO_PATH) as mock_repo:
+        mock_repo.fetch_metadata_by_ids.return_value = {}
         result = fetch_docs(["lic-001", "lic-002"], allowed_ids={"lic-002"})
 
-    # Only lic-002 was allowed, so lic-001 was filtered; both result in empty rows here
+    # Only lic-002 was allowed; repo filters internally
     assert isinstance(result, dict)
+    mock_repo.fetch_metadata_by_ids.assert_called_once_with(["lic-001", "lic-002"], {"lic-002"})
 
 
 def test_fetch_docs_all_filtered_by_allowed_ids() -> None:
@@ -263,7 +228,9 @@ def test_fetch_docs_all_filtered_by_allowed_ids() -> None:
 
 
 def test_fetch_docs_returns_empty_on_exception() -> None:
-    with patch("services.investigador.search_engine.connect", side_effect=RuntimeError("db down")):
+    with patch(_REPO_PATH) as mock_repo:
+        # Repo handles exceptions internally and returns {}
+        mock_repo.fetch_metadata_by_ids.return_value = {}
         result = fetch_docs(["lic-001"])
     assert result == {}
 
@@ -275,27 +242,29 @@ def test_fetch_docs_returns_empty_on_exception() -> None:
 
 def test_rag_query_with_both_sources() -> None:
     faiss_hits = [("lic-001", 0.9)]
-    doc_row = ("lic-001", "T1", "O1", 100.0, "D1", "http://u", "2025-01-01", "MAD", "VIG")
-
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
+    doc = {
+        "id_externo": "lic-001",
+        "titulo": "T1",
+        "organo_contratacion": "O1",
+        "importe": 100.0,
+        "descripcion": "D1",
+        "url": "http://u",
+        "fecha_publicacion": "2025-01-01",
+        "ccaa": "MAD",
+        "estado": "VIG",
+    }
 
     faiss_module = MagicMock()
     faiss_index = MagicMock()
     faiss_index.search.return_value = faiss_hits
     faiss_module.FaissIndex.load.return_value = faiss_index
 
-    fts_cursor = MagicMock()
-    fts_cursor.fetchall.return_value = [("lic-001", -10.0), ("lic-002", -5.0)]
-
-    doc_cursor = _make_doc_cursor([doc_row])
-    conn_ctx.execute.side_effect = [fts_cursor, doc_cursor]
-
     with (
         patch.dict("sys.modules", {"dashboard.faiss_index": faiss_module}),
-        patch("services.investigador.search_engine.connect", return_value=conn_ctx),
+        patch(_REPO_PATH) as mock_repo,
     ):
+        mock_repo.fts5_bm25_search.return_value = [("lic-001", 1.0), ("lic-002", 0.5)]
+        mock_repo.fetch_metadata_by_ids.return_value = {"lic-001": doc}
         docs, source = rag_query("consultoría", top_k=5)
 
     assert "FAISS" in source
@@ -303,41 +272,25 @@ def test_rag_query_with_both_sources() -> None:
 
 
 def test_rag_query_falls_back_to_fts_only() -> None:
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-    fts_cursor = MagicMock()
-    fts_cursor.fetchall.return_value = [("lic-A", -8.0)]
-    doc_cursor = _make_doc_cursor([])
-    conn_ctx.execute.side_effect = [fts_cursor, doc_cursor]
-
     with (
         patch.dict("sys.modules", {"dashboard.faiss_index": None}),  # type: ignore[dict-item]
-        patch("services.investigador.search_engine.connect", return_value=conn_ctx),
+        patch(_REPO_PATH) as mock_repo,
     ):
+        mock_repo.fts5_bm25_search.return_value = [("lic-A", 0.8)]
+        mock_repo.fetch_metadata_by_ids.return_value = {}
         _docs, source = rag_query("test", top_k=3)
 
     assert "FTS5" in source
 
 
 def test_rag_query_falls_back_to_like() -> None:
-    conn_ctx = MagicMock()
-    conn_ctx.__enter__ = MagicMock(return_value=conn_ctx)
-    conn_ctx.__exit__ = MagicMock(return_value=False)
-
-    fts_cursor = MagicMock()
-    fts_cursor.fetchall.return_value = []
-
-    like_cursor = MagicMock()
-    like_cursor.fetchall.return_value = [("lic-Z",)]
-
-    doc_cursor = _make_doc_cursor([])
-    conn_ctx.execute.side_effect = [fts_cursor, like_cursor, doc_cursor]
-
     with (
         patch.dict("sys.modules", {"dashboard.faiss_index": None}),  # type: ignore[dict-item]
-        patch("services.investigador.search_engine.connect", return_value=conn_ctx),
+        patch(_REPO_PATH) as mock_repo,
     ):
+        mock_repo.fts5_bm25_search.return_value = []
+        mock_repo.like_fallback_search.return_value = [("lic-Z", 0.20)]
+        mock_repo.fetch_metadata_by_ids.return_value = {}
         _docs, source = rag_query("consulta corta", top_k=3)
 
     assert "LIKE" in source

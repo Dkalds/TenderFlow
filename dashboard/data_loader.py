@@ -25,17 +25,6 @@ from shared.schemas import validate_adjudicaciones, validate_licitaciones
 log = get_logger(__name__)
 
 
-def _rows_to_df(cursor: Any) -> pd.DataFrame:
-    """Convierte el resultado de un cursor a DataFrame usando cursor.description.
-
-    Centraliza el patrón repetido ``cols = [d[0] for d in cursor.description]``
-    + ``pd.DataFrame(rows, columns=cols)`` en un único helper reutilizable.
-    """
-    rows = cursor.fetchall()
-    cols = [d[0] for d in cursor.description]
-    return pd.DataFrame(rows, columns=cols)
-
-
 def _backfill_ccaa(df: pd.DataFrame, log_suffix: str = "") -> None:
     """Rellena la columna ``ccaa`` desde ``nuts_code`` donde está vacía.
 
@@ -378,17 +367,12 @@ def load_mat_clusters() -> pd.DataFrame:
 
     Returns vacío si la tabla aún no ha sido poblada por el scheduler.
     """
-    from db.database import connect_read
+    from db.repositories.aggregates import AggregateRepository
 
-    with connect_read() as c:
-        try:
-            cur = c.execute(
-                "SELECT id_externo, cluster_id, cluster_label, updated_at FROM mat_clusters"
-            )
-            return _rows_to_df(cur)
-        except Exception as exc:
-            log.warning("data_loader_mat_clusters_unavailable", error=str(exc))
-            return pd.DataFrame()
+    rows = AggregateRepository().load_mat_clusters()
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
 
 
 @st.cache_data(ttl=settings.DASHBOARD_CACHE_TTL or None)
@@ -397,18 +381,12 @@ def load_mat_top_empresas() -> pd.DataFrame:
 
     Returns vacío si la tabla aún no ha sido poblada por el scheduler.
     """
-    from db.database import connect_read
+    from db.repositories.aggregates import AggregateRepository
 
-    with connect_read() as c:
-        try:
-            cur = c.execute(
-                "SELECT ccaa, rank, nombre_canon, n_adj, importe_total, updated_at "
-                "FROM mat_top_empresas_ccaa ORDER BY ccaa, rank"
-            )
-            return _rows_to_df(cur)
-        except Exception as exc:
-            log.warning("data_loader_mat_top_empresas_unavailable", error=str(exc))
-            return pd.DataFrame()
+    rows = AggregateRepository().load_mat_top_empresas_ccaa()
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
 
 
 def invalidate_caches() -> None:

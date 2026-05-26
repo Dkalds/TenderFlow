@@ -51,6 +51,7 @@ class TestCreateWebhook:
             wid, secret = _create_sample(db_mod)
         # Check DB has sentinel, not the actual secret
         from db.database import connect
+
         with connect() as c:
             row = c.execute("SELECT secret FROM webhooks WHERE id = ?", (wid,)).fetchone()
         assert row[0] == "derived:v1"
@@ -188,5 +189,6 @@ class TestResolveSecret:
         with patch("db.webhooks._get_webhook_master_key", return_value=master_key):
             result = wh_mod._resolve_secret(1, "derived:v1")
         from shared.crypto import derive_webhook_secret
+
         expected = derive_webhook_secret(master_key, 1)
         assert result == expected

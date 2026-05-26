@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from db.database import connect, now_utc_iso
+from db.repositories.csp_violations import CspViolationRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+_repo = CspViolationRepository()
 
 
 def store_csp_violation(
@@ -15,19 +17,9 @@ def store_csp_violation(
     source_file: str,
 ) -> None:
     """Persiste una violación CSP en ``csp_violations`` (si la tabla existe)."""
-    try:
-        now = now_utc_iso()
-        with connect() as c:
-            tables = {
-                r[0]
-                for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-            }
-            if "csp_violations" in tables:
-                c.execute(
-                    "INSERT INTO csp_violations "
-                    "(blocked_uri, violated_directive, document_uri, source_file, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (blocked_uri, violated_directive, document_uri, source_file, now),
-                )
-    except Exception as exc:
-        log.debug("csp_violation_persist_failed", error=str(exc))
+    _repo.store(
+        blocked_uri=blocked_uri,
+        violated_directive=violated_directive,
+        document_uri=document_uri,
+        source_file=source_file,
+    )

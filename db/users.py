@@ -87,6 +87,15 @@ def set_admin(user_id: int, is_admin_value: bool) -> None:
         )
 
 
+def set_admin_by_email(email: str, *, is_admin: bool) -> None:
+    """Promueve o degrada un usuario por email."""
+    with connect() as c:
+        c.execute(
+            "UPDATE users SET is_admin = ? WHERE email = ?",
+            (1 if is_admin else 0, email),
+        )
+
+
 def list_users(limit: int = 200) -> list[dict[str, Any]]:
     """Devuelve todos los usuarios registrados con su último acceso."""
     with connect() as c:

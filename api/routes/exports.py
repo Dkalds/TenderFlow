@@ -115,30 +115,14 @@ def _run_export(job_id: str, filters: dict[str, Any]) -> None:
     """Ejecutado en BackgroundTask: consulta la BD y genera el PDF."""
     _store[job_id]["status"] = "running"
     try:
-        from db.database import connect
+        from services.licitaciones import fetch_for_pdf
 
-        sql = (
-            "SELECT id, titulo, organo_contratacion, importe, estado, fecha_publicacion "
-            "FROM licitaciones WHERE 1=1"
+        rows = fetch_for_pdf(
+            ccaa=filters.get("ccaa"),
+            estado=filters.get("estado"),
+            q=filters.get("q"),
         )
-        params: list[Any] = []
-        if filters.get("ccaa"):
-            sql += " AND ccaa = ?"
-            params.append(filters["ccaa"])
-        if filters.get("estado"):
-            sql += " AND estado = ?"
-            params.append(filters["estado"])
-        if filters.get("q"):
-            sql += " AND (titulo LIKE ? OR descripcion LIKE ?)"
-            term = f"%{filters['q']}%"
-            params.extend([term, term])
-        sql += " ORDER BY fecha_publicacion DESC LIMIT 500"
 
-        with connect() as conn:
-            rows_raw = conn.execute(sql, params).fetchall()
-
-        cols = ["id", "titulo", "organo_contratacion", "importe", "estado", "fecha_publicacion"]
-        rows = [dict(zip(cols, r, strict=False)) for r in rows_raw]
         title = "Licitaciones SAP — Exportación"
         if filters.get("ccaa"):
             title += f" ({filters['ccaa']})"

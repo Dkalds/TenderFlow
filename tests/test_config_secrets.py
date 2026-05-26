@@ -215,7 +215,9 @@ def test_none_not_cached_allows_retry():
     assert result1 is None
 
     # Second call: secret now available → should find it (not cached None)
-    with patch.dict(os.environ, {"RETRY_SECRET_59": "found"}, clear=False):  # pragma: allowlist secret
+    with patch.dict(
+        os.environ, {"RETRY_SECRET_59": "found"}, clear=False
+    ):  # pragma: allowlist secret
         result2 = m.get_secret("RETRY_SECRET_59")
     assert result2 == "found"
 
@@ -225,9 +227,13 @@ def test_non_none_still_cached():
     import config.secrets as m
 
     m.clear_cache()
-    with patch.dict(os.environ, {"CACHED_OK_59": "value1"}, clear=False):  # pragma: allowlist secret
+    with patch.dict(
+        os.environ, {"CACHED_OK_59": "value1"}, clear=False
+    ):  # pragma: allowlist secret
         r1 = m.get_secret("CACHED_OK_59")
     # Change env — should still get cached value
-    with patch.dict(os.environ, {"CACHED_OK_59": "value2"}, clear=False):  # pragma: allowlist secret
+    with patch.dict(
+        os.environ, {"CACHED_OK_59": "value2"}, clear=False
+    ):  # pragma: allowlist secret
         r2 = m.get_secret("CACHED_OK_59")
     assert r1 == r2 == "value1"

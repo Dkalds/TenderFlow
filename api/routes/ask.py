@@ -82,74 +82,18 @@ def _retrieve_docs(
     ccaa: str | None,
     tecnologia: str | None,
 ) -> list[dict[str, Any]]:
-    """Recupera documentos relevantes usando FTS5.
+    """Recupera documentos relevantes usando FTS5 con LIKE fallback.
 
-    Construye una consulta FTS5 con la pregunta del usuario y filtros opcionales,
-    devuelve una lista de dicts con los campos necesarios para el contexto LLM.
+    Delega en ``services.licitaciones.search_for_ask`` que orquesta
+    FTS5 + LIKE fallback a través del repository.
     """
-    from db.database import connect
-
-    params: list[Any] = []
-
-    # FTS5 sobre título+descripción
-    fts_query = " OR ".join(f'"{w}"' for w in question.split()[:10] if len(w) > 2)
-    if not fts_query:
-        fts_query = "*"
-
-    base_query = """
-        SELECT l.id_externo, l.titulo, l.organo_contratacion, l.importe,
-               l.estado, l.descripcion, l.ccaa, l.tecnologia, l.fecha_publicacion
-        FROM licitaciones l
-        INNER JOIN licitaciones_fts fts ON l.id_externo = fts.id_externo
-        WHERE licitaciones_fts MATCH ?
-    """
-    params.append(fts_query)
-
-    if ccaa:
-        base_query += " AND l.ccaa = ?"
-        params.append(ccaa)
-    if tecnologia:
-        base_query += " AND l.tecnologia = ?"
-        params.append(tecnologia)
-
-    base_query += f" ORDER BY rank LIMIT {int(top_k)}"
-
     try:
-        with connect() as c:
-            rows = c.execute(base_query, params).fetchall()
-            if not rows:
-                # Fallback: LIKE search si FTS no devuelve resultados
-                words = [w for w in question.split() if len(w) > 3][:5]
-                if words:
-                    like_clauses = " OR ".join("titulo LIKE ?" for _ in words)
-                    like_params = [f"%{w}%" for w in words]
-                    if ccaa:
-                        like_clauses += " AND ccaa = ?"
-                        like_params.append(ccaa)
-                    rows = c.execute(
-                        f"""
-                        SELECT id_externo, titulo, organo_contratacion, importe,
-                               estado, descripcion, ccaa, tecnologia, fecha_publicacion
-                        FROM licitaciones WHERE {like_clauses} LIMIT {int(top_k)}
-                        """,
-                        like_params,
-                    ).fetchall()
+        from services.licitaciones import search_for_ask
+
+        return search_for_ask(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
     except Exception as exc:
         log.warning("ask.retrieve_docs_failed", error=str(exc))
         return []
-
-    cols = [
-        "id_externo",
-        "titulo",
-        "organo_contratacion",
-        "importe",
-        "estado",
-        "descripcion",
-        "ccaa",
-        "tecnologia",
-        "fecha_publicacion",
-    ]
-    return [dict(zip(cols, row, strict=False)) for row in rows]
 
 
 def _stream_ask(request: AskRequest) -> Any:

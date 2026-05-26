@@ -164,18 +164,28 @@ def test_require_api_key_uses_connect_read(monkeypatch):
     """require_api_key no debe usar connect() para reads — solo connect_read().
 
     Tras la migración a services.auth, api.auth ya no importa connect/connect_read
-    directamente. Verificamos que el servicio usa connect_read para lecturas.
+    directamente. Verificamos que el servicio delega al repositorio (que usa
+    connect_read) y no importa connect() para escrituras.
     """
     import services.auth as svc_auth
 
+    # Tras la migración, services.auth ya no importa connect/connect_read
+    # directamente — delega todo al ApiKeyRepository.
+    assert not hasattr(svc_auth, "connect"), (
+        "services.auth no debería importar connect() — debe delegar al repositorio"
+    )
+
+    # Verificar que el repo subyacente usa connect_read para lookups
+    import db.repositories.api_keys as repo_mod
+
     write_calls: list[int] = []
-    original_connect = svc_auth.connect
+    original_connect = repo_mod.connect
 
     def spy_connect(*args, **kwargs):
         write_calls.append(1)
         return original_connect(*args, **kwargs)
 
-    monkeypatch.setattr(svc_auth, "connect", spy_connect)
+    monkeypatch.setattr(repo_mod, "connect", spy_connect)
 
     # Llamar a require_api_key con key inválida (debe fallar pero sin usar connect)
     import asyncio

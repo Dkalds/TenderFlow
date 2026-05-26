@@ -62,12 +62,16 @@ def _make_app(max_bytes: int = 1024) -> Starlette:
                 await self.app(scope, receive, send)
 
         async def _send_413(self, send: Send) -> None:
-            await send({
-                "type": "http.response.start",
-                "status": 413,
-                "headers": [[b"content-type", b"application/json"],
-                             [b"content-length", str(len(self._413_BODY)).encode()]],
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 413,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                        [b"content-length", str(len(self._413_BODY)).encode()],
+                    ],
+                }
+            )
             await send({"type": "http.response.body", "body": self._413_BODY})
 
     async def echo(request: Request) -> PlainTextResponse:
@@ -77,10 +81,12 @@ def _make_app(max_bytes: int = 1024) -> Starlette:
     async def home(request: Request) -> PlainTextResponse:
         return PlainTextResponse("ok")
 
-    app = Starlette(routes=[
-        Route("/echo", echo, methods=["POST", "PUT", "PATCH"]),
-        Route("/home", home),
-    ])
+    app = Starlette(
+        routes=[
+            Route("/echo", echo, methods=["POST", "PUT", "PATCH"]),
+            Route("/home", home),
+        ]
+    )
     app.add_middleware(MaxBodyMiddleware, max_bytes=max_bytes)
     return app
 

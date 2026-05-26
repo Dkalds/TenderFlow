@@ -8,50 +8,27 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect, connect_read, init_db
-from db.repositories.base import rows_to_dicts
+from db.repositories.extraction_runs import ExtractionRunRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-_FULL_COLUMNS = (
-    "run_id, started_at, ended_at, duration_ms, status, "
-    "months_attempted, months_ok, months_failed, "
-    "licitaciones_nuevas, licitaciones_actualizadas, "
-    "adjudicaciones, errores_parseo, errores_descarga, notas"
-)
-
-_CALIDAD_COLUMNS = (
-    "started_at, status, errores_parseo, errores_descarga, "
-    "months_attempted, months_ok, months_failed"
-)
+_repo = ExtractionRunRepository()
 
 
 def load_runs(limit: int = 200) -> list[dict[str, Any]]:
     """Carga las últimas extraction runs (columnas completas para observabilidad)."""
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT " + _FULL_COLUMNS + " FROM extraction_runs ORDER BY started_at DESC LIMIT ?",
-            (limit,),
-        )
-        return rows_to_dicts(cur)
+    return _repo.load_runs(limit)
 
 
 def load_calidad_runs(limit: int = 90) -> list[dict[str, Any]]:
     """Carga runs con columnas de calidad (subconjunto para calidad_datos)."""
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT " + _CALIDAD_COLUMNS + " FROM extraction_runs ORDER BY started_at DESC LIMIT ?",
-            (limit,),
-        )
-        return rows_to_dicts(cur)
+    return _repo.load_calidad_runs(limit)
 
 
 def load_extracciones() -> list[dict[str, Any]]:
     """Carga el historial de extracciones (fecha, fuente, nuevas)."""
-    with connect_read() as c:
-        cur = c.execute("SELECT fecha, fuente, nuevas FROM extracciones ORDER BY fecha DESC")
-        return rows_to_dicts(cur)
+    return _repo.load_extracciones()
 
 
 def persist_run(
@@ -71,47 +48,24 @@ def persist_run(
     notas: str,
 ) -> None:
     """Persiste métricas de un run del pipeline en ``extraction_runs``."""
-    try:
-        init_db()
-        with connect() as c:
-            c.execute(
-                "INSERT INTO extraction_runs "
-                "(run_id, started_at, ended_at, duration_ms, status, "
-                " months_attempted, months_ok, months_failed, "
-                " licitaciones_nuevas, licitaciones_actualizadas, "
-                " adjudicaciones, errores_parseo, errores_descarga, notas) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    run_id,
-                    started_at,
-                    ended_at,
-                    duration_ms,
-                    status,
-                    months_attempted,
-                    months_ok,
-                    months_failed,
-                    licitaciones_nuevas,
-                    licitaciones_actualizadas,
-                    adjudicaciones,
-                    errores_parseo,
-                    errores_descarga,
-                    notas,
-                ),
-            )
-    except Exception as e:
-        log.warning("run_metrics_persist_failed", error=str(e), run_id=run_id)
+    _repo.persist_run(
+        run_id=run_id,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_ms=duration_ms,
+        status=status,
+        months_attempted=months_attempted,
+        months_ok=months_ok,
+        months_failed=months_failed,
+        licitaciones_nuevas=licitaciones_nuevas,
+        licitaciones_actualizadas=licitaciones_actualizadas,
+        adjudicaciones=adjudicaciones,
+        errores_parseo=errores_parseo,
+        errores_descarga=errores_descarga,
+        notas=notas,
+    )
 
 
 def load_recent_daily_statuses(limit: int) -> list[str]:
     """Carga los últimos ``limit`` estados de runs del carril diario."""
-    try:
-        with connect_read() as c:
-            rows = c.execute(
-                "SELECT status FROM extraction_runs "
-                "WHERE notas LIKE 'daily|%' "
-                "ORDER BY started_at DESC LIMIT ?",
-                [limit],
-            ).fetchall()
-        return [r[0] for r in rows]
-    except Exception:
-        return []
+    return _repo.load_recent_daily_statuses(limit)

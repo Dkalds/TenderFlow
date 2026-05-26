@@ -65,22 +65,11 @@ def _sse_event(event: str, data: Any) -> str:
 
 def _fetch_recent(since_ts: float, limit: int) -> list[dict[str, Any]]:
     """Recupera licitaciones publicadas/actualizadas desde ``since_ts``."""
-    from db.database import connect
+    from services.licitaciones import fetch_recent
 
     since_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(since_ts))
     try:
-        with connect() as c:
-            cur = c.execute(
-                "SELECT id_externo, titulo, organo_contratacion, importe, "
-                "       url, fecha_publicacion, ccaa, estado "
-                "FROM licitaciones "
-                "WHERE fecha_extraccion >= ? OR fecha_actualizacion_fuente >= ? "
-                "ORDER BY COALESCE(fecha_actualizacion_fuente, fecha_extraccion) DESC "
-                "LIMIT ?",
-                (since_iso, since_iso, limit),
-            )
-            cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+        return fetch_recent(since_iso, limit)
     except Exception as exc:
         log.warning("stream.fetch_recent_failed", error=str(exc))
         return []

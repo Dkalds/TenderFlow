@@ -513,8 +513,11 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
     # Persistir con detección de cambios
     try:
         from config import settings as _cfg
+
         upsert_result: UpsertResult = upsert_licitaciones_with_history(
-            encontradas, source=fuente, chunk_size=_cfg.UPSERT_CHUNK_SIZE,
+            encontradas,
+            source=fuente,
+            chunk_size=_cfg.UPSERT_CHUNK_SIZE,
         )
     except Exception as e:
         log.exception("daily_persist_error")

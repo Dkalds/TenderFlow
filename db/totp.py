@@ -112,9 +112,7 @@ def get_totp_secret(user_id: int) -> dict[str, Any] | None:
             # Log pero no crashear — devolver None para forzar re-setup
             from observability.logging import get_logger
 
-            get_logger(__name__).error(
-                "totp_decryption_failed", user_id=user_id
-            )
+            get_logger(__name__).error("totp_decryption_failed", user_id=user_id)
             return None
     else:
         # Legacy: secreto sin cifrar — compatibilidad hacia atrás

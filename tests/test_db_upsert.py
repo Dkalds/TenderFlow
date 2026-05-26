@@ -357,5 +357,7 @@ def test_upsert_with_history_chunking_idempotent(db):
     assert len(result.unchanged) == 5
 
     with connect() as c:
-        count = c.execute("SELECT COUNT(*) FROM licitaciones WHERE id_externo LIKE 'IDEM-%'").fetchone()[0]
+        count = c.execute(
+            "SELECT COUNT(*) FROM licitaciones WHERE id_externo LIKE 'IDEM-%'"
+        ).fetchone()[0]
     assert count == 5

@@ -64,6 +64,8 @@ jobs:
           pip install -e .
 
       - name: Run tests with coverage
+        env:
+          ENV: dev
         run: pytest --cov=. --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage XML
@@ -155,6 +157,8 @@ jobs:
           pip install -e .
 
       - name: Generate SQL for all migrations (no apply)
+        env:
+          ENV: dev
         run: |
           alembic upgrade head --sql > /tmp/migrations.sql
           echo "---- SQL preview (first 200 lines) ----"
@@ -179,6 +183,8 @@ jobs:
           pip install -e .
 
       - name: Run migration rollback tests
+        env:
+          ENV: dev
         run: pytest tests/test_migrations_rollback.py -v --no-cov
 
   bandit:
@@ -220,7 +226,7 @@ jobs:
 
       - name: Smoke test (image starts)
         run: |
-          docker run --rm --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"
+          docker run --rm -e ENV=dev --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"
 
       - name: Trivy vulnerability scan (image) — tabla en consola
         uses: aquasecurity/trivy-action@0.35.0

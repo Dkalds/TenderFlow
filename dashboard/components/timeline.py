@@ -7,7 +7,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from db.database import get_history
+from services.licitaciones import get_history
 
 _TIMELINE_CSS = """
 <style>

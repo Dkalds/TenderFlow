@@ -18,10 +18,8 @@ class TestGetStoredHashPropagatesErrors:
     def test_db_error_propagates(self) -> None:
         from services.auth import get_stored_hash
 
-        with patch("services.auth.connect_read") as mock_conn:
-            mock_conn.return_value.__enter__ = MagicMock(
-                side_effect=RuntimeError("DB down")
-            )
+        with patch("db.repositories.api_keys.connect_read") as mock_conn:
+            mock_conn.return_value.__enter__ = MagicMock(side_effect=RuntimeError("DB down"))
             mock_conn.return_value.__exit__ = MagicMock(return_value=False)
             with pytest.raises(RuntimeError, match="DB down"):
                 get_stored_hash(999)
@@ -29,7 +27,7 @@ class TestGetStoredHashPropagatesErrors:
     def test_returns_none_when_no_row(self) -> None:
         from services.auth import get_stored_hash
 
-        with patch("services.auth.connect_read") as mock_conn:
+        with patch("db.repositories.api_keys.connect_read") as mock_conn:
             ctx = MagicMock()
             ctx.execute.return_value.fetchone.return_value = None
             mock_conn.return_value.__enter__ = MagicMock(return_value=ctx)
@@ -39,7 +37,7 @@ class TestGetStoredHashPropagatesErrors:
     def test_returns_hash_when_found(self) -> None:
         from services.auth import get_stored_hash
 
-        with patch("services.auth.connect_read") as mock_conn:
+        with patch("db.repositories.api_keys.connect_read") as mock_conn:
             ctx = MagicMock()
             ctx.execute.return_value.fetchone.return_value = ("abc123",)
             mock_conn.return_value.__enter__ = MagicMock(return_value=ctx)

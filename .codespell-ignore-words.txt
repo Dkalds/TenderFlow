@@ -88,3 +88,5 @@ implementes
 convencional
 doble
 sucesor
+validador
+contener

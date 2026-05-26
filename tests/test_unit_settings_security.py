@@ -34,6 +34,7 @@ def _fresh_settings(**overrides):
 
     with patch.dict(os.environ, base_env, clear=False):
         from config.settings import Settings
+
         return Settings(**{k.upper(): v for k, v in overrides.items() if k.isupper()})
 
 
@@ -79,7 +80,9 @@ def test_strong_dashboard_password_accepted_in_prod():
 
 
 def test_weak_grafana_password_rejected_in_prod():
-    with pytest.raises(Exception, match=r"GF_SECURITY_ADMIN_PASSWORD.*débil|GF_SECURITY_ADMIN_PASSWORD"):
+    with pytest.raises(
+        Exception, match=r"GF_SECURITY_ADMIN_PASSWORD.*débil|GF_SECURITY_ADMIN_PASSWORD"
+    ):
         _fresh_settings(
             ENV="prod",
             GF_SECURITY_ADMIN_PASSWORD="Deloitte123456.",  # pragma: allowlist secret

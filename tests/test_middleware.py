@@ -205,7 +205,6 @@ class TestRateLimitMiddleware:
         assert resp.status_code == 200
         limiter.check.assert_not_called()
 
-
     def test_ask_endpoint_in_heavy_limits(self):
         """Verify /api/v1/ask is rate-limited to 10 req/min (issue #58)."""
         from api.middleware import _HEAVY_ENDPOINT_LIMITS
@@ -240,6 +239,7 @@ class TestRateLimitMiddleware:
         limiter.check.assert_called_once()
         call_kwargs = limiter.check.call_args
         assert call_kwargs.kwargs.get("max_calls") == 10 or call_kwargs[1].get("max_calls") == 10
+
 
 # ── ETagMiddleware ───────────────────────────────────────────────────────────
 

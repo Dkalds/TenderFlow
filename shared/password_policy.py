@@ -86,9 +86,7 @@ def check_password_strength(
     if check_weak_patterns:
         for pattern in _WEAK_PATTERNS:
             if pattern.search(password):
-                issues.append(
-                    f"{label} contiene un patrón débil conocido: '{pattern.pattern}'"
-                )
+                issues.append(f"{label} contiene un patrón débil conocido: '{pattern.pattern}'")
                 break  # Un match es suficiente
 
     return PasswordCheckResult(

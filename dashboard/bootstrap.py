@@ -51,7 +51,6 @@ def start_metrics_server(port: int = _DASHBOARD_METRICS_PORT) -> bool:
         return False
 
 
-
 def bootstrap() -> tuple[str, list[str]]:
     """Inicializa el proceso del dashboard.
 

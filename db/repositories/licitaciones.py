@@ -498,3 +498,262 @@ class LicitacionRepository:
         sql, params = compile_query(stmt)
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
+
+    # ── Métodos para services (carga raw/stats/FTS/drift/stream) ─────────
+
+    def load_raw(self, *, columns: str, limit: int | None = None) -> list[dict[str, Any]]:
+        """Carga licitaciones clasificadas (raw, sin enriquecimiento)."""
+        sql = (
+            "SELECT " + columns + " FROM licitaciones "
+            "WHERE tecnologia IS NOT NULL AND tecnologia != '' "
+            "ORDER BY fecha_publicacion DESC"
+        )
+        params: list[Any] = []
+        if limit is not None and limit > 0:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def load_stats(self, columns: str) -> list[dict[str, Any]]:
+        """Carga ligera de licitaciones para KPIs y stats."""
+        with connect_read() as c:
+            cur = c.execute("SELECT " + columns + " FROM licitaciones")
+            return rows_to_dicts(cur)
+
+    def load_uncertainty_zone(self, lo: float, hi: float, limit: int) -> list[dict[str, Any]]:
+        """Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id_externo, titulo, descripcion, organo_contratacion, importe, "
+                "fecha_publicacion, cpv, ml_proba FROM licitaciones "
+                "WHERE ml_proba IS NOT NULL AND ml_proba BETWEEN ? AND ? "
+                "ORDER BY (importe IS NULL), importe DESC, ml_proba LIMIT ?",
+                (lo, hi, limit),
+            )
+            return rows_to_dicts(cur)
+
+    def search_fts_ids(self, query: str, limit: int = 1000) -> list[str] | None:
+        """Busca con FTS5 y devuelve id_externo ordenados por bm25 rank.
+
+        Returns ``None`` si FTS no está disponible o la query falla.
+        """
+        if not fts_available() or not query.strip():
+            return None
+        try:
+            from services.investigador.search_engine import escape_fts5
+
+            fts_query = escape_fts5(query)
+            with connect_read() as c:
+                cur = c.execute(
+                    "SELECT f.id_externo FROM licitaciones_fts f "
+                    "WHERE licitaciones_fts MATCH ? ORDER BY rank LIMIT ?",
+                    [fts_query, limit],
+                )
+                return [row[0] for row in cur.fetchall()]
+        except Exception:
+            return None
+
+    def load_drift_window(self, start: str, end: str) -> list[dict[str, Any]]:
+        """Carga licitaciones de un rango de fechas para drift detection."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT importe, cpv, ccaa, tecnologia, estado "
+                "FROM licitaciones "
+                "WHERE fecha_publicacion >= ? AND fecha_publicacion <= ?",
+                (start, end),
+            )
+            return rows_to_dicts(cur)
+
+    def fetch_recent(
+        self,
+        *,
+        since_extraccion: str,
+        since_actualizacion: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Carga licitaciones recientes para SSE streaming."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id_externo, titulo, organo_contratacion, importe, estado, "
+                "url, fecha_publicacion, ccaa, tecnologia, fecha_extraccion, "
+                "fecha_actualizacion_fuente "
+                "FROM licitaciones "
+                "WHERE fecha_extraccion >= ? OR fecha_actualizacion_fuente >= ? "
+                "ORDER BY COALESCE(fecha_actualizacion_fuente, fecha_extraccion) DESC "
+                "LIMIT ?",
+                (since_extraccion, since_actualizacion, limit),
+            )
+            return rows_to_dicts(cur)
+
+    def fetch_for_pdf(
+        self,
+        *,
+        ccaa: str | None = None,
+        estado: str | None = None,
+        q: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Carga licitaciones para exportación PDF."""
+        conditions: list[str] = []
+        params: list[Any] = []
+        if ccaa:
+            conditions.append("ccaa = ?")
+            params.append(ccaa)
+        if estado:
+            conditions.append("estado = ?")
+            params.append(estado)
+        if q:
+            conditions.append("(titulo LIKE ? OR descripcion LIKE ?)")
+            params.extend([f"%{q}%", f"%{q}%"])
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id_externo, titulo, organo_contratacion, importe, estado, "
+                "fecha_publicacion, ccaa, cpv, url, tecnologia "
+                "FROM licitaciones" + where + " ORDER BY fecha_publicacion DESC LIMIT ?",
+                [*params, limit],
+            )
+            return rows_to_dicts(cur)
+
+    def search_fts_docs(
+        self,
+        query: str,
+        *,
+        ccaa: str | None = None,
+        tecnologia: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Búsqueda FTS5 con metadatos completos (para RAG endpoint)."""
+        from services.investigador.search_engine import escape_fts5
+
+        fts_q = escape_fts5(query)
+        conditions = ["licitaciones_fts MATCH ?"]
+        params: list[Any] = [fts_q]
+        if ccaa:
+            conditions.append("l.ccaa = ?")
+            params.append(ccaa)
+        if tecnologia:
+            conditions.append("l.tecnologia = ?")
+            params.append(tecnologia)
+        where = " AND ".join(conditions)
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
+                "l.descripcion, l.url, l.fecha_publicacion, l.ccaa, l.estado, l.tecnologia "
+                "FROM licitaciones l "
+                "JOIN licitaciones_fts f ON l.rowid = f.rowid "
+                f"WHERE {where} ORDER BY rank LIMIT ?",
+                [*params, limit],
+            )
+            return rows_to_dicts(cur)
+
+    def fts5_bm25_search(self, query: str, top_k: int) -> list[tuple[str, float]]:
+        """Búsqueda FTS5/BM25 normalizada para search_engine."""
+        from services.investigador.search_engine import escape_fts5
+
+        escaped = escape_fts5(query)
+        try:
+            with connect_read() as c:
+                cur = c.execute(
+                    "SELECT l.id_externo, bm25(licitaciones_fts) AS bm25_score "
+                    "FROM licitaciones_fts fts "
+                    "JOIN licitaciones l ON l.id_externo = fts.id_externo "
+                    f"WHERE licitaciones_fts MATCH ? ORDER BY bm25_score LIMIT {top_k * 2}",
+                    [escaped],
+                )
+                rows = cur.fetchall()
+        except Exception:
+            return []
+
+        if not rows:
+            return []
+        raw_scores = [abs(float(r[1])) for r in rows]
+        max_s = max(raw_scores) if raw_scores else 1.0
+        return [(r[0], s / max_s) for r, s in zip(rows, raw_scores, strict=False)]
+
+    def like_fallback_search(self, query: str, top_k: int) -> list[tuple[str, float]]:
+        """LIKE fallback para cuando FTS5 no está disponible."""
+        token = next(
+            (w for w in query.split() if len(w) >= 4),
+            query.split()[0] if query.split() else "",
+        )
+        if not token:
+            return []
+        try:
+            with connect_read() as c:
+                cur = c.execute(
+                    "SELECT id_externo FROM licitaciones "
+                    "WHERE titulo LIKE ? OR descripcion LIKE ? LIMIT ?",
+                    [f"%{token}%", f"%{token}%", top_k],
+                )
+                return [(r[0], 0.20) for r in cur.fetchall()]
+        except Exception:
+            return []
+
+    def fetch_metadata_by_ids(
+        self, ids: list[str], allowed_ids: set[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Recupera metadatos de la BD para una lista de IDs."""
+        if not ids:
+            return {}
+        if allowed_ids is not None:
+            ids = [i for i in ids if i in allowed_ids]
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        try:
+            with connect_read() as c:
+                cur = c.execute(
+                    f"SELECT id_externo, titulo, organo_contratacion, importe, "
+                    f"       descripcion, url, fecha_publicacion, ccaa, estado "
+                    f"FROM licitaciones WHERE id_externo IN ({placeholders})",
+                    ids,
+                )
+                cols = [d[0] for d in cur.description]
+                return {r[0]: dict(zip(cols, r, strict=False)) for r in cur.fetchall()}
+        except Exception:
+            return {}
+
+    def get_history(self, id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Devuelve el historial de cambios de una licitación."""
+        limit = max(1, min(limit, 1000))
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
+                "FROM licitaciones_history "
+                "WHERE id_externo = ? "
+                "ORDER BY captured_at DESC LIMIT ?",
+                [id_externo, limit],
+            )
+            return rows_to_dicts(cur)
+
+    def search_like_for_ask(
+        self,
+        question: str,
+        *,
+        ccaa: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """LIKE fallback para /ask endpoint cuando FTS5 no devuelve resultados."""
+        words = [w for w in question.split() if len(w) > 3][:5]
+        if not words:
+            return []
+        like_clauses = " OR ".join("titulo LIKE ?" for _ in words)
+        params: list[Any] = [f"%{w}%" for w in words]
+        conditions = [f"({like_clauses})"]
+        if ccaa:
+            conditions.append("ccaa = ?")
+            params.append(ccaa)
+        where = " AND ".join(conditions)
+        try:
+            with connect_read() as c:
+                cur = c.execute(
+                    "SELECT id_externo, titulo, organo_contratacion, importe, "
+                    "estado, descripcion, ccaa, tecnologia, fecha_publicacion "
+                    f"FROM licitaciones WHERE {where} LIMIT ?",
+                    [*params, limit],
+                )
+                return rows_to_dicts(cur)
+        except Exception:
+            return []

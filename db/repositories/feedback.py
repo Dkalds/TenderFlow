@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
+from db.repositories.base import rows_to_dicts
 
 
 class FeedbackRepository:
@@ -69,3 +70,9 @@ class FeedbackRepository:
                 "VALUES (?, 'feedback', ?, ?)",
                 (key, json.dumps(response, ensure_ascii=False), now_utc_iso()),
             )
+
+    def export_all(self, limit: int = 10_000) -> list[dict[str, Any]]:
+        """Exporta todo el ML feedback (anónimo, sin FK a usuario). Para GDPR."""
+        with connect_read() as c:
+            cur = c.execute("SELECT * FROM ml_feedback LIMIT ?", (limit,))
+            return rows_to_dicts(cur)

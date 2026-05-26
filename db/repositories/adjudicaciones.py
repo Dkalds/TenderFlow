@@ -55,3 +55,55 @@ class AdjudicacionRepository:
             items = rows_to_dicts(c.execute(sql, tuple(params)))
 
         return items, total
+
+    # ── Métodos para services/adjudicaciones.py ──────────────────────────
+
+    def load_raw_with_licitaciones(
+        self,
+        *,
+        limit: int | None = None,
+        ccaa_filter: tuple[str, ...] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Carga adjudicaciones raw con datos de la licitación asociada."""
+        sql = (
+            "SELECT a.*, l.titulo, l.organo_contratacion, l.url AS url_lic, "
+            "       l.fecha_publicacion, "
+            "       l.importe AS importe_licitacion "
+            "FROM adjudicaciones a "
+            "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+        )
+        params: list[Any] = []
+        if ccaa_filter:
+            placeholders = ",".join("?" for _ in ccaa_filter)
+            sql += f"WHERE a.ccaa IN ({placeholders}) "
+            params.extend(ccaa_filter)
+        sql += "ORDER BY a.fecha_adjudicacion DESC"
+        if limit is not None and limit > 0:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def load_licitadores(
+        self,
+        *,
+        ccaa_filter: tuple[str, ...] | None = None,
+        limit: int = 10000,
+    ) -> list[dict[str, Any]]:
+        """Carga adjudicaciones con datos para el ranking de licitadores."""
+        sql = (
+            "SELECT a.id, a.licitacion_id, a.nif, a.nombre, a.ccaa, a.provincia, "
+            "       a.importe_adjudicado, a.importe_pagable, a.fecha_adjudicacion, "
+            "       a.es_pyme, a.n_ofertas_recibidas, "
+            "       l.titulo, l.organo_contratacion, l.cpv, l.tecnologia "
+            "FROM adjudicaciones a "
+            "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+        )
+        params: list[Any] = []
+        if ccaa_filter:
+            placeholders = ",".join("?" for _ in ccaa_filter)
+            sql += f"WHERE a.ccaa IN ({placeholders}) "
+            params.extend(ccaa_filter)
+        sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))

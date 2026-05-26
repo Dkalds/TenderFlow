@@ -11,12 +11,9 @@ from typing import Any
 
 import pandas as pd
 
-from db.database import connect_read, fts_available, init_db
-from db.repositories.base import rows_to_dicts
 from db.repositories.licitaciones import LicitacionRepository
 from observability.histograms import timed_query
 from observability.logging import get_logger
-from services.investigador.search_engine import escape_fts5
 
 log = get_logger(__name__)
 
@@ -86,25 +83,17 @@ def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
     Devuelve lista de dicts para que ``data_loader`` convierta a DataFrame
     y aplique transformaciones Streamlit.
     """
+    from db.database import init_db
+
     init_db()
-    sql = (
-        "SELECT " + _RAW_COLUMNS + " FROM licitaciones "
-        "WHERE tecnologia IS NOT NULL AND tecnologia != '' "
-        "ORDER BY fecha_publicacion DESC"
-    )
-    params: list[Any] = []
-    if limit is not None and limit > 0:
-        sql += " LIMIT ?"
-        params.append(int(limit))
-    with timed_query("svc_load_raw"), connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
+    with timed_query("svc_load_raw"):
+        return _repo.load_raw(columns=_RAW_COLUMNS, limit=limit)
 
 
 def load_stats_dataframe() -> list[dict[str, Any]]:
     """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento)."""
-    with timed_query("svc_load_stats"), connect_read() as c:
-        cur = c.execute("SELECT " + _STATS_COLUMNS + " FROM licitaciones")
-        return rows_to_dicts(cur)
+    with timed_query("svc_load_stats"):
+        return _repo.load_stats(_STATS_COLUMNS)
 
 
 # ── Búsquedas especializadas ─────────────────────────────────────────────
@@ -112,15 +101,7 @@ def load_stats_dataframe() -> list[dict[str, Any]]:
 
 def load_uncertainty_zone(lo: float, hi: float, limit: int) -> list[dict[str, Any]]:
     """Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)."""
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT id_externo, titulo, descripcion, organo_contratacion, importe, "
-            "fecha_publicacion, cpv, ml_proba FROM licitaciones "
-            "WHERE ml_proba IS NOT NULL AND ml_proba BETWEEN ? AND ? "
-            "ORDER BY (importe IS NULL), importe DESC, ml_proba LIMIT ?",
-            (lo, hi, limit),
-        )
-        return rows_to_dicts(cur)
+    return _repo.load_uncertainty_zone(lo, hi, limit)
 
 
 def search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
@@ -128,20 +109,7 @@ def search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
 
     Returns ``None`` si FTS no está disponible o la query falla (fallback a str.contains).
     """
-    if not fts_available() or not query.strip():
-        return None
-    try:
-        fts_query = escape_fts5(query)
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT f.id_externo FROM licitaciones_fts f "
-                "WHERE licitaciones_fts MATCH ? ORDER BY rank LIMIT ?",
-                [fts_query, limit],
-            )
-            return [row[0] for row in cur.fetchall()]
-    except Exception as exc:
-        log.debug("fts_search_fallback", error=str(exc), query=query)
-        return None
+    return _repo.search_fts_ids(query, limit)
 
 
 # ── Proxies de conveniencia (transición gradual) ─────────────────────────
@@ -220,11 +188,42 @@ def load_drift_window(days: int, offset_days: int = 0) -> list[dict[str, Any]]:
 
     cutoff = (datetime.now(UTC) - timedelta(days=offset_days + days)).isoformat()[:10]
     end = (datetime.now(UTC) - timedelta(days=offset_days)).isoformat()[:10]
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT importe, cpv, ccaa, tecnologia, estado "
-            "FROM licitaciones "
-            "WHERE fecha_publicacion >= ? AND fecha_publicacion <= ?",
-            (cutoff, end),
-        )
-        return rows_to_dicts(cur)
+    return _repo.load_drift_window(cutoff, end)
+
+
+def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Devuelve el historial de cambios de una licitación."""
+    return _repo.get_history(id_externo, limit)
+
+
+def fetch_recent(since_iso: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Licitaciones publicadas/actualizadas desde ``since_iso`` (para SSE stream)."""
+    return _repo.fetch_recent(
+        since_extraccion=since_iso,
+        since_actualizacion=since_iso,
+        limit=limit,
+    )
+
+
+def fetch_for_pdf(
+    *,
+    ccaa: str | None = None,
+    estado: str | None = None,
+    q: str | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """Carga licitaciones para exportación PDF."""
+    return _repo.fetch_for_pdf(ccaa=ccaa, estado=estado, q=q, limit=limit)
+
+
+def search_for_ask(
+    question: str,
+    top_k: int,
+    ccaa: str | None = None,
+    tecnologia: str | None = None,
+) -> list[dict[str, Any]]:
+    """Búsqueda FTS5 + LIKE fallback para el endpoint /ask (RAG)."""
+    docs = _repo.search_fts_docs(question, ccaa=ccaa, tecnologia=tecnologia, limit=top_k)
+    if not docs:
+        docs = _repo.search_like_for_ask(question, ccaa=ccaa, limit=top_k)
+    return docs
