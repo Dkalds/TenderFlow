@@ -229,7 +229,7 @@ jobs:
           docker run --rm -e ENV=dev --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"
 
       - name: Trivy vulnerability scan (image) — tabla en consola
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "licitaciones-sap:ci"
           format: "table"
@@ -242,7 +242,7 @@ jobs:
 
       - name: Trivy vulnerability scan (image) — SARIF para upload
         if: always()
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "licitaciones-sap:ci"
           format: "sarif"
