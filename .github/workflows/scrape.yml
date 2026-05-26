@@ -71,6 +71,7 @@ jobs:
       - name: Healthcheck post-run
         if: always()
         env:
+          ENV: dev
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
