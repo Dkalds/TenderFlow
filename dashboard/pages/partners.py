@@ -15,7 +15,7 @@ import streamlit as st
 try:
     import networkx as nx  # type: ignore[import-untyped]
 except ModuleNotFoundError:  # pragma: no cover
-    nx = None  # type: ignore[assignment]
+    nx = None
 
 from dashboard.components.kpi import kpi_card
 from dashboard.components.states import empty_state, guarded_render

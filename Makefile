@@ -131,62 +131,26 @@ clean:  ## Limpia artefactos de build y caché
 
 # ── Runbooks ejecutables ─────────────────────────────────────────────────
 # Extrae y ejecuta bloques de código bash de los runbooks Markdown.
-_run-runbook = python - <<'PYEOF' \
-&& import re, subprocess, sys, pathlib; \
-  md = pathlib.Path("$(1)").read_text(); \
-  blocks = re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL); \
-  [subprocess.run(b, shell=True, check=False) for b in blocks] \
-PYEOF
-
 runbook-backup-restore:
 	@echo "==> Runbook: backup-restore"
-	@bash docs/runbooks/backup-restore.md 2>/dev/null || python - <<'EOF'
-import re, subprocess, pathlib
-md = pathlib.Path("docs/runbooks/backup-restore.md").read_text()
-for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
-    print(f"\n--- ejecutando ---\n{block[:120]}...")
-    subprocess.run(block, shell=True)
-EOF
+	@bash docs/runbooks/backup-restore.md 2>/dev/null || \
+		python -c "import re,subprocess,pathlib; md=pathlib.Path('docs/runbooks/backup-restore.md').read_text(); [subprocess.run(b,shell=True) for b in re.findall(r'```bash\\n(.*?)\\n```',md,re.DOTALL)]"
 
 runbook-dlq-replay:
 	@echo "==> Runbook: dlq-replay"
-	@python - <<'EOF'
-import re, subprocess, pathlib
-md = pathlib.Path("docs/runbooks/dlq-replay.md").read_text()
-for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
-    print(f"\n--- ejecutando ---\n{block[:120]}...")
-    subprocess.run(block, shell=True)
-EOF
+	@python -c "import re,subprocess,pathlib; md=pathlib.Path('docs/runbooks/dlq-replay.md').read_text(); [subprocess.run(b,shell=True) for b in re.findall(r'```bash\\n(.*?)\\n```',md,re.DOTALL)]"
 
 runbook-rate-limit-reset:
 	@echo "==> Runbook: rate-limit-reset"
-	@python - <<'EOF'
-import re, subprocess, pathlib
-md = pathlib.Path("docs/runbooks/rate-limit-reset.md").read_text()
-for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
-    print(f"\n--- ejecutando ---\n{block[:120]}...")
-    subprocess.run(block, shell=True)
-EOF
+	@python -c "import re,subprocess,pathlib; md=pathlib.Path('docs/runbooks/rate-limit-reset.md').read_text(); [subprocess.run(b,shell=True) for b in re.findall(r'```bash\\n(.*?)\\n```',md,re.DOTALL)]"
 
 runbook-model-rollback:
 	@echo "==> Runbook: model-rollback"
-	@python - <<'EOF'
-import re, subprocess, pathlib
-md = pathlib.Path("docs/runbooks/model-rollback.md").read_text()
-for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
-    print(f"\n--- ejecutando ---\n{block[:120]}...")
-    subprocess.run(block, shell=True)
-EOF
+	@python -c "import re,subprocess,pathlib; md=pathlib.Path('docs/runbooks/model-rollback.md').read_text(); [subprocess.run(b,shell=True) for b in re.findall(r'```bash\\n(.*?)\\n```',md,re.DOTALL)]"
 
 runbook-disaster-recovery:
 	@echo "==> Runbook: disaster-recovery"
-	@python - <<'EOF'
-import re, subprocess, pathlib
-md = pathlib.Path("docs/runbooks/disaster-recovery.md").read_text()
-for block in re.findall(r'```bash\n(.*?)\n```', md, re.DOTALL):
-    print(f"\n--- ejecutando ---\n{block[:120]}...")
-    subprocess.run(block, shell=True)
-EOF
+	@python -c "import re,subprocess,pathlib; md=pathlib.Path('docs/runbooks/disaster-recovery.md').read_text(); [subprocess.run(b,shell=True) for b in re.findall(r'```bash\\n(.*?)\\n```',md,re.DOTALL)]"
 
 # ── Extras ───────────────────────────────────────────────────────────────────
 
