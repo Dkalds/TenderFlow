@@ -568,7 +568,7 @@ class SAPClassifier:
     def ensure_downloaded(
         cls,
         path: Path | None = None,
-        repo: str = "Dkalds/Licitaciones_sap_SP",
+        repo: str = "Dkalds/TenderFlow",
         asset_name: str = "sap_classifier.pkl",
     ) -> bool:
         """Descarga el modelo desde el último GitHub Release si no existe localmente.
@@ -599,7 +599,7 @@ class SAPClassifier:
                 api_url,
                 headers={
                     "Accept": "application/vnd.github+json",
-                    "User-Agent": "licitaciones-sap",
+                    "User-Agent": "tenderflow",
                     **auth_header,
                 },
             )
@@ -630,7 +630,7 @@ class SAPClassifier:
                 download_url,
                 headers={
                     "Accept": "application/octet-stream",
-                    "User-Agent": "licitaciones-sap",
+                    "User-Agent": "tenderflow",
                     **auth_header,
                 },
             )

@@ -1,4 +1,4 @@
-"""Alembic environment — configurado para licitaciones-sap.
+"""Alembic environment — configurado para TenderFlow.
 
 Este entorno utiliza la URL de la BD definida en config.settings.DB_PATH,
 con fallback al alembic.ini.

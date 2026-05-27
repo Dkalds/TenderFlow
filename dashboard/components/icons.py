@@ -1,15 +1,15 @@
-"""Sistema de iconos SVG inline — basado en Lucide (MIT, https://lucide.dev).
+﻿"""Sistema de iconos SVG inline â€” basado en Lucide (MIT, https://lucide.dev).
 
 Reemplaza los emojis dispersos por la app por SVGs uniformes que escalan,
-heredan `currentColor` y se ven idénticos en todos los sistemas operativos.
+heredan `currentColor` y se ven idÃ©nticos en todos los sistemas operativos.
 
-Uso típico::
+Uso tÃ­pico::
 
     from dashboard.components.icons import icon
     st.markdown(f"{icon('refresh-cw', 16)} Refrescar", unsafe_allow_html=True)
 
 Los paths SVG son fragmentos de Lucide (sin el wrapper `<svg>`); `icon()`
-añade el wrapper con `width`, `height` y `stroke="currentColor"`.
+aÃ±ade el wrapper con `width`, `height` y `stroke="currentColor"`.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ _SVG_ATTRS = (
 )
 
 # Solo el contenido interno del SVG (paths, circles, lines, etc.).
-# Ampliar este dict cuando se añadan nuevos call sites.
+# Ampliar este dict cuando se aÃ±adan nuevos call sites.
 _ICON_PATHS: dict[str, str] = {
     "layout-dashboard": (
         '<rect width="7" height="9" x="3" y="3" rx="1"/>'
@@ -116,7 +116,7 @@ _ICON_PATHS: dict[str, str] = {
         '<path d="M4 10h12"/><path d="M4 14h9"/>'
         '<path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/>'
     ),
-    # ── Iconos adicionales (Fase mejoras-visuales) ───────────────────────
+    # â”€â”€ Iconos adicionales (Fase mejoras-visuales) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     "download": (
         '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
         '<polyline points="7 10 12 15 17 10"/>'
@@ -138,12 +138,12 @@ _ICON_PATHS: dict[str, str] = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Logo (monograma azul SAP) — usado en sidebar brand y header
-# ─────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Logo (monograma azul SAP) â€” usado en sidebar brand y header
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 LOGO_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" '
-    'viewBox="0 0 32 32" fill="none" aria-label="Licitaciones">'
+    'viewBox="0 0 32 32" fill="none" aria-label="TenderFlow">'
     '<rect x="1.5" y="1.5" width="29" height="29" rx="7" '
     'fill="rgba(134,188,36,0.12)" stroke="#86BC24" stroke-width="1.5"/>'
     '<path d="M9 22 L9 10 L13 10 L13 17 L17 10 L21 10 L17 16 L23 22 L18 22 L13 17 L13 22 Z" '
@@ -156,9 +156,9 @@ def icon(name: str, size: int = 16, color: str | None = None) -> str:
     """Devuelve el markup `<svg>` para el icono solicitado.
 
     Args:
-        name: clave en `_ICON_PATHS`. Si no existe, devuelve un cuadrado vacío
-              (fallback silencioso para no romper la UI en producción).
-        size: ancho y alto en píxeles.
+        name: clave en `_ICON_PATHS`. Si no existe, devuelve un cuadrado vacÃ­o
+              (fallback silencioso para no romper la UI en producciÃ³n).
+        size: ancho y alto en pÃ­xeles.
         color: color CSS opcional. Si es None hereda `currentColor` del padre,
                lo que permite estilar desde CSS (`.kpi-card .icon { color: ...}`).
     """
@@ -177,7 +177,7 @@ def icon(name: str, size: int = 16, color: str | None = None) -> str:
 def icon_inline(name: str, size: int = 14, color: str | None = None) -> str:
     """Variante de `icon()` con `display:inline-flex` y baseline alineada al texto.
 
-    Útil para iconos que van pegados a una palabra (chips, breadcrumbs).
+    Ãštil para iconos que van pegados a una palabra (chips, breadcrumbs).
     """
     svg = icon(name, size=size, color=color)
     # Reemplazo del primer `<svg ` para inyectar style inline.

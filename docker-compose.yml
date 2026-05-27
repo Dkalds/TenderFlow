@@ -1,32 +1,20 @@
-services:
+﻿services:
   dashboard:
     build:
       context: .
-      dockerfile: Dockerfile.dashboard
-    image: licitaciones-sap-dashboard:latest
-    container_name: licitaciones-dashboard
+      target: runtime
+    image: tenderflow:latest
+    container_name: tenderflow-dashboard
     restart: unless-stopped
     ports:
       - "127.0.0.1:8501:8501"
     volumes:
-      - licitaciones_data:/data
+      # Base de datos SQLite persistente fuera del contenedor
+      - tenderflow_data:/data
     env_file:
       - .env
     environment:
-      DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      RATE_LIMIT_BACKEND: redis
-      # Restringe qué proxies son confiables para X-Forwarded-* en uvicorn.
-      # Ajusta en producción al rango/IP de tu reverse proxy.
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
-    mem_limit: 512m
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp
+      DB_PATH: /data/tenderflow.db
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5",
              "http://localhost:8501/_stcore/health"]
@@ -77,43 +65,24 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: Dockerfile.api
-    image: licitaciones-sap-api:latest
-    container_name: licitaciones-scheduler
+      target: runtime
+    image: tenderflow:latest
+    container_name: tenderflow-scheduler
     restart: unless-stopped
-    # El scheduler no expone puerto — solo escribe en la BD compartida
+    # El scheduler no expone puerto â€” solo escribe en la BD compartida
     volumes:
-      - licitaciones_data:/data
+      - tenderflow_data:/data
     env_file:
       - .env
     environment:
-      DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      RATE_LIMIT_BACKEND: redis
-      SCHEDULER_DAILY_INTERVAL_MINUTES: ${SCHEDULER_DAILY_INTERVAL_MINUTES:-240}
-      SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
-      SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}
-    entrypoint: ["python", "-m", "scheduler.loop"]
-    mem_limit: 512m
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import libsql, os; libsql.connect(os.environ['DB_PATH']).execute('SELECT 1').fetchone()"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      DB_PATH: /data/tenderflow.db
+    command: ["python", "-m", "scheduler.run_update"]
+    # Iniciar despuÃ©s del dashboard para que la BD ya estÃ© inicializada
     depends_on:
       redis:
         condition: service_healthy
 
-  # ── Redis (cache compartido + rate limiting) ──────────────────────────
+  # â”€â”€ Redis (cache compartido + rate limiting) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   redis:
     image: redis:7-alpine
     container_name: licitaciones-redis
@@ -132,7 +101,7 @@ services:
     cap_drop:
       - ALL
 
-  # ── Monitoring (opcional): activar con `docker compose --profile monitoring up` ─
+  # â”€â”€ Monitoring (opcional): activar con `docker compose --profile monitoring up` â”€
   prometheus:
     image: prom/prometheus:v2.53.0
     container_name: licitaciones-prometheus
@@ -187,7 +156,7 @@ services:
         condition: service_healthy
 
 volumes:
-  licitaciones_data:
+  tenderflow_data:
     driver: local
   redis_data:
     driver: local

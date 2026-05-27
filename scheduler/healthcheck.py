@@ -132,7 +132,7 @@ def main() -> int:
         level = AlertLevel.CRITICAL if result["status"] == "critical" else AlertLevel.WARN
         notify(
             level,
-            "Healthcheck licitaciones-sap",
+            "Healthcheck tenderflow",
             body=f"Estado: {result['status']}",
             warnings=result["warnings"],
             errors=result["errors"],

@@ -1,10 +1,6 @@
-# Licitaciones SAP — Sector Público España
+# TenderFlow
 
-Sistema de inteligencia comercial que extrae automáticamente las licitaciones
-publicadas en la **Plataforma de Contratación del Sector Público (PLACSP)**
-relacionadas con proyectos de software enterprise (SAP, Salesforce, Oracle,
-Microsoft Dynamics y otros) y las presenta en un dashboard interactivo con
-análisis estadístico, alertas y exportación.
+Inteligencia de licitaciones del Sector Público español.
 
 ---
 
@@ -52,7 +48,7 @@ análisis estadístico, alertas y exportación.
 ## Estructura del proyecto
 
 ```
-licitaciones-sap/
+tenderflow/
 ├── config/                       # Configuración modular
 │   ├── settings.py               #   Variables de entorno (pydantic-settings)
 │   ├── keywords.py               #   SAP_KEYWORDS, TECHNOLOGY_KEYWORDS
@@ -174,8 +170,8 @@ licitaciones-sap/
 ### Instalación estándar
 
 ```bash
-git clone https://github.com/Dkalds/Licitaciones_sap_SP.git
-cd licitaciones-sap
+git clone https://github.com/Dkalds/TenderFlow.git
+cd TenderFlow
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # Linux / macOS

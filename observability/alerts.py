@@ -94,7 +94,7 @@ def _build_html(level: AlertLevel, title: str, body: str, context: dict[str, Any
             {ctx_table}
           </div>
           <p style="font-size:11px;color:#aaa;margin-top:16px">
-            Licitaciones SAP · alerta automática · nivel {level.name}
+            TenderFlow · alerta automática · nivel {level.name}
           </p>
         </body></html>
     """)
@@ -136,7 +136,7 @@ def _send_smtp(
         )
         return
 
-    subject = f"[Licitaciones SAP] [{level.name}] {title}"
+    subject = f"[TenderFlow] [{level.name}] {title}"
     html = _build_html(level, title, body, context)
 
     msg = MIMEMultipart("alternative")

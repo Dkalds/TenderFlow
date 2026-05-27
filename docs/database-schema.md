@@ -1,4 +1,4 @@
-# Database Schema — Licitaciones SAP
+# Database Schema — TenderFlow
 
 Documentación del esquema de base de datos SQLite/Turso del proyecto.
 

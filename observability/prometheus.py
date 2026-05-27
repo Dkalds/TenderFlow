@@ -1,17 +1,17 @@
-"""Instrumentación Prometheus para el scraper de licitaciones SAP.
+"""Instrumentación Prometheus para el scraper de TenderFlow.
 
 Expone métricas en formato texto Prometheus a través de un fichero .prom
 (``data/metrics/scraper.prom``) que puede ser consumido por un node_exporter
 con textfile collector, o bien por un servidor HTTP mínimo incluido aquí.
 
 Métricas expuestas:
-  - licitaciones_sap_scraper_runs_total{status}       — Contador de runs
-  - licitaciones_sap_items_total{status}              — Ítems procesados
-  - licitaciones_sap_run_duration_seconds             — Histograma de duración
-  - licitaciones_sap_db_total                         — Gauge total en BD
-  - licitaciones_sap_last_run_timestamp               — Timestamp último run
-  - licitaciones_sap_parse_errors_total               — Errores de parseo
-  - licitaciones_sap_download_errors_total            — Errores de descarga
+  - tenderflow_scraper_runs_total{status}       — Contador de runs
+  - tenderflow_items_total{status}              — Ítems procesados
+  - tenderflow_run_duration_seconds             — Histograma de duración
+  - tenderflow_db_total                         — Gauge total en BD
+  - tenderflow_last_run_timestamp               — Timestamp último run
+  - tenderflow_parse_errors_total               — Errores de parseo
+  - tenderflow_download_errors_total            — Errores de descarga
 
 Uso:
     # Desde el pipeline (automático vía instrument_run):
@@ -124,7 +124,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
 
     # Runs (1 per invocation — snapshot)
     runs_total = Gauge(
-        "licitaciones_sap_scraper_runs_total",
+        "tenderflow_scraper_runs_total",
         "Total de runs del scraper (último run)",
         ["status", "source"],
         registry=registry,
@@ -133,7 +133,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
 
     # Ítems procesados
     items_new = Gauge(
-        "licitaciones_sap_items_nuevas_total",
+        "tenderflow_items_nuevas_total",
         "Licitaciones nuevas insertadas (último run)",
         ["source"],
         registry=registry,
@@ -141,7 +141,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
     items_new.labels(source=run.source).set(run.nuevas)
 
     items_updated = Gauge(
-        "licitaciones_sap_items_actualizadas_total",
+        "tenderflow_items_actualizadas_total",
         "Licitaciones actualizadas (último run)",
         ["source"],
         registry=registry,
@@ -150,7 +150,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
 
     # Duración (Gauge — no Histogram para evitar buckets complejos en textfile)
     duration = Gauge(
-        "licitaciones_sap_run_duration_seconds",
+        "tenderflow_run_duration_seconds",
         "Duración del último run en segundos",
         ["source"],
         registry=registry,
@@ -159,7 +159,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
 
     # Timestamp del último run
     last_run = Gauge(
-        "licitaciones_sap_last_run_timestamp",
+        "tenderflow_last_run_timestamp",
         "Timestamp UNIX del último run completado",
         ["source"],
         registry=registry,
@@ -168,7 +168,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
 
     # Errores
     parse_errors = Gauge(
-        "licitaciones_sap_parse_errors_total",
+        "tenderflow_parse_errors_total",
         "Errores de parseo XML (último run)",
         ["source"],
         registry=registry,
@@ -176,7 +176,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
     parse_errors.labels(source=run.source).set(run.errores_parseo)
 
     download_errors = Gauge(
-        "licitaciones_sap_download_errors_total",
+        "tenderflow_download_errors_total",
         "Errores de descarga (último run)",
         ["source"],
         registry=registry,
@@ -185,7 +185,7 @@ def _write_via_client(run: RunInstrumentation) -> None:
 
     # Total en BD (gauge global)
     db_total = Gauge(
-        "licitaciones_sap_db_total",
+        "tenderflow_db_total",
         "Total de licitaciones en la base de datos",
         registry=registry,
     )
@@ -216,30 +216,30 @@ def _write_text_file(run: RunInstrumentation) -> None:
         log.debug("prometheus_db_count_failed")
 
     lines = [
-        "# HELP licitaciones_sap_scraper_runs_total Total de runs del scraper",
-        "# TYPE licitaciones_sap_scraper_runs_total gauge",
-        f'licitaciones_sap_scraper_runs_total{{status="{run.status}",source="{run.source}"}} 1',
-        "# HELP licitaciones_sap_items_nuevas_total Licitaciones nuevas insertadas",
-        "# TYPE licitaciones_sap_items_nuevas_total gauge",
-        f'licitaciones_sap_items_nuevas_total{{source="{run.source}"}} {run.nuevas}',
-        "# HELP licitaciones_sap_items_actualizadas_total Licitaciones actualizadas",
-        "# TYPE licitaciones_sap_items_actualizadas_total gauge",
-        f'licitaciones_sap_items_actualizadas_total{{source="{run.source}"}} {run.actualizadas}',
-        "# HELP licitaciones_sap_run_duration_seconds Duracion del ultimo run",
-        "# TYPE licitaciones_sap_run_duration_seconds gauge",
-        f'licitaciones_sap_run_duration_seconds{{source="{run.source}"}} {run.duration_seconds:.3f}',
-        "# HELP licitaciones_sap_last_run_timestamp Timestamp UNIX del ultimo run",
-        "# TYPE licitaciones_sap_last_run_timestamp gauge",
-        f'licitaciones_sap_last_run_timestamp{{source="{run.source}"}} {now:.0f}',
-        "# HELP licitaciones_sap_parse_errors_total Errores de parseo XML",
-        "# TYPE licitaciones_sap_parse_errors_total gauge",
-        f'licitaciones_sap_parse_errors_total{{source="{run.source}"}} {run.errores_parseo}',
-        "# HELP licitaciones_sap_download_errors_total Errores de descarga",
-        "# TYPE licitaciones_sap_download_errors_total gauge",
-        f'licitaciones_sap_download_errors_total{{source="{run.source}"}} {run.errores_descarga}',
-        "# HELP licitaciones_sap_db_total Total de licitaciones en la BD",
-        "# TYPE licitaciones_sap_db_total gauge",
-        f"licitaciones_sap_db_total {db_total}",
+        "# HELP tenderflow_scraper_runs_total Total de runs del scraper",
+        "# TYPE tenderflow_scraper_runs_total gauge",
+        f'tenderflow_scraper_runs_total{{status="{run.status}",source="{run.source}"}} 1',
+        "# HELP tenderflow_items_nuevas_total Licitaciones nuevas insertadas",
+        "# TYPE tenderflow_items_nuevas_total gauge",
+        f'tenderflow_items_nuevas_total{{source="{run.source}"}} {run.nuevas}',
+        "# HELP tenderflow_items_actualizadas_total Licitaciones actualizadas",
+        "# TYPE tenderflow_items_actualizadas_total gauge",
+        f'tenderflow_items_actualizadas_total{{source="{run.source}"}} {run.actualizadas}',
+        "# HELP tenderflow_run_duration_seconds Duracion del ultimo run",
+        "# TYPE tenderflow_run_duration_seconds gauge",
+        f'tenderflow_run_duration_seconds{{source="{run.source}"}} {run.duration_seconds:.3f}',
+        "# HELP tenderflow_last_run_timestamp Timestamp UNIX del ultimo run",
+        "# TYPE tenderflow_last_run_timestamp gauge",
+        f'tenderflow_last_run_timestamp{{source="{run.source}"}} {now:.0f}',
+        "# HELP tenderflow_parse_errors_total Errores de parseo XML",
+        "# TYPE tenderflow_parse_errors_total gauge",
+        f'tenderflow_parse_errors_total{{source="{run.source}"}} {run.errores_parseo}',
+        "# HELP tenderflow_download_errors_total Errores de descarga",
+        "# TYPE tenderflow_download_errors_total gauge",
+        f'tenderflow_download_errors_total{{source="{run.source}"}} {run.errores_descarga}',
+        "# HELP tenderflow_db_total Total de licitaciones en la BD",
+        "# TYPE tenderflow_db_total gauge",
+        f"tenderflow_db_total {db_total}",
     ]
     _METRICS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     log.info("prometheus.metrics_written_text", path=str(_METRICS_FILE))

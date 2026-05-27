@@ -1,4 +1,4 @@
-"""KPI bar del dashboard — extraído de app.py para reutilización y tests."""
+﻿"""KPI bar del dashboard â€” extraÃ­do de app.py para reutilizaciÃ³n y tests."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ from dashboard.utils.format import fmt_eur
 def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
     """Calcula los KPIs principales sobre el dataframe filtrado.
 
-    Usa Polars para las agregaciones cuando está disponible (2-5× más rápido).
-    Cae a pandas si Polars no está instalado.
+    Usa Polars para las agregaciones cuando estÃ¡ disponible (2-5Ã— mÃ¡s rÃ¡pido).
+    Cae a pandas si Polars no estÃ¡ instalado.
     """
     total = len(df)
     if total == 0:
@@ -57,11 +57,11 @@ def compute_kpis(df: pd.DataFrame) -> dict[str, float | int]:
         ).row(0)
         importe_total, importe_medio, n_organos, n_ccaa = aggs
 
-        # Ventanas temporales en pandas (más simple para dates con tz)
+        # Ventanas temporales en pandas (mÃ¡s simple para dates con tz)
         ult30_n = int((fpub >= t30_back).sum())
         prev30_n = int(((fpub < t30_back) & (fpub >= t60_back)).sum())
     except ImportError:
-        # Polars no instalado — pandas puro
+        # Polars no instalado â€” pandas puro
         importe_total = float(df["importe"].sum(skipna=True))
         importe_medio = float(df["importe"].mean(skipna=True) or 0)
         n_organos = int(df["organo_contratacion"].nunique())
@@ -126,7 +126,7 @@ def _snapshot_kpis(snapshot: dict[str, Any], expected_rows: int) -> dict[str, fl
 
 @st.cache_data(show_spinner=False, persist="disk")
 def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[float]:
-    """Devuelve la serie agregada por mes de los últimos 12 meses.
+    """Devuelve la serie agregada por mes de los Ãºltimos 12 meses.
 
     Si `value_col` es None cuenta filas; si se proporciona suma esa columna.
     Pensado para alimentar el sparkline inline de las KPI cards.
@@ -146,7 +146,7 @@ def _last_12m_series(df: pd.DataFrame, value_col: str | None = None) -> list[flo
         s = sub.groupby("_mes")[value_col].sum(min_count=1).fillna(0)
     else:
         s = sub.groupby("_mes").size()
-    # Reindexar para incluir meses vacíos (continuidad visual del sparkline)
+    # Reindexar para incluir meses vacÃ­os (continuidad visual del sparkline)
     full_idx = pd.period_range(end=hoy.to_period("M"), periods=12, freq="M")
     s = s.reindex(full_idx, fill_value=0)
     return [float(v) for v in s.tolist()]
@@ -172,13 +172,13 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
     spark_count = spark_count or _last_12m_series(df) or None
     spark_imp = spark_imp or _last_12m_series(df, value_col="importe") or None
     delta_up = k["delta_n"] >= 0
-    delta_txt = f"{k['delta_pct']:+.0f}% últ. 30d" if k["prev30_size"] else "sin comparativa"
+    delta_txt = f"{k['delta_pct']:+.0f}% Ãºlt. 30d" if k["prev30_size"] else "sin comparativa"
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         st.markdown(
             kpi_card(
-                "Licitaciones",
+                "TenderFlow",
                 f"{k['total']:,}",
                 delta=delta_txt,
                 delta_up=delta_up,
@@ -206,9 +206,9 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
                 fmt_eur(k["importe_medio"]),
                 icon=icon("trending-up", 18),
                 tooltip=(
-                    "Media aritmética del importe de licitación (sin IVA) "
+                    "Media aritmÃ©tica del importe de licitaciÃ³n (sin IVA) "
                     "sobre todas las licitaciones en el rango filtrado. "
-                    "Fórmula: Importe total / Nº licitaciones con importe informado."
+                    "FÃ³rmula: Importe total / NÂº licitaciones con importe informado."
                 ),
             ),
             unsafe_allow_html=True,
@@ -216,13 +216,13 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
     with c4:
         st.markdown(
             kpi_card(
-                "Órganos distintos",
+                "Ã“rganos distintos",
                 f"{k['n_organos']}",
                 icon=icon("building-2", 18),
                 tooltip=(
-                    "Número de órganos de contratación únicos que han publicado "
-                    "al menos una licitación en el rango filtrado. "
-                    "Un mismo organismo puede publicar múltiples licitaciones."
+                    "NÃºmero de Ã³rganos de contrataciÃ³n Ãºnicos que han publicado "
+                    "al menos una licitaciÃ³n en el rango filtrado. "
+                    "Un mismo organismo puede publicar mÃºltiples licitaciones."
                 ),
             ),
             unsafe_allow_html=True,
@@ -234,9 +234,9 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
                 f"{k['n_ccaa']}/17",
                 icon=icon("map", 18),
                 tooltip=(
-                    "Comunidades autónomas con al menos una licitación en el rango filtrado. "
+                    "Comunidades autÃ³nomas con al menos una licitaciÃ³n en el rango filtrado. "
                     "El total posible es 17 (sin contar Ceuta y Melilla). "
-                    "Una CCAA se asigna por el código NUTS3 del órgano contratante."
+                    "Una CCAA se asigna por el cÃ³digo NUTS3 del Ã³rgano contratante."
                 ),
             ),
             unsafe_allow_html=True,
