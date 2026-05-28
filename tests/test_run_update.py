@@ -19,11 +19,8 @@ def test_main_daily_returns_0_on_ok():
         patch("scheduler.run_update.count_licitaciones", return_value=100),
         patch("sys.argv", ["run_update", "--daily"]),
     ):
-        import importlib
-
         from scheduler import run_update
 
-        importlib.reload(run_update)
         code = run_update.main()
 
     assert code == 0
