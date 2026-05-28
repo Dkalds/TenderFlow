@@ -63,8 +63,14 @@ class TestValidateCsrfToken:
     def test_tampered_signature_rejected(self) -> None:
         session = "sess"
         token = generate_csrf_token(session)
-        # Flip last char of signature
-        tampered = token[:-1] + ("a" if token[-1] != "a" else "b")
+        parts = token.split(":", 2)
+        sig = parts[2]
+        # Flip a char in the middle of the signature (avoid last char which
+        # may only differ in base64 padding bits for 32-byte HMAC-SHA256).
+        mid = len(sig) // 2
+        flipped = chr(ord(sig[mid]) ^ 0x01)
+        parts[2] = sig[:mid] + flipped + sig[mid + 1 :]
+        tampered = ":".join(parts)
         assert validate_csrf_token(tampered, session) is False
 
     def test_tampered_timestamp_rejected(self) -> None:
