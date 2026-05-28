@@ -1,10 +1,10 @@
-﻿"""Generador de PDF Â«informe ejecutivoÂ» de TenderFlow.
+"""Generador de PDF «informe ejecutivo» de licitaciones SAP.
 
 Usa reportlab para generar un PDF con:
-- Portada con filtros aplicados y fecha de generaciÃ³n
+- Portada con filtros aplicados y fecha de generación
 - KPIs principales
 - Tabla top-10 oportunidades
-- Charts exportados como imÃ¡genes (pasados como bytes PNG)
+- Charts exportados como imágenes (pasados como bytes PNG)
 """
 
 from __future__ import annotations
@@ -84,16 +84,16 @@ def generate_pdf(
     filtros: dict[str, str],
     top_oportunidades: list[dict[str, Any]],
     chart_images: list[tuple[str, bytes]] | None = None,
-    titulo: str = "Informe Ejecutivo â€” TenderFlow",
+    titulo: str = "Informe Ejecutivo — Licitaciones",
 ) -> bytes:
     """Genera un PDF en memoria y devuelve los bytes.
 
     Args:
-        kpis: {label: valor_formateado} â€” los KPIs principales.
-        filtros: {nombre_filtro: valor} â€” filtros activos al generar.
+        kpis: {label: valor_formateado} — los KPIs principales.
+        filtros: {nombre_filtro: valor} — filtros activos al generar.
         top_oportunidades: lista de dicts con las top oportunidades.
         chart_images: lista de (titulo, png_bytes) con charts.
-        titulo: tÃ­tulo del informe.
+        titulo: título del informe.
 
     Returns:
         Bytes del PDF generado.
@@ -110,7 +110,7 @@ def generate_pdf(
     s = _styles()
     story: list[Any] = []
 
-    # â”€â”€ Portada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Portada ──────────────────────────────────────────────────────
     story.append(Spacer(1, 3 * cm))
     story.append(Paragraph(titulo, s["title"]))
 
@@ -121,13 +121,13 @@ def generate_pdf(
     story.append(Spacer(1, 1 * cm))
 
     if filtros:
-        filtros_text = " Â· ".join(
+        filtros_text = " · ".join(
             f"<b>{_html.escape(str(k))}</b>: {_html.escape(str(v))}" for k, v in filtros.items()
         )
         story.append(Paragraph(f"Filtros: {filtros_text}", s["body"]))
         story.append(Spacer(1, 5 * mm))
 
-    # â”€â”€ KPIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── KPIs ─────────────────────────────────────────────────────────
     story.append(Paragraph("KPIs principales", s["subtitle"]))
 
     kpi_data = []
@@ -167,21 +167,21 @@ def generate_pdf(
         )
         story.append(t)
 
-    # â”€â”€ Top oportunidades â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Top oportunidades ────────────────────────────────────────────
     if top_oportunidades:
         story.append(Paragraph("Top oportunidades por importe", s["subtitle"]))
 
-        header = ["TÃ­tulo", "Ã“rgano", "Importe", "Estado", "CPV"]
+        header = ["Título", "Órgano", "Importe", "Estado", "CPV"]
         rows = [header]
         for opp in top_oportunidades[:10]:
             titulo_cell = str(opp.get("titulo", ""))[:80]
             rows.append(
                 [
                     Paragraph(titulo_cell, s["body"]),
-                    Paragraph(str(opp.get("organo_contratacion", "â€”"))[:40], s["body"]),
-                    str(opp.get("importe_fmt", "â€”")),
-                    str(opp.get("estado_desc", "â€”")),
-                    str(opp.get("cpv", "â€”"))[:10],
+                    Paragraph(str(opp.get("organo_contratacion", "—"))[:40], s["body"]),
+                    str(opp.get("importe_fmt", "—")),
+                    str(opp.get("estado_desc", "—")),
+                    str(opp.get("cpv", "—"))[:10],
                 ]
             )
 
@@ -207,7 +207,7 @@ def generate_pdf(
         )
         story.append(t)
 
-    # â”€â”€ Charts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Charts ───────────────────────────────────────────────────────
     if chart_images:
         story.append(PageBreak())
         for chart_title, png_bytes in chart_images:

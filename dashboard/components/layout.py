@@ -1,8 +1,8 @@
-﻿"""Componentes de layout â€” topbar unificada, footer y branding.
+"""Componentes de layout — topbar unificada, footer y branding.
 
 Premium refresh: el header tradicional + top-nav se unifican en una sola
-``topbar`` fija (logo Â· nav slot Â· meta pill Â· acciones). El logo ya no
-estÃ¡ en el sidebar, lo que libera espacio para los filtros.
+``topbar`` fija (logo · nav slot · meta pill · acciones). El logo ya no
+está en el sidebar, lo que libera espacio para los filtros.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from dashboard.data_loader import load_extracciones
 
 
 def _format_last_updated(ts: Any) -> str:
-    """Devuelve un texto humano corto para la pill de 'Ãšltima actualizaciÃ³n'."""
+    """Devuelve un texto humano corto para la pill de 'Última actualización'."""
     if ts is None:
         return "sin datos"
     if isinstance(ts, str):
@@ -41,12 +41,12 @@ def _format_last_updated(ts: Any) -> str:
     return f"hace {days} d" if days < 30 else ts.strftime("%Y-%m-%d")
 
 
-def render_topbar_brand(tagline: str = "Sector PÃºblico Â· EspaÃ±a") -> None:
+def render_topbar_brand(tagline: str = "Sector público · ES") -> None:
     """Renderiza el bloque brand del topbar (logo + nombre + tagline)."""
     st.markdown(
         f'<div class="topbar-brand">'
         f'<span class="brand-logo">{LOGO_SVG}</span>'
-        f'<span class="brand-name">TenderFlow</span>'
+        f'<span class="brand-name">Licitaciones</span>'
         f'<span class="brand-tag">{tagline}</span>'
         f"</div>",
         unsafe_allow_html=True,
@@ -77,7 +77,7 @@ def render_topbar(last_updated: Any = None) -> bool:
         from dashboard.session_keys import USER_NAME
 
         _user_name = st.session_state.get(USER_NAME, "")
-        _user_str = f" Â· {_user_name}" if _user_name else ""
+        _user_str = f" · {_user_name}" if _user_name else ""
         st.markdown(
             '<div style="display:flex;justify-content:flex-end;align-items:center;height:100%">'
             '<span class="topbar-meta">'
@@ -88,9 +88,9 @@ def render_topbar(last_updated: Any = None) -> bool:
         )
     with col_refresh:
         if st.button(
-            "â†»",
+            "↻",
             use_container_width=True,
-            help="Refrescar cachÃ© de datos",
+            help="Refrescar caché de datos",
             key="header_refresh",
         ):
             st.cache_data.clear()
@@ -102,11 +102,11 @@ def render_topbar(last_updated: Any = None) -> bool:
 
 
 def render_export_popover(df: pd.DataFrame) -> None:
-    """ExportaciÃ³n global eliminada â€” funciÃ³n mantenida por compatibilidad."""
+    """Exportación global eliminada — función mantenida por compatibilidad."""
     return
 
 
-# â”€â”€ Backward-compat shims â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Backward-compat shims ────────────────────────────────────────────────
 
 
 def render_sidebar_brand() -> None:
@@ -127,10 +127,10 @@ def render_notification_bell(
     *,
     since_days: int = 7,
 ) -> None:
-    """Campana de notificaciones en la topbar con badge de no leÃ­das.
+    """Campana de notificaciones en la topbar con badge de no leídas.
 
-    Muestra un popover con las Ãºltimas licitaciones nuevas (Ãºltimos ``since_days``
-    dÃ­as). El badge indica cuÃ¡ntas no han sido vistas aÃºn por el usuario.
+    Muestra un popover con las últimas licitaciones nuevas (últimos ``since_days``
+    días). El badge indica cuántas no han sido vistas aún por el usuario.
 
     Args:
         df_full: DataFrame completo de licitaciones (sin filtrar).
@@ -182,10 +182,10 @@ def render_notification_bell(
             unsafe_allow_html=True,
         )
 
-        with st.popover("ðŸ””", help="Notificaciones recientes"):
+        with st.popover("🔔", help="Notificaciones recientes"):
             st.markdown(
-                f"**Novedades Ãºltimos {since_days} dÃ­as** "
-                f"({n_unread} no leÃ­das de {len(candidate_ids)})"
+                f"**Novedades últimos {since_days} días** "
+                f"({n_unread} no leídas de {len(candidate_ids)})"
             )
             if nuevas.empty:
                 st.caption("Sin licitaciones nuevas en este periodo.")
@@ -194,17 +194,17 @@ def render_notification_bell(
                 for _, _nr in _show.iterrows():
                     _nid = str(_nr.get("id_externo", ""))
                     _is_unread = _nid in unread_ids
-                    _dot = "ðŸ”µ " if _is_unread else ""
+                    _dot = "🔵 " if _is_unread else ""
                     st.markdown(
-                        f"{_dot}**{str(_nr.get('titulo', 'â€”'))[:60]}**  \n"
-                        f"_{str(_nr.get('organo_contratacion', 'â€”'))[:40]}_ Â· "
+                        f"{_dot}**{str(_nr.get('titulo', '—'))[:60]}**  \n"
+                        f"_{str(_nr.get('organo_contratacion', '—'))[:40]}_ · "
                         f"{fmt_eur(_nr.get('importe'))}"
                     )
-                if n_unread > 0 and st.button("Marcar todo como leÃ­do", key="notif_mark_read"):
+                if n_unread > 0 and st.button("Marcar todo como leído", key="notif_mark_read"):
                     mark_all_read(user_key, unread_ids)
                     st.rerun()
 
-        # â”€â”€ M9: Browser push notification via JS Notification API â”€â”€â”€â”€â”€
+        # ── M9: Browser push notification via JS Notification API ─────
         from dashboard.session_keys import BROWSER_NOTIF_SENT
 
         if n_unread > 0 and not st.session_state.get(BROWSER_NOTIF_SENT):
@@ -219,7 +219,7 @@ def render_notification_bell(
                     function show() {{
                         new Notification("{_notif_title}", {{
                             body: "{_notif_body}",
-                            icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ””</text></svg>"
+                            icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔔</text></svg>"
                         }});
                     }}
                     if (Notification.permission === "granted") {{ show(); }}
@@ -234,7 +234,7 @@ def render_notification_bell(
             )
             st.session_state[BROWSER_NOTIF_SENT] = True
     except Exception:
-        pass  # No romper el topbar si la DB no estÃ¡ lista
+        pass  # No romper el topbar si la DB no está lista
 
 
 def fmt_eur(value: Any) -> str:
@@ -245,9 +245,9 @@ def fmt_eur(value: Any) -> str:
         return _fmt(value)
     except Exception:
         if value is None:
-            return "â€”"
-        return f"{float(value):,.0f} â‚¬"
-    """Footer con metadatos de Ãºltima extracciÃ³n y atribuciÃ³n de fuente."""
+            return "—"
+        return f"{float(value):,.0f} €"
+    """Footer con metadatos de última extracción y atribución de fuente."""
     st.divider()
     ext = load_extracciones()
     if not ext.empty:
@@ -255,11 +255,11 @@ def fmt_eur(value: Any) -> str:
             f'<div style="font-size:0.78rem;color:var(--color-text-muted);'
             f'display:flex;align-items:center;gap:6px">'
             f"{icon('database', 12)}"
-            f"<span>Ãšltima extracciÃ³n: {ext.iloc[0]['fecha']} â€” fuente "
+            f"<span>Última extracción: {ext.iloc[0]['fecha']} — fuente "
             f"{ext.iloc[0]['fuente']} ({ext.iloc[0]['nuevas']} nuevas)</span>"
             f"</div>",
             unsafe_allow_html=True,
         )
     st.caption(
-        "Fuente oficial: contrataciondelestado.es Â· Datos reutilizados al amparo de la Ley 37/2007"
+        "Fuente oficial: contrataciondelestado.es · Datos reutilizados al amparo de la Ley 37/2007"
     )

@@ -27,6 +27,7 @@ def _make_df(n=5, with_adj_cols=False):
         ),
         "url": [f"https://example.com/{i}" for i in range(n)],
         "modulos_str": ["SAP FI"] * n,
+        "modulos": [["SAP FI"]] * n,
         "ccaa": ["Madrid"] * n,
         "cpv_desc": ["72000000"] * n,
         "descripcion": ["Desc test"] * n,

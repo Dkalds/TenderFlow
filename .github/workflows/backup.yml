@@ -55,6 +55,7 @@ jobs:
 
       - name: Run backup
         env:
+          ENV: dev
           KEEP_S3_INPUT: ${{ inputs.keep_s3 || '30' }}
           INCLUDE_TURSO: ${{ inputs.include_turso }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}

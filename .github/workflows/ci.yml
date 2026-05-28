@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -76,8 +76,8 @@ jobs:
           path: coverage.xml
 
       # E5: gate de cobertura sobre el diff del PR.
-      # Falla el job si las lÃ­neas modificadas no estÃ¡n cubiertas al >= 80 %.
-      # Solo aplica en pull_request â€” no bloquea pushes a main.
+      # Falla el job si las líneas modificadas no están cubiertas al >= 80 %.
+      # Solo aplica en pull_request — no bloquea pushes a main.
       - name: Diff coverage gate (PR only)
         if: github.event_name == 'pull_request' && matrix.python-version == '3.13'
         env:
@@ -202,7 +202,7 @@ jobs:
         run: pip install bandit[toml]
 
       - name: Run bandit
-        # Lee la configuraciÃ³n de [tool.bandit] en pyproject.toml
+        # Lee la configuración de [tool.bandit] en pyproject.toml
         run: |
           bandit -c pyproject.toml -r api db scraper scheduler dashboard shared config \
             --format json --output bandit-report.json || true
@@ -222,16 +222,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image (runtime target)
-        run: docker build --target runtime --tag tenderflow:ci .
+        run: docker build --target runtime --tag licitaciones-sap:ci .
 
       - name: Smoke test (image starts)
         run: |
-          docker run --rm -e ENV=dev --entrypoint python tenderflow:ci -c "import api.app; print('imports OK')"
+          docker run --rm -e ENV=dev --entrypoint python licitaciones-sap:ci -c "import api.app; print('imports OK')"
 
       - name: Trivy vulnerability scan (image) — tabla en consola
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: "tenderflow:ci"
+          image-ref: "licitaciones-sap:ci"
           format: "table"
           exit-code: "1"
           ignore-unfixed: true
@@ -244,7 +244,7 @@ jobs:
         if: always()
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: "tenderflow:ci"
+          image-ref: "licitaciones-sap:ci"
           format: "sarif"
           output: "trivy-results.sarif"
           ignore-unfixed: true

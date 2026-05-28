@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 from io import BytesIO, StringIO
@@ -15,14 +15,14 @@ def to_excel_bytes(df: pd.DataFrame) -> bytes:
     # Excel no soporta tz-aware datetimes
     for c in export.select_dtypes(include=["datetimetz"]).columns:
         export[c] = export[c].dt.tz_localize(None)
-    export.to_excel(out, index=False, sheet_name="TenderFlow")
+    export.to_excel(out, index=False, sheet_name="Licitaciones")
     return out.getvalue()
 
 
 def to_csv_bytes(df: pd.DataFrame, chunk_size: int = _CSV_CHUNK_SIZE) -> bytes:
     """Serializa un DataFrame a CSV en chunks para evitar picos de memoria.
 
-    Para DataFrames pequeÃ±os el comportamiento es idÃ©ntico a ``df.to_csv()``.
+    Para DataFrames pequeños el comportamiento es idéntico a ``df.to_csv()``.
     Para DataFrames grandes (>chunk_size filas) construye el CSV de forma
     iterativa, manteniendo constante el uso de memoria.
 
@@ -45,11 +45,11 @@ def to_csv_bytes(df: pd.DataFrame, chunk_size: int = _CSV_CHUNK_SIZE) -> bytes:
 def kpis_snapshot_csv(kpis: dict[str, str], titulo: str = "Snapshot KPIs") -> bytes:
     """Serializa un diccionario {label: valor_formateado} a CSV listo para descargar.
 
-    AÃ±ade timestamp y tÃ­tulo como metadatos en las primeras filas para que el
+    Añade timestamp y título como metadatos en las primeras filas para que el
     usuario pueda identificar el snapshot al guardarlo en su sistema.
 
     Args:
-        kpis: dict con KPIs ya formateados como strings (ej. "1,234 â‚¬", "85%").
+        kpis: dict con KPIs ya formateados como strings (ej. "1,234 €", "85%").
         titulo: encabezado del snapshot.
 
     Returns:
