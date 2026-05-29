@@ -250,6 +250,11 @@ def generate_oauth_state() -> str:
         get_signing_key(),
         payload.encode(),
         hashlib.sha256,
+        # Truncated to 128 bits (32 hex chars). SHA-256 full output is 256 bits (64 hex)
+        # but 128 bits is more than sufficient for HMAC signatures on short-lived OAuth
+        # state tokens (max_age ≤ 600s). Shorter signatures also reduce the URL size in
+        # OAuth redirect flows. If interoperability with external systems is needed in
+        # the future, consider switching to the full 64-char digest.
     ).hexdigest()[:32]
     return f"{payload}:{signature}"
 
@@ -290,6 +295,7 @@ def verify_oauth_state(
         get_signing_key(),
         payload.encode(),
         hashlib.sha256,
+        # Truncated to 128 bits — see generate_oauth_state() for rationale.
     ).hexdigest()[:32]
     valid = hmac.compare_digest(signature, expected)
     if valid:

@@ -1,4 +1,37 @@
 services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: licitaciones-sap-web:latest
+    container_name: licitaciones-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8080
+      API_BASE_URL: http://api:8080
+      NODE_ENV: production
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ── DEPRECATED: dashboard (Streamlit) — replaced by web (Next.js) ────
+  # This service is kept for reference during cutover. Remove after migration.
   dashboard:
     build:
       context: .
@@ -19,6 +52,7 @@ services:
       # Restringe qué proxies son confiables para X-Forwarded-* en uvicorn.
       # Ajusta en producción al rango/IP de tu reverse proxy.
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      CORS_ORIGINS: http://localhost:3000
     mem_limit: 512m
     security_opt:
       - no-new-privileges:true

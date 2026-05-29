@@ -42,7 +42,9 @@ from api.middleware import (
     SecurityHeadersMiddleware,
     _trusted_client_ip,
 )
+from api.routes.analytics import router as analytics_router
 from api.routes.ask import router as ask_router
+from api.routes.auth import router as auth_router
 from api.routes.exports import router as exports_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
@@ -57,7 +59,7 @@ from api.routes.watchlist_feed import router as watchlist_feed_router
 from api.routes.webhooks import router as webhooks_router
 from config import settings
 from db.database import init_db
-from observability import configure_logging, configure_tracing
+from observability import configure_logging, configure_sentry, configure_tracing
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -65,6 +67,7 @@ log = get_logger(__name__)
 # Logging estructurado y tracing (idempotente)
 configure_logging()
 configure_tracing(service_name="licitaciones-api")
+configure_sentry(service="licitaciones-api")
 
 
 # ---------------------------------------------------------------------------
@@ -91,12 +94,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         raise  # fail fast en todos los entornos
 
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
-    app.state.pending_background_tasks: set[asyncio.Task] = set()
+    app.state.pending_background_tasks = set()
 
     yield
 
     # Shutdown — drenar background tasks primero
-    pending = getattr(app.state, "pending_background_tasks", set())
+    pending: set[asyncio.Task[object]] = getattr(app.state, "pending_background_tasks", set())
     if pending:
         log.info("api_shutdown_draining_tasks", count=len(pending))
         try:
@@ -143,7 +146,12 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     openapi_tags=[
         {"name": "health", "description": "Health checks (sin autenticación)"},
+        {"name": "auth", "description": "Session auth (login, logout, OAuth, me)"},
         {"name": "licitaciones", "description": "Consulta de licitaciones y adjudicaciones"},
+        {
+            "name": "analytics",
+            "description": "Aggregated analytics: overview, trends, geography, competitors, scoring, quality",
+        },
         {"name": "feedback", "description": "Feedback de relevancia para active learning"},
         {"name": "webhooks", "description": "Suscripciones a notificaciones de watchlist"},
         {"name": "meta", "description": "Metadatos: valores válidos para filtros"},
@@ -196,26 +204,34 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 _cors_origins: list[str]
-if settings.ENV == "dev":
+if settings.ENV in ("prod", "staging"):
+    if settings.CORS_ALLOWED_ORIGINS:
+        _cors_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+    else:
+        _cors_origins = []
+        log.warning(
+            "cors_no_origins_configured",
+            env=settings.ENV,
+            hint="CORS_ALLOWED_ORIGINS is empty — no cross-origin requests will be allowed.",
+        )
+else:
+    # dev only — fail-closed: wildcard never reaches prod/staging
     _cors_origins = ["*"]
     log.warning(
         "cors_wildcard_enabled",
         env=settings.ENV,
-        hint="CORS allow_origins=['*'] is active. Set ENV=prod or CORS_ALLOWED_ORIGINS to restrict.",
+        hint="CORS allow_origins=['*'] is active because ENV=dev. Set ENV=prod to restrict.",
     )
-elif settings.CORS_ALLOWED_ORIGINS:
-    _cors_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
-else:
-    _cors_origins = []
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     allow_headers=[
         "X-API-Key",
         "X-Correlation-Id",
+        "X-CSRF-Token",
         "Idempotency-Key",
         "Content-Type",
         "Accept",
@@ -283,7 +299,7 @@ try:
                         body_size += len(message.get("body", b""))
                         if body_size > max_bytes:
                             raise _BodyTooLargeError
-                    return message
+                    return dict(message)
 
                 try:
                     await self.app(scope, limiting_receive, send)
@@ -342,10 +358,12 @@ app.add_middleware(AccessLogMiddleware)
 # ---------------------------------------------------------------------------
 
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(
     stream_router, prefix="/api/v1"
 )  # antes de licitaciones (evita colisión con {id})
 app.include_router(licitaciones_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(feedback_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(me_router, prefix="/api/v1")
@@ -370,27 +388,38 @@ try:
 
         @app.get("/metrics", include_in_schema=False)
         def _prometheus_metrics(request: Request) -> Response:
-            """Expone métricas Prometheus. Protegido por X-API-Key o IP allowlist."""
-            # IP allowlist (para scrapers internos / Prometheus server)
+            """Expone métricas Prometheus. Protegido por X-API-Key + IP allowlist.
+
+            Seguridad: en entornos Docker la IP del cliente puede ser la del
+            gateway de la red interna, no 127.0.0.1. Por eso se requiere API
+            key con scope ``metrics:read`` siempre que el ENV no sea ``dev``.
+            En dev, el IP allowlist basta para acceso local sin key.
+            """
             _metrics_allowed_ips: set[str] = set(
                 ip.strip() for ip in settings.METRICS_ALLOWED_IPS.split(",") if ip.strip()
             )
             client_ip = _trusted_client_ip(request)
-            if client_ip not in _metrics_allowed_ips:
-                # Requiere API key con scope metrics:read
-                api_key_raw = request.headers.get("X-API-Key")
-                if not api_key_raw:
-                    return Response(status_code=401, content="Unauthorized")
-                # Validación síncrona mínima (endpoint no async)
+            ip_allowed = client_ip in _metrics_allowed_ips
+
+            api_key_raw = request.headers.get("X-API-Key")
+            key_authenticated = False
+            if api_key_raw:
                 from api.auth import hash_api_key
                 from services import auth as auth_service
 
                 key_hash = hash_api_key(api_key_raw)
                 scopes = auth_service.get_active_scopes(key_hash)
-                if scopes is None:
+                if scopes is not None and ("*" in scopes or "metrics:read" in scopes):
+                    key_authenticated = True
+
+            # En prod/staging: requiere API key siempre (IP allowlist es condición adicional, no suficiente)
+            if settings.ENV in ("prod", "staging"):
+                if not key_authenticated:
                     return Response(status_code=401, content="Unauthorized")
-                if "*" not in scopes and "metrics:read" not in scopes:
-                    return Response(status_code=403, content="Forbidden")
+            else:
+                # En dev: basta con IP allowlist O API key
+                if not ip_allowed and not key_authenticated:
+                    return Response(status_code=401, content="Unauthorized")
 
             return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

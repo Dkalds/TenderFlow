@@ -83,3 +83,8 @@ graphify-out/manifest.json
 graphify-out/cost.json
 graphify-out/cache/
 graphify-out/.graphify_*
+
+# ── Web (Next.js frontend) ──────────────────────────────────────────
+web/node_modules/
+web/.next/
+web/out/

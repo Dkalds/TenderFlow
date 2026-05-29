@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 _DEFAULT_LOCALE = "es"
 _SUPPORTED = ("es", "en")
@@ -33,7 +33,7 @@ def _load(locale: str) -> dict[str, str]:
     if not path.is_file():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return cast(dict[str, str], json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return {}
 
