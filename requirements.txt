@@ -14,6 +14,7 @@ annotated-types==0.7.0
     # via pydantic
 anyio==4.13.0
     # via
+    #   httpx
     #   starlette
     #   streamlit
 argon2-cffi==23.1.0
@@ -37,7 +38,10 @@ cachetools==7.1.0
     #   -r requirements.in
     #   streamlit
 certifi==2026.4.22
-    # via requests
+    # via
+    #   httpcore
+    #   httpx
+    #   requests
 cffi==2.0.0
     # via
     #   argon2-cffi-bindings
@@ -65,12 +69,19 @@ gitpython==3.1.50
 greenlet==3.5.0
     # via sqlalchemy
 h11==0.16.0
-    # via uvicorn
+    # via
+    #   httpcore
+    #   uvicorn
+httpcore==1.0.9
+    # via httpx
 httptools==0.7.1
     # via streamlit
+httpx==0.28.1
+    # via -r requirements.in
 idna==3.15
     # via
     #   anyio
+    #   httpx
     #   requests
 itsdangerous==2.2.0
     # via streamlit
