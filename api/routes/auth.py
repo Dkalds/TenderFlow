@@ -44,7 +44,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 _SESSION_COOKIE = "session"
 _CSRF_COOKIE = "csrf_token"
-_PKCE_COOKIE = "pkce_verifier"
 _SESSION_MAX_AGE = 86400  # 24h
 
 
@@ -288,11 +287,12 @@ def logout(response: Response) -> dict[str, str]:
 
 
 @router.get("/oauth/google/authorize")
-def google_authorize(response: Response) -> dict[str, str]:
+def google_authorize() -> dict[str, str]:
     """Redirect URL for Google OAuth with PKCE.
 
     Returns JSON with ``authorization_url`` so the SPA can redirect the user.
-    Also sets a signed cookie with the PKCE verifier.
+    The PKCE verifier is embedded in the signed state parameter to avoid
+    cross-domain cookie issues when the frontend and API are on different origins.
     """
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(
@@ -303,18 +303,9 @@ def google_authorize(response: Response) -> dict[str, str]:
     state = generate_oauth_state()
     verifier, challenge = generate_pkce_pair()
 
-    # Store verifier in a signed temporary cookie
-    verifier_payload = _sign_session({"v": verifier, "exp": int(time.time()) + 600})
-    secure = _is_secure()
-    response.set_cookie(
-        _PKCE_COOKIE,
-        verifier_payload,
-        httponly=True,
-        secure=secure,
-        samesite="lax",
-        max_age=600,
-        path="/api/v1/auth/oauth/google/callback",
-    )
+    # Embed verifier in the state parameter (signed + expiry) so it survives
+    # cross-domain redirects without depending on cookies.
+    composite_state = _sign_session({"s": state, "v": verifier, "exp": int(time.time()) + 600})
 
     params = urllib.parse.urlencode(
         {
@@ -322,7 +313,7 @@ def google_authorize(response: Response) -> dict[str, str]:
             "redirect_uri": settings.OAUTH_REDIRECT_URI,
             "response_type": "code",
             "scope": "openid email profile",
-            "state": state,
+            "state": composite_state,
             "code_challenge": challenge,
             "code_challenge_method": "S256",
             "access_type": "online",
@@ -339,21 +330,23 @@ def google_callback(
     code: str,
     state: str,
     response: Response,
-    pkce_verifier: str | None = Cookie(default=None, alias=_PKCE_COOKIE),
 ) -> UserInfo:
     """Handle Google OAuth callback: exchange code, validate, set session."""
-    # Validate state
-    if not verify_oauth_state(state):
-        log.warning("oauth_callback_invalid_state")
+    # Verify and decode composite state (contains CSRF state + PKCE verifier)
+    state_payload = _verify_session(state)
+    if state_payload is None:
+        log.warning("oauth_callback_invalid_state", reason="signature_or_expiry")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state")
 
-    # Recover PKCE verifier
-    if not pkce_verifier:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing PKCE cookie")
-    pkce_payload = _verify_session(pkce_verifier)
-    if pkce_payload is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid PKCE cookie")
-    verifier: str = pkce_payload.get("v", "")
+    original_state: str = state_payload.get("s", "")
+    if not verify_oauth_state(original_state):
+        log.warning("oauth_callback_invalid_state", reason="nonce_or_timestamp")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state")
+
+    # Recover PKCE verifier from state payload
+    verifier: str = state_payload.get("v", "")
+    if not verifier:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing PKCE verifier")
 
     # Exchange code for tokens
     token_resp = httpx.post(
@@ -427,5 +420,4 @@ def google_callback(
 
     redirect = RedirectResponse(url=f"{frontend_url}/resumen", status_code=302)
     _set_session_cookie(redirect, {"user_id": user_id})
-    redirect.delete_cookie(_PKCE_COOKIE, path="/api/v1/auth/oauth/google/callback")
     return redirect
