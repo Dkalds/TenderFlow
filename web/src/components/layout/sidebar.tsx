@@ -4,11 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { SECTIONS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAdmin } from "@/hooks/use-admin";
+import { TenderFlowLogo, TenderFlowIcon } from "@/components/layout/tenderflow-logo";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -47,14 +48,8 @@ export function Sidebar() {
     >
       <div className="flex h-[60px] items-center justify-between border-b border-border/70 px-3">
         {!collapsed && (
-          <Link href="/resumen" className="flex min-w-0 items-center gap-2">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-[0_8px_18px_-10px_hsl(var(--primary))]">
-              <Activity className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 leading-tight">
-              <span className="block truncate text-[15px] font-bold tracking-normal">TenderFlow</span>
-              <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Mercado publico</span>
-            </span>
+          <Link href="/resumen" className="flex min-w-0 items-center">
+            <TenderFlowLogo boxSize={32} />
           </Link>
         )}
         <Button

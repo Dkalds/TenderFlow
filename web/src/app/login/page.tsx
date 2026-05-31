@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { t } from "@/lib/i18n";
 import { apiMutate, ApiError } from "@/lib/api-client";
 import { LogIn, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -59,13 +60,16 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-8">
         {/* Logo / Title */}
-        <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            TenderFlow
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Plataforma de Inteligencia Competitiva
-          </p>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <TenderFlowLogo showText={false} boxSize={48} />
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              TenderFlow
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Plataforma de Inteligencia Competitiva
+            </p>
+          </div>
         </div>
 
         <Card>

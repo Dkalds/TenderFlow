@@ -25,7 +25,10 @@ export const metadata: Metadata = {
   description:
     "Inteligencia de mercado para licitaciones de tecnologia del sector publico.",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
   },
 };
 
