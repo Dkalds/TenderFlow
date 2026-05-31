@@ -1,7 +1,3 @@
-# Frontend (already deployed as separate project)
-web/
-node_modules/
-
 # Data and models
 data/
 graphify-out/
