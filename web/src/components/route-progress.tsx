@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import NProgress from "nprogress";
 
 NProgress.configure({ showSpinner: false, trickleSpeed: 200 });
 
-export function RouteProgress() {
+function RouteProgressInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -34,4 +34,12 @@ export function RouteProgress() {
   }, []);
 
   return null;
+}
+
+export function RouteProgress() {
+  return (
+    <Suspense fallback={null}>
+      <RouteProgressInner />
+    </Suspense>
+  );
 }
