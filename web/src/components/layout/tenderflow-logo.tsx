@@ -62,7 +62,7 @@ export function TenderFlowLogo({
             TenderFlow
           </span>
           <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Mercado público
+            Sector público
           </span>
         </span>
       )}

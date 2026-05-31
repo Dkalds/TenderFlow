@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   Search,
 } from "lucide-react";
+import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { SECTIONS } from "@/lib/navigation";
 import { t, getLocale, setLocale, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -79,9 +80,9 @@ export function TopNav() {
           {/* Logo / Title for mobile, full brand lives in sidebar on desktop */}
           <Link
             href="/"
-            className="flex shrink-0 items-center gap-2 text-base font-semibold md:hidden"
+            className="flex shrink-0 items-center gap-2 md:hidden"
           >
-            {t("app.title")}
+            <TenderFlowLogo boxSize={32} />
           </Link>
 
           <div className="relative hidden min-w-72 max-w-xl flex-1 md:block">

@@ -88,3 +88,6 @@ graphify-out/.graphify_*
 web/node_modules/
 web/.next/
 web/out/
+
+.vercel
+.env*
