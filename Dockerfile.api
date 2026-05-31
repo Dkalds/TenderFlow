@@ -1,6 +1,7 @@
 # ── Etapa 1: builder ──────────────────────────────────────────────────────────
 FROM python:3.13.13-slim-bookworm AS builder
 
+# Cache-bust: 2026-05-31 (force dep reinstall after httpx addition)
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
