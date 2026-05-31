@@ -28,8 +28,8 @@ const nextConfig: NextConfig = {
   /** Strict React mode for development */
   reactStrictMode: true,
 
-  /** Output standalone for Docker deployment */
-  output: "standalone",
+  /** Output standalone for Docker deployment (skip on Vercel) */
+  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
 };
 
 export default nextConfig;
