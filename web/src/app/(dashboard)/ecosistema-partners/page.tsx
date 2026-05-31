@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DataTable } from "@/components/ui/data-table";
+import { type ColumnDef } from "@tanstack/react-table";
 
 const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(m => ({ default: m.ForceGraph })), { ssr: false });
 import {
@@ -175,11 +177,70 @@ export default function EcosistemaPartnersPage() {
 
   const filteredPartners = useMemo(() => {
     if (!data?.competitors) return [];
-    const sorted = [...data.competitors].sort((a, b) => b.importe - a.importe);
-    if (!search) return sorted;
+    if (!search) return data.competitors;
     const low = search.toLowerCase();
-    return sorted.filter((c) => c.nombre.toLowerCase().includes(low));
+    return data.competitors.filter((c) => c.nombre.toLowerCase().includes(low));
   }, [data, search]);
+
+  const partnerColumns = useMemo<ColumnDef<Competitor>[]>(
+    () => [
+      {
+        id: "rank",
+        header: "#",
+        cell: ({ row }) => (
+          <span className="text-muted-foreground tabular-nums">{row.index + 1}</span>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: "nombre",
+        header: "Empresa",
+        cell: ({ getValue }) => (
+          <span className="font-medium">{truncate(getValue<string>(), 50)}</span>
+        ),
+      },
+      {
+        accessorKey: "count",
+        header: "Adj.",
+        cell: ({ getValue }) => (
+          <span className="tabular-nums">{formatNumber(getValue<number>())}</span>
+        ),
+      },
+      {
+        accessorKey: "importe",
+        header: "Importe",
+        cell: ({ getValue }) => (
+          <span className="tabular-nums">{formatCurrency(getValue<number>())}</span>
+        ),
+      },
+      {
+        accessorKey: "cuota",
+        header: "Cuota",
+        cell: ({ getValue }) => (
+          <Badge variant="secondary">{formatPercent(getValue<number>())}</Badge>
+        ),
+      },
+      {
+        accessorKey: "importe_medio",
+        header: "Imp. Medio",
+        cell: ({ getValue }) => {
+          const v = getValue<number | undefined>();
+          return <span className="tabular-nums">{v ? formatCurrency(v) : "-"}</span>;
+        },
+      },
+      {
+        accessorKey: "baja_media",
+        header: "Baja Media",
+        cell: ({ getValue }) => {
+          const v = getValue<number | null | undefined>();
+          return (
+            <span className="tabular-nums">{v != null ? formatPercent(v) : "-"}</span>
+          );
+        },
+      },
+    ],
+    [],
+  );
 
   // Top CCAAs per empresa for cards
   const empresaCcaaTop = useMemo(() => {
@@ -428,66 +489,28 @@ export default function EcosistemaPartnersPage() {
               ))}
             </div>
           ) : filteredPartners.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="text-left text-muted-foreground">
-                    <TableHead>#</TableHead>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Adj.</TableHead>
-                    <TableHead>Importe</TableHead>
-                    <TableHead>Cuota</TableHead>
-                    <TableHead>Imp. Medio</TableHead>
-                    <TableHead>Baja Media</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPartners.slice(0, 30).map((c, idx) => (
-                    <TableRow
-                      key={c.nombre}
-                      className={cn(
-                        search &&
-                          c.nombre.toLowerCase().includes(search.toLowerCase()) &&
-                          "bg-primary/5",
-                      )}
-                    >
-                      <TableCell className="text-muted-foreground tabular-nums">
-                        {idx + 1}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {truncate(c.nombre, 50)}
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatNumber(c.count)}
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatCurrency(c.importe)}
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        <Badge variant="secondary">
-                          {formatPercent(c.cuota)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {c.importe_medio
-                          ? formatCurrency(c.importe_medio)
-                          : "-"}
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {c.baja_media != null
-                          ? formatPercent(c.baja_media)
-                          : "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <>
+              <DataTable
+                columns={partnerColumns}
+                data={filteredPartners}
+                initialSorting={[{ id: "importe", desc: true }]}
+                emptyMessage="Sin partners disponibles"
+                getRowClassName={(row) =>
+                  cn(
+                    search &&
+                      row.original.nombre
+                        .toLowerCase()
+                        .includes(search.toLowerCase()) &&
+                      "bg-primary/5",
+                  )
+                }
+              />
               <Separator className="my-3" />
               <p className="text-xs text-muted-foreground">
-                Mostrando {Math.min(filteredPartners.length, 30)} de{" "}
-                {filteredPartners.length} empresas
+                {filteredPartners.length} empresa
+                {filteredPartners.length !== 1 ? "s" : ""}
               </p>
-            </div>
+            </>
           ) : (
             <p className="py-8 text-center text-muted-foreground">
               Sin datos disponibles

@@ -2,11 +2,13 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { type ColumnDef } from "@tanstack/react-table";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Badge } from "@/components/ui/badge";
+import { DataTable } from "@/components/ui/data-table";
 import { formatNumber } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { Waypoints, Hash, Sparkles, FlaskConical } from "lucide-react";
@@ -80,6 +82,41 @@ export default function ClustersPage() {
 
   const cpvs = data?.por_cpv ?? [];
   const topCpvs = useMemo(() => cpvs.slice(0, 10), [cpvs]);
+
+  type CpvItem = { cpv: string; descripcion?: string; n: number };
+  const cpvColumns = useMemo<ColumnDef<CpvItem>[]>(
+    () => [
+      {
+        accessorKey: "cpv",
+        header: "CPV",
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "descripcion",
+        header: "Descripcion",
+        cell: ({ getValue }) => {
+          const v = getValue<string | undefined>();
+          return (
+            <span className="max-w-xs truncate block" title={v}>
+              {v || "-"}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "n",
+        header: "Licitaciones",
+        cell: ({ getValue }) => (
+          <span className="tabular-nums text-right block">
+            {formatNumber(getValue<number>())}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
 
   const pieData = useMemo(() => {
     if (topCpvs.length === 0) return [];
@@ -304,35 +341,12 @@ export default function ClustersPage() {
               ))}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground">CPV</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground">Descripcion</th>
-                    <th className="pb-2 font-medium text-muted-foreground text-right">Licitaciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topCpvs.map((item, idx) => (
-                    <tr key={idx} className="border-b border-border/50 hover:bg-muted/50">
-                      <td className="py-2 pr-4 font-mono text-xs">{item.cpv}</td>
-                      <td className="py-2 pr-4 max-w-xs truncate" title={item.descripcion}>
-                        {item.descripcion || "-"}
-                      </td>
-                      <td className="py-2 text-right tabular-nums">{formatNumber(item.n)}</td>
-                    </tr>
-                  ))}
-                  {topCpvs.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="py-8 text-center text-muted-foreground">
-                        Sin datos
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={cpvColumns}
+              data={cpvs}
+              initialSorting={[{ id: "n", desc: true }]}
+              emptyMessage="Sin datos CPV disponibles"
+            />
           )}
         </CardContent>
       </Card>

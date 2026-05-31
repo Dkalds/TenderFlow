@@ -26,6 +26,8 @@ import {
   AlertTriangle,
   Crown,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Search,
   Users,
   Building2,
@@ -861,11 +863,14 @@ export default function CompetidoresPage() {
                       >
                         <span className="inline-flex items-center gap-1">
                           {label}
-                          <ArrowUpDown className="h-3 w-3" />
-                          {sortKey === key && (
-                            <Badge variant="secondary" className="ml-1 text-xs px-1 py-0">
-                              {sortDir === "asc" ? "ASC" : "DESC"}
-                            </Badge>
+                          {sortKey === key ? (
+                            sortDir === "asc" ? (
+                              <ArrowUp className="h-3 w-3 text-primary" />
+                            ) : (
+                              <ArrowDown className="h-3 w-3 text-primary" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
                           )}
                         </span>
                       </TableHead>

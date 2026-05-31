@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { type ColumnDef } from "@tanstack/react-table";
 import {
   Card,
   CardContent,
@@ -15,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DataTable } from "@/components/ui/data-table";
 import {
   AlertTriangle,
   Users,
@@ -118,6 +120,170 @@ export default function AdministracionPage() {
     },
   });
 
+  type MockUser = (typeof MOCK_USERS)[number];
+
+  const handleRevokeKey = useCallback(() => {
+    toast.info("Funcionalidad en desarrollo");
+  }, []);
+
+  const userColumns = useMemo<ColumnDef<MockUser>[]>(
+    () => [
+      { accessorKey: "email", header: "Email" },
+      { accessorKey: "display_name", header: "Nombre" },
+      {
+        id: "rol",
+        accessorKey: "is_admin",
+        header: "Rol",
+        cell: ({ getValue }) =>
+          getValue<boolean>() ? (
+            <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              <Shield className="mr-1 h-3 w-3" />
+              Admin
+            </Badge>
+          ) : (
+            <Badge variant="secondary">Usuario</Badge>
+          ),
+      },
+      {
+        id: "estado",
+        accessorKey: "active",
+        header: "Estado",
+        cell: ({ getValue }) => {
+          const active = getValue<boolean>();
+          return (
+            <Badge
+              variant={active ? "default" : "secondary"}
+              className={cn(
+                active &&
+                  "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+              )}
+            >
+              {active ? "Activo" : "Inactivo"}
+            </Badge>
+          );
+        },
+      },
+      {
+        accessorKey: "last_login",
+        header: "Ultimo login",
+        cell: ({ getValue }) => (
+          <span className="text-muted-foreground">
+            {formatDate(getValue<string>())}
+          </span>
+        ),
+      },
+      {
+        id: "acciones",
+        header: "Acciones",
+        cell: () => (
+          <div className="text-right">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled
+              title="Requiere endpoint /admin/users"
+            >
+              Toggle admin
+            </Button>
+          </div>
+        ),
+        enableSorting: false,
+      },
+    ],
+    [],
+  );
+
+  const keyColumns = useMemo<ColumnDef<ApiKey>[]>(
+    () => [
+      {
+        id: "prefijo",
+        accessorFn: (k) => k.prefix ?? k.key_prefix ?? "—",
+        header: "Prefijo",
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs tabular-nums">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "created_at",
+        header: "Creada",
+        cell: ({ getValue }) => (
+          <span className="text-muted-foreground">
+            {formatDate(getValue<string | undefined>())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "last_used",
+        header: "Ultimo uso",
+        cell: ({ getValue }) => {
+          const v = getValue<string | undefined>();
+          return (
+            <span className="text-muted-foreground">
+              {v ? formatDate(v) : "Nunca"}
+            </span>
+          );
+        },
+      },
+      {
+        id: "scopes",
+        accessorKey: "scopes",
+        header: "Scopes",
+        cell: ({ getValue }) => {
+          const scopes = getValue<string[] | undefined>();
+          return scopes?.length ? (
+            <div className="flex flex-wrap gap-1">
+              {scopes.map((s) => (
+                <Badge key={s} variant="outline" className="text-xs">
+                  {s}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        id: "estado_key",
+        accessorKey: "active",
+        header: "Estado",
+        cell: ({ getValue }) => {
+          const active = getValue<boolean | undefined>() !== false;
+          return (
+            <Badge
+              variant={active ? "default" : "secondary"}
+              className={cn(
+                active &&
+                  "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+              )}
+            >
+              {active ? "Activa" : "Revocada"}
+            </Badge>
+          );
+        },
+      },
+      {
+        id: "acciones_key",
+        header: "Acciones",
+        cell: () => (
+          <div className="text-right">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive"
+              onClick={handleRevokeKey}
+            >
+              Revocar
+            </Button>
+          </div>
+        ),
+        enableSorting: false,
+      },
+    ],
+    [handleRevokeKey],
+  );
+
   const apiKeys = keysData?.keys ?? keysData?.items ?? [];
   const dlqCount = quality?.dlq_count ?? 0;
 
@@ -127,10 +293,6 @@ export default function AdministracionPage() {
       return;
     }
     setConfirmDlq(false);
-    toast.info("Funcionalidad en desarrollo");
-  };
-
-  const handleRevokeKey = () => {
     toast.info("Funcionalidad en desarrollo");
   };
 
@@ -221,62 +383,11 @@ export default function AdministracionPage() {
             <Info className="h-4 w-4 shrink-0" />
             <span>Conectar a API pendiente — datos de ejemplo</span>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Ultimo login</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {MOCK_USERS.map((user) => (
-                  <TableRow key={user.email}>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.display_name}</TableCell>
-                    <TableCell>
-                      {user.is_admin ? (
-                        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                          <Shield className="mr-1 h-3 w-3" />
-                          Admin
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">Usuario</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={user.active ? "default" : "secondary"}
-                        className={cn(
-                          user.active &&
-                            "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-                        )}
-                      >
-                        {user.active ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(user.last_login)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled
-                        title="Requiere endpoint /admin/users"
-                      >
-                        Toggle admin
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <DataTable
+            columns={userColumns}
+            data={MOCK_USERS}
+            initialSorting={[{ id: "email", desc: false }]}
+          />
         </CardContent>
       </Card>
 
@@ -342,69 +453,12 @@ export default function AdministracionPage() {
               No hay claves API registradas.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Prefijo</TableHead>
-                    <TableHead>Creada</TableHead>
-                    <TableHead>Ultimo uso</TableHead>
-                    <TableHead>Scopes</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {apiKeys.map((k, idx) => (
-                    <TableRow key={k.prefix ?? k.key_prefix ?? idx}>
-                      <TableCell className="font-mono text-xs tabular-nums">
-                        {k.prefix ?? k.key_prefix ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDate(k.created_at)}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {k.last_used ? formatDate(k.last_used) : "Nunca"}
-                      </TableCell>
-                      <TableCell>
-                        {k.scopes?.length ? (
-                          <div className="flex flex-wrap gap-1">
-                            {k.scopes.map((s) => (
-                              <Badge key={s} variant="outline" className="text-xs">
-                                {s}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={k.active !== false ? "default" : "secondary"}
-                          className={cn(
-                            k.active !== false &&
-                              "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-                          )}
-                        >
-                          {k.active !== false ? "Activa" : "Revocada"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive"
-                          onClick={handleRevokeKey}
-                        >
-                          Revocar
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <DataTable
+              columns={keyColumns}
+              data={apiKeys}
+              initialSorting={[{ id: "created_at", desc: true }]}
+              emptyMessage="No hay claves API registradas."
+            />
           )}
         </CardContent>
       </Card>

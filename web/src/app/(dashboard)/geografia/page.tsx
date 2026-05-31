@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 const SpainMap = dynamic(() => import("@/components/charts/spain-map").then(m => ({ default: m.SpainMap })), { ssr: false });
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
-import { MapPin, Hash, Trophy, ArrowUpDown, DollarSign, Map } from "lucide-react";
+import { MapPin, Hash, Trophy, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, Map } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -435,7 +435,15 @@ export default function GeografiaPage() {
                           onClick={() => toggleSort(key)}
                         >
                           {label}
-                          <ArrowUpDown className="ml-1 h-3 w-3" />
+                          {sortKey === key ? (
+                            sortDir === "asc" ? (
+                              <ArrowUp className="ml-1 h-3 w-3 text-primary" />
+                            ) : (
+                              <ArrowDown className="ml-1 h-3 w-3 text-primary" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" />
+                          )}
                         </Button>
                       </TableHead>
                     ))}
@@ -511,7 +519,15 @@ export default function GeografiaPage() {
                           onClick={() => toggleProvSort(key)}
                         >
                           {label}
-                          <ArrowUpDown className="ml-1 h-3 w-3" />
+                          {provSortKey === key ? (
+                            provSortDir === "asc" ? (
+                              <ArrowUp className="ml-1 h-3 w-3 text-primary" />
+                            ) : (
+                              <ArrowDown className="ml-1 h-3 w-3 text-primary" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="ml-1 h-3 w-3 opacity-40" />
+                          )}
                         </Button>
                       </TableHead>
                     ))}
