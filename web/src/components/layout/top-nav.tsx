@@ -28,6 +28,17 @@ import { useAdmin } from "@/hooks/use-admin";
 import { useFilters } from "@/lib/filters";
 import { apiMutate } from "@/lib/api-client";
 
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "ahora";
+  if (mins < 60) return `hace ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days}d`;
+}
+
 export function TopNav() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -51,6 +62,22 @@ export function TopNav() {
   const isAdmin = useAdmin();
 
   React.useEffect(() => { initDensity(); }, []);
+
+  const [lastExtraction, setLastExtraction] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    const fetchLastExtraction = async () => {
+      try {
+        const res = await fetch("/api/v1/meta/last-extraction", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setLastExtraction(data.last_extraction ?? null);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchLastExtraction();
+    const id = setInterval(fetchLastExtraction, 5 * 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const visibleSections = SECTIONS.filter(
     (s) => !s.adminOnly || isAdmin,
@@ -98,16 +125,24 @@ export function TopNav() {
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">Ctrl K</span>
           </div>
 
-          <span className="hidden items-center gap-2 rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground lg:inline-flex">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-            </span>
-            Datos en vivo
-          </span>
-
           {/* Right side actions */}
-          <div className="ml-auto flex items-center gap-1 md:ml-0">
+          <div className="ml-auto flex items-center gap-1">
+            <span className="hidden items-center gap-1.5 rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground lg:inline-flex">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+              <span>Datos en vivo</span>
+              {lastExtraction && (
+                <>
+                  <span className="opacity-40">·</span>
+                  <span className="text-[10px] opacity-60" title={lastExtraction}>
+                    {formatRelativeTime(lastExtraction)}
+                  </span>
+                </>
+              )}
+            </span>
+
             {/* Export */}
             <ExportPopover />
 

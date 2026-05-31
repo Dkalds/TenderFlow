@@ -9,10 +9,12 @@ export function useFilteredQuery<T>(
   baseKey: string[],
   url: string,
   options?: Omit<UseQueryOptions<T>, "queryKey" | "queryFn">,
+  extraParams?: Record<string, string>,
 ) {
   const filterParams = useFilterParams();
+  const merged = { ...extraParams, ...filterParams };
 
-  const queryString = new URLSearchParams(filterParams).toString();
+  const queryString = new URLSearchParams(merged).toString();
   const fullUrl = queryString ? `${url}?${queryString}` : url;
 
   return useQuery<T>({

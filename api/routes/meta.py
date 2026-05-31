@@ -53,3 +53,16 @@ async def get_filter_options(
     cache_set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
     response.headers["X-Cache"] = "MISS"
     return result
+
+
+@router.get(
+    "/last-extraction",
+    summary="Fecha de la última extracción de datos",
+    responses={401: {"description": "API key inválida"}},
+)
+async def get_last_extraction(
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, str | None]:
+    """Devuelve la fecha/hora de la última extracción del scraper."""
+    date = await run_db(_lic_repo.get_last_extraction_date)
+    return {"last_extraction": date}

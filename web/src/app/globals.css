@@ -8,6 +8,7 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: 60 12% 96%;
     --foreground: 240 8% 5%;
     --card: 0 0% 100%;
@@ -49,6 +50,7 @@
   }
 
   .dark {
+    color-scheme: dark;
     --background: 240 8% 5%;
     --foreground: 0 0% 94%;
     --card: 240 8% 8%;
@@ -90,6 +92,16 @@
 @layer base {
   * {
     border-color: hsl(var(--border));
+  }
+
+  select,
+  select option {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
+
+  .dark select {
+    color-scheme: dark;
   }
 
   body {

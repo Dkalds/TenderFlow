@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { MiniSparkline } from "@/components/charts/mini-sparkline";
 const SankeyChart = dynamic(() => import("@/components/charts/sankey-chart").then(m => ({ default: m.SankeyChart })), { ssr: false });
@@ -35,6 +36,8 @@ import {
   MapPin,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Users,
   Lock,
   Timer,
@@ -91,6 +94,9 @@ interface TimelineItem {
   importe: number | null;
   fecha_publicacion: string;
   estado: string;
+  organo_contratacion: string | null;
+  tipo_contrato: string | null;
+  ccaa: string | null;
 }
 
 interface TimelineResponse {
@@ -140,6 +146,8 @@ const ITEMS_PER_PAGE = 10;
 export default function ResumenPage() {
   const { comparar, setComparar, rango, rangoB } = useFilters();
   const [pubPage, setPubPage] = useState(0);
+  const [pubSortKey, setPubSortKey] = useState<keyof TimelineItem>("fecha_publicacion");
+  const [pubSortDir, setPubSortDir] = useState<"asc" | "desc">("desc");
 
   // --- Data fetching ---
   const overview = useFilteredQuery<ExtendedOverview>(
@@ -166,10 +174,13 @@ export default function ResumenPage() {
     { staleTime: 5 * 60 * 1000 },
   );
 
+  // Default timeline to last 30 days when no date filter is set
+  const timelineDesde = rango.desde ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const timeline = useFilteredQuery<TimelineResponse>(
-    ["analytics", "resumen", "timeline"],
+    ["analytics", "resumen", "timeline", timelineDesde],
     "/api/v1/analytics/resumen/timeline",
     { staleTime: 5 * 60 * 1000 },
+    { fecha_desde: timelineDesde },
   );
 
   const top = useFilteredQuery<TopResponse>(
@@ -271,10 +282,33 @@ export default function ResumenPage() {
     return [...raw].sort((a, b) => b.count - a.count).slice(0, 10);
   }, [tecnologias.data]);
 
-  // Pagination for ultimas publicaciones
-  const allPubs = timeline.data?.items ?? [];
-  const totalPubPages = Math.max(1, Math.ceil(allPubs.length / ITEMS_PER_PAGE));
-  const pagedPubs = allPubs.slice(pubPage * ITEMS_PER_PAGE, (pubPage + 1) * ITEMS_PER_PAGE);
+  // Pagination + sorting for ultimas publicaciones
+  const sortedPubs = useMemo(() => {
+    const items = [...(timeline.data?.items ?? [])];
+    items.sort((a, b) => {
+      const av = a[pubSortKey];
+      const bv = b[pubSortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "number" && typeof bv === "number") return pubSortDir === "asc" ? av - bv : bv - av;
+      const cmp = String(av).localeCompare(String(bv), "es", { sensitivity: "base" });
+      return pubSortDir === "asc" ? cmp : -cmp;
+    });
+    return items;
+  }, [timeline.data?.items, pubSortKey, pubSortDir]);
+  const totalPubPages = Math.max(1, Math.ceil(sortedPubs.length / ITEMS_PER_PAGE));
+  const pagedPubs = sortedPubs.slice(pubPage * ITEMS_PER_PAGE, (pubPage + 1) * ITEMS_PER_PAGE);
+
+  const togglePubSort = (key: keyof TimelineItem) => {
+    if (pubSortKey === key) {
+      setPubSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setPubSortKey(key);
+      setPubSortDir("asc");
+    }
+    setPubPage(0);
+  };
 
   return (
     <div className="space-y-6">
@@ -317,7 +351,7 @@ export default function ResumenPage() {
         </Card>
       ) : novedades.data ? (
         <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-          <CardContent className="py-4">
+          <CardContent className="flex items-center justify-center py-4" style={{ paddingTop: '1rem' }}>
             <p className="text-green-800 dark:text-green-200 text-sm font-medium">Todo al dia</p>
           </CardContent>
         </Card>
@@ -456,7 +490,7 @@ export default function ResumenPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Ultimas Publicaciones</CardTitle>
-            {allPubs.length > ITEMS_PER_PAGE && (
+            {sortedPubs.length > ITEMS_PER_PAGE && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
@@ -491,19 +525,66 @@ export default function ResumenPage() {
               ))}
             </div>
           ) : pagedPubs.length > 0 ? (
-            <div className="divide-y">
-              {pagedPubs.map((item) => (
-                <div key={item.id_externo} className="flex items-center justify-between gap-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm truncate">{truncate(item.titulo, 60)}</p>
-                    <p className="text-xs text-muted-foreground">{formatDate(item.fecha_publicacion)}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-sm font-medium tabular-nums">{formatCurrency(item.importe)}</span>
-                    <Badge variant="outline" className="text-xs">{item.estado}</Badge>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <Table className="table-fixed">
+                <TableHeader>
+                  <TableRow>
+                    {([
+                      { key: "titulo" as const, label: "Titulo", width: "w-[280px]", align: "" },
+                      { key: "organo_contratacion" as const, label: "Organo", width: "w-[200px]", align: "" },
+                      { key: "ccaa" as const, label: "CCAA", width: "w-[110px]", align: "" },
+                      { key: "tipo_contrato" as const, label: "Tipo", width: "w-[120px]", align: "" },
+                      { key: "importe" as const, label: "Importe", width: "w-[120px]", align: "text-right" },
+                      { key: "fecha_publicacion" as const, label: "Fecha", width: "w-[100px]", align: "" },
+                      { key: "estado" as const, label: "Estado", width: "w-[100px]", align: "" },
+                    ] as const).map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className={cn(
+                          "select-none cursor-pointer overflow-hidden resize-x",
+                          col.width,
+                          col.align,
+                        )}
+                        onClick={() => togglePubSort(col.key)}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {pubSortKey === col.key ? (
+                            pubSortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </span>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedPubs.map((item) => (
+                    <TableRow key={item.id_externo} className="cursor-pointer hover:bg-muted/50">
+                      <TableCell>
+                        <Link href={`/detalle?lic=${item.id_externo}`} className="text-sm font-medium hover:underline text-primary">
+                          {item.titulo}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                        {item.organo_contratacion ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs">{item.ccaa ?? "—"}</TableCell>
+                      <TableCell className="text-xs">{item.tipo_contrato ?? "—"}</TableCell>
+                      <TableCell className="text-right text-sm font-medium tabular-nums whitespace-nowrap">
+                        {formatCurrency(item.importe)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDate(item.fecha_publicacion)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">{item.estado}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           ) : (
             <EmptyState />

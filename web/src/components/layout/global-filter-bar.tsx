@@ -81,7 +81,7 @@ export function GlobalFilterBar() {
         <Map className="h-3.5 w-3.5 text-primary" />
         <select
           aria-label="Filtrar por CCAA"
-          className="max-w-36 bg-transparent text-foreground outline-none"
+          className="max-w-36 bg-inherit text-foreground outline-none"
           value=""
           onChange={(event) => addUnique(event.target.value, filters.ccaas, filters.setCcaas)}
         >
@@ -94,7 +94,7 @@ export function GlobalFilterBar() {
         <Cpu className="h-3.5 w-3.5 text-primary" />
         <select
           aria-label="Filtrar por tecnologia"
-          className="max-w-40 bg-transparent text-foreground outline-none"
+          className="max-w-40 bg-inherit text-foreground outline-none"
           value=""
           onChange={(event) => addUnique(event.target.value, filters.tecnologias, filters.setTecnologias)}
         >

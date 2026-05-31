@@ -59,6 +59,9 @@ class TimelineScatterItem(BaseModel):
     importe: float | None = None
     fecha_publicacion: str | None = None
     estado: str | None = None
+    organo_contratacion: str | None = None
+    tipo_contrato: str | None = None
+    ccaa: str | None = None
 
 
 class TimelineScatterResult(BaseModel):
@@ -263,6 +266,11 @@ def get_timeline_scatter(filters: TimelineScatterFilters) -> TimelineScatterResu
                 else None
             ),
             estado=row.get("estado") if pd.notna(row.get("estado")) else None,
+            organo_contratacion=row.get("organo_contratacion")
+            if pd.notna(row.get("organo_contratacion"))
+            else None,
+            tipo_contrato=row.get("tipo_contrato") if pd.notna(row.get("tipo_contrato")) else None,
+            ccaa=row.get("ccaa") if pd.notna(row.get("ccaa")) else None,
         )
         for _, row in df.iterrows()
     ]
