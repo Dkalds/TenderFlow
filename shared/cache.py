@@ -213,7 +213,8 @@ def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
 
     En producción (``ENV=prod``), lanza ``RuntimeError`` si Redis no está
     disponible — el cache compartido es obligatorio para coherencia entre
-    procesos.
+    procesos. Si el paquete ``redis`` no está instalado, se hace fallback
+    silencioso a MemoryBackend con un warning (deploy sin Redis).
     """
     try:
         from config import settings
@@ -224,6 +225,13 @@ def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
         backend = _RedisBackend(settings.REDIS_URL, namespace=namespace)
         log.info("shared_cache_redis_connected", namespace=namespace)
         return backend
+    except ImportError as exc:
+        log.warning(
+            "shared_cache_redis_module_missing",
+            error=str(exc),
+            fallback="memory",
+        )
+        return _MemoryBackend()
     except Exception as exc:
         if os.getenv("ENV", "").lower() == "prod":
             raise RuntimeError(
