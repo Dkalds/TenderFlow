@@ -1,7 +1,10 @@
+# Requirements para el API FastAPI (Vercel / producción).
+# streamlit, streamlit-aggrid y plotly se instalaron al dashboard Streamlit Cloud
+# vía pyproject.toml[dashboard]. NO incluir aquí — superan el límite 500 MB Lambda.
+#
+# Regenerar con: uv pip compile pyproject.toml -o requirements.txt
 alembic==1.18.4
     # via -r requirements.in
-altair==6.1.0
-    # via streamlit
 annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
@@ -10,27 +13,18 @@ anyio==4.13.0
     # via
     #   httpx
     #   starlette
-    #   streamlit
 argon2-cffi==23.1.0
     # via -r requirements.in
 argon2-cffi-bindings==25.1.0
     # via argon2-cffi
-attrs==26.1.0
-    # via
-    #   jsonschema
-    #   referencing
 bcrypt==4.3.0
     # via -r requirements.in
-blinker==1.9.0
-    # via streamlit
 brotli==1.2.0
     # via brotli-asgi
 brotli-asgi==1.6.0
     # via -r requirements.in
 cachetools==7.1.0
-    # via
-    #   -r requirements.in
-    #   streamlit
+    # via -r requirements.in
 certifi==2026.4.22
     # via
     #   httpcore
@@ -45,9 +39,7 @@ charset-normalizer==3.4.7
     #   reportlab
     #   requests
 click==8.3.3
-    # via
-    #   streamlit
-    #   uvicorn
+    # via uvicorn
 colorama==0.4.6
     # via click
 cryptography==46.0.7
@@ -60,10 +52,6 @@ et-xmlfile==2.0.0
     # via openpyxl
 fastapi==0.136.0
     # via -r requirements.in
-gitdb==4.0.12
-    # via gitpython
-gitpython==3.1.50
-    # via streamlit
 greenlet==3.5.0
     # via sqlalchemy
 h11==0.16.0
@@ -72,8 +60,6 @@ h11==0.16.0
     #   uvicorn
 httpcore==1.0.9
     # via httpx
-httptools==0.7.1
-    # via streamlit
 httpx==0.28.1
     # via -r requirements.in
 idna==3.15
@@ -82,18 +68,10 @@ idna==3.15
     #   email-validator
     #   httpx
     #   requests
-itsdangerous==2.2.0
-    # via streamlit
 jinja2==3.1.6
-    # via
-    #   altair
-    #   pydeck
+    # via alembic
 joblib==1.5.3
     # via scikit-learn
-jsonschema==4.26.0
-    # via altair
-jsonschema-specifications==2025.9.1
-    # via jsonschema
 libsql==0.1.11
     # via -r requirements.in
 lxml==6.1.0
@@ -104,53 +82,23 @@ markupsafe==3.0.3
     # via
     #   jinja2
     #   mako
-narwhals==2.20.0
-    # via
-    #   altair
-    #   plotly
-networkx==3.4.2
-    # via -r requirements.in
 numpy==2.4.4
     # via
     #   pandas
-    #   patsy
-    #   pydeck
     #   scikit-learn
     #   scipy
-    #   statsmodels
-    #   streamlit
 openpyxl==3.1.5
     # via -r requirements.in
-packaging==26.2
-    # via
-    #   altair
-    #   plotly
-    #   statsmodels
-    #   streamlit
 pandas==2.3.3
-    # via
-    #   -r requirements.in
-    #   statsmodels
-    #   streamlit
-    #   streamlit-aggrid
-patsy==1.0.2
-    # via statsmodels
-pillow==12.2.0
-    # via
-    #   reportlab
-    #   streamlit
-plotly==6.7.0
     # via -r requirements.in
+pillow==12.2.0
+    # via reportlab
 prometheus-client==0.25.0
     # via
     #   -r requirements.in
     #   prometheus-fastapi-instrumentator
 prometheus-fastapi-instrumentator==8.0.0
     # via -r requirements.in
-protobuf==7.34.1
-    # via streamlit
-pyarrow==24.0.0
-    # via streamlit
 pybreaker==1.4.1
     # via -r requirements.in
 pycparser==3.0
@@ -163,46 +111,28 @@ pydantic-core==2.46.3
     # via pydantic
 pydantic-settings==2.14.0
     # via -r requirements.in
-pydeck==0.9.2
-    # via streamlit
 python-dateutil==2.9.0.post0
     # via
     #   -r requirements.in
     #   pandas
-python-decouple==3.8
-    # via streamlit-aggrid
 python-dotenv==1.2.2
     # via
     #   -r requirements.in
     #   pydantic-settings
-python-multipart==0.0.27
-    # via streamlit
 pytz==2026.2
     # via pandas
-referencing==0.37.0
-    # via
-    #   jsonschema
-    #   jsonschema-specifications
+redis==5.0.8
+    # via -r requirements.in
 reportlab==4.5.0
     # via -r requirements.in
 requests==2.33.1
-    # via
-    #   -r requirements.in
-    #   streamlit
-rpds-py==0.30.0
-    # via
-    #   jsonschema
-    #   referencing
+    # via -r requirements.in
 scikit-learn==1.8.0
     # via -r requirements.in
 scipy==1.17.1
-    # via
-    #   scikit-learn
-    #   statsmodels
+    # via scikit-learn
 six==1.17.0
     # via python-dateutil
-smmap==5.0.3
-    # via gitdb
 sqlalchemy==2.0.49
     # via alembic
 starlette==1.2.0
@@ -211,35 +141,19 @@ starlette==1.2.0
     #   brotli-asgi
     #   fastapi
     #   prometheus-fastapi-instrumentator
-    #   streamlit
-statsmodels==0.14.6
-    # via -r requirements.in
-streamlit==1.57.0
-    # via
-    #   -r requirements.in
-    #   streamlit-aggrid
-streamlit-aggrid==0.3.4.post3
-    # via -r requirements.in
 structlog==25.5.0
     # via -r requirements.in
 tenacity==9.1.4
-    # via
-    #   -r requirements.in
-    #   streamlit
+    # via -r requirements.in
 threadpoolctl==3.6.0
     # via scikit-learn
-toml==0.10.2
-    # via streamlit
 typing-extensions==4.15.0
     # via
     #   alembic
-    #   altair
     #   fastapi
     #   pydantic
     #   pydantic-core
     #   sqlalchemy
-    #   streamlit
-    #   typing-inspection
 typing-inspection==0.4.2
     # via
     #   fastapi
@@ -250,8 +164,4 @@ tzdata==2026.2
 urllib3==2.7.0
     # via requests
 uvicorn==0.46.0
-    # via streamlit
-watchdog==6.0.0
-    # via streamlit
-websockets==16.0
-    # via streamlit
+    # via -r requirements.in
