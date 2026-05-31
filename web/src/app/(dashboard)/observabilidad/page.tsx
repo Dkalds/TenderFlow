@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -148,7 +149,7 @@ export default function ObservabilidadPage() {
   const dlqCount = quality?.dlq_count ?? 0;
 
   const handleRetryDlq = () => {
-    alert("Funcionalidad en desarrollo: Reintentar DLQ");
+    toast.info("Funcionalidad en desarrollo: Reintentar DLQ");
   };
 
   return (

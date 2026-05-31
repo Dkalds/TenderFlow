@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -90,7 +91,7 @@ export default function ActiveLearningPage() {
       queryClient.invalidateQueries({ queryKey: ["feedback-stats"] });
     },
     onError: () => {
-      alert("Error al enviar feedback. Intenta de nuevo.");
+      toast.error("Error al enviar feedback. Intenta de nuevo.");
     },
   });
 

@@ -207,3 +207,12 @@ body {
 .light .tf-card-shadow {
   box-shadow: 0 1px 2px hsl(240 8% 5% / 0.06), 0 16px 34px -24px hsl(240 8% 5% / 0.22);
 }
+
+/* NProgress bar — match primary color */
+#nprogress .bar {
+  background: hsl(var(--primary)) !important;
+  height: 3px !important;
+}
+#nprogress .peg {
+  box-shadow: 0 0 10px hsl(var(--primary)), 0 0 5px hsl(var(--primary)) !important;
+}

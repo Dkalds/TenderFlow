@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -113,7 +114,7 @@ export default function AdministracionPage() {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
     onError: () => {
-      alert("Error al generar clave. Intenta de nuevo.");
+      toast.error("Error al generar clave. Intenta de nuevo.");
     },
   });
 
@@ -126,16 +127,16 @@ export default function AdministracionPage() {
       return;
     }
     setConfirmDlq(false);
-    alert("Funcionalidad en desarrollo");
+    toast.info("Funcionalidad en desarrollo");
   };
 
   const handleRevokeKey = () => {
-    alert("Funcionalidad en desarrollo");
+    toast.info("Funcionalidad en desarrollo");
   };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).catch(() => {
-      alert("No se pudo copiar. Copia manualmente: " + text);
+      toast.error("No se pudo copiar. Copia manualmente: " + text);
     });
   };
 

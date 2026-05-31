@@ -53,6 +53,10 @@ export async function apiMutate<T>(
   });
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+      throw new ApiError(401, "Session expired");
+    }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, error.detail ?? "Unknown error");
   }

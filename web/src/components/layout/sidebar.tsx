@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Activity, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { SECTIONS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,27 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = React.useState(false);
   const isAdmin = useAdmin();
   const visibleSections = SECTIONS.filter((section) => !section.adminOnly || isAdmin);
+
+  const { data: quality } = useQuery<{ last_scrape_hours_ago?: number }>({
+    queryKey: ["sidebar-freshness"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/analytics/quality", { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  const hoursAgo = quality?.last_scrape_hours_ago;
+  const freshnessLabel =
+    hoursAgo == null
+      ? "Sin datos"
+      : hoursAgo < 1
+        ? "hace menos de 1h"
+        : hoursAgo < 24
+          ? `hace ${Math.round(hoursAgo)}h`
+          : `hace ${Math.round(hoursAgo / 24)}d`;
 
   return (
     <aside
@@ -81,7 +103,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {!collapsed && <div className="border-t border-border/70 p-3 text-xs text-muted-foreground">Datos en vivo · actualizado hace 4 min</div>}
+      {!collapsed && <div className="border-t border-border/70 p-3 text-xs text-muted-foreground">Datos en vivo · actualizado {freshnessLabel}</div>}
     </aside>
   );
 }

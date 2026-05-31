@@ -4,6 +4,7 @@ import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { KpiBarConnected } from "@/components/layout/kpi-bar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
+import { Toaster } from "sonner";
 
 /**
  * Dashboard layout — wraps all authenticated pages with the premium shell:
@@ -34,6 +35,7 @@ export default function DashboardLayout({
           </div>
         </DashboardShell>
       </div>
+      <Toaster richColors position="bottom-right" />
     </div>
   );
 }

@@ -19,7 +19,12 @@ export function useFilteredQuery<T>(
     queryKey: [...baseKey, filterParams],
     queryFn: async () => {
       const res = await fetch(fullUrl, { credentials: "include" });
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 401 && typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        throw new Error(`API error: ${res.status}`);
+      }
       return res.json() as Promise<T>;
     },
     ...options,

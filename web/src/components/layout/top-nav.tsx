@@ -25,6 +25,7 @@ import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
 import { useFilters } from "@/lib/filters";
+import { apiMutate } from "@/lib/api-client";
 
 export function TopNav() {
   const pathname = usePathname();
@@ -34,6 +35,15 @@ export function TopNav() {
   const [locale, setLocaleState] = React.useState<Locale>(getLocale());
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
   const { q, setQ } = useFilters();
+
+  const handleLogout = async () => {
+    try {
+      await apiMutate("POST", "/api/v1/auth/logout");
+    } catch {
+      // Even if the API call fails, redirect to login
+    }
+    window.location.href = "/login";
+  };
 
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
   const { compact, toggleCompact } = useDensity();
@@ -77,6 +87,7 @@ export function TopNav() {
           <div className="relative hidden min-w-72 max-w-xl flex-1 md:block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              data-search-input
               aria-label="Busqueda global"
               className="h-9 rounded-lg border-border/70 bg-card/80 pl-9 pr-12 text-sm"
               placeholder="Buscar licitaciones, organos, empresas..."
@@ -156,7 +167,7 @@ export function TopNav() {
                     <User className="h-4 w-4" />
                     Perfil
                   </button>
-                  <button role="menuitem" className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm hover:bg-accent text-destructive">
+                  <button role="menuitem" onClick={handleLogout} className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm hover:bg-accent text-destructive">
                     <LogOut className="h-4 w-4" />
                     {t("auth.logout")}
                   </button>
