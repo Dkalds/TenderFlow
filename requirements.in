@@ -11,6 +11,8 @@ openpyxl>=3.1.0,<4
 libsql>=0.1.0,<0.3
 python-dotenv>=1.0.0,<2
 pydantic-settings>=2.0.0,<3
+# Validación de emails para pydantic EmailStr (api/routes/auth.py)
+email-validator>=2.0.0,<3
 streamlit-aggrid>=0.3.3,<1
 structlog>=24.1.0,<26
 pybreaker>=1.0.0,<2
