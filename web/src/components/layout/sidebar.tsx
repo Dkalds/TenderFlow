@@ -47,7 +47,11 @@ export function Sidebar() {
       )}
     >
       <div className="flex h-[60px] items-center justify-between border-b border-border/70 px-3">
-        {!collapsed && (
+        {collapsed ? (
+          <Link href="/resumen" className="flex items-center justify-center w-full">
+            <TenderFlowIcon size={32} />
+          </Link>
+        ) : (
           <Link href="/resumen" className="flex min-w-0 items-center">
             <TenderFlowLogo boxSize={32} />
           </Link>
