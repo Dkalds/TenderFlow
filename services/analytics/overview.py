@@ -13,7 +13,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
-from services.licitaciones import load_stats_dataframe
+from services.licitaciones import load_adjudicaciones, load_stats_dataframe
 
 log = get_logger(__name__)
 
@@ -80,6 +80,16 @@ class OverviewResult(BaseModel):
     funnel_estados: list[FunnelStep] = Field(default_factory=list)
     hhi: float = 0.0
     pct_oferta_unica: float = 0.0
+    # Market indicators
+    pct_pyme: float = 0.0
+    concentracion_top10: float = 0.0
+    lead_time_medio: float | None = None
+    tasa_anulacion: float = 0.0
+    concentracion_geo_top3: float = 0.0
+    # "Para hoy" counts
+    calientes_hoy: int = 0
+    vencen_48h: int = 0
+    nuevas_24h: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +234,47 @@ def _importe_30d(df: pd.DataFrame) -> float:
     return float(ult["importe"].sum(skipna=True))
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+def _load_adj_df() -> pd.DataFrame:
+    """Load adjudicaciones dataframe."""
+    try:
+        return load_adjudicaciones()
+    except Exception:
+        return pd.DataFrame()
+
+
+def _hhi(adj: pd.DataFrame) -> float:
+    """Herfindahl-Hirschman Index from adjudicaciones by adjudicatario importe."""
+    if adj.empty or "empresa_key" not in adj.columns or "importe_adjudicado" not in adj.columns:
+        return 0.0
+    imp = adj.dropna(subset=["empresa_key", "importe_adjudicado"])
+    if imp.empty:
+        return 0.0
+    total = float(imp["importe_adjudicado"].sum())
+    if total <= 0:
+        return 0.0
+    cuotas = imp.groupby("empresa_key")["importe_adjudicado"].sum() / total * 100
+    return float((cuotas**2).sum())
+
+
+def _pct_oferta_unica(adj: pd.DataFrame) -> float:
+    """% adjudicaciones where n_ofertas_recibidas == 1."""
+    if adj.empty or "n_ofertas_recibidas" not in adj.columns:
+        return 0.0
+    valid = adj["n_ofertas_recibidas"].dropna()
+    if len(valid) == 0:
+        return 0.0
+    return float((valid == 1).sum() / len(valid) * 100)
+
+
+def _lead_time_medio(adj: pd.DataFrame) -> float | None:
+    """Mean lead time in days from adjudicaciones."""
+    if adj.empty or "lead_time_dias" not in adj.columns:
+        return None
+    valid = adj["lead_time_dias"].dropna()
+    if len(valid) == 0:
+        return None
+    v = float(valid.mean())
+    return round(v, 1) if v > 0 else None
 
 
 def get_overview(filters: OverviewFilters) -> OverviewResult:
@@ -234,9 +282,60 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     log.info("analytics_overview_start", filters=filters.model_dump(exclude_none=True))
     df = _load_df()
     df = _apply_filters(df, filters)
+    adj = _load_adj_df()
 
     k = _kpis(df)
     lics_30d, yoy = _yoy_delta_count(df)
+
+    # --- Market indicators ---
+    # concentracion_top10: sum of cuota (%) for top 10 organos by importe
+    concentracion_top10 = 0.0
+    if not df.empty and "organo_contratacion" in df.columns:
+        org_imp = df.groupby("organo_contratacion")["importe"].sum(min_count=1)
+        total_imp = float(org_imp.sum(skipna=True)) or 1.0
+        top10_imp = float(org_imp.nlargest(10).sum(skipna=True))
+        concentracion_top10 = top10_imp / total_imp * 100
+
+    # tasa_anulacion: ANUL in last 12 months / total in last 12 months
+    tasa_anulacion = 0.0
+    if not df.empty and "estado" in df.columns:
+        hoy = pd.Timestamp.now("UTC")
+        last_12m = df[df["fecha_publicacion"] >= (hoy - pd.Timedelta(days=365))]
+        if len(last_12m) > 0:
+            anul_count = int((last_12m["estado"] == "ANUL").sum())
+            tasa_anulacion = anul_count / len(last_12m) * 100
+
+    # concentracion_geo_top3: top 3 CCAAs by importe %
+    concentracion_geo_top3 = 0.0
+    if not df.empty and "ccaa" in df.columns:
+        ccaa_imp = df.groupby("ccaa")["importe"].sum(min_count=1)
+        total_imp_geo = float(ccaa_imp.sum(skipna=True)) or 1.0
+        top3_imp = float(ccaa_imp.nlargest(3).sum(skipna=True))
+        concentracion_geo_top3 = top3_imp / total_imp_geo * 100
+
+    # "Para hoy" counts
+    calientes_hoy = 0
+    vencen_48h = 0
+    nuevas_24h = 0
+    if not df.empty:
+        hoy = pd.Timestamp.now("UTC")
+        activas = df[df["estado"].isin(["PUB", "EV"])]
+        importes_validos = df["importe"].dropna()
+        p75 = float(importes_validos.quantile(0.75)) if len(importes_validos) > 0 else 0.0
+
+        if "fecha_limite" in df.columns:
+            df["_fecha_limite_dt"] = pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True)
+            if not activas.empty:
+                act_fl = pd.to_datetime(activas["fecha_limite"], errors="coerce", utc=True)
+                cal_mask = activas["importe"].ge(p75) & act_fl.gt(hoy)
+                calientes_hoy = int(cal_mask.sum())
+
+            limite_48h = hoy + pd.Timedelta(hours=48)
+            fl_dt = df["_fecha_limite_dt"]
+            vencen_48h = int(fl_dt.between(hoy, limite_48h).sum())
+
+        hace_24h = hoy - pd.Timedelta(hours=24)
+        nuevas_24h = int((df["fecha_publicacion"] >= hace_24h).sum())
 
     result = OverviewResult(
         total_licitaciones=k["total"],
@@ -250,8 +349,16 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         por_mes=_por_mes(df),
         top_organos=_top_organos(df),
         funnel_estados=_funnel_estados(df),
-        hhi=0.0,  # Requires adjudicaciones data — placeholder
-        pct_oferta_unica=0.0,  # Requires adjudicaciones data — placeholder
+        hhi=_hhi(adj),
+        pct_oferta_unica=_pct_oferta_unica(adj),
+        pct_pyme=0.0,  # Placeholder — requires pyme flag in adjudicaciones
+        concentracion_top10=concentracion_top10,
+        lead_time_medio=_lead_time_medio(adj),
+        tasa_anulacion=tasa_anulacion,
+        concentracion_geo_top3=concentracion_geo_top3,
+        calientes_hoy=calientes_hoy,
+        vencen_48h=vencen_48h,
+        nuevas_24h=nuevas_24h,
     )
     log.info("analytics_overview_done", total=result.total_licitaciones)
     return result

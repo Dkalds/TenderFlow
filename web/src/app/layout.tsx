@@ -15,11 +15,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    template: "%s | Licitaciones SAP",
-    default: "Licitaciones SAP",
+    template: "%s | TenderFlow",
+    default: "TenderFlow",
   },
   description:
-    "Plataforma de inteligencia competitiva para licitaciones SAP del sector publico.",
+    "Inteligencia de mercado para licitaciones de tecnologia del sector publico.",
   icons: {
     icon: "/favicon.ico",
   },
@@ -36,7 +36,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
-      <body className="min-h-screen bg-background font-sans antialiased">
+      <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
+        <a href="#main-content" className="skip-link">
+          Saltar al contenido principal
+        </a>
         <Providers>{children}</Providers>
       </body>
     </html>

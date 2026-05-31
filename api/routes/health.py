@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shutil
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -104,7 +105,7 @@ async def health() -> HealthResponse:
 
 
 @router.get("/live", summary="Liveness probe — proceso vivo")
-async def liveness() -> dict:
+async def liveness() -> dict[str, Any]:
     """Kubernetes liveness probe. Siempre devuelve 200 si el proceso responde."""
     return {"status": "alive", "timestamp": datetime.now(UTC).isoformat()}
 

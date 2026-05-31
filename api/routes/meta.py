@@ -5,11 +5,13 @@ GET /api/v1/meta/filters — devuelve listas válidas de estado, ccaa, tecnologi
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from fastapi import APIRouter, Depends, Response
 
-from api.auth import AuthContext, require_api_key
 from api.cache import cache_get, cache_key, cache_set
 from api.concurrency import run_db
+from api.routes.dual_auth import require_any_auth
 from db.repositories.licitaciones import LicitacionRepository
 
 router = APIRouter(prefix="/meta", tags=["meta"])
@@ -26,8 +28,8 @@ _FILTERS_TTL = 300  # 5 minutos
 )
 async def get_filter_options(
     response: Response,
-    _ctx: AuthContext = Depends(require_api_key),
-) -> dict:
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, Any]:
     """Devuelve los valores únicos disponibles para cada filtro de licitaciones.
 
     Útil para construir selectores y validar parámetros en el cliente.
@@ -45,7 +47,7 @@ async def get_filter_options(
     cached = cache_get(_FILTERS_CACHE_KEY)
     if cached is not None:
         response.headers["X-Cache"] = "HIT"
-        return cached
+        return cast(dict[str, Any], cached)
 
     result = await run_db(_lic_repo.get_filter_options)
     cache_set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)

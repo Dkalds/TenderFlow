@@ -39,7 +39,7 @@ def _load_window(days: int, offset_days: int = 0) -> pd.DataFrame:
 
 def _ks_test(ref: pd.Series, cur: pd.Series) -> dict[str, Any]:
     """KS test between two samples; returns statistic, p-value and drift flag."""
-    from scipy import stats as sp_stats  # type: ignore[import]
+    from scipy import stats as sp_stats  # type: ignore[import-untyped]
 
     ref_clean = ref.dropna()
     cur_clean = cur.dropna()
@@ -56,7 +56,7 @@ def _prediction_drift(
     """KS test on ml_proba distribution: last N days vs previous N days."""
     from datetime import timedelta
 
-    from scipy import stats as sp_stats  # type: ignore[import]
+    from scipy import stats as sp_stats
 
     now = datetime.now(UTC)
     recent_since = (now - timedelta(days=window_days)).isoformat()
@@ -155,7 +155,7 @@ def run_drift_report() -> dict[str, Any]:
         ref_v = [ref_counts.get(c, 0) for c in all_cats]
         cur_v = [cur_counts.get(c, 0) for c in all_cats]
         try:
-            from scipy.stats import chi2_contingency  # type: ignore[import]
+            from scipy.stats import chi2_contingency  # type: ignore[import-untyped]
 
             table = [ref_v, cur_v]
             _, pval, _, _ = chi2_contingency(table)
@@ -188,8 +188,8 @@ def run_drift_report() -> dict[str, Any]:
     # ── Evidently HTML report (optional) ─────────────────────────────────
     report_path: Path | None = None
     try:
-        from evidently.metric_preset import DataDriftPreset  # type: ignore[import]
-        from evidently.report import Report  # type: ignore[import]
+        from evidently.metric_preset import DataDriftPreset  # type: ignore[import-not-found]
+        from evidently.report import Report  # type: ignore[import-not-found]
 
         report = Report(metrics=[DataDriftPreset()])
         report.run(reference_data=df_ref, current_data=df_cur)
@@ -246,7 +246,7 @@ def compute_f1_drop(
     try:
         from datetime import timedelta
 
-        from sklearn.metrics import f1_score  # type: ignore[import]
+        from sklearn.metrics import f1_score
 
         from db.database import connect as db_connect
         from db.model_registry import get_active
@@ -304,7 +304,7 @@ def compute_f1_drop(
 
     try:
         preds = [
-            int(clf.predict(t, cpv, imp)[0])
+            int(clf.predict(t, cpv=cpv, importe=imp)[0])
             for t, cpv, imp in zip(texts, cpvs, importes, strict=False)
         ]
         current_f1 = float(f1_score(y_true, preds, zero_division=0))

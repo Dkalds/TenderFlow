@@ -32,11 +32,12 @@ def build_components_css(t: Tokens) -> str:
     background: var(--color-bg-elev-1);
     border: 1px solid var(--color-border-subtle);
     border-radius: {ra.pill};
-    padding: 3px 11px;
+    padding: 7px 13px;
+    min-height: 36px;  /* touch-target: comfortable ≥36px visual height */
     font-size: 0.74rem;
     color: var(--color-text-card-title);
     white-space: nowrap;
-    line-height: 1.5;
+    line-height: 1.4;
     transition: border-color 150ms cubic-bezier(0.16,1,0.3,1),
                 background 150ms ease,
                 transform 150ms cubic-bezier(0.16,1,0.3,1),
@@ -196,6 +197,30 @@ def build_components_css(t: Tokens) -> str:
     color: var(--color-text-muted);
     margin: 2px 0 0 0;
     line-height: 1.45;
+  }}
+
+  /* ── Pagination info bar ─────────────────────────────────────────── */
+  .pagination-info {{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 4px 0;
+  }}
+  .pagination-range {{
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    font-variant-numeric: var(--tab-numerals);
+    font-weight: {ty.weight_medium};
+  }}
+  .pagination-sep {{
+    color: var(--color-border-subtle);
+    font-size: 0.75rem;
+  }}
+  .pagination-page {{
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: {ty.weight_medium};
   }}
 
   /* ── Empty / error states ─────────────────────────────────────────── */

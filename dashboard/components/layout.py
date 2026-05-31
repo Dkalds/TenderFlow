@@ -61,21 +61,22 @@ def render_topbar(last_updated: Any = None) -> bool:
 
     Layout: usa st.columns con anchos relativos para alinear los slots.
     """
+    from dashboard.session_keys import UI_LIGHT_MODE, USER_NAME
+
     last_str = _format_last_updated(last_updated)
+    is_light: bool = st.session_state.get(UI_LIGHT_MODE, False)
 
     # Apertura del wrapper visual de la topbar
     st.markdown('<div class="topbar">', unsafe_allow_html=True)
 
-    col_brand, col_spacer, col_meta, col_refresh = st.columns(
-        [3, 4, 3.5, 0.8], gap="small", vertical_alignment="center"
+    col_brand, col_spacer, col_meta, col_theme, col_refresh = st.columns(
+        [3, 4, 3.5, 0.6, 0.6], gap="small", vertical_alignment="center"
     )
     with col_brand:
         render_topbar_brand()
     with col_spacer:
         st.markdown('<div class="topbar-spacer"></div>', unsafe_allow_html=True)
     with col_meta:
-        from dashboard.session_keys import USER_NAME
-
         _user_name = st.session_state.get(USER_NAME, "")
         _user_str = f" · {_user_name}" if _user_name else ""
         st.markdown(
@@ -86,6 +87,17 @@ def render_topbar(last_updated: Any = None) -> bool:
             "</span></div>",
             unsafe_allow_html=True,
         )
+    with col_theme:
+        theme_icon = "☀" if is_light else "◑"
+        theme_help = "Cambiar a tema oscuro" if is_light else "Cambiar a tema claro"
+        if st.button(
+            theme_icon,
+            use_container_width=True,
+            help=theme_help,
+            key="header_theme",
+        ):
+            st.session_state[UI_LIGHT_MODE] = not is_light
+            st.rerun()
     with col_refresh:
         if st.button(
             "↻",
@@ -98,7 +110,7 @@ def render_topbar(last_updated: Any = None) -> bool:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    return False
+    return is_light
 
 
 def render_export_popover(df: pd.DataFrame) -> None:

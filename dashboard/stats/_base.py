@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import pandas as pd
 
 from config import settings
@@ -17,7 +20,7 @@ try:  # pragma: no cover - fallback when Streamlit runtime no disponible
     _cache_resource = _st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
 except Exception:  # pragma: no cover
 
-    def _cache_resource(fn):  # type: ignore[no-redef]
+    def _cache_resource(fn: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[misc]
         return fn
 
 
@@ -875,7 +878,7 @@ def score_oportunidad(
     elif "modulos_str" in df.columns:
         # Vectorizado: contar comas no vacías sin recorrer fila a fila.
         ms = df["modulos_str"].fillna("").astype(str).str.strip()
-        n_mods = ms.where(ms == "", ms.str.count(",") + 1).where(ms != "", 0).astype(int)
+        n_mods = ms.where(ms == "", ms.str.count(",") + 1).where(ms != "", 0).astype(int)  # type: ignore[arg-type]
     else:
         n_mods = pd.Series(0, index=df.index)
     out["_mod"] = (n_mods.clip(0, 5) / 5.0) * w["modulos_sap"]

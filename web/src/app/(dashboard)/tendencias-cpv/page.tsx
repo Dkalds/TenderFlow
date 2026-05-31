@@ -1,14 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { t } from "@/lib/i18n";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import type { TrendPoint } from "@/generated/api";
-import { LineChart as LineChartIcon, Info } from "lucide-react";
+import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { BarChart3 } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -17,133 +22,130 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
 } from "recharts";
 
-const CHART_COLORS = [
-  "hsl(221, 83%, 53%)",
-  "hsl(160, 60%, 45%)",
-  "hsl(30, 80%, 55%)",
-  "hsl(280, 65%, 60%)",
-  "hsl(340, 75%, 55%)",
-  "hsl(200, 70%, 50%)",
-  "hsl(120, 50%, 45%)",
-  "hsl(45, 85%, 50%)",
-  "hsl(0, 70%, 55%)",
-  "hsl(190, 60%, 50%)",
-];
+/* ── Types ──────────────────────────────────────────────────────────── */
 
-interface TrendsResponse {
-  series: TrendPoint[];
+interface CpvSeriesPoint {
+  period: string;
+  count: number;
+  importe: number;
 }
 
-async function fetchTrends(): Promise<TrendsResponse> {
-  const res = await fetch("/api/v1/analytics/trends?group_by=month", {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch trends");
-  return res.json();
+interface CpvSeries {
+  cpv: string;
+  label: string;
+  series: CpvSeriesPoint[];
 }
 
-interface FiltersResponse {
-  cpvs: string[];
+interface TopCpv {
+  cpv: string;
+  importe_total: number;
+  count: number;
 }
 
-async function fetchFilters(): Promise<FiltersResponse> {
-  const res = await fetch("/api/v1/meta/filters", {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch filters");
-  return res.json();
+interface TrendsCpvResponse {
+  series_by_cpv: CpvSeries[];
+  top_cpv_by_importe: TopCpv[];
+  summary: Record<string, unknown>;
 }
 
-/**
- * NOTE: Currently, there is no dedicated CPV trends endpoint.
- * This page uses the general trends endpoint. When a CPV-specific
- * analytics endpoint is available, this should be updated to fetch
- * per-CPV time series data.
- */
+interface ForecastPoint {
+  mes: string;
+  valor: number;
+  tipo: "historico" | "forecast";
+  lower?: number;
+  upper?: number;
+}
+
+interface ForecastResponse {
+  series: ForecastPoint[];
+}
+
+/* ── Component ──────────────────────────────────────────────────────── */
 
 export default function TendenciasCpvPage() {
-  const [selectedCpv, setSelectedCpv] = useState<string | null>(null);
+  const [selectedCpvs, setSelectedCpvs] = useState<Set<string>>(new Set());
+  const [showForecast, setShowForecast] = useState(false);
 
-  const {
-    data: trends,
-    isLoading: trendsLoading,
-    error: trendsError,
-  } = useQuery({
-    queryKey: ["analytics", "trends", "cpv"],
-    queryFn: fetchTrends,
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: cpvData, isLoading, error } = useFilteredQuery<TrendsCpvResponse>(
+    ["analytics", "trends-cpv"],
+    "/api/v1/analytics/trends-cpv",
+    { staleTime: 5 * 60_000 },
+  );
 
-  const {
-    data: filters,
-    isLoading: filtersLoading,
-    error: filtersError,
-  } = useQuery({
-    queryKey: ["meta", "filters"],
-    queryFn: fetchFilters,
-    staleTime: 10 * 60 * 1000,
-  });
+  const { data: forecast, isLoading: forecastLoading } = useFilteredQuery<ForecastResponse>(
+    ["analytics", "forecast", "volume"],
+    "/api/v1/analytics/forecast/volume?months_ahead=6",
+    { staleTime: 5 * 60_000, enabled: showForecast },
+  );
 
-  const isLoading = trendsLoading || filtersLoading;
-  const error = trendsError || filtersError;
+  const allCpvs = useMemo(() => cpvData?.series_by_cpv ?? [], [cpvData]);
+  const topCpvs = useMemo(() => cpvData?.top_cpv_by_importe?.slice(0, 15) ?? [], [cpvData]);
 
-  const topCpvs = useMemo(() => {
-    if (!filters?.cpvs) return [];
-    return filters.cpvs.slice(0, 10);
-  }, [filters]);
+  // Initialize selection to first 3 CPVs
+  const effectiveCpvs = useMemo(() => {
+    if (selectedCpvs.size > 0) return selectedCpvs;
+    return new Set(allCpvs.slice(0, 3).map((c) => c.cpv));
+  }, [selectedCpvs, allCpvs]);
 
-  // Simulate per-CPV data by distributing across CPVs proportionally
-  // In production, this should come from a dedicated endpoint
-  const cpvTableData = useMemo(() => {
-    if (!trends?.series || topCpvs.length === 0) return [];
-    const totalCount = trends.series.reduce((s, p) => s + p.count, 0);
-    const totalImporte = trends.series.reduce(
-      (s, p) => s + (p.importe ?? 0),
-      0,
-    );
-    return topCpvs.map((cpv, idx) => {
-      // Decreasing share for ranking
-      const weight = 1 / (idx + 1);
-      const totalWeight = topCpvs.reduce((s, _, i) => s + 1 / (i + 1), 0);
-      const share = weight / totalWeight;
-      return {
-        cpv,
-        count: Math.round(totalCount * share),
-        importe: Math.round(totalImporte * share),
-      };
+  const toggleCpv = (cpv: string) => {
+    setSelectedCpvs((prev) => {
+      const next = new Set(prev.size > 0 ? prev : effectiveCpvs);
+      if (next.has(cpv)) next.delete(cpv);
+      else next.add(cpv);
+      return next;
     });
-  }, [trends, topCpvs]);
+  };
 
-  // Chart data for selected CPV (or all)
+  // Build merged chart data: period -> { period, cpv1, cpv2, ... }
   const chartData = useMemo(() => {
-    if (!trends?.series) return [];
-    if (!selectedCpv) {
-      // Show aggregate
-      return trends.series.map((p) => ({
-        period: p.period,
-        importe: p.importe ?? 0,
-      }));
+    const selected = allCpvs.filter((c) => effectiveCpvs.has(c.cpv));
+    if (selected.length === 0) return [];
+
+    const periodMap = new Map<string, Record<string, number>>();
+    for (const cpvSeries of selected) {
+      for (const pt of cpvSeries.series) {
+        if (!periodMap.has(pt.period)) periodMap.set(pt.period, {});
+        periodMap.get(pt.period)![cpvSeries.cpv] = pt.importe;
+      }
     }
-    // Simulate: apply the CPV's share to each period
-    const idx = topCpvs.indexOf(selectedCpv);
-    if (idx === -1) return [];
-    const weight = 1 / (idx + 1);
-    const totalWeight = topCpvs.reduce((s, _, i) => s + 1 / (i + 1), 0);
-    const share = weight / totalWeight;
-    return trends.series.map((p) => ({
-      period: p.period,
-      importe: Math.round((p.importe ?? 0) * share),
+
+    return Array.from(periodMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, vals]) => ({ period, ...vals }));
+  }, [allCpvs, effectiveCpvs]);
+
+  // Forecast overlay data
+  const forecastData = useMemo(() => {
+    if (!forecast?.series) return [];
+    return forecast.series.map((p) => ({
+      mes: p.mes,
+      historico: p.tipo === "historico" ? p.valor : undefined,
+      forecast_val: p.tipo === "forecast" ? p.valor : undefined,
+      lower: p.tipo === "forecast" ? p.lower : undefined,
+      upper: p.tipo === "forecast" ? p.upper : undefined,
     }));
-  }, [trends, selectedCpv, topCpvs]);
+  }, [forecast]);
+
+  // CPV table data from real endpoint
+  const cpvTableData = useMemo(() => {
+    return topCpvs.map((item, idx) => ({
+      rank: idx + 1,
+      cpv: item.cpv,
+      count: item.count,
+      importe: item.importe_total,
+    }));
+  }, [topCpvs]);
 
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
-        <p className="text-destructive">
-          {t("common.error")}: {(error as Error).message}
-        </p>
+        <p className="text-destructive">{t("common.error")}: {(error as Error).message}</p>
       </div>
     );
   }
@@ -152,93 +154,150 @@ export default function TendenciasCpvPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Tendencias CPV</h1>
-        <p className="text-muted-foreground">
-          Series temporales por codigo CPV.
-        </p>
+        <p className="text-muted-foreground">Series temporales por codigo CPV.</p>
       </div>
 
-      {/* Info banner */}
-      <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950 p-3">
-        <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
-        <p className="text-sm text-blue-800 dark:text-blue-300">
-          Los datos CPV se derivan del endpoint general de tendencias. Cuando el endpoint
-          dedicado de CPV este disponible, esta pagina mostrara datos reales desglosados.
-        </p>
-      </div>
-
-      {/* CPV Selector */}
+      {/* CPV Multiselect */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Seleccionar CPV</CardTitle>
+          <CardTitle className="text-base">Seleccionar CPVs</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <Skeleton className="h-10 w-full max-w-sm" />
+            <Skeleton className="h-24 w-full" />
           ) : (
-            <select
-              className="w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={selectedCpv ?? ""}
-              onChange={(e) =>
-                setSelectedCpv(e.target.value || null)
-              }
-            >
-              <option value="">Todos los CPV (agregado)</option>
-              {topCpvs.map((cpv) => (
-                <option key={cpv} value={cpv}>
-                  {cpv}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+              {allCpvs.map((cpvItem, idx) => {
+                const isSelected = effectiveCpvs.has(cpvItem.cpv);
+                return (
+                  <label
+                    key={cpvItem.cpv}
+                    className="inline-flex items-center gap-1.5 cursor-pointer rounded-md border px-2.5 py-1.5 text-sm transition-colors hover:bg-muted"
+                    style={isSelected ? { borderColor: getSeriesColor(idx) } : undefined}
+                  >
+                    <Checkbox
+                      className="h-5 w-5"
+                      checked={isSelected}
+                      onCheckedChange={() => toggleCpv(cpvItem.cpv)}
+                    />
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: getSeriesColor(idx) }}
+                    />
+                    <span>{cpvItem.label || cpvItem.cpv}</span>
+                  </label>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Line Chart */}
+      {/* Per-CPV Line Chart */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">
             Importe por Periodo
-            {selectedCpv && (
-              <Badge variant="secondary" className="ml-2">
-                {selectedCpv}
-              </Badge>
+            {effectiveCpvs.size > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">{effectiveCpvs.size} CPVs</Badge>
             )}
           </CardTitle>
+          <Button
+            variant={showForecast ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowForecast((f) => !f)}
+          >
+            <BarChart3 className="h-4 w-4 mr-1" />
+            Prevision
+          </Button>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-[350px] w-full" />
           ) : chartData.length > 0 ? (
+            <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={350}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis
-                  dataKey="period"
-                  tick={{ fontSize: 11 }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={60}
-                />
-                <YAxis
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(v: number) => formatCurrency(v)}
-                />
-                <Tooltip
-                  formatter={(value) => [formatCurrency(value as number), "Importe"]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="importe"
-                  stroke={CHART_COLORS[0]}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 5 }}
-                  name="Importe"
-                />
+                <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
+                <Tooltip formatter={(value) => [formatCurrency(value as number), ""]} />
+                {allCpvs
+                  .filter((c) => effectiveCpvs.has(c.cpv))
+                  .map((c, idx) => (
+                    <Line
+                      key={c.cpv}
+                      type="monotone"
+                      dataKey={c.cpv}
+                      stroke={getSeriesColor(allCpvs.indexOf(c))}
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 4 }}
+                      name={c.label || c.cpv}
+                    />
+                  ))}
               </LineChart>
             </ResponsiveContainer>
+              </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">{t("common.no_data")}</p>
+            <EmptyState />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Forecast overlay */}
+      {showForecast && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Prevision Volumen (6 meses)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {forecastLoading ? (
+              <Skeleton className="h-[300px] w-full" />
+            ) : forecastData.length > 0 ? (
+              <ChartErrorBoundary>
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={forecastData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="mes" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="upper" stroke="none" fill={CHART_SERIES[0]} fillOpacity={0.1} />
+                  <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(0, 0%, 100%)" fillOpacity={1} />
+                  <Line type="monotone" dataKey="historico" stroke={CHART_SERIES[0]} strokeWidth={2} dot={{ r: 2 }} />
+                  <Line type="monotone" dataKey="forecast_val" stroke={CHART_SERIES[0]} strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+              </ChartErrorBoundary>
+            ) : (
+              <EmptyState />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Top 15 CPV by Importe — Horizontal Bar Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Top 15 CPV por Importe</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[400px] w-full" />
+          ) : topCpvs.length > 0 ? (
+            <ChartErrorBoundary>
+            <ResponsiveContainer width="100%" height={Math.max(300, topCpvs.length * 30)}>
+              <BarChart data={topCpvs} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <YAxis dataKey="cpv" type="category" tick={{ fontSize: 12 }} width={140} />
+                <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
+                <Tooltip formatter={(value) => [formatCurrency(value as number), "Importe"]} />
+                <Bar dataKey="importe_total" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} name="Importe" />
+              </BarChart>
+            </ResponsiveContainer>
+              </ChartErrorBoundary>
+          ) : (
+            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -257,55 +316,44 @@ export default function TendenciasCpvPage() {
             </div>
           ) : cpvTableData.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 pr-4 font-medium text-muted-foreground">
-                      #
-                    </th>
-                    <th className="text-left py-2 pr-4 font-medium text-muted-foreground">
-                      CPV
-                    </th>
-                    <th className="text-right py-2 pr-4 font-medium text-muted-foreground">
-                      Licitaciones
-                    </th>
-                    <th className="text-right py-2 font-medium text-muted-foreground">
-                      Importe Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cpvTableData.map((row, idx) => (
-                    <tr
+              <Table className="w-full text-sm">
+                <TableHeader>
+                  <TableRow className="border-b">
+                    <TableHead className="text-left py-2 pr-4 font-medium text-muted-foreground">#</TableHead>
+                    <TableHead className="text-left py-2 pr-4 font-medium text-muted-foreground">CPV</TableHead>
+                    <TableHead className="text-right py-2 pr-4 font-medium text-muted-foreground">Licitaciones</TableHead>
+                    <TableHead className="text-right py-2 font-medium text-muted-foreground">Importe Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cpvTableData.map((row) => (
+                    <TableRow
                       key={row.cpv}
                       className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                      onClick={() => setSelectedCpv(row.cpv)}
+                      tabIndex={0}
+                      role="row"
+                      onClick={() => toggleCpv(row.cpv)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCpv(row.cpv); }}
                     >
-                      <td className="py-2 pr-4 tabular-nums text-muted-foreground">
-                        {idx + 1}
-                      </td>
-                      <td className="py-2 pr-4">
+                      <TableCell className="py-2 pr-4 tabular-nums text-muted-foreground">{row.rank}</TableCell>
+                      <TableCell className="py-2 pr-4">
                         <div className="flex items-center gap-2">
                           <div
                             className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }}
+                            style={{ backgroundColor: getSeriesColor(row.rank - 1) }}
                           />
                           {row.cpv}
                         </div>
-                      </td>
-                      <td className="py-2 pr-4 text-right tabular-nums">
-                        {formatNumber(row.count)}
-                      </td>
-                      <td className="py-2 text-right tabular-nums">
-                        {formatCurrency(row.importe)}
-                      </td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="py-2 pr-4 text-right tabular-nums">{formatNumber(row.count)}</TableCell>
+                      <TableCell className="py-2 text-right tabular-nums">{formatCurrency(row.importe)}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">{t("common.no_data")}</p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>

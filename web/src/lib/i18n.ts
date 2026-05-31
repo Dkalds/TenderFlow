@@ -12,7 +12,7 @@ export type Locale = (typeof SUPPORTED)[number];
 // Extend as needed — or fetch from the API in the future.
 const TRANSLATIONS: Record<Locale, Record<string, string>> = {
   es: {
-    "app.title": "Licitaciones SAP",
+    "app.title": "TenderFlow",
     "app.subtitle": "Plataforma de Inteligencia Competitiva",
     "nav.vista_general": "Vista General",
     "nav.mercado": "Mercado",
@@ -38,10 +38,14 @@ const TRANSLATIONS: Record<Locale, Record<string, string>> = {
     "common.filter": "Filtrar",
     "common.export": "Exportar",
     "common.refresh": "Actualizar",
+    "common.retry": "Reintentar",
+    "common.no_data_hint": "Ajusta los filtros o el rango de fechas para ver resultados.",
+    "common.empty_filtered": "Sin resultados para los filtros actuales.",
+    "common.chart_error": "No se pudo cargar el grafico.",
   },
   en: {
-    "app.title": "SAP Tenders",
-    "app.subtitle": "Competitive Intelligence Platform",
+    "app.title": "TenderFlow",
+    "app.subtitle": "Market Intelligence",
     "nav.vista_general": "Overview",
     "nav.mercado": "Market",
     "nav.competencia": "Competition",
@@ -66,6 +70,10 @@ const TRANSLATIONS: Record<Locale, Record<string, string>> = {
     "common.filter": "Filter",
     "common.export": "Export",
     "common.refresh": "Refresh",
+    "common.retry": "Retry",
+    "common.no_data_hint": "Try adjusting the filters or the date range.",
+    "common.empty_filtered": "No results for the current filters.",
+    "common.chart_error": "Couldn't load the chart.",
   },
 };
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
+from collections.abc import Generator
 from typing import Any, Generic, TypeVar
 
 from fastapi import (
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db, run_ml
+from api.routes.dual_auth import require_any_auth
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
@@ -226,7 +228,7 @@ async def list_licitaciones(
     ),
     limit: int = Query(50, ge=1, le=_MAX_LIMIT),
     offset: int = Query(0, ge=0),
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginatedResponse[LicitacionSummary]:
     """Devuelve lista paginada con filtros opcionales.
 
@@ -270,7 +272,7 @@ async def list_licitaciones(
         total=total,
         limit=limit,
         offset=offset,
-        items=items,
+        items=[LicitacionSummary.model_validate(d) for d in items],
         deprecation_notice="Usa /licitaciones/cursor para datasets grandes.",
     )
 
@@ -321,7 +323,7 @@ async def list_licitaciones_cursor(
         next_cursor = _encode_cursor(last.get("fecha_publicacion"), last["id_externo"])
 
     return CursorPaginatedResponse[LicitacionSummary](
-        items=items,
+        items=[LicitacionSummary.model_validate(d) for d in items],
         next_cursor=next_cursor,
         has_more=has_more,
         limit=limit,
@@ -354,7 +356,7 @@ class SearchRequest(BaseModel):
 )
 async def search_licitaciones(
     body: SearchRequest,
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginatedResponse[LicitacionSummary]:
     """Búsqueda con criterios complejos que no caben en query string.
 
@@ -387,7 +389,7 @@ async def search_licitaciones(
         total=total,
         limit=limit,
         offset=offset,
-        items=items,
+        items=[LicitacionSummary.model_validate(d) for d in items],
     )
 
 
@@ -409,7 +411,7 @@ async def get_licitacion(
     id_externo: str,
     request: Request,
     response: Response,
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> Any:
     """Devuelve todos los campos de una licitación por su ID externo.
 
@@ -426,7 +428,7 @@ async def get_licitacion(
     if _check_etag(request, etag):
         return Response(status_code=304)
 
-    return LicitacionDetail(**{k: data.get(k) for k in LicitacionDetail.model_fields})
+    return LicitacionDetail(**{k: data.get(k) for k in LicitacionDetail.model_fields})  # type: ignore[arg-type]
 
 
 # ── /licitaciones/{id_externo}/explain ───────────────────────────────────
@@ -529,7 +531,7 @@ async def list_adjudicaciones(
     with_total: bool = Query(True, description="Incluir total"),
     limit: int = Query(50, ge=1, le=_MAX_LIMIT),
     offset: int = Query(0, ge=0),
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginatedResponse[AdjudicacionSummary]:
     """Devuelve lista paginada de adjudicaciones."""
     _validate_date(fecha_desde, "fecha_desde")
@@ -550,7 +552,7 @@ async def list_adjudicaciones(
         total=total,
         limit=limit,
         offset=offset,
-        items=items,
+        items=[AdjudicacionSummary.model_validate(d) for d in items],
     )
 
 
@@ -570,6 +572,7 @@ class BulkGetRequest(BaseModel):
 @router.post(
     "/licitaciones/bulk-get",
     summary="Recuperar múltiples licitaciones por ID en una sola request",
+    response_model=None,
     responses={
         200: {
             "description": "Lista de licitaciones encontradas (los IDs no encontrados se omiten)"
@@ -583,7 +586,7 @@ async def bulk_get_licitaciones(
     response: Response,
     format: str = Query("json", description="Formato de respuesta: json | csv"),
     _ctx: AuthContext = Depends(require_api_key),
-):
+) -> dict[str, Any] | StreamingResponse:
     """Recupera hasta 100 licitaciones por ``id_externo`` en una sola request.
 
     Útil para clientes que necesitan hidratar listas de IDs sin hacer N requests
@@ -601,7 +604,7 @@ async def bulk_get_licitaciones(
         import csv
         import io
 
-        def _generate_csv():
+        def _generate_csv() -> Generator[str, None, None]:
             if not items:
                 yield "id_externo,titulo,organo_contratacion,importe,estado,fecha_publicacion,ccaa,cpv,url,tecnologia\n"
                 return

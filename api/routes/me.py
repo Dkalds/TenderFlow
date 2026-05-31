@@ -13,11 +13,13 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from api.auth import AuthContext, create_api_key, require_api_key
+from api.routes.dual_auth import require_any_auth
 from db.audit import log_event
 from db.database import now_utc_iso
 from db.repositories.api_keys import ApiKeyRepository
@@ -96,7 +98,7 @@ def export_my_data(ctx: AuthContext = Depends(require_api_key)) -> StreamingResp
     summary="GDPR — anonimizar y eliminar mis datos",
     status_code=200,
 )
-def delete_my_data(ctx: AuthContext = Depends(require_api_key)) -> dict:
+def delete_my_data(ctx: AuthContext = Depends(require_api_key)) -> dict[str, Any]:
     """Anonimiza watchlist y feedback; revoca la API key autenticada.
 
     La identificación es por ``key_hash`` — no por nombre de usuario,
@@ -119,7 +121,7 @@ def delete_my_data(ctx: AuthContext = Depends(require_api_key)) -> dict:
     summary="Revocar todas las sesiones activas",
     status_code=200,
 )
-def logout_all(ctx: AuthContext = Depends(require_api_key)) -> dict:
+def logout_all(ctx: AuthContext = Depends(require_api_key)) -> dict[str, Any]:
     """Revoca todas las sesiones server-side del usuario."""
     user_id = _get_user_id_from_key_id(ctx.key_id)
     if user_id:
@@ -140,13 +142,16 @@ def logout_all(ctx: AuthContext = Depends(require_api_key)) -> dict:
     summary="Listar mis API keys (sin el secret — solo prefix y metadatos)",
     responses={401: {"description": "API key inválida"}},
 )
-def list_my_keys(ctx: AuthContext = Depends(require_api_key)) -> list[dict]:
-    """Devuelve las API keys vinculadas al mismo ``key_id`` autenticado.
+def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[dict[str, Any]]:
+    """Devuelve las API keys vinculadas al usuario autenticado.
 
+    Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
     El ``prefix`` (primeros 8 chars del token original) permite identificar
     la key en logs/soporte sin exponer el secreto completo.
     """
-    return list_user_keys(ctx.key_id)
+    if ctx.get("auth_method") == "session":
+        return _key_repo.get_all_for_user(ctx["user_id"])
+    return list_user_keys(ctx["user_id"])
 
 
 @router.post(
@@ -161,7 +166,7 @@ def list_my_keys(ctx: AuthContext = Depends(require_api_key)) -> list[dict]:
 def rotate_my_key(
     ctx: AuthContext = Depends(require_api_key),
     grace_days: int = 7,
-) -> dict:
+) -> dict[str, Any]:
     """Genera una nueva API key con los mismos scopes que la actual.
 
     La key anterior permanece activa durante ``grace_days`` (default 7 días)

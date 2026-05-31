@@ -5,8 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber } from "@/lib/utils";
+import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { Waypoints, Hash, Sparkles, FlaskConical } from "lucide-react";
 import {
   PieChart,
@@ -36,18 +38,7 @@ async function fetchOverview(): Promise<OverviewResponse> {
   return res.json();
 }
 
-const COLORS = [
-  "hsl(221, 83%, 53%)",
-  "hsl(160, 60%, 45%)",
-  "hsl(38, 92%, 50%)",
-  "hsl(0, 72%, 51%)",
-  "hsl(262, 83%, 58%)",
-  "hsl(199, 89%, 48%)",
-  "hsl(43, 96%, 56%)",
-  "hsl(280, 65%, 60%)",
-  "hsl(330, 70%, 55%)",
-  "hsl(180, 55%, 45%)",
-];
+
 
 /** Generate deterministic pseudo-random scatter points to simulate a UMAP projection */
 function generateMockScatter(
@@ -196,6 +187,7 @@ export default function ClustersPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : mockScatter && mockScatter.points.length > 0 ? (
+              <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={400}>
                 <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -238,12 +230,13 @@ export default function ClustersPage() {
                       data={mockScatter.points.filter(
                         (p) => p.cluster === (cluster.descripcion || cluster.cpv),
                       )}
-                      fill={COLORS[idx % COLORS.length]}
+                      fill={getSeriesColor(idx)}
                       opacity={0.7}
                     />
                   ))}
                 </ScatterChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             ) : (
               <p className="py-12 text-center text-muted-foreground">Sin datos</p>
             )}
@@ -262,6 +255,7 @@ export default function ClustersPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : pieData.length > 0 ? (
+              <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={400}>
                 <PieChart>
                   <Pie
@@ -278,7 +272,7 @@ export default function ClustersPage() {
                     labelLine={{ strokeWidth: 1 }}
                   >
                     {pieData.map((_, idx) => (
-                      <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                      <Cell key={idx} fill={getSeriesColor(idx)} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => formatNumber(value as number)} />
@@ -289,6 +283,7 @@ export default function ClustersPage() {
                   />
                 </PieChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             ) : (
               <p className="py-12 text-center text-muted-foreground">Sin datos</p>
             )}

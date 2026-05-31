@@ -214,8 +214,8 @@ def render(ctx: PageContext) -> None:
                 st.markdown(
                     kpi_card(
                         "Mes pico",
-                        mp["mes"],
-                        delta=f"{fmt_eur(mp['importe'])} · {mp['n']} lics",
+                        str(mp["mes"]),
+                        delta=f"{fmt_eur(float(mp['importe']))} · {mp['n']} lics",
                         icon="🔝",
                         tooltip=KPI_FORMULAS["mes_pico"],
                     ),

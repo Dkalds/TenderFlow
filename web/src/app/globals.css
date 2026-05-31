@@ -1,39 +1,45 @@
 @import "tailwindcss";
 
 /*
- * shadcn/ui design tokens — light & dark mode.
- * Based on shadcn/ui "zinc" theme, tuned for a premium dashboard.
+ * TenderFlow design tokens.
+ * Corporate market-intelligence dashboard: neutral base, green primary,
+ * high-density data surfaces, and consistent chart colors.
  */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --background: 60 12% 96%;
+    --foreground: 240 8% 5%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 240 8% 5%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --popover-foreground: 240 8% 5%;
+    --primary: 83 69% 36%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 60 7% 92%;
+    --secondary-foreground: 240 8% 10%;
+    --muted: 60 7% 92%;
+    --muted-foreground: 210 2% 47%;
+    --accent: 83 69% 36%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 352 81% 40%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 221 83% 53%;
+    --border: 210 2% 47% / 0.22;
+    --input: 210 2% 47% / 0.26;
+    --ring: 83 69% 36%;
     --radius: 0.5rem;
 
     /* Chart colors */
-    --chart-1: 221 83% 53%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: 83 69% 44%;
+    --chart-2: 194 79% 64%;
+    --chart-3: 40 100% 58%;
+    --chart-4: 88 61% 56%;
+    --chart-5: 246 100% 78%;
+    --chart-6: 172 100% 38%;
+    --chart-7: 15 100% 64%;
+    --chart-8: 210 2% 47%;
+    --chart-9: 352 81% 49%;
+    --chart-10: 210 68% 45%;
 
     /* Scoring bands */
     --score-hot: 0 84% 60%;
@@ -43,31 +49,36 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+    --background: 240 8% 5%;
+    --foreground: 0 0% 94%;
+    --card: 240 8% 8%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 240 8% 10%;
     --popover-foreground: 0 0% 98%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 240 3.7% 15.9%;
+    --primary: 83 69% 44%;
+    --primary-foreground: 240 8% 5%;
+    --secondary: 240 8% 11%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+    --muted: 240 8% 13%;
+    --muted-foreground: 60 2% 63%;
+    --accent: 83 69% 44%;
     --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 352 81% 49%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 221 83% 53%;
+    --border: 210 2% 47% / 0.22;
+    --input: 210 2% 47% / 0.28;
+    --ring: 83 69% 44%;
 
-    --chart-1: 221 70% 55%;
-    --chart-2: 160 50% 50%;
-    --chart-3: 30 70% 60%;
-    --chart-4: 280 55% 65%;
-    --chart-5: 340 65% 60%;
+    --chart-1: 83 69% 44%;
+    --chart-2: 194 79% 64%;
+    --chart-3: 40 100% 58%;
+    --chart-4: 88 61% 56%;
+    --chart-5: 246 100% 78%;
+    --chart-6: 172 100% 38%;
+    --chart-7: 15 100% 64%;
+    --chart-8: 210 2% 47%;
+    --chart-9: 352 81% 49%;
+    --chart-10: 210 68% 55%;
 
     --score-hot: 0 72% 50%;
     --score-warm: 38 80% 55%;
@@ -82,9 +93,14 @@
   }
 
   body {
-    background-color: hsl(var(--background));
+    background:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 28rem),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)) 100%);
     color: hsl(var(--foreground));
     font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-feature-settings: "cv11" 1, "ss01" 1, "tnum" 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
@@ -112,4 +128,82 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus visible outline */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 0;
+  z-index: 9999;
+  padding: 0.5rem 1rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  border: 2px solid hsl(var(--ring));
+  border-radius: 0 0 var(--radius) var(--radius);
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 0;
+}
+
+/* Base typography */
+body {
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.3);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.32);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.tf-sidebar-surface {
+  background: linear-gradient(180deg, hsl(240 8% 7%), hsl(240 8% 5%));
+}
+
+.light .tf-sidebar-surface {
+  background: linear-gradient(180deg, hsl(0 0% 100%), hsl(60 12% 95%));
+}
+
+.tf-card-shadow {
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.04),
+    0 8px 24px -16px hsl(240 8% 2% / 0.7);
+}
+
+.light .tf-card-shadow {
+  box-shadow: 0 1px 2px hsl(240 8% 5% / 0.06), 0 16px 34px -24px hsl(240 8% 5% / 0.22);
 }

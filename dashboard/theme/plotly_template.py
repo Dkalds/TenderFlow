@@ -95,6 +95,9 @@ def build_plotly_template(t: Tokens = TOKENS) -> go.layout.Template:
             bgcolor="rgba(0,0,0,0)",
             font=dict(size=ty.size_plot_axis, color=c.text_plot_body),
             itemwidth=30,
+            # legend-interactive: clicking toggles series visibility
+            itemclick="toggle",
+            itemdoubleclick="toggleothers",
         ),
         modebar=dict(
             bgcolor="rgba(0,0,0,0)",

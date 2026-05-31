@@ -233,6 +233,37 @@ def login(body: LoginRequest, response: Response) -> UserInfo:
     )
 
 
+# ---------------------------------------------------------------------------
+# Dev-only quick login (no password required)
+# ---------------------------------------------------------------------------
+
+if settings.ENV == "dev":
+
+    @router.post("/dev-login", response_model=UserInfo)
+    def dev_login(response: Response) -> UserInfo:
+        """DEV ONLY: Set session cookie for user_id=1 without credentials.
+
+        This endpoint is only available when ENV=dev. It allows quick
+        login during local development without requiring Google OAuth
+        or password setup.
+        """
+        user = get_user_by_id(1)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dev user (id=1) not found",
+            )
+        _set_session_cookie(response, {"user_id": user["id"]})
+        log_access(auth_method="dev_login", user_id=user["id"], email=user.get("email", ""))
+        log.info("dev_login_success", user_id=user["id"])
+        return UserInfo(
+            user_id=user["id"],
+            email=user.get("email"),
+            display_name=user.get("display_name"),
+            is_admin=is_admin(user["id"]),
+        )
+
+
 @router.get("/me", response_model=UserInfo)
 def me(user: dict[str, Any] = Depends(get_current_session_user)) -> UserInfo:
     """Return info about the currently authenticated user."""
@@ -282,7 +313,7 @@ def google_authorize(response: Response) -> dict[str, str]:
         secure=secure,
         samesite="lax",
         max_age=600,
-        path="/auth/oauth/google/callback",
+        path="/api/v1/auth/oauth/google/callback",
     )
 
     params = urllib.parse.urlencode(
@@ -387,16 +418,14 @@ def google_callback(
 
         set_admin(user_id, True)
 
-    _set_session_cookie(response, {"user_id": user_id})
-    # Clear PKCE cookie
-    response.delete_cookie(_PKCE_COOKIE, path="/auth/oauth/google/callback")
-
     log_access(auth_method="google_oauth", user_id=user_id, email=email)
     log.info("oauth_login_success", user_id=user_id, email=email)
 
-    return UserInfo(
-        user_id=user_id,
-        email=email,
-        display_name=str(claims.get("name", "")),
-        is_admin=is_admin(user_id),
-    )
+    # Redirect to frontend dashboard with session cookie
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    from fastapi.responses import RedirectResponse
+
+    redirect = RedirectResponse(url=f"{frontend_url}/resumen", status_code=302)
+    _set_session_cookie(redirect, {"user_id": user_id})
+    redirect.delete_cookie(_PKCE_COOKIE, path="/api/v1/auth/oauth/google/callback")
+    return redirect

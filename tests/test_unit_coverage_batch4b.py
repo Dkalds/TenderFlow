@@ -329,12 +329,12 @@ class TestRenderTopbar(unittest.TestCase):
     @patch("dashboard.components.layout.LOGO_SVG", "<svg/>")
     @patch("dashboard.components.layout.icon", return_value="<i/>")
     def test_returns_false(self, _icon, mock_st):
-        # Setup columns context managers
+        # Setup columns context managers — topbar now uses 5 columns
         col = MagicMock()
         col.__enter__ = MagicMock(return_value=col)
         col.__exit__ = MagicMock(return_value=False)
         col.button = MagicMock(return_value=False)
-        mock_st.columns.return_value = [col, col, col, col]
+        mock_st.columns.return_value = [col, col, col, col, col]
         mock_st.session_state = {}
         mock_st.button = MagicMock(return_value=False)
 

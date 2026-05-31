@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import streamlit as st
 
@@ -63,7 +65,7 @@ def render(ctx: PageContext) -> None:
     rows = df[df["id_externo"].isin(sel)].set_index("id_externo")
 
     # ── Build comparison table ──────────────────────────────────────────────
-    table_rows: list[dict] = []
+    table_rows: list[dict[str, Any]] = []
     for field_key, field_label in _COMPARE_FIELDS:
         if field_key not in rows.columns:
             continue
@@ -71,12 +73,13 @@ def render(ctx: PageContext) -> None:
         # Format importe
         if field_key == "importe":
             values = {
-                k: fmt_eur(v) if pd.notna(v) and v is not None else "—" for k, v in values.items()
+                k: fmt_eur(float(v)) if pd.notna(v) and v is not None else "—"
+                for k, v in values.items()  # type: ignore[arg-type]
             }
-        row: dict = {"Campo": field_label}
+        row: dict[str, Any] = {"Campo": field_label}
         baseline_val = next(iter(values.values()))
         for eid, val in values.items():
-            row[eid] = _highlight_diff(val, baseline_val if eid != sel[0] else None)
+            row[eid] = _highlight_diff(str(val), str(baseline_val) if eid != sel[0] else None)
         table_rows.append(row)
 
     cmp_df = pd.DataFrame(table_rows).set_index("Campo")

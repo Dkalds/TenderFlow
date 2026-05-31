@@ -1,24 +1,28 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber, formatCurrency } from "@/lib/utils";
+import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import type { TrendPoint } from "@/generated/api";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 
 interface TrendsResponse {
   series: TrendPoint[];
-}
-
-async function fetchTrends(): Promise<TrendsResponse> {
-  const res = await fetch("/api/v1/analytics/trends?group_by=week", {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch trends");
-  return res.json();
 }
 
 const COLOR_SCALE = [
@@ -42,6 +46,7 @@ function getColorClass(count: number): string {
 }
 
 const DAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 interface DayCell {
   date: Date;
@@ -55,43 +60,35 @@ interface CalendarWeek {
 }
 
 export default function CalendarioPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["analytics", "trends", "week"],
-    queryFn: fetchTrends,
-    staleTime: 5 * 60 * 1000,
-  });
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
 
-  // Build daily counts from weekly series by distributing evenly across weekdays
-  // Then arrange into a calendar grid
-  const { weeks, months } = useMemo(() => {
-    if (!data?.series || data.series.length === 0) {
-      return { weeks: [], months: [] };
-    }
+  const { data, isLoading, error } = useFilteredQuery<TrendsResponse>(
+    ["analytics", "trends", "week"],
+    "/api/v1/analytics/trends?group_by=week",
+    { staleTime: 5 * 60 * 1000 },
+  );
 
-    // Build a map of date -> count
-    // Weekly series: each point has a period like "2024-W01"
-    // We distribute the count across the 5 weekdays (Mon-Fri get more, Sat-Sun less)
-    const dailyCounts = new Map<string, number>();
+  // Build daily counts from weekly series
+  const dailyCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!data?.series) return counts;
 
     for (const point of data.series) {
-      // Try parsing period as a date or week
       const date = new Date(point.period);
       if (!isNaN(date.getTime())) {
-        // It's a valid date — this is the start of the week
         for (let d = 0; d < 7; d++) {
           const day = new Date(date);
           day.setDate(day.getDate() + d);
           const key = day.toISOString().slice(0, 10);
           const dailyShare = Math.round(point.count / 7);
-          dailyCounts.set(key, (dailyCounts.get(key) ?? 0) + (d < 5 ? dailyShare + 1 : dailyShare));
+          counts.set(key, (counts.get(key) ?? 0) + (d < 5 ? dailyShare + 1 : dailyShare));
         }
       } else {
-        // Try as YYYY-Www format
         const weekMatch = point.period.match(/^(\d{4})-W(\d{2})$/);
         if (weekMatch) {
           const year = parseInt(weekMatch[1]);
           const week = parseInt(weekMatch[2]);
-          // Get Monday of that ISO week
           const jan4 = new Date(year, 0, 4);
           const dayOfWeek = jan4.getDay() || 7;
           const monday = new Date(jan4);
@@ -101,41 +98,47 @@ export default function CalendarioPage() {
             day.setDate(monday.getDate() + d);
             const key = day.toISOString().slice(0, 10);
             const dailyShare = Math.round(point.count / 7);
-            dailyCounts.set(key, (dailyCounts.get(key) ?? 0) + dailyShare);
+            counts.set(key, (counts.get(key) ?? 0) + dailyShare);
           }
         } else {
-          // Monthly data — distribute across days of month
           const monthDate = new Date(point.period + "-01");
           if (!isNaN(monthDate.getTime())) {
-            const daysInMonth = new Date(
-              monthDate.getFullYear(),
-              monthDate.getMonth() + 1,
-              0,
-            ).getDate();
+            const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
             const dailyShare = Math.round(point.count / daysInMonth);
             for (let d = 0; d < daysInMonth; d++) {
               const day = new Date(monthDate);
               day.setDate(day.getDate() + d);
               const key = day.toISOString().slice(0, 10);
-              dailyCounts.set(key, dailyShare);
+              counts.set(key, dailyShare);
             }
           }
         }
       }
     }
+    return counts;
+  }, [data]);
 
+  // Available years
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    for (const key of dailyCounts.keys()) {
+      years.add(parseInt(key.slice(0, 4)));
+    }
+    const sorted = Array.from(years).sort();
+    return sorted.length > 0 ? sorted : [currentYear];
+  }, [dailyCounts, currentYear]);
+
+  // Heatmap grid filtered by selected year
+  const { weeks, months } = useMemo(() => {
     if (dailyCounts.size === 0) return { weeks: [], months: [] };
 
-    // Find date range
-    const allDates = Array.from(dailyCounts.keys()).sort();
-    const startDate = new Date(allDates[0]);
-    const endDate = new Date(allDates[allDates.length - 1]);
+    const startDate = new Date(selectedYear, 0, 1);
+    const endDate = new Date(selectedYear, 11, 31);
 
     // Align to Monday
-    const dayOfWeek = startDate.getDay() || 7; // 1=Mon, 7=Sun
-    startDate.setDate(startDate.getDate() - (dayOfWeek - 1));
+    const dow = startDate.getDay() || 7;
+    startDate.setDate(startDate.getDate() - (dow - 1));
 
-    // Build weeks grid
     const calWeeks: CalendarWeek[] = [];
     const monthLabels: { label: string; weekIdx: number }[] = [];
     let lastMonth = -1;
@@ -150,19 +153,16 @@ export default function CalendarioPage() {
         dayDate.setDate(current.getDate() + d);
         const key = dayDate.toISOString().slice(0, 10);
 
-        if (dayDate > endDate && d > 0) {
+        if (dayDate.getFullYear() !== selectedYear) {
           week.push(null);
         } else {
           const count = dailyCounts.get(key) ?? 0;
           week.push({ date: dayDate, count, dateStr: key });
 
-          // Track month labels
           if (dayDate.getMonth() !== lastMonth && d === 0) {
             lastMonth = dayDate.getMonth();
-            const monthName = dayDate.toLocaleDateString("es-ES", { month: "short" });
-            const yearSuffix = dayDate.getFullYear().toString().slice(2);
             monthLabels.push({
-              label: `${monthName} '${yearSuffix}`,
+              label: MONTH_NAMES[dayDate.getMonth()],
               weekIdx: calWeeks.length,
             });
           }
@@ -174,7 +174,54 @@ export default function CalendarioPage() {
     }
 
     return { weeks: calWeeks, months: monthLabels };
-  }, [data]);
+  }, [dailyCounts, selectedYear]);
+
+  // Monthly aggregation for bar chart
+  const monthlyData = useMemo(() => {
+    const agg = new Map<string, { count: number; importe: number }>();
+    for (const [key, count] of dailyCounts.entries()) {
+      if (!key.startsWith(String(selectedYear))) continue;
+      const month = key.slice(0, 7);
+      const prev = agg.get(month) ?? { count: 0, importe: 0 };
+      agg.set(month, { count: prev.count + count, importe: prev.importe });
+    }
+    // Also aggregate importe from series if available
+    if (data?.series) {
+      for (const point of data.series) {
+        const d = new Date(point.period);
+        if (!isNaN(d.getTime()) && d.getFullYear() === selectedYear) {
+          const month = d.toISOString().slice(0, 7);
+          const prev = agg.get(month) ?? { count: 0, importe: 0 };
+          agg.set(month, { count: prev.count, importe: prev.importe + (point.importe ?? 0) });
+        }
+      }
+    }
+    return Array.from(agg.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, v]) => ({
+        mes: MONTH_NAMES[parseInt(mes.slice(5, 7)) - 1],
+        publicaciones: v.count,
+        importe: v.importe,
+      }));
+  }, [dailyCounts, data, selectedYear]);
+
+  // Day-of-week distribution
+  const dowData = useMemo(() => {
+    const totals = [0, 0, 0, 0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    for (const [key, count] of dailyCounts.entries()) {
+      if (!key.startsWith(String(selectedYear))) continue;
+      const d = new Date(key);
+      // JS: 0=Sun, convert to 0=Mon
+      const dow = (d.getDay() + 6) % 7;
+      totals[dow] += count;
+      counts[dow] += 1;
+    }
+    return DAY_LABELS.map((label, i) => ({
+      dia: label,
+      promedio: counts[i] > 0 ? Math.round(totals[i] / counts[i]) : 0,
+    }));
+  }, [dailyCounts, selectedYear]);
 
   if (error) {
     return (
@@ -188,18 +235,44 @@ export default function CalendarioPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Calendario</h1>
-        <p className="text-muted-foreground">
-          Heatmap de publicaciones por fecha.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Calendario</h1>
+          <p className="text-muted-foreground">
+            Heatmap de publicaciones por fecha.
+          </p>
+        </div>
+
+        {/* Year selector */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSelectedYear((y) => Math.max(availableYears[0], y - 1))}
+            disabled={selectedYear <= availableYears[0]}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="px-3 text-sm font-medium tabular-nums">{selectedYear}</span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSelectedYear((y) => Math.min(availableYears[availableYears.length - 1], y + 1))}
+            disabled={selectedYear >= availableYears[availableYears.length - 1]}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
+      {/* Heatmap */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="h-5 w-5" />
-            Densidad de Publicaciones
+            Densidad de Publicaciones — {selectedYear}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -225,7 +298,7 @@ export default function CalendarioPage() {
                   })}
                 </div>
 
-                {/* Grid: rows = days (Mon-Sun), columns = weeks */}
+                {/* Grid */}
                 {DAY_LABELS.map((dayLabel, dayIdx) => (
                   <div key={dayLabel} className="flex items-center">
                     <div className="w-10 shrink-0 text-xs text-muted-foreground text-right pr-2">
@@ -235,17 +308,14 @@ export default function CalendarioPage() {
                       const cell = week.days[dayIdx];
                       if (!cell) {
                         return (
-                          <div
-                            key={weekIdx}
-                            className="w-3.5 h-3.5 m-[1px] rounded-sm"
-                          />
+                          <div key={weekIdx} className="w-5 h-5 m-[1px] rounded-sm" />
                         );
                       }
                       return (
                         <div
                           key={weekIdx}
                           className={cn(
-                            "w-3.5 h-3.5 m-[1px] rounded-sm transition-colors cursor-default",
+                            "w-5 h-5 m-[1px] rounded-sm transition-colors cursor-default",
                             getColorClass(cell.count),
                           )}
                           title={`${cell.dateStr}: ${cell.count} publicaciones`}
@@ -259,18 +329,74 @@ export default function CalendarioPage() {
                 <div className="flex items-center gap-2 mt-4 ml-10">
                   <span className="text-xs text-muted-foreground">Menos</span>
                   {COLOR_SCALE.map((c, i) => (
-                    <div
-                      key={i}
-                      className={cn("w-3.5 h-3.5 rounded-sm", c.bg)}
-                      title={c.label}
-                    />
+                    <div key={i} className={cn("w-5 h-5 rounded-sm", c.bg)} title={c.label} />
                   ))}
                   <span className="text-xs text-muted-foreground">Mas</span>
                 </div>
               </div>
             </div>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">{t("common.no_data")}</p>
+            <EmptyState />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Monthly bars */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Publicaciones por Mes — {selectedYear}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : monthlyData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(v: number) => formatCurrency(v)}
+                />
+                <Tooltip
+                  formatter={(value, name) =>
+                    name === "Importe" ? formatCurrency(Number(value ?? 0)) : formatNumber(Number(value ?? 0))
+                  }
+                />
+                <Legend />
+                <Bar yAxisId="left" dataKey="publicaciones" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} name="Publicaciones" />
+                <Bar yAxisId="right" dataKey="importe" fill="hsl(160, 60%, 45%)" radius={[4, 4, 0, 0]} name="Importe" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Day-of-week distribution */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Distribucion por Dia de la Semana — {selectedYear}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[200px] w-full" />
+          ) : dowData.some((d) => d.promedio > 0) ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={dowData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="dia" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Bar dataKey="promedio" fill="hsl(280, 65%, 60%)" radius={[4, 4, 0, 0]} name="Promedio diario" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState />
           )}
         </CardContent>
       </Card>

@@ -36,6 +36,32 @@ class PipelineEntry(BaseModel):
     score: int | None = None
 
 
+class HorizonteCount(BaseModel):
+    """Count by horizon bucket."""
+
+    horizonte: str
+    count: int
+    importe: float
+
+
+class TrimestreCount(BaseModel):
+    """Count by calendar quarter."""
+
+    trimestre: str
+    count: int
+    importe: float
+
+
+class UrgenciaValorPoint(BaseModel):
+    """Scatter point: urgency vs value."""
+
+    id_externo: str
+    titulo: str | None = None
+    dias_restantes: int
+    importe: float
+    es_urgente: bool
+
+
 class PipelineResult(BaseModel):
     """Combined pipeline response."""
 
@@ -43,6 +69,9 @@ class PipelineResult(BaseModel):
     total_en_plazo: int = 0
     vencen_7d: int = 0
     vencen_30d: int = 0
+    por_horizonte: list[HorizonteCount] = Field(default_factory=list)
+    por_trimestre: list[TrimestreCount] = Field(default_factory=list)
+    urgencia_valor: list[UrgenciaValorPoint] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +130,7 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
     vencen_30d = int((df["dias_restantes"] <= 30).sum())
 
     # Sort by urgency and limit
+    all_df = df.copy()  # keep full for extra computations
     df = df.sort_values("dias_restantes").head(filters.limit)
 
     upcoming = []
@@ -122,11 +152,66 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
             )
         )
 
+    # por_horizonte: [0,7), [7,30), [30,90), [90,∞)
+    por_horizonte: list[HorizonteCount] = []
+    if not all_df.empty:
+        bins = [0, 7, 30, 90, float("inf")]
+        labels = ["<7d", "7-30d", "30-90d", "90+d"]
+        all_df["_horizonte"] = pd.cut(
+            all_df["dias_restantes"], bins=bins, labels=labels, right=False
+        )
+        for label in labels:
+            subset = all_df[all_df["_horizonte"] == label]
+            por_horizonte.append(
+                HorizonteCount(
+                    horizonte=label,
+                    count=len(subset),
+                    importe=float(subset["importe"].sum(skipna=True)),
+                )
+            )
+
+    # por_trimestre: group by quarter of fecha_limite
+    por_trimestre: list[TrimestreCount] = []
+    if not all_df.empty:
+        all_df["_quarter"] = all_df["fecha_limite_dt"].dt.to_period("Q")
+        q_grp = (
+            all_df.dropna(subset=["_quarter"])
+            .groupby("_quarter")
+            .agg(_count=("id_externo", "count"), _importe=("importe", "sum"))
+            .reset_index()
+            .sort_values("_quarter")
+        )
+        for _, row in q_grp.iterrows():
+            por_trimestre.append(
+                TrimestreCount(
+                    trimestre=str(row["_quarter"]),
+                    count=int(row["_count"]),
+                    importe=float(row["_importe"] or 0),
+                )
+            )
+
+    # urgencia_valor: scatter (dias_restantes vs importe), max 200
+    urgencia_valor: list[UrgenciaValorPoint] = []
+    uv_df = all_df.dropna(subset=["importe"]).head(200)
+    for _, row in uv_df.iterrows():
+        urgencia_valor.append(
+            UrgenciaValorPoint(
+                id_externo=str(row.get("id_externo", "")),
+                titulo=row.get("titulo") if pd.notna(row.get("titulo")) else None,
+                dias_restantes=int(row["dias_restantes"]),
+                importe=float(row["importe"]),
+                es_urgente=int(row["dias_restantes"]) <= 7,
+            )
+        )
+
     result = PipelineResult(
         upcoming=upcoming,
         total_en_plazo=total_en_plazo,
         vencen_7d=vencen_7d,
         vencen_30d=vencen_30d,
+        por_horizonte=por_horizonte,
+        por_trimestre=por_trimestre,
+        urgencia_valor=urgencia_valor,
     )
     log.info("analytics_pipeline_done", total=total_en_plazo, vencen_7d=vencen_7d)
     return result

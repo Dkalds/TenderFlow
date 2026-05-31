@@ -31,7 +31,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -41,11 +41,11 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 try:  # pragma: no cover - dependencia opcional
-    import duckdb  # type: ignore[import-not-found]
+    import duckdb
 
     _DUCKDB_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    duckdb = None  # type: ignore[assignment]
+    duckdb = None
     _DUCKDB_AVAILABLE = False
 
 
@@ -111,7 +111,7 @@ def duckdb_query(sql: str, params: Iterable[Any] | None = None) -> pd.DataFrame 
     con = get_connection()
     with _lock:
         cur = con.execute(sql, list(params) if params else None)
-        return cur.fetch_df()
+        return cast(pd.DataFrame, cur.fetch_df())
 
 
 def export_parquet(sql: str, out_path: Path | str, *, compression: str = "zstd") -> Path:

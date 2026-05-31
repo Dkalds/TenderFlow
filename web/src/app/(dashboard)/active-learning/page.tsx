@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -13,50 +13,119 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BrainCircuit, Check, X, SkipForward, Info } from "lucide-react";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  ThumbsUp,
+  ThumbsDown,
+  SkipForward,
+  Info,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { formatNumber, formatPercent, cn } from "@/lib/utils";
+import { apiMutate } from "@/lib/api-client";
 
-interface ScoringItem {
-  id?: string;
-  expediente?: string;
+interface QueueItem {
+  expediente: string;
   titulo?: string;
-  organo?: string;
-  importe?: number;
-  score?: number;
-  band?: string;
+  proba?: number;
+  probability?: number;
+  tecnologia?: string;
+  [key: string]: unknown;
 }
 
-interface ScoringResponse {
-  items?: ScoringItem[];
-  results?: ScoringItem[];
-  bands?: Record<string, number>;
+interface QueueResponse {
+  items?: QueueItem[];
   total?: number;
 }
 
-export default function ActiveLearningPage() {
-  const [labeled, setLabeled] = useState<Set<string>>(new Set());
-  const [sessionCount, setSessionCount] = useState(0);
+interface FeedbackStats {
+  total_labels?: number;
+  pct_relevant?: number;
+  last_updated?: string;
+  [key: string]: unknown;
+}
 
-  const { data, isLoading, isError } = useQuery<ScoringResponse>({
-    queryKey: ["scoring-uncertainty"],
+export default function ActiveLearningPage() {
+  const queryClient = useQueryClient();
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  const [notes, setNotes] = useState<Record<string, string>>({});
+
+  const { data: queue, isLoading: queueLoading, isError: queueError } = useQuery<QueueResponse>({
+    queryKey: ["feedback-queue"],
     queryFn: async () => {
-      const res = await fetch("/api/v1/analytics/scoring?min_score=30&band=media", {
-        credentials: "include",
-      });
+      const res = await fetch(
+        "/api/v1/feedback/queue?strategy=uncertainty&limit=20",
+        { credentials: "include" },
+      );
+      if (res.status === 401) throw new Error("Sesion expirada");
       if (!res.ok) throw new Error(`Error ${res.status}`);
       return res.json();
     },
   });
 
-  const items = data?.items ?? data?.results ?? [];
-  const totalItems = items.length;
-  const pendingItems = items.filter((it) => !labeled.has(it.id ?? it.expediente ?? ""));
+  const { data: stats, isLoading: statsLoading } = useQuery<FeedbackStats>({
+    queryKey: ["feedback-stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/feedback/stats", {
+        credentials: "include",
+      });
+      if (res.status === 401) throw new Error("Sesion expirada");
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return res.json();
+    },
+  });
 
-  const handleAction = (id: string, _action: "confirm" | "reject" | "skip") => {
-    setLabeled((prev) => new Set(prev).add(id));
-    if (_action !== "skip") {
-      setSessionCount((c) => c + 1);
+  const submitFeedback = useMutation({
+    mutationFn: (vars: { expediente: string; relevante: boolean; nota?: string }) =>
+      apiMutate("POST", "/api/v1/feedback", {
+        expediente: vars.expediente,
+        relevante: vars.relevante,
+        nota: vars.nota || undefined,
+      }),
+    onSuccess: (_data, vars) => {
+      setDismissed((prev) => new Set(prev).add(vars.expediente));
+      queryClient.invalidateQueries({ queryKey: ["feedback-stats"] });
+    },
+    onError: () => {
+      alert("Error al enviar feedback. Intenta de nuevo.");
+    },
+  });
+
+  const items = queue?.items ?? [];
+  const pendingItems = items.filter((it) => !dismissed.has(it.expediente));
+  const queueSize = queue?.total ?? items.length;
+
+  // Group by technology if available
+  const techCounts: Record<string, number> = {};
+  for (const item of items) {
+    if (item.tecnologia) {
+      techCounts[item.tecnologia] = (techCounts[item.tecnologia] ?? 0) + 1;
     }
+  }
+  const hasTechData = Object.keys(techCounts).length > 0;
+
+  const handleLabel = (expediente: string, relevante: boolean) => {
+    submitFeedback.mutate({
+      expediente,
+      relevante,
+      nota: notes[expediente],
+    });
+  };
+
+  const handleSkip = (expediente: string) => {
+    setDismissed((prev) => new Set(prev).add(expediente));
+  };
+
+  const toggleNote = (expediente: string) => {
+    setExpandedNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(expediente)) next.delete(expediente);
+      else next.add(expediente);
+      return next;
+    });
   };
 
   return (
@@ -73,48 +142,105 @@ export default function ActiveLearningPage() {
         <CardContent className="pt-4 flex items-start gap-2 text-sm">
           <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
           <span>
-            Etiquetado humano de licitaciones en la zona de incertidumbre del modelo ML
-            para mejorar la precision del clasificador. Las oportunidades mostradas tienen
-            scores entre 40-60, donde el modelo tiene menor confianza.
+            Etiquetado humano de licitaciones en la zona de incertidumbre del
+            modelo ML para mejorar la precision del clasificador. Las
+            oportunidades se seleccionan mediante muestreo por incertidumbre
+            (uncertainty sampling).
           </span>
         </CardContent>
       </Card>
 
-      {/* Stats */}
+      {/* Stats KPIs */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="pt-6 text-center">
-            <p className="text-2xl font-bold">
-              {isLoading ? <Skeleton className="h-8 w-16 mx-auto" /> : formatNumber(totalItems)}
+            {statsLoading ? (
+              <Skeleton className="h-8 w-16 mx-auto" />
+            ) : (
+              <p className="text-2xl font-bold">
+                {formatNumber(stats?.total_labels)}
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              Etiquetas totales
             </p>
-            <p className="text-sm text-muted-foreground">Items en zona de incertidumbre</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6 text-center">
-            <p className="text-2xl font-bold">{sessionCount}</p>
-            <p className="text-sm text-muted-foreground">Etiquetados esta sesion</p>
+            {statsLoading ? (
+              <Skeleton className="h-8 w-16 mx-auto" />
+            ) : (
+              <p className="text-2xl font-bold">
+                {stats?.pct_relevant != null
+                  ? formatPercent(stats.pct_relevant)
+                  : "—"}
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground">% Relevantes</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6 text-center">
-            <p className="text-2xl font-bold">{pendingItems.length}</p>
-            <p className="text-sm text-muted-foreground">Pendientes</p>
+            {queueLoading ? (
+              <Skeleton className="h-8 w-16 mx-auto" />
+            ) : (
+              <p className="text-2xl font-bold">{formatNumber(queueSize)}</p>
+            )}
+            <p className="text-sm text-muted-foreground">En cola</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Band distribution from scoring if available */}
-      {data?.bands && (
+      {/* Model info card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Activity className="h-4 w-4" />
+            Modelo de clasificacion
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3 text-sm">
+            <div>
+              <p className="text-muted-foreground">Total etiquetas</p>
+              <p className="font-medium">
+                {formatNumber(stats?.total_labels)}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">
+                Precision estimada (% relevante)
+              </p>
+              <p className="font-medium">
+                {stats?.pct_relevant != null
+                  ? formatPercent(stats.pct_relevant)
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Ultima actualizacion</p>
+              <p className="font-medium">
+                {stats?.last_updated
+                  ? new Date(stats.last_updated).toLocaleString("es-ES")
+                  : "—"}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Technology chips */}
+      {hasTechData && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Distribucion por banda de score</CardTitle>
+            <CardTitle className="text-base">Tecnologias en cola</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-3">
-              {Object.entries(data.bands).map(([band, count]) => (
-                <Badge key={band} variant="outline" className="text-sm py-1 px-3">
-                  {band}: {formatNumber(count as number)}
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(techCounts).map(([tech, count]) => (
+                <Badge key={tech} variant="outline" className="text-sm py-1 px-3">
+                  {tech}: {count}
                 </Badge>
               ))}
             </div>
@@ -126,15 +252,17 @@ export default function ActiveLearningPage() {
 
       {/* Progress */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <BrainCircuit className="h-4 w-4" />
+        <Activity className="h-4 w-4" />
         <span>
-          {sessionCount} de {totalItems} items etiquetados en esta sesion
+          {dismissed.size} de {items.length} items revisados en esta sesion
         </span>
-        {totalItems > 0 && (
+        {items.length > 0 && (
           <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden max-w-xs">
             <div
               className="h-full bg-primary rounded-full transition-all"
-              style={{ width: `${Math.min((sessionCount / totalItems) * 100, 100)}%` }}
+              style={{
+                width: `${Math.min((dismissed.size / items.length) * 100, 100)}%`,
+              }}
             />
           </div>
         )}
@@ -143,15 +271,15 @@ export default function ActiveLearningPage() {
       {/* Labeling queue */}
       <h2 className="text-xl font-semibold">Cola de etiquetado</h2>
 
-      {isError && (
+      {queueError && (
         <Card className="border-destructive">
           <CardContent className="pt-6 text-destructive">
-            Error al cargar datos de scoring. Verifica que la API este activa.
+            Error al cargar cola de feedback. Verifica que la API este activa.
           </CardContent>
         </Card>
       )}
 
-      {isLoading && (
+      {queueLoading && (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
@@ -165,75 +293,125 @@ export default function ActiveLearningPage() {
         </div>
       )}
 
-      {!isLoading && pendingItems.length === 0 && (
+      {!queueLoading && pendingItems.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
-            <BrainCircuit className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+            <Activity className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
-              {totalItems === 0
-                ? "No hay items en la zona de incertidumbre"
+              {items.length === 0
+                ? "No hay items en la cola de feedback"
                 : "Has revisado todos los items de esta sesion"}
             </p>
           </CardContent>
         </Card>
       )}
 
-      {!isLoading && (
+      {!queueLoading && (
         <div className="space-y-3">
           {pendingItems.map((item) => {
-            const itemId = item.id ?? item.expediente ?? "";
+            const prob = item.proba ?? item.probability ?? null;
+            const noteExpanded = expandedNotes.has(item.expediente);
+
             return (
-              <Card key={itemId}>
+              <Card key={item.expediente}>
                 <CardContent className="pt-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 flex-1 space-y-1">
+                    <div className="min-w-0 flex-1 space-y-2">
                       <p className="font-medium leading-snug">
                         {item.titulo ?? "Sin titulo"}
                       </p>
-                      {item.organo && (
-                        <p className="text-sm text-muted-foreground">{item.organo}</p>
+                      <p className="text-xs text-muted-foreground font-mono">
+                        {item.expediente}
+                      </p>
+                      {prob != null && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            Probabilidad:
+                          </span>
+                          <div className="flex-1 h-2 max-w-[200px] rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all",
+                                prob >= 0.7
+                                  ? "bg-green-500"
+                                  : prob >= 0.4
+                                    ? "bg-yellow-500"
+                                    : "bg-red-500",
+                              )}
+                              style={{
+                                width: `${Math.min(prob * 100, 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs font-medium">
+                            {(prob * 100).toFixed(1)}%
+                          </span>
+                        </div>
                       )}
-                      <div className="flex flex-wrap gap-2">
-                        {item.importe != null && (
-                          <Badge variant="secondary">
-                            {formatCurrency(item.importe)}
-                          </Badge>
-                        )}
-                        {item.score != null && (
-                          <Badge variant="outline">Score: {item.score}</Badge>
-                        )}
-                        {item.band && (
-                          <Badge variant="outline">Banda: {item.band}</Badge>
-                        )}
-                      </div>
+                      {item.tecnologia && (
+                        <Badge variant="outline" className="text-xs">
+                          {item.tecnologia}
+                        </Badge>
+                      )}
                     </div>
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleLabel(item.expediente, true)}
+                          disabled={submitFeedback.isPending}
+                        >
+                          <ThumbsUp className="mr-1 h-4 w-4" />
+                          Relevante
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleLabel(item.expediente, false)}
+                          disabled={submitFeedback.isPending}
+                        >
+                          <ThumbsDown className="mr-1 h-4 w-4" />
+                          No relevante
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleSkip(item.expediente)}
+                        >
+                          <SkipForward className="mr-1 h-4 w-4" />
+                          Saltar
+                        </Button>
+                      </div>
                       <Button
-                        size="sm"
-                        variant="default"
-                        onClick={() => handleAction(itemId, "confirm")}
-                      >
-                        <Check className="mr-1 h-4 w-4" />
-                        Confirmar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleAction(itemId, "reject")}
-                      >
-                        <X className="mr-1 h-4 w-4" />
-                        Rechazar
-                      </Button>
-                      <Button
-                        size="sm"
                         variant="ghost"
-                        onClick={() => handleAction(itemId, "skip")}
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => toggleNote(item.expediente)}
                       >
-                        <SkipForward className="mr-1 h-4 w-4" />
-                        Saltar
+                        {noteExpanded ? (
+                          <ChevronUp className="mr-1 h-3 w-3" />
+                        ) : (
+                          <ChevronDown className="mr-1 h-3 w-3" />
+                        )}
+                        Nota
                       </Button>
                     </div>
                   </div>
+                  {noteExpanded && (
+                    <Textarea
+                      className="mt-2 w-full"
+                      placeholder="Nota opcional..."
+                      rows={2}
+                      value={notes[item.expediente] ?? ""}
+                      onChange={(e) =>
+                        setNotes((prev) => ({
+                          ...prev,
+                          [item.expediente]: e.target.value,
+                        }))
+                      }
+                    />
+                  )}
                 </CardContent>
               </Card>
             );

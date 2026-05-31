@@ -42,6 +42,7 @@ export interface NavSection {
   label: string;
   icon: LucideIcon;
   pages: NavPage[];
+  adminOnly?: boolean;
 }
 
 export const SECTIONS: NavSection[] = [
@@ -217,6 +218,7 @@ export const SECTIONS: NavSection[] = [
   {
     label: "Admin",
     icon: Settings,
+    adminOnly: true,
     pages: [
       {
         label: "Administracion",

@@ -10,6 +10,8 @@ Acceso: sólo administradores.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pandas as pd
 import streamlit as st
 
@@ -28,7 +30,7 @@ _SESSION_LABELED_KEY = "al_labeled_expedientes"
 
 
 @st.cache_resource(show_spinner=False)
-def _load_multilabel_clf():
+def _load_multilabel_clf() -> Any:
     """Carga TechnologyClassifier si está disponible; devuelve None si no."""
     try:
         from scraper.tech_classifier import TechnologyClassifier
@@ -40,14 +42,14 @@ def _load_multilabel_clf():
     return None
 
 
-def _ml_label_probas(clf, titulo: str, descripcion: str) -> dict[str, float]:
+def _ml_label_probas(clf: Any, titulo: str, descripcion: str) -> dict[str, float]:
     """Devuelve {tech_key: prob} para los labels del TechnologyClassifier."""
     if clf is None:
         return {}
     try:
         text = f"{titulo} {descripcion or ''}".strip()
         result = clf.predict_one(text)
-        return result.get("scores", {})
+        return cast(dict[str, float], result.get("scores", {}))
     except Exception:
         return {}
 

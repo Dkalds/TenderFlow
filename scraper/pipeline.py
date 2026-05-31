@@ -17,7 +17,7 @@ from db.database import (
     get_cursor,
     init_db,
     log_extraccion,
-    replace_adjudicaciones,
+    replace_adjudicaciones_batch,
     set_cursor,
     upsert_licitaciones,
     upsert_licitaciones_with_history,
@@ -319,13 +319,8 @@ def _process_month_impl(
 
     n_adj = 0
     n_adj_failed = 0
-    for lic_id, adjs in adj_por_lic.items():
-        try:
-            n_adj += replace_adjudicaciones(lic_id, adjs)
-        except Exception as e:
-            log.exception("adj_persist_error", licitacion_id=lic_id)
-            record_failure(run_id, fuente, e, scope="persist_adjudicaciones", payload_ref=lic_id)
-            n_adj_failed += 1
+    if adj_por_lic:
+        n_adj, n_adj_failed = replace_adjudicaciones_batch(adj_por_lic)
 
     log_extraccion(
         fuente=fuente,
@@ -526,12 +521,8 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
 
     # Adjudicaciones
     n_adj = 0
-    for lic_id, adjs in adj_por_lic.items():
-        try:
-            n_adj += replace_adjudicaciones(lic_id, adjs)
-        except Exception as e:
-            log.exception("daily_adj_persist_error", licitacion_id=lic_id)
-            record_failure(run_id, fuente, e, scope="persist_adjudicaciones", payload_ref=lic_id)
+    if adj_por_lic:
+        n_adj, _adj_failed = replace_adjudicaciones_batch(adj_por_lic)
 
     # Actualizar cursor
     newest = meta.get("newest_updated") or last_seen_updated

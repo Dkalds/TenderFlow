@@ -8,6 +8,7 @@ from __future__ import annotations
 import html
 import re as _re
 from collections import Counter
+from typing import Any
 
 import pandas as pd
 import plotly.express as px
@@ -108,8 +109,8 @@ def render(ctx: PageContext) -> None:
         with col_i:
             st.markdown(
                 kpi_card(
-                    row_m.empresa[:22],
-                    fmt_eur(row_m.volumen),
+                    str(row_m.empresa)[:22],
+                    fmt_eur(float(row_m.volumen)),  # type: ignore[arg-type]
                     delta=f"{row_m.cuota_pct:.1f}% cuota · {row_m.contratos} contratos",
                     delta_up=True,
                     icon="🏢",
@@ -475,11 +476,11 @@ def render(ctx: PageContext) -> None:
         ]
         tabla_rows = []
         for label, col, fmt_fn in _TABLA_METRICAS:
-            row_d: dict = {"Métrica": label}
+            row_d: dict[str, Any] = {"Métrica": label}
             for emp_row in comp_metr.itertuples(index=False):
                 val = getattr(emp_row, col, None)
                 emp_name = str(emp_row.empresa)[:22]
-                row_d[emp_name] = fmt_fn(val) if pd.notna(val) else "—"
+                row_d[emp_name] = fmt_fn(val) if pd.notna(val) else "—"  # type: ignore[no-untyped-call]
             tabla_rows.append(row_d)
 
         cCmp1, cCmp2 = st.columns([1, 1])

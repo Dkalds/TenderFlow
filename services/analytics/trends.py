@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -45,6 +45,21 @@ class HeatmapCell(BaseModel):
     value: int
 
 
+class WaterfallPoint(BaseModel):
+    """Month-to-month delta."""
+
+    period: str
+    delta: int
+    cumulative: int
+
+
+class HistogramBin(BaseModel):
+    """Importe distribution bin."""
+
+    bin_label: str
+    count: int
+
+
 class TrendsResult(BaseModel):
     """Combined trends response."""
 
@@ -52,6 +67,9 @@ class TrendsResult(BaseModel):
     heatmap: list[HeatmapCell] = Field(default_factory=list)
     yoy_count: float = 0.0
     yoy_importe: float = 0.0
+    waterfall: list[WaterfallPoint] = Field(default_factory=list)
+    histogram_bins: list[HistogramBin] = Field(default_factory=list)
+    mes_pico: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +160,59 @@ def _yoy(df: pd.DataFrame, days: int = 365) -> tuple[float, float]:
     return yoy_count, yoy_importe
 
 
+def _build_waterfall(series: list[TrendPoint]) -> list[WaterfallPoint]:
+    """Build waterfall (month-to-month delta) from series."""
+    if not series:
+        return []
+    result: list[WaterfallPoint] = []
+    cumulative = 0
+    prev_count = 0
+    for i, pt in enumerate(series):
+        delta = pt.count - prev_count if i > 0 else pt.count
+        cumulative += delta
+        result.append(WaterfallPoint(period=pt.period, delta=delta, cumulative=cumulative))
+        prev_count = pt.count
+    return result
+
+
+def _build_histogram(df: pd.DataFrame) -> list[HistogramBin]:
+    """Build log-scale histogram bins for importe."""
+    if df.empty:
+        return []
+    valid = df["importe"].dropna()
+    if valid.empty:
+        return []
+    bins = [0, 1_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000, float("inf")]
+    labels = ["0-1K", "1K-10K", "10K-50K", "50K-100K", "100K-500K", "500K-1M", "1M-5M", "5M+"]
+    counts = (
+        pd.cut(valid, bins=bins, labels=labels, right=False)
+        .value_counts()
+        .reindex(labels, fill_value=0)
+    )
+    return [HistogramBin(bin_label=label, count=int(c)) for label, c in counts.items()]
+
+
+def _find_mes_pico(df: pd.DataFrame) -> dict[str, Any] | None:
+    """Find the month with highest total importe."""
+    if df.empty or df["fecha_publicacion"].isna().all():
+        return None
+    work = df.dropna(subset=["fecha_publicacion"]).copy()
+    work["mes"] = work["fecha_publicacion"].dt.to_period("M").dt.to_timestamp()
+    g = (
+        work.groupby("mes")
+        .agg(importe=("importe", "sum"), count=("id_externo", "count"))
+        .reset_index()
+    )
+    if g.empty:
+        return None
+    best = g.loc[g["importe"].idxmax()]
+    return {
+        "mes": best["mes"].strftime("%Y-%m"),
+        "importe": float(best["importe"] or 0),
+        "count": int(best["count"]),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -163,6 +234,9 @@ def get_trends(filters: TrendsFilters) -> TrendsResult:
         heatmap=heatmap,
         yoy_count=yoy_count,
         yoy_importe=yoy_importe,
+        waterfall=_build_waterfall(series),
+        histogram_bins=_build_histogram(df),
+        mes_pico=_find_mes_pico(df),
     )
     log.info("analytics_trends_done", points=len(result.series))
     return result

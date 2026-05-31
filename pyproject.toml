@@ -16,7 +16,7 @@ dependencies = [
     "python-dateutil>=2.8.2,<3",
     "tenacity>=8.2.0,<10",
     "openpyxl>=3.1.0,<4",
-    "libsql>=0.1.0,<1",
+    "libsql>=0.1.0,<0.3",
     "python-dotenv>=1.0.0,<2",
     "pydantic-settings>=2.0.0,<3",
     "streamlit-aggrid>=0.3.3,<1",
@@ -32,6 +32,8 @@ dependencies = [
     "alembic>=1.13.0,<2",
     "fastapi>=0.110.0,<1",
     "redis>=5.0,<6",
+    "cachetools>=5.3.0,<8",
+    "brotli-asgi>=1.4.0,<2",
 ]
 
 [project.optional-dependencies]
@@ -141,32 +143,12 @@ strict = true
 exclude = ["scripts/"]
 
 # ── Módulos que PASAN mypy strict (sin override) ─────────────────────────
-# dashboard.bootstrap, dashboard.session_keys, dashboard.theme.*,
-# dashboard.pages._base, dashboard.router, dashboard.filters.*,
-# config.*, db.database, db.users, shared.*
-# Añadir módulos aquí al limpiarlos; retirarlos del bloque de overrides.
+# Todos los módulos de producción pasan strict desde 2026-05-29.
+# Solo tests y scripts mantienen override (no requieren strict).
 
-# Módulos que aún no pasan strict — ir reduciendo esta lista progresivamente
+# Tests y scripts — no requieren strict typing
 [[tool.mypy.overrides]]
 module = [
-    "dashboard.app",
-    "dashboard.components.*",
-    "dashboard.embeddings",
-    "dashboard.kpi_bar",
-    "dashboard.pages.admin",
-    "dashboard.pages.calidad_datos",
-    "dashboard.pages.clusters",
-    "dashboard.pages.competidores.*",
-    "dashboard.pages.detalle",
-    "dashboard.pages.geografia",
-    "dashboard.pages.mi_watchlist",
-    "dashboard.pages.observabilidad",
-    "dashboard.pages.organos",
-    "dashboard.pages.pipeline_alertas",
-    "dashboard.pages.proyectos_modulos",
-    "dashboard.pages.resumen",
-    "dashboard.pages.tecnologias",
-    "dashboard.pages.tendencias",
     "tests.*",
     "scripts.*",
 ]
@@ -178,24 +160,11 @@ disallow_any_generics = false
 warn_unused_ignores = false
 disallow_untyped_calls = false
 
-# Módulos con errores type-arg / no-any-return / no-untyped-call pre-existentes
-[[tool.mypy.overrides]]
-module = [
-    "scraper.atom_live",
-    "dashboard.utils.dates",
-    "services.rate_limit_redis",
-    "shared.cache",
-]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-warn_return_any = false
-disallow_any_generics = false
-disallow_untyped_calls = false
-warn_unused_ignores = false
-
 # Dependencias sin stubs útiles
 [[tool.mypy.overrides]]
 module = [
+    "duckdb",
+    "duckdb.*",
     "libsql",
     "libsql.*",
     "libsql_experimental",
@@ -238,58 +207,12 @@ module = [
     "redis.*",
     "rq",
     "rq.*",
-    "duckdb",
-    "duckdb.*",
     "requests",
     "requests.*",
     "cachetools",
     "cachetools.*",
 ]
 ignore_missing_imports = true
-
-# Módulos pendientes de tipado estricto — ir limpiando progresivamente
-# P8 (2026-05-23): config.settings, shared.auth_core, api.auth, db.audit, db.totp
-#                  cerrados (mypy clean). Removidos de ignore_errors.
-[[tool.mypy.overrides]]
-module = [
-    "shared.i18n",
-    "shared.schemas",
-    "api.cache",
-    "api.app",
-    "api.routes.licitaciones",
-    "api.routes.webhooks",
-    "api.routes.security",
-    "api.routes.meta",
-    "api.routes.me",
-    "api.routes.exports",
-    "api.routes.feedback",
-    "api.routes.health",
-    "db.analytics",
-    "db.webhooks",
-    "db.repositories.webhooks",
-    "db.repositories.feedback",
-    "observability.sentry",
-    "scraper.ml_pipeline",
-    "scraper.ml_classifier",
-    "dashboard.pages.tendencias_cpv",
-    "dashboard.pages.comparador",
-    "dashboard.pages.investigador",
-    "dashboard.pages.active_learning",
-    "dashboard.forecast",
-    "dashboard.stats._base",
-    "scheduler.concept_drift",
-    "scheduler.drift_monitor",
-    "scheduler.drift_report",
-    "scheduler.queue",
-    "scheduler.loop",
-]
-ignore_errors = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-warn_return_any = false
-disallow_any_generics = false
-warn_unused_ignores = false
-disallow_untyped_calls = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

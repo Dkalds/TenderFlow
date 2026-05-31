@@ -13,7 +13,8 @@ cambiar a ``paraphrase-multilingual-mpnet-base-v2`` para mayor calidad.
 from __future__ import annotations
 
 import re
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 import numpy as np
 
@@ -31,7 +32,7 @@ try:  # pragma: no cover - fallback when Streamlit runtime no disponible
     _cache_resource = _st.cache_resource(ttl=settings.DASHBOARD_CACHE_TTL or None)
 except Exception:  # pragma: no cover
 
-    def _cache_resource(fn):  # type: ignore[no-redef]
+    def _cache_resource(fn: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[misc]
         return fn
 
 # ── Lazy model loading ──────────────────────────────────────────────────
@@ -89,7 +90,7 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
         a = a.reshape(1, -1)
     if b.ndim == 1:
         b = b.reshape(1, -1)
-    return a @ b.T
+    return cast(np.ndarray, a @ b.T)
 
 
 def semantic_match(

@@ -105,7 +105,9 @@ class Settings(BaseSettings):
     OTEL_SERVICE_NAME: str = "licitaciones-sap"
     # Fracción de trazas a muestrear [0.0-1.0]. Las trazas con error se
     # muestrean siempre independientemente de este valor.
-    OTEL_SAMPLE_RATIO: float = 0.01
+    # Default 0.1 (10%) — suficiente para debugging en un sistema de scraping
+    # con volumen moderado. Ajustar a 0.01 en entornos de alto tráfico.
+    OTEL_SAMPLE_RATIO: float = 0.1
 
     # ── OAuth ────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""

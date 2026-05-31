@@ -47,15 +47,34 @@ def paginate_df(
 
     col_prev, col_info, col_next = st.columns([1, 4, 1])
     with col_prev:
-        if st.button("← Anterior", key=f"{key}_prev", disabled=page == 0):
+        if st.button(
+            "‹ Ant.",
+            key=f"{key}_prev",
+            disabled=page == 0,
+            use_container_width=True,
+            help="Página anterior",
+        ):
             st.session_state[key] = page - 1
             st.rerun()
     with col_info:
         first_row = page * page_size + 1
         last_row = min((page + 1) * page_size, total)
-        st.caption(f"Filas {first_row}–{last_row} de {total:,}  (página {page + 1}/{n_pages})")
+        st.markdown(
+            f'<div class="pagination-info">'
+            f'<span class="pagination-range">{first_row:,}–{last_row:,} de {total:,}</span>'
+            f'<span class="pagination-sep">·</span>'
+            f'<span class="pagination-page">Pág. {page + 1} / {n_pages}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
     with col_next:
-        if st.button("Siguiente →", key=f"{key}_next", disabled=page >= n_pages - 1):
+        if st.button(
+            "Sig. ›",
+            key=f"{key}_next",
+            disabled=page >= n_pages - 1,
+            use_container_width=True,
+            help="Página siguiente",
+        ):
             st.session_state[key] = page + 1
             st.rerun()
 
@@ -83,6 +102,16 @@ def data_table(
 
     Returns selection event dict when selection_mode is set, else None.
     """
+    if len(df) == 0:
+        from dashboard.components.states import empty_state
+
+        empty_state(
+            "inbox",
+            "Sin resultados",
+            "No hay datos con los filtros actuales.",
+        )
+        return None
+
     use_aggrid = _AGGRID and mode != "native" and (mode == "aggrid" or len(df) > _AUTO_THRESHOLD)
 
     if use_aggrid:

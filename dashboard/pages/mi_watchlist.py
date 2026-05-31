@@ -34,7 +34,8 @@ def _user_key() -> str:
     """
     from config import settings
 
-    seed = settings.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
+    seed_raw = settings.DASHBOARD_PASSWORD or os.environ.get("COMPUTERNAME", "default")
+    seed = seed_raw.get_secret_value() if hasattr(seed_raw, "get_secret_value") else str(seed_raw)
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
@@ -150,7 +151,7 @@ def render(ctx: PageContext) -> None:
         if "descripcion" in df.columns
         else pd.Series("", index=df.index)
     )
-    text_col = titulo_col + " " + desc_col  # type: ignore[operator]
+    text_col = titulo_col + " " + desc_col
     importe_col = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
     ccaa_col = df["ccaa"].astype(str).fillna("")
 

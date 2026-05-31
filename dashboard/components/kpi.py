@@ -152,7 +152,13 @@ def kpi_card(
         cls = "up" if delta_up else "down"
         arrow = "▲" if delta_up else "▼"
         safe_delta = _html.escape(str(delta))
-        delta_html = f'<div class="delta {cls}">{arrow} {safe_delta}</div>'
+        # role="img" + aria-label ensures screen readers don't rely on color alone
+        direction = "Incremento" if delta_up else "Decremento"
+        delta_html = (
+            f'<div class="delta {cls}" role="img" '
+            f'aria-label="{direction}: {safe_delta}">'
+            f"{arrow} {safe_delta}</div>"
+        )
 
     icon_html = f'<span class="icon" aria-hidden="true">{icon}</span>' if icon else ""
 

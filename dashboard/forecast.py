@@ -207,7 +207,9 @@ def forecast_volume(
         return pd.DataFrame()
 
     try:
-        from statsmodels.tsa.holtwinters import ExponentialSmoothing  # type: ignore[import]
+        from statsmodels.tsa.holtwinters import (
+            ExponentialSmoothing,  # type: ignore[import-not-found]
+        )
 
         n_hist = len(hist)
         use_seasonal = n_hist >= 24  # mínimo 2 ciclos completos

@@ -16,8 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt pyproject.toml ./
 RUN pip install --upgrade "pip>=26.1" \
-    && pip install --prefix=/install --no-cache-dir -r requirements.txt \
-    && pip install --prefix=/install --no-cache-dir --no-deps --force-reinstall "starlette>=1.0.1"
+    && pip install --prefix=/install --no-cache-dir -r requirements.txt
 
 
 # ── Etapa 2: imagen de producción — FastAPI / uvicorn ────────────────────────
@@ -58,7 +57,7 @@ RUN chmod +x docker-entrypoint-api.sh
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD curl --fail --silent --max-time 5 http://localhost:8080/health || exit 1
+    CMD curl --fail --silent --max-time 5 http://localhost:8080/api/v1/health || exit 1
 
 ENTRYPOINT ["docker-entrypoint-api.sh"]
 CMD ["--workers", "2"]

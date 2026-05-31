@@ -1,4 +1,4 @@
-"""Tests para scheduler/loop.py — funciones internas del scheduler."""
+"""Tests para scheduler/loop.py y scheduler/jobs/ — funciones internas del scheduler."""
 
 from __future__ import annotations
 
@@ -57,62 +57,154 @@ class TestRunJob:
             _run_job("test_job", fn)  # should not raise
         mock_notify.assert_called_once()
 
+    def test_heavy_flag_delegates_to_run_heavy_job(self):
+        from scheduler.loop import _run_job
 
-class TestRunDailyAtom:
-    def test_ok_result_runs_downstream(self):
-        from scheduler.loop import _run_daily_atom
-
+        fn = MagicMock()
         with (
-            patch("scheduler.loop.update_daily", return_value={"status": "ok"}),
-            patch("scheduler.loop.run_kpi_precompute") as mock_kpi,
-            patch("scheduler.loop.run_aggregates_precompute"),
-            patch("scheduler.loop.check_and_notify") as mock_notify,
-            patch("scheduler.loop.retry_failed_extractions"),
-            patch("scheduler.loop.run_anomaly_checks"),
+            patch("scheduler.loop._run_heavy_job", return_value=True) as mock_heavy,
+            patch("scheduler.loop.log"),
         ):
-            _run_daily_atom()
-        mock_kpi.assert_called_once()
-        mock_notify.assert_called_once()
-
-    def test_non_ok_status_raises(self):
-        import pytest
-
-        from scheduler.loop import _run_daily_atom
-
-        with (
-            patch("scheduler.loop.update_daily", return_value={"status": "error"}),
-            pytest.raises(RuntimeError),
-        ):
-            _run_daily_atom()
+            result = _run_job("test_heavy", fn, heavy=True)
+        mock_heavy.assert_called_once_with("test_heavy", fn)
+        assert result is True
 
 
-class TestRunRecentBulk:
-    def test_all_ok_runs_downstream(self):
-        from scheduler.loop import _run_recent_bulk
+class TestBackoff:
+    def test_no_failures_returns_base(self):
+        from scheduler.loop import _backoff_interval, _consecutive_failures
 
-        with (
-            patch(
-                "scheduler.loop.update_recent",
-                return_value=[{"status": "ok"}, {"status": "no_publicado"}],
-            ),
-            patch("scheduler.loop.run_kpi_precompute") as mock_kpi,
-            patch("scheduler.loop.run_aggregates_precompute"),
-            patch("scheduler.loop.check_and_notify") as mock_notify,
-        ):
-            _run_recent_bulk(2)
-        mock_kpi.assert_called_once()
-        mock_notify.assert_called_once()
+        _consecutive_failures.pop("test_job", None)
+        from datetime import timedelta
 
-    def test_failed_month_raises(self):
-        import pytest
+        base = timedelta(minutes=60)
+        assert _backoff_interval("test_job", base) == base
 
-        from scheduler.loop import _run_recent_bulk
+    def test_one_failure_doubles(self):
+        from datetime import timedelta
 
-        with (
-            patch("scheduler.loop.update_recent", return_value=[{"status": "error"}]),
-            pytest.raises(RuntimeError),
-        ):
-            _run_recent_bulk(1)
+        from scheduler.loop import _backoff_interval, _consecutive_failures
+
+        _consecutive_failures["test_backoff"] = 1
+        base = timedelta(minutes=60)
+        with patch("scheduler.loop.log"):
+            result = _backoff_interval("test_backoff", base)
+        assert result == timedelta(minutes=120)
+        _consecutive_failures.pop("test_backoff", None)
+
+    def test_max_backoff_capped(self):
+        from datetime import timedelta
+
+        from scheduler.loop import _backoff_interval, _consecutive_failures
+
+        _consecutive_failures["test_cap"] = 100
+        base = timedelta(minutes=60)
+        with patch("scheduler.loop.log"):
+            result = _backoff_interval("test_cap", base)
+        # MAX_BACKOFF_MULTIPLIER = 8
+        assert result == timedelta(minutes=480)
+        _consecutive_failures.pop("test_cap", None)
+
+
+class TestJobRegistry:
+    def test_build_default_registry_returns_all_jobs(self):
+        from scheduler.jobs import build_default_registry
+
+        registry = build_default_registry()
+        names = [j.name for j in registry]
+        assert "daily_atom" in names
+        assert "recent_bulk" in names
+        assert "retention_cleanup" in names
+        assert "faiss_rebuild" in names
+        assert "dlq_retry" in names
+        assert "digest_daily" in names
+        assert "anomaly_checks" in names
+        assert "drift_report" in names
+        assert "wal_checkpoint" in names
+        assert len(registry) == 9
+
+    def test_heavy_jobs_marked_correctly(self):
+        from scheduler.jobs import build_default_registry
+
+        registry = build_default_registry()
+        heavy_names = {j.name for j in registry if j.heavy}
+        assert heavy_names == {"daily_atom", "recent_bulk", "retention_cleanup", "faiss_rebuild"}
+
+    def test_all_jobs_have_callable_fn(self):
+        from scheduler.jobs import build_default_registry
+
+        for job in build_default_registry():
+            assert callable(job.fn), f"{job.name}.fn is not callable"
+
+    def test_all_jobs_have_unique_names(self):
+        from scheduler.jobs import build_default_registry
+
+        registry = build_default_registry()
+        names = [j.name for j in registry]
+        assert len(names) == len(set(names)), "Duplicate job names found"
+
+    def test_scheduled_job_dataclass(self):
+        from scheduler.jobs._base import ScheduledJob
+
+        job = ScheduledJob(
+            name="test",
+            fn=lambda: None,
+            interval_env="TEST_INTERVAL",
+            default_interval_minutes=60,
+            initial_offset_minutes=5,
+            heavy=True,
+        )
+        assert job.name == "test"
+        assert job.heavy is True
+        assert job.initial_offset_minutes == 5
+
+
+class TestResolveInterval:
+    def test_minutes_env_var(self):
+        from scheduler.jobs._base import ScheduledJob
+        from scheduler.loop import _resolve_interval
+
+        job = ScheduledJob(
+            name="test",
+            fn=lambda: None,
+            interval_env="TEST_INTERVAL_MINUTES",
+            default_interval_minutes=120,
+        )
+        with patch.dict(os.environ, {"TEST_INTERVAL_MINUTES": "30"}):
+            from datetime import timedelta
+
+            assert _resolve_interval(job) == timedelta(minutes=30)
+
+    def test_hours_env_var(self):
+        from scheduler.jobs._base import ScheduledJob
+        from scheduler.loop import _resolve_interval
+
+        job = ScheduledJob(
+            name="test",
+            fn=lambda: None,
+            interval_env="TEST_INTERVAL_HOURS",
+            default_interval_minutes=360,
+        )
+        with patch.dict(os.environ, {"TEST_INTERVAL_HOURS": "2"}):
+            from datetime import timedelta
+
+            assert _resolve_interval(job) == timedelta(hours=2)
+
+    def test_default_when_env_missing(self):
+        from scheduler.jobs._base import ScheduledJob
+        from scheduler.loop import _resolve_interval
+
+        job = ScheduledJob(
+            name="test",
+            fn=lambda: None,
+            interval_env="NONEXISTENT_ENV_VAR_MINUTES",
+            default_interval_minutes=90,
+        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("NONEXISTENT_ENV_VAR_MINUTES", None)
+            from datetime import timedelta
+
+            assert _resolve_interval(job) == timedelta(minutes=90)
 
 
 class TestMain:

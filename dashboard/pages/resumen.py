@@ -74,7 +74,7 @@ def _render_top_licitaciones(df: pd.DataFrame, adj_resumen: pd.DataFrame) -> Non
         meta = f"{meta_base} | {adj_line}" if adj_line else meta_base
 
         top_card(
-            amount=fmt_eur(row.importe),
+            amount=fmt_eur(float(row.importe)),  # type: ignore[arg-type]
             title=str(row.titulo),
             meta=meta,
             url=getattr(row, "url", None),
@@ -470,8 +470,8 @@ def _render_timeline(df: pd.DataFrame, ctx: PageContext) -> None:
         recientes_sorted = recientes.sort_values("fecha_publicacion", ascending=False)
         options = recientes_sorted["id_externo"].tolist()
         labels = [
-            f"{row.fecha_publicacion.strftime('%d/%m')} · "
-            f"{fmt_eur(row.importe)} · "
+            f"{pd.Timestamp(row.fecha_publicacion).strftime('%d/%m')} · "  # type: ignore[arg-type]
+            f"{fmt_eur(float(row.importe))} · "  # type: ignore[arg-type]
             f"{str(row.titulo)[:70]}"
             for row in recientes_sorted.itertuples(index=False)
         ]
@@ -498,7 +498,7 @@ def _render_licitacion_detalle(row: pd.Series) -> None:
             st.caption(f"**Estado:** {row.get('estado_desc', '—')}")
         with c2:
             fecha = row.get("fecha_publicacion")
-            fecha_str = pd.Timestamp(fecha).strftime("%d/%m/%Y") if pd.notna(fecha) else "—"  # type: ignore[arg-type]
+            fecha_str = pd.Timestamp(fecha).strftime("%d/%m/%Y") if pd.notna(fecha) else "—"
             st.metric("Fecha publicación", fecha_str)
             st.caption(f"**Tipo proyecto:** {row.get('tipo_proyecto', '—')}")
         with c3:

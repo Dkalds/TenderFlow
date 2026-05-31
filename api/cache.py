@@ -18,13 +18,13 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from shared.cache import get_cache
+from shared.cache import _MemoryBackend, _RedisBackend, get_cache
 
 # Namespace propio de la API para evitar colisiones en Redis
 _NAMESPACE = "api"
 
 
-def _backend():
+def _backend() -> _MemoryBackend | _RedisBackend:
     return get_cache(_NAMESPACE)
 
 

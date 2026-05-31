@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
@@ -128,7 +129,7 @@ def render(ctx: PageContext) -> None:
         )
 
 
-def _render_perfil_sap(df) -> None:
+def _render_perfil_sap(df: pd.DataFrame) -> None:
     """4 KPIs comerciales específicos de SAP: ticket medio, módulo YoY, multi-módulo, portfolio."""
     # 1. Importe medio de licitaciones con algún módulo SAP
     imp_mod_df = importe_medio_por_modulo(df)
@@ -169,7 +170,7 @@ def _render_perfil_sap(df) -> None:
         if top_yoy:
             pct_str = (
                 f"+{top_yoy['crecimiento_pct']:.0f}%"
-                if top_yoy["crecimiento_pct"] < 999
+                if float(top_yoy["crecimiento_pct"]) < 999
                 else "NUEVO"
             )
             st.markdown(

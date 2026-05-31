@@ -121,7 +121,7 @@ def _highlight(text: str, keywords: list[str]) -> str:
     return safe
 
 
-def _linkify_citations(text: str, docs: list[dict]) -> str:
+def _linkify_citations(text: str, docs: list[dict[str, Any]]) -> str:
     """Convierte [ID-EXP] en markdown con formato código (citas del LLM)."""
     id_set = {d["id_externo"] for d in docs}
 
@@ -146,7 +146,7 @@ def _faiss_hits_cached(
     embedding_model: str,
 ) -> list[tuple[str, float]]:
     """Cachea resultados FAISS por pregunta y modelo de embedding."""
-    from dashboard.faiss_index import FaissIndex  # type: ignore[import]
+    from dashboard.faiss_index import FaissIndex
 
     _ = embedding_model  # parte de la key de caché
     idx = FaissIndex.load()
@@ -182,7 +182,7 @@ def _hybrid_rerank(
     return _svc_rerank(faiss_hits, fts_hits, alpha=alpha, top_k=top_k)
 
 
-def _fetch_docs(ids: list[str], allowed_ids: set[str] | None) -> dict[str, dict]:
+def _fetch_docs(ids: list[str], allowed_ids: set[str] | None) -> dict[str, dict[str, Any]]:
     """Recupera metadatos — delegado al servicio."""
     return _svc_fetch_docs(ids, allowed_ids)
 
@@ -239,7 +239,9 @@ def _rag_query(
 # ── LLM ─────────────────────────────────────────────────────────────────────
 
 
-def _llm_stream(question: str, docs: list[dict], model: str, keywords: list[str]) -> Iterator[str]:
+def _llm_stream(
+    question: str, docs: list[dict[str, Any]], model: str, keywords: list[str]
+) -> Iterator[str]:
     """Genera tokens LLM en streaming delegando al proveedor correcto."""
     from llm.client import stream_llm_response
 
@@ -271,7 +273,7 @@ def render(ctx: PageContext) -> None:
         with cCfg2:
             from llm.client import AVAILABLE_MODELS as _LLM_MODELS
 
-            llm_model: str = st.selectbox(  # type: ignore[assignment]
+            llm_model: str = st.selectbox(
                 "Modelo LLM",
                 _LLM_MODELS,
                 key="inv_llm_model",

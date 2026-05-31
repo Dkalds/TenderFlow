@@ -1,12 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCurrency, formatNumber } from "@/lib/utils";
-import { FolderKanban, Hash, Boxes, Layers } from "lucide-react";
+import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
+import { Button } from "@/components/ui/button";
+import { ExportPopover } from "@/components/export-popover";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import {
+  FolderKanban,
+  Hash,
+  Boxes,
+  Layers,
+  DollarSign,
+  TrendingUp,
+  Percent,
+  ArrowUpDown,
+} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -19,6 +32,7 @@ import {
   Pie,
   Cell,
   Legend,
+  Treemap,
 } from "recharts";
 
 interface ModuloItem {
@@ -39,38 +53,83 @@ interface ProyectosModulosResponse {
   total_clasificados: number;
   total_modulos: number;
   total_tipos: number;
+  total?: number;
 }
 
-async function fetchProyectosModulos(): Promise<ProyectosModulosResponse> {
-  const res = await fetch("/api/v1/analytics/proyectos-modulos", {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch proyectos-modulos");
-  return res.json();
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function TreemapContent(props: any) {
+  const { x, y, width, height, name, value } = props;
+  if (width < 35 || height < 22) return null;
+  return (
+    <g>
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill={getSeriesColor(props.index)}
+        rx={3}
+        opacity={0.85}
+      />
+      <text x={x + 4} y={y + 14} fill="#fff" fontSize={10} fontWeight={600}>
+        {width > 70 ? (name?.slice(0, 20) ?? "") : (name?.slice(0, 8) ?? "")}
+      </text>
+      {height > 32 && (
+        <text x={x + 4} y={y + 26} fill="#ffffffcc" fontSize={9}>
+          {formatCurrency(value)}
+        </text>
+      )}
+    </g>
+  );
 }
 
-const PIE_COLORS = [
-  "hsl(221, 83%, 53%)",
-  "hsl(160, 60%, 45%)",
-  "hsl(38, 92%, 50%)",
-  "hsl(0, 72%, 51%)",
-  "hsl(262, 83%, 58%)",
-  "hsl(199, 89%, 48%)",
-  "hsl(43, 96%, 56%)",
-  "hsl(280, 65%, 60%)",
-  "hsl(330, 70%, 55%)",
-  "hsl(180, 55%, 45%)",
-];
+type ModSortKey = "modulo" | "count" | "importe" | "importe_medio";
 
 export default function ProyectosModulosPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["analytics", "proyectos-modulos"],
-    queryFn: fetchProyectosModulos,
-    staleTime: 5 * 60 * 1000,
-  });
+  const [modSortKey, setModSortKey] = useState<ModSortKey>("count");
+  const [modSortDir, setModSortDir] = useState<"asc" | "desc">("desc");
+
+  const { data, isLoading, error } =
+    useFilteredQuery<ProyectosModulosResponse>(
+      ["analytics", "proyectos-modulos"],
+      "/api/v1/analytics/proyectos-modulos",
+      { staleTime: 5 * 60 * 1000 },
+    );
 
   const modulos = data?.modulos ?? [];
   const tipos = data?.tipos_proyecto ?? [];
+
+  // SAP-specific KPIs
+  const ticketMedioSAP = useMemo(() => {
+    const totalImporte = modulos.reduce((s, m) => s + m.importe, 0);
+    const totalCount = modulos.reduce((s, m) => s + m.count, 0);
+    return totalCount > 0 ? totalImporte / totalCount : 0;
+  }, [modulos]);
+
+  const topModulo = useMemo(() => {
+    if (modulos.length === 0) return "-";
+    return [...modulos].sort((a, b) => b.count - a.count)[0].modulo;
+  }, [modulos]);
+
+  const pctMultiModulo = useMemo(() => {
+    const total = data?.total ?? modulos.reduce((s, m) => s + m.count, 0);
+    return total > 0 ? ((data?.total_clasificados ?? 0) / total) * 100 : 0;
+  }, [data, modulos]);
+
+  const ticketS4Hana = useMemo(() => {
+    const s4 = modulos.find(
+      (m) =>
+        m.modulo.toLowerCase().includes("s/4hana") ||
+        m.modulo.toLowerCase().includes("s4hana"),
+    );
+    return s4 && s4.count > 0 ? s4.importe / s4.count : null;
+  }, [modulos]);
+
+  const pctMatchPortfolio = useMemo(() => {
+    const total = data?.total ?? modulos.reduce((s, m) => s + m.count, 0);
+    return total > 0 ? ((data?.total_clasificados ?? 0) / total) * 100 : 0;
+  }, [data, modulos]);
 
   const modulosSorted = useMemo(
     () => [...modulos].sort((a, b) => b.count - a.count),
@@ -92,6 +151,61 @@ export default function ProyectosModulosPage() {
     ];
   }, [tipos]);
 
+  // Treemap data: modulos by importe
+  const modulosTreemap = useMemo(
+    () =>
+      modulos
+        .filter((m) => m.importe > 0)
+        .sort((a, b) => b.importe - a.importe)
+        .slice(0, 25)
+        .map((m) => ({ name: m.modulo, size: m.importe })),
+    [modulos],
+  );
+
+  const tiposTreemap = useMemo(
+    () =>
+      tipos
+        .filter((t) => t.importe > 0)
+        .sort((a, b) => b.importe - a.importe)
+        .slice(0, 20)
+        .map((t) => ({ name: t.tipo, size: t.importe })),
+    [tipos],
+  );
+
+  // Average importe per module table
+  const modulosWithAvg = useMemo(() => {
+    return modulos.map((m) => ({
+      ...m,
+      importe_medio: m.count > 0 ? m.importe / m.count : 0,
+    }));
+  }, [modulos]);
+
+  const sortedModulosAvg = useMemo(() => {
+    const sorted = [...modulosWithAvg];
+    sorted.sort((a, b) => {
+      const aVal = a[modSortKey];
+      const bVal = b[modSortKey];
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return modSortDir === "asc"
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      }
+      return modSortDir === "asc"
+        ? (aVal as number) - (bVal as number)
+        : (bVal as number) - (aVal as number);
+    });
+    return sorted;
+  }, [modulosWithAvg, modSortKey, modSortDir]);
+
+  function toggleModSort(key: ModSortKey) {
+    if (modSortKey === key) {
+      setModSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setModSortKey(key);
+      setModSortDir("desc");
+    }
+  }
+
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
@@ -102,30 +216,92 @@ export default function ProyectosModulosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Proyectos &amp; Modulos</h1>
-        <p className="text-muted-foreground">
-          Desglose por tipo de proyecto y modulo SAP.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Proyectos &amp; Modulos
+          </h1>
+          <p className="text-muted-foreground">
+            Desglose por tipo de proyecto y modulo SAP.
+          </p>
+        </div>
+        <ExportPopover
+          endpoint="/api/v1/exports/download"
+          extraParams={{ section: "proyectos-modulos" }}
+        />
       </div>
 
-      {/* KPI Row */}
+      {/* SAP-specific KPI Row */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <KpiCard
+          title="Ticket Medio SAP"
+          value={isLoading ? undefined : formatCurrency(ticketMedioSAP)}
+          icon={DollarSign}
+          loading={isLoading}
+        />
+        <KpiCard
+          title="Top Modulo"
+          value={isLoading ? undefined : topModulo}
+          subtitle="mayor cantidad"
+          icon={TrendingUp}
+          loading={isLoading}
+        />
+        <KpiCard
+          title="% Multi-modulo"
+          value={isLoading ? undefined : formatPercent(pctMultiModulo)}
+          subtitle="clasificados / total"
+          icon={Percent}
+          loading={isLoading}
+        />
+        <KpiCard
+          title="Ticket S/4HANA"
+          value={
+            isLoading
+              ? undefined
+              : ticketS4Hana !== null
+                ? formatCurrency(ticketS4Hana)
+                : "N/A"
+          }
+          icon={Boxes}
+          loading={isLoading}
+        />
+        <KpiCard
+          title="% Match Portfolio"
+          value={isLoading ? undefined : formatPercent(pctMatchPortfolio)}
+          icon={Layers}
+          loading={isLoading}
+        />
+      </div>
+
+      {/* Original KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
           title="Total Clasificados"
-          value={isLoading ? undefined : formatNumber(data?.total_clasificados ?? 0)}
+          value={
+            isLoading
+              ? undefined
+              : formatNumber(data?.total_clasificados ?? 0)
+          }
           icon={Hash}
           loading={isLoading}
         />
         <KpiCard
           title="Modulos Detectados"
-          value={isLoading ? undefined : formatNumber(data?.total_modulos ?? modulos.length)}
+          value={
+            isLoading
+              ? undefined
+              : formatNumber(data?.total_modulos ?? modulos.length)
+          }
           icon={Boxes}
           loading={isLoading}
         />
         <KpiCard
           title="Tipos de Proyecto"
-          value={isLoading ? undefined : formatNumber(data?.total_tipos ?? tipos.length)}
+          value={
+            isLoading
+              ? undefined
+              : formatNumber(data?.total_tipos ?? tipos.length)
+          }
           icon={Layers}
           loading={isLoading}
         />
@@ -144,9 +320,20 @@ export default function ProyectosModulosPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : modulosSorted.length > 0 ? (
-              <ResponsiveContainer width="100%" height={Math.max(300, modulosSorted.length * 30)}>
-                <BarChart data={modulosSorted} layout="vertical" margin={{ left: 80 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <ChartErrorBoundary>
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(300, modulosSorted.length * 30)}
+              >
+                <BarChart
+                  data={modulosSorted}
+                  layout="vertical"
+                  margin={{ left: 80 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    className="stroke-border"
+                  />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
                   <YAxis
                     dataKey="modulo"
@@ -155,13 +342,23 @@ export default function ProyectosModulosPage() {
                     tick={{ fontSize: 11 }}
                   />
                   <Tooltip
-                    formatter={(value) => [formatNumber(value as number), "Licitaciones"]}
+                    formatter={(value) => [
+                      formatNumber(value as number),
+                      "Licitaciones",
+                    ]}
                   />
-                  <Bar dataKey="count" fill="hsl(262, 83%, 58%)" radius={[0, 4, 4, 0]} />
+                  <Bar
+                    dataKey="count"
+                    fill={CHART_SERIES[1]}
+                    radius={[0, 4, 4, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos</p>
+              <p className="py-12 text-center text-muted-foreground">
+                Sin datos
+              </p>
             )}
           </CardContent>
         </Card>
@@ -175,6 +372,7 @@ export default function ProyectosModulosPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : tiposPie.length > 0 ? (
+              <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={400}>
                 <PieChart>
                   <Pie
@@ -184,30 +382,105 @@ export default function ProyectosModulosPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius={140}
-                    label={({ name, percent }: { name?: string; percent?: number }) =>
+                    label={({
+                      name,
+                      percent,
+                    }: {
+                      name?: string;
+                      percent?: number;
+                    }) =>
                       `${name ?? ""} (${((percent ?? 0) * 100).toFixed(1)}%)`
                     }
                     labelLine={{ strokeWidth: 1 }}
                   >
                     {tiposPie.map((_, idx) => (
-                      <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                      <Cell
+                        key={idx}
+                        fill={getSeriesColor(idx)}
+                      />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => formatNumber(value as number)} />
+                  <Tooltip
+                    formatter={(value) => formatNumber(value as number)}
+                  />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
+              </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos</p>
+              <p className="py-12 text-center text-muted-foreground">
+                Sin datos
+              </p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Modules Table */}
+      {/* Treemaps: Modulos + Tipos side by side */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Modulos por Importe (Treemap)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[350px] w-full" />
+            ) : modulosTreemap.length > 0 ? (
+              <ChartErrorBoundary>
+              <ResponsiveContainer width="100%" height={350}>
+                <Treemap
+                  data={modulosTreemap}
+                  dataKey="size"
+                  nameKey="name"
+                  content={<TreemapContent />}
+                />
+              </ResponsiveContainer>
+              </ChartErrorBoundary>
+            ) : (
+              <p className="py-12 text-center text-muted-foreground">
+                Sin datos
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Tipos Proyecto por Importe (Treemap)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[350px] w-full" />
+            ) : tiposTreemap.length > 0 ? (
+              <ChartErrorBoundary>
+              <ResponsiveContainer width="100%" height={350}>
+                <Treemap
+                  data={tiposTreemap}
+                  dataKey="size"
+                  nameKey="name"
+                  content={<TreemapContent />}
+                />
+              </ResponsiveContainer>
+              </ChartErrorBoundary>
+            ) : (
+              <p className="py-12 text-center text-muted-foreground">
+                Sin datos
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Average Importe per Module Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Modulos SAP</CardTitle>
+          <CardTitle className="text-base">
+            Importe Medio por Modulo SAP
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -221,22 +494,57 @@ export default function ProyectosModulosPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground">Modulo</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-right">Cantidad</th>
-                    <th className="pb-2 font-medium text-muted-foreground text-right">Importe</th>
+                    {(
+                      [
+                        ["modulo", "Modulo"],
+                        ["count", "Cantidad"],
+                        ["importe", "Importe Total"],
+                        ["importe_medio", "Importe Medio"],
+                      ] as [ModSortKey, string][]
+                    ).map(([key, label]) => (
+                      <th
+                        key={key}
+                        className={`pb-2 pr-4 font-medium text-muted-foreground ${key !== "modulo" ? "text-right" : ""}`}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto p-0 font-medium text-muted-foreground hover:text-foreground"
+                          onClick={() => toggleModSort(key)}
+                        >
+                          {label}
+                          <ArrowUpDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {modulosSorted.map((item, idx) => (
-                    <tr key={idx} className="border-b border-border/50 hover:bg-muted/50">
+                  {sortedModulosAvg.map((item, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-border/50 hover:bg-muted/50"
+                    >
                       <td className="py-2 pr-4 font-medium">{item.modulo}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">{formatNumber(item.count)}</td>
-                      <td className="py-2 text-right tabular-nums">{formatCurrency(item.importe)}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">
+                        {formatNumber(item.count)}
+                      </td>
+                      <td className="py-2 pr-4 text-right tabular-nums">
+                        {formatCurrency(item.importe)}
+                      </td>
+                      <td className="py-2 pr-4 text-right tabular-nums">
+                        {formatCurrency(item.importe_medio)}
+                      </td>
                     </tr>
                   ))}
-                  {modulosSorted.length === 0 && (
+                  {sortedModulosAvg.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="py-8 text-center text-muted-foreground">Sin datos</td>
+                      <td
+                        colSpan={4}
+                        className="py-8 text-center text-muted-foreground"
+                      >
+                        Sin datos
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -263,22 +571,42 @@ export default function ProyectosModulosPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground">Tipo</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-right">Cantidad</th>
-                    <th className="pb-2 font-medium text-muted-foreground text-right">Importe</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground">
+                      Tipo
+                    </th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-right">
+                      Cantidad
+                    </th>
+                    <th className="pb-2 font-medium text-muted-foreground text-right">
+                      Importe
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...tipos].sort((a, b) => b.count - a.count).map((item, idx) => (
-                    <tr key={idx} className="border-b border-border/50 hover:bg-muted/50">
-                      <td className="py-2 pr-4 font-medium">{item.tipo}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">{formatNumber(item.count)}</td>
-                      <td className="py-2 text-right tabular-nums">{formatCurrency(item.importe)}</td>
-                    </tr>
-                  ))}
+                  {[...tipos]
+                    .sort((a, b) => b.count - a.count)
+                    .map((item, idx) => (
+                      <tr
+                        key={idx}
+                        className="border-b border-border/50 hover:bg-muted/50"
+                      >
+                        <td className="py-2 pr-4 font-medium">{item.tipo}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums">
+                          {formatNumber(item.count)}
+                        </td>
+                        <td className="py-2 text-right tabular-nums">
+                          {formatCurrency(item.importe)}
+                        </td>
+                      </tr>
+                    ))}
                   {tipos.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="py-8 text-center text-muted-foreground">Sin datos</td>
+                      <td
+                        colSpan={3}
+                        className="py-8 text-center text-muted-foreground"
+                      >
+                        Sin datos
+                      </td>
                     </tr>
                   )}
                 </tbody>

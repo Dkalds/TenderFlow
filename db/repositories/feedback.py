@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -56,7 +56,7 @@ class FeedbackRepository:
         import json
 
         try:
-            return json.loads(row[0])
+            return cast(dict[str, Any], json.loads(row[0]))
         except Exception:
             return None
 

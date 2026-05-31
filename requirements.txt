@@ -1,15 +1,19 @@
 alembic==1.18.4
     # via -r requirements.in
-annotated-doc==0.0.4
-    # via fastapi
 altair==6.1.0
     # via streamlit
+annotated-doc==0.0.4
+    # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.13.0
     # via
     #   starlette
     #   streamlit
+argon2-cffi==23.1.0
+    # via -r requirements.in
+argon2-cffi-bindings==25.1.0
+    # via argon2-cffi
 attrs==26.1.0
     # via
     #   jsonschema
@@ -18,10 +22,20 @@ bcrypt==4.3.0
     # via -r requirements.in
 blinker==1.9.0
     # via streamlit
+brotli==1.2.0
+    # via brotli-asgi
+brotli-asgi==1.6.0
+    # via -r requirements.in
 cachetools==7.1.0
-    # via streamlit
+    # via
+    #   -r requirements.in
+    #   streamlit
 certifi==2026.4.22
     # via requests
+cffi==2.0.0
+    # via
+    #   argon2-cffi-bindings
+    #   cryptography
 charset-normalizer==3.4.7
     # via
     #   reportlab
@@ -78,12 +92,16 @@ narwhals==2.20.0
     # via
     #   altair
     #   plotly
+networkx==3.4.2
+    # via -r requirements.in
 numpy==2.4.4
     # via
     #   pandas
+    #   patsy
     #   pydeck
     #   scikit-learn
     #   scipy
+    #   statsmodels
     #   streamlit
 openpyxl==3.1.5
     # via -r requirements.in
@@ -91,12 +109,16 @@ packaging==26.2
     # via
     #   altair
     #   plotly
+    #   statsmodels
     #   streamlit
 pandas==2.3.3
     # via
     #   -r requirements.in
+    #   statsmodels
     #   streamlit
     #   streamlit-aggrid
+patsy==1.0.2
+    # via statsmodels
 pillow==12.2.0
     # via
     #   reportlab
@@ -105,16 +127,18 @@ plotly==6.7.0
     # via -r requirements.in
 prometheus-client==0.25.0
     # via -r requirements.in
-prometheus-fastapi-instrumentator==7.1.0
-    # via licitaciones-sap
 protobuf==7.34.1
     # via streamlit
 pyarrow==24.0.0
     # via streamlit
 pybreaker==1.4.1
     # via -r requirements.in
+pycparser==3.0
+    # via cffi
 pydantic==2.13.3
-    # via pydantic-settings
+    # via
+    #   fastapi
+    #   pydantic-settings
 pydantic-core==2.46.3
     # via pydantic
 pydantic-settings==2.14.0
@@ -152,15 +176,23 @@ rpds-py==0.30.0
 scikit-learn==1.8.0
     # via -r requirements.in
 scipy==1.17.1
-    # via scikit-learn
+    # via
+    #   scikit-learn
+    #   statsmodels
 six==1.17.0
     # via python-dateutil
 smmap==5.0.3
     # via gitdb
 sqlalchemy==2.0.49
     # via alembic
-starlette==0.52.1
-    # via streamlit
+starlette==1.2.0
+    # via
+    #   -r requirements.in
+    #   brotli-asgi
+    #   fastapi
+    #   streamlit
+statsmodels==0.14.6
+    # via -r requirements.in
 streamlit==1.57.0
     # via
     #   -r requirements.in
@@ -181,16 +213,15 @@ typing-extensions==4.15.0
     # via
     #   alembic
     #   altair
-    #   anyio
+    #   fastapi
     #   pydantic
     #   pydantic-core
-    #   referencing
     #   sqlalchemy
-    #   starlette
     #   streamlit
     #   typing-inspection
 typing-inspection==0.4.2
     # via
+    #   fastapi
     #   pydantic
     #   pydantic-settings
 tzdata==2026.2
@@ -203,5 +234,3 @@ watchdog==6.0.0
     # via streamlit
 websockets==16.0
     # via streamlit
-networkx==3.4.2
-    # via -r requirements.in

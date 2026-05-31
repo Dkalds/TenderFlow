@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Card,
@@ -14,61 +14,219 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Plus, Trash2, Search } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Eye,
+  Plus,
+  Trash2,
+  Search,
+  Star,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
+import { getJSON, setJSON } from "@/lib/storage";
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
 
 interface WatchlistRule {
   id: string;
   keyword: string;
   cpvFilter: string;
   minImporte: number | null;
+  ccaa: string;
+  frequency: "inmediata" | "diaria" | "semanal";
+  active: boolean;
   createdAt: string;
 }
 
-const STORAGE_KEY = "licitaciones-watchlist-rules";
+interface LicitacionItem {
+  id_externo?: string;
+  titulo?: string;
+  organo_contratacion?: string;
+  organo?: string;
+  importe?: number;
+  estado?: string;
+  fecha_publicacion?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
+}
+
+interface MatchedItem extends LicitacionItem {
+  _matchedRules: string[]; // rule ids
+}
+
+/* ------------------------------------------------------------------ */
+/*  Storage helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+const STORAGE_KEY = "watchlist_rules";
 
 function loadRules(): WatchlistRule[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  const parsed = getJSON<WatchlistRule[]>(STORAGE_KEY, []);
+  return parsed.map((r) => ({
+    ...r,
+    ccaa: r.ccaa ?? "",
+    frequency: r.frequency ?? "diaria",
+    active: r.active ?? true,
+  }));
 }
 
 function saveRules(rules: WatchlistRule[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
+  setJSON(STORAGE_KEY, rules);
 }
+
+/* ------------------------------------------------------------------ */
+/*  CCAA options (static fallback; ideally fetched from /api/v1/meta)  */
+/* ------------------------------------------------------------------ */
+
+const CCAA_OPTIONS = [
+  "__all__",
+  "Andalucia",
+  "Aragon",
+  "Asturias",
+  "Baleares",
+  "Canarias",
+  "Cantabria",
+  "Castilla y Leon",
+  "Castilla-La Mancha",
+  "Cataluna",
+  "Ceuta",
+  "Comunidad Valenciana",
+  "Extremadura",
+  "Galicia",
+  "La Rioja",
+  "Madrid",
+  "Melilla",
+  "Murcia",
+  "Navarra",
+  "Pais Vasco",
+];
+
+const FREQ_OPTIONS: { value: WatchlistRule["frequency"]; label: string }[] = [
+  { value: "inmediata", label: "Inmediata" },
+  { value: "diaria", label: "Diaria" },
+  { value: "semanal", label: "Semanal" },
+];
+
+/* ------------------------------------------------------------------ */
+/*  Page component                                                     */
+/* ------------------------------------------------------------------ */
 
 export default function MiWatchlistPage() {
   const [rules, setRules] = useState<WatchlistRule[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  // Form state
   const [keyword, setKeyword] = useState("");
   const [cpvFilter, setCpvFilter] = useState("");
   const [minImporte, setMinImporte] = useState("");
-  const [mounted, setMounted] = useState(false);
+  const [ccaa, setCcaa] = useState("");
+  const [frequency, setFrequency] =
+    useState<WatchlistRule["frequency"]>("diaria");
+  const [formOpen, setFormOpen] = useState(true);
 
   useEffect(() => {
     setRules(loadRules());
     setMounted(true);
   }, []);
 
-  const activeRule = rules[0];
-
-  const { data: results, isLoading: resultsLoading } = useQuery({
-    queryKey: ["watchlist-results", activeRule?.keyword],
+  // Try to fetch CCAA options from backend (best-effort)
+  const { data: metaCcaas } = useQuery<string[]>({
+    queryKey: ["meta-ccaas"],
     queryFn: async () => {
-      if (!activeRule?.keyword) return null;
-      const res = await fetch(
-        `/api/v1/licitaciones?q=${encodeURIComponent(activeRule.keyword)}`,
-        { credentials: "include" }
-      );
-      if (!res.ok) throw new Error("Error fetching results");
-      return res.json();
+      const res = await fetch("/api/v1/meta/filters", {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.ccaas ?? data.ccaa ?? []) as string[];
     },
-    enabled: !!activeRule?.keyword,
+    staleTime: Infinity,
   });
 
+  const ccaaList = metaCcaas && metaCcaas.length > 0 ? ["__all__", ...metaCcaas] : CCAA_OPTIONS;
+
+  /* ---- Active rules ---- */
+  const activeRules = useMemo(
+    () => rules.filter((r) => r.active),
+    [rules],
+  );
+
+  /* ---- Fetch matches for ALL active rules in parallel ---- */
+  const { data: allMatches, isLoading: matchesLoading } = useQuery<
+    MatchedItem[]
+  >({
+    queryKey: [
+      "watchlist-matches",
+      activeRules.map((r) => `${r.keyword}|${r.ccaa}`).join(","),
+    ],
+    queryFn: async () => {
+      if (activeRules.length === 0) return [];
+
+      const fetches = activeRules.map(async (rule) => {
+        const params = new URLSearchParams();
+        params.set("q", rule.keyword);
+        if (rule.ccaa) params.set("ccaa", rule.ccaa);
+        params.set("limit", "20");
+
+        const res = await fetch(
+          `/api/v1/licitaciones?${params.toString()}`,
+          { credentials: "include" },
+        );
+        if (!res.ok) return { rule, items: [] as LicitacionItem[] };
+        const data = await res.json();
+        const items: LicitacionItem[] = data.items ?? data.results ?? [];
+        return { rule, items };
+      });
+
+      const results = await Promise.all(fetches);
+
+      // Merge + deduplicate by id_externo, track which rules matched
+      const map = new Map<string, MatchedItem>();
+      for (const { rule, items } of results) {
+        for (const item of items) {
+          // Client-side min importe filter
+          if (
+            rule.minImporte != null &&
+            item.importe != null &&
+            item.importe < rule.minImporte
+          )
+            continue;
+
+          const key = item.id_externo ?? item.titulo ?? JSON.stringify(item);
+          const existing = map.get(key);
+          if (existing) {
+            if (!existing._matchedRules.includes(rule.id)) {
+              existing._matchedRules.push(rule.id);
+            }
+          } else {
+            map.set(key, { ...item, _matchedRules: [rule.id] });
+          }
+        }
+      }
+
+      return Array.from(map.values());
+    },
+    enabled: activeRules.length > 0,
+  });
+
+  /* ---- Match counts per rule ---- */
+  const matchCountByRule = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (allMatches) {
+      for (const m of allMatches) {
+        for (const rid of m._matchedRules) {
+          counts[rid] = (counts[rid] ?? 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [allMatches]);
+
+  /* ---- Rule CRUD ---- */
   const addRule = useCallback(() => {
     if (!keyword.trim()) return;
     const newRule: WatchlistRule = {
@@ -76,6 +234,9 @@ export default function MiWatchlistPage() {
       keyword: keyword.trim(),
       cpvFilter: cpvFilter.trim(),
       minImporte: minImporte ? parseFloat(minImporte) : null,
+      ccaa,
+      frequency,
+      active: true,
       createdAt: new Date().toISOString(),
     };
     const updated = [...rules, newRule];
@@ -84,7 +245,9 @@ export default function MiWatchlistPage() {
     setKeyword("");
     setCpvFilter("");
     setMinImporte("");
-  }, [keyword, cpvFilter, minImporte, rules]);
+    setCcaa("");
+    setFrequency("diaria");
+  }, [keyword, cpvFilter, minImporte, ccaa, frequency, rules]);
 
   const deleteRule = useCallback(
     (id: string) => {
@@ -92,29 +255,58 @@ export default function MiWatchlistPage() {
       setRules(updated);
       saveRules(updated);
     },
-    [rules]
+    [rules],
   );
 
-  const matchCount =
-    results && Array.isArray(results.items)
-      ? results.items.length
-      : results && typeof results.total === "number"
-        ? results.total
-        : null;
+  const toggleRule = useCallback(
+    (id: string) => {
+      const updated = rules.map((r) =>
+        r.id === id ? { ...r, active: !r.active } : r,
+      );
+      setRules(updated);
+      saveRules(updated);
+    },
+    [rules],
+  );
+
+  const ruleNameById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const r of rules) m[r.id] = r.keyword;
+    return m;
+  }, [rules]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Render                                                           */
+  /* ---------------------------------------------------------------- */
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Mi Watchlist</h1>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <Star className="h-7 w-7" />
+          Mi Watchlist
+        </h1>
         <p className="text-muted-foreground">
           Reglas personalizadas de seguimiento de licitaciones.
         </p>
       </div>
 
-      {/* Add rule form */}
+      {/* ---- Add rule form ---- */}
       <Card>
-        <CardHeader>
+        <CardHeader
+          className="cursor-pointer select-none"
+          onClick={() => setFormOpen((o) => !o)}
+          tabIndex={0}
+          role="button"
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFormOpen((o) => !o); } }}
+        >
           <CardTitle className="flex items-center gap-2">
+            {formOpen ? (
+              <ChevronDown className="h-5 w-5" />
+            ) : (
+              <ChevronRight className="h-5 w-5" />
+            )}
             <Plus className="h-5 w-5" />
             Nueva regla de seguimiento
           </CardTitle>
@@ -122,51 +314,97 @@ export default function MiWatchlistPage() {
             Define criterios para recibir alertas sobre licitaciones relevantes.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Palabra clave *</label>
-              <Input
-                placeholder="Ej: SAP, infraestructura..."
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addRule()}
-              />
+        {formOpen && (
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Keyword */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Palabra clave *</label>
+                <Input
+                  placeholder="Ej: SAP, infraestructura..."
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addRule()}
+                />
+              </div>
+              {/* CPV */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Filtro CPV</label>
+                <Input
+                  placeholder="Ej: 72000000"
+                  value={cpvFilter}
+                  onChange={(e) => setCpvFilter(e.target.value)}
+                />
+              </div>
+              {/* Min importe */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Importe minimo</label>
+                <Input
+                  type="number"
+                  placeholder="Ej: 100000"
+                  value={minImporte}
+                  onChange={(e) => setMinImporte(e.target.value)}
+                />
+              </div>
+              {/* CCAA */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">
+                  Comunidad Autonoma
+                </label>
+                <Select value={ccaa || "__all__"} onValueChange={(v) => setCcaa(v === "__all__" ? "" : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="— Todas —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ccaaList.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c === "__all__" ? "— Todas —" : c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Frequency */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">
+                  Frecuencia de notificacion
+                </label>
+                <Select value={frequency} onValueChange={(v) => setFrequency(v as WatchlistRule["frequency"])}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FREQ_OPTIONS.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Submit */}
+              <div className="flex items-end">
+                <Button
+                  onClick={addRule}
+                  disabled={!keyword.trim()}
+                  className="w-full"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Agregar regla
+                </Button>
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Filtro CPV</label>
-              <Input
-                placeholder="Ej: 72000000"
-                value={cpvFilter}
-                onChange={(e) => setCpvFilter(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Importe minimo</label>
-              <Input
-                type="number"
-                placeholder="Ej: 100000"
-                value={minImporte}
-                onChange={(e) => setMinImporte(e.target.value)}
-              />
-            </div>
-            <div className="flex items-end">
-              <Button onClick={addRule} disabled={!keyword.trim()} className="w-full">
-                <Plus className="mr-2 h-4 w-4" />
-                Agregar regla
-              </Button>
-            </div>
-          </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       <Separator />
 
-      {/* Rules list */}
+      {/* ---- Rules list ---- */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
           <Eye className="h-5 w-5" />
-          Reglas activas
+          Reglas ({rules.length})
         </h2>
 
         {!mounted ? (
@@ -195,38 +433,86 @@ export default function MiWatchlistPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {rules.map((rule) => (
-              <Card key={rule.id}>
+              <Card
+                key={rule.id}
+                className={cn(!rule.active && "opacity-50")}
+              >
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
-                  <div>
-                    <CardTitle className="text-base">{rule.keyword}</CardTitle>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base truncate">
+                        {rule.keyword}
+                      </CardTitle>
+                      {matchCountByRule[rule.id] != null && (
+                        <Badge variant="default" className="shrink-0">
+                          {matchCountByRule[rule.id]}
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Creada: {formatDate(rule.createdAt)}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive"
-                    onClick={() => deleteRule(rule.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      title={rule.active ? "Desactivar" : "Activar"}
+                      onClick={() => toggleRule(rule.id)}
+                    >
+                      <Eye
+                        className={cn(
+                          "h-4 w-4",
+                          rule.active
+                            ? "text-primary"
+                            : "text-muted-foreground",
+                        )}
+                      />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-destructive"
+                      onClick={() => deleteRule(rule.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {rule.cpvFilter && (
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">CPV:</span>
+                      <span className="text-sm text-muted-foreground">
+                        CPV:
+                      </span>
                       <Badge variant="outline">{rule.cpvFilter}</Badge>
                     </div>
                   )}
                   {rule.minImporte != null && (
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">Min importe:</span>
+                      <span className="text-sm text-muted-foreground">
+                        Min:
+                      </span>
                       <Badge variant="secondary">
                         {formatCurrency(rule.minImporte)}
                       </Badge>
                     </div>
                   )}
+                  {rule.ccaa && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        CCAA:
+                      </span>
+                      <Badge variant="outline">{rule.ccaa}</Badge>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                      Frecuencia:
+                    </span>
+                    <span className="text-sm capitalize">{rule.frequency}</span>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -234,37 +520,94 @@ export default function MiWatchlistPage() {
         )}
       </div>
 
-      {/* Results for first active rule */}
-      {activeRule && (
+      {/* ---- Match results section ---- */}
+      {activeRules.length > 0 && (
         <>
           <Separator />
           <div>
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <Search className="h-5 w-5" />
-              Resultados para &quot;{activeRule.keyword}&quot;
+              Resultados combinados
+              {allMatches && (
+                <Badge variant="secondary">{allMatches.length}</Badge>
+              )}
             </h2>
-            {resultsLoading ? (
-              <Card>
-                <CardContent className="pt-6">
-                  <Skeleton className="h-6 w-48 mb-2" />
-                  <Skeleton className="h-4 w-32" />
-                </CardContent>
-              </Card>
-            ) : matchCount != null ? (
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-2xl font-bold">{matchCount}</p>
-                  <p className="text-sm text-muted-foreground">
-                    licitaciones encontradas que coinciden con tu regla
-                  </p>
-                </CardContent>
-              </Card>
+
+            {matchesLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i}>
+                    <CardContent className="pt-6 space-y-2">
+                      <Skeleton className="h-5 w-3/4" />
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-4 w-1/3" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : allMatches && allMatches.length > 0 ? (
+              <div className="space-y-2">
+                {allMatches.map((item, i) => {
+                  const organo =
+                    item.organo_contratacion ?? item.organo ?? "";
+                  const id = item.id_externo ?? String(i);
+                  return (
+                    <Card key={id} className="hover:bg-accent/30 transition-colors">
+                      <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                        {/* Title + organo */}
+                        <div className="flex-1 min-w-0">
+                          <a
+                            href={`/detalle?lic=${item.id_externo ?? ""}`}
+                            className="text-sm font-medium hover:underline line-clamp-1"
+                          >
+                            {truncate(item.titulo ?? "Sin titulo", 100)}
+                          </a>
+                          {organo && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {organo}
+                            </p>
+                          )}
+                        </div>
+                        {/* Importe */}
+                        {item.importe != null && (
+                          <Badge variant="secondary" className="shrink-0">
+                            {formatCurrency(item.importe)}
+                          </Badge>
+                        )}
+                        {/* Estado */}
+                        {item.estado && (
+                          <Badge variant="outline" className="shrink-0">
+                            {item.estado}
+                          </Badge>
+                        )}
+                        {/* Fecha */}
+                        {item.fecha_publicacion && (
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {formatDate(item.fecha_publicacion)}
+                          </span>
+                        )}
+                        {/* Matched rules */}
+                        <div className="flex gap-1 shrink-0">
+                          {item._matchedRules.map((rid) => (
+                            <Badge
+                              key={rid}
+                              variant="default"
+                              className="text-xs px-1.5"
+                            >
+                              {ruleNameById[rid] ?? "?"}
+                            </Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             ) : (
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-sm text-muted-foreground">
-                    No se pudieron cargar los resultados.
-                  </p>
+              <Card className="border-dashed">
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  No se encontraron licitaciones que coincidan con tus reglas
+                  activas.
                 </CardContent>
               </Card>
             )}

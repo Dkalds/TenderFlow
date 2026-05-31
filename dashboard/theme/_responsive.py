@@ -193,5 +193,16 @@ def build_responsive_css(t: Tokens) -> str:
       transition-duration: 0.001s !important;
     }}
     .topbar-meta .pulse-dot {{ animation: none !important; }}
+    /* Decorative backgrounds — remove, not just slow them */
+    .block-container::before,
+    .block-container::after {{ display: none !important; }}
+    /* Named animations that don't get caught by the wildcard */
+    [data-testid="stToast"] {{ animation: none !important; transition: none !important; }}
+    .kpi-card, .top-card {{ transition: none !important; }}
+    [data-testid="stExpander"] details[open] > div {{ animation: none !important; }}
+    /* Chart entrance animations */
+    [data-testid="stPlotlyChart"] {{ animation: none !important; }}
+    /* Filter chips hover transform */
+    .filter-chip {{ transition: none !important; transform: none !important; }}
   }}
 """

@@ -9,17 +9,82 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { KpiCard } from "@/components/charts/kpi-card";
-import { Activity, CheckCircle, XCircle, ExternalLink, Server } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import {
+  Activity,
+  CheckCircle,
+  XCircle,
+  ExternalLink,
+  Server,
+  AlertTriangle,
+  RefreshCw,
+  Database,
+} from "lucide-react";
+import { formatDate, formatNumber } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+
+interface HealthCheck {
+  status?: string;
+  detail?: string;
+  [key: string]: unknown;
+}
 
 interface HealthResponse {
   status?: string;
   version?: string;
   uptime?: number;
+  checks?: Record<string, HealthCheck | string>;
   [key: string]: unknown;
+}
+
+interface QualityData {
+  dlq_count?: number;
+  [key: string]: unknown;
+}
+
+const GRAFANA_URL = "http://localhost:3001";
+
+function StatusDot({ status }: { status: "ok" | "warn" | "error" }) {
+  const label = status === "ok" ? "Saludable" : status === "warn" ? "Verificando" : "Error";
+  return (
+    <span
+      className={cn(
+        "inline-block h-3 w-3 rounded-full",
+        status === "ok" && "bg-green-500",
+        status === "warn" && "bg-yellow-500",
+        status === "error" && "bg-red-500",
+      )}
+      aria-label={`Estado: ${label}`}
+      title={label}
+    />
+  );
+}
+
+function deriveComponentStatus(value: unknown): "ok" | "error" {
+  if (typeof value === "string") {
+    const lower = value.toLowerCase();
+    return lower === "ok" || lower === "connected" || lower === "healthy"
+      ? "ok"
+      : "error";
+  }
+  if (typeof value === "object" && value !== null) {
+    const obj = value as Record<string, unknown>;
+    const s = String(obj.status ?? "").toLowerCase();
+    return s === "ok" || s === "connected" || s === "healthy" ? "ok" : "error";
+  }
+  return "error";
+}
+
+function deriveComponentDetail(key: string, value: unknown): string {
+  if (typeof value === "string") return `${key}: ${value}`;
+  if (typeof value === "object" && value !== null) {
+    const obj = value as Record<string, unknown>;
+    return obj.detail ? String(obj.detail) : `${key}: ${obj.status ?? "unknown"}`;
+  }
+  return `${key}: ${String(value)}`;
 }
 
 export default function ObservabilidadPage() {
@@ -32,7 +97,18 @@ export default function ObservabilidadPage() {
     queryKey: ["health"],
     queryFn: async () => {
       const res = await fetch("/api/v1/health", { credentials: "include" });
+      if (res.status === 401) throw new Error("Sesion expirada");
       if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 30_000,
+  });
+
+  const { data: quality } = useQuery<QualityData>({
+    queryKey: ["analytics-quality-obs"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/analytics/quality", { credentials: "include" });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
       return res.json();
     },
     refetchInterval: 30_000,
@@ -40,6 +116,40 @@ export default function ObservabilidadPage() {
 
   const isOnline = !!health && !isError;
   const lastCheck = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
+  const overallStatus: "ok" | "warn" | "error" = isLoading
+    ? "warn"
+    : isOnline
+      ? "ok"
+      : "error";
+
+  // Extract component checks from health response
+  const componentKeys = ["db", "redis", "disk", "checks"];
+  const checks: Record<string, unknown> = {};
+  if (health) {
+    // If health.checks exists, use it; otherwise look for top-level keys
+    if (health.checks && typeof health.checks === "object") {
+      Object.assign(checks, health.checks);
+    } else {
+      for (const k of Object.keys(health)) {
+        if (
+          !["status", "version", "uptime"].includes(k) &&
+          typeof health[k] === "object" &&
+          health[k] !== null
+        ) {
+          checks[k] = health[k];
+        }
+        if (["db", "redis", "disk"].includes(k) && typeof health[k] === "string") {
+          checks[k] = health[k];
+        }
+      }
+    }
+  }
+
+  const dlqCount = quality?.dlq_count ?? 0;
+
+  const handleRetryDlq = () => {
+    alert("Funcionalidad en desarrollo: Reintentar DLQ");
+  };
 
   return (
     <div className="space-y-6">
@@ -50,14 +160,26 @@ export default function ObservabilidadPage() {
         </p>
       </div>
 
-      {/* KPI row */}
+      {/* Run KPIs */}
       <div className="grid gap-4 md:grid-cols-3">
         <KpiCard
           title="Estado API"
-          value={isLoading ? undefined : isOnline ? "Online" : "Offline"}
-          subtitle={isOnline ? "Todos los servicios operativos" : "Error de conexion"}
+          value={
+            isLoading ? undefined : isOnline ? "Online" : "Offline"
+          }
+          subtitle={
+            isOnline
+              ? "Todos los servicios operativos"
+              : isError
+                ? "Error de conexion"
+                : undefined
+          }
           icon={Activity}
           loading={isLoading}
+          className={cn(
+            !isLoading && isOnline && "border-green-200 dark:border-green-800",
+            !isLoading && !isOnline && "border-red-200 dark:border-red-800",
+          )}
         />
         <KpiCard
           title="Ultimo health check"
@@ -74,9 +196,61 @@ export default function ObservabilidadPage() {
         />
       </div>
 
+      {/* Status indicator row */}
+      {!isLoading && (
+        <div className="flex items-center gap-3 text-sm">
+          <StatusDot status={overallStatus} />
+          <span className="font-medium">
+            {overallStatus === "ok"
+              ? "Sistema operativo"
+              : overallStatus === "warn"
+                ? "Verificando..."
+                : "Sistema con errores"}
+          </span>
+          {lastCheck && (
+            <span className="text-muted-foreground">
+              — Verificado {lastCheck.toLocaleTimeString("es-ES")}
+            </span>
+          )}
+        </div>
+      )}
+
       <Separator />
 
-      {/* System status */}
+      {/* Component health grid */}
+      {Object.keys(checks).length > 0 && (
+        <>
+          <h2 className="text-xl font-semibold">Componentes</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(checks).map(([key, value]) => {
+              const compStatus = deriveComponentStatus(value);
+              const detail = deriveComponentDetail(key, value);
+              return (
+                <Card key={key}>
+                  <CardContent className="pt-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium capitalize">{key}</span>
+                      <Badge
+                        variant={compStatus === "ok" ? "default" : "destructive"}
+                        className={cn(
+                          compStatus === "ok" &&
+                            "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+                        )}
+                      >
+                        {compStatus === "ok" ? "OK" : "Error"}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{detail}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+          <Separator />
+        </>
+      )}
+
+      {/* System status raw */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -103,15 +277,24 @@ export default function ObservabilidadPage() {
           ) : isError ? (
             <div className="flex items-center gap-2 text-destructive">
               <XCircle className="h-4 w-4" />
-              <span>No se pudo conectar con la API. Verifica que el backend este activo.</span>
+              <span>
+                No se pudo conectar con la API. Verifica que el backend este activo.
+              </span>
             </div>
           ) : (
             <div className="space-y-2">
               {Object.entries(health ?? {}).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between py-1">
-                  <span className="text-sm font-medium text-muted-foreground">{key}</span>
+                <div
+                  key={key}
+                  className="flex items-center justify-between py-1"
+                >
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {key}
+                  </span>
                   <Badge variant="outline">
-                    {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                    {typeof value === "object"
+                      ? JSON.stringify(value)
+                      : String(value)}
                   </Badge>
                 </div>
               ))}
@@ -120,7 +303,48 @@ export default function ObservabilidadPage() {
         </CardContent>
       </Card>
 
-      {/* Grafana placeholder */}
+      {/* DLQ Section */}
+      <Card
+        className={cn(
+          dlqCount > 0 &&
+            "border-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20",
+        )}
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <AlertTriangle
+              className={cn(
+                "h-4 w-4",
+                dlqCount > 0 ? "text-yellow-600" : "text-muted-foreground",
+              )}
+            />
+            Dead Letter Queue (DLQ)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between">
+          <div>
+            <p className="text-2xl font-bold">{formatNumber(dlqCount)}</p>
+            <p className="text-sm text-muted-foreground">
+              registros en cola de errores
+            </p>
+            {dlqCount > 0 && (
+              <Badge variant="destructive" className="mt-2">
+                Requiere atencion
+              </Badge>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleRetryDlq}
+            disabled={dlqCount === 0}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Reintentar DLQ
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Grafana link */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -128,24 +352,20 @@ export default function ObservabilidadPage() {
             Metricas Prometheus / Grafana
           </CardTitle>
           <CardDescription>
-            Metricas detalladas disponibles en Grafana (puerto 3001)
+            Metricas detalladas disponibles en Grafana
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border-2 border-dashed p-8 text-center">
-            <p className="text-muted-foreground mb-4">
-              Panel de Grafana embebido (requiere configuracion de red)
-            </p>
+          <Button asChild>
             <a
-              href="http://localhost:3001"
+              href={GRAFANA_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-primary underline hover:no-underline"
             >
-              <ExternalLink className="h-4 w-4" />
-              Abrir Grafana en nueva pestana
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Abrir Grafana
             </a>
-          </div>
+          </Button>
         </CardContent>
       </Card>
     </div>

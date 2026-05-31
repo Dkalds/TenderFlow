@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
 from services.licitaciones import load_stats_dataframe
@@ -18,6 +18,13 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
+class ColumnCompleteness(BaseModel):
+    """Completeness for a single column."""
+
+    columna: str
+    pct: float
+
+
 class QualityResult(BaseModel):
     """Data quality metrics."""
 
@@ -28,6 +35,9 @@ class QualityResult(BaseModel):
     pct_titulo: float = 0.0
     last_scrape_hours_ago: float | None = None
     dlq_count: int = 0
+    completitud_columnas: list[ColumnCompleteness] = Field(default_factory=list)
+    cobertura_nif: float = 0.0
+    cobertura_modulo_sap: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +113,25 @@ def get_quality() -> QualityResult:
         pct_titulo=_pct_filled(df, "titulo"),
         last_scrape_hours_ago=_last_scrape_hours(),
         dlq_count=_dlq_count(),
+        completitud_columnas=[
+            ColumnCompleteness(columna=col, pct=_pct_filled(df, col))
+            for col in [
+                "id_externo",
+                "titulo",
+                "organo_contratacion",
+                "importe",
+                "estado",
+                "fecha_publicacion",
+                "ccaa",
+                "cpv",
+                "url",
+                "tecnologia",
+                "tipo_contrato",
+                "provincia",
+            ]
+        ],
+        cobertura_nif=_pct_filled(df, "nif") if "nif" in df.columns else 0.0,
+        cobertura_modulo_sap=_pct_filled(df, "modulo_sap") if "modulo_sap" in df.columns else 0.0,
     )
     log.info("analytics_quality_done", total=result.total_records)
     return result

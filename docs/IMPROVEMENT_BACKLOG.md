@@ -13,25 +13,11 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-### Strict typing en `dashboard/`
-- **Área:** `dashboard/`
-- **Problema:** ~30+ módulos del dashboard tienen `disallow_untyped_defs = false` en `pyproject.toml`. Solo `dashboard.bootstrap` es strict.
-- **Progreso (2026-05-23):** `dashboard.cache` y `dashboard.data_loader` cerrados (Bloque 10a). `dashboard.router` y `dashboard.filters.*` confirmados tipados (Bloque 10b). Quedan ~27 módulos.
-- **Acceptance criteria:**
-  - Añadir type hints a todas las funciones públicas de al menos `dashboard/data_loader.py`, `dashboard/cache.py`, `dashboard/router.py`.
-  - Eliminar el override correspondiente en `pyproject.toml` por cada módulo migrado.
-  - `make typecheck` verde.
-- **Files de partida:** [pyproject.toml](../pyproject.toml) (sección mypy overrides).
-- **Riesgo:** medio — typing puede revelar bugs latentes; hacer módulo por módulo.
+### ~~Strict typing en `dashboard/`~~ — CERRADO
+- **Estado:** Resuelto (2026-05-29). Todos los módulos de producción (375 archivos) pasan `mypy --strict` sin errores. Ver sección Cerrados.
 
-### `py.typed` marker para consumo externo del paquete
-- **Área:** `shared/`, root del paquete
-- **Problema:** El proyecto no expone `py.typed`, así que consumidores externos (si alguno importa `shared/` o `services/` como library) no obtienen tipos.
-- **Acceptance criteria:**
-  - Añadir archivo vacío `shared/py.typed`.
-  - Verificar que `pyproject.toml` lo incluye en el package data.
-- **Files de partida:** [pyproject.toml](../pyproject.toml).
-- **Riesgo:** bajo.
+### ~~`py.typed` marker para consumo externo del paquete~~ — CERRADO
+- **Estado:** Resuelto (2026-05-29). `shared/py.typed` creado. Ver sección Cerrados.
 
 ---
 
@@ -139,6 +125,13 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-24] **P9: Prometheus metrics para scheduler, DB pool, FAISS** — `scheduler_job_total`, `scheduler_job_duration_seconds`, `db_pool_acquire_timeout_total`, `faiss_rebuild_total`, `faiss_rebuild_duration_seconds` en `observability/runtime_metrics.py`; instrumentados en `scheduler/loop.py`, `db/connection.py`, `dashboard/faiss_index.py`.
 - [2026-05-24] **P10: Tests flakiness eliminado** — `tests/test_faiss_index.py` migrado de pickle a `.npz`; patch target corregido de `faiss_index.encode_texts` → `dashboard.embeddings.encode_texts`; `time.sleep` aumentado de 10ms→50ms en `test_shared_cache.py`.
 - [2026-05-24] **P11: uv.lock generado + Makefile targets** — `uv.lock` generado (135 paquetes); targets `lock-uv` y `install-uv` añadidos al Makefile.
+- [2026-05-29] **Fase 0: Docker + starlette** — Healthcheck path corregido en `Dockerfile.api:61` → `/api/v1/health`; `.venv/` en `.dockerignore`; `starlette>=1.0.1,<2` pinned; `--force-reinstall` eliminado.
+- [2026-05-29] **Fase 1: Deps** — `cachetools>=5.3.0,<8` y `brotli-asgi>=1.4.0,<2` añadidos; `libsql` rango estrechado a `<0.3`; `duckdb` re-añadido a `ignore_missing_imports` (no tiene stubs).
+- [2026-05-29] **Fase 2: Security** — CORS fail-closed (wildcard solo non-prod/staging); `/metrics` auth endurecido (API key obligatoria en prod/staging); HMAC truncation documentada.
+- [2026-05-29] **Fase 3: Observability** — `configure_sentry` wired en `api/app.py` y `scheduler/loop.py`; `OTEL_SAMPLE_RATIO` default `0.01` → `0.1`; metrics imports top-level en loop.
+- [2026-05-29] **Fase 4: Scheduler refactor** — Job registry pattern (`scheduler/jobs/` package); persistent `ProcessPoolExecutor`; `shutdown(cancel_futures=True)` reemplaza `executor._processes` hack; 20 tests en `test_loop.py`.
+- [2026-05-29] **Fase 5.1: Batch upsert** — `replace_adjudicaciones_batch()` en `db/upsert.py` (una transacción para N licitaciones); pipeline bulk y daily actualizados.
+- [2026-05-29] **Fase 6: Full strict typing** — Eliminados 3 bloques de override mypy (52 módulos promovidos a strict); 149 errores corregidos en 40 archivos (unused-ignore, type-arg, no-any-return, pandas narrowing, arg-type, misc); `shared/py.typed` creado. 375 archivos pasan `mypy --strict`.
 
 ---
 

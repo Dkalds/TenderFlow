@@ -1,6 +1,9 @@
 import { TopNav } from "@/components/layout/top-nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
+import { KpiBarConnected } from "@/components/layout/kpi-bar";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
 
 /**
  * Dashboard layout — wraps all authenticated pages with the premium shell:
@@ -16,21 +19,20 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Fixed top nav */}
-      <TopNav />
+    <div className="flex min-h-screen bg-background text-foreground">
+      <Sidebar />
 
-      <div className="flex flex-1 pt-14">
-        {/* Left sidebar */}
-        <Sidebar />
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <TopNav />
+        <KpiBarConnected />
+        <GlobalFilterBar />
 
-        {/* Main content */}
-        <main className="flex-1 overflow-auto">
-          <div className="container mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <DashboardShell>
+          <div className="mx-auto w-full max-w-[1640px] px-4 py-5 sm:px-6 lg:px-8">
             <Breadcrumb />
             <div className="mt-4">{children}</div>
           </div>
-        </main>
+        </DashboardShell>
       </div>
     </div>
   );

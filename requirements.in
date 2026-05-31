@@ -7,7 +7,7 @@ plotly>=5.18.0,<7
 python-dateutil>=2.8.2,<3
 tenacity>=8.2.0,<10
 openpyxl>=3.1.0,<4
-libsql>=0.1.0,<1
+libsql>=0.1.0,<0.3
 python-dotenv>=1.0.0,<2
 pydantic-settings>=2.0.0,<3
 streamlit-aggrid>=0.3.3,<1
@@ -36,7 +36,14 @@ argon2-cffi>=23.1.0,<25
 alembic>=1.13.0,<2
 # API REST
 fastapi>=0.110.0,<1
+# Starlette pinned explicitly — fastapi 0.136 ships with 0.52.x but >=1.0.1
+# is needed for bugfixes; without this pin the Dockerfile had a force-reinstall hack.
+starlette>=1.0.1,<2
 # Forecasting — suavizado exponencial (ExponentialSmoothing) para tendencias
 statsmodels>=0.14.0,<1
 # Análisis de redes de proveedores (partners.py)
 networkx>=3.0,<4
+# TTL cache para nonce store OAuth anti-replay (shared/auth_core.py)
+cachetools>=5.3.0,<8
+# Compresión Brotli para respuestas API (~20% mejor que GZip)
+brotli-asgi>=1.4.0,<2

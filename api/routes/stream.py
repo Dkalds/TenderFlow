@@ -42,8 +42,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db
+from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -151,7 +151,7 @@ async def _event_generator(
 )
 async def licitaciones_stream(
     request: Request,
-    ctx: AuthContext = Depends(require_api_key),
+    ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
     """Endpoint SSE para notificaciones push de nuevas licitaciones."""
     # Soporte para reconexión: Last-Event-ID contiene el timestamp del último evento
@@ -176,7 +176,7 @@ async def licitaciones_stream(
 
     log.info(
         "stream.connected",
-        user=getattr(ctx, "user_id", None),
+        user=ctx.get("user_id"),
         last_event_ts=last_event_ts,
     )
 

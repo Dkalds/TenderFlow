@@ -47,8 +47,8 @@ def render(ctx: PageContext) -> None:
                 st.markdown(
                     kpi_card(
                         "CCAA más activa",
-                        activa["ccaa"][:20],
-                        delta=f"{activa['n']:,} licitaciones · {fmt_eur(activa['importe'])}",
+                        str(activa["ccaa"])[:20],
+                        delta=f"{activa['n']:,} licitaciones · {fmt_eur(float(activa['importe']))}",
                         icon="🗺️",
                     ),
                     unsafe_allow_html=True,

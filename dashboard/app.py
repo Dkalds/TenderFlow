@@ -70,10 +70,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Topbar premium (logo + meta pill + refresh) ──────────────────────────
+# ── Topbar premium (logo + meta pill + refresh + theme toggle) ──────────
 _ext = load_extracciones()
 last_updated = _ext["fecha"].max() if not _ext.empty else None
-render_topbar(last_updated=last_updated)
+_is_light = render_topbar(last_updated=last_updated)
+
+# ── Aplicar atributo data-theme al DOM para que el CSS claro se active ──
+if _is_light:
+    st.markdown(
+        "<script>document.querySelector('[data-testid=\"stApp\"]')?.setAttribute('data-theme','light');</script>",
+        unsafe_allow_html=True,
+    )
 
 if df_full.empty:
     empty_state(

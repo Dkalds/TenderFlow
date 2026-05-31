@@ -8,6 +8,7 @@ from observability.logging import (
     get_logger,
 )
 from observability.metrics import RunMetrics, record_run
+from observability.sentry import configure_sentry
 from observability.tracing import configure_tracing, traced
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "bind_run_context",
     "bind_session_context",
     "configure_logging",
+    "configure_sentry",
     "configure_tracing",
     "get_logger",
     "notify",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from typing import Any, cast
 
 import pandas as pd
 import plotly.express as px
@@ -19,12 +20,12 @@ def _arima_forecast(series: pd.Series, steps: int = 6) -> pd.Series | None:
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            from statsmodels.tsa.arima.model import ARIMA  # type: ignore[import]
+            from statsmodels.tsa.arima.model import ARIMA  # type: ignore[import-not-found]
 
             model = ARIMA(series, order=(1, 1, 1))
             fit = model.fit()
             fc = fit.forecast(steps=steps)
-            return fc.clip(lower=0)
+            return cast("pd.Series[Any]", fc.clip(lower=0))
     except Exception:
         return None
 
@@ -163,7 +164,7 @@ def render(ctx: PageContext) -> None:
     top_cpv = (
         dfc.groupby("cpv")["importe"]
         .agg(total="sum", n="count", mediana="median")
-        .nlargest(15, "total")
+        .nlargest(15, "total")  # type: ignore[arg-type]
         .reset_index()
     )
     if not top_cpv.empty:

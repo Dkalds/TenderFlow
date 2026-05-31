@@ -319,7 +319,7 @@ def _render_success_rate_by_week(runs: pd.DataFrame, template: str) -> None:
                 }
             ),
             include_groups=False,
-        )
+        )  # type: ignore[call-overload]
         .reset_index()
     )
     if weekly.empty:

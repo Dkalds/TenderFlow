@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import requests
 from lxml import etree
@@ -88,7 +88,7 @@ def _parse_feed_links(root: etree._Element) -> str | None:
         if link.get("rel") == "next":
             href = link.get("href")
             if href and _is_allowed_url(href):
-                return href
+                return cast(str, href)
             log.warning("atom_next_link_rejected", href=href)
             return None
     return None
@@ -115,7 +115,7 @@ def _entry_updated(entry: etree._Element) -> str | None:
     """Extrae el valor ``<updated>`` de una entry ATOM."""
     el = entry.find(f"{{{ATOM_NS}}}updated")
     if el is not None and el.text:
-        return el.text.strip()
+        return cast(str, el.text.strip())
     return None
 
 

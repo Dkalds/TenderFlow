@@ -26,8 +26,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.auth import AuthContext, require_api_key
 from api.concurrency import run_ml
+from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -104,7 +104,7 @@ class SemanticSearchResponse(BaseModel):
 )
 async def semantic_search(
     body: SemanticSearchRequest,
-    ctx: AuthContext = Depends(require_api_key),
+    ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> SemanticSearchResponse:
     """Búsqueda semántica híbrida."""
     import time
@@ -165,7 +165,7 @@ async def semantic_search(
         n=len(hits),
         source=source,
         elapsed_ms=elapsed_ms,
-        user=getattr(ctx, "user_id", None),
+        user=ctx.get("user_id"),
     )
 
     return SemanticSearchResponse(

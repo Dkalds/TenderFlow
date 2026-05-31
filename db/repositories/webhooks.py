@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -70,7 +70,7 @@ class WebhookRepository:
     def delete(self, webhook_id: int) -> bool:
         with connect() as c:
             cur = c.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
-            return cur.rowcount > 0
+            return cast(bool, cur.rowcount > 0)
 
     def update(
         self,
@@ -104,7 +104,7 @@ class WebhookRepository:
                 "UPDATE webhooks SET " + ", ".join(sets) + " WHERE id = ?",
                 tuple(params),
             )
-            return cur.rowcount > 0
+            return cast(bool, cur.rowcount > 0)
 
     def get_secret(self, webhook_id: int) -> str | None:
         """Get the effective signing secret for a webhook.
@@ -181,7 +181,7 @@ class WebhookRepository:
         if not row:
             return None
         try:
-            return json.loads(row[0])
+            return cast(dict[str, Any], json.loads(row[0]))
         except Exception:
             return None
 

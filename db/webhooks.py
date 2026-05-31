@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -118,7 +118,7 @@ def delete_webhook(webhook_id: int) -> bool:
     """Borra un webhook. Devuelve True si existía."""
     with connect() as c:
         cur = c.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
-        return cur.rowcount > 0
+        return cast(bool, cur.rowcount > 0)
 
 
 def trigger_event(event_type: str, payload: dict[str, Any]) -> int:

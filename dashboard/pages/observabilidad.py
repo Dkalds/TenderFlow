@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -333,7 +335,7 @@ def _render_user_management() -> None:
                     st.rerun()
 
 
-def _render_calidad_dato(ctx: PageContext, last_run, runs) -> None:
+def _render_calidad_dato(ctx: PageContext, last_run: pd.Series[Any], runs: pd.DataFrame) -> None:
     """Sección con KPIs de completitud del dataset y frescura del scrape."""
     st.markdown("#### Calidad del dato")
     q = calidad_dato(ctx.df_full)

@@ -18,6 +18,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 import urllib.parse
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
@@ -230,7 +231,7 @@ async def create(
 )
 async def list_all(
     _ctx: AuthContext = Depends(require_scope("webhooks:read")),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     return _repo.list_all()
 
 
@@ -242,7 +243,7 @@ async def list_all(
 async def get_one(
     webhook_id: int,
     _ctx: AuthContext = Depends(require_scope("webhooks:read")),
-) -> dict:
+) -> dict[str, Any]:
     wh = _repo.get_by_id(webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
@@ -262,7 +263,7 @@ async def update(
     webhook_id: int,
     body: WebhookUpdate,
     ctx: AuthContext = Depends(require_scope("webhooks:write")),
-) -> dict:
+) -> dict[str, Any]:
     """Actualiza nombre, URL, event_types o active de un webhook existente."""
     found = _repo.update(
         webhook_id,
@@ -317,7 +318,7 @@ async def delete(
 async def ping(
     webhook_id: int,
     ctx: AuthContext = Depends(require_scope("webhooks:write")),
-) -> dict:
+) -> dict[str, Any]:
     """Envía un payload de prueba al URL del webhook para verificar conectividad."""
     import asyncio as _asyncio
     import hashlib
@@ -387,7 +388,7 @@ async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
     _ctx: AuthContext = Depends(require_scope("webhooks:read")),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     if _repo.get_by_id(webhook_id) is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")

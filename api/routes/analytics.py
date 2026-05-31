@@ -13,8 +13,22 @@ from fastapi import APIRouter, Depends, Query
 
 from api.routes.auth import get_current_session_user
 from observability.logging import get_logger
+from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
 from services.analytics.competitors import CompetitorFilters, CompetitorResult, get_competitors
+from services.analytics.forecast_svc import (
+    ForecastFilters,
+    ForecastVolumeResult,
+    RetenderingFilters,
+    RetenderingResult,
+    get_forecast_volume,
+    get_retendering_forecast,
+)
 from services.analytics.geography import GeoFilters, GeoResult, get_geography
+from services.analytics.organo_detail import (
+    OrganoDetailFilters,
+    OrganoDetailResult,
+    get_organo_detail,
+)
 from services.analytics.organos import OrganosFilters, OrganosResult, get_organos
 from services.analytics.overview import OverviewFilters, OverviewResult, get_overview
 from services.analytics.pipeline import PipelineFilters, PipelineResult, get_pipeline
@@ -24,9 +38,27 @@ from services.analytics.proyectos_modulos import (
     get_proyectos_modulos,
 )
 from services.analytics.quality import QualityResult, get_quality
+from services.analytics.resumen import (
+    ResumenHoyFilters,
+    ResumenHoyResult,
+    ResumenNovedadesResult,
+    SankeyFilters,
+    SankeyResult,
+    TimelineScatterFilters,
+    TimelineScatterResult,
+    TopLicitacionesFilters,
+    TopLicitacionesResult,
+    get_resumen_hoy,
+    get_resumen_novedades,
+    get_sankey_flow,
+    get_timeline_scatter,
+    get_top_licitaciones,
+)
 from services.analytics.scoring import ScoringFilters, ScoringResult, get_scoring
 from services.analytics.tecnologias import TecnologiasFilters, TecnologiasResult, get_tecnologias
 from services.analytics.trends import TrendsFilters, TrendsResult, get_trends
+from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
+from services.analytics.utes import UTEFilters, UTEResult, get_utes
 
 log = get_logger(__name__)
 
@@ -194,3 +226,210 @@ def pipeline(
     """Upcoming deadlines and urgency alerts."""
     filters = PipelineFilters(dias=dias, limit=limit)
     return get_pipeline(filters)
+
+
+@router.get("/resumen/novedades", response_model=ResumenNovedadesResult)
+def resumen_novedades(
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> ResumenNovedadesResult:
+    """New licitaciones since user's last visit."""
+    return get_resumen_novedades(_user["user_id"])
+
+
+@router.get("/resumen/hoy", response_model=ResumenHoyResult)
+def resumen_hoy(
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> ResumenHoyResult:
+    """Para hoy — calientes, vencimientos, nuevas."""
+    filters = ResumenHoyFilters(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+    )
+    return get_resumen_hoy(filters)
+
+
+@router.get("/resumen/timeline", response_model=TimelineScatterResult)
+def resumen_timeline(
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> TimelineScatterResult:
+    """Scatter data for timeline visualization."""
+    filters = TimelineScatterFilters(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+    )
+    return get_timeline_scatter(filters)
+
+
+@router.get("/resumen/sankey", response_model=SankeyResult)
+def resumen_sankey(
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> SankeyResult:
+    """Sankey flow: tipo_contrato → estado."""
+    filters = SankeyFilters(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+    )
+    return get_sankey_flow(filters)
+
+
+@router.get("/resumen/top", response_model=TopLicitacionesResult)
+def resumen_top(
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    n: int = Query(default=10, ge=1, le=100, description="Number of top licitaciones"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> TopLicitacionesResult:
+    """Top N licitaciones by importe."""
+    filters = TopLicitacionesFilters(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        n=n,
+    )
+    return get_top_licitaciones(filters)
+
+
+@router.get("/forecast/volume", response_model=ForecastVolumeResult)
+def forecast_volume_endpoint(
+    months_ahead: int = Query(default=6, ge=1, le=24, description="Months to forecast"),
+    metric: str = Query(default="count", description="Metric: count or sum"),
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> ForecastVolumeResult:
+    """Volume forecast using Holt-Winters / linear regression."""
+    filters = ForecastFilters(
+        months_ahead=months_ahead,
+        metric=metric,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+    )
+    return get_forecast_volume(filters)
+
+
+@router.get("/forecast/retendering", response_model=RetenderingResult)
+def forecast_retendering(
+    meses_anticipacion: int = Query(default=6, ge=1, le=24, description="Months anticipation"),
+    solo_mantenimiento: bool = Query(default=True, description="Only maintenance contracts"),
+    horizonte_dias: int = Query(default=365, ge=1, le=1825, description="Horizon in days"),
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> RetenderingResult:
+    """Retendering forecast — contracts approaching end of term."""
+    filters = RetenderingFilters(
+        meses_anticipacion=meses_anticipacion,
+        solo_mantenimiento=solo_mantenimiento,
+        horizonte_dias=horizonte_dias,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+    )
+    return get_retendering_forecast(filters)
+
+
+@router.get("/trends-cpv", response_model=TrendsCpvResult)
+def trends_cpv(
+    cpv: str | None = Query(default=None, description="Specific CPV to focus"),
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    top_n: int = Query(default=15, ge=1, le=50, description="Top N CPVs"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> TrendsCpvResult:
+    """Per-CPV time series and rankings."""
+    filters = TrendsCpvFilters(
+        cpv=cpv,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        top_n=top_n,
+    )
+    return get_trends_cpv(filters)
+
+
+@router.get("/organos/{organo}", response_model=OrganoDetailResult)
+def organo_detail(
+    organo: str,
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> OrganoDetailResult:
+    """Drill-down for a single contracting body."""
+    filters = OrganoDetailFilters(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+    )
+    return get_organo_detail(organo, filters)
+
+
+@router.get("/utes", response_model=UTEResult)
+def utes(
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> UTEResult:
+    """UTE-specific analysis from adjudicaciones."""
+    filters = UTEFilters(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+    )
+    return get_utes(filters)
+
+
+@router.get("/compare-periods", response_model=CompareResult)
+def compare_periods(
+    range_a_desde: date = Query(description="Period A start date"),
+    range_a_hasta: date = Query(description="Period A end date"),
+    range_b_desde: date = Query(description="Period B start date"),
+    range_b_hasta: date = Query(description="Period B end date"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> CompareResult:
+    """Compare two time periods side-by-side."""
+    filters = CompareFilters(
+        range_a_desde=range_a_desde,
+        range_a_hasta=range_a_hasta,
+        range_b_desde=range_b_desde,
+        range_b_hasta=range_b_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+    )
+    return get_compare_periods(filters)
