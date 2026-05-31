@@ -1,0 +1,49 @@
+# Frontend (already deployed as separate project)
+web/
+node_modules/
+
+# Data and models
+data/
+graphify-out/
+*.db
+*.db-shm
+*.db-wal
+
+# Dev/test
+tests/
+.venv/
+.git/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+
+# Dashboard (Streamlit — not needed for API)
+dashboard/
+
+# Docs
+docs/
+*.md
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+Dockerfile*
+docker-compose*
+docker-entrypoint*
+
+# Scripts not needed at runtime
+scripts/
+.claude/
+.agents/
+.opencode/
+.github/
