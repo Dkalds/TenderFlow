@@ -1,9 +1,14 @@
-import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
+import { useQuery, keepPreviousData, type UseQueryOptions } from "@tanstack/react-query";
 import { useFilterParams } from "@/lib/filters";
+import { ApiError } from "@/lib/api-client";
 
 /**
- * useQuery wrapper that automatically includes global filter params.
- * The queryKey automatically includes the filter params for proper cache invalidation.
+ * Data-fetching hook that automatically includes global filter params
+ * in the query key and URL. Uses the centralized ApiError class.
+ *
+ * The 401 redirect is handled globally by the api-client middleware,
+ * but we also handle it here for raw-fetch calls during the transition
+ * to the fully typed openapi-fetch client.
  */
 export function useFilteredQuery<T>(
   baseKey: string[],
@@ -25,10 +30,12 @@ export function useFilteredQuery<T>(
         if (res.status === 401 && typeof window !== "undefined") {
           window.location.href = "/login";
         }
-        throw new Error(`API error: ${res.status}`);
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new ApiError(res.status, body.detail ?? `API error: ${res.status}`);
       }
       return res.json() as Promise<T>;
     },
+    placeholderData: keepPreviousData,
     ...options,
   });
 }

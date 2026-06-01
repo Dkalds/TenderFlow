@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { TreemapContent } from "@/components/charts/treemap-content";
 import {
   FolderKanban,
   Hash,
@@ -56,33 +57,6 @@ interface ProyectosModulosResponse {
   total?: number;
 }
 
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function TreemapContent(props: any) {
-  const { x, y, width, height, name, value } = props;
-  if (width < 35 || height < 22) return null;
-  return (
-    <g>
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill={getSeriesColor(props.index)}
-        rx={3}
-        opacity={0.85}
-      />
-      <text x={x + 4} y={y + 14} fill="#fff" fontSize={10} fontWeight={600}>
-        {width > 70 ? (name?.slice(0, 20) ?? "") : (name?.slice(0, 8) ?? "")}
-      </text>
-      {height > 32 && (
-        <text x={x + 4} y={y + 26} fill="#ffffffcc" fontSize={9}>
-          {formatCurrency(value)}
-        </text>
-      )}
-    </g>
-  );
-}
 
 type ModSortKey = "modulo" | "count" | "importe" | "importe_medio";
 
@@ -434,7 +408,7 @@ export default function ProyectosModulosPage() {
                   data={modulosTreemap}
                   dataKey="size"
                   nameKey="name"
-                  content={<TreemapContent />}
+                  content={<TreemapContent minWidth={35} minHeight={22} fontSize={10} valueFontSize={9} borderRadius={3} formatValue={(v) => formatCurrency(v)} />}
                 />
               </ResponsiveContainer>
               </ChartErrorBoundary>
@@ -462,7 +436,7 @@ export default function ProyectosModulosPage() {
                   data={tiposTreemap}
                   dataKey="size"
                   nameKey="name"
-                  content={<TreemapContent />}
+                  content={<TreemapContent minWidth={35} minHeight={22} fontSize={10} valueFontSize={9} borderRadius={3} formatValue={(v) => formatCurrency(v)} />}
                 />
               </ResponsiveContainer>
               </ChartErrorBoundary>

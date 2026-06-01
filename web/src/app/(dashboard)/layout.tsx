@@ -21,6 +21,12 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
+      >
+        Saltar al contenido
+      </a>
       <Sidebar />
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
@@ -31,7 +37,7 @@ export default function DashboardLayout({
         <DashboardShell>
           <div className="mx-auto w-full max-w-[1640px] px-4 py-5 sm:px-6 lg:px-8">
             <Breadcrumb />
-            <div className="mt-4">{children}</div>
+            <div id="main" className="mt-4">{children}</div>
           </div>
         </DashboardShell>
       </div>

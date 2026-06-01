@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
 
 interface MiniSparklineProps {
@@ -11,7 +12,7 @@ interface MiniSparklineProps {
   className?: string;
 }
 
-export function MiniSparkline({
+export const MiniSparkline = React.memo(function MiniSparkline({
   data,
   up = true,
   width = 80,
@@ -42,4 +43,4 @@ export function MiniSparkline({
       </ResponsiveContainer>
     </div>
   );
-}
+});

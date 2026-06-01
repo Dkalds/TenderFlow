@@ -6,7 +6,8 @@
       "Bash(python -c \"from dashboard.theme import TOKENS, build_css, register_plotly_template, get_color_sequence; css = build_css\\(TOKENS\\); name = register_plotly_template\\(TOKENS\\); seq = get_color_sequence\\(TOKENS\\); print\\('CSS len:', len\\(css\\)\\); print\\('Template:', name\\); print\\('Colors:', len\\(seq\\)\\)\")",
       "Bash(python -c \"from dashboard.theme import TOKENS, build_css, register_plotly_template, get_color_sequence; css = build_css\\(TOKENS\\); name = register_plotly_template\\(TOKENS\\); seq = get_color_sequence\\(TOKENS\\); print\\('CSS chars:', len\\(css\\)\\); print\\('Template:', name\\); print\\('Colorway len:', len\\(seq\\)\\)\")",
       "Bash(.venv/Scripts/streamlit run *)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "mcp__16ce6fa0-eabf-4b39-8ea5-3a29570ccbd7__list_teams"
     ]
   }
 }

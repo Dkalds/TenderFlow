@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { SECTIONS } from "@/lib/navigation";
-import { t, getLocale, setLocale, type Locale } from "@/lib/i18n";
+import { t, useLocale, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,7 @@ export function TopNav() {
   const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
-  const [locale, setLocaleState] = React.useState<Locale>(getLocale());
+  const { locale, setLocale: setLocaleStore } = useLocale();
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
   const { q, setQ } = useFilters();
 
@@ -85,8 +85,7 @@ export function TopNav() {
 
   const toggleLocale = () => {
     const next: Locale = locale === "es" ? "en" : "es";
-    setLocale(next);
-    setLocaleState(next);
+    setLocaleStore(next);
   };
 
   return (

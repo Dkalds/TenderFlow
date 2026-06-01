@@ -21,6 +21,7 @@ import {
 import { ExportPopover } from "@/components/export-popover";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { TreemapContent } from "@/components/charts/treemap-content";
 import {
   Building2,
   Hash,
@@ -71,35 +72,6 @@ interface OrganoDetailResponse {
   }[];
 }
 
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomTreemapContent(props: any) {
-  const { x, y, width, height, name, value } = props;
-  if (width < 40 || height < 25) return null;
-  return (
-    <g>
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill={getSeriesColor(props.index)}
-        rx={4}
-        opacity={0.85}
-      />
-      <text x={x + 6} y={y + 16} fill="#fff" fontSize={12} fontWeight={600}>
-        {width > 80
-          ? (name?.slice(0, 25) ?? "")
-          : (name?.slice(0, 10) ?? "")}
-      </text>
-      {height > 38 && (
-        <text x={x + 6} y={y + 30} fill="#ffffffcc" fontSize={12}>
-          {formatCurrency(value)}
-        </text>
-      )}
-    </g>
-  );
-}
 
 const MONTH_LABELS = [
   "Ene",
@@ -425,7 +397,7 @@ export default function OrganosPage() {
                 data={treemapData}
                 dataKey="size"
                 nameKey="name"
-                content={<CustomTreemapContent />}
+                content={<TreemapContent formatValue={(v) => formatCurrency(v)} />}
               />
             </ResponsiveContainer>
               </ChartErrorBoundary>

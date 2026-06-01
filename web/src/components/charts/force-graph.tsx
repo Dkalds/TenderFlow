@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import * as d3 from "d3";
+import { select } from "d3-selection";
+import { median, max } from "d3-array";
+import { scaleSqrt, scaleOrdinal } from "d3-scale";
+import { schemeTableau10 } from "d3-scale-chromatic";
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from "d3-force";
+import type { SimulationNodeDatum, SimulationLinkDatum } from "d3-force";
+import { zoom as d3Zoom } from "d3-zoom";
+import { drag as d3Drag } from "d3-drag";
 import { cn } from "@/lib/utils";
 
 interface GraphNode {
@@ -26,18 +33,18 @@ interface ForceGraphProps {
   onNodeClick?: (nodeId: string) => void;
 }
 
-interface SimNode extends d3.SimulationNodeDatum {
+interface SimNode extends SimulationNodeDatum {
   id: string;
   label: string;
   group: string;
   radius: number;
 }
 
-interface SimLink extends d3.SimulationLinkDatum<SimNode> {
+interface SimLink extends SimulationLinkDatum<SimNode> {
   weight: number;
 }
 
-export function ForceGraph({
+export const ForceGraph = React.memo(function ForceGraph({
   nodes,
   links,
   width: propWidth,
@@ -71,16 +78,16 @@ export function ForceGraph({
   }, [propWidth, propHeight]);
 
   React.useEffect(() => {
-    const svg = d3.select(svgRef.current);
-    const tooltip = d3.select(tooltipRef.current);
+    const svg = select(svgRef.current);
+    const tooltip = select(tooltipRef.current);
     svg.selectAll("*").remove();
 
     const { width, height } = size;
     if (!width || !height || nodes.length === 0) return;
 
     const sizeValues = nodes.map((n) => n.size ?? 8);
-    const medianSize = d3.median(sizeValues) ?? 8;
-    const sizeScale = d3.scaleSqrt().domain([0, d3.max(sizeValues) ?? 8]).range([4, 24]);
+    const medianSize = median(sizeValues) ?? 8;
+    const sizeScale = scaleSqrt().domain([0, max(sizeValues) ?? 8]).range([4, 24]);
 
     const simNodes: SimNode[] = nodes.map((n) => ({
       id: n.id,
@@ -96,20 +103,18 @@ export function ForceGraph({
     }));
 
     const nodeMap = new Map(simNodes.map((n) => [n.id, n]));
-    const color = d3.scaleOrdinal(d3.schemeTableau10);
+    const color = scaleOrdinal(schemeTableau10);
 
-    const simulation = d3
-      .forceSimulation(simNodes)
+    const simulation = forceSimulation(simNodes)
       .force(
         "link",
-        d3
-          .forceLink<SimNode, SimLink>(simLinks)
+        forceLink<SimNode, SimLink>(simLinks)
           .id((d) => d.id)
           .distance(60)
       )
-      .force("charge", d3.forceManyBody().strength(-120))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide<SimNode>().radius((d) => d.radius + 2));
+      .force("charge", forceManyBody().strength(-120))
+      .force("center", forceCenter(width / 2, height / 2))
+      .force("collide", forceCollide<SimNode>().radius((d) => d.radius + 2));
 
     if (prefersReducedMotion) {
       simulation.stop();
@@ -125,7 +130,7 @@ export function ForceGraph({
     const g = svg.append("g");
 
     // Zoom
-    const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.3, 5]).on("zoom", (event) => {
+    const zoom = d3Zoom<SVGSVGElement, unknown>().scaleExtent([0.3, 5]).on("zoom", (event) => {
       g.attr("transform", event.transform);
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -160,8 +165,7 @@ export function ForceGraph({
       .on("click", (_event, d) => onNodeClick?.(d.id));
 
     // Drag behavior
-    const dragBehavior = d3
-      .drag<SVGCircleElement, SimNode>()
+    const dragBehavior = d3Drag<SVGCircleElement, SimNode>()
       .on("start", (event, d) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
@@ -226,4 +230,4 @@ export function ForceGraph({
       />
     </div>
   );
-}
+});

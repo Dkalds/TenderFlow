@@ -1,0 +1,15 @@
+node_modules
+.next
+.vercel
+e2e
+coverage
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+README.md
+.git

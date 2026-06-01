@@ -24,6 +24,19 @@ export const api = createClient<paths>({
 });
 
 /**
+ * Global middleware: redirect to login on 401 responses.
+ * Centralizes auth expiry handling for all API calls via the typed client.
+ */
+api.use({
+  onResponse({ response }) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    return undefined;
+  },
+});
+
+/**
  * Helper to get CSRF token from cookie (set by the API on login).
  * Include this in mutation requests (POST/PUT/DELETE).
  */

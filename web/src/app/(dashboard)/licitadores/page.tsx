@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,7 +76,6 @@ interface CompetitorsData {
 }
 
 type SortKey = "nombre" | "nif" | "count" | "importe" | "cuota" | "contratos_por_anio" | "importe_medio" | "baja_media";
-type SortDir = "asc" | "desc";
 
 export default function LicitadoresPage() {
   const { data, isLoading, error } = useFilteredQuery<CompetitorsData>(
@@ -85,19 +85,9 @@ export default function LicitadoresPage() {
   );
 
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("count");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const { sortKey, sortDir, toggleSort } = useSortToggle<SortKey>("count");
   const [activeTab, setActiveTab] = useState<"ranking" | "geografia" | "evolucion">("ranking");
   const [topN, setTopN] = useState(20);
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
-  };
 
   const filteredCompetitors = useMemo(() => {
     if (!data?.competitors) return [];

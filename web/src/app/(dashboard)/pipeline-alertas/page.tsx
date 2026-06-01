@@ -20,6 +20,7 @@ import {
   truncate,
   cn,
 } from "@/lib/utils";
+import { numberFormatter, smartFormatter } from "@/lib/chart-formatters";
 import { Bell,
   Clock,
   AlertTriangle,
@@ -411,9 +412,9 @@ export default function PipelineAlertasPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="horizonte" width={80} tick={{ fontSize: 12 }} />
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   <Tooltip
-                    formatter={(v: any) => formatNumber(v as number)}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formatter={numberFormatter as any}
                   />
                   <Bar dataKey="count" name="Licitaciones" radius={[0, 4, 4, 0]}>
                     {pipelineData!.por_horizonte.map((entry, i) => (
@@ -463,9 +464,7 @@ export default function PipelineAlertasPage() {
                   />
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   <Tooltip
-                    formatter={(v: any, name: any) =>
-                      name === "Importe" ? formatCurrency(v as number) : formatNumber(v as number)
-                    }
+                    formatter={smartFormatter as any}
                   />
                   <Legend />
                   <Bar
@@ -526,9 +525,7 @@ export default function PipelineAlertasPage() {
                 />
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 <Tooltip
-                  formatter={(v: any, name: any) =>
-                    name === "Importe" ? formatCurrency(v as number) : formatNumber(v as number)
-                  }
+                  formatter={smartFormatter as any}
                 />
                 <ReferenceLine
                   x={7}

@@ -70,6 +70,10 @@ export type FilterValues = typeof initialState;
 /**
  * Convert current filter state to API query params.
  * Only includes non-empty/non-null values.
+ *
+ * NOTE: Multi-value filters are sent as comma-separated strings.
+ * The backend GET endpoints need to split on "," for multi-value
+ * support (currently only POST /search handles arrays natively).
  */
 export function filtersToParams(filters: FilterValues): Record<string, string> {
   const params: Record<string, string> = {};
@@ -77,8 +81,8 @@ export function filtersToParams(filters: FilterValues): Record<string, string> {
   if (filters.rango.desde) params.fecha_desde = filters.rango.desde;
   if (filters.rango.hasta) params.fecha_hasta = filters.rango.hasta;
   if (filters.estados.length) params.estado = filters.estados.join(",");
-  if (filters.ccaas.length) params.ccaa = filters.ccaas[0];
-  if (filters.tecnologias.length) params.tecnologia = filters.tecnologias[0];
+  if (filters.ccaas.length) params.ccaa = filters.ccaas.join(",");
+  if (filters.tecnologias.length) params.tecnologia = filters.tecnologias.join(",");
   if (filters.importeMin !== null) params.importe_min = String(filters.importeMin);
   return params;
 }

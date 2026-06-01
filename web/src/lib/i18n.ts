@@ -1,8 +1,10 @@
 /**
  * Client-side i18n — mirrors shared/i18n.py.
  *
- * Loads JSON dictionaries by locale. Cascading fallback: active locale -> "es" -> key.
+ * Uses a Zustand micro-store so locale changes trigger React re-renders.
+ * Cascading fallback: active locale -> "es" -> key itself.
  */
+import { create } from "zustand";
 
 const DEFAULT_LOCALE = "es";
 const SUPPORTED = ["es", "en"] as const;
@@ -77,16 +79,37 @@ const TRANSLATIONS: Record<Locale, Record<string, string>> = {
   },
 };
 
-let activeLocale: Locale = DEFAULT_LOCALE;
+// ---------------------------------------------------------------------------
+// Zustand store — reactive locale state
+// ---------------------------------------------------------------------------
 
-export function setLocale(locale: string): void {
-  activeLocale = (SUPPORTED as readonly string[]).includes(locale)
-    ? (locale as Locale)
-    : DEFAULT_LOCALE;
+interface LocaleState {
+  locale: Locale;
+  setLocale: (locale: string) => void;
 }
 
+export const useLocale = create<LocaleState>((set) => ({
+  locale: DEFAULT_LOCALE,
+  setLocale: (locale: string) =>
+    set({
+      locale: (SUPPORTED as readonly string[]).includes(locale)
+        ? (locale as Locale)
+        : DEFAULT_LOCALE,
+    }),
+}));
+
+// ---------------------------------------------------------------------------
+// Public helpers
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use `useLocale()` hook for reactive access. */
+export function setLocale(locale: string): void {
+  useLocale.getState().setLocale(locale);
+}
+
+/** @deprecated Use `useLocale()` hook for reactive access. */
 export function getLocale(): Locale {
-  return activeLocale;
+  return useLocale.getState().locale;
 }
 
 export function supportedLocales(): readonly string[] {
@@ -97,11 +120,29 @@ export function supportedLocales(): readonly string[] {
  * Translate a key with optional interpolation.
  *
  * Cascade: active locale -> "es" -> key itself.
+ *
+ * For non-reactive contexts (event handlers, utils), reads from
+ * the Zustand store directly. For reactive usage within components,
+ * call `useLocale()` first so the component re-renders on locale change,
+ * then pass the locale to `tWithLocale()`.
  */
 export function t(key: string, vars?: Record<string, string | number>): string {
-  const primary = TRANSLATIONS[activeLocale]?.[key];
+  const activeLocale = useLocale.getState().locale;
+  return tWithLocale(activeLocale, key, vars);
+}
+
+/**
+ * Pure translate function — accepts locale explicitly.
+ * Useful inside components that subscribe to useLocale().
+ */
+export function tWithLocale(
+  locale: Locale,
+  key: string,
+  vars?: Record<string, string | number>,
+): string {
+  const primary = TRANSLATIONS[locale]?.[key];
   const fallback =
-    activeLocale !== DEFAULT_LOCALE
+    locale !== DEFAULT_LOCALE
       ? TRANSLATIONS[DEFAULT_LOCALE]?.[key]
       : undefined;
   let template = primary ?? fallback ?? key;

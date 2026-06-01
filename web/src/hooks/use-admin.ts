@@ -1,35 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+interface AuthMeResponse {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  is_admin: boolean;
+  role?: string;
+}
 
 /**
- * Returns whether the current user is an admin.
- * Fetches from /api/v1/auth/me on mount.
+ * Hook to determine if the current user is an admin.
+ *
+ * Uses React Query for caching — the `/auth/me` call is shared across
+ * all components that use this hook and cached for 10 minutes.
  */
 export function useAdmin(): boolean {
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { data } = useQuery<AuthMeResponse | null>({
+    queryKey: ["auth", "me"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/auth/me", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json() as Promise<AuthMeResponse>;
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    retry: false,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/v1/auth/me", { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) return null;
-        return res.json();
-      })
-      .then((data) => {
-        if (!cancelled && data) {
-          setIsAdmin(data.is_admin === true || data.role === "admin");
-        }
-      })
-      .catch(() => {
-        // Non-admin by default on error
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return isAdmin;
+  return data?.is_admin === true || data?.role === "admin";
 }

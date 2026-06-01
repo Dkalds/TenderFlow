@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import * as d3 from "d3";
+import { select } from "d3-selection";
+import { sum } from "d3-array";
+import { scaleOrdinal } from "d3-scale";
+import { interpolateNumber } from "d3-interpolate";
 import { cn } from "@/lib/utils";
 
 interface SankeyNode {
@@ -39,7 +42,7 @@ interface LayoutLink {
   dy: number;
 }
 
-export function SankeyChart({
+export const SankeyChart = React.memo(function SankeyChart({
   nodes,
   links,
   width: propWidth,
@@ -69,8 +72,8 @@ export function SankeyChart({
   }, [propWidth, propHeight]);
 
   React.useEffect(() => {
-    const svg = d3.select(svgRef.current);
-    const tooltip = d3.select(tooltipRef.current);
+    const svg = select(svgRef.current);
+    const tooltip = select(tooltipRef.current);
     svg.selectAll("*").remove();
 
     const { width, height } = size;
@@ -97,18 +100,18 @@ export function SankeyChart({
     const nodeMap = new Map(layoutNodes.map((n) => [n.id, n]));
 
     // Compute node sizes proportional to total flow
-    const totalValue = d3.sum(links, (l) => l.value) || 1;
+    const totalValue = sum(links, (l) => l.value) || 1;
 
     for (const n of layoutNodes) {
-      const outFlow = d3.sum(links.filter((l) => l.source === n.id), (l) => l.value);
-      const inFlow = d3.sum(links.filter((l) => l.target === n.id), (l) => l.value);
+      const outFlow = sum(links.filter((l) => l.source === n.id), (l) => l.value);
+      const inFlow = sum(links.filter((l) => l.target === n.id), (l) => l.value);
       n.dy = Math.max(outFlow, inFlow);
     }
 
     const usableHeight = height - padding * 2;
 
     const layoutColumn = (col: LayoutNode[]) => {
-      const colTotal = d3.sum(col, (n) => n.dy) || 1;
+      const colTotal = sum(col, (n) => n.dy) || 1;
       const gap = Math.min(8, (usableHeight - (usableHeight * 0.8)) / Math.max(col.length - 1, 1));
       const scale = (usableHeight - gap * (col.length - 1)) / colTotal;
       let y = padding;
@@ -138,8 +141,8 @@ export function SankeyChart({
       const s = nodeMap.get(l.source);
       const t = nodeMap.get(l.target);
       if (!s || !t) continue;
-      const sTotal = d3.sum(links.filter((ll) => ll.source === l.source), (ll) => ll.value) || 1;
-      const tTotal = d3.sum(links.filter((ll) => ll.target === l.target), (ll) => ll.value) || 1;
+      const sTotal = sum(links.filter((ll) => ll.source === l.source), (ll) => ll.value) || 1;
+      const tTotal = sum(links.filter((ll) => ll.target === l.target), (ll) => ll.value) || 1;
       const dy_s = (l.value / sTotal) * s.dy;
       const dy_t = (l.value / tTotal) * t.dy;
       const dy = Math.min(dy_s, dy_t);
@@ -157,7 +160,7 @@ export function SankeyChart({
       targetOffsets.set(l.target, ty + dy);
     }
 
-    const colorScale = d3.scaleOrdinal<string>()
+    const colorScale = scaleOrdinal<string>()
       .domain(["0", "1"])
       .range(["hsl(var(--primary))", "hsl(var(--muted-foreground))"]);
 
@@ -173,7 +176,7 @@ export function SankeyChart({
         const y0 = d.source.y + d.sy + d.dy / 2;
         const y1 = d.target.y + d.ty + d.dy / 2;
         const curvature = 0.5;
-        const xi = d3.interpolateNumber(x0, x1);
+        const xi = interpolateNumber(x0, x1);
         const x2 = xi(curvature);
         const x3 = xi(1 - curvature);
         return `M${x0},${y0}C${x2},${y0} ${x3},${y1} ${x1},${y1}`;
@@ -206,8 +209,8 @@ export function SankeyChart({
       .attr("tabindex", 0)
       .on("mouseenter", (event, d) => {
         const flow = d.column === 0
-          ? d3.sum(links.filter((l) => l.source === d.id), (l) => l.value)
-          : d3.sum(links.filter((l) => l.target === d.id), (l) => l.value);
+          ? sum(links.filter((l) => l.source === d.id), (l) => l.value)
+          : sum(links.filter((l) => l.target === d.id), (l) => l.value);
         tooltip
           .style("display", "block")
           .style("left", `${event.offsetX + 10}px`)
@@ -218,8 +221,8 @@ export function SankeyChart({
       // TODO: full keyboard nav requires D3 refactor
       .on("focus", (event, d) => {
         const flow = d.column === 0
-          ? d3.sum(links.filter((l) => l.source === d.id), (l) => l.value)
-          : d3.sum(links.filter((l) => l.target === d.id), (l) => l.value);
+          ? sum(links.filter((l) => l.source === d.id), (l) => l.value)
+          : sum(links.filter((l) => l.target === d.id), (l) => l.value);
         const rect = (event.target as SVGRectElement).getBoundingClientRect();
         const parentRect = (event.target as SVGRectElement).ownerSVGElement?.getBoundingClientRect();
         tooltip
@@ -257,4 +260,4 @@ export function SankeyChart({
       />
     </div>
   );
-}
+});

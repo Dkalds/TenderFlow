@@ -108,7 +108,7 @@ function interpolateColor(t: number, scale: "blue" | "green" | "orange"): string
   return `hsl(${h} ${sat}% ${l}%)`;
 }
 
-export function SpainMap({
+export const SpainMap = React.memo(function SpainMap({
   data,
   metric = "Valor",
   colorScale = "blue",
@@ -224,4 +224,4 @@ export function SpainMap({
       )}
     </div>
   );
-}
+});

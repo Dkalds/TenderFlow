@@ -25,7 +25,7 @@ export interface KpiCardProps {
   className?: string;
 }
 
-export function KpiCard({
+export const KpiCard = React.memo(function KpiCard({
   title,
   value,
   subtitle,
@@ -97,4 +97,4 @@ export function KpiCard({
       </CardContent>
     </Card>
   );
-}
+});

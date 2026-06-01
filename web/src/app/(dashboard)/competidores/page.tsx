@@ -4,6 +4,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
+import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { KpiCard } from "@/components/charts/kpi-card";
 const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false });
 import { ExportPopover } from "@/components/export-popover";
@@ -19,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 import { formatCurrency, formatNumber, formatPercent, truncate, cn } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { TreemapContent } from "@/components/charts/treemap-content";
 import {
   Swords,
   Hash,
@@ -106,7 +108,6 @@ interface CompetitorsData {
 type SortKey = "nombre" | "count" | "importe" | "cuota" | "contratos_por_anio" | "importe_medio" | "baja_media" | "nif" | "ofertas_medias" | "pct_monopolio" | "pct_top_organo" | "ultima";
 
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-type SortDir = "asc" | "desc";
 
 // Heatmap color scale
 function heatColor(value: number, max: number): string {
@@ -124,19 +125,9 @@ export default function CompetidoresPage() {
   );
 
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("count");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const { sortKey, sortDir, toggleSort } = useSortToggle<SortKey>("count");
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [drillDownCompany, setDrillDownCompany] = useState<Competitor | null>(null);
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
-  };
 
   const toggleCompareSelection = useCallback((nombre: string) => {
     setSelectedCompanies((prev) => {
@@ -631,46 +622,7 @@ export default function CompetidoresPage() {
                   nameKey="name"
                   aspectRatio={4 / 3}
                   stroke="hsl(var(--border))"
-                  content={({ x, y, width, height, name, value, index }: any) => {
-                    const showLabel = width > 50 && height > 30;
-                    return (
-                      <g>
-                        <rect
-                          x={x}
-                          y={y}
-                          width={width}
-                          height={height}
-                          fill={getSeriesColor(index ?? 0)}
-                          stroke="hsl(var(--border))"
-                          strokeWidth={1}
-                          rx={2}
-                        />
-                        {showLabel && (
-                          <>
-                            <text
-                              x={x + width / 2}
-                              y={y + height / 2 - 6}
-                              textAnchor="middle"
-                              fill="white"
-                              fontSize={11}
-                              fontWeight={500}
-                            >
-                              {name}
-                            </text>
-                            <text
-                              x={x + width / 2}
-                              y={y + height / 2 + 10}
-                              textAnchor="middle"
-                              fill="rgba(255,255,255,0.75)"
-                              fontSize={10}
-                            >
-                              {formatCurrency(value as number)}
-                            </text>
-                          </>
-                        )}
-                      </g>
-                    );
-                  }}
+                  content={<TreemapContent minWidth={50} minHeight={30} fontSize={11} valueFontSize={10} borderRadius={2} opacity={1} formatValue={(v) => formatCurrency(v)} />}
                 >
                   <Tooltip
                     content={({ active, payload }) => {

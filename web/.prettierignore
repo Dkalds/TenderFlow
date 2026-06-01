@@ -1,0 +1,7 @@
+.next
+out
+build
+node_modules
+src/generated
+coverage
+playwright-report
