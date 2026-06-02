@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Calendar, Cpu, Map, RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { useFilters } from "@/lib/filters";
+import { useSearchHistory } from "@/lib/search-history";
 
 interface MetaFilters {
   estado: string[];
@@ -21,6 +23,7 @@ function addUnique(value: string, current: string[], setValue: (value: string[])
 
 export function GlobalFilterBar() {
   const filters = useFilters();
+  const { history, addToHistory } = useSearchHistory();
   const { data: meta } = useQuery<MetaFilters>({
     queryKey: ["meta-filters"],
     queryFn: async () => {
@@ -45,16 +48,17 @@ export function GlobalFilterBar() {
 
   return (
     <div className="sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 bg-card/95 px-4 py-2 backdrop-blur">
-      <div className="relative min-w-56 flex-1 sm:max-w-80">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          aria-label="Buscar licitaciones"
-          className="h-9 rounded-md bg-background/70 pl-9 text-xs"
-          placeholder="Buscar licitaciones, organos, empresas..."
-          value={filters.q}
-          onChange={(event) => filters.setQ(event.target.value)}
-        />
-      </div>
+      <SearchAutocomplete
+        className="min-w-56 flex-1 sm:max-w-80"
+        aria-label="Buscar licitaciones"
+        inputClassName="h-9 rounded-md bg-background/70 pl-9 text-xs"
+        placeholder="Buscar licitaciones, organos, empresas..."
+        value={filters.q}
+        onChange={filters.setQ}
+        onSubmit={addToHistory}
+        recentSearches={history}
+        leftIcon={<Search className="h-4 w-4" />}
+      />
 
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Calendar className="h-3.5 w-3.5 text-primary" />

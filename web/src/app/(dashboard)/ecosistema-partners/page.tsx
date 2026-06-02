@@ -7,7 +7,7 @@ import { KpiCard } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -378,15 +378,15 @@ export default function EcosistemaPartnersPage() {
       {activeTab === "red" && (
       <>
       {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar partners..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchAutocomplete
+        className="max-w-md"
+        placeholder="Buscar partners..."
+        value={search}
+        onChange={setSearch}
+        suggestions={data?.competitors?.map((c) => c.nombre) ?? []}
+        leftIcon={<Search className="h-4 w-4" />}
+        inputClassName="pl-9"
+      />
 
       {/* Search results cards */}
       {search && filteredPartners.length > 0 && (
@@ -525,15 +525,15 @@ export default function EcosistemaPartnersPage() {
       {activeTab === "ganadores" && (
       <>
       {/* Ganadores search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar ganador..."
-          value={ganadoresSearch}
-          onChange={(e) => setGanadoresSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchAutocomplete
+        className="max-w-md"
+        placeholder="Buscar ganador..."
+        value={ganadoresSearch}
+        onChange={setGanadoresSearch}
+        suggestions={data?.competitors?.map((c) => c.nombre) ?? []}
+        leftIcon={<Search className="h-4 w-4" />}
+        inputClassName="pl-9"
+      />
 
       {/* KPI cards for winners */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

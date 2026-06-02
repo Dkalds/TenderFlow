@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Sheet,
@@ -187,15 +187,18 @@ export default function OrganosPage() {
       </div>
 
       {/* Search filter — affects charts + table */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar organo o CCAA..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="pl-9 max-w-sm"
-        />
-      </div>
+      <SearchAutocomplete
+        className="max-w-sm"
+        placeholder="Buscar organo o CCAA..."
+        value={filter}
+        onChange={setFilter}
+        suggestions={[
+          ...(data?.organos?.map((i) => i.organo_contratacion) ?? []),
+          ...[...new Set(data?.organos?.map((i) => i.ccaa).filter((c): c is string => c != null) ?? [])],
+        ]}
+        leftIcon={<Search className="h-4 w-4" />}
+        inputClassName="pl-9"
+      />
 
       {/* KPI Row */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

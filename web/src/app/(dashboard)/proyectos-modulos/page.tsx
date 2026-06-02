@@ -48,6 +48,25 @@ interface TipoProyectoItem {
   importe: number;
 }
 
+interface TopModuloYoY {
+  modulo: string;
+  crecimiento_pct: number;
+  n_act: number;
+}
+
+interface TipoEstadoItem {
+  tipo: string;
+  estado: string;
+  n: number;
+}
+
+interface CpvItem {
+  cpv: string;
+  cpv_desc: string;
+  count: number;
+  importe: number;
+}
+
 interface ProyectosModulosResponse {
   modulos: ModuloItem[];
   tipos_proyecto: TipoProyectoItem[];
@@ -55,7 +74,13 @@ interface ProyectosModulosResponse {
   total_modulos: number;
   total_tipos: number;
   total?: number;
+  top_modulo_yoy: TopModuloYoY | null;
+  tipo_estado: TipoEstadoItem[];
+  cpv: CpvItem[];
 }
+
+/** Sentinel used by the backend to flag a brand-new module (no prior-year data). */
+const YOY_NUEVO = 999;
 
 
 type ModSortKey = "modulo" | "count" | "importe" | "importe_medio";
@@ -79,11 +104,6 @@ export default function ProyectosModulosPage() {
     const totalImporte = modulos.reduce((s, m) => s + m.importe, 0);
     const totalCount = modulos.reduce((s, m) => s + m.count, 0);
     return totalCount > 0 ? totalImporte / totalCount : 0;
-  }, [modulos]);
-
-  const topModulo = useMemo(() => {
-    if (modulos.length === 0) return "-";
-    return [...modulos].sort((a, b) => b.count - a.count)[0].modulo;
   }, [modulos]);
 
   const pctMultiModulo = useMemo(() => {
@@ -145,6 +165,29 @@ export default function ProyectosModulosPage() {
         .map((t) => ({ name: t.tipo, size: t.importe })),
     [tipos],
   );
+
+  const yoy = data?.top_modulo_yoy ?? null;
+  const cpvRows = data?.cpv ?? [];
+
+  // Tipo de proyecto x Estado (stacked-bar equivalent of the Streamlit sunburst)
+  const tipoEstadoEstados = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of data?.tipo_estado ?? []) set.add(r.estado);
+    return [...set];
+  }, [data]);
+
+  const tipoEstadoData = useMemo(() => {
+    const byTipo = new Map<string, Record<string, number | string>>();
+    const totals = new Map<string, number>();
+    for (const r of data?.tipo_estado ?? []) {
+      totals.set(r.tipo, (totals.get(r.tipo) ?? 0) + r.n);
+      if (!byTipo.has(r.tipo)) byTipo.set(r.tipo, { tipo: r.tipo });
+      byTipo.get(r.tipo)![r.estado] = r.n;
+    }
+    return [...byTipo.values()]
+      .sort((a, b) => (totals.get(String(b.tipo)) ?? 0) - (totals.get(String(a.tipo)) ?? 0))
+      .slice(0, 12);
+  }, [data]);
 
   // Average importe per module table
   const modulosWithAvg = useMemo(() => {
@@ -214,9 +257,19 @@ export default function ProyectosModulosPage() {
           loading={isLoading}
         />
         <KpiCard
-          title="Top Modulo"
-          value={isLoading ? undefined : topModulo}
-          subtitle="mayor cantidad"
+          title="Top modulo YoY"
+          value={isLoading ? undefined : (yoy?.modulo ?? "-")}
+          subtitle={
+            yoy && yoy.crecimiento_pct >= YOY_NUEVO
+              ? `NUEVO · ${formatNumber(yoy.n_act)} lics`
+              : undefined
+          }
+          trend={yoy && yoy.crecimiento_pct < YOY_NUEVO ? yoy.crecimiento_pct : undefined}
+          trendLabel={
+            yoy && yoy.crecimiento_pct < YOY_NUEVO
+              ? `${formatNumber(yoy.n_act)} lics`
+              : undefined
+          }
           icon={TrendingUp}
           loading={isLoading}
         />
@@ -449,6 +502,44 @@ export default function ProyectosModulosPage() {
         </Card>
       </div>
 
+      {/* Tipo de proyecto x Estado (stacked) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Tipo de proyecto x Estado</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[360px] w-full" />
+          ) : tipoEstadoData.length > 0 ? (
+            <ChartErrorBoundary>
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(320, tipoEstadoData.length * 42)}
+              >
+                <BarChart data={tipoEstadoData} layout="vertical" margin={{ left: 120 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis dataKey="tipo" type="category" width={110} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v, name) => [formatNumber(v as number), name as string]} />
+                  <Legend />
+                  {tipoEstadoEstados.map((estado, idx) => (
+                    <Bar
+                      key={estado}
+                      dataKey={estado}
+                      name={estado}
+                      stackId="estado"
+                      fill={getSeriesColor(idx)}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartErrorBoundary>
+          ) : (
+            <p className="py-12 text-center text-muted-foreground">Sin datos</p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Average Importe per Module Table */}
       <Card>
         <CardHeader>
@@ -579,6 +670,65 @@ export default function ProyectosModulosPage() {
                         colSpan={3}
                         className="py-8 text-center text-muted-foreground"
                       >
+                        Sin datos
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Top CPV codes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Top codigos CPV</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground">CPV</th>
+                    <th className="pb-2 pr-4 text-right font-medium text-muted-foreground">
+                      Licitaciones
+                    </th>
+                    <th className="pb-2 text-right font-medium text-muted-foreground">
+                      Importe
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cpvRows.map((item) => (
+                    <tr
+                      key={item.cpv}
+                      className="border-b border-border/50 hover:bg-muted/50"
+                    >
+                      <td className="py-2 pr-4">
+                        <span className="block max-w-md truncate" title={item.cpv_desc}>
+                          {item.cpv_desc}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4 text-right tabular-nums">
+                        {formatNumber(item.count)}
+                      </td>
+                      <td className="py-2 text-right tabular-nums">
+                        {formatCurrency(item.importe)}
+                      </td>
+                    </tr>
+                  ))}
+                  {cpvRows.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-8 text-center text-muted-foreground">
                         Sin datos
                       </td>
                     </tr>

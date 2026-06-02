@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -349,15 +349,15 @@ export default function CompetidoresPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar empresa..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
-          </div>
+          <SearchAutocomplete
+            className="w-full sm:w-72"
+            placeholder="Buscar empresa..."
+            value={search}
+            onChange={setSearch}
+            suggestions={data?.competitors?.map((c) => c.nombre) ?? []}
+            leftIcon={<Search className="h-4 w-4" />}
+            inputClassName="pl-9"
+          />
           <ExportPopover extraParams={{ section: "competitors" }} />
         </div>
       </div>

@@ -11,7 +11,7 @@ export function useKeyboardShortcuts() {
       // Ctrl+K / Cmd+K focuses search from anywhere (even inputs)
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
-        document.querySelector<HTMLInputElement>("[data-search-input]")?.focus();
+        document.querySelector<HTMLInputElement>("[data-search-input] input, input[data-search-input]")?.focus();
         return;
       }
 
@@ -24,7 +24,7 @@ export function useKeyboardShortcuts() {
       switch (e.key) {
         case "/":
           e.preventDefault();
-          document.querySelector<HTMLInputElement>("[data-search-input]")?.focus();
+          document.querySelector<HTMLInputElement>("[data-search-input] input, input[data-search-input]")?.focus();
           break;
         case "1":
           router.push("/resumen");

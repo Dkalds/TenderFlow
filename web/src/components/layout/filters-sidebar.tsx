@@ -4,9 +4,11 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Calendar, RotateCcw } from "lucide-react";
 import { useFilters } from "@/lib/filters";
+import { useSearchHistory } from "@/lib/search-history";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -77,6 +79,7 @@ function CheckboxGroup({ label, options, selected, onChange }: CheckboxGroupProp
 
 export function FiltersSidebar({ className }: { className?: string }) {
   const filters = useFilters();
+  const { history, addToHistory } = useSearchHistory();
   const [localQ, setLocalQ] = React.useState(filters.q);
   const debouncedQ = useDebounce(localQ, 300);
 
@@ -129,12 +132,14 @@ export function FiltersSidebar({ className }: { className?: string }) {
         <label htmlFor="filter-search" className="text-xs text-muted-foreground flex items-center gap-1">
           <Search className="h-3 w-3" /> Buscar
         </label>
-        <Input
+        <SearchAutocomplete
           id="filter-search"
           placeholder="Texto libre..."
           value={localQ}
-          onChange={(e) => setLocalQ(e.target.value)}
-          className="h-9 text-xs"
+          onChange={setLocalQ}
+          onSubmit={addToHistory}
+          recentSearches={history}
+          inputClassName="h-9 text-xs"
         />
       </div>
 

@@ -1,141 +1,163 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { type ColumnDef } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
+import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { Badge } from "@/components/ui/badge";
-import { DataTable } from "@/components/ui/data-table";
-import { formatNumber } from "@/lib/utils";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
-import { Waypoints, Hash, Sparkles, FlaskConical } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  ScatterChart,
-  Scatter,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
+import { getSeriesColor } from "@/lib/chart-colors";
+import { Waypoints, Hash, Layers, RefreshCw, BarChart3 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
-  ZAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
 } from "recharts";
 
-interface OverviewResponse {
-  total_licitaciones: number;
-  por_cpv: { cpv: string; descripcion?: string; n: number }[];
+interface ImporteBox {
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
 }
 
-async function fetchOverview(): Promise<OverviewResponse> {
-  const res = await fetch("/api/v1/analytics/overview", {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch overview");
-  return res.json();
+interface ClusterItem {
+  id_externo: string;
+  titulo: string | null;
+  organo_contratacion: string | null;
+  importe: number | null;
+  ccaa: string | null;
+  estado: string | null;
 }
 
+interface ClusterEntry {
+  cluster_id: number;
+  label: string;
+  n: number;
+  importe_medio: number;
+  importe_total: number;
+  importe_box: ImporteBox | null;
+  items: ClusterItem[];
+}
 
+interface ClustersResponse {
+  n_clusters_detectados: number;
+  total: number;
+  clusters: ClusterEntry[];
+}
 
-/** Generate deterministic pseudo-random scatter points to simulate a UMAP projection */
-function generateMockScatter(
-  cpvs: { cpv: string; descripcion?: string; n: number }[],
-) {
-  const points: { x: number; y: number; z: number; cluster: string }[] = [];
-  const top = cpvs.slice(0, 8);
+interface BoxDatum {
+  label: string;
+  _pad: number;
+  _low: number;
+  _boxLow: number;
+  _boxHigh: number;
+  _high: number;
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+  color: string;
+}
 
-  top.forEach((cpv, clusterIdx) => {
-    // Seed center from cpv string hash
-    const hash = cpv.cpv
-      .split("")
-      .reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    const cx = ((hash * 7) % 80) + 10;
-    const cy = ((hash * 13) % 80) + 10;
-    const numPoints = Math.min(cpv.n, 30);
-
-    for (let i = 0; i < numPoints; i++) {
-      const angle = ((hash + i * 137) % 360) * (Math.PI / 180);
-      const radius = ((hash + i * 31) % 15) + 2;
-      points.push({
-        x: cx + Math.cos(angle) * radius + ((i * 7) % 5),
-        y: cy + Math.sin(angle) * radius + ((i * 11) % 5),
-        z: cpv.n,
-        cluster: cpv.descripcion || cpv.cpv,
-      });
-    }
-  });
-
-  return { points, clusters: top };
+function BoxTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: BoxDatum }[];
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="rounded-lg border bg-background p-2 text-xs shadow-md">
+      <p className="mb-1 font-medium">{d.label}</p>
+      <p>max: {formatCurrency(d.max)}</p>
+      <p>Q3: {formatCurrency(d.q3)}</p>
+      <p className="font-medium">mediana: {formatCurrency(d.median)}</p>
+      <p>Q1: {formatCurrency(d.q1)}</p>
+      <p>min: {formatCurrency(d.min)}</p>
+    </div>
+  );
 }
 
 export default function ClustersPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["analytics", "overview"],
-    queryFn: fetchOverview,
-    staleTime: 5 * 60 * 1000,
-  });
+  const [kDraft, setKDraft] = useState(8);
+  const [appliedK, setAppliedK] = useState(8);
+  const [autoK, setAutoK] = useState(false);
+  const [selectedCluster, setSelectedCluster] = useState<number | null>(null);
 
-  const cpvs = data?.por_cpv ?? [];
-  const topCpvs = useMemo(() => cpvs.slice(0, 10), [cpvs]);
-
-  type CpvItem = { cpv: string; descripcion?: string; n: number };
-  const cpvColumns = useMemo<ColumnDef<CpvItem>[]>(
-    () => [
-      {
-        accessorKey: "cpv",
-        header: "CPV",
-        cell: ({ getValue }) => (
-          <span className="font-mono text-xs">{getValue<string>()}</span>
-        ),
-      },
-      {
-        accessorKey: "descripcion",
-        header: "Descripcion",
-        cell: ({ getValue }) => {
-          const v = getValue<string | undefined>();
-          return (
-            <span className="max-w-xs truncate block" title={v}>
-              {v || "-"}
-            </span>
-          );
-        },
-      },
-      {
-        accessorKey: "n",
-        header: "Licitaciones",
-        cell: ({ getValue }) => (
-          <span className="tabular-nums text-right block">
-            {formatNumber(getValue<number>())}
-          </span>
-        ),
-      },
-    ],
-    [],
+  const { data, isLoading, isFetching, error, refetch } = useFilteredQuery<ClustersResponse>(
+    ["analytics", "clusters", String(appliedK), String(autoK)],
+    "/api/v1/analytics/clusters",
+    { staleTime: 30 * 60 * 1000 },
+    { n_clusters: String(appliedK), auto_k: String(autoK) },
   );
 
-  const pieData = useMemo(() => {
-    if (topCpvs.length === 0) return [];
-    const topItems = topCpvs.map((c) => ({
-      name: c.descripcion || c.cpv,
-      value: c.n,
-    }));
-    const totalTop = topItems.reduce((s, i) => s + i.value, 0);
-    const totalAll = (data?.total_licitaciones ?? 0);
-    if (totalAll > totalTop) {
-      topItems.push({ name: "Otros CPVs", value: totalAll - totalTop });
-    }
-    return topItems;
-  }, [topCpvs, data]);
+  const clusters = data?.clusters ?? [];
 
-  const mockScatter = useMemo(() => {
-    if (cpvs.length === 0) return null;
-    return generateMockScatter(cpvs);
-  }, [cpvs]);
+  const barData = useMemo(
+    () =>
+      clusters.map((c) => ({
+        label: truncate(c.label, 38) || `Cluster ${c.cluster_id}`,
+        n: c.n,
+        cluster_id: c.cluster_id,
+      })),
+    [clusters],
+  );
+
+  const boxData = useMemo<BoxDatum[]>(
+    () =>
+      clusters
+        .filter((c) => c.importe_box)
+        .map((c, i) => {
+          const b = c.importe_box!;
+          return {
+            label: truncate(c.label, 32) || `Cluster ${c.cluster_id}`,
+            _pad: b.min,
+            _low: b.q1 - b.min,
+            _boxLow: b.median - b.q1,
+            _boxHigh: b.q3 - b.median,
+            _high: b.max - b.q3,
+            min: b.min,
+            q1: b.q1,
+            median: b.median,
+            q3: b.q3,
+            max: b.max,
+            color: getSeriesColor(i),
+          };
+        }),
+    [clusters],
+  );
+
+  const selected = useMemo(() => {
+    if (clusters.length === 0) return null;
+    return clusters.find((c) => c.cluster_id === selectedCluster) ?? clusters[0];
+  }, [clusters, selectedCluster]);
+
+  function recalcular() {
+    setAppliedK(kDraft);
+    void refetch();
+  }
 
   if (error) {
     return (
@@ -150,188 +172,158 @@ export default function ClustersPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Clusters</h1>
         <p className="text-muted-foreground">
-          Agrupacion semantica de licitaciones.
+          Agrupacion semantica de licitaciones por similitud de titulo (KMeans).
         </p>
       </div>
 
-      {/* Coming Soon Banner */}
-      <Card className="border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20">
-        <CardContent className="flex items-start gap-4 py-6">
-          <div className="rounded-lg bg-amber-100 dark:bg-amber-900/50 p-3">
-            <FlaskConical className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-amber-900 dark:text-amber-200">
-              Clustering Semantico — Proximamente
-            </h3>
-            <p className="mt-1 text-sm text-amber-800/80 dark:text-amber-300/80">
-              La agrupacion semantica completa requiere una pipeline de ML con generacion de
-              embeddings (sentence-transformers), reduccion dimensional (UMAP) y clustering
-              (HDBSCAN). Mientras tanto, mostramos una vista previa basada en agrupacion por
-              codigos CPV como pseudo-clusters.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant="secondary">Embeddings</Badge>
-              <Badge variant="secondary">UMAP</Badge>
-              <Badge variant="secondary">HDBSCAN</Badge>
-              <Badge variant="secondary">sentence-transformers</Badge>
+      {/* Controls */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-6 py-4">
+          <div className="flex min-w-[240px] flex-1 flex-col gap-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Numero de clusters</span>
+              <span className="tabular-nums text-muted-foreground">{autoK ? "auto" : kDraft}</span>
             </div>
+            <Slider
+              min={3}
+              max={20}
+              step={1}
+              value={[kDraft]}
+              onValueChange={(v) => setKDraft(v[0])}
+              disabled={autoK}
+            />
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <Switch checked={autoK} onCheckedChange={setAutoK} />
+            Auto-optimizar k
+          </label>
+          <Button onClick={recalcular} disabled={isFetching} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Recalcular
+          </Button>
         </CardContent>
       </Card>
 
-      {/* KPI Row */}
+      {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
-          title="Total Licitaciones"
-          value={isLoading ? undefined : formatNumber(data?.total_licitaciones ?? 0)}
-          subtitle="disponibles para clustering"
-          icon={Hash}
-          loading={isLoading}
-        />
-        <KpiCard
-          title="Pseudo-Clusters (CPVs)"
-          value={isLoading ? undefined : formatNumber(cpvs.length)}
-          subtitle="codigos CPV unicos"
+          title="Clusters detectados"
+          value={isLoading ? undefined : formatNumber(data?.n_clusters_detectados ?? 0)}
+          subtitle={autoK ? "auto (silhouette)" : undefined}
           icon={Waypoints}
           loading={isLoading}
         />
         <KpiCard
-          title="Top CPV"
+          title="Licitaciones agrupadas"
+          value={isLoading ? undefined : formatNumber(data?.total ?? 0)}
+          icon={Hash}
+          loading={isLoading}
+        />
+        <KpiCard
+          title="Cluster mayor"
           value={
             isLoading
               ? undefined
-              : topCpvs.length > 0
-                ? (topCpvs[0].descripcion || topCpvs[0].cpv).slice(0, 35)
+              : clusters.length > 0
+                ? truncate(clusters[0].label, 28)
                 : "-"
           }
-          subtitle={topCpvs.length > 0 ? `${formatNumber(topCpvs[0].n)} licitaciones` : undefined}
-          icon={Sparkles}
+          subtitle={clusters.length > 0 ? `${formatNumber(clusters[0].n)} licitaciones` : undefined}
+          icon={Layers}
           loading={isLoading}
         />
       </div>
 
+      {data && data.total > 0 && clusters.length === 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50/50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-300">
+          No se pudieron generar clusters para el conjunto filtrado (datos insuficientes).
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Mock Scatter Plot */}
+        {/* Per-cluster bar */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Waypoints className="h-4 w-4" />
-              Vista Previa: Proyeccion 2D (simulada)
+              <BarChart3 className="h-4 w-4" />
+              Licitaciones por cluster
             </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
-            ) : mockScatter && mockScatter.points.length > 0 ? (
+            ) : barData.length > 0 ? (
               <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    type="number"
-                    dataKey="x"
-                    name="UMAP-1"
-                    tick={{ fontSize: 10 }}
-                    label={{ value: "UMAP-1 (simulado)", position: "bottom", fontSize: 11 }}
-                  />
-                  <YAxis
-                    type="number"
-                    dataKey="y"
-                    name="UMAP-2"
-                    tick={{ fontSize: 10 }}
-                    label={{
-                      value: "UMAP-2 (simulado)",
-                      angle: -90,
-                      position: "insideLeft",
-                      fontSize: 11,
-                    }}
-                  />
-                  <ZAxis type="number" dataKey="z" range={[20, 200]} />
-                  <Tooltip
-                    cursor={{ strokeDasharray: "3 3" }}
-                    content={({ payload }) => {
-                      if (!payload || payload.length === 0) return null;
-                      const d = payload[0].payload;
-                      return (
-                        <div className="rounded-lg border bg-background p-2 text-xs shadow-md">
-                          <p className="font-medium">{d.cluster}</p>
-                        </div>
-                      );
-                    }}
-                  />
-                  {mockScatter.clusters.map((cluster, idx) => (
-                    <Scatter
-                      key={cluster.cpv}
-                      name={cluster.descripcion || cluster.cpv}
-                      data={mockScatter.points.filter(
-                        (p) => p.cluster === (cluster.descripcion || cluster.cpv),
-                      )}
-                      fill={getSeriesColor(idx)}
-                      opacity={0.7}
-                    />
-                  ))}
-                </ScatterChart>
-              </ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={Math.max(320, barData.length * 32)}>
+                  <BarChart data={barData} layout="vertical" margin={{ left: 150 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis dataKey="label" type="category" width={150} tick={{ fontSize: 10 }} />
+                    <Tooltip formatter={(v) => [formatNumber(v as number), "Licitaciones"]} />
+                    <Bar dataKey="n" radius={[0, 4, 4, 0]}>
+                      {barData.map((b, i) => (
+                        <Cell key={i} fill={getSeriesColor(i)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
               <p className="py-12 text-center text-muted-foreground">Sin datos</p>
             )}
-            <p className="mt-2 text-xs text-muted-foreground text-center">
-              Simulacion basada en CPVs. El clustering real usara embeddings + UMAP.
-            </p>
           </CardContent>
         </Card>
 
-        {/* Pie Chart: Top 10 CPVs */}
+        {/* Importe distribution box plot */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Top 10 CPVs (Pseudo-Clusters)</CardTitle>
+            <CardTitle className="text-base">Distribucion de importe por cluster</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Banda = rango (min-max), nucleo = rango intercuartilico (Q1-Q3)
+            </p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
-            ) : pieData.length > 0 ? (
+            ) : boxData.length > 0 ? (
               <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={130}
-                    label={({ name, percent }: { name?: string; percent?: number }) =>
-                      `${(name ?? "").length > 20 ? (name ?? "").slice(0, 20) + "..." : (name ?? "")} (${((percent ?? 0) * 100).toFixed(1)}%)`
-                    }
-                    labelLine={{ strokeWidth: 1 }}
-                  >
-                    {pieData.map((_, idx) => (
-                      <Cell key={idx} fill={getSeriesColor(idx)} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => formatNumber(value as number)} />
-                  <Legend
-                    formatter={(value) =>
-                      (value as string).length > 30 ? (value as string).slice(0, 30) + "..." : value
-                    }
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={Math.max(320, boxData.length * 32)}>
+                  <BarChart data={boxData} layout="vertical" margin={{ left: 130 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v: number) => formatCurrency(v)}
+                    />
+                    <YAxis dataKey="label" type="category" width={120} tick={{ fontSize: 10 }} />
+                    <Tooltip content={<BoxTooltip />} />
+                    <Bar dataKey="_pad" stackId="b" fill="transparent" />
+                    <Bar dataKey="_low" stackId="b" fill="hsl(var(--muted-foreground))" fillOpacity={0.2} />
+                    <Bar dataKey="_boxLow" stackId="b">
+                      {boxData.map((b, i) => (
+                        <Cell key={i} fill={b.color} fillOpacity={0.95} />
+                      ))}
+                    </Bar>
+                    <Bar dataKey="_boxHigh" stackId="b">
+                      {boxData.map((b, i) => (
+                        <Cell key={i} fill={b.color} fillOpacity={0.55} />
+                      ))}
+                    </Bar>
+                    <Bar dataKey="_high" stackId="b" fill="hsl(var(--muted-foreground))" fillOpacity={0.2} />
+                  </BarChart>
+                </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos</p>
+              <p className="py-12 text-center text-muted-foreground">Sin datos de importe</p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* CPV Table */}
+      {/* Cluster summary table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Agrupacion por CPV</CardTitle>
+          <CardTitle className="text-base">Resumen de clusters</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -341,15 +333,111 @@ export default function ClustersPage() {
               ))}
             </div>
           ) : (
-            <DataTable
-              columns={cpvColumns}
-              data={cpvs}
-              initialSorting={[{ id: "n", desc: true }]}
-              emptyMessage="Sin datos CPV disponibles"
-            />
+            <div className="overflow-x-auto">
+              <Table className="w-full text-sm">
+                <TableHeader>
+                  <TableRow className="border-b text-left">
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">ID</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Keywords</TableHead>
+                    <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Licitaciones</TableHead>
+                    <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Importe medio</TableHead>
+                    <TableHead className="pb-2 text-right font-medium text-muted-foreground">Importe total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clusters.map((c) => (
+                    <TableRow
+                      key={c.cluster_id}
+                      className="cursor-pointer border-b border-border/50 hover:bg-muted/50"
+                      onClick={() => setSelectedCluster(c.cluster_id)}
+                    >
+                      <TableCell className="py-2 pr-4 tabular-nums">{c.cluster_id}</TableCell>
+                      <TableCell className="max-w-md py-2 pr-4">
+                        <span className="block truncate" title={c.label}>{c.label}</span>
+                      </TableCell>
+                      <TableCell className="py-2 pr-4 text-right tabular-nums">{formatNumber(c.n)}</TableCell>
+                      <TableCell className="py-2 pr-4 text-right tabular-nums">{formatCurrency(c.importe_medio)}</TableCell>
+                      <TableCell className="py-2 text-right tabular-nums">{formatCurrency(c.importe_total)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {clusters.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                        Sin clusters
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Cluster drill-down */}
+      {clusters.length > 0 && selected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Licitaciones del cluster</CardTitle>
+            <div className="mt-2">
+              <Select
+                value={String(selected.cluster_id)}
+                onValueChange={(v) => setSelectedCluster(Number(v))}
+              >
+                <SelectTrigger className="w-full max-w-xl text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {clusters.map((c) => (
+                    <SelectItem key={c.cluster_id} value={String(c.cluster_id)}>
+                      Cluster {c.cluster_id}: {truncate(c.label, 50)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table className="w-full text-sm">
+                <TableHeader>
+                  <TableRow className="border-b text-left">
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Titulo</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Organo</TableHead>
+                    <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Importe</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">CCAA</TableHead>
+                    <TableHead className="pb-2 font-medium text-muted-foreground">Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selected.items.map((it) => (
+                    <TableRow key={it.id_externo} className="border-b border-border/50 hover:bg-muted/50">
+                      <TableCell className="max-w-sm py-2 pr-4 font-medium">
+                        <span className="line-clamp-2" title={it.titulo ?? ""}>{it.titulo ?? "-"}</span>
+                      </TableCell>
+                      <TableCell className="max-w-[12rem] truncate py-2 pr-4" title={it.organo_contratacion ?? ""}>
+                        {it.organo_contratacion ?? "-"}
+                      </TableCell>
+                      <TableCell className="py-2 pr-4 text-right tabular-nums">
+                        {it.importe != null ? formatCurrency(it.importe) : "-"}
+                      </TableCell>
+                      <TableCell className="py-2 pr-4">{it.ccaa ?? "-"}</TableCell>
+                      <TableCell className="py-2">{it.estado ?? "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                  {selected.items.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                        Sin licitaciones
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

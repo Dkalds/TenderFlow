@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from api.routes.auth import get_current_session_user
 from observability.logging import get_logger
+from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
 from services.analytics.competitors import CompetitorFilters, CompetitorResult, get_competitors
 from services.analytics.forecast_svc import (
@@ -55,7 +56,14 @@ from services.analytics.resumen import (
     get_top_licitaciones,
 )
 from services.analytics.scoring import ScoringFilters, ScoringResult, get_scoring
-from services.analytics.tecnologias import TecnologiasFilters, TecnologiasResult, get_tecnologias
+from services.analytics.tecnologias import (
+    TecnologiaDetalleFilters,
+    TecnologiaDetalleResult,
+    TecnologiasFilters,
+    TecnologiasResult,
+    get_tecnologia_detalle,
+    get_tecnologias,
+)
 from services.analytics.trends import TrendsFilters, TrendsResult, get_trends
 from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
 from services.analytics.utes import UTEFilters, UTEResult, get_utes
@@ -210,6 +218,26 @@ def tecnologias(
     return get_tecnologias(filters)
 
 
+@router.get("/tecnologias/detail", response_model=TecnologiaDetalleResult)
+@cache_response(ttl=300)
+def tecnologias_detail(
+    tecnologia: str = Query(description="Technology label to filter by"),
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    limit: int = Query(default=100, ge=1, le=500, description="Max tenders to return"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> TecnologiaDetalleResult:
+    """Top-N tenders for a single technology, with subset KPIs."""
+    filters = TecnologiaDetalleFilters(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        limit=limit,
+    )
+    return get_tecnologia_detalle(tecnologia, filters)
+
+
 @router.get("/proyectos-modulos", response_model=ProyectosModulosResult)
 @cache_response(ttl=300)
 def proyectos_modulos(
@@ -225,6 +253,27 @@ def proyectos_modulos(
         tecnologia=tecnologia,
     )
     return get_proyectos_modulos(filters)
+
+
+@router.get("/clusters", response_model=ClustersResult)
+@cache_response(ttl=1800)
+def clusters(
+    n_clusters: int | None = Query(default=None, ge=2, le=20, description="Desired cluster count"),
+    auto_k: bool = Query(default=False, description="Auto-select k via silhouette score"),
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> ClustersResult:
+    """Semantic clustering of tenders (KMeans over TF-IDF) with keyword labels."""
+    filters = ClustersFilters(
+        n_clusters=n_clusters,
+        auto_k=auto_k,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+    )
+    return get_clusters(filters)
 
 
 @router.get("/pipeline", response_model=PipelineResult)

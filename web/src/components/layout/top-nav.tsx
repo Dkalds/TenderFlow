@@ -20,12 +20,13 @@ import { SECTIONS } from "@/lib/navigation";
 import { t, useLocale, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { NotificationBell } from "@/components/notification-bell";
 import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
 import { useFilters } from "@/lib/filters";
+import { useSearchHistory } from "@/lib/search-history";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
 
@@ -48,6 +49,7 @@ export function TopNav() {
   const { locale, setLocale: setLocaleStore } = useLocale();
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
   const { q, setQ } = useFilters();
+  const { history, addToHistory } = useSearchHistory();
 
   const handleLogout = async () => {
     try {
@@ -114,18 +116,23 @@ export function TopNav() {
             <TenderFlowLogo boxSize={32} />
           </Link>
 
-          <div className="relative hidden min-w-72 max-w-xl flex-1 md:block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              data-search-input
-              aria-label="Busqueda global"
-              className="h-9 rounded-lg border-border/70 bg-card/80 pl-9 pr-12 text-sm"
-              placeholder="Buscar licitaciones, organos, empresas..."
-              value={q}
-              onChange={(event) => setQ(event.target.value)}
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">Ctrl K</span>
-          </div>
+          <SearchAutocomplete
+            className="hidden min-w-72 max-w-xl flex-1 md:block"
+            data-search-input
+            aria-label="Busqueda global"
+            inputClassName="h-9 rounded-lg border-border/70 bg-card/80 pl-9 pr-12 text-sm"
+            placeholder="Buscar licitaciones, organos, empresas..."
+            value={q}
+            onChange={setQ}
+            onSubmit={addToHistory}
+            recentSearches={history}
+            leftIcon={<Search className="h-4 w-4" />}
+            rightElement={
+              <span className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                Ctrl K
+              </span>
+            }
+          />
 
           {/* Right side actions */}
           <div className="ml-auto flex items-center gap-1">
