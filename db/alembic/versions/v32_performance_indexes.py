@@ -36,10 +36,7 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS idx_adj_nombre_importe "
         "ON adjudicaciones(nombre, importe_adjudicado)"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_adj_ccaa_nombre "
-        "ON adjudicaciones(ccaa, nombre)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_adj_ccaa_nombre ON adjudicaciones(ccaa, nombre)")
 
 
 def downgrade() -> None:

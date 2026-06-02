@@ -137,7 +137,7 @@ def _clear_session_cookies(response: Response) -> None:
 # ---------------------------------------------------------------------------
 
 
-def get_current_session_user(
+async def get_current_session_user(
     session: str | None = Cookie(default=None, alias=_SESSION_COOKIE),
 ) -> dict[str, Any]:
     """Dependency that reads the session cookie and returns user info.
@@ -171,7 +171,7 @@ def get_current_session_user(
 # ---------------------------------------------------------------------------
 
 
-def require_csrf(
+async def require_csrf(
     user: dict[str, Any] = Depends(get_current_session_user),
     x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
 ) -> dict[str, Any]:
@@ -208,7 +208,7 @@ class UserInfo(BaseModel):
 
 
 @router.post("/login", response_model=UserInfo)
-def login(body: LoginRequest, response: Response) -> UserInfo:
+async def login(body: LoginRequest, response: Response) -> UserInfo:
     """Authenticate with email + password, set session cookie."""
     user = get_user_by_email(body.email)
     if not user:
@@ -239,7 +239,7 @@ def login(body: LoginRequest, response: Response) -> UserInfo:
 if settings.ENV == "dev":
 
     @router.post("/dev-login", response_model=UserInfo)
-    def dev_login(response: Response) -> UserInfo:
+    async def dev_login(response: Response) -> UserInfo:
         """DEV ONLY: Set session cookie for user_id=1 without credentials.
 
         This endpoint is only available when ENV=dev. It allows quick
@@ -264,7 +264,7 @@ if settings.ENV == "dev":
 
 
 @router.get("/me", response_model=UserInfo)
-def me(user: dict[str, Any] = Depends(get_current_session_user)) -> UserInfo:
+async def me(user: dict[str, Any] = Depends(get_current_session_user)) -> UserInfo:
     """Return info about the currently authenticated user."""
     return UserInfo(
         user_id=user["user_id"],
@@ -275,7 +275,7 @@ def me(user: dict[str, Any] = Depends(get_current_session_user)) -> UserInfo:
 
 
 @router.post("/logout")
-def logout(response: Response) -> dict[str, str]:
+async def logout(response: Response) -> dict[str, str]:
     """Clear session and CSRF cookies."""
     _clear_session_cookies(response)
     return {"detail": "Logged out"}
@@ -287,7 +287,7 @@ def logout(response: Response) -> dict[str, str]:
 
 
 @router.get("/oauth/google/authorize")
-def google_authorize() -> dict[str, str]:
+async def google_authorize() -> dict[str, str]:
     """Redirect URL for Google OAuth with PKCE.
 
     Returns JSON with ``authorization_url`` so the SPA can redirect the user.
@@ -326,7 +326,7 @@ def google_authorize() -> dict[str, str]:
 
 
 @router.get("/oauth/google/callback", response_model=None)
-def google_callback(
+async def google_callback(
     code: str,
     state: str,
     response: Response,

@@ -211,9 +211,7 @@ class TestBuildBipartiteGraph:
         from services.organ_company_graph import build_bipartite_graph
 
         result = build_bipartite_graph(self._make_adj(), min_contratos=3)
-        assert len(result["edges"]) == 0 or all(
-            e["contratos"] >= 3 for e in result["edges"]
-        )
+        assert len(result["edges"]) == 0 or all(e["contratos"] >= 3 for e in result["edges"])
 
     def test_node_types(self) -> None:
         from services.organ_company_graph import build_bipartite_graph

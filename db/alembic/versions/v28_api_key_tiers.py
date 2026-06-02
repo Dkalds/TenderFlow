@@ -47,7 +47,9 @@ def upgrade() -> None:
         """
     )
     try:
-        op.add_column("api_keys", sa.Column("tier", sa.Text(), nullable=False, server_default="free"))
+        op.add_column(
+            "api_keys", sa.Column("tier", sa.Text(), nullable=False, server_default="free")
+        )
     except Exception:
         pass
 

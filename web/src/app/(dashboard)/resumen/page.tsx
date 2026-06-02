@@ -106,16 +106,6 @@ export default function ResumenPage() {
   const data = overview.data;
   const isLoading = overview.isLoading;
 
-  if (overview.error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
-        <p className="text-destructive">
-          {t("common.error")}: {(overview.error as Error).message}
-        </p>
-      </div>
-    );
-  }
-
   const scatterData =
     timeline.data?.items?.map((item) => ({
       x: new Date(item.fecha_publicacion ?? "").getTime(),
@@ -162,6 +152,16 @@ export default function ResumenPage() {
     }
     setPubPage(0);
   };
+
+  if (overview.error) {
+    return (
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+        <p className="text-destructive">
+          {t("common.error")}: {(overview.error as Error).message}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

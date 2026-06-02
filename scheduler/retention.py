@@ -26,7 +26,7 @@ def _count_and_delete(conn: object, table: str, date_col: str, cutoff: str, *, a
 
     c = conn.execute(  # type: ignore[attr-defined]
         "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < ?",  # noqa: S608 — table/date_col are internal constants
-            (cutoff,),
+        (cutoff,),
     )
     count = c.fetchone()[0]
     if apply and count > 0:

@@ -49,8 +49,7 @@ def upgrade() -> None:
         "ON licitacion_tecnologia_score(tecnologia, probabilidad DESC)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_lts_lic "
-        "ON licitacion_tecnologia_score(licitacion_id)"
+        "CREATE INDEX IF NOT EXISTS idx_lts_lic ON licitacion_tecnologia_score(licitacion_id)"
     )
     for col, coltype in [
         ("ml_tecnologias", "TEXT"),
@@ -58,13 +57,15 @@ def upgrade() -> None:
         ("ml_tech_principal", "TEXT"),
     ]:
         try:
-            op.add_column("licitaciones", sa.Column(col, sa.Text() if coltype == "TEXT" else sa.Float(), nullable=True))
+            op.add_column(
+                "licitaciones",
+                sa.Column(col, sa.Text() if coltype == "TEXT" else sa.Float(), nullable=True),
+            )
         except Exception:
             pass
     try:
         op.execute(
-            "CREATE INDEX IF NOT EXISTS idx_ml_tech_principal "
-            "ON licitaciones(ml_tech_principal)"
+            "CREATE INDEX IF NOT EXISTS idx_ml_tech_principal ON licitaciones(ml_tech_principal)"
         )
     except Exception:
         pass

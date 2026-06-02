@@ -1,4 +1,5 @@
 """Print coverage breakdown by file, sorted by percent_covered ascending."""
+
 import json
 from pathlib import Path
 
@@ -6,9 +7,11 @@ d = json.loads(Path("coverage.json").read_text(encoding="utf-8"))
 files = sorted(d["files"].items(), key=lambda x: x[1]["summary"]["percent_covered"])
 total = d["totals"]
 
-print(f"\n{'='*60}")
-print(f"TOTAL: {total['percent_covered']:.1f}% ({total['covered_lines']}/{total['num_statements']} statements)")
-print(f"{'='*60}\n")
+print(f"\n{'=' * 60}")
+print(
+    f"TOTAL: {total['percent_covered']:.1f}% ({total['covered_lines']}/{total['num_statements']} statements)"
+)
+print(f"{'=' * 60}\n")
 
 print(f"{'%':>5}  {'Stmts':>5}  File")
 print(f"{'---':>5}  {'-----':>5}  ----")

@@ -173,7 +173,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             imp_adj = pd.to_numeric(adj_col, errors="coerce")
             imp_lic = pd.to_numeric(lic_col, errors="coerce")
             df_baja = df.copy()
-            df_baja["_baja"] = ((1 - imp_adj / imp_lic) * 100).where((imp_lic > 0) & imp_adj.notna())
+            df_baja["_baja"] = ((1 - imp_adj / imp_lic) * 100).where(
+                (imp_lic > 0) & imp_adj.notna()
+            )
             baja_means = df_baja.groupby("empresa")["_baja"].mean()
             baja_by_empresa = {str(k): float(v) for k, v in baja_means.items() if pd.notna(v)}
 
@@ -186,7 +188,10 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     # n_organos per empresa
     n_organos_map: dict[str, int] = {}
     if "organo_contratacion" in df.columns:
-        n_organos_map = {str(k): int(v) for k, v in df.groupby("empresa")["organo_contratacion"].nunique().to_dict().items()}
+        n_organos_map = {
+            str(k): int(v)
+            for k, v in df.groupby("empresa")["organo_contratacion"].nunique().to_dict().items()
+        }
 
     # ofertas_medias per empresa
     ofertas_map: dict[str, float] = {}

@@ -1,4 +1,5 @@
 """Load tests for scraper PLACSP: XML parsing + bulk upsert performance."""
+
 from __future__ import annotations
 
 import os
@@ -7,7 +8,6 @@ import time
 import xml.etree.ElementTree as ET
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -19,7 +19,7 @@ def _build_simple_atom(n: int) -> bytes:
     entries = []
     for i in range(n):
         entries.append(
-            f'  <entry><id>id-{i}</id><title>Test {i}</title>'
+            f"  <entry><id>id-{i}</id><title>Test {i}</title>"
             f"<updated>2026-01-15T10:00:00Z</updated></entry>"
         )
     body = "\n".join(entries)
@@ -28,7 +28,7 @@ def _build_simple_atom(n: int) -> bytes:
         '<feed xmlns="http://www.w3.org/2005/Atom">\n'
         f"{body}\n"
         "</feed>"
-    ).encode("utf-8")
+    ).encode()
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ class TestBulkUpsertPerformance:
 
     @pytest.mark.parametrize("n", [100, 500])
     def test_upsert_throughput(self, n: int) -> None:
-        from db.database import Licitacion, connect, init_db, set_db_path_override
+        from db.database import Licitacion, init_db, set_db_path_override
         from db.upsert import upsert_licitaciones
 
         tmp = tempfile.mktemp(suffix=".db")

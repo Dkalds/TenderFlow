@@ -1055,7 +1055,9 @@ class TestRunDailyAtom:
     @patch("scraper.ml_training.precompute_ml_tecnologias")
     @patch("config.settings")
     @patch("scraper.pipeline.update_daily", return_value={"status": "ok"})
-    def test_success(self, mock_update: MagicMock, mock_settings: MagicMock, *mocks: MagicMock) -> None:
+    def test_success(
+        self, mock_update: MagicMock, mock_settings: MagicMock, *mocks: MagicMock
+    ) -> None:
         mock_settings.ML_TECH_ENABLED = False
         from scheduler.jobs.daily_atom import run
 

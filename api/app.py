@@ -93,6 +93,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log.error("api_startup_db_error", error=str(exc))
         raise  # fail fast en todos los entornos
 
+    # Limitar hilos del threadpool de anyio — evita CPU starvation en instancias
+    # con pocos vCPUs (ej. Render Free 0.1 vCPU).  Sin este límite, FastAPI
+    # despacha cada endpoint sync a un hilo nuevo (default 40), provocando que
+    # 9 peticiones Pandas concurrentes saturen el único core y generen 502.
+    try:
+        import anyio
+
+        anyio.to_thread.current_default_thread_limiter().total_tokens = 4
+        log.info("anyio_thread_limiter_set", max_threads=4)
+    except Exception as exc:
+        log.warning("anyio_thread_limiter_failed", error=str(exc))
+
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
     app.state.pending_background_tasks = set()
 

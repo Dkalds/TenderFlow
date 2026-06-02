@@ -41,9 +41,7 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_csp_created ON csp_violations(created_at)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_csp_created ON csp_violations(created_at)")
 
 
 def downgrade() -> None:

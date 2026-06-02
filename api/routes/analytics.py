@@ -59,6 +59,7 @@ from services.analytics.tecnologias import TecnologiasFilters, TecnologiasResult
 from services.analytics.trends import TrendsFilters, TrendsResult, get_trends
 from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
 from services.analytics.utes import UTEFilters, UTEResult, get_utes
+from shared.cache import cache_response
 
 log = get_logger(__name__)
 
@@ -66,6 +67,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 @router.get("/overview", response_model=OverviewResult)
+@cache_response(ttl=300)
 def overview(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -86,6 +88,7 @@ def overview(
 
 
 @router.get("/trends", response_model=TrendsResult)
+@cache_response(ttl=300)
 def trends(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -108,6 +111,7 @@ def trends(
 
 
 @router.get("/geography", response_model=GeoResult)
+@cache_response(ttl=300)
 def geography(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -124,6 +128,7 @@ def geography(
 
 
 @router.get("/competitors", response_model=CompetitorResult)
+@cache_response(ttl=300)
 def competitors(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -142,6 +147,7 @@ def competitors(
 
 
 @router.get("/scoring", response_model=ScoringResult)
+@cache_response(ttl=300)
 def scoring(
     min_score: int = Query(default=0, ge=0, le=100, description="Minimum score threshold"),
     limit: int = Query(default=50, ge=1, le=500, description="Max opportunities to return"),
@@ -158,6 +164,7 @@ def scoring(
 
 
 @router.get("/quality", response_model=QualityResult)
+@cache_response(ttl=600)
 def quality(
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> QualityResult:
@@ -166,6 +173,7 @@ def quality(
 
 
 @router.get("/organos", response_model=OrganosResult)
+@cache_response(ttl=300)
 def organos(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -186,6 +194,7 @@ def organos(
 
 
 @router.get("/tecnologias", response_model=TecnologiasResult)
+@cache_response(ttl=300)
 def tecnologias(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -202,6 +211,7 @@ def tecnologias(
 
 
 @router.get("/proyectos-modulos", response_model=ProyectosModulosResult)
+@cache_response(ttl=300)
 def proyectos_modulos(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -218,6 +228,7 @@ def proyectos_modulos(
 
 
 @router.get("/pipeline", response_model=PipelineResult)
+@cache_response(ttl=120)
 def pipeline(
     dias: int = Query(default=30, ge=1, le=365, description="Deadline window in days"),
     limit: int = Query(default=50, ge=1, le=500, description="Max entries to return"),
@@ -229,6 +240,7 @@ def pipeline(
 
 
 @router.get("/resumen/novedades", response_model=ResumenNovedadesResult)
+@cache_response(ttl=120)
 def resumen_novedades(
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> ResumenNovedadesResult:
@@ -237,6 +249,7 @@ def resumen_novedades(
 
 
 @router.get("/resumen/hoy", response_model=ResumenHoyResult)
+@cache_response(ttl=120)
 def resumen_hoy(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -255,6 +268,7 @@ def resumen_hoy(
 
 
 @router.get("/resumen/timeline", response_model=TimelineScatterResult)
+@cache_response(ttl=300)
 def resumen_timeline(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -273,6 +287,7 @@ def resumen_timeline(
 
 
 @router.get("/resumen/sankey", response_model=SankeyResult)
+@cache_response(ttl=300)
 def resumen_sankey(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -291,6 +306,7 @@ def resumen_sankey(
 
 
 @router.get("/resumen/top", response_model=TopLicitacionesResult)
+@cache_response(ttl=300)
 def resumen_top(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -311,6 +327,7 @@ def resumen_top(
 
 
 @router.get("/forecast/volume", response_model=ForecastVolumeResult)
+@cache_response(ttl=600)
 def forecast_volume_endpoint(
     months_ahead: int = Query(default=6, ge=1, le=24, description="Months to forecast"),
     metric: str = Query(default="count", description="Metric: count or sum"),
@@ -333,6 +350,7 @@ def forecast_volume_endpoint(
 
 
 @router.get("/forecast/retendering", response_model=RetenderingResult)
+@cache_response(ttl=600)
 def forecast_retendering(
     meses_anticipacion: int = Query(default=6, ge=1, le=24, description="Months anticipation"),
     solo_mantenimiento: bool = Query(default=True, description="Only maintenance contracts"),
@@ -357,6 +375,7 @@ def forecast_retendering(
 
 
 @router.get("/trends-cpv", response_model=TrendsCpvResult)
+@cache_response(ttl=300)
 def trends_cpv(
     cpv: str | None = Query(default=None, description="Specific CPV to focus"),
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
@@ -379,6 +398,7 @@ def trends_cpv(
 
 
 @router.get("/organos/{organo}", response_model=OrganoDetailResult)
+@cache_response(ttl=300)
 def organo_detail(
     organo: str,
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
@@ -398,6 +418,7 @@ def organo_detail(
 
 
 @router.get("/utes", response_model=UTEResult)
+@cache_response(ttl=300)
 def utes(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -414,6 +435,7 @@ def utes(
 
 
 @router.get("/compare-periods", response_model=CompareResult)
+@cache_response(ttl=300)
 def compare_periods(
     range_a_desde: date = Query(description="Period A start date"),
     range_a_hasta: date = Query(description="Period A end date"),
