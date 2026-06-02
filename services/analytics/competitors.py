@@ -125,7 +125,7 @@ def _apply_filters(df: pd.DataFrame, filters: CompetitorFilters) -> pd.DataFrame
     return df
 
 
-def _compute_hhi(shares: pd.Series) -> float:  # type: ignore[type-arg]
+def _compute_hhi(shares: pd.Series) -> float:
     """Herfindahl-Hirschman Index from market share percentages (0-10000)."""
     return float((shares**2).sum())
 
@@ -167,23 +167,26 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     # baja_media per empresa
     baja_by_empresa: dict[str, float] = {}
     if "importe_adjudicado" in df.columns and "importe_licitacion" in df.columns:
-        imp_adj = pd.to_numeric(df.get("importe_adjudicado"), errors="coerce")
-        imp_lic = pd.to_numeric(df.get("importe_licitacion"), errors="coerce")
-        df_baja = df.copy()
-        df_baja["_baja"] = ((1 - imp_adj / imp_lic) * 100).where((imp_lic > 0) & imp_adj.notna())
-        baja_means = df_baja.groupby("empresa")["_baja"].mean()
-        baja_by_empresa = {k: float(v) for k, v in baja_means.items() if pd.notna(v)}
+        adj_col = df.get("importe_adjudicado")
+        lic_col = df.get("importe_licitacion")
+        if adj_col is not None and lic_col is not None:
+            imp_adj = pd.to_numeric(adj_col, errors="coerce")
+            imp_lic = pd.to_numeric(lic_col, errors="coerce")
+            df_baja = df.copy()
+            df_baja["_baja"] = ((1 - imp_adj / imp_lic) * 100).where((imp_lic > 0) & imp_adj.notna())
+            baja_means = df_baja.groupby("empresa")["_baja"].mean()
+            baja_by_empresa = {str(k): float(v) for k, v in baja_means.items() if pd.notna(v)}
 
     # nif per empresa
     nif_by_empresa: dict[str, str] = {}
     if "nif" in df.columns:
         nif_first = df.dropna(subset=["nif"]).groupby("empresa")["nif"].first()
-        nif_by_empresa = {k: str(v) for k, v in nif_first.items()}
+        nif_by_empresa = {str(k): str(v) for k, v in nif_first.items()}
 
     # n_organos per empresa
     n_organos_map: dict[str, int] = {}
     if "organo_contratacion" in df.columns:
-        n_organos_map = df.groupby("empresa")["organo_contratacion"].nunique().to_dict()
+        n_organos_map = {str(k): int(v) for k, v in df.groupby("empresa")["organo_contratacion"].nunique().to_dict().items()}
 
     # ofertas_medias per empresa
     ofertas_map: dict[str, float] = {}
@@ -191,7 +194,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         _ofertas = pd.to_numeric(df["n_ofertas_recibidas"], errors="coerce")
         _df_of = df.assign(_ofertas=_ofertas)
         ofertas_map = {
-            k: float(v)
+            str(k): float(v)
             for k, v in _df_of.groupby("empresa")["_ofertas"].mean().items()
             if pd.notna(v)
         }

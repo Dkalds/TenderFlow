@@ -107,6 +107,10 @@ jobs:
           pip install --no-deps "starlette>=1.0.1"
           pip install pip-audit
 
+      # NOTA: Los CVE ignorados en ci.yml (audit job) se re-evalúan aquí sin --ignore-vuln.
+      # Si este job falla por esos mismos CVE, es señal de que ya tienen fix y se pueden
+      # eliminar del ignore list en ci.yml.
+      # Refs: PYSEC-2024-277, PYSEC-2026-161
       - name: Run pip-audit
         run: pip-audit --strict --desc
 

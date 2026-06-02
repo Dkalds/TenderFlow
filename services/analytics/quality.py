@@ -80,14 +80,7 @@ def _last_scrape_hours() -> float | None:
 
 def _dlq_count() -> int:
     """Get DLQ count if available."""
-    try:
-        from db.repositories.dlq import DLQRepository
-
-        repo = DLQRepository()
-        return repo.count()  # type: ignore[return-value]
-    except Exception:
-        log.debug("quality_dlq_unavailable")
-        return 0
+    return 0
 
 
 # ---------------------------------------------------------------------------

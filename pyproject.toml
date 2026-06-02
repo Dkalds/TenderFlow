@@ -110,33 +110,35 @@ ignore = [
 "tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002", "SIM117", "F841", "E402"]
 "dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
 "dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
-"db/database.py" = ["S608", "E402", "RUF022"]  # SQL built from internal dataclass-field constants; E402 intentional facade re-exports
-"scraper/ml_classifier.py" = ["S608", "E402"]  # SQL built from internal schema-detection strings; E402 re-exports at module bottom
+"db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
+"scraper/ml_classifier.py" = ["E402"]  # E402 re-exports at module bottom
 "api/routes/licitaciones.py" = ["E402"]  # TypeVar declared before imports for Python 3.11 compatibility
-"db/alembic/*" = ["S608"]   # SQL in migrations is schema-only, not user-controlled
-"db/events.py" = ["S608"]   # SQL built from internal event-type constants
-"db/feature_store.py" = ["S608"]  # SQL built from internal feature-name constants
-"db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
-"dashboard/pages/investigador.py" = ["S608"]  # SQL built from validated filter params
-"services/investigador/*" = ["S608"]  # SQL built from escaped FTS5 queries and placeholders
+# S608: SQL built from internal dataclass-field/schema constants, not user input.
+# These files ONLY construct SQL from controlled code constants — no user data reaches the column/table names.
+"db/acl.py" = ["S608"]
+"db/analytics.py" = ["S608"]
 "db/connection.py" = ["S608"]  # get_table_columns uses table param from internal callers only
-"db/upsert.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
-"scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings, not user input
-"api/routes/ask.py" = ["S608"]  # SQL built from FTS5 query with validated user input
-"db/dlq.py" = ["S608"]  # SQL with placeholders for internal IDs
-"db/notifications.py" = ["S608"]  # SQL with placeholders for internal IDs
-"db/repositories/adjudicaciones.py" = ["S608"]  # SQL filter builder uses validated column names
-"db/repositories/extraction_runs.py" = ["S608"]  # SQL built from internal column constants
-"db/repositories/watchlist.py" = ["S608"]  # SQL built from internal column constants and placeholders
-"db/repositories/api_keys.py" = ["S608"]  # SQL built from internal column constants
-"db/repositories/base.py" = ["S608"]  # SQL built from internal column constants
-"db/repositories/webhooks.py" = ["S608"]  # SQL built from internal column constants
-"scheduler/retention.py" = ["S608"]  # SQL built from internal table/column constants
-"services/auth.py" = ["S608"]  # SQL built from internal column constants
-"services/extraction_runs.py" = ["S608"]  # SQL built from internal column constants
-"services/gdpr.py" = ["S608"]  # SQL built from internal table constants
-"services/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
-"services/watchlist.py" = ["S608"]  # SQL built from internal column constants
+"db/dlq.py" = ["S608"]  # placeholders-for-IDs pattern, not user data
+"db/notifications.py" = ["S608"]  # placeholders-for-IDs pattern, not user data
+"db/upsert.py" = ["S608"]  # SQL built from internal dataclass-field constants
+"db/alembic/*" = ["S608"]  # SQL in migrations is schema-only, not user-controlled
+"db/repositories/adjudicaciones.py" = ["S608"]
+"db/repositories/api_keys.py" = ["S608"]
+"db/repositories/extraction_runs.py" = ["S608"]
+"db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
+"db/repositories/watchlist.py" = ["S608"]
+"db/repositories/webhooks.py" = ["S608"]
+"scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings
+"api/routes/ask.py" = ["S608"]  # FTS5 query with validated user input via parameterized queries
+"dashboard/pages/investigador.py" = ["S608"]
+"services/investigador/*" = ["S608"]
+"services/auth.py" = ["S608"]
+"services/extraction_runs.py" = ["S608"]
+"services/gdpr.py" = ["S608"]
+"services/licitaciones.py" = ["S608"]
+"services/watchlist.py" = ["S608"]
+# S608 removed from these files — handled inline with # noqa: S608 + justification:
+#   db/events.py, db/feature_store.py, db/repositories/base.py, scheduler/retention.py
 
 [tool.ruff.format]
 quote-style = "double"
@@ -216,6 +218,8 @@ module = [
     "requests.*",
     "cachetools",
     "cachetools.*",
+    "statsmodels",
+    "statsmodels.*",
 ]
 ignore_missing_imports = true
 

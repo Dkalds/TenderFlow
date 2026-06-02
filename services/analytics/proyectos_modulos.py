@@ -182,11 +182,12 @@ def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int]:
     module_counts: dict[str, dict[str, float]] = {}
     classified_ids: set[int] = set()
 
-    for idx, text in combined.items():
+    for i, (idx, text) in enumerate(combined.items()):
         modules = _detect_modules(str(text))
         if modules:
-            classified_ids.add(int(idx))  # type: ignore[arg-type]
-            imp = float(df.loc[idx, "importe"]) if pd.notna(df.loc[idx, "importe"]) else 0.0  # type: ignore[index]
+            classified_ids.add(int(str(idx)))
+            val = df.iloc[i].get("importe", 0.0)
+            imp = float(str(val)) if pd.notna(val) else 0.0
             for mod in modules:
                 if mod not in module_counts:
                     module_counts[mod] = {"count": 0, "importe": 0.0}

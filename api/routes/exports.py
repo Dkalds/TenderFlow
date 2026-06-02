@@ -231,7 +231,7 @@ async def download_export(
     fecha_desde: str | None = Query(None),
     fecha_hasta: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
-    _user=Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> StreamingResponse:
     """Synchronous CSV or Excel download with current filters."""
     from services.exports import generate_csv, generate_excel, get_export_filename

@@ -320,7 +320,11 @@ def _process_month_impl(
     n_adj = 0
     n_adj_failed = 0
     if adj_por_lic:
-        n_adj, n_adj_failed = replace_adjudicaciones_batch(adj_por_lic)
+        try:
+            n_adj, n_adj_failed = replace_adjudicaciones_batch(adj_por_lic)
+        except Exception as e:
+            log.warning("month_adj_persist_error", error=str(e))
+            record_failure(run_id, fuente, e, scope="persist_adjudicaciones")
 
     log_extraccion(
         fuente=fuente,

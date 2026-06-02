@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils";
 import { Bell } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
+import { reportError } from "@/lib/report-error";
 
 interface NotificationBellProps {
   className?: string;
@@ -19,21 +19,27 @@ interface Notification {
   timestamp: Date;
 }
 
+const MAX_RECONNECT_DELAY = 60_000;
+const INITIAL_RECONNECT_DELAY = 1_000;
+
 export function NotificationBell({ className }: NotificationBellProps) {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
   const [connected, setConnected] = React.useState(false);
 
-  // SSE connection
   React.useEffect(() => {
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout>;
+    let reconnectDelay = INITIAL_RECONNECT_DELAY;
 
     function connect() {
       try {
         es = new EventSource("/api/v1/licitaciones/stream", { withCredentials: true });
 
-        es.onopen = () => setConnected(true);
+        es.onopen = () => {
+          setConnected(true);
+          reconnectDelay = INITIAL_RECONNECT_DELAY;
+        };
 
         es.addEventListener("licitaciones_nuevas", (event) => {
           try {
@@ -45,20 +51,26 @@ export function NotificationBell({ className }: NotificationBellProps) {
             };
             setNotifications((prev) => [notif, ...prev].slice(0, 5));
             setUnreadCount((prev) => prev + 1);
-          } catch {
-            // Ignore parse errors
+          } catch (parseError) {
+            reportError("NotificationBell.parse", parseError);
           }
         });
 
         es.onerror = () => {
           setConnected(false);
           es?.close();
-          // Reconnect after 10s
-          reconnectTimer = setTimeout(connect, 10000);
+          reconnectTimer = setTimeout(() => {
+            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+            connect();
+          }, reconnectDelay);
         };
-      } catch {
-        // Gracefully handle connection failures (e.g., 401)
+      } catch (connError) {
+        reportError("NotificationBell.connect", connError);
         setConnected(false);
+        reconnectTimer = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+          connect();
+        }, reconnectDelay);
       }
     }
 

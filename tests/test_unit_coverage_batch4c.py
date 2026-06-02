@@ -117,7 +117,7 @@ class TestProcessMonth:
     @patch("scraper.pipeline.close_pool")
     @patch("scraper.pipeline._signal_post_ingestion")
     @patch("scraper.pipeline.log_extraccion")
-    @patch("scraper.pipeline.replace_adjudicaciones", return_value=2)
+    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(2, 0))
     @patch("scraper.pipeline.upsert_licitaciones", return_value=(3, 1))
     @patch("scraper.pipeline.iter_xml_files")
     @patch("scraper.pipeline.download_month", return_value="/var/tmp/test.zip")  # noqa: S108
@@ -263,7 +263,7 @@ class TestProcessDaily:
     @patch("scraper.pipeline._signal_post_ingestion")
     @patch("scraper.pipeline.log_extraccion")
     @patch("scraper.pipeline.set_cursor")
-    @patch("scraper.pipeline.replace_adjudicaciones", return_value=1)
+    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(1, 0))
     @patch("scraper.pipeline.get_cursor", return_value=None)
     @patch("scraper.pipeline.init_db")
     def test_no_entries(self, init, get_cur, repl, set_cur, log_ext, signal):
@@ -286,7 +286,7 @@ class TestProcessDaily:
     @patch("scraper.pipeline._signal_post_ingestion")
     @patch("scraper.pipeline.log_extraccion")
     @patch("scraper.pipeline.set_cursor")
-    @patch("scraper.pipeline.replace_adjudicaciones", return_value=1)
+    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(1, 0))
     @patch("scraper.pipeline.get_cursor", return_value={"last_seen_updated": "2024-01-01"})
     @patch("scraper.pipeline.init_db")
     def test_with_entries(self, init, get_cur, repl, set_cur, log_ext, signal):
@@ -336,7 +336,7 @@ class TestProcessDaily:
     @patch("scraper.pipeline.log_extraccion")
     @patch("scraper.pipeline.set_cursor")
     @patch("scraper.pipeline.record_failure")
-    @patch("scraper.pipeline.replace_adjudicaciones", return_value=0)
+    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(0, 0))
     @patch("scraper.pipeline.get_cursor", return_value={"last_seen_updated": "2024-01-01"})
     @patch("scraper.pipeline.init_db")
     def test_persist_error(self, init, get_cur, repl, rec, set_cur, log_ext, signal):

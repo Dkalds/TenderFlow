@@ -28,7 +28,7 @@ _DEFAULT_COLUMNS = [
 
 
 def generate_csv(
-    records: list[dict],
+    records: list[dict[str, object]],
     columns: list[str] | None = None,
 ) -> bytes:
     """Generate CSV bytes with UTF-8 BOM and semicolon delimiter for Excel compat."""
@@ -45,7 +45,7 @@ def generate_csv(
 
 
 def generate_excel(
-    records: list[dict],
+    records: list[dict[str, object]],
     columns: list[str] | None = None,
     sheet_name: str = "Licitaciones",
 ) -> bytes:

@@ -111,7 +111,7 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
     ccaa_mode = (
         df.dropna(subset=["ccaa"])
         .groupby("organo_contratacion")["ccaa"]
-        .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else None)
+        .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else "")
     )
 
     # Concentration of top 10

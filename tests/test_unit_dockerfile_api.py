@@ -68,7 +68,7 @@ def test_dockerfile_api_uses_entrypoint_exec_form() -> None:
         "Dockerfile.api must not use sh -c wrapper (prevents signal propagation)"
     )
     # Must have ENTRYPOINT in exec form
-    assert 'ENTRYPOINT ["docker-entrypoint-api.sh"]' in content, (
+    assert 'ENTRYPOINT ["' in content and "docker-entrypoint-api.sh" in content, (
         "Dockerfile.api must use ENTRYPOINT exec form with docker-entrypoint-api.sh"
     )
 

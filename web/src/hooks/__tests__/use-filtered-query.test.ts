@@ -142,6 +142,7 @@ describe("useFilteredQuery", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/noop", {
       credentials: "include",
+      headers: { "Content-Type": "application/json" },
     });
   });
 

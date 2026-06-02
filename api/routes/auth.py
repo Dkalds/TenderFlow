@@ -325,12 +325,12 @@ def google_authorize() -> dict[str, str]:
     return {"authorization_url": authorization_url}
 
 
-@router.get("/oauth/google/callback")
+@router.get("/oauth/google/callback", response_model=None)
 def google_callback(
     code: str,
     state: str,
     response: Response,
-) -> UserInfo:
+) -> UserInfo | Response:
     """Handle Google OAuth callback: exchange code, validate, set session."""
     # Verify and decode composite state (contains CSRF state + PKCE verifier)
     state_payload = _verify_session(state)

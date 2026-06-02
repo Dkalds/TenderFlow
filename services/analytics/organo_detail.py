@@ -89,7 +89,7 @@ def _apply_filters(df: pd.DataFrame, filters: Any) -> pd.DataFrame:
     return df
 
 
-def _simple_score(row: pd.Series) -> float:  # type: ignore[type-arg]
+def _simple_score(row: pd.Series) -> float:
     """Simplified scoring for ranking within an organo."""
     score = 0.0
     if pd.notna(row.get("importe")):
@@ -176,7 +176,7 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         n_years = max(valid_dates["fecha_publicacion"].dt.year.nunique(), 1)
         mes_counts = valid_dates.groupby("mes_num").size()
         estacionalidad = [
-            Estacionalidad(mes_numero=int(m), count=round(c / n_years))
+            Estacionalidad(mes_numero=int(str(m)), count=round(c / n_years))
             for m, c in mes_counts.items()
         ]
 

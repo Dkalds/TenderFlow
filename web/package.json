@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "next build",
+    "build": "npm run codegen:best-effort && next build",
     "start": "next start --port 3000",
     "lint": "eslint",
     "format": "prettier --write .",
@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "codegen": "openapi-typescript http://localhost:8080/api/openapi.json -o src/generated/api.d.ts",
     "codegen:file": "openapi-typescript ../api/openapi.json -o src/generated/api.d.ts",
+    "codegen:best-effort": "node -e \"fetch('http://localhost:8080/api/openapi.json').then(r=>r.ok?r.json():Promise.reject()).then(j=>require('fs').writeFileSync('src/generated/api.d.ts',require('openapi-typescript').default(j))).catch(()=>console.log('[codegen] API not available, skipping'))\" 2>/dev/null || true",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

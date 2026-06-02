@@ -96,7 +96,7 @@ _W_COMPETENCIA = 10
 _W_RIESGO = 5
 
 
-def _score_row(  # type: ignore[type-arg]
+def _score_row(
     row: pd.Series,
     imp_p10: float,
     imp_p90: float,

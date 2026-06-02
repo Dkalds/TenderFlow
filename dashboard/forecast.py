@@ -208,7 +208,7 @@ def forecast_volume(
 
     try:
         from statsmodels.tsa.holtwinters import (
-            ExponentialSmoothing,  # type: ignore[import-not-found]
+            ExponentialSmoothing,
         )
 
         n_hist = len(hist)

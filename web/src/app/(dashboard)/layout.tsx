@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { TopNav } from "@/components/layout/top-nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
@@ -5,6 +6,8 @@ import { KpiBarConnected } from "@/components/layout/kpi-bar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
 import { Toaster } from "sonner";
+
+export const dynamic = "force-dynamic";
 
 /**
  * Dashboard layout — wraps all authenticated pages with the premium shell:
@@ -37,7 +40,7 @@ export default function DashboardLayout({
         <DashboardShell>
           <div className="mx-auto w-full max-w-[1640px] px-4 py-5 sm:px-6 lg:px-8">
             <Breadcrumb />
-            <div id="main" className="mt-4">{children}</div>
+            <div id="main" className="mt-4"><Suspense fallback={null}>{children}</Suspense></div>
           </div>
         </DashboardShell>
       </div>

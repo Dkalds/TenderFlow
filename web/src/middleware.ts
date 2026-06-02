@@ -1,17 +1,24 @@
+/**
+ * Edge middleware — server-side route protection.
+ *
+ * Checks for session cookie before rendering protected pages.
+ * Redirects to /login with a ?redirect param for post-auth return.
+ *
+ * Runs only on matching paths (see config.matcher below).
+ * Executes at the edge (no Node.js APIs).
+ */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api", "/_next", "/favicon.ico"];
+const PUBLIC_PATHS = ["/login", "/_next", "/favicon.ico"];
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip public paths
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  // Check for session cookie
   const sessionCookie = request.cookies.get("session");
 
   if (!sessionCookie) {
@@ -25,12 +32,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
   ],
 };

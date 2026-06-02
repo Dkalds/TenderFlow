@@ -1046,59 +1046,66 @@ class TestRunJob:
 
 
 class TestRunDailyAtom:
-    @patch("scheduler.loop.run_anomaly_checks")
-    @patch("scheduler.loop.retry_failed_extractions")
-    @patch("scheduler.loop.check_and_notify")
-    @patch("scheduler.loop.run_aggregates_precompute")
-    @patch("scheduler.loop.run_kpi_precompute")
-    @patch("scheduler.loop.update_daily", return_value={"status": "ok"})
-    def test_success(self, *mocks: MagicMock) -> None:
-        from scheduler.loop import _run_daily_atom
+    @patch("scheduler.anomaly_alerts.run_anomaly_checks")
+    @patch("scheduler.dlq_retry.retry_failed_extractions")
+    @patch("scheduler.watchlist_alerts.check_and_notify")
+    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
+    @patch("scheduler.kpi_precompute.run_kpi_precompute")
+    @patch("scraper.ml_training.precompute_ml_proba")
+    @patch("scraper.ml_training.precompute_ml_tecnologias")
+    @patch("config.settings")
+    @patch("scraper.pipeline.update_daily", return_value={"status": "ok"})
+    def test_success(self, mock_update: MagicMock, mock_settings: MagicMock, *mocks: MagicMock) -> None:
+        mock_settings.ML_TECH_ENABLED = False
+        from scheduler.jobs.daily_atom import run
 
-        _run_daily_atom()
+        run()
 
-    @patch("scheduler.loop.update_daily", return_value={"status": "error"})
+    @patch("scraper.pipeline.update_daily", return_value={"status": "error"})
     def test_failure(self, mock_update: MagicMock) -> None:
-        from scheduler.loop import _run_daily_atom
+        from scheduler.jobs.daily_atom import run
 
         with pytest.raises(RuntimeError, match="daily atom failed"):
-            _run_daily_atom()
+            run()
 
 
 class TestRunRecentBulk:
-    @patch("scheduler.loop.check_and_notify")
-    @patch("scheduler.loop.run_aggregates_precompute")
-    @patch("scheduler.loop.run_kpi_precompute")
-    @patch("scheduler.loop.update_recent", return_value=[{"status": "ok"}])
+    @patch("scheduler.watchlist_alerts.check_and_notify")
+    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
+    @patch("scheduler.kpi_precompute.run_kpi_precompute")
+    @patch("scraper.pipeline.update_recent", return_value=[{"status": "ok"}])
     def test_success(self, *mocks: MagicMock) -> None:
-        from scheduler.loop import _run_recent_bulk
+        from scheduler.jobs.recent_bulk import run
 
-        _run_recent_bulk(3)
+        run()
 
-    @patch("scheduler.loop.update_recent", return_value=[{"status": "error"}])
+    @patch("scraper.pipeline.update_recent", return_value=[{"status": "error"}])
     def test_failure(self, mock_update: MagicMock) -> None:
-        from scheduler.loop import _run_recent_bulk
+        from scheduler.jobs.recent_bulk import run
 
         with pytest.raises(RuntimeError, match="bulk refresh failed"):
-            _run_recent_bulk(3)
+            run()
 
 
 class TestRunRecentBulkDefault:
-    @patch("scheduler.loop._run_recent_bulk")
-    def test_reads_env(self, mock_bulk: MagicMock) -> None:
+    @patch("scheduler.watchlist_alerts.check_and_notify")
+    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
+    @patch("scheduler.kpi_precompute.run_kpi_precompute")
+    @patch("scraper.pipeline.update_recent", return_value=[{"status": "ok"}])
+    def test_reads_env(self, mock_update: MagicMock, *mocks: MagicMock) -> None:
         with patch.dict("os.environ", {"SCHEDULER_BULK_MONTHS": "5"}):
-            from scheduler.loop import _run_recent_bulk_default
+            from scheduler.jobs.recent_bulk import run
 
-            _run_recent_bulk_default()
-        mock_bulk.assert_called_once_with(5)
+            run()
+        mock_update.assert_called_once_with(5)
 
 
 class TestRunRetentionCleanup:
     @patch("scheduler.retention.run_retention", return_value={"deleted": 10})
     def test_calls_retention(self, mock_retention: MagicMock) -> None:
-        from scheduler.loop import _run_retention_cleanup
+        from scheduler.jobs.retention_cleanup import run
 
-        result = _run_retention_cleanup()
+        result = run()
         assert result == {"deleted": 10}
         mock_retention.assert_called_once()
 
@@ -1111,9 +1118,9 @@ class TestRunWalCheckpoint:
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
-        from scheduler.loop import _run_wal_checkpoint
+        from scheduler.jobs.wal_checkpoint import run
 
-        result = _run_wal_checkpoint()
+        result = run()
         assert result == {"blocked": 0, "wal_pages": 100, "checkpointed": 100}
 
     @patch("db.database.connect")
@@ -1123,9 +1130,9 @@ class TestRunWalCheckpoint:
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
-        from scheduler.loop import _run_wal_checkpoint
+        from scheduler.jobs.wal_checkpoint import run
 
-        result = _run_wal_checkpoint()
+        result = run()
         assert result == {}
 
 
@@ -1137,18 +1144,17 @@ class TestRebuildFaissIfStale:
         self, mock_path: MagicMock, mock_stale: MagicMock, mock_enqueue: MagicMock
     ) -> None:
         mock_path.exists.return_value = True
-        from scheduler.loop import _rebuild_faiss_if_stale
+        from scheduler.jobs.faiss_rebuild import run
 
-        _rebuild_faiss_if_stale()
+        run()
         mock_enqueue.assert_called_once()
 
     def test_handles_import_error(self) -> None:
         """If faiss imports fail, should log warning not crash."""
-        from scheduler.loop import _rebuild_faiss_if_stale
+        from scheduler.jobs.faiss_rebuild import run
 
         with patch.dict("sys.modules", {"dashboard.faiss_index": None}):
-            # The function catches all exceptions
-            _rebuild_faiss_if_stale()  # Should not raise
+            run()  # Should not raise
 
 
 class TestMainLoop:

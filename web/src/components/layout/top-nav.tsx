@@ -27,6 +27,7 @@ import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
 import { useFilters } from "@/lib/filters";
 import { apiMutate } from "@/lib/api-client";
+import { reportError } from "@/lib/report-error";
 
 function formatRelativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -51,8 +52,8 @@ export function TopNav() {
   const handleLogout = async () => {
     try {
       await apiMutate("POST", "/api/v1/auth/logout");
-    } catch {
-      // Even if the API call fails, redirect to login
+    } catch (err) {
+      reportError("TopNav.logout", err);
     }
     window.location.href = "/login";
   };
@@ -72,7 +73,9 @@ export function TopNav() {
           const data = await res.json();
           setLastExtraction(data.last_extraction ?? null);
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        reportError("TopNav.lastExtraction", err);
+      }
     };
     fetchLastExtraction();
     const id = setInterval(fetchLastExtraction, 5 * 60_000);

@@ -189,7 +189,7 @@ def _build_histogram(df: pd.DataFrame) -> list[HistogramBin]:
         .value_counts()
         .reindex(labels, fill_value=0)
     )
-    return [HistogramBin(bin_label=label, count=int(c)) for label, c in counts.items()]
+    return [HistogramBin(bin_label=str(label), count=int(c)) for label, c in counts.items()]
 
 
 def _find_mes_pico(df: pd.DataFrame) -> dict[str, Any] | None:

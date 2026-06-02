@@ -158,7 +158,7 @@ def _por_mes(df: pd.DataFrame) -> list[MesAggregate]:
         return []
     g = (
         df.dropna(subset=["fecha_publicacion"])
-        .assign(mes=lambda x: x["fecha_publicacion"].dt.to_period("M").dt.to_timestamp())
+        .assign(mes=lambda x: x["fecha_publicacion"].dt.tz_localize(None).dt.to_period("M").dt.to_timestamp())
         .groupby("mes")
         .agg(n_licitaciones=("id_externo", "count"), importe=("importe", "sum"))
         .reset_index()

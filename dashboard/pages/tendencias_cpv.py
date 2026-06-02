@@ -20,7 +20,7 @@ def _arima_forecast(series: pd.Series, steps: int = 6) -> pd.Series | None:
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            from statsmodels.tsa.arima.model import ARIMA  # type: ignore[import-not-found]
+            from statsmodels.tsa.arima.model import ARIMA
 
             model = ARIMA(series, order=(1, 1, 1))
             fit = model.fit()

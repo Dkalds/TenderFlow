@@ -4,6 +4,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { SessionProvider } from "@/lib/auth";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = React.useState(
@@ -25,7 +26,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         enableSystem={false}
         disableTransitionOnChange
       >
-        <NuqsAdapter>{children}</NuqsAdapter>
+        <SessionProvider>
+          <NuqsAdapter>{children}</NuqsAdapter>
+        </SessionProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

@@ -31,5 +31,10 @@
   "error.unavailable": "Service temporarily unavailable. Please try again shortly.",
   "auth.login": "Sign in",
   "auth.logout": "Sign out",
-  "auth.user": "User {name}"
+  "auth.user": "User {name}",
+  "api.logged_out": "Logged out",
+  "api.rate_limit": "Rate limit exceeded. Please try again later.",
+  "api.body_too_large": "Request body too large (max 1 MB).",
+  "api.method_not_allowed": "Method not allowed.",
+  "api.not_found": "Resource not found."
 }

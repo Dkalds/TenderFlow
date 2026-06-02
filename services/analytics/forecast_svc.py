@@ -87,8 +87,12 @@ def _load_licit_df() -> pd.DataFrame:
     df = pd.DataFrame(rows)
     if not df.empty:
         df["fecha_publicacion"] = pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True)
-        df["fecha_inicio"] = pd.to_datetime(df.get("fecha_inicio"), errors="coerce")
-        df["fecha_fin"] = pd.to_datetime(df.get("fecha_fin"), errors="coerce")
+        fi_col = df.get("fecha_inicio")
+        if fi_col is not None:
+            df["fecha_inicio"] = pd.to_datetime(fi_col, errors="coerce")
+        ff_col = df.get("fecha_fin")
+        if ff_col is not None:
+            df["fecha_fin"] = pd.to_datetime(ff_col, errors="coerce")
         df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
         df["duracion_valor"] = pd.to_numeric(
             df.get("duracion_valor", pd.Series(dtype=float)), errors="coerce"

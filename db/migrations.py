@@ -8,16 +8,18 @@ Rollbacks: cada versión puede tener asociada una función ``down`` en
 
 .. deprecated::
    **Este módulo gestiona v1-v32 (sistema legado)**. El sistema de migraciones
-   canónico del proyecto es **Alembic** (``db/alembic/``). Desde v22 en
-   adelante, todas las migraciones nuevas se crean en Alembic.
+   canónico del proyecto es **Alembic** (``db/alembic/``). Todas las
+   migraciones nuevas se crean exclusivamente en Alembic.
 
-   Plan de consolidación:
+   Estado de consolidación (completada 2026-06-02):
    - v1-v13: cubiertos por el baseline Alembic ``baseline001``
-   - v14-v32: cubiertos por las migraciones Alembic v14-v22+
+   - v14-v22: cubiertos por las migraciones Alembic v14-v22
+   - v23-v32: cubiertos por las migraciones Alembic v23-v32
    - Este módulo se mantiene en modo lectura/compatibilidad para bases de datos
-     existentes que todavía lo usen. No añadir nuevas migraciones aquí.
+     existentes que todavía lo ejecuten. No añadir nuevas migraciones aquí.
 
    Para nuevas migraciones: ``alembic revision --autogenerate -m "descripcion"``
+   o ``alembic revision -m "descripcion"`` para migraciones manuales.
 
 .. note::
 

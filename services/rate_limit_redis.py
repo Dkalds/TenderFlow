@@ -33,7 +33,7 @@ try:  # pragma: no cover - dependencia opcional
 
     _REDIS_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    redis = None
+    redis = None  # type: ignore[assignment]
     _REDIS_AVAILABLE = False
 
 

@@ -17,7 +17,7 @@ import type { paths } from "@/generated/api";
  */
 export const api = createClient<paths>({
   baseUrl: typeof window !== "undefined" ? "" : process.env.API_BASE_URL ?? "http://localhost:8080",
-  credentials: "include", // send cookies for session auth
+  credentials: "include",
   headers: {
     "Content-Type": "application/json",
   },
@@ -72,6 +72,32 @@ export async function apiMutate<T>(
     }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, error.detail ?? "Unknown error");
+  }
+
+  return res.json() as Promise<T>;
+}
+
+/**
+ * Lightweight fetch wrapper that uses the same auth pattern as the typed client.
+ * Use this for dynamic URLs that can't use the typed openapi-fetch client.
+ * 401 handling is done centrally here — no need to duplicate in callers.
+ */
+export async function fetchWithAuth<T>(
+  url: string,
+  options?: RequestInit,
+): Promise<T> {
+  const res = await fetch(url, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? `API error: ${res.status}`);
   }
 
   return res.json() as Promise<T>;

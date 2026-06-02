@@ -25,13 +25,13 @@ def _cutoff_iso(days: int) -> str:
 def _count_and_delete(conn: object, table: str, date_col: str, cutoff: str, *, apply: bool) -> int:
 
     c = conn.execute(  # type: ignore[attr-defined]
-        "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < ?",
-        (cutoff,),
+        "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < ?",  # noqa: S608 — table/date_col are internal constants
+            (cutoff,),
     )
     count = c.fetchone()[0]
     if apply and count > 0:
         conn.execute(  # type: ignore[attr-defined]
-            "DELETE FROM " + table + " WHERE " + date_col + " < ?",
+            "DELETE FROM " + table + " WHERE " + date_col + " < ?",  # noqa: S608 — table/date_col are internal constants
             (cutoff,),
         )
     return int(count)

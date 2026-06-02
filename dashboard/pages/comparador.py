@@ -73,8 +73,8 @@ def render(ctx: PageContext) -> None:
         # Format importe
         if field_key == "importe":
             values = {
-                k: fmt_eur(float(v)) if pd.notna(v) and v is not None else "—"
-                for k, v in values.items()  # type: ignore[arg-type]
+                k: fmt_eur(float(str(v))) if pd.notna(v) and v is not None else "—"
+                for k, v in values.items()
             }
         row: dict[str, Any] = {"Campo": field_label}
         baseline_val = next(iter(values.values()))

@@ -211,10 +211,10 @@ def get_cache(namespace: str = "default") -> _MemoryBackend | _RedisBackend:
 def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
     """Intenta conectar con Redis; si falla devuelve MemoryBackend.
 
-    En producción (``ENV=prod``), lanza ``RuntimeError`` si Redis no está
-    disponible — el cache compartido es obligatorio para coherencia entre
-    procesos. Si el paquete ``redis`` no está instalado, se hace fallback
-    silencioso a MemoryBackend con un warning (deploy sin Redis).
+    Siempre falla suavemente a MemoryBackend — es preferible tener datos
+    potencialmente stale a devolver 500.  El error se loggea a nivel
+    ``error`` para que monitoreo lo capte.  Si el paquete ``redis`` no
+    está instalado, se hace fallback silencioso con un warning.
     """
     try:
         from config import settings
@@ -233,12 +233,12 @@ def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
         )
         return _MemoryBackend()
     except Exception as exc:
-        if os.getenv("ENV", "").lower() == "prod":
-            raise RuntimeError(
-                f"Redis no disponible en producción (REDIS_URL configurado pero "
-                f"la conexión falló): {exc}"
-            ) from exc
-        log.info("shared_cache_redis_unavailable", error=str(exc), fallback="memory")
+        log.error(
+            "shared_cache_redis_unavailable",
+            error=str(exc),
+            env=os.getenv("ENV", ""),
+            fallback="memory",
+        )
         return _MemoryBackend()
 
 
