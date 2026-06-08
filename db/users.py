@@ -49,6 +49,28 @@ def get_or_create_oauth_user(
         return int(cur.lastrowid)
 
 
+def create_user(
+    *,
+    email: str,
+    password_hash: str,
+    display_name: str | None = None,
+) -> int:
+    """Crea un usuario local (email + password) y devuelve su ``id``.
+
+    Pensado para el alta self-service (``POST /auth/register``). El ``email``
+    tiene constraint ``UNIQUE``: si ya existe, SQLite lanza ``IntegrityError``.
+    Para un error limpio (409), el caller debe verificar antes con
+    :func:`get_user_by_email`.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "INSERT INTO users (email, password_hash, display_name, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (email, password_hash, display_name, now_utc_iso()),
+        )
+        return int(cur.lastrowid)
+
+
 def get_user_by_id(user_id: int) -> dict[str, Any] | None:
     """Devuelve un dict con los datos del usuario o None."""
     with connect() as c:

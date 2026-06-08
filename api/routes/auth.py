@@ -20,6 +20,7 @@ from pydantic import BaseModel, EmailStr
 
 from config import settings
 from db.users import (
+    create_user,
     get_or_create_oauth_user,
     get_user_by_email,
     get_user_by_id,
@@ -31,12 +32,14 @@ from shared.auth_core import (
     generate_oauth_state,
     generate_pkce_pair,
     get_signing_key,
+    hash_password,
     oauth_email_allowed,
     oauth_email_is_admin,
     validate_google_id_token,
     verify_oauth_state,
     verify_password,
 )
+from shared.password_policy import check_password_strength
 
 log = get_logger(__name__)
 
@@ -193,6 +196,14 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    """Datos para el alta self-service con email + password."""
+
+    email: EmailStr
+    password: str
+    display_name: str | None = None
+
+
 class UserInfo(BaseModel):
     """Public user info returned by auth endpoints."""
 
@@ -229,6 +240,48 @@ async def login(body: LoginRequest, response: Response) -> UserInfo:
         email=user.get("email"),
         display_name=user.get("display_name"),
         is_admin=is_admin(user["id"]),
+    )
+
+
+@router.post("/register", response_model=UserInfo, status_code=status.HTTP_201_CREATED)
+async def register(body: RegisterRequest, response: Response) -> UserInfo:
+    """Alta self-service con email + password. Hace auto-login (set session cookie).
+
+    Política de contraseña equilibrada: mínimo 10 caracteres con mayúsculas,
+    minúsculas y al menos un dígito (sin exigir carácter especial). Registro
+    abierto: cualquier email válido puede crear cuenta.
+    """
+    check = check_password_strength(
+        body.password,
+        min_length=10,
+        require_special=False,
+        label="contraseña",
+    )
+    if not check.is_strong:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=check.summary)
+
+    if get_user_by_email(body.email):
+        log.warning("signup_rejected", email=body.email, reason="email_exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+        )
+
+    display_name = (body.display_name or "").strip() or None
+    user_id = create_user(
+        email=body.email,
+        password_hash=hash_password(body.password),
+        display_name=display_name,
+    )
+
+    _set_session_cookie(response, {"user_id": user_id})  # auto-login
+    log_access(auth_method="password_signup", user_id=user_id, email=body.email)
+    log.info("signup_success", user_id=user_id, email=body.email)
+
+    return UserInfo(
+        user_id=user_id,
+        email=body.email,
+        display_name=display_name,
+        is_admin=False,
     )
 
 

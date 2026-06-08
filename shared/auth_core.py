@@ -218,6 +218,23 @@ def verify_password(candidate: str, pw_hash: str) -> bool:
         return False
 
 
+def hash_password(password: str) -> str:
+    """Hashea *password* para almacenarlo en ``users.password_hash``.
+
+    Usa **Argon2id** (recomendado) y cae a **bcrypt** si argon2-cffi no está
+    instalado. El hash resultante lleva un prefijo (``$argon2id$`` o ``$2b$``)
+    que :func:`verify_password` reconoce automáticamente.
+    """
+    try:
+        from argon2 import PasswordHasher
+
+        return PasswordHasher().hash(password)
+    except ImportError:
+        import bcrypt
+
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
 # ---------------------------------------------------------------------------
 # OAuth state: HMAC-signed token
 # ---------------------------------------------------------------------------

@@ -4,22 +4,33 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { t } from "@/lib/i18n";
 import { apiMutate, ApiError } from "@/lib/api-client";
-import { LogIn, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { LogIn, UserPlus, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { ParticleField } from "@/components/layout/particle-field";
+import { cn } from "@/lib/utils";
+
+type Mode = "login" | "register";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+  }
+
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -30,6 +41,36 @@ export default function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.status === 401 ? "Credenciales incorrectas" : err.message);
+      } else {
+        setError("Error de conexion. Intenta de nuevo.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (password !== confirmPassword) {
+      setError(t("auth.passwordMismatch"));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // El backend setea la cookie de sesion (auto-login) al crear la cuenta.
+      await apiMutate("POST", "/api/v1/auth/register", {
+        email,
+        password,
+        display_name: displayName.trim() || undefined,
+      });
+      router.push("/resumen");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // 409: email ya registrado · 400: contrasena no cumple la politica
+        setError(err.status === 409 ? t("auth.emailExists") : err.message);
       } else {
         setError("Error de conexion. Intenta de nuevo.");
       }
@@ -57,6 +98,8 @@ export default function LoginPage() {
     }
   }
 
+  const isRegister = mode === "register";
+
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
       {/* Animated particle backdrop */}
@@ -72,85 +115,170 @@ export default function LoginPage() {
         <div className="flex flex-col items-center gap-3 text-center">
           <TenderFlowLogo showText={false} boxSize={48} />
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              TenderFlow
-            </h1>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">TenderFlow</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Plataforma de Inteligencia Competitiva
+              Análisis y seguimiento de licitaciones en tiempo real
             </p>
           </div>
         </div>
 
         <Card className="border-border/70 shadow-xl backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle>{t("auth.login")}</CardTitle>
+          <CardHeader className="space-y-4">
+            {/* Login / Register tab switcher */}
+            <div
+              role="tablist"
+              aria-label="Iniciar sesión o crear cuenta"
+              className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm font-medium"
+            >
+              {(["login", "register"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  id={`tab-${m}`}
+                  aria-selected={mode === m}
+                  aria-controls="auth-panel"
+                  onClick={() => switchMode(m)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    mode === m
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {t(m === "login" ? "auth.login" : "auth.register")}
+                </button>
+              ))}
+            </div>
             <CardDescription>
-              Accede con tu cuenta para ver el dashboard
+              {isRegister
+                ? "Crea tu cuenta con correo y contraseña"
+                : "Accede con tu cuenta para ver el dashboard"}
             </CardDescription>
           </CardHeader>
+
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div role="alert" aria-live="polite" className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {error}
+            <div id="auth-panel" role="tabpanel" aria-labelledby={`tab-${mode}`}>
+              <form onSubmit={isRegister ? handleRegister : handleLogin} className="space-y-4">
+                {error && (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                  >
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {isRegister && (
+                  <div className="space-y-2">
+                    <label htmlFor="name" className="text-sm font-medium text-foreground">
+                      {t("auth.name")}
+                    </label>
+                    <Input
+                      id="name"
+                      type="text"
+                      placeholder="Tu nombre"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      autoComplete="name"
+                      disabled={loading}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label htmlFor="email" className="text-sm font-medium text-foreground">
+                    {t("auth.email")}
+                    <span className="text-destructive ml-1" aria-hidden="true">
+                      *
+                    </span>
+                  </label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="tu@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                    disabled={loading}
+                  />
                 </div>
-              )}
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="email"
-                  className="text-sm font-medium text-foreground"
-                >
-                  {t("auth.email")}
-                  <span className="text-destructive ml-1" aria-hidden="true">*</span>
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="tu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="password"
-                  className="text-sm font-medium text-foreground"
-                >
-                  {t("auth.password")}
-                  <span className="text-destructive ml-1" aria-hidden="true">*</span>
-                </label>
-                <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  aria-label="Mostrar/ocultar contraseña"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-medium text-foreground">
+                    {t("auth.password")}
+                    <span className="text-destructive ml-1" aria-hidden="true">
+                      *
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={isRegister ? 10 : undefined}
+                      autoComplete={isRegister ? "new-password" : "current-password"}
+                      aria-describedby={isRegister ? "password-hint" : undefined}
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Mostrar/ocultar contraseña"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {isRegister && (
+                    <p id="password-hint" className="text-xs text-muted-foreground">
+                      {t("auth.passwordHint")}
+                    </p>
+                  )}
                 </div>
-              </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
-                <LogIn className="mr-2 h-4 w-4" />
-                {loading ? t("common.loading") : t("auth.login")}
-              </Button>
-            </form>
+                {isRegister && (
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="confirm-password"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      {t("auth.confirmPassword")}
+                      <span className="text-destructive ml-1" aria-hidden="true">
+                        *
+                      </span>
+                    </label>
+                    <Input
+                      id="confirm-password"
+                      type={showPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      autoComplete="new-password"
+                      disabled={loading}
+                    />
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {isRegister ? (
+                    <UserPlus className="mr-2 h-4 w-4" />
+                  ) : (
+                    <LogIn className="mr-2 h-4 w-4" />
+                  )}
+                  {loading
+                    ? t("common.loading")
+                    : isRegister
+                      ? t("auth.register")
+                      : t("auth.login")}
+                </Button>
+              </form>
+            </div>
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">

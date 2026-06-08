@@ -51,10 +51,15 @@ export function ParticleField({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d", { alpha: true });
-    if (!ctx) return;
+    const canvasEl = canvasRef.current;
+    if (!canvasEl) return;
+    const ctxOrNull = canvasEl.getContext("2d", { alpha: true });
+    if (!ctxOrNull) return;
+    // Bind to non-nullable consts: the animation closures escape via
+    // requestAnimationFrame, so TS widens captured vars back to their declared
+    // (nullable) type. Explicit non-null types keep the narrowing inside them.
+    const canvas: HTMLCanvasElement = canvasEl;
+    const ctx: CanvasRenderingContext2D = ctxOrNull;
 
     const reduceMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
