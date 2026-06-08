@@ -2,7 +2,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: docker/Dockerfile.web
     image: licitaciones-sap-web:latest
     container_name: licitaciones-web
     restart: unless-stopped
@@ -35,7 +35,7 @@ services:
   dashboard:
     build:
       context: .
-      dockerfile: Dockerfile.dashboard
+      dockerfile: docker/Dockerfile.dashboard
     image: licitaciones-sap-dashboard:latest
     container_name: licitaciones-dashboard
     restart: unless-stopped
@@ -75,7 +75,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
     image: licitaciones-sap-api:latest
     container_name: licitaciones-api
     restart: unless-stopped
@@ -111,7 +111,7 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
     image: licitaciones-sap-api:latest
     container_name: licitaciones-scheduler
     restart: unless-stopped

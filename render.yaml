@@ -2,7 +2,7 @@ services:
   - type: web
     name: tenderflow-api
     runtime: docker
-    dockerfilePath: ./Dockerfile.api
+    dockerfilePath: ./docker/Dockerfile.api
     plan: free
     region: frankfurt
     healthCheckPath: /api/v1/health

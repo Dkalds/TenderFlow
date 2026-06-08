@@ -14,7 +14,7 @@ services:
   dashboard:
     build:
       context: .
-      dockerfile: Dockerfile.dashboard
+      dockerfile: docker/Dockerfile.dashboard
       target: runtime  # evita rebuild completo en dev
     volumes:
       - licitaciones_data:/data
@@ -39,7 +39,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
       - licitaciones_data:/data
@@ -60,7 +60,7 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
       - licitaciones_data:/data

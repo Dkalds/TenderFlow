@@ -122,8 +122,8 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - { dockerfile: "Dockerfile.api", tag: "licitaciones-api:ci" }
-          - { dockerfile: "Dockerfile.dashboard", tag: "licitaciones-dashboard:ci" }
+          - { dockerfile: "docker/Dockerfile.api", tag: "licitaciones-api:ci" }
+          - { dockerfile: "docker/Dockerfile.dashboard", tag: "licitaciones-dashboard:ci" }
     steps:
       - uses: actions/checkout@v4
 
