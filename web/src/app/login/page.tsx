@@ -9,6 +9,7 @@ import { t } from "@/lib/i18n";
 import { apiMutate, ApiError } from "@/lib/api-client";
 import { LogIn, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
+import { ParticleField } from "@/components/layout/particle-field";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,8 +58,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md space-y-8">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
+      {/* Animated particle backdrop */}
+      <ParticleField className="z-0" />
+      {/* Soft radial halo to calm the area behind the card and keep contrast */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 [background:radial-gradient(closest-side,hsl(var(--background)/0.85),transparent_70%)]"
+      />
+
+      <div className="relative z-10 w-full max-w-md space-y-8">
         {/* Logo / Title */}
         <div className="flex flex-col items-center gap-3 text-center">
           <TenderFlowLogo showText={false} boxSize={48} />
@@ -72,7 +81,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <Card>
+        <Card className="border-border/70 shadow-xl backdrop-blur-sm">
           <CardHeader>
             <CardTitle>{t("auth.login")}</CardTitle>
             <CardDescription>
