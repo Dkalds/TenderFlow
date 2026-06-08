@@ -1,10 +1,11 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonTable } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -161,7 +162,7 @@ export default function ClustersPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -269,7 +270,7 @@ export default function ClustersPage() {
                 </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -314,7 +315,7 @@ export default function ClustersPage() {
                 </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos de importe</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -327,11 +328,7 @@ export default function ClustersPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
+            <SkeletonTable rows={6} />
           ) : (
             <div className="overflow-x-auto">
               <Table className="w-full text-sm">

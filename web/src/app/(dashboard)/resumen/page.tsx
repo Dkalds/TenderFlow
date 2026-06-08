@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 const SankeyChart = dynamic(
   () => import("@/components/charts/sankey-chart").then((m) => ({ default: m.SankeyChart })),
-  { ssr: false },
+  { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> },
 );
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -155,7 +155,7 @@ export default function ResumenPage() {
 
   if (overview.error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">
           {t("common.error")}: {(overview.error as Error).message}
         </p>

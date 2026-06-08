@@ -144,7 +144,7 @@ export default function TendenciasCpvPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">{t("common.error")}: {(error as Error).message}</p>
       </div>
     );

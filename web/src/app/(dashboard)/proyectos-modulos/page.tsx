@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
@@ -225,7 +226,7 @@ export default function ProyectosModulosPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -383,9 +384,7 @@ export default function ProyectosModulosPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -435,9 +434,7 @@ export default function ProyectosModulosPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -466,9 +463,7 @@ export default function ProyectosModulosPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -494,9 +489,7 @@ export default function ProyectosModulosPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -535,7 +528,7 @@ export default function ProyectosModulosPage() {
               </ResponsiveContainer>
             </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">Sin datos</p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>

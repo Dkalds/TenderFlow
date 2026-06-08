@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -11,7 +12,7 @@ import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-const SpainMap = dynamic(() => import("@/components/charts/spain-map").then(m => ({ default: m.SpainMap })), { ssr: false });
+const SpainMap = dynamic(() => import("@/components/charts/spain-map").then(m => ({ default: m.SpainMap })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { MapPin, Hash, Trophy, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, Map } from "lucide-react";
@@ -199,7 +200,7 @@ export default function GeografiaPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -337,9 +338,7 @@ export default function GeografiaPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -391,9 +390,7 @@ export default function GeografiaPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>

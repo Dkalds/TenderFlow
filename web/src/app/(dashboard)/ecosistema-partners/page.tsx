@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
@@ -15,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DataTable } from "@/components/ui/data-table";
 import { type ColumnDef } from "@tanstack/react-table";
 
-const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(m => ({ default: m.ForceGraph })), { ssr: false });
+const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(m => ({ default: m.ForceGraph })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 import {
   formatCurrency,
   formatNumber,
@@ -295,7 +296,7 @@ export default function EcosistemaPartnersPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -595,7 +596,7 @@ export default function EcosistemaPartnersPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos disponibles</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -631,7 +632,7 @@ export default function EcosistemaPartnersPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos disponibles</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>

@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -42,7 +43,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-const Treemap = dynamic(() => import("recharts").then(m => ({ default: m.Treemap })), { ssr: false });
+const Treemap = dynamic(() => import("recharts").then(m => ({ default: m.Treemap })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 
 interface OrganoItem {
   organo_contratacion: string;
@@ -165,7 +166,7 @@ export default function OrganosPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -302,9 +303,7 @@ export default function OrganosPage() {
             </ResponsiveContainer>
               </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">
-              Sin datos
-            </p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -370,9 +369,7 @@ export default function OrganosPage() {
             </ResponsiveContainer>
               </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">
-              Sin datos
-            </p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -405,9 +402,7 @@ export default function OrganosPage() {
             </ResponsiveContainer>
               </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">
-              Sin datos de importe
-            </p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>

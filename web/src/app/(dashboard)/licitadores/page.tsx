@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
@@ -149,7 +150,7 @@ export default function LicitadoresPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -312,7 +313,7 @@ export default function LicitadoresPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">Sin datos disponibles</p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -426,7 +427,7 @@ export default function LicitadoresPage() {
             </ResponsiveContainer>
             </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">Sin datos geográficos disponibles</p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -466,7 +467,7 @@ export default function LicitadoresPage() {
             </ResponsiveContainer>
             </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">Sin datos de estacionalidad disponibles</p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>

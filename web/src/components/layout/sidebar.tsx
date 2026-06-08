@@ -85,6 +85,7 @@ export function Sidebar() {
                   key={page.slug}
                   href={`/${page.slug}`}
                   title={collapsed ? page.label : undefined}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "relative flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-colors",
                     active

@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -6,7 +7,7 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
-const GanttChart = dynamic(() => import("@/components/charts/gantt-chart").then(m => ({ default: m.GanttChart })), { ssr: false });
+const GanttChart = dynamic(() => import("@/components/charts/gantt-chart").then(m => ({ default: m.GanttChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -260,7 +261,7 @@ export default function PipelineAlertasPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -428,9 +429,7 @@ export default function PipelineAlertasPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos de horizonte
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -487,9 +486,7 @@ export default function PipelineAlertasPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">
-                Sin datos trimestrales
-              </p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -548,9 +545,7 @@ export default function PipelineAlertasPage() {
             </ResponsiveContainer>
               </ChartErrorBoundary>
           ) : (
-            <p className="py-12 text-center text-muted-foreground">
-              Sin datos de urgencia
-            </p>
+            <EmptyState />
           )}
         </CardContent>
       </Card>

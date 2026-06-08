@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
@@ -11,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(m => ({ default: m.ForceGraph })), { ssr: false });
+const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(m => ({ default: m.ForceGraph })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 import {
   formatNumber,
   formatCurrency,
@@ -220,7 +221,7 @@ export default function RedOrganoEmpresaPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -350,9 +351,7 @@ export default function RedOrganoEmpresaPage() {
               .slice(0, 10);
             if (topOrg.length === 0 || topEmp.length === 0)
               return (
-                <p className="py-12 text-center text-muted-foreground">
-                  Sin datos disponibles
-                </p>
+                <EmptyState />
               );
 
             // Build lookup: organo→ccaa, empresa→ccaa→count

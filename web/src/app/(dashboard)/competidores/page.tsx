@@ -1,4 +1,5 @@
 "use client";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import React, { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
@@ -6,7 +7,7 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { KpiCard } from "@/components/charts/kpi-card";
-const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false });
+const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -317,7 +318,7 @@ export default function CompetidoresPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -432,7 +433,7 @@ export default function CompetidoresPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos disponibles</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -470,7 +471,7 @@ export default function CompetidoresPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos disponibles</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -546,7 +547,7 @@ export default function CompetidoresPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos de scatter disponibles</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -598,7 +599,7 @@ export default function CompetidoresPage() {
                 </div>
               </div>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos de heatmap disponibles</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -641,7 +642,7 @@ export default function CompetidoresPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos disponibles</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
@@ -716,7 +717,7 @@ export default function CompetidoresPage() {
               </ResponsiveContainer>
               </ChartErrorBoundary>
             ) : (
-              <p className="py-12 text-center text-muted-foreground">Sin datos de posicionamiento (requiere baja media)</p>
+              <EmptyState />
             )}
           </CardContent>
         </Card>
