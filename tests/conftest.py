@@ -15,51 +15,34 @@ from fastapi.testclient import TestClient
 _E2E_TOKENS = ("_e2e", "visual_regression", "dashboard_smoke", "dashboard_pages")
 _LOAD_TOKENS = ("performance", "load")
 _PROPERTY_TOKENS = ("property", "properties", "property_based")
-_INTEGRATION_TOKENS = ("integration_e2e",)  # explícito; resto queda como unit
+
+
+def _infer_marker(path: str, name: str) -> str:
+    """Infer the pytest marker for a test item based on path/name conventions."""
+    p = path.lower().replace("\\", "/")
+    n = name.lower()
+    for token in _E2E_TOKENS:
+        if token in p or token in n:
+            return "e2e"
+    for token in _LOAD_TOKENS:
+        if token in p or token in n:
+            return "load"
+    for token in _PROPERTY_TOKENS:
+        if token in p or token in n:
+            return "property"
+    # integration: explicit /integration/ path segment or test_integration_* name prefix
+    if "/integration/" in p or "integration_" in n:
+        return "integration"
+    return "unit"
 
 
 def pytest_collection_modifyitems(config, items):
     for item in items:
-        path = str(item.fspath).lower()
-        name = item.name.lower()
         marks_existing = {m.name for m in item.iter_markers()}
-
-        applied = False
-        for token in _E2E_TOKENS:
-            if token in path or token in name:
-                if "e2e" not in marks_existing:
-                    item.add_marker(pytest.mark.e2e)
-                applied = True
-                break
-        if applied:
+        if marks_existing & {"unit", "integration", "e2e", "property", "load"}:
             continue
-        for token in _LOAD_TOKENS:
-            if token in path or token in name:
-                if "load" not in marks_existing:
-                    item.add_marker(pytest.mark.load)
-                applied = True
-                break
-        if applied:
-            continue
-        for token in _PROPERTY_TOKENS:
-            if token in path or token in name:
-                if "property" not in marks_existing:
-                    item.add_marker(pytest.mark.property)
-                applied = True
-                break
-        if applied:
-            continue
-        for token in _INTEGRATION_TOKENS:
-            if token in path or token in name:
-                if "integration" not in marks_existing:
-                    item.add_marker(pytest.mark.integration)
-                applied = True
-                break
-        if applied:
-            continue
-        # default
-        if not (marks_existing & {"unit", "integration", "e2e", "property", "load"}):
-            item.add_marker(pytest.mark.unit)
+        marker_name = _infer_marker(str(item.fspath), item.name)
+        item.add_marker(getattr(pytest.mark, marker_name))
 
 
 @pytest.fixture()

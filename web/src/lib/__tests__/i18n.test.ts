@@ -245,7 +245,7 @@ describe("fallback cascade", () => {
     const en = tWithLocale("en" as Locale, "app.subtitle");
     const es = tWithLocale("es" as Locale, "app.subtitle");
     expect(en).toBe("Market Intelligence");
-    expect(es).toBe("Plataforma de Inteligencia Competitiva");
+    expect(es).toBe("Análisis y seguimiento de licitaciones en tiempo real");
     expect(en).not.toBe(es);
   });
 });
