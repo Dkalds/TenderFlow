@@ -22,7 +22,6 @@ import {
   Server,
   AlertTriangle,
   RefreshCw,
-  Database,
 } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -124,7 +123,6 @@ export default function ObservabilidadPage() {
       : "error";
 
   // Extract component checks from health response
-  const componentKeys = ["db", "redis", "disk", "checks"];
   const checks: Record<string, unknown> = {};
   if (health) {
     // If health.checks exists, use it; otherwise look for top-level keys

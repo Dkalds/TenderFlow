@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { CHART_SERIES } from "@/lib/chart-colors";
 import {
   Trophy,
   Hash,
@@ -35,7 +35,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-  LineChart,
   Line,
   ComposedChart,
 } from "recharts";

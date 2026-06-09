@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,7 +27,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { cn, formatCurrency, truncate } from "@/lib/utils";
+import { formatCurrency, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
 

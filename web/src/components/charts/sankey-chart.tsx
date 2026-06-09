@@ -99,9 +99,6 @@ export const SankeyChart = React.memo(function SankeyChart({
 
     const nodeMap = new Map(layoutNodes.map((n) => [n.id, n]));
 
-    // Compute node sizes proportional to total flow
-    const totalValue = sum(links, (l) => l.value) || 1;
-
     for (const n of layoutNodes) {
       const outFlow = sum(links.filter((l) => l.source === n.id), (l) => l.value);
       const inFlow = sum(links.filter((l) => l.target === n.id), (l) => l.value);

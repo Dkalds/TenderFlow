@@ -21,7 +21,7 @@ interface GanttChartProps {
 }
 
 export function GanttChart({ items, height, className, onItemClick }: GanttChartProps) {
-  const { minDate, maxDate, months, totalMs } = React.useMemo(() => {
+  const { minDate, months, totalMs } = React.useMemo(() => {
     if (items.length === 0) {
       // eslint-disable-next-line react-hooks/purity
       const now = Date.now();
@@ -47,8 +47,6 @@ export function GanttChart({ items, height, className, onItemClick }: GanttChart
   const rowHeight = 32;
   const headerHeight = 28;
   const labelWidth = 180;
-  const computedHeight = height ?? headerHeight + items.length * rowHeight + 8;
-
   const [tooltip, setTooltip] = React.useState<{ x: number; y: number; item: GanttItem } | null>(null);
 
   if (items.length === 0) {

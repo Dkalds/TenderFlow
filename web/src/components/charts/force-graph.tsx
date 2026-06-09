@@ -104,7 +104,6 @@ export const ForceGraph = React.memo(function ForceGraph({
       weight: l.weight ?? 1,
     }));
 
-    const nodeMap = new Map(simNodes.map((n) => [n.id, n]));
     const color = scaleOrdinal(schemeTableau10);
 
     const simulation = forceSimulation(simNodes)

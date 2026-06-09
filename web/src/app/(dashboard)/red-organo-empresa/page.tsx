@@ -16,7 +16,6 @@ const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(
 import {
   formatNumber,
   formatCurrency,
-  formatPercent,
   truncate,
 } from "@/lib/utils";
 import { GitBranch, Building2, Users, Network } from "lucide-react";
@@ -82,7 +81,6 @@ function buildBipartiteData(
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  const organoNames = new Set(topOrganos.map((o) => o.organo_contratacion));
   const empresaNames = new Set(topEmpresas.map((e) => e.nombre));
 
   // Build organo→ccaa map

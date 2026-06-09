@@ -19,7 +19,6 @@ import {
   TrendingUp,
   TrendingDown,
   CalendarDays,
-  BarChart3,
 } from "lucide-react";
 import {
   BarChart,

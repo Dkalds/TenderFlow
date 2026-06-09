@@ -1,5 +1,6 @@
 ﻿import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import type { LucideIcon } from "lucide-react";
 import { KpiCard } from "@/components/charts/kpi-card";
 
 function TestIcon() {
@@ -64,7 +65,7 @@ describe("KpiCard", () => {
   });
 
   it("renders the icon when provided", () => {
-    render(<KpiCard title="Total" value="100" icon={TestIcon as any} />);
+    render(<KpiCard title="Total" value="100" icon={TestIcon as unknown as LucideIcon} />);
     expect(screen.getByTestId("test-icon")).toBeInTheDocument();
   });
 

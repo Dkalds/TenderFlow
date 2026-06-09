@@ -38,8 +38,8 @@ const eslintConfig = defineConfig([
   // Stricter rules
   {
     rules: {
-      // Warn on explicit any to progressively eliminate them
-      "@typescript-eslint/no-explicit-any": "warn",
+      // Todas las violaciones resueltas (2026-06-09). Endurecidas a error.
+      "@typescript-eslint/no-explicit-any": "error",
       // exhaustive-deps y React Compiler: todos resueltos o con eslint-disable
       // documentado. Endurecidos a error para bloquear nuevas regresiones.
       "react-hooks/exhaustive-deps": "error",
@@ -48,7 +48,7 @@ const eslintConfig = defineConfig([
       "react-hooks/immutability": "error",
       // Prevent unused variables (ignore _ prefixed)
       "@typescript-eslint/no-unused-vars": [
-        "warn",
+        "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
     },

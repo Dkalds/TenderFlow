@@ -40,8 +40,6 @@ import {
   Search,
   Download,
   X,
-  Loader2,
-  Eye,
   Rows3,
   Rows2,
   Star,

@@ -22,7 +22,7 @@ interface Notification {
 const MAX_RECONNECT_DELAY = 60_000;
 const INITIAL_RECONNECT_DELAY = 1_000;
 
-export function NotificationBell({ className }: NotificationBellProps) {
+export function NotificationBell({ className: _className }: NotificationBellProps) {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
   const [connected, setConnected] = React.useState(false);

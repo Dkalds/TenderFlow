@@ -3,7 +3,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { useFilters } from "@/lib/filters";
 import { KpiCard } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
@@ -12,7 +11,6 @@ import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DataTable } from "@/components/ui/data-table";
 import { type ColumnDef } from "@tanstack/react-table";
 
@@ -25,7 +23,7 @@ import {
   cn,
 } from "@/lib/utils";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { CHART_SERIES } from "@/lib/chart-colors";
 import { Button } from "@/components/ui/button";
 import { Network, Hash, Users, Search, Trophy, TrendingUp } from "lucide-react";
 import {

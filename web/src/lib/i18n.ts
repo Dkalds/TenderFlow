@@ -8,7 +8,6 @@
  * The inline objects serve as fallback if the fetch fails.
  */
 import { create } from "zustand";
-import { reportError } from "@/lib/report-error";
 import esInline from "../../public/locales/es.json";
 import enInline from "../../public/locales/en.json";
 

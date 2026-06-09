@@ -21,6 +21,7 @@ const AvatarImage = React.forwardRef<HTMLImageElement, React.ImgHTMLAttributes<H
     if (hasError) return null
 
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         alt=""
         role="presentation"

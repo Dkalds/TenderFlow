@@ -224,7 +224,7 @@ export default function TendenciasCpvPage() {
                 <Tooltip formatter={(value) => [formatCurrency(value as number), ""]} />
                 {allCpvs
                   .filter((c) => effectiveCpvs.has(c.cpv))
-                  .map((c, idx) => (
+                  .map((c, _idx) => (
                     <Line
                       key={c.cpv}
                       type="monotone"

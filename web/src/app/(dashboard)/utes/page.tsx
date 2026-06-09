@@ -13,8 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
-import { Handshake, Hash, Users, TrendingUp, Building2, Search } from "lucide-react";
+import { CHART_SERIES } from "@/lib/chart-colors";
+import { Handshake, Users, TrendingUp, Building2, Search } from "lucide-react";
 import {
   BarChart,
   Bar,

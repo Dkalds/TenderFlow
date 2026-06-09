@@ -193,7 +193,6 @@ export default function OrganosPage() {
       .filter((i) => i.importe > 0)
       .slice(0, 30)
       .map((i) => ({ name: i.organo_contratacion, size: i.importe }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, filteredItems, filter]);
 
   function handleOrganoClick(organo: string) {

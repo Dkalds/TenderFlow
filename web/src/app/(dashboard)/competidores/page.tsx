@@ -4,7 +4,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import React, { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { useFilters } from "@/lib/filters";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { KpiCard } from "@/components/charts/kpi-card";
 const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
@@ -19,11 +18,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import { formatCurrency, formatNumber, formatPercent, truncate, cn } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { TreemapContent } from "@/components/charts/treemap-content";
 import {
-  Swords,
   Hash,
   Target,
   AlertTriangle,
@@ -33,8 +31,6 @@ import {
   ArrowDown,
   Search,
   Users,
-  Building2,
-  TrendingUp,
 } from "lucide-react";
 import {
   BarChart,
@@ -54,7 +50,6 @@ import {
   LabelList,
   Treemap,
   Legend,
-  LineChart,
   Line,
   ComposedChart,
 } from "recharts";
@@ -270,18 +265,6 @@ export default function CompetidoresPage() {
         size: c.importe,
         count: c.count,
       }));
-  }, [filteredCompetitors]);
-
-  // Estacionalidad: top 5 companies key metrics comparison
-  const seasonalityData = useMemo(() => {
-    if (!filteredCompetitors.length) return [];
-    const top5 = [...filteredCompetitors].sort((a, b) => b.count - a.count).slice(0, 5);
-    return top5.map((c) => ({
-      nombre: truncate(c.nombre, 20),
-      contratos_anio: c.contratos_por_anio ?? 0,
-      importe_medio: c.importe_medio ?? 0,
-      baja_media: c.baja_media ?? 0,
-    }));
   }, [filteredCompetitors]);
 
   // Positioning scatter: baja_media vs importe_medio

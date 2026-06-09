@@ -7,7 +7,6 @@ import {
   SCORE_COLOR,
   BAND_TO_SCORE,
   getBandColor,
-  type ScoreBand,
 } from "@/lib/chart-colors";
 
 describe("CHART_SERIES", () => {

@@ -39,16 +39,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), `web/src/components/`, `web/src/hooks/`.
 - **Riesgo:** bajo — solo tests/config de tests.
 
-### Limpiar deuda de lint del frontend (warnings que la config rota ocultaba)
-- **Área:** `web/`
-- **Problema:** Al arreglar la config de ESLint (cerrado), el lint pasó a ejecutarse y afloraron ~160 warnings que nunca se habían enforced. Para no bloquear CI ni arriesgar bugs, varias reglas se dejaron en `warn` como deuda progresiva: `react-hooks/exhaustive-deps` (~36), set recommended de `jsx-a11y` y las reglas del React Compiler `react-hooks/{set-state-in-effect,purity,immutability}` (6). Son potenciales bugs (stale closures, render impuro) y problemas de accesibilidad reales.
-- **Progreso (2026-06-09):** 160 → **48 warnings, 0 errores**. Todos los grupos funcionales cerrados y endurecidos a `error`: jsx-a11y completo (−112), `exhaustive-deps` (−36, wrapping `?? []` en `useMemo` + `TIPO_CONTRATO_LABEL` extraído), React Compiler `set-state-in-effect`/`purity`/`immutability`/`incompatible-library` (−6, eslint-disable documentado o restructurado). Quedan: `no-unused-vars` (~10) y `no-explicit-any` (~5), ambos menores.
-- **Acceptance criteria:**
-  - Resolver los warnings por grupos (terminar `jsx-a11y` en páginas, luego `exhaustive-deps`, luego React Compiler).
-  - A medida que un grupo llega a cero, **re-endurecer** esa regla a `error` en `web/eslint.config.mjs`.
-  - `npm run lint` sigue en 0 errores en cada paso.
-- **Files de partida:** [web/eslint.config.mjs](../web/eslint.config.mjs) (severidades), `web/src/components/`, `web/src/app/`.
-- **Riesgo:** medio — los fixes de `exhaustive-deps`/React Compiler pueden cambiar comportamiento; hacerlos uno a uno con verificación.
 
 ### Arreglar `test_expired_key_returns_401` (fallo de infra de test, no de seguridad)
 - **Área:** `tests/`, `db/` (connection pool)
@@ -103,7 +93,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ## Cerrados
 
 - [2026-06-09] **Deps: cerradas las 3 alertas moderate de Dependabot** — `web/package.json`: `overrides` forzando `postcss: ^8.5.10` (resuelto 8.5.15) → `npm audit` 0 vulns, `next build` OK (no había Next estable con el fix). `requirements-dev.txt`: `pytest>=8.0.0,<9` → `>=9.0.3,<10` (CVE-2025-71176; compatible con pytest-cov/benchmark, suite verificada). Nota operacional: el `.venv` local tenía `starlette 0.52.1` stale — el manifest ya pinea `1.2.0` parcheado; basta reinstalar (`pip install -r requirements.txt`). Audit-gate en CI queda en el ítem de CI frontend.
-- [2026-06-09] **Lint: deuda de frontend completamente limpia (160→48 warnings, 0 errores)** — jsx-a11y completo (todos los grupos), exhaustive-deps (wrapping `?? []` en `useMemo`, `TIPO_CONTRATO_LABEL` extraído fuera del componente), React Compiler (`set-state-in-effect`/`purity`/`immutability`/`incompatible-library`). Todas las reglas re-endurecidas a `"error"` en `eslint.config.mjs`. tsc 0, vitest 245/245.
+- [2026-06-09] **Lint: deuda de frontend completamente limpia (160→0 warnings, 0 errores)** — jsx-a11y completo (todos los grupos, −112), exhaustive-deps (wrapping `?? []` en `useMemo`, `TIPO_CONTRATO_LABEL` extraído, −36), React Compiler (`set-state-in-effect`/`purity`/`immutability`/`incompatible-library`, −6, eslint-disable documentado). Vuelta final: 48 `no-unused-vars`/`no-explicit-any` eliminados en 22 archivos (imports muertos, useMemo dead code, args renombrados a `_`). `no-explicit-any` y `no-unused-vars` endurecidos de `warn` a `error`. `eslint src/` 0, `tsc --noEmit` 0.
 - [2026-06-09] **Fix filtros barra superior (nuqs)** — `web/src/lib/filters.ts`: `shallow: false → true` + `history: "push" → "replace"`. Ningún Server Component consume los filtros (todas las páginas son "use client" + React Query), así que `shallow:false` solo añadía un round-trip al servidor por cambio → lag/carrera que obligaba a re-seleccionar/resetear. Ahora aplican a la primera. `tsc` 0, filters test 17.
 - [2026-06-09] **Fix active-learning campos backend** — `web/src/app/(dashboard)/active-learning/page.tsx`: alineados los nombres con `/api/v1/feedback/queue` (`expediente`→`id_externo`, `proba/probability`→`confidence`). Arregla el warning de `key`, el envío de feedback (antes mandaba `expediente: undefined`) y la barra de probabilidad.
 - [2026-06-09] **`.env.example` completado** — añadidos `WEBHOOK_SIGNING_KEY`, `TOTP_ENCRYPTION_KEY` (+ comando Fernet), `CORS_ALLOWED_ORIGINS`, `METRICS_ALLOWED_IPS`, OTEL, alertas SMTP, `DRAMATIQ_BROKER_URL`, `DB_POOL_*`, y nota apuntando a `config/settings.py` para el resto de knobs.
