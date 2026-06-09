@@ -62,6 +62,7 @@ function CheckboxGroup({ label, options, selected, onChange }: CheckboxGroupProp
           >
             <input
               type="checkbox"
+              aria-label={opt}
               checked={selected.includes(opt)}
               onChange={() => toggle(opt)}
               className="h-5 w-5 rounded border-muted-foreground"
@@ -220,6 +221,7 @@ export function FiltersSidebar({ className }: { className?: string }) {
         <input
           id="filter-comparar"
           type="checkbox"
+          aria-label="Modo comparacion"
           checked={filters.comparar}
           onChange={(e) => filters.setComparar(e.target.checked)}
           className="h-5 w-5 rounded"

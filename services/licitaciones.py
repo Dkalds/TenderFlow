@@ -14,10 +14,17 @@ import pandas as pd
 from db.repositories.licitaciones import LicitacionRepository
 from observability.histograms import timed_query
 from observability.logging import get_logger
+from services._data_cache import SignalAwareCache
 
 log = get_logger(__name__)
 
 _repo = LicitacionRepository()
+
+# Caché de la carga full-table para stats/analytics. Invalidada por TTL o por
+# la señal de ingesta (shared.cache_signal). Todos los servicios de analytics
+# llaman a load_stats_dataframe() en cada request, reconstruyendo el DataFrame;
+# cachear el snapshot evita N relecturas de SQLite por petición.
+_stats_cache: SignalAwareCache[list[dict[str, Any]]] = SignalAwareCache()
 
 # ── Columnas reutilizadas por load_raw / stats ───────────────────────────
 _RAW_COLUMNS = (
@@ -91,9 +98,24 @@ def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
 
 
 def load_stats_dataframe() -> list[dict[str, Any]]:
-    """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento)."""
-    with timed_query("svc_load_stats"):
-        return _repo.load_stats(_STATS_COLUMNS)
+    """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento).
+
+    El resultado se cachea en memoria (TTL + señal de ingesta). Los consumidores
+    construyen ``DataFrame`` nuevos a partir de la lista, por lo que compartir la
+    referencia entre llamadas es seguro. Usar :func:`clear_stats_cache` para
+    forzar recarga (tras una ingesta o en tests).
+    """
+
+    def _load() -> list[dict[str, Any]]:
+        with timed_query("svc_load_stats"):
+            return _repo.load_stats(_STATS_COLUMNS)
+
+    return _stats_cache.get(_load)
+
+
+def clear_stats_cache() -> None:
+    """Invalida la caché de :func:`load_stats_dataframe`."""
+    _stats_cache.clear()
 
 
 # ── Búsquedas especializadas ─────────────────────────────────────────────

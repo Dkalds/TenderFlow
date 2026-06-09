@@ -45,6 +45,25 @@ def pytest_collection_modifyitems(config, items):
         item.add_marker(getattr(pytest.mark, marker_name))
 
 
+@pytest.fixture(autouse=True)
+def _clear_service_data_caches():
+    """Limpia las cachés de full-table de la capa de servicios entre tests.
+
+    ``load_stats_dataframe`` / ``load_raw_adjudicaciones`` cachean el snapshot
+    en memoria (TTL + señal de ingesta). En tests que mutan la BD y luego leen,
+    una caché caliente serviría datos obsoletos; limpiarla antes/después aísla
+    cada test.
+    """
+    from services.adjudicaciones import clear_raw_adj_cache
+    from services.licitaciones import clear_stats_cache
+
+    clear_stats_cache()
+    clear_raw_adj_cache()
+    yield
+    clear_stats_cache()
+    clear_raw_adj_cache()
+
+
 @pytest.fixture()
 def tmp_db(monkeypatch, tmp_path):
     """BD SQLite temporal con migraciones aplicadas. Aislada por test."""

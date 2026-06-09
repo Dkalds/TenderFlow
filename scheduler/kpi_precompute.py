@@ -165,15 +165,19 @@ def _persist_snapshots(conn: Any, snapshots: list[dict[str, Any]]) -> int:
     conn.execute(
         "DELETE FROM kpi_snapshots"  # Limpiar todos antes de insertar nuevo snapshot completo
     )
-    n = 0
-    for s in snapshots:
-        conn.execute(
-            "INSERT INTO kpi_snapshots (computed_at, metrica, dimension, valor, valor_text) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (s["computed_at"], s["metrica"], s["dimension"], s.get("valor"), s.get("valor_text")),
-        )
-        n += 1
-    return n
+    if not snapshots:
+        return 0
+    rows = [
+        (s["computed_at"], s["metrica"], s["dimension"], s.get("valor"), s.get("valor_text"))
+        for s in snapshots
+    ]
+    # executemany: una sola sentencia en vez de N round-trips a SQLite.
+    conn.executemany(
+        "INSERT INTO kpi_snapshots (computed_at, metrica, dimension, valor, valor_text) "
+        "VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
+    return len(rows)
 
 
 def run_kpi_precompute() -> dict[str, Any]:

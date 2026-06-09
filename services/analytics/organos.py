@@ -38,12 +38,21 @@ class OrganoEntry(BaseModel):
     ccaa: str | None = None
 
 
+class TreemapItem(BaseModel):
+    """Single cell in the organo → tipo_contrato treemap breakdown."""
+
+    organo: str
+    tipo_contrato: str
+    importe: float
+
+
 class OrganosResult(BaseModel):
     """Combined organos response."""
 
     organos: list[OrganoEntry] = Field(default_factory=list)
     total_organos: int = 0
     concentracion_top10: float = 0.0
+    treemap_breakdown: list[TreemapItem] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -131,10 +140,35 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
         for _, row in g_limited.iterrows()
     ]
 
+    # Treemap breakdown: top 30 organos × tipo_contrato
+    treemap_breakdown: list[TreemapItem] = []
+    if "tipo_contrato" in df.columns:
+        top30_organos = set(g.head(30)["organo_contratacion"])
+        tm_df = (
+            df[df["organo_contratacion"].isin(top30_organos)]
+            .dropna(subset=["importe", "tipo_contrato"])
+        )
+        if not tm_df.empty:
+            tm_g = (
+                tm_df.groupby(["organo_contratacion", "tipo_contrato"])["importe"]
+                .sum()
+                .reset_index()
+            )
+            treemap_breakdown = [
+                TreemapItem(
+                    organo=str(row["organo_contratacion"]),
+                    tipo_contrato=str(row["tipo_contrato"]),
+                    importe=float(row["importe"]),
+                )
+                for _, row in tm_g.iterrows()
+                if float(row["importe"]) > 0
+            ]
+
     result = OrganosResult(
         organos=organos,
         total_organos=total_organos,
         concentracion_top10=round(concentracion_top10, 2),
+        treemap_breakdown=treemap_breakdown,
     )
     log.info("analytics_organos_done", total=total_organos)
     return result

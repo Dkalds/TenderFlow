@@ -29,6 +29,10 @@ describe("numberFormatter", () => {
   it("formats zero", () => {
     expect(numberFormatter(0)).toBe("0");
   });
+
+  it("treats undefined as 0 (recharts may pass undefined)", () => {
+    expect(numberFormatter(undefined)).toBe("0");
+  });
 });
 
 describe("currencyFormatter", () => {
@@ -74,5 +78,17 @@ describe("smartFormatter", () => {
     const number = numberFormatter(1000);
     expect(smartFormatter(1000, "Licitaciones")).toBe(number);
     expect(smartFormatter(1000, "Otros")).toBe(number);
+  });
+
+  it("handles undefined name (recharts NameType is optional)", () => {
+    expect(smartFormatter(1000, undefined)).toBe(numberFormatter(1000));
+  });
+
+  it("handles numeric name without throwing", () => {
+    expect(smartFormatter(1000, 42)).toBe(numberFormatter(1000));
+  });
+
+  it("handles undefined value", () => {
+    expect(smartFormatter(undefined, "Importe")).toBe(currencyFormatter(undefined));
   });
 });

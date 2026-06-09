@@ -55,9 +55,16 @@ const filterParsers = {
 };
 
 export function useFilters(): FiltersState {
+  // shallow: true → la actualización de la URL es client-only e inmediata. Ningún
+  //   Server Component consume estos params (todas las páginas del dashboard son
+  //   "use client" y leen los filtros vía React Query en `useFilteredQuery`), así
+  //   que `shallow: false` solo añadía una navegación al servidor por cada cambio
+  //   de filtro → lag/carrera que obligaba a re-seleccionar para que "cuajara".
+  // history: "replace" → evita un entry de historial por cada ajuste de filtro
+  //   (el botón "atrás" vuelve a la página anterior, no al filtro anterior).
   const [params, setParams] = useQueryStates(filterParsers, {
-    history: "push",
-    shallow: false,
+    history: "replace",
+    shallow: true,
   });
 
   const rango = useMemo(

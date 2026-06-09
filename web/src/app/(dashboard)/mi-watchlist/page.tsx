@@ -50,8 +50,8 @@ interface LicitacionItem {
   importe?: number;
   estado?: string;
   fecha_publicacion?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
+  // Campos extra del backend que no modelamos explícitamente.
+  [key: string]: unknown;
 }
 
 interface MatchedItem extends LicitacionItem {

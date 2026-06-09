@@ -194,12 +194,30 @@ export const SankeyChart = React.memo(function SankeyChart({
       })
       .on("mouseleave", () => tooltip.style("display", "none"));
 
+    // Flujo total (entrante o saliente) de un nodo, según su columna.
+    const nodeFlow = (d: LayoutNode) =>
+      d.column === 0
+        ? sum(links.filter((l) => l.source === d.id), (l) => l.value)
+        : sum(links.filter((l) => l.target === d.id), (l) => l.value);
+
+    // Mueve el foco entre nodos del diagrama (navegación por teclado).
+    const focusNodeByOffset = (current: SVGRectElement, delta: number) => {
+      const rects = Array.from(
+        svgRef.current?.querySelectorAll<SVGRectElement>("rect.sankey-node") ?? [],
+      );
+      const idx = rects.indexOf(current);
+      if (idx === -1) return;
+      const next = rects[Math.max(0, Math.min(rects.length - 1, idx + delta))];
+      next?.focus();
+    };
+
     // Draw nodes
     svg
       .append("g")
       .selectAll("rect")
       .data(layoutNodes)
       .join("rect")
+      .attr("class", "sankey-node")
       .attr("x", (d) => d.x)
       .attr("y", (d) => d.y)
       .attr("width", nodeWidth)
@@ -207,31 +225,54 @@ export const SankeyChart = React.memo(function SankeyChart({
       .attr("fill", (d) => colorScale(String(d.column)))
       .attr("rx", 2)
       .attr("tabindex", 0)
+      .attr("role", "img")
+      .attr("aria-label", (d) => {
+        const side = d.column === 0 ? "origen" : "destino";
+        return `${d.label}, ${side}, flujo ${nodeFlow(d)}`;
+      })
       .on("mouseenter", (event, d) => {
-        const flow = d.column === 0
-          ? sum(links.filter((l) => l.source === d.id), (l) => l.value)
-          : sum(links.filter((l) => l.target === d.id), (l) => l.value);
         tooltip
           .style("display", "block")
           .style("left", `${event.offsetX + 10}px`)
           .style("top", `${event.offsetY - 10}px`)
-          .text(`${d.label}: ${flow}`);
+          .text(`${d.label}: ${nodeFlow(d)}`);
       })
       .on("mouseleave", () => tooltip.style("display", "none"))
-      // TODO: full keyboard nav requires D3 refactor
       .on("focus", (event, d) => {
-        const flow = d.column === 0
-          ? sum(links.filter((l) => l.source === d.id), (l) => l.value)
-          : sum(links.filter((l) => l.target === d.id), (l) => l.value);
         const rect = (event.target as SVGRectElement).getBoundingClientRect();
         const parentRect = (event.target as SVGRectElement).ownerSVGElement?.getBoundingClientRect();
         tooltip
           .style("display", "block")
           .style("left", `${rect.left - (parentRect?.left ?? 0) + rect.width + 4}px`)
           .style("top", `${rect.top - (parentRect?.top ?? 0)}px`)
-          .text(`${d.label}: ${flow}`);
+          .text(`${d.label}: ${nodeFlow(d)}`);
       })
-      .on("blur", () => tooltip.style("display", "none"));
+      .on("blur", () => tooltip.style("display", "none"))
+      .on("keydown", (event) => {
+        const ke = event as KeyboardEvent;
+        const target = ke.currentTarget as SVGRectElement | null;
+        if (!target) return;
+        switch (ke.key) {
+          case "ArrowDown":
+          case "ArrowRight":
+            focusNodeByOffset(target, 1);
+            ke.preventDefault();
+            break;
+          case "ArrowUp":
+          case "ArrowLeft":
+            focusNodeByOffset(target, -1);
+            ke.preventDefault();
+            break;
+          case "Home":
+            focusNodeByOffset(target, -layoutNodes.length);
+            ke.preventDefault();
+            break;
+          case "End":
+            focusNodeByOffset(target, layoutNodes.length);
+            ke.preventDefault();
+            break;
+        }
+      });
 
     // Draw labels
     svg

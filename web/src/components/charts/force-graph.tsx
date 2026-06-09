@@ -78,7 +78,9 @@ export const ForceGraph = React.memo(function ForceGraph({
   }, [propWidth, propHeight]);
 
   React.useEffect(() => {
-    const svg = select(svgRef.current);
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const svg = select(svgEl);
     const tooltip = select(tooltipRef.current);
     svg.selectAll("*").remove();
 
@@ -133,8 +135,7 @@ export const ForceGraph = React.memo(function ForceGraph({
     const zoom = d3Zoom<SVGSVGElement, unknown>().scaleExtent([0.3, 5]).on("zoom", (event) => {
       g.attr("transform", event.transform);
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    svg.call(zoom as any);
+    svg.call(zoom);
 
     const link = g
       .append("g")
@@ -146,7 +147,7 @@ export const ForceGraph = React.memo(function ForceGraph({
 
     const node = g
       .append("g")
-      .selectAll("circle")
+      .selectAll<SVGCircleElement, SimNode>("circle")
       .data(simNodes)
       .join("circle")
       .attr("r", (d) => d.radius)
@@ -181,8 +182,7 @@ export const ForceGraph = React.memo(function ForceGraph({
         d.fy = null;
       });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    node.call(dragBehavior as any);
+    node.call(dragBehavior);
 
     // Labels for larger nodes
     const labels = g

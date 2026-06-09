@@ -28,10 +28,11 @@ import { formatNumber, formatPercent, cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/api-client";
 
 interface QueueItem {
-  expediente: string;
+  // El backend (/api/v1/feedback/queue) identifica cada item por `id_externo`,
+  // que es el mismo valor que el `expediente` de la tabla ml_feedback al enviar.
+  id_externo: string;
   titulo?: string;
-  proba?: number;
-  probability?: number;
+  confidence?: number;
   tecnologia?: string;
   [key: string]: unknown;
 }
@@ -96,7 +97,7 @@ export default function ActiveLearningPage() {
   });
 
   const items = queue?.items ?? [];
-  const pendingItems = items.filter((it) => !dismissed.has(it.expediente));
+  const pendingItems = items.filter((it) => !dismissed.has(it.id_externo));
   const queueSize = queue?.total ?? items.length;
 
   // Group by technology if available
@@ -310,11 +311,11 @@ export default function ActiveLearningPage() {
       {!queueLoading && (
         <div className="space-y-3">
           {pendingItems.map((item) => {
-            const prob = item.proba ?? item.probability ?? null;
-            const noteExpanded = expandedNotes.has(item.expediente);
+            const prob = item.confidence ?? null;
+            const noteExpanded = expandedNotes.has(item.id_externo);
 
             return (
-              <Card key={item.expediente}>
+              <Card key={item.id_externo}>
                 <CardContent className="pt-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1 space-y-2">
@@ -322,7 +323,7 @@ export default function ActiveLearningPage() {
                         {item.titulo ?? "Sin titulo"}
                       </p>
                       <p className="text-xs text-muted-foreground font-mono">
-                        {item.expediente}
+                        {item.id_externo}
                       </p>
                       {prob != null && (
                         <div className="flex items-center gap-2">
@@ -360,7 +361,7 @@ export default function ActiveLearningPage() {
                         <Button
                           size="sm"
                           className="bg-green-600 hover:bg-green-700"
-                          onClick={() => handleLabel(item.expediente, true)}
+                          onClick={() => handleLabel(item.id_externo, true)}
                           disabled={submitFeedback.isPending}
                         >
                           <ThumbsUp className="mr-1 h-4 w-4" />
@@ -369,7 +370,7 @@ export default function ActiveLearningPage() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => handleLabel(item.expediente, false)}
+                          onClick={() => handleLabel(item.id_externo, false)}
                           disabled={submitFeedback.isPending}
                         >
                           <ThumbsDown className="mr-1 h-4 w-4" />
@@ -378,7 +379,7 @@ export default function ActiveLearningPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handleSkip(item.expediente)}
+                          onClick={() => handleSkip(item.id_externo)}
                         >
                           <SkipForward className="mr-1 h-4 w-4" />
                           Saltar
@@ -388,7 +389,7 @@ export default function ActiveLearningPage() {
                         variant="ghost"
                         size="sm"
                         className="text-xs"
-                        onClick={() => toggleNote(item.expediente)}
+                        onClick={() => toggleNote(item.id_externo)}
                       >
                         {noteExpanded ? (
                           <ChevronUp className="mr-1 h-3 w-3" />
@@ -404,11 +405,11 @@ export default function ActiveLearningPage() {
                       className="mt-2 w-full"
                       placeholder="Nota opcional..."
                       rows={2}
-                      value={notes[item.expediente] ?? ""}
+                      value={notes[item.id_externo] ?? ""}
                       onChange={(e) =>
                         setNotes((prev) => ({
                           ...prev,
-                          [item.expediente]: e.target.value,
+                          [item.id_externo]: e.target.value,
                         }))
                       }
                     />

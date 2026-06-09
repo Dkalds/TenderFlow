@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
+from typing import SupportsInt, cast
 
 import numpy as np
 import pandas as pd
@@ -313,11 +314,12 @@ def get_clusters(filters: ClustersFilters) -> ClustersResult:
 
     clusters: list[ClusterEntry] = []
     for cid, grp in work.groupby("cluster_id"):
+        cid_int = int(cast("SupportsInt", cid))  # cid es la etiqueta de cluster (numpy int)
         importes = grp["importe"]
         clusters.append(
             ClusterEntry(
-                cluster_id=int(cid),
-                label=label_map.get(int(cid), "otros"),
+                cluster_id=cid_int,
+                label=label_map.get(cid_int, "otros"),
                 n=len(grp),
                 importe_medio=float(importes.mean(skipna=True) or 0),
                 importe_total=float(importes.sum(skipna=True)),

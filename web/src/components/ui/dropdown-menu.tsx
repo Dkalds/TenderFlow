@@ -10,7 +10,7 @@ const DropdownMenu = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLD
 )
 DropdownMenu.displayName = "DropdownMenu"
 
-interface DropdownMenuTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+type DropdownMenuTriggerProps = React.ButtonHTMLAttributes<HTMLButtonElement>
 
 const DropdownMenuTrigger = React.forwardRef<HTMLButtonElement, DropdownMenuTriggerProps>(
   ({ className, children, onClick, ...props }, ref) => {

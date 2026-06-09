@@ -413,10 +413,7 @@ export default function PipelineAlertasPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="horizonte" width={80} tick={{ fontSize: 12 }} />
-                  <Tooltip
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={numberFormatter as any}
-                  />
+                  <Tooltip formatter={numberFormatter} />
                   <Bar dataKey="count" name="Licitaciones" radius={[0, 4, 4, 0]}>
                     {pipelineData!.por_horizonte.map((entry, i) => (
                       <Cell
@@ -461,10 +458,7 @@ export default function PipelineAlertasPage() {
                     tick={{ fontSize: 11 }}
                     tickFormatter={(v) => formatCurrency(v)}
                   />
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  <Tooltip
-                    formatter={smartFormatter as any}
-                  />
+                  <Tooltip formatter={smartFormatter} />
                   <Legend />
                   <Bar
                     yAxisId="left"
@@ -520,10 +514,7 @@ export default function PipelineAlertasPage() {
                   tick={{ fontSize: 11 }}
                   tickFormatter={(v) => formatCurrency(v)}
                 />
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <Tooltip
-                  formatter={smartFormatter as any}
-                />
+                <Tooltip formatter={smartFormatter} />
                 <ReferenceLine
                   x={7}
                   stroke="#ef4444"

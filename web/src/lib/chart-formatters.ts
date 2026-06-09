@@ -1,12 +1,14 @@
 import { formatNumber, formatCurrency } from "./utils";
 
 /**
- * Recharts tooltip/label value type.
- * The formatter callback receives this union type.
+ * Recharts tooltip/label value type. El callback `formatter` de recharts puede
+ * recibir `undefined` (su `ValueType | undefined`), así que lo incluimos para
+ * encajar con el tipo sin casts.
  */
-type RechartValue = string | number | (string | number)[];
+type RechartValue = string | number | ReadonlyArray<string | number> | undefined;
 
 function toNumber(v: RechartValue): number {
+  if (v == null) return 0;
   if (Array.isArray(v)) return Number(v[0]);
   return Number(v);
 }
@@ -28,8 +30,9 @@ export function percentFormatter(v: RechartValue): string {
 
 /**
  * Smart formatter: uses currency for "Importe" series, number for others.
- * Useful as Recharts Tooltip `formatter` prop.
+ * Useful as Recharts Tooltip `formatter` prop. `name` admite `string | number`
+ * para encajar con el tipo `NameType` de recharts sin necesidad de casts.
  */
-export function smartFormatter(v: RechartValue, name: string): string {
+export function smartFormatter(v: RechartValue, name: string | number | undefined): string {
   return name === "Importe" ? currencyFormatter(v) : numberFormatter(v);
 }

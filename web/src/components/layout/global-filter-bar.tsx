@@ -65,6 +65,7 @@ export function GlobalFilterBar() {
         <span className="hidden sm:inline">Desde</span>
         <input
           type="date"
+          aria-label="Fecha desde"
           value={filters.rango.desde ?? ""}
           onChange={(event) => filters.setRango({ ...filters.rango, desde: event.target.value || null })}
           className="bg-transparent text-foreground outline-none"
@@ -75,6 +76,7 @@ export function GlobalFilterBar() {
         <span className="hidden sm:inline">Hasta</span>
         <input
           type="date"
+          aria-label="Fecha hasta"
           value={filters.rango.hasta ?? ""}
           onChange={(event) => filters.setRango({ ...filters.rango, hasta: event.target.value || null })}
           className="bg-transparent text-foreground outline-none"

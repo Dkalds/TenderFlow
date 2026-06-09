@@ -186,10 +186,10 @@ def _build_entries(classified: pd.DataFrame, total: int) -> list[TecnologiaEntry
     grp = classified.groupby("tech_label")
     agg = grp.agg(count=("id_externo", "count"), importe=("importe", "sum"))
     if "estado" in classified.columns:
-        adj = grp.apply(
-            lambda g: float((g["estado"] == _ADJ_ESTADO).sum()) / max(len(g), 1) * 100,
-            include_groups=False,
-        )
+        # % adjudicado por tech = media del booleano (estado == ADJ) * 100.
+        # Vectorizado (groupby de una Series) en vez de .apply para tipado limpio.
+        is_adj = classified["estado"] == _ADJ_ESTADO
+        adj = is_adj.groupby(classified["tech_label"]).mean().mul(100.0)
     else:
         adj = pd.Series(0.0, index=agg.index)
     agg = agg.join(adj.rename("pct_adjudicado")).sort_values("count", ascending=False).reset_index()

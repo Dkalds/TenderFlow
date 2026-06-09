@@ -58,13 +58,30 @@ make test-perf         # test_performance.py con timeout 120s
 make test-smoke        # test_dashboard_smoke.py
 ```
 
+## Skips condicionales
+
+Algunos tests se saltan **a propósito** según el entorno. No son deuda: cada
+`pytest.skip` lleva un motivo explícito. Política:
+
+| Test | Condición de skip | Por qué es correcto |
+|------|-------------------|---------------------|
+| `test_shared_schemas.py` | `pandera` no instalado (`importorskip`) o `LicitacionSchema` es NoOp | La validación pandera es un extra opcional (`[schemas]`); sin él el schema degrada a NoOp y no hay nada que validar. |
+| `test_unit_coverage_batch1b.py::TestFallbackActors` | `dramatiq` **sí** está instalado | Estos tests cubren el camino *fallback* (sin broker). Con dramatiq activo, el fallback no se ejecuta. |
+| `test_visual_regression.py` | El puerto 8599 ya está en uso | Evita chocar con un dashboard de desarrollo ya levantado. |
+
+Regla general: usar `pytest.importorskip("dep")` para dependencias opcionales y
+`pytest.skip(motivo)` con un mensaje claro para condiciones de entorno. En CI,
+las dependencias opcionales relevantes (`pandera`, etc.) **sí** se instalan, de
+modo que estos paths se ejercitan; los skips solo aplican en entornos locales
+mínimos. Si añadís un skip nuevo, incluí siempre el motivo en el mensaje.
+
 ## Configuración de cobertura
 
 Definida en `pyproject.toml` bajo `[tool.coverage.*]`:
 
 - **Branch coverage**: activado (`branch = true`).
 - **Fuentes medidas**: `api`, `db`, `scraper`, `scheduler`, `services`, `shared`, `observability`, `config`, `dashboard`, `llm`.
-- **`fail_under`**: 51% — el build falla si la cobertura baja de este umbral.
+- **`fail_under`**: 70% — el build falla si la cobertura baja de este umbral.
 - **Líneas excluidas**:
   - `pragma: no cover`
   - `if __name__ == "__main__":`
