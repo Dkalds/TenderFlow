@@ -19,26 +19,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### Subir cobertura de tests del frontend y cubrir áreas críticas sin tests
-- **Área:** `web/`
-- **Problema:** Los thresholds de vitest son bajos (`statements/lines 30`, `branches/functions 25`) frente a ~50 páginas de dashboard y solo ~4 tests de componentes/hooks (`kpi-card`, `treemap-content`, `admin-guard`, `use-admin`, `use-filtered-query`). Componentes con lógica no trivial (charts, `filters-sidebar`, páginas con transformaciones de datos como `pipeline-alertas`) no tienen tests unitarios.
-- **Progreso (2026-06-09):** +4 tests de edge-cases en `chart-formatters.test.ts` (input `undefined`, `name` undefined/numérico) protegiendo el re-tipado reciente; suite 241 → **245**. Falta cubrir componentes/hooks con lógica de transformación y subir los thresholds.
-- **Acceptance criteria:**
-  - Añadir tests para al menos 3-4 componentes/hooks no cubiertos con lógica real (no smoke render): p. ej. transformaciones de datos en `pipeline-alertas`, `force-graph`, `filters-sidebar`.
-  - Subir los thresholds de `vitest.config.ts` de forma incremental tras añadirlos (no bajarlos nunca).
-  - `npm run test:coverage` pasa con los nuevos umbrales.
-- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), `web/src/components/`, `web/src/hooks/`.
-- **Riesgo:** bajo — solo tests/config de tests.
-
-
-### Arreglar `test_expired_key_returns_401` (fallo de infra de test, no de seguridad)
-- **Área:** `tests/`, `db/` (connection pool)
-- **Problema:** `tests/test_api.py::TestApiKeyExpiration::test_expired_key_returns_401` falla en aislamiento (devuelve 200 en vez de 401). **No es bug de seguridad**: un repro directo confirma que la lógica de `api/auth.require_api_key` lee bien `expires_at` y el check de expiración dispara correctamente (las keys expiradas SÍ se rechazan). El fallo es de **infraestructura de test**: el `UPDATE expires_at` lo hace el test con una conexión (`connect()`), pero el request del `TestClient` lee con `connect_read()` (otra conexión del pool) que no ve el cambio. Es **pre-existente** (falla igual en pytest 8.4.2 y 9.0.3) y puede estar enmascarado por el orden en la suite completa.
-- **Acceptance criteria:**
-  - El test pasa de forma determinista (p. ej. `close_pool()` tras el `UPDATE`, o usar la misma conexión, o resetear el pool en el fixture).
-  - Confirmar que no hay otros tests con el mismo patrón de lectura/escritura cruzada de conexiones.
-- **Files de partida:** [tests/test_api.py](../tests/test_api.py) (~L244), [tests/conftest.py](../tests/conftest.py) (fixtures `api_db`/`client`), [db/connection.py](../db/connection.py) (pool).
-- **Riesgo:** bajo — solo test/infra; la lógica de producción es correcta.
+*(sin ítems abiertos)*
 
 ---
 
@@ -83,6 +64,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-06-10] **P2: Fix `test_expired_key_returns_401` + bug real de expiración en `require_any_auth`** — La causa raíz no era infra de test sino un **bug de producción**: `api/routes/dual_auth.py::require_any_auth` (usado por `/api/v1/licitaciones` y otros endpoints con dual auth sesión/API-key) llamaba a `lookup_active_key` pero **nunca comprobaba `expires_at`**, a diferencia de `api/auth.py::require_api_key`. Una API key expirada seguía siendo válida en estos endpoints. Fix: añadido el mismo check `record.expires_at and now_utc_iso() > record.expires_at` en `dual_auth.py`. Además, `tests/test_api.py::test_expired_key_returns_401` ahora llama a `close_pool()` tras el `UPDATE` para evitar lecturas de conexión thread-local obsoletas. `pytest tests/test_api.py` 24/24 verde.
+- [2026-06-10] **P2: Cobertura de tests del frontend — `useSearchHistory` y `SearchAutocomplete`** — 2 archivos nuevos: `web/src/lib/__tests__/search-history.test.ts` (dedupe, cap de 10, rechazo de términos < 2 chars, trim, persistencia en `localStorage`) y `web/src/components/__tests__/search-autocomplete.test.tsx` (navegación con teclado ArrowUp/Down sin wrap, Enter sobre item activo vs. valor actual, Escape, aria-expanded/aria-activedescendant, selección por click). Suite 245 → **268** tests (15 → 17 archivos). Thresholds de `vitest.config.ts` subidos 30/25→32/27 (statements/lines 32, branches/functions 27).
 - [2026-06-09] **Deps: cerradas las 3 alertas moderate de Dependabot** — `web/package.json`: `overrides` forzando `postcss: ^8.5.10` (resuelto 8.5.15) → `npm audit` 0 vulns, `next build` OK (no había Next estable con el fix). `requirements-dev.txt`: `pytest>=8.0.0,<9` → `>=9.0.3,<10` (CVE-2025-71176; compatible con pytest-cov/benchmark, suite verificada). Nota operacional: el `.venv` local tenía `starlette 0.52.1` stale — el manifest ya pinea `1.2.0` parcheado; basta reinstalar (`pip install -r requirements.txt`). Audit-gate en CI queda en el ítem de CI frontend.
 - [2026-06-09] **P1: CI frontend job** — `.github/workflows/ci.yml`: nuevo job `frontend` con `defaults.run.working-directory: web`, Node 22, caché npm por `web/package-lock.json`. Pasos: `npm ci` → `typecheck` → `lint` → `test` (vitest) → `build` (next build). Corre en paralelo con los jobs de Python.
 - [2026-06-09] **Lint: deuda de frontend completamente limpia (160→0 warnings, 0 errores)** — jsx-a11y completo (todos los grupos, −112), exhaustive-deps (wrapping `?? []` en `useMemo`, `TIPO_CONTRATO_LABEL` extraído, −36), React Compiler (`set-state-in-effect`/`purity`/`immutability`/`incompatible-library`, −6, eslint-disable documentado). Vuelta final: 48 `no-unused-vars`/`no-explicit-any` eliminados en 22 archivos (imports muertos, useMemo dead code, args renombrados a `_`). `no-explicit-any` y `no-unused-vars` endurecidos de `warn` a `error`. `eslint src/` 0, `tsc --noEmit` 0.

@@ -53,10 +53,13 @@ async def require_any_auth(
     if api_key_raw:
         try:
             from api.auth import hash_api_key
+            from db.connection import now_utc_iso
             from services import auth as auth_service
 
             key_hash = hash_api_key(api_key_raw)
             record = auth_service.lookup_active_key(key_hash)
+            if record is not None and record.expires_at and now_utc_iso() > record.expires_at:
+                record = None
             if record is not None:
                 return {
                     "user_id": record.key_id,
