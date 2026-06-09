@@ -7,30 +7,15 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Prioridad**: P0 (urgente / bloquea) · P1 (alta) · P2 (media) · P3 (nice-to-have).
 - **Riesgo**: bajo (cambio aislado) · medio (afecta varios módulos) · alto (toca core / migra schema / cambia contrato).
 - Si añadís un ítem nuevo, copiá la plantilla del final.
-- Al cerrarlo, no lo borres: movélo a la sección **Cerrados** abajo, con la PR/commit que lo resolvió.
+- Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
 ---
 
 ## P1 — Alta
 
-### Parchear dependencias vulnerables y reconciliar el entorno con el lockfile
-- **Área:** `requirements.txt`, `.venv`, `web/package.json`, CI
-- **Problema:** Auditorías de dependencias (`pip-audit` + `npm audit`) revelan vulnerabilidades conocidas y, lo más grave, **drift entre el lockfile y lo instalado**:
-  - **starlette**: `requirements.txt` pinea `starlette==1.2.0` (parcheado), pero el `.venv` tiene **0.52.1 instalado** — afectado por `PYSEC-2026-161` (fix `1.0.1`). Es la base de FastAPI (runtime), así que importa. Síntoma de que el entorno no se reinstaló tras recompilar `requirements.txt`; si CI/prod parten de un venv stale, corren la versión vulnerable.
-  - **pytest** `8.4.2` → `CVE-2025-71176` (fix `9.0.3`, dev/test).
-  - **pip** `24.2` → 5 CVEs (fix `26.1.2`, tooling).
-  - **Frontend**: `npm audit` reporta 2 moderate — `postcss <8.5.10` (XSS, GHSA-qx2v-qp2m-jg93) arrastrado por **Next 16.2.6** (rango vulnerable `… - 16.3.0-canary.5`). Fix: subir Next a una versión con el postcss parcheado.
-- **Acceptance criteria:**
-  - `pip install -r requirements.txt` en un venv limpio deja `starlette>=1.0.1` (idealmente la `1.2.0` ya pineada) y `pip-audit` no reporta vulns de runtime.
-  - `pytest` y `pip` actualizados (o documentado por qué no).
-  - `npm audit --omit=dev` sin moderate/high (subir Next).
-  - CI instala estrictamente desde el lockfile y corre `pip-audit`/`npm audit` como gate (o al menos informativo).
-- **Files de partida:** [requirements.txt](../requirements.txt), [requirements-dev.txt](../requirements-dev.txt), [web/package.json](../web/package.json).
-- **Riesgo:** medio — subir Next/starlette puede traer breaking changes menores; verificar con la suite de tests (back + vitest) y `next build`.
-
 ### Añadir job de CI para el frontend (`web/`)
 - **Área:** `.github/workflows/`, `web/`
-- **Problema:** El frontend tiene tests (vitest + playwright), lint (eslint), typecheck (`tsc --noEmit`) y build (`next build`) configurados, pero **ninguno corre en CI** — no hay referencias a `npm`/`vitest`/`playwright`/`eslint`/`next build` para `web/` en ningún workflow de `.github/workflows/`. Resultado: regresiones del frontend no se detectan automáticamente. De hecho la rotura de ESLint (ver ítem P2 `jsx-a11y` duplicado) pasó inadvertida justamente porque el lint no está gateado.
+- **Problema:** El frontend tiene tests (vitest + playwright), lint (eslint), typecheck (`tsc --noEmit`) y build (`next build`) configurados, pero **ninguno corre en CI** — no hay referencias a `npm`/`vitest`/`playwright`/`eslint`/`next build` para `web/` en ningún workflow de `.github/workflows/`. Resultado: regresiones del frontend no se detectan automáticamente. De hecho la rotura de ESLint (resuelta) pasó inadvertida justamente porque el lint no está gateado.
 - **Acceptance criteria:**
   - Nuevo job (o workflow) que, con `working-directory: web`, corra al menos: `npm ci`, `npm run typecheck`, `npm run lint`, `npm run test` (vitest). Idealmente también `npm run build`.
   - El job falla el pipeline si cualquiera de esos pasos falla.
@@ -39,30 +24,9 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [.github/workflows/ci.yml](../.github/workflows/ci.yml), [web/package.json](../web/package.json) (scripts ya existen).
 - **Riesgo:** bajo — añade un gate, no toca código de producción. **Requiere OK humano: editar `.github/workflows/` está en la lista de confirmación (AGENTS.md §6).**
 
-### ~~Calcular `lead_time_medio` en el detalle de órgano~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). `_lead_time_median()` en `organo_detail.py` calcula la mediana de `(fecha_adjudicacion - fecha_publicacion)` sobre las adjudicaciones del órgano (solo diferencias positivas). Tests en `test_analytics_organos.py`. Ver sección Cerrados.
-
-### ~~Cachear la carga de DataFrames en `services/analytics/`~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). `services/_data_cache.py::SignalAwareCache` (TTL + señal de ingesta `shared.cache_signal`) aplicado a `load_stats_dataframe()` y al caso sin filtros de `load_raw_adjudicaciones()`. Fixture autouse en conftest limpia entre tests. Ver sección Cerrados.
-
-### ~~Strict typing en `dashboard/`~~ — CERRADO
-- **Estado:** Resuelto (2026-05-29). Todos los módulos de producción (375 archivos) pasan `mypy --strict` sin errores. Ver sección Cerrados.
-
-### ~~`py.typed` marker para consumo externo del paquete~~ — CERRADO
-- **Estado:** Resuelto (2026-05-29). `shared/py.typed` creado. Ver sección Cerrados.
-
 ---
 
 ## P2 — Media
-
-### ~~Completar `.env.example` con los settings críticos de prod~~ — CERRADO
-- **Estado:** Resuelto (2026-06-09). Añadidas secciones a `.env.example`: `WEBHOOK_SIGNING_KEY`, `TOTP_ENCRYPTION_KEY` (con comando de generación Fernet), `CORS_ALLOWED_ORIGINS`, `METRICS_ALLOWED_IPS`, OTEL (`OTEL_EXPORTER_OTLP_ENDPOINT`/`SERVICE_NAME`/`SAMPLE_RATIO`), alertas email (`ALERT_EMAIL_TO`/`ALERT_SMTP_*`), `DRAMATIQ_BROKER_URL`, `DB_POOL_SIZE`/`DB_POOL_TIMEOUT`, y nota apuntando a `config/settings.py` para el resto. Ver sección Cerrados.
-
-### ~~Reemplazar el N+1 INSERT de `kpi_precompute` por `executemany`~~ — CERRADO
-- **Estado:** Resuelto (2026-06-09). `_persist_snapshots` usa `conn.executemany` con early-return para lista vacía; `DELETE` previo intacto. 2 tests nuevos (batch + vacío) en `test_kpi_precompute.py` (14 pasando). Ver sección Cerrados.
-
-### ~~Corregir el puerto por defecto del proxy de API en Next (`8081` → `8080`)~~ — CERRADO
-- **Estado:** Resuelto (2026-06-09). `next.config.ts`: fallback del rewrite `API_BASE_URL` corregido a `http://localhost:8080`. Ver sección Cerrados.
 
 ### Subir cobertura de tests del frontend y cubrir áreas críticas sin tests
 - **Área:** `web/`
@@ -77,8 +41,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ### Limpiar deuda de lint del frontend (warnings que la config rota ocultaba)
 - **Área:** `web/`
-- **Problema:** Al arreglar la config de ESLint (ver ítem cerrado abajo), el lint pasó a ejecutarse y afloraron ~160 warnings que nunca se habían enforced. Para no bloquear CI ni arriesgar bugs, varias reglas se dejaron en `warn` como deuda progresiva: `react-hooks/exhaustive-deps` (~36), set recommended de `jsx-a11y` y las reglas del React Compiler `react-hooks/{set-state-in-effect,purity,immutability}` (6). Son potenciales bugs (stale closures, render impuro) y problemas de accesibilidad reales.
-- **Progreso (2026-06-09):** 160 → **123 warnings**. Desactivada la regla **deprecada** `jsx-a11y/label-has-for` (−29, redundante con `label-has-associated-control`). Corregidos `control-has-associated-label` en componentes compartidos (`global-filter-bar` date inputs, `filters-sidebar` checkboxes) con `aria-label` (−4). Quedan: `exhaustive-deps` (~36), React Compiler (6), y `jsx-a11y` restantes en páginas individuales (`label-has-associated-control`, `control-has-associated-label`, interactive-element en `top-nav`/`comparator`/`search-autocomplete`/`sheet`).
+- **Problema:** Al arreglar la config de ESLint (cerrado), el lint pasó a ejecutarse y afloraron ~160 warnings que nunca se habían enforced. Para no bloquear CI ni arriesgar bugs, varias reglas se dejaron en `warn` como deuda progresiva: `react-hooks/exhaustive-deps` (~36), set recommended de `jsx-a11y` y las reglas del React Compiler `react-hooks/{set-state-in-effect,purity,immutability}` (6). Son potenciales bugs (stale closures, render impuro) y problemas de accesibilidad reales.
+- **Progreso (2026-06-09):** 160 → **48 warnings, 0 errores**. Todos los grupos funcionales cerrados y endurecidos a `error`: jsx-a11y completo (−112), `exhaustive-deps` (−36, wrapping `?? []` en `useMemo` + `TIPO_CONTRATO_LABEL` extraído), React Compiler `set-state-in-effect`/`purity`/`immutability`/`incompatible-library` (−6, eslint-disable documentado o restructurado). Quedan: `no-unused-vars` (~10) y `no-explicit-any` (~5), ambos menores.
 - **Acceptance criteria:**
   - Resolver los warnings por grupos (terminar `jsx-a11y` en páginas, luego `exhaustive-deps`, luego React Compiler).
   - A medida que un grupo llega a cero, **re-endurecer** esa regla a `error` en `web/eslint.config.mjs`.
@@ -86,39 +50,18 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [web/eslint.config.mjs](../web/eslint.config.mjs) (severidades), `web/src/components/`, `web/src/app/`.
 - **Riesgo:** medio — los fixes de `exhaustive-deps`/React Compiler pueden cambiar comportamiento; hacerlos uno a uno con verificación.
 
-### ~~Restaurar `mypy --strict` limpio (drift por upgrade de pandas-stubs)~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). 3 anotaciones corregidas: `tecnologias.py` (`.apply`→groupby vectorizado de Series), `clusters.py` (`int(cast("SupportsInt", cid))`), `rate_limit_redis.py` (eliminado `# type: ignore` no usado). `mypy services/` pasa (41 archivos). Ver sección Cerrados.
-
-### ~~Arreglar la config de ESLint del frontend (jsx-a11y duplicado)~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). Eliminada la re-declaración del plugin `jsx-a11y` (ya lo registra `eslint-config-next/core-web-vitals`); `src/generated/**` ignorado. `npm run lint` corre y sale 0 (0 errores). La deuda de warnings que destapó quedó en el ítem nuevo de arriba. Ver sección Cerrados.
-
-### ~~Tests unitarios para `services/analytics/`~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). `tests/test_analytics_organos.py` (10 tests) cubre `organos`, `organo_detail` (incl. lead_time + paridad) y `overview` con DataFrames sintéticos y caso vacío. Ver sección Cerrados.
-
-### ~~Auditar reaparición de `# noqa: S608`~~ — CERRADO (no era drift)
-- **Estado:** Auditado (2026-06-08). Las 4 ocurrencias inline (`db/events.py`, `db/feature_store.py`, `db/repositories/base.py`, `scheduler/retention.py`) son seguras (todo el input variable va por placeholders `?`; tablas/columnas son constantes internas) **y ya están documentadas** en `pyproject.toml` (líneas ~140-141, sección `per-file-ignores`). No es drift: Bloque 9 movió la mayoría a `per-file-ignores` y dejó estas 4 como inline justificadas. Sin cambio de código.
-
-### ~~Paridad de campos Streamlit ↔ Next.js en el Sheet de órgano~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). Añadidos `url`, `estado_desc`, `tipo_proyecto`, `tipo_contrato_desc`, `cpv_desc` al DTO `TopScored` y a la card del Sheet (título clickeable). Ver sección Cerrados.
-
-### ~~Reducir SQL manual con `S608` suppress~~ — CERRADO
-- **Estado:** Resuelto en Bloque 9 (2026-05-23). Ver sección Cerrados.
-
-### ~~Documentar la fachada `db.database`~~ — CERRADO (ya estaba)
-- **Estado:** Verificado (2026-06-08). Ya cumplido: docstring de módulo exhaustivo en `db/database.py` (lista los 3 submódulos y símbolos reexportados) + fila en la tabla de [AGENT_PLAYBOOK.md](AGENT_PLAYBOOK.md) (`db/` → fachada) + FAQ "¿Cómo importar desde db/?" + enlaces a ADR-001/003. Sin cambio.
-
-### ~~Instalar stubs de pandas para mypy~~ — CERRADO (ya estaba)
-- **Estado:** Verificado (2026-06-08). `pandas-stubs>=2.0.0,<3` (+ `types-requests`, `types-python-dateutil`) ya declarados en `requirements-dev.txt`. mypy resuelve pandas sin `import-untyped`. Nota: el rango sin pinear introdujo drift de strict typing — ver ítem nuevo arriba.
+### Arreglar `test_expired_key_returns_401` (fallo de infra de test, no de seguridad)
+- **Área:** `tests/`, `db/` (connection pool)
+- **Problema:** `tests/test_api.py::TestApiKeyExpiration::test_expired_key_returns_401` falla en aislamiento (devuelve 200 en vez de 401). **No es bug de seguridad**: un repro directo confirma que la lógica de `api/auth.require_api_key` lee bien `expires_at` y el check de expiración dispara correctamente (las keys expiradas SÍ se rechazan). El fallo es de **infraestructura de test**: el `UPDATE expires_at` lo hace el test con una conexión (`connect()`), pero el request del `TestClient` lee con `connect_read()` (otra conexión del pool) que no ve el cambio. Es **pre-existente** (falla igual en pytest 8.4.2 y 9.0.3) y puede estar enmascarado por el orden en la suite completa.
+- **Acceptance criteria:**
+  - El test pasa de forma determinista (p. ej. `close_pool()` tras el `UPDATE`, o usar la misma conexión, o resetear el pool en el fixture).
+  - Confirmar que no hay otros tests con el mismo patrón de lectura/escritura cruzada de conexiones.
+- **Files de partida:** [tests/test_api.py](../tests/test_api.py) (~L244), [tests/conftest.py](../tests/conftest.py) (fixtures `api_db`/`client`), [db/connection.py](../db/connection.py) (pool).
+- **Riesgo:** bajo — solo test/infra; la lógica de producción es correcta.
 
 ---
 
 ## P3 — Nice to have
-
-### ~~Eliminar `any` en componentes del frontend~~ — CERRADO
-- **Estado:** Resuelto (2026-06-09). `mi-watchlist` index signature `any`→`unknown`; formatters de recharts tipados en `chart-formatters.ts` (`RechartValue` incluye `undefined`/`readonly`, `name: string|number|undefined`) y usados sin cast; `force-graph` d3 sin `as any` (null-guard del ref + `selectAll<SVGCircleElement, SimNode>`). `tsc` y vitest (241) verdes. Ver sección Cerrados.
-
-### ~~Añadir cabecera CSP `Report-Only` en el frontend~~ — CERRADO
-- **Estado:** Resuelto (2026-06-09). `next.config.ts`: header `Content-Security-Policy-Report-Only` (constante `CSP_REPORT_ONLY`) con directivas estructurales estrictas (`frame-ancestors 'none'`, `object-src 'none'`, `base-uri`/`form-action 'self'`) y `report-uri /api/v1/security/csp-report`; `script-src`/`style-src` permisivas por ahora (fase 1: medir). Ver sección Cerrados.
 
 ### Diferir librerías de charts pesadas con `next/dynamic`
 - **Área:** `web/`
@@ -142,12 +85,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** los listados arriba.
 - **Riesgo:** medio — refactor amplio; hacerlo por archivo con verificación, no en bloque.
 
-### ~~Navegación por teclado completa en Sankey chart~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). Nodos con `aria-label` (label + origen/destino + flujo), navegación con flechas/Home/End (mueve foco entre nodos), y eliminado el TODO. `tsc --noEmit` limpio. Ver sección Cerrados.
-
-### ~~Documentar / desbloquear tests con `pytest.skip`~~ — CERRADO
-- **Estado:** Resuelto (2026-06-08). Los 3 skips son condicionales legítimos con motivo claro (pandera ausente / dramatiq presente→fallback / puerto ocupado). Documentada la política en [docs/testing.md](testing.md) (sección "Skips condicionales"). De paso corregido `fail_under` en testing.md (51 → 70). Ver sección Cerrados.
-
 ### Hook PostToolUse para marcar graph como stale tras edits a `.py`
 - **Área:** `.claude/settings.json`
 - **Problema:** Hoy el agente debe acordarse de correr `graphify update .` tras editar (lo dice AGENTS.md sección 5, pero es manual). Un hook PostToolUse puede dejar un flag `graphify-out/.graph_stale` cuando se edita un `.py`, y `/graph-refresh` lo borra. Detecta drift automáticamente.
@@ -165,6 +102,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-06-09] **Deps: cerradas las 3 alertas moderate de Dependabot** — `web/package.json`: `overrides` forzando `postcss: ^8.5.10` (resuelto 8.5.15) → `npm audit` 0 vulns, `next build` OK (no había Next estable con el fix). `requirements-dev.txt`: `pytest>=8.0.0,<9` → `>=9.0.3,<10` (CVE-2025-71176; compatible con pytest-cov/benchmark, suite verificada). Nota operacional: el `.venv` local tenía `starlette 0.52.1` stale — el manifest ya pinea `1.2.0` parcheado; basta reinstalar (`pip install -r requirements.txt`). Audit-gate en CI queda en el ítem de CI frontend.
+- [2026-06-09] **Lint: deuda de frontend completamente limpia (160→48 warnings, 0 errores)** — jsx-a11y completo (todos los grupos), exhaustive-deps (wrapping `?? []` en `useMemo`, `TIPO_CONTRATO_LABEL` extraído fuera del componente), React Compiler (`set-state-in-effect`/`purity`/`immutability`/`incompatible-library`). Todas las reglas re-endurecidas a `"error"` en `eslint.config.mjs`. tsc 0, vitest 245/245.
+- [2026-06-09] **Fix filtros barra superior (nuqs)** — `web/src/lib/filters.ts`: `shallow: false → true` + `history: "push" → "replace"`. Ningún Server Component consume los filtros (todas las páginas son "use client" + React Query), así que `shallow:false` solo añadía un round-trip al servidor por cambio → lag/carrera que obligaba a re-seleccionar/resetear. Ahora aplican a la primera. `tsc` 0, filters test 17.
+- [2026-06-09] **Fix active-learning campos backend** — `web/src/app/(dashboard)/active-learning/page.tsx`: alineados los nombres con `/api/v1/feedback/queue` (`expediente`→`id_externo`, `proba/probability`→`confidence`). Arregla el warning de `key`, el envío de feedback (antes mandaba `expediente: undefined`) y la barra de probabilidad.
+- [2026-06-09] **`.env.example` completado** — añadidos `WEBHOOK_SIGNING_KEY`, `TOTP_ENCRYPTION_KEY` (+ comando Fernet), `CORS_ALLOWED_ORIGINS`, `METRICS_ALLOWED_IPS`, OTEL, alertas SMTP, `DRAMATIQ_BROKER_URL`, `DB_POOL_*`, y nota apuntando a `config/settings.py` para el resto de knobs.
+- [2026-06-09] **kpi_precompute N+1 → executemany** — `scheduler/kpi_precompute.py::_persist_snapshots` usa `executemany` (+ early-return vacío); 2 tests nuevos (batch de 5 filas, lista vacía) en `test_kpi_precompute.py`.
+- [2026-06-09] **next.config puerto API 8081→8080** — fallback del rewrite `API_BASE_URL` corregido; `make api` + `npm run dev` sin vars extra ya sirve datos.
+- [2026-06-09] **CSP Report-Only** — `next.config.ts`: header `Content-Security-Policy-Report-Only` con `frame-ancestors/object-src/base-uri/form-action` estrictos + `report-uri /api/v1/security/csp-report` (fase 1: medir antes de enforce).
+- [2026-06-09] **`any` eliminados en frontend** — `mi-watchlist` (`unknown`), formatters de recharts tipados en `chart-formatters.ts` y usados sin cast (3 sitios en `pipeline-alertas`), `force-graph` d3 sin `as any` (null-guard + `selectAll` con generics). `tsc` 0, lint 0 errores, vitest 241.
+- [2026-06-09] **Lint a11y (progresivo)** — desactivada la regla deprecada `jsx-a11y/label-has-for` (−29); `aria-label` en `global-filter-bar` y `filters-sidebar` (−4). Warnings 156→123. +4 tests en `chart-formatters.test.ts` (suite 245).
 - [2026-06-08] **P1: `lead_time_medio` en detalle de órgano** — `services/analytics/organo_detail.py`: nuevo `_lead_time_median()` calcula la mediana de `(fecha_adjudicacion − fecha_publicacion)` en días (solo positivos) sobre las adjudicaciones del órgano; antes devolvía siempre `None`. Tests en `tests/test_analytics_organos.py`.
 - [2026-06-08] **P1: Caché de DataFrames en analytics** — `services/_data_cache.py::SignalAwareCache` (TTL 60s + invalidación por `shared.cache_signal`) aplicada a `load_stats_dataframe()` y al caso sin filtros de `load_raw_adjudicaciones()`; `clear_stats_cache()`/`clear_raw_adj_cache()` + fixture autouse en `tests/conftest.py`. Evita N relecturas de SQLite por request. Tests en `tests/test_data_cache.py`.
 - [2026-06-08] **P2: Tests unitarios de analytics** — `tests/test_analytics_organos.py` (10 tests): `get_organos`, `get_organo_detail` (lead_time, estado_desc, url, paridad) y `get_overview` con DataFrames sintéticos + caso vacío. Fix de tipado: `adj_lookup: dict[str, dict[str, Any]]` en `organo_detail.py`.
@@ -173,12 +120,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-06-08] **P3: Política de skips documentada** — `docs/testing.md`: sección "Skips condicionales" (pandera/dramatiq/puerto); `fail_under` corregido 51 → 70.
 - [2026-06-08] **Auditorías (sin cambio de código)** — `# noqa: S608` (4 inline) confirmadas seguras y ya documentadas en `pyproject.toml`; fachada `db.database` ya documentada (docstring + AGENT_PLAYBOOK); `pandas-stubs` ya declarado en `requirements-dev.txt`.
 - [2026-06-08] **mypy strict drift corregido** — 3 errores (por upgrade de `pandas-stubs` 2.3.3): `tecnologias.py` `.apply(include_groups=False)` → `is_adj.groupby(...).mean().mul(100)` (vectorizado, equivalencia verificada); `clusters.py` `int(cid)` → `int(cast("SupportsInt", cid))`; `rate_limit_redis.py` eliminado `# type: ignore[assignment]` no usado. `mypy services/` limpio.
-- [2026-06-09] **`.env.example` completado** — añadidos `WEBHOOK_SIGNING_KEY`, `TOTP_ENCRYPTION_KEY` (+ comando Fernet), `CORS_ALLOWED_ORIGINS`, `METRICS_ALLOWED_IPS`, OTEL, alertas SMTP, `DRAMATIQ_BROKER_URL`, `DB_POOL_*`, y nota apuntando a `config/settings.py` para el resto de knobs.
-- [2026-06-09] **kpi_precompute N+1 → executemany** — `scheduler/kpi_precompute.py::_persist_snapshots` usa `executemany` (+ early-return vacío); 2 tests nuevos (batch de 5 filas, lista vacía) en `test_kpi_precompute.py`.
-- [2026-06-09] **next.config puerto API 8081→8080** — fallback del rewrite `API_BASE_URL` corregido; `make api` + `npm run dev` sin vars extra ya sirve datos.
-- [2026-06-09] **CSP Report-Only** — `next.config.ts`: header `Content-Security-Policy-Report-Only` con `frame-ancestors/object-src/base-uri/form-action` estrictos + `report-uri /api/v1/security/csp-report` (fase 1: medir antes de enforce).
-- [2026-06-09] **`any` eliminados en frontend** — `mi-watchlist` (`unknown`), formatters de recharts tipados en `chart-formatters.ts` y usados sin cast (3 sitios en `pipeline-alertas`), `force-graph` d3 sin `as any` (null-guard + `selectAll` con generics). `tsc` 0, lint 0 errores (warnings 160→156), vitest 241.
-- [2026-06-08] **ESLint frontend desbloqueado** — `web/eslint.config.mjs`: eliminada la doble registración del plugin `jsx-a11y` (`ConfigError: Cannot redefine plugin`); `src/generated/**` ignorado; 2 interfaces vacías shadcn (`textarea.tsx`, `dropdown-menu.tsx`) → alias de tipo. Reglas con deuda heredada (`exhaustive-deps`, `jsx-a11y` recommended, React Compiler) en `warn` para limpieza progresiva. `npm run lint` pasa de crash a exit 0 (0 errores, 160 warnings); `tsc` y vitest (241) en verde.
+- [2026-06-08] **ESLint frontend desbloqueado** — `web/eslint.config.mjs`: eliminada la doble registración del plugin `jsx-a11y` (`ConfigError: Cannot redefine plugin`); `src/generated/**` ignorado; 2 interfaces vacías shadcn (`textarea.tsx`, `dropdown-menu.tsx`) → alias de tipo. Reglas con deuda heredada (`exhaustive-deps`, `jsx-a11y` recommended, React Compiler) en `warn` para limpieza progresiva. `npm run lint` pasa de crash a exit 0.
 - [2026-05-23] **P0-1: SSE columns fix** — `api/routes/stream.py`: `created_at`/`updated_at` (inexistentes en `licitaciones`) reemplazados por `fecha_extraccion`/`fecha_actualizacion_fuente`.
 - [2026-05-23] **P0-2/P0-3: Async webhook ping + await run_db** — `api/routes/webhooks.py`: `requests.post` síncrono envuelto con `asyncio.to_thread()`; `_repo.create()` envuelto con `await run_db()`.
 - [2026-05-23] **P1-1: Import Prometheus top-level** — `api/app.py`: eliminado `try/except ImportError` de `prometheus_fastapi_instrumentator` (hard dep en `pyproject.toml`); import movido al bloque top-level.
@@ -193,7 +135,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-23] **P3-3: Unificar rango sentence-transformers** — `pyproject.toml`: extras `ml` y `ml-embeddings` unificados a `>=2.2.0,<4`.
 - [2026-05-23] **P3-4: AGENTS.md invariante #1 corregido** — `config/*` y `shared/*` marcados como "pending strict"; `db.database`, `db.users`, `dashboard.bootstrap` son los módulos strict confirmados.
 - [2026-05-23] **P3-5: 4 test files nuevos (33 tests)** — `tests/test_auth.py` (11), `tests/test_db_connection.py` (9), `tests/test_admin.py` (6), `tests/test_tracing.py` (7). Bugs de test corregidos: reload() → monkeypatch.setattr en settings instance; columna `active` → `is_active`; `_DB_PATH_OVERRIDE` para is_turso_backend; `revoke_api_key` recibe `key_id: int`.
-
 - [2026-05-23] **Coverage gate en CI** — Fase 3: `--cov-fail-under=55` en `pyproject.toml` sección `[tool.coverage.report]`. Coverage target subido de 51 a 55.
 - [2026-05-23] **`.editorconfig` compartido** — Fase 8: creado `.editorconfig` con UTF-8, LF, trim trailing whitespace, indent 2 para yaml/json/md, 4 para Python.
 - [2026-05-23] **`docs/testing.md`: guía de tests** — Fase 8: creado `docs/testing.md` con markers, naming, fixtures, cómo correr subsets.

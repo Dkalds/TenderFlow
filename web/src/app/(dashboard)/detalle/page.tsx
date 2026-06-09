@@ -362,6 +362,7 @@ export default function DetallePage() {
 
   const totalPages = Math.ceil((data?.total ?? 0) / pagination.pageSize);
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: mergedRows,
     columns,

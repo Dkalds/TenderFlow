@@ -114,7 +114,7 @@ export default function ClustersPage() {
     { n_clusters: String(appliedK), auto_k: String(autoK) },
   );
 
-  const clusters = data?.clusters ?? [];
+  const clusters = useMemo(() => data?.clusters ?? [], [data]);
 
   const barData = useMemo(
     () =>
@@ -194,8 +194,8 @@ export default function ClustersPage() {
               disabled={autoK}
             />
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <Switch checked={autoK} onCheckedChange={setAutoK} />
+          <label htmlFor="cl-autok" className="flex items-center gap-2 text-sm">
+            <Switch id="cl-autok" checked={autoK} onCheckedChange={setAutoK} />
             Auto-optimizar k
           </label>
           <Button onClick={recalcular} disabled={isFetching} className="gap-2">

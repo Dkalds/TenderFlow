@@ -91,7 +91,7 @@ export function FiltersSidebar({ className }: { className?: string }) {
 
   // Sync local q when store resets
   React.useEffect(() => {
-    if (filters.q === "" && localQ !== "") setLocalQ("");
+    if (filters.q === "" && localQ !== "") setLocalQ(""); // eslint-disable-line react-hooks/set-state-in-effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.q]);
 

@@ -278,6 +278,7 @@ export default function LicitadoresPage() {
               <span className="text-xs text-muted-foreground">Top</span>
               <input
                 type="range"
+                aria-label="Top N licitadores"
                 min={5}
                 max={50}
                 step={5}

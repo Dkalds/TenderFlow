@@ -76,8 +76,10 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
     return (
       <>
         <div
+          role="presentation"
           className="fixed inset-0 z-50 bg-black/80"
           onClick={() => setOpen(false)}
+          onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
         />
         <div
           ref={ref}
@@ -115,8 +117,10 @@ const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 SheetHeader.displayName = "SheetHeader"
 
 const SheetTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h2 ref={ref} className={cn("text-lg font-semibold text-foreground", className)} {...props} />
+  ({ className, children, ...props }, ref) => (
+    <h2 ref={ref} className={cn("text-lg font-semibold text-foreground", className)} {...props}>
+      {children}
+    </h2>
   )
 )
 SheetTitle.displayName = "SheetTitle"

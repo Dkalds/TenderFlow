@@ -35,10 +35,12 @@ function formatValue(key: string, value: unknown): string {
 
 export function Comparator({ items, onClose, className }: ComparatorProps) {
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="comparator-title"
+      tabIndex={-1}
       onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
       className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/60", className)}
     >

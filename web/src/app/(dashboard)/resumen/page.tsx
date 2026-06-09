@@ -68,6 +68,7 @@ export default function ResumenPage() {
     { staleTime: 5 * 60 * 1000 },
   );
 
+  // eslint-disable-next-line react-hooks/purity
   const timelineDesde = rango.desde ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const timeline = useFilteredQuery<TimelineScatterResult>(
     ["analytics", "resumen", "timeline", timelineDesde],

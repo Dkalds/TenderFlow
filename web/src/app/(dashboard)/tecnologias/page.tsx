@@ -160,7 +160,7 @@ export default function TecnologiasPage() {
     { limit: "20" },
   );
 
-  const items = data?.tecnologias ?? [];
+  const items = useMemo(() => data?.tecnologias ?? [], [data]);
 
   const donutData = useMemo(() => {
     const sorted = [...items].sort((a, b) => b.count - a.count);
@@ -208,7 +208,7 @@ export default function TecnologiasPage() {
   }, [items, filter]);
 
   // Monthly evolution split by technology (stacked area)
-  const evol = data?.evolucion_mensual ?? [];
+  const evol = useMemo(() => data?.evolucion_mensual ?? [], [data]);
   const evolTechs = useMemo(() => {
     const totals = new Map<string, number>();
     for (const e of evol) totals.set(e.tecnologia, (totals.get(e.tecnologia) ?? 0) + e.count);
@@ -247,7 +247,7 @@ export default function TecnologiasPage() {
   }, [data]);
 
   // Geographic distribution by technology (grouped bar)
-  const crossGeo = data?.cross_geo ?? [];
+  const crossGeo = useMemo(() => data?.cross_geo ?? [], [data]);
   const geoTechs = useMemo(() => {
     const totals = new Map<string, number>();
     for (const c of crossGeo) totals.set(c.tecnologia, (totals.get(c.tecnologia) ?? 0) + c.count);

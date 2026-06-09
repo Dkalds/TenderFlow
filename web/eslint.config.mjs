@@ -3,12 +3,10 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 
-// Set recomendado de jsx-a11y, pero como warnings: el proyecto sigue una
-// estrategia de limpieza progresiva (ver `no-explicit-any` más abajo). Endurecer
-// a "error" de golpe bloquearía CI con ~20 violaciones heredadas en componentes
-// shadcn/ui vendored. Convertirlas a warning las hace visibles sin romper el build.
-const jsxA11yRecommendedAsWarn = Object.fromEntries(
-  Object.keys(jsxA11y.configs.recommended.rules).map((rule) => [rule, "warn"]),
+// Set recomendado de jsx-a11y endurecido a error: todas las violaciones fueron
+// corregidas en la limpieza progresiva (2026-06-09). Bloquea regresiones en CI.
+const jsxA11yRecommendedAsError = Object.fromEntries(
+  Object.keys(jsxA11y.configs.recommended.rules).map((rule) => [rule, "error"]),
 );
 
 const eslintConfig = defineConfig([
@@ -31,10 +29,9 @@ const eslintConfig = defineConfig([
   // registrado por Next).
   {
     rules: {
-      ...jsxA11yRecommendedAsWarn,
+      ...jsxA11yRecommendedAsError,
       // `label-has-for` está **deprecada** por jsx-a11y (redundante con
-      // `label-has-associated-control`, que sí cubre los casos reales). La
-      // apagamos para no duplicar ~29 warnings de ruido.
+      // `label-has-associated-control`, que sí cubre los casos reales).
       "jsx-a11y/label-has-for": "off",
     },
   },
@@ -43,16 +40,12 @@ const eslintConfig = defineConfig([
     rules: {
       // Warn on explicit any to progressively eliminate them
       "@typescript-eslint/no-explicit-any": "warn",
-      // Exhaustive deps en hooks: warning por ahora (limpieza progresiva).
-      // Hay ~36 violaciones heredadas; arreglarlas a ciegas como error puede
-      // introducir bugs (loops/stale closures), así que se tratan como deuda.
-      "react-hooks/exhaustive-deps": "warn",
-      // Reglas del React Compiler (eslint-plugin-react-hooks v6): deuda heredada
-      // que la config rota nunca ejecutó. Como warning hasta limpiarlas una a una
-      // (arreglarlas a ciegas puede cambiar comportamiento). Ver IMPROVEMENT_BACKLOG.
-      "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/purity": "warn",
-      "react-hooks/immutability": "warn",
+      // exhaustive-deps y React Compiler: todos resueltos o con eslint-disable
+      // documentado. Endurecidos a error para bloquear nuevas regresiones.
+      "react-hooks/exhaustive-deps": "error",
+      "react-hooks/set-state-in-effect": "error",
+      "react-hooks/purity": "error",
+      "react-hooks/immutability": "error",
       // Prevent unused variables (ignore _ prefixed)
       "@typescript-eslint/no-unused-vars": [
         "warn",

@@ -23,6 +23,7 @@ interface GanttChartProps {
 export function GanttChart({ items, height, className, onItemClick }: GanttChartProps) {
   const { minDate, maxDate, months, totalMs } = React.useMemo(() => {
     if (items.length === 0) {
+      // eslint-disable-next-line react-hooks/purity
       const now = Date.now();
       return { minDate: now, maxDate: now + 1, months: [] as Date[], totalMs: 1 };
     }

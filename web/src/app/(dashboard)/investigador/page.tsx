@@ -180,9 +180,9 @@ export default function InvestigadorPage() {
   // Global filters
   const globalFilters = useFilters();
 
-  // Load persisted state
+  // Load persisted state after mount to avoid SSR hydration mismatch
   useEffect(() => {
-    setHistory(loadHistory());
+    setHistory(loadHistory()); // eslint-disable-line react-hooks/set-state-in-effect
     setConfig(loadConfig());
   }, []);
 
@@ -435,9 +435,9 @@ export default function InvestigadorPage() {
               </div>
               {/* Model */}
               <div className="space-y-1">
-                <label className="text-xs font-medium">Modelo LLM</label>
+                <label htmlFor="inv-model" className="text-xs font-medium">Modelo LLM</label>
                 <Select value={config.model || "__default__"} onValueChange={(v) => updateConfig({ model: v === "__default__" ? "" : v })}>
-                  <SelectTrigger>
+                  <SelectTrigger id="inv-model">
                     <SelectValue placeholder="Por defecto" />
                   </SelectTrigger>
                   <SelectContent>

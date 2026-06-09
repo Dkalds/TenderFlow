@@ -212,7 +212,7 @@ export const ForceGraph = React.memo(function ForceGraph({
     return () => {
       simulation.stop();
     };
-  }, [nodes, links, size, onNodeClick]);
+  }, [nodes, links, size, onNodeClick, prefersReducedMotion]);
 
   if (nodes.length === 0) {
     return <p className="text-sm text-muted-foreground text-center py-8">Sin datos disponibles</p>;

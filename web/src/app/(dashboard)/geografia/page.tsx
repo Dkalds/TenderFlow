@@ -82,7 +82,7 @@ export default function GeografiaPage() {
       staleTime: 5 * 60 * 1000,
     });
 
-  const items = data?.by_ccaa ?? [];
+  const items = useMemo(() => data?.by_ccaa ?? [], [data]);
 
   const topCcaa = items.length > 0 ? items[0].ccaa : "-";
   const top3Concentration = useMemo(() => {

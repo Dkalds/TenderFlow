@@ -163,17 +163,18 @@ export function SearchAutocomplete({
         </span>
       )}
       {shouldShow && (
-        <ul
+        <div
           id={listId}
           role="listbox"
           className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-auto rounded-md border border-border bg-popover py-1 shadow-md"
         >
           {items.map((item, i) => (
-            <li
+            <div
               key={item.label}
               id={`${listId}-${i}`}
               role="option"
               aria-selected={i === activeIndex}
+              tabIndex={-1}
               className={cn(
                 "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm",
                 i === activeIndex
@@ -191,9 +192,9 @@ export function SearchAutocomplete({
                 <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               )}
               <span className="truncate">{item.label}</span>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

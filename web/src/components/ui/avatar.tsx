@@ -22,6 +22,8 @@ const AvatarImage = React.forwardRef<HTMLImageElement, React.ImgHTMLAttributes<H
 
     return (
       <img
+        alt=""
+        role="presentation"
         ref={ref}
         className={cn("aspect-square h-full w-full", className)}
         onError={() => setHasError(true)}

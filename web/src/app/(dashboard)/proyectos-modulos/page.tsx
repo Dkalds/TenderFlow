@@ -97,8 +97,8 @@ export default function ProyectosModulosPage() {
       { staleTime: 5 * 60 * 1000 },
     );
 
-  const modulos = data?.modulos ?? [];
-  const tipos = data?.tipos_proyecto ?? [];
+  const modulos = useMemo(() => data?.modulos ?? [], [data]);
+  const tipos = useMemo(() => data?.tipos_proyecto ?? [], [data]);
 
   // SAP-specific KPIs
   const ticketMedioSAP = useMemo(() => {

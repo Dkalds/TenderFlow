@@ -201,6 +201,7 @@ export function TopNav() {
                 <div
                   className="absolute right-0 top-full mt-1 w-48 rounded-md border bg-popover p-1 shadow-md"
                   role="menu"
+                  tabIndex={-1}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") {
                       setUserMenuOpen(false);
@@ -225,16 +226,20 @@ export function TopNav() {
 
       {/* Mobile sheet */}
       {mobileOpen && (
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
           className="fixed inset-0 z-40 md:hidden"
           role="dialog"
           aria-modal="true"
           aria-label="Menú de navegación"
+          tabIndex={-1}
           onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
         >
           <div
+            role="presentation"
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
+            onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
           />
           <nav className="absolute left-0 top-14 bottom-0 w-72 bg-background border-r p-4 space-y-1 overflow-y-auto" aria-label="Navegación móvil">
             {visibleSections.map((section) => {

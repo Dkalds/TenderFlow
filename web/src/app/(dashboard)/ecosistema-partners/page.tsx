@@ -445,12 +445,12 @@ export default function EcosistemaPartnersPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Max nodos</span>
-                <input type="range" min={5} max={40} step={5} value={maxNodes} onChange={(e) => setMaxNodes(Number(e.target.value))} className="w-20 accent-primary" />
+                <input type="range" aria-label="Max nodos" min={5} max={40} step={5} value={maxNodes} onChange={(e) => setMaxNodes(Number(e.target.value))} className="w-20 accent-primary" />
                 <Badge variant="secondary" className="text-xs">{maxNodes}</Badge>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Min peso</span>
-                <input type="range" min={1} max={10} step={1} value={minWeight} onChange={(e) => setMinWeight(Number(e.target.value))} className="w-20 accent-primary" />
+                <input type="range" aria-label="Min peso" min={1} max={10} step={1} value={minWeight} onChange={(e) => setMinWeight(Number(e.target.value))} className="w-20 accent-primary" />
                 <Badge variant="secondary" className="text-xs">{minWeight}</Badge>
               </div>
             </div>

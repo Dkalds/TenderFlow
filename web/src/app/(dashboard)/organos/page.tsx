@@ -43,6 +43,8 @@ import {
 } from "recharts";
 const Treemap = dynamic(() => import("recharts").then(m => ({ default: m.Treemap })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 
+const TIPO_CONTRATO_LABEL: Record<string, string> = { "1": "Servicios", "2": "Suministros", "3": "Obras" };
+
 interface OrganoItem {
   organo_contratacion: string;
   count: number;
@@ -129,7 +131,7 @@ export default function OrganosPage() {
       staleTime: 5 * 60 * 1000,
     });
 
-  const items = data?.organos ?? [];
+  const items = useMemo(() => data?.organos ?? [], [data]);
 
   const top10Concentration = useMemo(() => {
     if (items.length === 0) return 0;
@@ -167,8 +169,6 @@ export default function OrganosPage() {
     [filteredItems],
   );
 
-  const TIPO_CONTRATO_LABEL: Record<string, string> = { "1": "Servicios", "2": "Suministros", "3": "Obras" };
-
   // Hierarchical treemap: organo → tipo_contrato if backend provides breakdown
   const treemapData = useMemo(() => {
     const breakdown = data?.treemap_breakdown;
@@ -193,6 +193,7 @@ export default function OrganosPage() {
       .filter((i) => i.importe > 0)
       .slice(0, 30)
       .map((i) => ({ name: i.organo_contratacion, size: i.importe }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, filteredItems, filter]);
 
   function handleOrganoClick(organo: string) {

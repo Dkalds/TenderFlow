@@ -128,8 +128,9 @@ export default function MiWatchlistPage() {
     useState<WatchlistRule["frequency"]>("diaria");
   const [formOpen, setFormOpen] = useState(true);
 
+  // Load persisted state after mount to avoid SSR hydration mismatch
   useEffect(() => {
-    setRules(loadRules());
+    setRules(loadRules()); // eslint-disable-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -319,8 +320,9 @@ export default function MiWatchlistPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {/* Keyword */}
               <div className="space-y-1">
-                <label className="text-sm font-medium">Palabra clave *</label>
+                <label htmlFor="wl-keyword" className="text-sm font-medium">Palabra clave *</label>
                 <Input
+                  id="wl-keyword"
                   placeholder="Ej: SAP, infraestructura..."
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
@@ -329,8 +331,9 @@ export default function MiWatchlistPage() {
               </div>
               {/* CPV */}
               <div className="space-y-1">
-                <label className="text-sm font-medium">Filtro CPV</label>
+                <label htmlFor="wl-cpv" className="text-sm font-medium">Filtro CPV</label>
                 <Input
+                  id="wl-cpv"
                   placeholder="Ej: 72000000"
                   value={cpvFilter}
                   onChange={(e) => setCpvFilter(e.target.value)}
@@ -338,8 +341,9 @@ export default function MiWatchlistPage() {
               </div>
               {/* Min importe */}
               <div className="space-y-1">
-                <label className="text-sm font-medium">Importe minimo</label>
+                <label htmlFor="wl-importe" className="text-sm font-medium">Importe minimo</label>
                 <Input
+                  id="wl-importe"
                   type="number"
                   placeholder="Ej: 100000"
                   value={minImporte}
@@ -348,11 +352,11 @@ export default function MiWatchlistPage() {
               </div>
               {/* CCAA */}
               <div className="space-y-1">
-                <label className="text-sm font-medium">
+                <label htmlFor="wl-ccaa" className="text-sm font-medium">
                   Comunidad Autonoma
                 </label>
                 <Select value={ccaa || "__all__"} onValueChange={(v) => setCcaa(v === "__all__" ? "" : v)}>
-                  <SelectTrigger>
+                  <SelectTrigger id="wl-ccaa">
                     <SelectValue placeholder="— Todas —" />
                   </SelectTrigger>
                   <SelectContent>
@@ -366,11 +370,11 @@ export default function MiWatchlistPage() {
               </div>
               {/* Frequency */}
               <div className="space-y-1">
-                <label className="text-sm font-medium">
+                <label htmlFor="wl-frequency" className="text-sm font-medium">
                   Frecuencia de notificacion
                 </label>
                 <Select value={frequency} onValueChange={(v) => setFrequency(v as WatchlistRule["frequency"])}>
-                  <SelectTrigger>
+                  <SelectTrigger id="wl-frequency">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

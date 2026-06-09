@@ -660,8 +660,9 @@ export default function PipelineAlertasPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium">Importe minimo</label>
+              <label htmlFor="pa-importe-min" className="text-xs font-medium">Importe minimo</label>
               <Input
+                id="pa-importe-min"
                 type="number"
                 placeholder="0"
                 value={importeMin}
@@ -669,9 +670,10 @@ export default function PipelineAlertasPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium">Solo mantenimiento</label>
+              <label htmlFor="pa-solo-mant" className="text-xs font-medium">Solo mantenimiento</label>
               <div className="pt-1">
                 <Switch
+                  id="pa-solo-mant"
                   checked={soloMantenimiento}
                   onCheckedChange={setSoloMantenimiento}
                   aria-label="Solo mantenimiento"

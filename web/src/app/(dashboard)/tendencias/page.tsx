@@ -131,7 +131,7 @@ export default function TendenciasPage() {
 
   const isLoading = trendsLoading || overviewLoading;
   const error = trendsError || overviewError;
-  const series = trends?.series ?? [];
+  const series = useMemo(() => trends?.series ?? [], [trends]);
 
   const totalCount = useMemo(() => series.reduce((s, p) => s + p.count, 0), [series]);
   const totalImporte = useMemo(() => series.reduce((s, p) => s + (p.importe ?? 0), 0), [series]);
@@ -139,11 +139,13 @@ export default function TendenciasPage() {
   const yoyImporte = useMemo(() => computeYoY(series, "importe"), [series]);
 
   const cumulativeData = useMemo(() => {
+    const result: { period: string; importe_acumulado: number }[] = [];
     let acc = 0;
-    return series.map((p) => {
+    for (const p of series) {
       acc += p.importe ?? 0;
-      return { period: p.period, importe_acumulado: acc };
-    });
+      result.push({ period: p.period, importe_acumulado: acc });
+    }
+    return result;
   }, [series]);
 
   // Heatmap

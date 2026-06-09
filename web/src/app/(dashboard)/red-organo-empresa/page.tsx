@@ -282,17 +282,17 @@ export default function RedOrganoEmpresaPage() {
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Organos</span>
-                <input type="range" min={3} max={20} step={1} value={maxOrganos} onChange={(e) => setMaxOrganos(Number(e.target.value))} className="w-20 accent-primary" />
+                <input type="range" aria-label="Max organos" min={3} max={20} step={1} value={maxOrganos} onChange={(e) => setMaxOrganos(Number(e.target.value))} className="w-20 accent-primary" />
                 <Badge variant="secondary" className="text-xs">{maxOrganos}</Badge>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Empresas</span>
-                <input type="range" min={3} max={20} step={1} value={maxEmpresas} onChange={(e) => setMaxEmpresas(Number(e.target.value))} className="w-20 accent-primary" />
+                <input type="range" aria-label="Max empresas" min={3} max={20} step={1} value={maxEmpresas} onChange={(e) => setMaxEmpresas(Number(e.target.value))} className="w-20 accent-primary" />
                 <Badge variant="secondary" className="text-xs">{maxEmpresas}</Badge>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Min contratos</span>
-                <input type="range" min={1} max={20} step={1} value={minContratos} onChange={(e) => setMinContratos(Number(e.target.value))} className="w-20 accent-primary" />
+                <input type="range" aria-label="Min contratos" min={1} max={20} step={1} value={minContratos} onChange={(e) => setMinContratos(Number(e.target.value))} className="w-20 accent-primary" />
                 <Badge variant="secondary" className="text-xs">{minContratos}</Badge>
               </div>
             </div>
