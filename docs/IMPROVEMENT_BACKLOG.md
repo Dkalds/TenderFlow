@@ -13,16 +13,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-### Añadir job de CI para el frontend (`web/`)
-- **Área:** `.github/workflows/`, `web/`
-- **Problema:** El frontend tiene tests (vitest + playwright), lint (eslint), typecheck (`tsc --noEmit`) y build (`next build`) configurados, pero **ninguno corre en CI** — no hay referencias a `npm`/`vitest`/`playwright`/`eslint`/`next build` para `web/` en ningún workflow de `.github/workflows/`. Resultado: regresiones del frontend no se detectan automáticamente. De hecho la rotura de ESLint (resuelta) pasó inadvertida justamente porque el lint no está gateado.
-- **Acceptance criteria:**
-  - Nuevo job (o workflow) que, con `working-directory: web`, corra al menos: `npm ci`, `npm run typecheck`, `npm run lint`, `npm run test` (vitest). Idealmente también `npm run build`.
-  - El job falla el pipeline si cualquiera de esos pasos falla.
-  - Cachear `~/.npm` / `node_modules` por `web/package-lock.json` para tiempos razonables.
-  - (Opcional) e2e playwright en un job separado/manual, no en cada push, para no encarecer CI.
-- **Files de partida:** [.github/workflows/ci.yml](../.github/workflows/ci.yml), [web/package.json](../web/package.json) (scripts ya existen).
-- **Riesgo:** bajo — añade un gate, no toca código de producción. **Requiere OK humano: editar `.github/workflows/` está en la lista de confirmación (AGENTS.md §6).**
+*(sin ítems abiertos)*
 
 ---
 
@@ -93,6 +84,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ## Cerrados
 
 - [2026-06-09] **Deps: cerradas las 3 alertas moderate de Dependabot** — `web/package.json`: `overrides` forzando `postcss: ^8.5.10` (resuelto 8.5.15) → `npm audit` 0 vulns, `next build` OK (no había Next estable con el fix). `requirements-dev.txt`: `pytest>=8.0.0,<9` → `>=9.0.3,<10` (CVE-2025-71176; compatible con pytest-cov/benchmark, suite verificada). Nota operacional: el `.venv` local tenía `starlette 0.52.1` stale — el manifest ya pinea `1.2.0` parcheado; basta reinstalar (`pip install -r requirements.txt`). Audit-gate en CI queda en el ítem de CI frontend.
+- [2026-06-09] **P1: CI frontend job** — `.github/workflows/ci.yml`: nuevo job `frontend` con `defaults.run.working-directory: web`, Node 22, caché npm por `web/package-lock.json`. Pasos: `npm ci` → `typecheck` → `lint` → `test` (vitest) → `build` (next build). Corre en paralelo con los jobs de Python.
 - [2026-06-09] **Lint: deuda de frontend completamente limpia (160→0 warnings, 0 errores)** — jsx-a11y completo (todos los grupos, −112), exhaustive-deps (wrapping `?? []` en `useMemo`, `TIPO_CONTRATO_LABEL` extraído, −36), React Compiler (`set-state-in-effect`/`purity`/`immutability`/`incompatible-library`, −6, eslint-disable documentado). Vuelta final: 48 `no-unused-vars`/`no-explicit-any` eliminados en 22 archivos (imports muertos, useMemo dead code, args renombrados a `_`). `no-explicit-any` y `no-unused-vars` endurecidos de `warn` a `error`. `eslint src/` 0, `tsc --noEmit` 0.
 - [2026-06-09] **Fix filtros barra superior (nuqs)** — `web/src/lib/filters.ts`: `shallow: false → true` + `history: "push" → "replace"`. Ningún Server Component consume los filtros (todas las páginas son "use client" + React Query), así que `shallow:false` solo añadía un round-trip al servidor por cambio → lag/carrera que obligaba a re-seleccionar/resetear. Ahora aplican a la primera. `tsc` 0, filters test 17.
 - [2026-06-09] **Fix active-learning campos backend** — `web/src/app/(dashboard)/active-learning/page.tsx`: alineados los nombres con `/api/v1/feedback/queue` (`expediente`→`id_externo`, `proba/probability`→`confidence`). Arregla el warning de `key`, el envío de feedback (antes mandaba `expediente: undefined`) y la barra de probabilidad.
