@@ -9,6 +9,11 @@ from __future__ import annotations
 from typing import Any
 
 from db.repositories.watchlist import WatchlistRepository
+from db.watchlist import WatchlistEntry
+from db.watchlist import add_entry as _add_entry
+from db.watchlist import list_entries as _list_entries
+from db.watchlist import remove_entry as _remove_entry
+from db.watchlist import update_frequency as _update_frequency
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -56,6 +61,29 @@ def load_pending_digests(frequency: str) -> list[dict[str, Any]]:
 def mark_digests_sent(digest_ids: list[int]) -> None:
     """Marca los digests como enviados."""
     _repo.mark_digests_sent(digest_ids)
+
+
+# ── CRUD entries (§3.8 — dashboard uses these instead of db.watchlist) ────
+
+
+def add_entry(entry: WatchlistEntry) -> None:
+    """Add a watchlist entry (deduplicates internally)."""
+    _add_entry(entry)
+
+
+def remove_entry(entry_id: int) -> None:
+    """Remove a watchlist entry by ID."""
+    _remove_entry(entry_id)
+
+
+def list_entries(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+    """List watchlist entries for a user."""
+    return _list_entries(user_key, user_id=user_id)
+
+
+def update_frequency(entry_id: int, frequency: str) -> None:
+    """Update notification frequency for a watchlist entry."""
+    _update_frequency(entry_id, frequency)
 
 
 def generate_atom_feed(user_key: str, limit: int = 50) -> str:

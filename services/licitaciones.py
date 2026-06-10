@@ -249,3 +249,15 @@ def search_for_ask(
     if not docs:
         docs = _repo.search_like_for_ask(question, ccaa=ccaa, limit=top_k)
     return docs
+
+
+def load_licitaciones_for_index() -> pd.DataFrame:
+    """Load id_externo, titulo, descripcion for FAISS index building (§3.8)."""
+    from db.database import connect, init_db
+
+    init_db()
+    with connect() as c:
+        cursor = c.execute("SELECT id_externo, titulo, descripcion FROM licitaciones")
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+    return pd.DataFrame(rows, columns=cols)

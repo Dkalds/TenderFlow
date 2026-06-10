@@ -23,20 +23,8 @@ _ALLOWED_PREFIXES = ("db.repositories",)
 # Known violations (technical debt from before invariant §3.8 was established).
 # As files are migrated to services/, remove them from this set.
 # The test ensures this list never GROWS.
-_KNOWN_VIOLATIONS: set[str] = {
-    "dashboard/auth.py",
-    "dashboard/data_loader.py",
-    "dashboard/faiss_index.py",
-    "dashboard/components/layout.py",
-    "dashboard/filters/sidebar.py",
-    "dashboard/pages/admin.py",
-    "dashboard/pages/active_learning.py",
-    "dashboard/pages/admin_flags.py",
-    "dashboard/pages/calidad_datos.py",
-    "dashboard/pages/detalle.py",
-    "dashboard/pages/mi_watchlist.py",
-    "dashboard/pages/observabilidad.py",
-}
+_KNOWN_VIOLATIONS: set[str] = set()
+# data_loader.py and active_learning.py use db.repositories.* which is allowed.
 
 
 def _find_db_imports(filepath: Path) -> list[str]:

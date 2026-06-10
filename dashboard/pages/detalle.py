@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import UTC, datetime
 
 import pandas as pd
@@ -22,8 +21,8 @@ from dashboard.stats import risk_flags, score_oportunidad
 from dashboard.utils.export import to_csv_bytes, to_excel_bytes
 from dashboard.utils.format import fmt_eur, highlight_match
 from dashboard.utils.pagination import paginated_df, reset_pagination
-from db.notifications import mark_all_read as _mark_all_read
-from db.notifications import mark_read as _mark_read_notification
+from services.notifications import mark_all_read as _mark_all_read
+from services.notifications import mark_read as _mark_read_notification
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -129,11 +128,11 @@ def render(ctx: PageContext) -> None:
     )
     _ukey_v = hashlib.sha256(_seed_v.encode()).hexdigest()[:16]
     try:
-        from db.notifications import get_unread_ids
+        from services.notifications import get_unread_ids
 
         _all_ids = df["id_externo"].dropna().astype(str).tolist()
         _unread_ids = set(get_unread_ids(_ukey_v, _all_ids))
-    except sqlite3.OperationalError as _e:
+    except Exception as _e:
         log.debug("detalle_unread_ids_unavailable", error=str(_e))  # tabla no existe aún
 
     # Añadir indicador visual al DataFrame
@@ -246,7 +245,7 @@ def render(ctx: PageContext) -> None:
             if st.button("⭐ Seguir todos (watchlist)", key="bulk_watch", use_container_width=True):
                 try:
                     from dashboard.auth import get_current_user
-                    from db.watchlist import WatchlistEntry, add_entry
+                    from services.watchlist import WatchlistEntry, add_entry
 
                     _user = get_current_user()
                     _uid = _user.get("user_id") if _user else None
@@ -465,7 +464,7 @@ def render(ctx: PageContext) -> None:
 
                         from config import settings
                         from dashboard.auth import get_current_user
-                        from db.watchlist import WatchlistEntry, add_entry
+                        from services.watchlist import WatchlistEntry, add_entry
 
                         _seed = settings.DASHBOARD_PASSWORD.get_secret_value() or os.environ.get(
                             "COMPUTERNAME", "default"

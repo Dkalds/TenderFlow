@@ -287,7 +287,7 @@ def render_sidebar_filters(df_full: pd.DataFrame) -> FiltersState:
         import os
 
         from config import settings as _settings
-        from db.saved_filters import (
+        from services.saved_filters import (
             delete_saved_filter,
             filters_to_json,
             json_to_session_state,

@@ -13,7 +13,7 @@ from dashboard.components.tables import data_table
 from dashboard.data_loader import load_adjudicaciones
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
-from db.dlq import list_unresolved, unresolved_summary
+from services.dlq import list_unresolved, unresolved_summary
 from services.extraction_runs import load_calidad_runs
 
 

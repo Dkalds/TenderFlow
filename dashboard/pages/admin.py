@@ -14,7 +14,7 @@ from dashboard.auth import require_admin
 from dashboard.components.states import guarded_render
 from dashboard.components.tables import data_table
 from dashboard.pages._base import PageContext
-from db.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
+from services.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
 from observability.logging import get_logger
 from services.admin import (
     list_api_keys as svc_list_api_keys,

@@ -73,7 +73,7 @@ def _audit(action: str, detail: str = "") -> None:
     try:
         import hashlib
 
-        from db.audit import log_action
+        from services.audit import log_action
 
         # user_key opaco basado en la contraseña o id de sesión
         seed = (
@@ -125,7 +125,7 @@ def _check_lockout() -> None:
 
     # 2. Verificar lockout persistente en BD (sobrevive reinicios)
     try:
-        from db.rate_limits import is_login_locked_out
+        from services.users import is_login_locked_out
 
         locked, remaining_db = is_login_locked_out(_client_key(), max_attempts=_DB_MAX_ATTEMPTS)
         if locked:
@@ -154,7 +154,7 @@ def _record_failed_attempt() -> None:
 
     # Registro persistente en BD (protege frente a reinicios y nuevas sesiones)
     try:
-        from db.rate_limits import record_failed_login
+        from services.users import record_failed_login
 
         record_failed_login(_client_key())
     except Exception:
@@ -245,7 +245,7 @@ def _handle_oauth_callback() -> bool:
         return False
 
     # Crear/vincular usuario en BD
-    from db.users import get_or_create_oauth_user, set_admin
+    from services.users import get_or_create_oauth_user, set_admin
 
     user_id = get_or_create_oauth_user(
         email=email,
@@ -268,7 +268,7 @@ def _handle_oauth_callback() -> bool:
     # (excepto si el usuario es admin — se salta la contraseña)
 
     # Registrar acceso OAuth (paso 1)
-    from db.users import log_access
+    from services.users import log_access
 
     log_access(auth_method="oauth", user_id=user_id, email=email)
 
@@ -365,7 +365,7 @@ def check_password() -> bool:
     if has_oauth and _handle_oauth_callback():
         if has_password:
             # Si el usuario es admin, saltar la contraseña
-            from db.users import is_admin as _is_admin
+            from services.users import is_admin as _is_admin
 
             user_id = st.session_state.get(USER_ID)
             if user_id and _is_admin(user_id):
@@ -402,13 +402,13 @@ def check_password() -> bool:
 
                 # Limpiar intentos fallidos en BD
                 try:
-                    from db.rate_limits import clear_login_attempts
+                    from services.users import clear_login_attempts
 
                     clear_login_attempts(_client_key())
                 except Exception:
                     log.warning("clear_login_attempts_failed", client_key=_client_key())
 
-                from db.users import log_access
+                from services.users import log_access
 
                 log_access(
                     auth_method="oauth+password",
@@ -457,13 +457,13 @@ def check_password() -> bool:
 
                 # Limpiar intentos fallidos en BD
                 try:
-                    from db.rate_limits import clear_login_attempts
+                    from services.users import clear_login_attempts
 
                     clear_login_attempts(_client_key())
                 except Exception:
                     log.warning("clear_login_attempts_failed", client_key=_client_key())
 
-                from db.users import log_access
+                from services.users import log_access
 
                 log_access(auth_method="password")
                 _audit("login", "auth_method=password")
@@ -492,7 +492,7 @@ def current_user_is_admin() -> bool:
     if user_id is None:
         return False
     try:
-        from db.users import is_admin
+        from services.users import is_admin
 
         return is_admin(int(user_id))
     except Exception:  # pragma: no cover — DB errors → no admin

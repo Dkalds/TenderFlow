@@ -18,7 +18,7 @@ from dashboard.components.tables import data_table
 from dashboard.components.toasts import notify_error, notify_success
 from dashboard.pages._base import PageContext
 from dashboard.utils.format import fmt_eur
-from db.watchlist import (
+from services.watchlist import (
     WatchlistEntry,
     add_entry,
     list_entries,

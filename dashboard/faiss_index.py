@@ -493,15 +493,10 @@ if __name__ == "__main__":
     if cmd == "build":
         import pandas as pd
 
-        from db.database import connect, init_db
+        from services.licitaciones import load_licitaciones_for_index
 
         print("Construyendo índice FAISS desde la BD...")
-        init_db()
-        with connect() as c:
-            cursor = c.execute("SELECT id_externo, titulo, descripcion FROM licitaciones")
-            rows = cursor.fetchall()
-            cols = [d[0] for d in cursor.description]
-        df = pd.DataFrame(rows, columns=cols)
+        df = load_licitaciones_for_index()
         idx = FaissIndex.build(df)
         path = idx.save()
         print(f"Índice guardado: {path} ({len(idx.ids)} licitaciones)")

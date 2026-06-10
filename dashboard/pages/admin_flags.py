@@ -12,7 +12,7 @@ import streamlit as st
 
 from dashboard.components.states import guarded_render
 from dashboard.pages._base import PageContext
-from db.feature_flags import delete_flag, list_flags, set_flag
+from services.feature_flags import delete_flag, list_flags, set_flag
 
 
 @guarded_render

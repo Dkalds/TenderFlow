@@ -150,7 +150,7 @@ def render_notification_bell(
         since_days: Ventana de tiempo para considerar licitaciones nuevas.
     """
     try:
-        from db.notifications import get_unread_ids, mark_all_read
+        from services.notifications import get_unread_ids, mark_all_read
 
         hoy = pd.Timestamp.now(tz="UTC")
         fpub = df_full["fecha_publicacion"]

@@ -15,8 +15,8 @@ from dashboard.components.tables import data_table
 from dashboard.kpi_config import KPI_FORMULAS
 from dashboard.pages._base import PageContext
 from dashboard.stats import calidad_dato
-from db.audit import list_recent as audit_list_recent
-from db.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
+from services.audit import list_recent as audit_list_recent
+from services.dlq import list_unresolved, mark_matching_resolved, mark_resolved, unresolved_summary
 from services.extraction_runs import load_runs as svc_load_runs
 
 
@@ -282,7 +282,7 @@ def render(ctx: PageContext) -> None:
 
 def _render_user_management() -> None:
     """Sección admin para listar, dar/quitar admin y desactivar usuarios."""
-    from db.users import deactivate_user, list_users, set_admin
+    from services.users import deactivate_user, list_users, set_admin
 
     try:
         users = list_users(limit=200)
