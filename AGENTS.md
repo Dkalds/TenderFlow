@@ -52,6 +52,8 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 5. **DTOs Pydantic v2** son el contrato API↔dashboard (`shared/dto.py`). Cambios a campos requieren migración consciente.
 6. **HMAC-signed CSRF + argon2/bcrypt** para auth (`shared/auth_core.py`). No reemplazar por algo más débil.
 7. **Pre-commit obligatorio**: ruff + mypy + bandit + gitleaks + detect-secrets corren en cada commit. No bypassear con `--no-verify`.
+8. **Dashboard solo vía `services/` y `db/repositories/`**: el dashboard **nunca** importa directamente de `db.*` (ni `db.database`, `db.users`, `db.dlq`, etc.) ni ejecuta SQL crudo (`conn.execute`, `import sqlite3`). Todo acceso a datos pasa por la capa de servicios (`services/`) o los repositorios tipados (`db/repositories/`). ADR-007 estableció esto; 11 módulos del dashboard aún lo violan (deuda técnica a cerrar). Código nuevo **debe** respetar este invariante.
+9. **Un solo plano de orquestación por entorno**: los planos GitHub Actions y APScheduler nunca corren activos contra la misma BD (ADR-012). Variable `SCHEDULER_PLANE` declara el dueño.
 
 ---
 

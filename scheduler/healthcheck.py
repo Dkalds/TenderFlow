@@ -127,6 +127,18 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
         except Exception:
             info["active_locks"] = []
 
+        # ── Modo de cola de tareas (Punto 5) ──────────────────────────
+        try:
+            from scheduler.queue import _dramatiq
+
+            if _dramatiq is not None:
+                broker_url = os.environ.get("DRAMATIQ_BROKER_URL", "")
+                info["queue_mode"] = "dramatiq" if broker_url else "stub"
+            else:
+                info["queue_mode"] = "inline"
+        except Exception:
+            info["queue_mode"] = "unknown"
+
     if errors:
         status = "critical"
     elif warnings:
