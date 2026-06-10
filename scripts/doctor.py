@@ -47,7 +47,6 @@ def check_python() -> bool:
 
 def check_packages() -> bool:
     required = [
-        "streamlit",
         "pandas",
         "plotly",
         "fastapi",

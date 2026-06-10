@@ -23,7 +23,7 @@ Antes de cualquier acción, leé `AGENTS.md` secciones 2 (áreas), 3 (invariante
 - **Permitidos**: Task (subagents), Read, Grep, Glob, Bash (git status/diff/log, gh issue, make lint/typecheck/test-unit, graphify query).
 - **Prohibidos**: Edit, Write (nunca modificar archivos directamente).
 - **Gates en orden**: `pre-commit run --all-files` → `make lint` → `make typecheck` → `make test-unit` → `graphify update .`
-- Mypy strict adicional: `mypy db/database.py db/users.py dashboard/bootstrap.py config/ shared/`
+- Mypy strict adicional: `mypy db/database.py db/users.py config/ shared/`
 
 ## Pipeline step-by-step
 

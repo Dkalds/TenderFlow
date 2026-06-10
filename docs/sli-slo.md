@@ -8,9 +8,9 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 
 | Servicio | SLO | Periodo de medición |
 |----------|-----|---------------------|
-| Disponibilidad del dashboard | ≥ 99% | 30 días |
+| Disponibilidad del frontend web | ≥ 99% | 30 días |
 | Frescura de datos | ≤ 36h sin scrape exitoso | 7 días |
-| Latencia de carga del dashboard | P95 < 3 s | 7 días |
+| Latencia de carga del frontend web | P95 < 3 s | 7 días |
 | Tasa de éxito del pipeline | ≥ 95% de runs | 30 días |
 | Cobertura de datos (importe presente) | ≥ 80% | 30 días |
 | Tiempo de respuesta API REST | P99 < 500 ms | 7 días |
@@ -19,7 +19,7 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 
 ## SLI/SLO detallados
 
-### 1. Disponibilidad del dashboard
+### 1. Disponibilidad del frontend web
 
 | Campo | Valor |
 |-------|-------|
@@ -39,15 +39,15 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 | **Alerta** | Notificación si `NOW() - MAX(ended_at) > 36h` (ver `scheduler/anomaly_alerts.py`) |
 | **Mitigación** | Re-ejecutar scraper manual o via `make scrape` |
 
-### 3. Latencia de carga del dashboard
+### 3. Latencia de carga del frontend web
 
 | Campo | Valor |
 |-------|-------|
-| **SLI** | Tiempo de respuesta HTTP P50 / P95 / P99 de la ruta principal Streamlit |
+| **SLI** | Tiempo de respuesta HTTP P50 / P95 / P99 de la ruta principal del frontend web |
 | **SLO** | P95 < 3 s en cargas con caché caliente |
 | **Medición** | Prometheus + Grafana (ver `observability/prometheus.yml`) |
 | **Alerta** | Si P95 > 5 s durante 5 minutos consecutivos |
-| **Optimizaciones activas** | `@st.cache_resource`, `_load_raw` + `_enrich_dataframe` separados, paginación server-side |
+| **Optimizaciones activas** | Caché caliente, agregados server-side y paginación server-side |
 
 ### 4. Tasa de éxito del pipeline de scraping
 
@@ -55,7 +55,7 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 |-------|-------|
 | **SLI** | `COUNT(status='ok') / COUNT(*) × 100` en `extraction_runs` últimos 30d |
 | **SLO** | ≥ 95% de runs exitosos |
-| **Medición** | Dashboard "Calidad de Datos" → KPI "Éxito pipeline 30d" |
+| **Medición** | Panel "Calidad de Datos" → KPI "Éxito pipeline 30d" |
 | **Alerta** | Si tasa cae por debajo de 90% en ventana deslizante de 7 días |
 | **Mitigación** | Revisar DLQ en panel de Administración → reintentar fallos |
 
@@ -65,7 +65,7 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 |-------|-------|
 | **SLI** | `COUNT(importe IS NOT NULL) / COUNT(*) × 100` sobre licitaciones activas |
 | **SLO** | ≥ 80% de licitaciones con importe presente |
-| **Medición** | `dashboard/stats.calidad_dato()` → `pct_importe` |
+| **Medición** | Query agregada sobre `licitaciones` para calcular `pct_importe` |
 | **Alerta** | Email automático si baja de 75% (ver `scheduler/anomaly_alerts.py`) |
 
 ### 6. Tiempo de respuesta API REST

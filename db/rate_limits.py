@@ -1,8 +1,8 @@
 """Rate limiting persistente basado en SQLite.
 
-Complementa ``dashboard/utils/rate_limit.py`` (session-based) con un backend
-de base de datos para que los lockouts de autenticación sobrevivan reinicios
-del servidor y apliquen entre sesiones diferentes del mismo cliente.
+Complementa los controles de rate limit en memoria con un backend de base
+de datos para que los lockouts de autenticación sobrevivan reinicios del
+servidor y apliquen entre sesiones diferentes del mismo cliente.
 
 Diseño:
   - Tabla ``rate_limits``: (key TEXT, ts REAL) — ventana deslizante de timestamps.

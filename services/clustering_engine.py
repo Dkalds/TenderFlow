@@ -68,7 +68,7 @@ def _stopwords() -> frozenset[str]:
 def _df_cache_fingerprint(df: pd.DataFrame) -> tuple[object, ...]:
     """Fingerprint compacto para caché de clustering.
 
-    Evita el hashing profundo por defecto de Streamlit sobre DataFrames grandes.
+    Evita el hashing profundo sobre DataFrames grandes.
     Usa señales estables y baratas (shape/columnas + hash parcial de ids/fechas).
     """
     cols = tuple(df.columns)

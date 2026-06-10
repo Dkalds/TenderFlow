@@ -69,6 +69,64 @@ CREATE INDEX IF NOT EXISTS idx_lts_tecnologia
 CREATE INDEX IF NOT EXISTS idx_lts_lic
     ON licitacion_tecnologia_score(licitacion_id);
 
+CREATE TABLE IF NOT EXISTS grupos_empresariales (
+    grupo_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre      TEXT NOT NULL UNIQUE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS empresas (
+    empresa_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nif_canonico    TEXT,
+    nombre_canonico TEXT NOT NULL,
+    es_ute          INTEGER NOT NULL DEFAULT 0,
+    es_pyme         INTEGER,
+    grupo_id        INTEGER REFERENCES grupos_empresariales(grupo_id),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_empresas_nif ON empresas(nif_canonico)
+    WHERE nif_canonico IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_empresas_grupo ON empresas(grupo_id);
+
+CREATE TABLE IF NOT EXISTS empresa_aliases (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id        INTEGER NOT NULL REFERENCES empresas(empresa_id) ON DELETE CASCADE,
+    alias_normalizado TEXT NOT NULL,
+    nif_variante      TEXT,
+    fuente            TEXT NOT NULL DEFAULT '',
+    confianza         REAL NOT NULL DEFAULT 1.0,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_empresa_aliases_alias ON empresa_aliases(alias_normalizado);
+CREATE INDEX IF NOT EXISTS idx_empresa_aliases_nif   ON empresa_aliases(nif_variante);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_empresa_aliases_uniq
+    ON empresa_aliases(empresa_id, alias_normalizado, COALESCE(nif_variante, ''));
+
+CREATE TABLE IF NOT EXISTS ute_miembros (
+    ute_empresa_id     INTEGER NOT NULL REFERENCES empresas(empresa_id) ON DELETE CASCADE,
+    miembro_empresa_id INTEGER NOT NULL REFERENCES empresas(empresa_id) ON DELETE CASCADE,
+    PRIMARY KEY (ute_empresa_id, miembro_empresa_id)
+);
+
+CREATE TABLE IF NOT EXISTS empresa_review_queue (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre_original      TEXT NOT NULL,
+    alias_normalizado    TEXT NOT NULL,
+    nif                  TEXT,
+    candidato_empresa_id INTEGER REFERENCES empresas(empresa_id) ON DELETE CASCADE,
+    score                REAL NOT NULL,
+    status               TEXT NOT NULL DEFAULT 'pending'
+                         CHECK(status IN ('pending','accepted','rejected')),
+    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at          TEXT,
+    resolved_by          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_empresa_review_status ON empresa_review_queue(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_empresa_review_pending
+    ON empresa_review_queue(alias_normalizado, COALESCE(nif, ''), candidato_empresa_id)
+    WHERE status = 'pending';
+
 CREATE TABLE IF NOT EXISTS adjudicaciones (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     licitacion_id           TEXT NOT NULL,
@@ -87,6 +145,7 @@ CREATE TABLE IF NOT EXISTS adjudicaciones (
     result_code             TEXT,
     result_description      TEXT,
     fecha_extraccion        TEXT NOT NULL,
+    empresa_id              INTEGER REFERENCES empresas(empresa_id),
     UNIQUE(licitacion_id, nif, importe_adjudicado),
     FOREIGN KEY(licitacion_id) REFERENCES licitaciones(id_externo) ON DELETE CASCADE
 );
@@ -245,6 +304,7 @@ def init_db() -> None:
                 c.execute(stmt)
         apply_pending(c)
         _ensure_licitaciones_columns(c)
+        _ensure_adjudicaciones_columns(c)
     _conn_module._db_initialized = True
 
 
@@ -282,3 +342,27 @@ def _ensure_licitaciones_columns(conn: Any) -> None:
         except Exception:
             # Columna ya existe (race) o nombre inválido
             log.debug("ensure_column_skip", column=col)
+
+
+def _ensure_adjudicaciones_columns(conn: Any) -> None:
+    """Asegura las columnas de adjudicaciones ajenas al dataclass Adjudicacion.
+
+    ``empresa_id`` (FK al maestro de empresas, v35 Alembic) no forma parte del
+    dataclass porque el parser no la produce — la asigna a posteriori
+    services.entity_resolution. En BDs legacy que solo ejecutan ``init_db()``
+    la añadimos aquí; el índice se crea después para no fallar en SCHEMA
+    cuando la tabla existe sin la columna.
+    """
+    existing = get_table_columns(conn, "adjudicaciones")
+    if not existing:
+        return
+    if "empresa_id" not in existing:
+        try:
+            conn.execute(
+                "ALTER TABLE adjudicaciones ADD COLUMN empresa_id INTEGER "
+                "REFERENCES empresas(empresa_id)"
+            )
+            log.info("ensure_column_added", column="empresa_id", sql_type="INTEGER")
+        except Exception:
+            log.debug("ensure_column_skip", column="empresa_id")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_adj_empresa ON adjudicaciones(empresa_id)")

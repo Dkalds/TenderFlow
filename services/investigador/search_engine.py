@@ -1,7 +1,7 @@
 """Motor de búsqueda híbrido — extrae la lógica RAG de investigador.py.
 
 Encapsula búsqueda FAISS (semántica) + FTS5/BM25 (léxica) + LIKE fallback
-con reranking híbrido. Función pura sin dependencia de Streamlit.
+con reranking híbrido. Función pura y reutilizable.
 """
 
 from __future__ import annotations

@@ -1,10 +1,9 @@
 """Clusters analytics — real semantic clustering for the API layer.
 
-Server-side port of the pure sklearn logic in ``dashboard/clustering.py``
-(KMeans / MiniBatchKMeans over TF-IDF embeddings with c-TF-IDF keyword
-labels), with the Streamlit caching and the ``dashboard.embeddings`` /
-``mat_clusters`` fast-path removed. Returns per-cluster summaries, importe
-box-plot statistics and a bounded sample of tenders for drill-down.
+Server-side implementation of the pure sklearn clustering logic in
+``services.clustering_engine`` (KMeans / MiniBatchKMeans over TF-IDF
+embeddings with c-TF-IDF keyword labels). Returns per-cluster summaries,
+importe box-plot statistics and a bounded sample of tenders for drill-down.
 """
 
 from __future__ import annotations
@@ -100,7 +99,7 @@ class ClustersResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Pure clustering helpers (ported from dashboard/clustering.py)
+# Pure clustering helpers shared with services.clustering_engine
 # ---------------------------------------------------------------------------
 
 

@@ -1,6 +1,6 @@
 """Tests for the Mercado analytics services (tecnologias, proyectos-modulos, clusters).
 
-These cover the Streamlit -> React parity work: technology cross-tabs and detail,
+These cover the React parity work: technology cross-tabs and detail,
 SAP module YoY / tipo x estado / CPV breakdowns, and real semantic clustering.
 Data access is mocked at ``load_stats_dataframe`` so the tests stay fast and
 DB-independent.

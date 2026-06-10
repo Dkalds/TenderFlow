@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parent.parent
 
-# En entornos donde el paquete se instala en site-packages (e.g. Streamlit Cloud),
+# En entornos donde el paquete se instala en site-packages (e.g. despliegues gestionados),
 # _ROOT apuntaría a un directorio sin permisos de escritura.  Usamos un
 # directorio escribible como fallback.
 _DEFAULT_DATA_DIR = _ROOT / "data"

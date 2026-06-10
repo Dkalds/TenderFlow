@@ -35,9 +35,9 @@ jobs:
 
       - name: Run daily scraper
         env:
-          # ENV=dev omite los validators de prod que requieren secrets del
-          # dashboard/API (DASHBOARD_PASSWORD_HASH, SIGNING_KEY, API_HMAC_SECRET,
-          # REDIS_URL). El scraper no usa ninguno de esos componentes; la conexión
+          # ENV=dev omite los validators de prod que requieren secrets de la
+          # aplicación (SIGNING_KEY, API_HMAC_SECRET, REDIS_URL). El scraper no
+          # usa ninguno de esos componentes; la conexión
           # a la BD de producción la controlan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN.
           ENV: dev
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}

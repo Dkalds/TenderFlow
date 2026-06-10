@@ -45,10 +45,10 @@ class ScoringResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Scoring logic (simplified from dashboard/stats/_base.py)
+# Scoring logic for ranking tender opportunities
 # ---------------------------------------------------------------------------
 
-# Keywords that boost score — full 7-dimension scoring from dashboard/kpi_config.py
+# Keywords that boost score across the opportunity scoring dimensions
 _SAP_SERVICES_PORTFOLIO = [
     "implementación",
     "implementacion",

@@ -78,9 +78,9 @@ Guía operativa completa para agentes trabajando en `licitaciones-sap`. Compleme
 | ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md)). En `scraper/ml_*` se permite SQL manual (S608 ya suppressed). |
 | ¿Cómo importar desde `db/`? | **Siempre** `from db.database import X` (fachada única). Nunca `from db.connection import ...` ni `from db.upsert import ...` directamente desde código fuera de `db/`. Así los importadores quedan aislados de la organización interna. Ver docstring de `db/database.py` para el catálogo completo de símbolos por submódulo. |
 | ¿Servicio vs repositorio directo en la ruta? | Siempre vía servicio. La ruta solo orquesta auth, validación, serialización. |
-| ¿Cache en dashboard? | `@st.cache_data` por defecto. Invalidación cross-process vía `shared/cache_signal.py` (señal scraper → dashboard). |
+| ¿Cache en frontend? | Invalidación cross-process vía `shared/cache_signal.py` para refrescar datos server-side tras cada scraping. |
 | ¿Cómo añado settings? | Campo nuevo en `config/settings.py` con `Field(...)` + default seguro + entry en `.env.example`. Nunca leer `os.environ` directo. |
-| ¿Cómo añado un test slow? | Nombrá el archivo con token `performance` o `load`, o marca explícito con `@pytest.mark.slow`. `make test` excluye `integration_e2e` y `dashboard_smoke` por defecto. |
+| ¿Cómo añado un test slow? | Nombrá el archivo con token `performance` o `load`, o marca explícito con `@pytest.mark.slow`. `make test` excluye `integration_e2e` por defecto. |
 | ¿Cómo validar un DataFrame? | Schema `pandera` en `shared/schemas.py`. No `assert` manuales. |
 | ¿Rate limit? | `services/rate_limiting.py` (SQLite) o `services/rate_limit_redis.py` (Redis, opcional). No reinventar. |
 | ¿Auth en endpoint nuevo? | `Depends(get_api_key)` + scope si aplica (ver `api/routes/webhooks.py` como referencia). |

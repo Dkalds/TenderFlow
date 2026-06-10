@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "v34_job_locks"
@@ -26,12 +25,18 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "job_locks",
-        sa.Column("name", sa.Text, primary_key=True),
-        sa.Column("acquired_at", sa.Text, nullable=False),
-        sa.Column("expires_at", sa.Text, nullable=False),
-        sa.Column("holder", sa.Text, nullable=False, server_default=""),
+    # IF NOT EXISTS: db/schema.py (SCHEMA) también crea esta tabla, así que
+    # la migración debe poder aplicarse sobre una BD ya inicializada vía
+    # init_db() sin colisionar (rompía test_full_roundtrip).
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_locks (
+            name         TEXT PRIMARY KEY,
+            acquired_at  TEXT NOT NULL,
+            expires_at   TEXT NOT NULL,
+            holder       TEXT NOT NULL DEFAULT ''
+        )
+        """
     )
 
 

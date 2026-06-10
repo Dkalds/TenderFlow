@@ -1,6 +1,6 @@
 """Cache unificado con backends Memory (LRU+TTL) y Redis.
 
-Reemplaza ``api/cache.py`` y ``dashboard/cache.py`` con una única implementación
+Reemplaza las implementaciones históricas de caché con una única implementación
 thread-safe y correctamente testeada.
 
 Uso::
@@ -198,7 +198,7 @@ def get_cache(namespace: str = "default") -> _MemoryBackend | _RedisBackend:
     ``REDIS_URL`` está configurado, Memory como fallback).
 
     Args:
-        namespace: Identificador lógico del cache (ej. "api", "dashboard").
+        namespace: Identificador lógico del cache (ej. "api", "analytics").
                    Prefija todas las keys en Redis para evitar colisiones.
     """
     if namespace in _instances:

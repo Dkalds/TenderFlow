@@ -1,7 +1,7 @@
 """Servicio de clusters — orquesta clustering de licitaciones.
 
 En el futuro (Fase 3), delegará en tablas materializadas.
-Por ahora, proxy al módulo ``dashboard/clustering.py``.
+Por ahora, envuelve ``services.clustering_engine``.
 """
 
 from __future__ import annotations

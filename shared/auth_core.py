@@ -1,14 +1,14 @@
-"""Lógica de autenticación pura — sin dependencias de Streamlit ni de la capa web.
+"""Lógica central de autenticación y utilidades criptográficas compartidas.
 
-Este módulo centraliza las operaciones criptográficas compartidas entre el
-dashboard y la API REST:
+Este módulo centraliza las operaciones criptográficas compartidas entre la
+aplicación y la API REST:
 
 * Verificación de contraseñas (argon2/bcrypt)
 * Firma y verificación de tokens OAuth state (HMAC-SHA256)
 * Validación de emails OAuth contra allowlists
 
-Al no importar ``streamlit``, puede usarse de forma segura en tests unitarios,
-tareas del scheduler, y cualquier módulo sin contexto de Streamlit.
+Puede usarse de forma segura en tests unitarios, tareas del scheduler y otros
+módulos compartidos.
 
 **Nonce store para anti-replay OAuth**:
 Por defecto usa un ``cachetools.TTLCache`` en memoria (proceso único, testing).

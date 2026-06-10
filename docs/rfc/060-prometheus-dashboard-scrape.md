@@ -4,8 +4,11 @@ title: Añadir dashboard como scrape target de Prometheus
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/60
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: obsolete
 ---
+
+> Obsoleto: este RFC describe scraping de métricas para el dashboard Streamlit eliminado y se conserva solo como referencia histórica.
+
 
 ## Contexto
 

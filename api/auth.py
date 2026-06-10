@@ -69,7 +69,7 @@ def hash_api_key(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-# Alias privado para compat con dashboard/pages/admin.py
+# Alias privado legacy
 _hash_key = hash_api_key
 
 

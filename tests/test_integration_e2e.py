@@ -4,7 +4,7 @@ Verifican el flujo completo:
   1. Parseo de XML ATOM (CODICE) con licitaciones SAP
   2. Filtrado por keywords
   3. Persistencia en SQLite (tmp_db)
-  4. Lectura desde data_loader (sin Streamlit)
+  4. Lectura desde services
   5. Verificación de KPIs pre-calculados
 
 Estos tests se marcan con @pytest.mark.integration y son más lentos que los
@@ -266,7 +266,7 @@ class TestE2EDataLoader:
         db_mod.upsert_licitaciones(licitaciones)
         assert db_mod.count_licitaciones() == 2
 
-        # Cargar desde data_loader (sin Streamlit — usando connect directamente)
+        # Cargar desde services (usando connect directamente)
         from db.database import connect
 
         with connect() as c:

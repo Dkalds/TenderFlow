@@ -56,7 +56,7 @@ def list_licitaciones(
     offset: int = 0,
     sort: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Lista paginada de licitaciones (API/dashboard).
+    """Lista paginada de licitaciones para consumidores de la aplicación.
 
     Returns:
         (items, total) donde items son dicts con campos de resumen.
@@ -81,14 +81,14 @@ def get_licitacion_detail(id_externo: str) -> dict[str, Any] | None:
         return _repo.get_by_id(id_externo)
 
 
-# ── Carga raw para el dashboard (sin enriquecimiento) ────────────────────
+# ── Carga raw para consumidores de datos (sin enriquecimiento) ───────────
 
 
 def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
     """Carga licitaciones clasificadas (raw, sin enriquecimiento).
 
     Devuelve lista de dicts para que ``data_loader`` convierta a DataFrame
-    y aplique transformaciones Streamlit.
+    y aplique transformaciones de presentación.
     """
     from db.database import init_db
 

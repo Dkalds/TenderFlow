@@ -23,7 +23,7 @@ Antes de cualquier acción, leé `AGENTS.md` secciones 2 (áreas), 3 (invariante
 ## Responsabilidades
 
 - Implementar los cambios de código descritos en el RFC aprobado.
-- Mantener o mejorar el typing strict en módulos core (`db/database.py`, `db/users.py`, `dashboard/bootstrap.py`, `config/`, `shared/`).
+- Mantener o mejorar el typing strict en módulos core (`db/database.py`, `db/users.py`, `config/`, `shared/`).
 - Respetar el path_denylist: nunca editar esos archivos sin OK humano explícito.
 - NO escribir tests (responsabilidad del test_engineer).
 - NO ejecutar `git push`, `gh pr create`, `gh pr merge`, ni `gh pr close`.
@@ -52,7 +52,7 @@ Antes de cualquier acción, leé `AGENTS.md` secciones 2 (áreas), 3 (invariante
 3. **Post-implementación obligatorio**:
    - `make lint` — debe pasar sin errores
    - `make typecheck` — debe pasar (especialmente en módulos strict)
-   - `mypy db/database.py db/users.py dashboard/bootstrap.py config/ shared/` — strict gate adicional
+   - `mypy db/database.py db/users.py config/ shared/` — strict gate adicional
    - Corregir cualquier error antes de reportar como listo
 
 ## Cuándo escalar al humano (via orchestrator)

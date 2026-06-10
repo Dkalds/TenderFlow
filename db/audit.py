@@ -1,4 +1,4 @@
-"""Registro de auditoría para acciones de usuario en el dashboard.
+"""Registro de auditoría para acciones de usuario.
 
 Las acciones se persisten en ``audit_log`` y permiten trazabilidad de
 quién hizo qué sin almacenar PII directa (se usa ``user_key`` opaco y
@@ -38,7 +38,7 @@ def log_action(
 
     Args:
         user_key: Clave opaca del usuario (hash).
-        session_hash: Hash truncado de la sesión Streamlit.
+        session_hash: Hash truncado de la sesión de usuario.
         action: Nombre de la acción (ver módulo docstring).
         detail: Información adicional en texto libre (sin PII).
     """

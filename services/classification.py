@@ -1,7 +1,7 @@
 """Clasificación de licitaciones: CPV, módulos SAP, tecnología, tipo de proyecto.
 
-Lógica de dominio pura — sin dependencias de Streamlit ni de la capa web.
-Reutilizable desde scraper, API REST y dashboard.
+Lógica de dominio pura y reutilizable desde distintas capas de la aplicación.
+Reutilizable desde scraper, API REST y otros servicios.
 
 Exports principales:
     cpv_label(code)          →  str

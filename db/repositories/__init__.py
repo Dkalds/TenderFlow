@@ -1,6 +1,6 @@
 """Capa de repositorios compartida.
 
-Consumida tanto por la API REST como por el dashboard Streamlit.
+Consumida por la API REST y otros servicios de aplicación.
 Centraliza el SQL y expone interfaces tipadas.
 """
 

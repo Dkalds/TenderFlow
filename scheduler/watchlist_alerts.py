@@ -35,7 +35,7 @@ _MAX_IMMEDIATE_EMAILS_PER_RUN = 1
 
 
 def _user_key() -> str:
-    """Misma derivación que usa el dashboard (hash del DASHBOARD_PASSWORD)."""
+    """Deriva una clave opaca y estable a partir de la configuración local."""
     from config import settings
 
     seed = settings.DASHBOARD_PASSWORD.get_secret_value() or os.environ.get(

@@ -20,8 +20,6 @@ from pathlib import Path
 from typing import Any
 
 # ── Umbrales por módulo (prefijo de ruta) ────────────────────────────────
-# Los módulos más críticos tienen umbrales altos; el dashboard, más bajo
-# porque mezcla código UI y lógica (difícil de cubrir sin Streamlit en test).
 MODULE_THRESHOLDS: dict[str, int] = {
     "scraper/": 75,
     "db/": 70,
@@ -31,9 +29,6 @@ MODULE_THRESHOLDS: dict[str, int] = {
     "scheduler/": 60,
     "api/": 65,
     "observability/": 55,
-    "dashboard/stats/": 70,
-    "dashboard/utils/": 65,
-    "dashboard/pages/": 40,  # UI-heavy, difícil cubrir sin browser
 }
 
 # Módulos excluidos del chequeo (utilidades generadas, migrations, etc.)

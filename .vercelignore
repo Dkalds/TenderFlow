@@ -16,8 +16,6 @@ __pycache__/
 .ruff_cache/
 htmlcov/
 
-# Dashboard (Streamlit — not needed for API)
-dashboard/
 
 # Docs
 docs/

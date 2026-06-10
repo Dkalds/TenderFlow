@@ -1,9 +1,8 @@
 """Tecnologias analytics — technology distribution, cross-tabs and detail.
 
-Mirrors the Streamlit ``dashboard/pages/tecnologias.py`` page: explodes
-comma-separated technologies, maps them to readable labels and exposes the
-KPIs, cross-dimensional breakdowns (organo / geografia / evolucion) and the
-per-technology tender detail that the React dashboard needs for parity.
+Explodes comma-separated technologies, maps them to readable labels and
+exposes KPIs, cross-dimensional breakdowns (organo / geografia / evolucion)
+and per-technology tender detail for the application layer.
 """
 
 from __future__ import annotations
@@ -163,7 +162,6 @@ def _explode_classified(df: pd.DataFrame) -> pd.DataFrame:
     """Explode comma-separated technologies and attach a readable label.
 
     Returns only rows with a non-empty technology, with a ``tech_label`` column.
-    Mirrors ``dashboard/pages/tecnologias.py:_explode_tecnologias``.
     """
     out = df.copy()
     out["tecnologia"] = out["tecnologia"].fillna("").astype(str)
@@ -302,7 +300,7 @@ def get_tecnologias(filters: TecnologiasFilters) -> TecnologiasResult:
 
     entries = _build_entries(classified, total)
 
-    # KPIs (match dashboard/pages/tecnologias.py:54-79)
+    # KPIs for the technology distribution view
     n_tecnologias = len(entries)
     lider = max(entries, key=lambda e: e.count) if entries else None
     importe_medio_global = (

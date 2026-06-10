@@ -1,6 +1,6 @@
 """Job de pre-cálculo de agregados materializados.
 
-Calcula en el scheduler (sin Streamlit) dos tipos de resultados costosos:
+Calcula en el scheduler dos tipos de resultados costosos:
 
 * **Clusters**: asignación de cada licitación a su cluster semántico via KMeans
   sobre embeddings TF-IDF (fallback) o sentence-transformers si disponible.

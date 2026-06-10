@@ -1,4 +1,4 @@
-"""Analytics overview service — ports dashboard/stats/_base.py aggregations.
+"""Analytics overview service for aggregated tender KPIs and breakdowns.
 
 Converts the pandas-based in-memory analytics to service functions that
 can be called from API endpoints. Uses services.licitaciones for data loading.
@@ -131,7 +131,7 @@ def _apply_filters(df: pd.DataFrame, filters: OverviewFilters) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Aggregation functions (ported from dashboard/stats/_base.py)
+# Aggregation functions for overview KPIs and breakdowns
 # ---------------------------------------------------------------------------
 
 
@@ -282,7 +282,7 @@ def _lead_time_medio(adj: pd.DataFrame) -> float | None:
 
 
 def get_overview(filters: OverviewFilters) -> OverviewResult:
-    """Compute the full overview dashboard payload."""
+    """Compute the full overview payload."""
     log.info("analytics_overview_start", filters=filters.model_dump(exclude_none=True))
     df = _load_df()
     df = _apply_filters(df, filters)

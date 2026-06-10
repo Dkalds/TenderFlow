@@ -8,9 +8,9 @@ Los procedimientos detallados viven en `docs/runbooks/`.
 | Servicio    | Proceso/Container         | Health                | Logs                       |
 | ----------- | ------------------------- | --------------------- | -------------------------- |
 | API REST    | `licitaciones-api`        | `GET /api/v1/health`  | `docker logs api`          |
-| Dashboard   | `licitaciones-dashboard`  | `GET /_stcore/health` | `docker logs dashboard`    |
-| Scheduler   | `licitaciones-scheduler`  | exit-code & metrics   | `docker logs scheduler`    |
-| Scraper     | cron daily / manual       | `scheduler/healthcheck.py` | `data/streamlit.log`  |
+| Web frontend | `licitaciones-web`       | `GET /`               | `docker logs licitaciones-web` |
+| Scheduler    | `licitaciones-scheduler` | exit-code & metrics   | `docker logs licitaciones-scheduler` |
+| Scraper      | cron daily / manual      | `scheduler/healthcheck.py` | `docker logs licitaciones-scheduler` |
 | DB SQLite   | volumen `data/`           | `python scripts/doctor.py` | `data/backfill.log`   |
 
 ## Playbooks (orden recomendado de consulta)
@@ -30,7 +30,7 @@ Los procedimientos detallados viven en `docs/runbooks/`.
 
 ## Rotaciones planificadas
 
-* `TURSO_AUTH_TOKEN` y `DASHBOARD_PASSWORD`: cada 90 días.
+* `TURSO_AUTH_TOKEN`: cada 90 días.
 * `SIGNING_KEYS_JSON`: rotar la clave activa cada 180 días; mantener la
   anterior en el mapa durante 30 días como grace period
   (`shared/signing.py`).
@@ -86,24 +86,18 @@ docker compose exec scheduler python -c \
 * F6: diagramas C4 en `docs/c4-architecture.md`. ADR-005 documenta el
   refactor de clustering.
 * F7: capa `services/` como dominio compartido (ver ADR-007).
-  `services/normalization.py` y `services/classification.py` extraídas
-  desde `dashboard/`; `dashboard/normalize.py` y `dashboard/classifiers.py`
-  quedan como shims de compatibilidad.
+  `services/normalization.py` y `services/classification.py` concentran
+  la lógica reutilizable consumida por API y frontend web.
 * F7: `scripts/verify_audit_chain.py` valida la cadena de hashes del
   `audit_log` (SHA-256 encadenado con genesis).
 * F7: `scripts/check_coverage_per_module.py` aplica umbrales de coverage
-  diferenciados por capa (scraper 75 %, services 70 %, dashboard/pages 40 %).
-* F7: `dashboard/utils/plot.py` con helper WebGL (`apply_perf_defaults`)
-  que conmuta Scatter → Scattergl ≥ 5 000 puntos.
+  diferenciados por capa (scraper 75 %, services 70 %, web 40 %).
 * F7: PKCE (RFC 7636) + validación de Google ID token en
   `shared/auth_core.py` (`generate_pkce_pair`, `verify_pkce`,
   `validate_google_id_token`).
 * F7: CI con Bandit (`pyproject.toml [tool.bandit]`) y Trivy
   (escaneo CRITICAL/HIGH sobre la imagen Docker, allowlist en
   `.trivyignore`).
-* F7: `@st.fragment` en `dashboard/pages/resumen.py` y
-  `dashboard/pages/tendencias.py` para re-render parcial independiente
-  de los filtros de sidebar.
 
 ## Verificaciones de salud manuales
 

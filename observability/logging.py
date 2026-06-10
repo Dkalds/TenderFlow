@@ -186,21 +186,5 @@ def clear_run_context() -> None:
 
 
 def bind_session_context() -> str | None:
-    """Asocia el session_id de Streamlit al contexto de logging.
-
-    Permite correlacionar logs del dashboard con la sesión del usuario.
-    Devuelve el session_id (truncado) o None si no está en un contexto Streamlit.
-    """
-    try:
-        from streamlit.runtime.scriptrunner import get_script_run_ctx
-
-        ctx = get_script_run_ctx()
-        if ctx and ctx.session_id:
-            import hashlib
-
-            session_hash = hashlib.sha256(ctx.session_id.encode()).hexdigest()[:12]
-            bind_contextvars(session_id=session_hash)
-            return session_hash
-    except Exception:
-        structlog.get_logger(__name__).debug("streamlit_session_bind_failed")
+    """No-op — session context binding has been removed."""
     return None

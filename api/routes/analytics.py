@@ -1,7 +1,7 @@
-"""Analytics endpoints — exposes aggregated data for the dashboard.
+"""Analytics endpoints — exposes aggregated data for the web frontend.
 
-These endpoints provide the analytical layer that the Streamlit dashboard
-previously computed in-memory. Now computed server-side and served as JSON.
+These endpoints provide the analytical layer that the web frontend
+consumes via server-side JSON responses.
 """
 
 from __future__ import annotations
