@@ -25,18 +25,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P3 — Nice to have
 
-### Hook PostToolUse para marcar graph como stale tras edits a `.py`
-- **Área:** `.claude/settings.json`
-- **Problema:** Hoy el agente debe acordarse de correr `graphify update .` tras editar (lo dice AGENTS.md sección 5, pero es manual). Un hook PostToolUse puede dejar un flag `graphify-out/.graph_stale` cuando se edita un `.py`, y `/graph-refresh` lo borra. Detecta drift automáticamente.
-- **Acceptance criteria:**
-  - Añadir un bloque PostToolUse en `.claude/settings.json` con matcher `Edit|Write|MultiEdit` que ejecute:
-    ```bash
-    python3 -c "import json,sys,os,pathlib;d=json.load(sys.stdin);fp=(d.get('tool_input',d) or {}).get('file_path','');skip=any(x in fp for x in ('.venv','graphify-out','.mypy_cache','.pytest_cache','.ruff_cache','__pycache__','htmlcov','node_modules'));ok=fp.endswith('.py') and not skip and os.path.isdir('graphify-out');pathlib.Path('graphify-out/.graph_stale').touch() if ok else None" 2>/dev/null || true
-    ```
-  - Actualizar `/graph-refresh` (ya lo hace) para borrar el flag tras update exitoso.
-  - Probar: editar un `.py`, verificar que existe `graphify-out/.graph_stale`; correr `/graph-refresh`; verificar que se borró.
-- **Files de partida:** [.claude/settings.json](../.claude/settings.json) (ya tiene un PreToolUse; añadir PostToolUse manteniéndolo).
-- **Riesgo:** bajo — el hook es silencioso (`|| true`), no bloquea ediciones. **Self-modification: requiere que el humano lo añada (el agente no puede editar `.claude/settings.json` por política de seguridad).**
+*(sin ítems abiertos)*
 
 ---
 
@@ -123,6 +112,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-06-10] **P2: ADR-013 jerarquía materializaciones analíticas** — ADR define camino canónico: SQLite = caché OLTP, Parquet = snapshot offline, DuckDB = motor opcional. Materialización solo en pipeline canónica (ADR-012). Commit `6bf0b5b`.
 - [2026-06-10] **P3: Healthcheck reporta queue_mode** — `scheduler/healthcheck.py` ahora reporta `"queue_mode": "dramatiq" | "stub" | "inline"`. Commit `6bf0b5b`.
 - [2026-06-10] **P3: Extras pyproject por rol** — `[queue]` (dramatiq+redis), `[analytics]` (duckdb), `[crypto]` (cryptography) añadidos a `pyproject.toml`. Commit `6bf0b5b`.
+- [2026-06-10] **P3: Hook graph stale tras edits .py** — Ya implementado en `.claude/settings.json` como tercer bloque PreToolUse (matcher `Edit|Write|MultiEdit`). Crea `graphify-out/.graph_stale` al editar `.py`; `/graph-refresh` lo borra tras update exitoso. Funcional con el mismo efecto que PostToolUse.
 - [2026-06-10] **P3: Dynamic recharts en 10 páginas frontend** — Extraídos 32 chart blocks de 10 páginas a 10 chart subcomponents (`components/charts/*-charts.tsx`). Cada página ahora importa sus charts con `next/dynamic({ ssr: false })` + Skeleton fallback, eliminando recharts del bundle inicial. 0 imports estáticos de recharts en páginas (solo en subcomponentes). `tsc --noEmit` 0 errores.
 - [2026-06-10] **P3: Split archivos God** — `dashboard/stats/_base.py` (1070→794 LOC): `risk_flags` + `score_oportunidad` extraídos a `_scoring.py` (273 LOC). Frontend: charts extraídos a subcomponentes (cubierto por el ítem dynamic recharts). `db/migrations.py`: evaluado, no purgable (lo usa `init_db` en runtime), congelado per ADR-008. `ml_classifier.py` (880): evaluado, cohesivo (ya delega a `ml_pipeline.py`), no merece split forzado.
 - [2026-05-24] **P6: sys.path hack eliminado** — `scheduler/retention.py` creado con lógica completa; `scripts/retention_cleanup.py` reescrito como thin CLI wrapper.
