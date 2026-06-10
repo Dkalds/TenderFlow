@@ -54,7 +54,7 @@ def _compute_top_empresas(conn: Any) -> list[dict[str, Any]]:
 
     # Normalizar en Python para agrupar nombres equivalentes
     try:
-        from dashboard.normalize import normalize_company
+        from services.normalization import normalize_company
     except Exception:
 
         def normalize_company(s: str) -> str:  # type: ignore[misc]

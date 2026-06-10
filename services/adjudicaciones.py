@@ -29,9 +29,64 @@ def load_adjudicaciones(
     ccaa_filter: tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     """Carga adjudicaciones enriquecidas."""
-    from dashboard.data_loader import load_adjudicaciones as _dl_adj
+    from services.normalization import normalize_company, normalize_nif
+    from shared.geo import nuts_to_ccaa
 
-    return _dl_adj(limit=limit, ccaa_filter=ccaa_filter)
+    rows = load_raw_adjudicaciones(limit=limit, ccaa_filter=ccaa_filter)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    df["fecha_adjudicacion"] = pd.to_datetime(df["fecha_adjudicacion"], errors="coerce")
+    df["fecha_publicacion"] = pd.to_datetime(
+        df["fecha_publicacion"], errors="coerce", format="mixed", utc=True,
+    )
+    for col in (
+        "importe_adjudicado", "importe_pagable", "oferta_minima",
+        "oferta_maxima", "importe_licitacion",
+    ):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["baja_pct"] = ((1 - df["importe_adjudicado"] / df["importe_licitacion"]) * 100).where(
+        (df["importe_licitacion"] > 0) & df["importe_adjudicado"].notna()
+    )
+
+    _fp = df["fecha_publicacion"]
+    if hasattr(_fp.dt, "tz") and _fp.dt.tz is not None:
+        _fp = _fp.dt.tz_localize(None)
+    df["lead_time_dias"] = (df["fecha_adjudicacion"] - _fp).dt.days
+    df.loc[df["lead_time_dias"] <= 0, "lead_time_dias"] = pd.NA
+
+    # Backfill CCAA from NUTS code
+    if "ccaa" in df.columns and "nuts_code" in df.columns:
+        try:
+            mask = df["ccaa"].isna() & df["nuts_code"].notna()
+            df.loc[mask, "ccaa"] = df.loc[mask, "nuts_code"].apply(nuts_to_ccaa)
+        except Exception:
+            pass
+
+    df["es_ute"] = df["nombre"].str.contains(
+        r"\bU\.?T\.?E\.?\b", case=False, na=False, regex=True,
+    )
+
+    try:
+        df["nombre_norm"] = df["nombre"].apply(
+            lambda x: normalize_company(x) if pd.notna(x) else None,
+        )
+    except Exception:
+        df["nombre_norm"] = None
+    try:
+        df["nif_norm"] = df["nif"].apply(
+            lambda x: normalize_nif(x) if pd.notna(x) else None,
+        )
+    except Exception:
+        df["nif_norm"] = None
+
+    df["empresa_key"] = df["nif_norm"].where(
+        df["nif_norm"].notna() & (df["nif_norm"] != ""), df["nombre_norm"],
+    )
+
+    return df
 
 
 def load_raw_adjudicaciones(

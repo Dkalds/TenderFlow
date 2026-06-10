@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from dashboard.forecast import build_forecast_df, forecast_volume
+from services.analytics.forecast import build_forecast_df, forecast_volume
 from observability.logging import get_logger
 from services.adjudicaciones import load_raw_adjudicaciones
 from services.licitaciones import load_stats_dataframe

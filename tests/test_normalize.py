@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dashboard.normalize import normalize_company, normalize_nif, parse_ute_members
+from services.normalization import normalize_company, normalize_nif, parse_ute_members
 
 
 class TestNormalizeCompany:

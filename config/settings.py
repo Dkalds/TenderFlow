@@ -36,11 +36,6 @@ class Settings(BaseSettings):
     DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None
 
-    # ── Dashboard ────────────────────────────────────────────────────────
-    DASHBOARD_PASSWORD: SecretStr = SecretStr("")
-    DASHBOARD_PASSWORD_HASH: str = ""  # bcrypt hash — requerido en ENV=prod
-    DASHBOARD_CACHE_TTL: int = 300
-
     # ── ML ───────────────────────────────────────────────────────────────
     # Umbral de confianza para clasificar como SAP sin keywords (0.0-1.0)
     ML_CONFIDENCE_THRESHOLD: float = 0.70
@@ -122,7 +117,7 @@ class Settings(BaseSettings):
     #   python -c "import secrets; print(secrets.token_hex(32))"
     # Orígenes CORS permitidos en prod (lista separada por comas, vacío = bloquear todo)
     # En dev se usa "*" automáticamente.
-    # Ej: "https://dashboard.example.com,https://api.example.com"
+    # Ej: "https://app.example.com,https://api.example.com"
     CORS_ALLOWED_ORIGINS: str = ""
 
     # Secreto HMAC para hashear API keys (32+ chars). Si vacío usa SHA-256 plain.
@@ -299,15 +294,6 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _validate_prod_password(self) -> Settings:
-        if self.ENV in ("prod", "staging") and not self.DASHBOARD_PASSWORD_HASH:
-            raise ValueError(
-                "DASHBOARD_PASSWORD_HASH (hash bcrypt) es obligatorio en ENV=prod. "
-                "Genera el hash con: python scripts/hash_password.py"
-            )
-        return self
-
-    @model_validator(mode="after")
     def _validate_prod_signing_key(self) -> Settings:
         if self.ENV in ("prod", "staging") and not self.SIGNING_KEY.get_secret_value():
             raise ValueError(
@@ -366,22 +352,6 @@ class Settings(BaseSettings):
             return self
         from shared.password_policy import check_password_strength
 
-        # Validar DASHBOARD_PASSWORD si se usa (legacy, sin hash)
-        dash_pw = self.DASHBOARD_PASSWORD.get_secret_value()
-        if dash_pw:
-            result = check_password_strength(
-                dash_pw,
-                min_length=16,
-                label="DASHBOARD_PASSWORD",
-            )
-            if not result.is_strong:
-                raise ValueError(
-                    f"DASHBOARD_PASSWORD es débil: {result.summary}. "
-                    "Usa una contraseña de al menos 16 caracteres con mayúsculas, "
-                    "minúsculas, dígitos y caracteres especiales. "
-                    "Mejor aún: usa DASHBOARD_PASSWORD_HASH con argon2/bcrypt."
-                )
-
         # Validar GF_SECURITY_ADMIN_PASSWORD
         gf_pw = self.GF_SECURITY_ADMIN_PASSWORD.get_secret_value()
         if gf_pw:
@@ -418,7 +388,7 @@ class Settings(BaseSettings):
             warnings.warn(
                 "CORS_ALLOWED_ORIGINS está vacío en ENV=prod. Todas las solicitudes "
                 "cross-origin serán bloqueadas. Configura los orígenes permitidos: "
-                'CORS_ALLOWED_ORIGINS="https://dashboard.example.com"',
+                'CORS_ALLOWED_ORIGINS="https://app.example.com"',
                 stacklevel=2,
             )
         return self
@@ -476,12 +446,6 @@ class Settings(BaseSettings):
                 f"Se esperaba uno de {allowed}, se recibió: {v!r}"
             )
         return v
-
-    @field_validator("DASHBOARD_CACHE_TTL", mode="before")
-    @classmethod
-    def _parse_cache_ttl(cls, v: object) -> int:
-        return int(str(v))
-
 
 def _load() -> Settings:
     return Settings()

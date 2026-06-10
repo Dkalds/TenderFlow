@@ -13,7 +13,7 @@ Guía operativa completa para agentes trabajando en `licitaciones-sap`. Compleme
 | `services/` | Lógica de dominio pura: licitaciones, normalization, classification, clusters, analytics_engine (DuckDB), rate_limiting, investigador (FTS5) | `services/licitaciones.py` | Sí (core) | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
 | `db/` | SQLite/Turso, upsert idempotente, alembic migraciones, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | Solo `db.database`, `db.users` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-003](adr/ADR-003-migraciones-caseras-plus-alembic.md) |
 | `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; rutas en `api/routes/{health,licitaciones,search,exports,me,meta,feedback,webhooks,...}.py` | No (overrides activos) | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md) |
-| `dashboard/` | Streamlit: bootstrap, router, pages, components, filters, KPI, stats, theme, embeddings + FAISS | `dashboard/app.py` | Solo `dashboard.bootstrap` | [ADR-002](adr/ADR-002-streamlit-vs-fastapi-react.md) |
+| `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | — | — |
 | `scraper/` | Pipeline PLACSP: descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py` (SQL manual, S608 suppressed) | Selectivo | — |
 | `scheduler/` | Jobs cron: `run_update` (scraper), `kpi_precompute`, `loop` | `scheduler/loop.py`, `scheduler/run_update.py` | Sí | — |
 | `llm/` | Cliente y providers LLM (opcional) | `llm/client.py`, `llm/providers/` | — | — |
@@ -35,15 +35,12 @@ Guía operativa completa para agentes trabajando en `licitaciones-sap`. Compleme
 7. **Documenta**: actualiza el docstring de módulo de `api/app.py` (lista de endpoints en la cabecera).
 8. **Post-flight**: `/check` → `graphify update .`.
 
-### 2.2 Añadir una página al dashboard
+### 2.2 Añadir una página al frontend
 
-1. **Nueva página**: crea archivo en `dashboard/pages/<nombre>.py`. Importá `from dashboard.bootstrap import bootstrap_session` al inicio.
-2. **Componentes reutilizables**: van en `dashboard/components/`. Filtros en `dashboard/filters/`.
-3. **Routing**: registrá la página en `dashboard/router.py` (no Streamlit multipage nativo).
-4. **Carga de datos**: usá `dashboard/data_loader.py` (cacheado con `@st.cache_data`). Nunca consultes la BD directo desde la página.
-5. **Theme**: usa `dashboard/theme/` para colores/fuentes consistentes.
-6. **Tests**: `tests/test_dashboard_<nombre>.py` — los smoke tests viven en `tests/test_dashboard_smoke.py`.
-7. **Post-flight**: `/check` → `graphify update .` → `make dashboard` para validar visualmente.
+1. **Nueva ruta**: crea directorio en `web/src/app/(dashboard)/<nombre>/page.tsx`.
+2. **Componentes reutilizables**: van en `web/src/components/`. UI primitivos en `web/src/components/ui/`.
+3. **Carga de datos**: usa los hooks de TanStack Query en `web/src/hooks/`. API client en `web/src/lib/api-client.ts`.
+4. **Tests**: tests e2e en `web/src/test/` con Playwright.
 
 ### 2.3 Añadir un job al scraper
 

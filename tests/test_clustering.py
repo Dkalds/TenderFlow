@@ -1,4 +1,4 @@
-"""Tests para dashboard.clustering."""
+"""Tests para services.clustering_engine."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _make_df(n: int = 30) -> pd.DataFrame:
 
 class TestClusterLicitaciones:
     def test_añade_columnas_cluster(self):
-        from dashboard.clustering import cluster_licitaciones
+        from services.clustering_engine import cluster_licitaciones
 
         df = _make_df(30)
         result = cluster_licitaciones(df, n_clusters=3)
@@ -46,7 +46,7 @@ class TestClusterLicitaciones:
         assert len(result) == len(df)
 
     def test_numero_clusters_correcto(self):
-        from dashboard.clustering import cluster_licitaciones
+        from services.clustering_engine import cluster_licitaciones
 
         df = _make_df(40)
         result = cluster_licitaciones(df, n_clusters=4)
@@ -55,17 +55,16 @@ class TestClusterLicitaciones:
         assert n_unique == 4
 
     def test_pocos_datos_devuelve_df_sin_cluster(self):
-        from dashboard.clustering import cluster_licitaciones
+        from services.clustering_engine import cluster_licitaciones
 
         df = _make_df(5)  # < _MIN_ROWS = 10
         result = cluster_licitaciones(df, n_clusters=3)
 
-        # Debe devolver DataFrame con cluster_id=0 por defecto
         assert "cluster_id" in result.columns
         assert result["cluster_id"].nunique() == 1
 
     def test_df_vacio_devuelve_vacio(self):
-        from dashboard.clustering import cluster_licitaciones
+        from services.clustering_engine import cluster_licitaciones
 
         df = pd.DataFrame(columns=["id_externo", "titulo", "descripcion", "importe"])
         result = cluster_licitaciones(df, n_clusters=3)
@@ -73,7 +72,7 @@ class TestClusterLicitaciones:
         assert len(result) == 0
 
     def test_labels_no_vacios(self):
-        from dashboard.clustering import cluster_licitaciones
+        from services.clustering_engine import cluster_licitaciones
 
         df = _make_df(20)
         result = cluster_licitaciones(df, n_clusters=3)
@@ -84,7 +83,7 @@ class TestClusterLicitaciones:
 
 class TestClusterSummary:
     def test_summary_contiene_columnas_esperadas(self):
-        from dashboard.clustering import cluster_licitaciones, cluster_summary
+        from services.clustering_engine import cluster_licitaciones, cluster_summary
 
         df = _make_df(30)
         clustered = cluster_licitaciones(df, n_clusters=3)
@@ -95,14 +94,14 @@ class TestClusterSummary:
         assert "importe_total" in summary.columns
 
     def test_summary_sin_cluster_vacio(self):
-        from dashboard.clustering import cluster_summary
+        from services.clustering_engine import cluster_summary
 
         df = pd.DataFrame({"titulo": ["test"], "importe": [100.0]})
         result = cluster_summary(df)
         assert result.empty
 
     def test_n_filas_suma_total(self):
-        from dashboard.clustering import cluster_licitaciones, cluster_summary
+        from services.clustering_engine import cluster_licitaciones, cluster_summary
 
         df = _make_df(30)
         clustered = cluster_licitaciones(df, n_clusters=3)
@@ -113,7 +112,7 @@ class TestClusterSummary:
 
 class TestClusterKeywords:
     def test_devuelve_palabras_del_texto(self):
-        from dashboard.clustering import _cluster_keywords
+        from services.clustering_engine import _cluster_keywords
 
         texts = ["sistema SAP gestión financiera", "SAP ERP módulos financieros"] * 5
         result = _cluster_keywords(texts, top_n=3)
@@ -122,7 +121,7 @@ class TestClusterKeywords:
         assert len(result) > 0
 
     def test_textos_vacios_devuelve_otros(self):
-        from dashboard.clustering import _cluster_keywords
+        from services.clustering_engine import _cluster_keywords
 
         result = _cluster_keywords([], top_n=3)
         assert result == "otros"

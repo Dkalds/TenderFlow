@@ -42,7 +42,7 @@ jobs:
         run: ruff format --check .
 
       - name: Type check (mypy)
-        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config/ api/ shared/
+        run: mypy scraper/ db/ scheduler/ observability/ config/ api/ shared/
 
       - uses: pre-commit/action@v3.0.1
 
@@ -184,9 +184,9 @@ jobs:
       - name: Run bandit
         # Lee la configuración de [tool.bandit] en pyproject.toml
         run: |
-          bandit -c pyproject.toml -r api db scraper scheduler dashboard shared config \
+          bandit -c pyproject.toml -r api db scraper scheduler shared config \
             --format json --output bandit-report.json || true
-          bandit -c pyproject.toml -r api db scraper scheduler dashboard shared config
+          bandit -c pyproject.toml -r api db scraper scheduler shared config
 
       - name: Upload bandit report
         if: always()

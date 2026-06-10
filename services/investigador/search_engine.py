@@ -29,7 +29,7 @@ def escape_fts5(query: str) -> str:
 def faiss_search(question: str, top_k: int, embedding_model: str) -> list[tuple[str, float]]:
     """Búsqueda semántica FAISS. Devuelve (id_externo, score ∈ [0,1])."""
     try:
-        from dashboard.faiss_index import FaissIndex
+        from services.faiss_index import FaissIndex
 
         idx = FaissIndex.load()
         return idx.search(question, k=top_k, threshold=0.25)

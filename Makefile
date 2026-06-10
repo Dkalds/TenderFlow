@@ -1,4 +1,4 @@
-.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily app dashboard api doctor clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -37,17 +37,14 @@ check:  ## Lint + typecheck + tests unitarios (ideal para desarrollo)
 	pytest tests/ -m "unit and not slow" -q
 
 # ── Tests ────────────────────────────────────────────────────────────────
-test:  ## Suite de tests estándar (excluye integration_e2e y dashboard_smoke)
-	pytest tests/ --ignore=tests/test_integration_e2e.py --ignore=tests/test_dashboard_smoke.py
+test:  ## Suite de tests estándar (excluye integration_e2e)
+	pytest tests/ --ignore=tests/test_integration_e2e.py
 
 test-all:  ## Ejecuta TODOS los tests sin excepción
 	pytest tests/
 
 test-integration:  ## Tests de integración (requieren BD real)
 	pytest tests/ -m integration
-
-test-smoke:  ## Tests de smoke del dashboard
-	pytest tests/test_dashboard_smoke.py
 
 test-perf:  ## Tests de rendimiento (marker slow)
 	pytest tests/test_performance.py -m slow --timeout=120
@@ -94,14 +91,7 @@ kpi:  ## Pre-computa KPIs
 kpi-export-parquet:
 	python -m scheduler.kpi_precompute --export-parquet $(or $(PARQUET_DIR),data/parquet)
 
-# ── Dashboard / API ──────────────────────────────────────────────────────
-## Alias principal — arranca el dashboard (equivalente a 'make dashboard')
-app:  ## Alias: arranca el dashboard
-	PYTHONPATH=$(CURDIR) streamlit run dashboard/app.py
-
-dashboard:  ## Arranca Streamlit dashboard
-	PYTHONPATH=$(CURDIR) streamlit run dashboard/app.py
-
+# ── API ──────────────────────────────────────────────────────────────────
 ## Arranca la API REST en modo desarrollo (requiere uvicorn)
 api:  ## Arranca FastAPI API en modo desarrollo
 	PYTHONPATH=$(CURDIR) uvicorn api.app:app --host 0.0.0.0 --port 8080 --reload
@@ -194,7 +184,7 @@ security:  ## Run security scanners locally (bandit + semgrep)
 	@echo "semgrep done"
 
 coverage-html:  ## Generate HTML coverage report
-	pytest tests/ -x -q --cov=. --cov-report=html --ignore=tests/test_integration_e2e.py --ignore=tests/test_dashboard_smoke.py -m "not slow"
+	pytest tests/ -x -q --cov=. --cov-report=html --ignore=tests/test_integration_e2e.py -m "not slow"
 	@echo "Coverage report: htmlcov/index.html"
 
 pre-commit:  ## Run all pre-commit hooks

@@ -32,7 +32,7 @@ Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) 
 | `services/` | Lógica de dominio (licitaciones, classification, clusters, normalization, analytics) | `services/licitaciones.py` | Core; usa `db.repositories.*` |
 | `db/` | Persistencia (SQLite/Turso), upsert idempotente, migraciones alembic | `db/database.py` (fachada → `connection/schema/upsert`) | `db.database`, `db.users` **strict** |
 | `api/` | FastAPI REST | `api/app.py` (`uvicorn api.app:app`) | Rutas en `api/routes/` |
-| `dashboard/` | Streamlit UI | `dashboard/app.py` | Typing **no strict** salvo `dashboard.bootstrap` |
+| `web/` | Frontend Next.js | `web/` | Consume la API tipada generada desde OpenAPI |
 | `scraper/` | Pipeline PLACSP (ZIPs + ATOM), parser CODICE/UBL, clasificador ML | `scraper/pipeline.py` | `ml_*` con SQL manual (S608 suppressed) |
 | `scheduler/` | Jobs (run_update, kpi_precompute), loop | `scheduler/loop.py` | Cron de GitHub Actions |
 | `llm/` | Cliente LLM y providers | `llm/client.py` | Opcional |
@@ -45,14 +45,14 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 
 ## 3. Invariantes que nunca romper
 
-1. **Typing strict en core**: `db.database`, `db.users`, `dashboard.bootstrap` pasan mypy strict. `config/*` y `shared/*` están en proceso de migración a strict (ver bloque de overrides en `pyproject.toml`). Si tocás estos módulos, **no empeores** el estado de typing — no añadas `# type: ignore` ni `Any` sin justificar, y priorizá cerrar overrides existentes sobre abrir nuevos.
+1. **Typing strict en core**: `db.database` y `db.users` pasan mypy strict. `config/*` y `shared/*` están en proceso de migración a strict (ver bloque de overrides en `pyproject.toml`). Si tocás estos módulos, **no empeores** el estado de typing — no añadas `# type: ignore` ni `Any` sin justificar, y priorizá cerrar overrides existentes sobre abrir nuevos.
 2. **Upsert idempotente**: cualquier escritura desde scraper debe poder re-ejecutarse sin duplicar (ver `db/upsert.py`).
 3. **Migraciones append-only**: nunca modificar migraciones alembic ya commiteadas. Siempre nueva revisión.
 4. **Auto-marking de tests**: `tests/conftest.py` aplica markers (unit/integration/e2e/property/load) por nombre de archivo. **No marcar a mano** — renombrar el test si necesitás otro marker.
-5. **DTOs Pydantic v2** son el contrato API↔dashboard (`shared/dto.py`). Cambios a campos requieren migración consciente.
+5. **DTOs Pydantic v2** son el contrato API↔web (`shared/dto.py`). Cambios a campos requieren migración consciente.
 6. **HMAC-signed CSRF + argon2/bcrypt** para auth (`shared/auth_core.py`). No reemplazar por algo más débil.
 7. **Pre-commit obligatorio**: ruff + mypy + bandit + gitleaks + detect-secrets corren en cada commit. No bypassear con `--no-verify`.
-8. **Dashboard solo vía `services/` y `db/repositories/`**: el dashboard **nunca** importa directamente de `db.*` (ni `db.database`, `db.users`, `db.dlq`, etc.) ni ejecuta SQL crudo (`conn.execute`, `import sqlite3`). Todo acceso a datos pasa por la capa de servicios (`services/`) o los repositorios tipados (`db/repositories/`). ADR-007 estableció esto; 11 módulos del dashboard aún lo violan (deuda técnica a cerrar). Código nuevo **debe** respetar este invariante.
+8. **Frontend siempre vía API**: `web/` no accede a `db.*` ni a la capa Python de servicios de forma directa; consume `api/` mediante HTTP/OpenAPI y contratos tipados. Código nuevo **debe** respetar este invariante.
 9. **Un solo plano de orquestación por entorno**: los planos GitHub Actions y APScheduler nunca corren activos contra la misma BD (ADR-012). Variable `SCHEDULER_PLANE` declara el dueño.
 
 ---
@@ -63,12 +63,12 @@ Fuente única: [Makefile](Makefile). Targets clave:
 
 ```bash
 make test-unit        # rápido (unit, no slow) — usá esto durante desarrollo
-make test             # full suite excepto integration_e2e y dashboard_smoke
+make test             # full suite excepto integration_e2e
 make test-integration # tests con BD real
 make lint             # ruff check
 make typecheck        # mypy .
 make api              # arranca FastAPI en :8080
-make dashboard        # arranca Streamlit
+make web-dev          # arranca Next.js en :3000
 make scrape-daily     # corre scraper en modo daily
 make doctor           # verifica entorno (scripts/doctor.py)
 ```

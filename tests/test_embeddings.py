@@ -1,4 +1,4 @@
-"""Tests para dashboard/embeddings.py — similitud semántica con fallback."""
+"""Tests para services.embeddings — similitud semántica con fallback."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 class TestSubstringMatch:
     def test_basic_match(self):
-        from dashboard.embeddings import substring_match
+        from services.embeddings import substring_match
 
         corpus = [
             "Mantenimiento SAP S/4HANA y soporte técnico",
@@ -16,33 +16,32 @@ class TestSubstringMatch:
         ]
         results = substring_match("SAP S/4HANA soporte", corpus, threshold=0.3)
         assert len(results) > 0
-        # First result should be the SAP S/4HANA one
         assert results[0][0] == 0
 
     def test_no_match(self):
-        from dashboard.embeddings import substring_match
+        from services.embeddings import substring_match
 
         corpus = ["Servicios de limpieza"]
         results = substring_match("SAP HANA migración", corpus, threshold=0.5)
         assert len(results) == 0
 
     def test_empty_corpus(self):
-        from dashboard.embeddings import substring_match
+        from services.embeddings import substring_match
 
         results = substring_match("SAP", [], threshold=0.3)
         assert results == []
 
     def test_empty_query(self):
-        from dashboard.embeddings import substring_match
+        from services.embeddings import substring_match
 
         results = substring_match("", ["algo"], threshold=0.3)
         assert results == []
 
 
 class TestSmartMatch:
-    @patch("dashboard.embeddings.embeddings_available", return_value=False)
+    @patch("services.embeddings.embeddings_available", return_value=False)
     def test_fallback_to_substring(self, mock_avail):
-        from dashboard.embeddings import smart_match
+        from services.embeddings import smart_match
 
         corpus = [
             "Implementación SAP S/4HANA",
@@ -52,9 +51,9 @@ class TestSmartMatch:
         assert len(results) > 0
         assert results[0][0] == 0
 
-    @patch("dashboard.embeddings.embeddings_available", return_value=False)
+    @patch("services.embeddings.embeddings_available", return_value=False)
     def test_fallback_no_match(self, mock_avail):
-        from dashboard.embeddings import smart_match
+        from services.embeddings import smart_match
 
         corpus = ["Limpieza de oficinas"]
         results = smart_match("SAP HANA migración", corpus, threshold=0.8)
@@ -63,7 +62,7 @@ class TestSmartMatch:
 
 class TestEmbeddingsAvailable:
     def test_returns_bool(self):
-        from dashboard.embeddings import embeddings_available
+        from services.embeddings import embeddings_available
 
         result = embeddings_available()
         assert isinstance(result, bool)
@@ -73,7 +72,7 @@ class TestCosineSimilarity:
     def test_identical_vectors(self):
         import numpy as np
 
-        from dashboard.embeddings import cosine_similarity
+        from services.embeddings import cosine_similarity
 
         v = np.array([1.0, 0.0, 0.0])
         sim = cosine_similarity(v, v)
@@ -83,7 +82,7 @@ class TestCosineSimilarity:
     def test_orthogonal_vectors(self):
         import numpy as np
 
-        from dashboard.embeddings import cosine_similarity
+        from services.embeddings import cosine_similarity
 
         a = np.array([1.0, 0.0])
         b = np.array([0.0, 1.0])
@@ -93,7 +92,7 @@ class TestCosineSimilarity:
     def test_batch(self):
         import numpy as np
 
-        from dashboard.embeddings import cosine_similarity
+        from services.embeddings import cosine_similarity
 
         a = np.array([[1.0, 0.0], [0.0, 1.0]])
         b = np.array([[1.0, 0.0]])

@@ -39,7 +39,7 @@ feat(scraper): agregar parser para formato CODICE 3.0
 fix(db): corregir upsert duplicado en licitaciones
 test: agregar property tests para normalización
 docs(api): documentar endpoint de webhooks
-refactor(dashboard): extraer componente de filtros
+refactor(services): simplificar capa de dominio
 ```
 
 El changelog se genera automáticamente con `git-cliff` a partir de estos commits (ver `cliff.toml`).
@@ -60,7 +60,7 @@ Los hooks se instalan con `make dev`. Se ejecutan automáticamente en cada commi
 | detect-private-key  | Bloquea claves privadas                     |
 | ruff                | Linting con auto-fix                        |
 | ruff-format         | Formateo de código                          |
-| mypy                | Type checking (scraper, db, scheduler, dashboard, config) |
+| mypy                | Type checking (scraper, db, scheduler, config, api, shared) |
 | codespell           | Corrector ortográfico                       |
 | detect-secrets      | Escaneo de secrets con baseline             |
 | gitleaks            | Escaneo de secrets (AWS, GCP, JWTs, etc.)   |

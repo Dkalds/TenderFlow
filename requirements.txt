@@ -1,7 +1,4 @@
 # Requirements para el API FastAPI (Vercel / producción).
-# streamlit, streamlit-aggrid y plotly se instalaron al dashboard Streamlit Cloud
-# vía pyproject.toml[dashboard]. NO incluir aquí — superan el límite 500 MB Lambda.
-#
 # Regenerar con: uv pip compile pyproject.toml -o requirements.txt
 alembic==1.18.4
     # via -r requirements.in

@@ -1,4 +1,4 @@
-"""Tests para dashboard.faiss_index.
+"""Tests para services.faiss_index.
 
 Cubre:
 - T1a: cache hit — dos llamadas a _load_cached con mismo (path, mtime) devuelven
@@ -19,7 +19,7 @@ import pytest
 faiss = pytest.importorskip("faiss", reason="faiss-cpu no instalado; omitiendo tests FAISS")
 
 # Importar DESPUÉS de confirmar que faiss está disponible
-from dashboard.faiss_index import FaissIndex  # noqa: I001
+from services.faiss_index import FaissIndex  # noqa: I001
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ def test_load_cached_cache_hit(tmp_path: Path) -> None:
     _save_index(idx, fpath)
 
     # Limpiar cache del módulo para asegurar estado fresco
-    FaissIndex._load_cached.clear()
+    FaissIndex._load_cached.cache_clear()
 
     mtime = fpath.stat().st_mtime_ns
     first = FaissIndex._load_cached(str(fpath), mtime)
@@ -77,7 +77,7 @@ def test_load_cached_cache_invalidated_on_mtime_change(tmp_path: Path) -> None:
     fpath = tmp_path / "test_index.npz"
     _save_index(idx, fpath)
 
-    FaissIndex._load_cached.clear()
+    FaissIndex._load_cached.cache_clear()
 
     mtime_old = fpath.stat().st_mtime_ns
     first = FaissIndex._load_cached(str(fpath), mtime_old)
@@ -109,7 +109,7 @@ def test_faiss_load_metadata(tmp_path: Path) -> None:
     fpath = tmp_path / "meta_index.npz"
     _save_index(idx, fpath)
 
-    FaissIndex._load_cached.clear()
+    FaissIndex._load_cached.cache_clear()
     loaded = FaissIndex.load(fpath)
 
     assert loaded.embedding_version == "v42"
@@ -190,7 +190,7 @@ def test_update_adds_new_entries() -> None:
     norms = np.linalg.norm(fake_embs, axis=1, keepdims=True)
     fake_embs = fake_embs / norms
 
-    with patch("dashboard.embeddings.encode_texts", return_value=fake_embs):
+    with patch("services.embeddings.encode_texts", return_value=fake_embs):
         added = idx.update(df_new)
 
     assert added == 5
@@ -250,7 +250,7 @@ def test_update_embeddings_shape_consistent() -> None:
     fake_embs = rng.standard_normal((2, 32)).astype(np.float32)
     fake_embs = fake_embs / np.linalg.norm(fake_embs, axis=1, keepdims=True)
 
-    with patch("dashboard.embeddings.encode_texts", return_value=fake_embs):
+    with patch("services.embeddings.encode_texts", return_value=fake_embs):
         idx.update(df_new)
 
     assert idx.embeddings.shape[0] == len(idx.ids)

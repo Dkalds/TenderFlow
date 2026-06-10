@@ -1,4 +1,4 @@
-"""Date helpers shared by dashboard aggregations."""
+"""Date helpers shared across services and analytics."""
 
 from __future__ import annotations
 

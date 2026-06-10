@@ -30,48 +30,6 @@ services:
       api:
         condition: service_healthy
 
-  # ── DEPRECATED: dashboard (Streamlit) — replaced by web (Next.js) ────
-  # This service is kept for reference during cutover. Remove after migration.
-  dashboard:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.dashboard
-    image: licitaciones-sap-dashboard:latest
-    container_name: licitaciones-dashboard
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8501:8501"
-    volumes:
-      - licitaciones_data:/data
-    env_file:
-      - .env
-    environment:
-      DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      RATE_LIMIT_BACKEND: redis
-      # Restringe qué proxies son confiables para X-Forwarded-* en uvicorn.
-      # Ajusta en producción al rango/IP de tu reverse proxy.
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
-      CORS_ORIGINS: http://localhost:3000
-    mem_limit: 512m
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5",
-             "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    depends_on:
-      redis:
-        condition: service_healthy
-
   api:
     build:
       context: .

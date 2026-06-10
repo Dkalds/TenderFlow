@@ -76,8 +76,6 @@ def test_watchlist_matching_with_categorical_columns():
     The fix is to call astype(str) BEFORE fillna("") so Categorical dtype is
     cast to object first and fillna works without category constraint.
     """
-    from dashboard.pages.mi_watchlist import render  # noqa: F401 — import check
-
     # Build a minimal DataFrame with Categorical columns, mimicking the real
     # data_loader output (which converts string columns to Categorical).
     df = pd.DataFrame(

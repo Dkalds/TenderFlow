@@ -8,7 +8,7 @@ Guía para ejecutar, escribir y entender los tests del proyecto.
 
 | Token en nombre                                        | Marker        |
 |--------------------------------------------------------|---------------|
-| `_e2e`, `visual_regression`, `dashboard_smoke`, `dashboard_pages` | `e2e`         |
+| `_e2e`, `visual_regression`                         | `e2e`         |
 | `performance`, `load`                                  | `load`        |
 | `property`, `properties`, `property_based`             | `property`    |
 | `integration_e2e`                                      | `integration` |
@@ -48,14 +48,13 @@ def test_parser_properties_handles_empty(tmp_db):
 
 ```bash
 make test-unit         # unit (sin slow) — usar durante desarrollo
-make test              # suite completa excepto integration_e2e y dashboard_smoke
+make test              # suite completa excepto integration_e2e
 make test-all          # todo excepto integration
 make test-integration  # solo integration
 make test-e2e          # solo e2e
 make test-property     # solo property
 make test-load         # solo load
 make test-perf         # test_performance.py con timeout 120s
-make test-smoke        # test_dashboard_smoke.py
 ```
 
 ## Skips condicionales
@@ -67,7 +66,7 @@ Algunos tests se saltan **a propósito** según el entorno. No son deuda: cada
 |------|-------------------|---------------------|
 | `test_shared_schemas.py` | `pandera` no instalado (`importorskip`) o `LicitacionSchema` es NoOp | La validación pandera es un extra opcional (`[schemas]`); sin él el schema degrada a NoOp y no hay nada que validar. |
 | `test_unit_coverage_batch1b.py::TestFallbackActors` | `dramatiq` **sí** está instalado | Estos tests cubren el camino *fallback* (sin broker). Con dramatiq activo, el fallback no se ejecuta. |
-| `test_visual_regression.py` | El puerto 8599 ya está en uso | Evita chocar con un dashboard de desarrollo ya levantado. |
+| `test_visual_regression.py` | El puerto 8599 ya está en uso | Evita chocar con una instancia local ya levantada. |
 
 Regla general: usar `pytest.importorskip("dep")` para dependencias opcionales y
 `pytest.skip(motivo)` con un mensaje claro para condiciones de entorno. En CI,
@@ -80,14 +79,14 @@ mínimos. Si añadís un skip nuevo, incluí siempre el motivo en el mensaje.
 Definida en `pyproject.toml` bajo `[tool.coverage.*]`:
 
 - **Branch coverage**: activado (`branch = true`).
-- **Fuentes medidas**: `api`, `db`, `scraper`, `scheduler`, `services`, `shared`, `observability`, `config`, `dashboard`, `llm`.
+- **Fuentes medidas**: `api`, `db`, `scraper`, `scheduler`, `services`, `shared`, `observability`, `config`, `llm`.
 - **`fail_under`**: 70% — el build falla si la cobertura baja de este umbral.
 - **Líneas excluidas**:
   - `pragma: no cover`
   - `if __name__ == "__main__":`
   - `if TYPE_CHECKING:`
   - `raise NotImplementedError`
-- **Archivos omitidos**: `tests/*`, `__pycache__`, helpers de dashboard (`chart_helpers.py`, `lazy.py`), `observability/prometheus.py`, `observability/tracing.py`, `scripts/*`.
+- **Archivos omitidos**: `tests/*`, `__pycache__`, `observability/prometheus.py`, `observability/tracing.py`, `scripts/*`.
 
 El reporte se genera automáticamente con `--cov-report=term-missing` (configurado en `addopts`).
 

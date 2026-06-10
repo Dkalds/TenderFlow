@@ -19,6 +19,6 @@ def cluster_licitaciones(
     n_clusters: int = 8,
 ) -> pd.DataFrame:
     """Clusteriza licitaciones y devuelve DataFrame con cluster_id/cluster_label."""
-    from dashboard.clustering import cluster_licitaciones as _cl
+    from services.clustering_engine import cluster_licitaciones as _cl
 
     return _cl(df, n_clusters=n_clusters)

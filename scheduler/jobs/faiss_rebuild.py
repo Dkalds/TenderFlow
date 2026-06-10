@@ -15,7 +15,7 @@ def run() -> None:
     available.
     """
     try:
-        from dashboard.faiss_index import _INDEX_PATH, _is_index_stale
+        from services.faiss_index import _INDEX_PATH, _is_index_stale
 
         if not _INDEX_PATH.exists() or _is_index_stale(_INDEX_PATH):
             from scheduler.queue import enqueue_rebuild_embeddings

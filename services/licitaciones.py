@@ -1,8 +1,8 @@
 """Servicio de licitaciones — acceso de lectura enriquecido.
 
 Centraliza la lógica de carga, filtrado y paginación de licitaciones.
-Delega en ``db/repositories/licitaciones.py`` para queries SQL y en
-``dashboard/data_loader.py`` para enriquecimiento DataFrame (transición gradual).
+Delega en ``db/repositories/licitaciones.py`` para queries SQL y aplica
+enriquecimiento (clasificadores, normalización) inline.
 """
 
 from __future__ import annotations
@@ -138,15 +138,82 @@ def search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
 
 
 def load_dataframe(limit: int | None = None) -> pd.DataFrame:
-    """Proxy al data_loader existente — transición gradual hacia services.
+    """Carga licitaciones enriquecidas desde la BD.
 
-    Las pages siguen usando ``dashboard.data_loader.load_dataframe()`` directamente
-    hasta que todas migren. Este wrapper permite que el código nuevo use la capa
-    de servicios de forma transparente.
+    Obtiene datos raw via ``load_raw()`` y aplica enriquecimiento
+    (clasificadores, normalización, geo) inline.
     """
-    from dashboard.data_loader import load_dataframe as _dl_load
+    from services.classification import (
+        ESTADO_LABELS,
+        TIPO_CONTRATO_LABELS,
+        cpv_label,
+        detect_modules,
+        detect_project_type,
+    )
+    from shared.dates import month_start
+    from shared.geo import nuts_to_ccaa
 
-    return _dl_load(limit=limit)
+    rows = load_raw(limit=limit)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    df["fecha_publicacion"] = pd.to_datetime(
+        df["fecha_publicacion"], errors="coerce", format="mixed", utc=True,
+    )
+    df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    df["mes"] = month_start(df["fecha_publicacion"])
+    df["anyo"] = df["fecha_publicacion"].dt.year
+
+    # Enrichment
+    desc_col = df["descripcion"].fillna("") if "descripcion" in df.columns else pd.Series("", index=df.index)
+    text_blob = df["titulo"].fillna("") + " " + desc_col
+
+    try:
+        df["modulos"] = text_blob.apply(detect_modules)
+        df["modulos_str"] = df["modulos"].str.join(", ")
+    except Exception:
+        df["modulos"] = [[] for _ in range(len(df))]
+        df["modulos_str"] = ""
+
+    try:
+        df["tipo_proyecto"] = text_blob.apply(detect_project_type)
+    except Exception:
+        df["tipo_proyecto"] = "Otro"
+
+    try:
+        df["cpv_desc"] = df["cpv"].apply(cpv_label)
+    except Exception:
+        df["cpv_desc"] = ""
+
+    try:
+        stripped_estado = df["estado"].str.strip()
+        df["estado_desc"] = stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
+    except Exception:
+        df["estado_desc"] = ""
+
+    try:
+        stripped_tc = df["tipo_contrato"].str.strip()
+        mapped_tc = stripped_tc.map(TIPO_CONTRATO_LABELS)
+        unmapped = mapped_tc.isna() & stripped_tc.notna() & (stripped_tc != "")
+        mapped_tc[unmapped] = "Tipo " + stripped_tc[unmapped]
+        df["tipo_contrato_desc"] = mapped_tc.fillna("—")
+    except Exception:
+        df["tipo_contrato_desc"] = ""
+
+    # Backfill CCAA
+    if "ccaa" in df.columns and "nuts_code" in df.columns:
+        try:
+            mask = df["ccaa"].isna() & df["nuts_code"].notna()
+            df.loc[mask, "ccaa"] = df.loc[mask, "nuts_code"].apply(nuts_to_ccaa)
+        except Exception:
+            pass
+
+    for col in ("ccaa", "estado", "tipo_contrato", "provincia", "tipo_proyecto"):
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+
+    return df
 
 
 def load_adjudicaciones(
@@ -154,10 +221,10 @@ def load_adjudicaciones(
     limit: int | None = None,
     ccaa_filter: tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
-    """Proxy a la carga de adjudicaciones del data_loader."""
-    from dashboard.data_loader import load_adjudicaciones as _dl_adj
+    """Proxy a la carga de adjudicaciones enriquecidas."""
+    from services.adjudicaciones import load_adjudicaciones as _svc_adj
 
-    return _dl_adj(limit=limit, ccaa_filter=ccaa_filter)
+    return _svc_adj(limit=limit, ccaa_filter=ccaa_filter)
 
 
 # ── Búsqueda avanzada (POST /licitaciones/search) ────────────────────────

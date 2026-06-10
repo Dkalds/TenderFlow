@@ -156,7 +156,7 @@ if _dramatiq is not None:
         """Reconstruye el índice FAISS de embeddings en background."""
         import pandas as pd
 
-        from dashboard.faiss_index import FaissIndex
+        from services.faiss_index import FaissIndex
         from db.database import connect
 
         log.info("queue.rebuild_embeddings.start")
@@ -181,7 +181,7 @@ else:
         """Inline fallback (dramatiq not installed)."""
         import pandas as pd
 
-        from dashboard.faiss_index import FaissIndex
+        from services.faiss_index import FaissIndex
         from db.database import connect
 
         with connect() as c:

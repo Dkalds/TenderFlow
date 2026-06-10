@@ -130,19 +130,14 @@ def _build_engine() -> _DuckDBEngine | None:
         return None
 
 
+_engine_singleton: _DuckDBEngine | None = None
+_engine_initialized = False
+
+
 def get_engine() -> _DuckDBEngine | None:
-    """Devuelve el singleton DuckDB, cacheado por Streamlit.
-
-    Importa streamlit sólo si disponible (no falla en scripts/tests).
-    """
-    try:
-        import streamlit as st
-
-        @st.cache_resource
-        def _cached_engine() -> _DuckDBEngine | None:
-            return _build_engine()
-
-        return _cached_engine()
-    except Exception:
-        # Fuera de contexto Streamlit (tests, scripts)
-        return _build_engine()
+    """Devuelve el singleton DuckDB, cacheado en memoria."""
+    global _engine_singleton, _engine_initialized
+    if not _engine_initialized:
+        _engine_singleton = _build_engine()
+        _engine_initialized = True
+    return _engine_singleton

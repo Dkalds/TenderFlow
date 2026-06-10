@@ -34,14 +34,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Dashboard Streamlit — excluido del bundle Vercel (supera límite 500 MB Lambda).
-# Instalar con: pip install tenderflow[dashboard]
-dashboard = [
-    "streamlit>=1.33.0,<2",
-    "streamlit-aggrid>=0.3.3,<1",
-    "plotly>=5.18.0,<7",
-]
-
 # Deps opcionales para búsqueda semántica y vectorización.
 # Instalar con: pip install tenderflow[ml]
 # NOTA: sentence-transformers arrastra PyTorch (~2 GB). No instalar en entornos sin GPU si no se usa.
@@ -125,8 +117,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002", "SIM117", "F841", "E402"]
-"dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
-"dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
 "db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
 "scraper/ml_classifier.py" = ["E402"]  # E402 re-exports at module bottom
 "api/routes/licitaciones.py" = ["E402"]  # TypeVar declared before imports for Python 3.11 compatibility
@@ -147,7 +137,6 @@ ignore = [
 "db/repositories/webhooks.py" = ["S608"]
 "scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings
 "api/routes/ask.py" = ["S608"]  # FTS5 query with validated user input via parameterized queries
-"dashboard/pages/investigador.py" = ["S608"]
 "services/investigador/*" = ["S608"]
 "services/auth.py" = ["S608"]
 "services/extraction_runs.py" = ["S608"]
@@ -198,12 +187,6 @@ module = [
     "lxml.*",
     "dateutil",
     "dateutil.*",
-    "streamlit",
-    "streamlit.*",
-    "st_aggrid",
-    "st_aggrid.*",
-    "plotly",
-    "plotly.*",
     "reportlab",
     "reportlab.*",
     "faiss",
@@ -257,12 +240,10 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["api", "db", "scraper", "scheduler", "services", "shared", "observability", "config", "dashboard", "llm"]
+source = ["api", "db", "scraper", "scheduler", "services", "shared", "observability", "config", "llm"]
 omit = [
     "tests/*",
     "*/__pycache__/*",
-    "dashboard/utils/chart_helpers.py",
-    "dashboard/utils/lazy.py",
     "scripts/*",
     "scheduler/register_daily_task_windows.ps1",
 ]
@@ -272,8 +253,7 @@ omit = [
 # 51 → 55 (2026-05-23): tests de threshold_tuning, model_registry, feature_store, drift_report
 # 55 → 60 (2026-05-23): Bloque 4 Fase 1 — tests de middleware, shared/cache, scheduler/loop,
 #                        contract tests DTOs, tests de api/middleware y scraper/resilience
-# 60 → 65 (2026-05-23): Bloque 4 Fase 2 — tests de services/watchlist, services/analytics_engine,
-#                        cerrando overrides mypy para dashboard.cache y dashboard.data_loader
+# 60 → 65 (2026-05-23): Bloque 4 Fase 2 — tests de services/watchlist, services/analytics_engine
 # 65 → 70 (2026-05-23): B12 — tests para api/routes/ask.py, stream.py, search.py (22 tests nuevos)
 fail_under = 70
 exclude_lines = [
@@ -285,7 +265,7 @@ exclude_lines = [
 
 [tool.bandit]
 # Configuración para el hook de pre-commit: bandit -c pyproject.toml -r
-targets = ["api", "db", "scraper", "scheduler", "dashboard", "shared", "config"]
+targets = ["api", "db", "scraper", "scheduler", "shared", "config"]
 skips = [
     "B101",  # assert — cubierto por ruff S101 ya ignorado en tests
     "B603",  # subprocess sin shell — permitido en scheduler

@@ -92,16 +92,6 @@ jobs:
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
-      - name: Build and push dashboard
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/Dockerfile.dashboard
-          push: true
-          tags: ${{ secrets.STAGING_REGISTRY_URL }}/licitaciones-sap-dashboard:sha-${{ steps.sha.outputs.short_sha }}
-          cache-from: type=gha,scope=dashboard
-          cache-to: type=gha,mode=max,scope=dashboard
-
   # ── 3. Deploy ──────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to staging
@@ -134,13 +124,11 @@ jobs:
             export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
             export SIGNING_KEY="${{ secrets.SIGNING_KEY }}"
             export API_HMAC_SECRET="${{ secrets.API_HMAC_SECRET }}"
-            export DASHBOARD_PASSWORD_HASH="${{ secrets.DASHBOARD_PASSWORD_HASH }}"
             export STAGING_TURSO_DATABASE_URL="${{ secrets.STAGING_TURSO_DATABASE_URL }}"
             export STAGING_TURSO_AUTH_TOKEN="${{ secrets.STAGING_TURSO_AUTH_TOKEN }}"
 
             # Pull new images
             docker pull ${{ secrets.STAGING_REGISTRY_URL }}/licitaciones-sap-api:${IMAGE_TAG}
-            docker pull ${{ secrets.STAGING_REGISTRY_URL }}/licitaciones-sap-dashboard:${IMAGE_TAG}
 
             # Rolling restart (zero-downtime donde sea posible)
             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
@@ -162,11 +150,6 @@ jobs:
           curl --fail --silent --max-time 10 \
             "${{ secrets.STAGING_URL }}/api/v1/health" \
             | python3 -c "import sys, json; d=json.load(sys.stdin); sys.exit(0 if d.get('status')=='ok' else 1)"
-
-      - name: Dashboard healthcheck
-        run: |
-          curl --fail --silent --max-time 10 \
-            "${{ secrets.STAGING_DASHBOARD_URL }}/_stcore/health"
 
       - name: Notify success
         if: success()

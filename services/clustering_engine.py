@@ -1,7 +1,7 @@
 """Clustering semántico de licitaciones basado en embeddings.
 
 Agrupa licitaciones por similitud semántica usando KMeans (o MiniBatchKMeans
-para datasets grandes) sobre los embeddings de ``dashboard.embeddings``.
+para datasets grandes) sobre los embeddings de ``services.embeddings``.
 Si sentence-transformers no está disponible, usa TF-IDF como fallback.
 
 Refactor F1+F3:
@@ -14,7 +14,7 @@ Refactor F1+F3:
       ``Counter`` de palabras.
 
 Uso típico:
-    from dashboard.clustering import cluster_licitaciones
+    from services.clustering_engine import cluster_licitaciones
 
     result = cluster_licitaciones(df, n_clusters=8)
     # result: DataFrame con columnas cluster_id, cluster_label añadidas
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import streamlit as st
+
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics import silhouette_score
@@ -117,7 +117,7 @@ def _tfidf_embeddings(texts: list[str], n_features: int = 256) -> np.ndarray:
 def _get_embeddings(texts: list[str]) -> np.ndarray:
     """Devuelve embeddings semánticos o TF-IDF según disponibilidad."""
     try:
-        from dashboard.embeddings import embeddings_available, encode_texts
+        from services.embeddings import embeddings_available, encode_texts
     except ImportError as exc:
         log.warning("clustering_embeddings_module_missing", error=str(exc))
         return _tfidf_embeddings(texts)
@@ -255,11 +255,6 @@ def _cluster_keywords(texts: list[str], top_n: int = 3) -> str:
     return ", ".join(terms[top_idx])
 
 
-@st.cache_data(
-    ttl=1800,
-    show_spinner="Calculando clusters semánticos…",
-    hash_funcs={pd.DataFrame: _df_cache_fingerprint},
-)  # 30 min cache
 def cluster_licitaciones(
     df: pd.DataFrame,
     n_clusters: int | None = None,
@@ -290,9 +285,10 @@ def cluster_licitaciones(
     # ── Fast path: usar clusters pre-computados si están disponibles ──────
     if not auto_k and n_clusters in (None, _DEFAULT_CLUSTERS):
         try:
-            from dashboard.data_loader import load_mat_clusters
+            from db.repositories.aggregates import AggregateRepository
 
-            mat = load_mat_clusters()
+            rows = AggregateRepository().load_mat_clusters()
+            mat = pd.DataFrame(rows) if rows else pd.DataFrame()
         except ImportError as exc:
             log.debug("clustering_precomputed_unavailable", error=str(exc))
             mat = pd.DataFrame()

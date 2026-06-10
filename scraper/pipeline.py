@@ -49,6 +49,21 @@ log = get_logger(__name__)
 _DAILY_SOURCE = "place_live_atom"
 
 
+def _resolve_empresas_post_ingestion(fuente: str) -> None:
+    """Enlaza las adjudicaciones recién insertadas con el maestro de empresas.
+
+    Un lote suele bastar para una ingesta incremental; el remanente lo
+    recoge la siguiente ejecución o el backfill (idempotente). Fail-open:
+    un error aquí no debe tumbar la ingesta.
+    """
+    try:
+        from services.entity_resolution import resolve_unlinked_adjudicaciones
+
+        resolve_unlinked_adjudicaciones(fuente=fuente)
+    except Exception as e:
+        log.warning("entity_resolution_post_ingestion_failed", fuente=fuente, error=str(e))
+
+
 def _signal_post_ingestion(fuente: str) -> None:
     """Señaliza al dashboard y FAISS que hubo nueva ingestión de datos.
 
@@ -345,7 +360,8 @@ def _process_month_impl(
     except Exception:
         log.debug("prometheus_instrumentation_failed", fuente=fuente)
 
-    # Señal de invalidación de caché + evento FAISS
+    # Enlace con el maestro de empresas + señal de invalidación de caché
+    _resolve_empresas_post_ingestion(fuente)
     _signal_post_ingestion(fuente)
 
     return {
@@ -562,7 +578,8 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
         entries_seen=meta["entries_seen"],
     )
 
-    # Señal de invalidación de caché + evento FAISS
+    # Enlace con el maestro de empresas + señal de invalidación de caché
+    _resolve_empresas_post_ingestion(fuente)
     _signal_post_ingestion(fuente)
 
     return {

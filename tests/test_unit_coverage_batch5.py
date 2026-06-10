@@ -1,12 +1,8 @@
-"""Unit tests for services/exports.py, dashboard/cache.py, dashboard/router.py, services/organ_company_graph.py."""
+"""Unit tests for services/exports.py and services/organ_company_graph.py."""
 
 from __future__ import annotations
 
 import pandas as pd
-
-# ===================================================================
-# services/exports.py
-# ===================================================================
 
 
 class TestGenerateCsv:
@@ -15,13 +11,13 @@ class TestGenerateCsv:
 
         result = generate_csv([{"id_externo": "L1", "titulo": "Test"}])
         assert isinstance(result, bytes)
-        assert result[:3] == b"\xef\xbb\xbf"  # UTF-8 BOM
+        assert result[:3] == b"\xef\xbb\xbf"
 
     def test_uses_semicolon_delimiter(self) -> None:
         from services.exports import generate_csv
 
         result = generate_csv([{"id_externo": "L1", "titulo": "Test"}])
-        content = result[3:].decode("utf-8")  # skip BOM
+        content = result[3:].decode("utf-8")
         assert ";" in content
 
     def test_custom_columns(self) -> None:
@@ -62,10 +58,7 @@ class TestGenerateExcel:
     def test_custom_sheet_name(self) -> None:
         from services.exports import generate_excel
 
-        result = generate_excel(
-            [{"id_externo": "L1"}],
-            sheet_name="CustomSheet",
-        )
+        result = generate_excel([{"id_externo": "L1"}], sheet_name="CustomSheet")
         assert isinstance(result, bytes)
 
     def test_empty_records(self) -> None:
@@ -77,12 +70,7 @@ class TestGenerateExcel:
     def test_timezone_aware_datetime_stripped(self) -> None:
         from services.exports import generate_excel
 
-        df = pd.DataFrame(
-            {
-                "fecha": pd.to_datetime(["2024-01-01"]).tz_localize("UTC"),
-                "titulo": ["Test"],
-            }
-        )
+        df = pd.DataFrame({"fecha": pd.to_datetime(["2024-01-01"]).tz_localize("UTC"), "titulo": ["Test"]})
         result = generate_excel(df.to_dict("records"), columns=["fecha", "titulo"])
         assert isinstance(result, bytes)
 
@@ -106,70 +94,6 @@ class TestGetExportFilename:
 
         name = get_export_filename("csv", prefix="custom")
         assert name.startswith("custom_")
-
-
-# ===================================================================
-# dashboard/cache.py
-# ===================================================================
-
-
-class TestDashboardCache:
-    def test_get_cache_returns_singleton(self) -> None:
-        from dashboard.cache import get_cache, reset_cache
-
-        reset_cache()
-        c1 = get_cache()
-        c2 = get_cache()
-        assert c1 is c2
-        reset_cache()
-
-    def test_reset_cache_clears_singleton(self) -> None:
-        from dashboard.cache import get_cache, reset_cache
-
-        reset_cache()
-        c1 = get_cache()
-        reset_cache()
-        c2 = get_cache()
-        assert c1 is not c2
-        reset_cache()
-
-
-# ===================================================================
-# dashboard/router.py
-# ===================================================================
-
-
-class TestRouter:
-    def test_sections_is_dict(self) -> None:
-        from dashboard.router import SECTIONS
-
-        assert isinstance(SECTIONS, dict)
-        assert len(SECTIONS) > 0
-
-    def test_section_icons_match_sections(self) -> None:
-        from dashboard.router import SECTION_ICONS, SECTIONS
-
-        for section in SECTIONS:
-            assert section in SECTION_ICONS, f"Missing icon for section: {section}"
-
-    def test_page_icons_cover_all_pages(self) -> None:
-        from dashboard.router import PAGE_ICONS, SECTIONS
-
-        all_pages = [p for pages in SECTIONS.values() for p in pages]
-        for page in all_pages:
-            assert page in PAGE_ICONS, f"Missing icon for page: {page}"
-
-    def test_page_descriptions_cover_all_pages(self) -> None:
-        from dashboard.router import PAGE_DESCRIPTIONS, SECTIONS
-
-        all_pages = [p for pages in SECTIONS.values() for p in pages]
-        for page in all_pages:
-            assert page in PAGE_DESCRIPTIONS, f"Missing description for page: {page}"
-
-
-# ===================================================================
-# services/organ_company_graph.py
-# ===================================================================
 
 
 class TestBuildBipartiteGraph:
@@ -241,5 +165,5 @@ class TestBuildBipartiteGraph:
         result = build_bipartite_graph(self._make_adj(), top_organos=1, top_empresas=1)
         organo_nodes = [n for n in result["nodes"] if n["type"] == "organo"]
         empresa_nodes = [n for n in result["nodes"] if n["type"] == "empresa"]
-        assert len(organo_nodes) <= 2  # 1 +可能的Empresa
+        assert len(organo_nodes) <= 2
         assert len(empresa_nodes) <= 2

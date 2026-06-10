@@ -2,7 +2,7 @@
 
 Construye un índice de similitud coseno sobre los embeddings de títulos y
 descripciones de licitaciones, persistido en disco para evitar recalcular
-en cada inicio del dashboard.
+en cada inicio.
 
 Dependencia: faiss-cpu (o faiss-gpu).
 Fallback: si FAISS no está disponible, usa ``smart_match`` de embeddings.py.
@@ -16,10 +16,10 @@ automáticamente si el índice no existe o si se detecta que más del
 
 Uso:
     # Construir o actualizar el índice (tras un scraping):
-    python -m dashboard.faiss_index build
+    python -m services.faiss_index build
 
     # Buscar desde código:
-    from dashboard.faiss_index import FaissIndex
+    from services.faiss_index import FaissIndex
     idx = FaissIndex.load_or_build(df)
     results = idx.search("migración SAP S/4HANA", k=10)
     # results: lista de (id_externo, score)
@@ -29,8 +29,8 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -50,18 +50,6 @@ _META_SUFFIX = "_meta.json"  # companion file alongside .npz
 _MIN_TEXTS = 10  # mínimo de textos para construir un índice útil
 # Si más del 20% de los IDs son nuevos/modificados, reconstruir completo
 _FULL_REBUILD_THRESHOLD = 0.20
-
-try:  # pragma: no cover - fallback when Streamlit runtime no disponible
-    import streamlit as _st
-
-    _cache_resource = _st.cache_resource
-except Exception:  # pragma: no cover
-
-    def _cache_resource(*args: Any, **kwargs: Any) -> Callable[[Any], Any]:  # type: ignore[misc]
-        def _decorator(fn: Any) -> Any:
-            return fn
-
-        return _decorator
 
 
 def _utc_iso() -> str:
@@ -131,7 +119,7 @@ class FaissIndex:
         Args:
             df: Debe tener columnas id_externo, titulo, descripcion.
         """
-        from dashboard.embeddings import encode_texts
+        from services.embeddings import encode_texts
 
         df_clean = df.dropna(subset=["id_externo"]).copy()
         texts = (
@@ -177,7 +165,7 @@ class FaissIndex:
         Returns:
             Número de entradas añadidas al índice.
         """
-        from dashboard.embeddings import encode_texts
+        from services.embeddings import encode_texts
 
         existing_ids = set(self.ids)
         df_clean = df_new.dropna(subset=["id_externo"]).copy()
@@ -233,7 +221,7 @@ class FaissIndex:
         Returns:
             Lista de (id_externo, score) ordenados por similitud desc.
         """
-        from dashboard.embeddings import encode_texts
+        from services.embeddings import encode_texts
 
         q_emb = encode_texts([query]).astype(np.float32)
         k_actual = min(k, len(self.ids))
@@ -285,16 +273,16 @@ class FaissIndex:
             )
             os.replace(tmp_meta, meta_path)
 
-        # Invalidar caché Streamlit
+        # Invalidar caché en memoria
         try:
-            self.__class__._load_cached.clear()
+            self.__class__._load_cached.cache_clear()
         except Exception:
             pass
         log.info("faiss_index.saved", path=str(target), n=len(self.ids), **metadata)
         return target
 
     @staticmethod
-    @_cache_resource(show_spinner=False)
+    @lru_cache(maxsize=4)
     def _load_cached(path_str: str, mtime_ns: int) -> FaissIndex:
         """Carga cacheada por ruta + mtime para compartir el índice entre reruns."""
         _ = mtime_ns  # parte de la key de caché para invalidar al cambiar el archivo
@@ -304,7 +292,7 @@ class FaissIndex:
                 f"Formato de índice no soportado: '{p.suffix}'. "
                 "Solo se admite el formato .npz. "
                 "Si tienes un índice legacy .pkl, ejecútalo a través de: "
-                "python -m dashboard.faiss_index build"
+                "python -m services.faiss_index build"
             )
         data = np.load(p, allow_pickle=False)
         embeddings: np.ndarray = data["embeddings"]
@@ -328,13 +316,13 @@ class FaissIndex:
         Solo admite el formato numpy (.npz). El formato legacy .pkl fue
         eliminado en 2026-05 por riesgo de ejecución arbitraria de código.
         Si solo tienes un .pkl, reconstruye el índice con:
-            python -m dashboard.faiss_index build
+            python -m services.faiss_index build
         """
         target = path or _INDEX_PATH
         if not target.exists():
             raise FileNotFoundError(
                 f"No se encontró el índice FAISS en '{target}'. "
-                "Genera uno con: python -m dashboard.faiss_index build"
+                "Genera uno con: python -m services.faiss_index build"
             )
         mtime_ns = target.stat().st_mtime_ns
         obj: FaissIndex = cls._load_cached(str(target), mtime_ns)
@@ -441,7 +429,7 @@ def search_similar(
             log.warning("faiss_index.fallback", error=str(e))
 
     # Fallback: smart_match sobre títulos
-    from dashboard.embeddings import smart_match
+    from services.embeddings import smart_match
 
     corpus = (df["titulo"].fillna("") + " " + df["descripcion"].fillna("")).tolist()
     ids = df["id_externo"].tolist()
@@ -465,7 +453,7 @@ def rebuild_index(df: pd.DataFrame) -> FaissIndex | None:
         return None
     started = time.monotonic()
     try:
-        from dashboard.embeddings import embeddings_available
+        from services.embeddings import embeddings_available
 
         if not embeddings_available():
             log.info("faiss_index.skip_rebuild", reason="sentence-transformers not installed")
@@ -505,7 +493,7 @@ if __name__ == "__main__":
             idx = FaissIndex.load()
             print(f"Índice disponible: {_INDEX_PATH} ({len(idx.ids)} licitaciones)")
         else:
-            print("No hay índice. Ejecuta: python -m dashboard.faiss_index build")
+            print("No hay índice. Ejecuta: python -m services.faiss_index build")
     else:
         print(f"Comando desconocido: {cmd}. Usa 'build' o 'info'.")
         sys.exit(1)

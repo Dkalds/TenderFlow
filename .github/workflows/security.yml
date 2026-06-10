@@ -123,7 +123,6 @@ jobs:
       matrix:
         image:
           - { dockerfile: "docker/Dockerfile.api", tag: "licitaciones-api:ci" }
-          - { dockerfile: "docker/Dockerfile.dashboard", tag: "licitaciones-dashboard:ci" }
     steps:
       - uses: actions/checkout@v6
 
@@ -167,4 +166,4 @@ jobs:
 
       - name: Remind about credential rotation
         run: |
-          echo "::notice title=Rotación de credenciales::Recuerda rotar TURSO_AUTH_TOKEN y DASHBOARD_PASSWORD cada 90 días. Última verificación: $(date -u +%Y-%m-%d). Doc: docs/SECURITY.md"
+          echo "::notice title=Rotación de credenciales::Recuerda rotar TURSO_AUTH_TOKEN cada 90 días. Última verificación: $(date -u +%Y-%m-%d). Doc: docs/SECURITY.md"
