@@ -141,4 +141,4 @@ class WatchlistRepository:
                     (user_key,),
                 )
             except Exception:
-                pass
+                log.debug("watchlist_anonymize_failed", exc_info=True)

@@ -73,7 +73,7 @@ def _histogram() -> Any:
         try:
             _llm_histogram = _get_llm_histogram()
         except Exception:
-            pass
+            log.debug("llm_histogram_init_failed", exc_info=True)
     return _llm_histogram
 
 
@@ -184,7 +184,7 @@ def stream_llm_response(
             try:
                 hist.labels(model=model, provider=p, status=status).observe(elapsed)
             except Exception:
-                pass
+                log.debug("llm_histogram_observe_failed", exc_info=True)
         log.debug(
             "llm_client.stream_done",
             model=model,

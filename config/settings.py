@@ -210,6 +210,11 @@ class Settings(BaseSettings):
     # Si se deja vacío se usa StubBroker (ejecución síncrona, para dev/tests).
     DRAMATIQ_BROKER_URL: str = ""
 
+    # Modo de cola explícito: "auto" (default) detecta dramatiq/redis automáticamente.
+    # En producción, se recomienda setear "dramatiq" para fail-fast si falta Redis.
+    # Valores: "auto" | "dramatiq" | "inline"
+    QUEUE_MODE: str = "auto"
+
     # ── Validators ───────────────────────────────────────────────────────
 
     @field_validator("ML_CONFIDENCE_THRESHOLD", mode="before")

@@ -6,7 +6,10 @@ from typing import Any, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
 from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
+
+log = get_logger(__name__)
 
 
 def _get_webhook_master_key() -> str:
@@ -143,7 +146,7 @@ class WebhookRepository:
                     (webhook_id, event_type, status_code, 1 if success else 0, payload_size, now),
                 )
             except Exception:
-                pass  # tabla no existe aún — no crítico
+                log.debug("webhook_delivery_insert_failed", webhook_id=webhook_id, exc_info=True)
             if success:
                 c.execute(
                     "UPDATE webhooks SET last_triggered_at = ?, last_status = ?, failure_count = 0 WHERE id = ?",

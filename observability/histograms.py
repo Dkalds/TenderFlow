@@ -74,7 +74,7 @@ def timed_render(page: str) -> Generator[None]:
             try:
                 _RENDER_HIST.labels(page=page).observe(elapsed)
             except Exception:
-                pass  # No interrumpir el flujo si Prometheus falla
+                log.debug("prometheus_render_observe_failed", exc_info=True)
 
 
 @contextmanager
@@ -99,4 +99,4 @@ def timed_query(query: str) -> Generator[None]:
             try:
                 _QUERY_HIST.labels(query=query).observe(elapsed)
             except Exception:
-                pass
+                log.debug("prometheus_query_observe_failed", exc_info=True)

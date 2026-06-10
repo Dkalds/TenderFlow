@@ -86,9 +86,22 @@ def _setup_broker() -> Any:
 
         from config import settings
 
+        queue_mode = getattr(settings, "QUEUE_MODE", "auto")
         dlq_middleware = _make_dlq_middleware()
 
+        # Fail-fast: if QUEUE_MODE=dramatiq but no broker URL, crash early
         broker_url = getattr(settings, "DRAMATIQ_BROKER_URL", "")
+        if queue_mode == "dramatiq" and not broker_url:
+            raise RuntimeError(
+                "QUEUE_MODE=dramatiq but DRAMATIQ_BROKER_URL is empty. "
+                "Set DRAMATIQ_BROKER_URL or use QUEUE_MODE=auto for fallback."
+            )
+
+        if queue_mode == "inline":
+            # Force inline mode regardless of dramatiq availability
+            log.info("queue.inline_mode_forced")
+            return None
+
         if broker_url:
             try:
                 from dramatiq.brokers.redis import RedisBroker  # type: ignore[import-not-found]
@@ -99,6 +112,10 @@ def _setup_broker() -> Any:
                 dramatiq.set_broker(broker)
                 log.info("dramatiq.broker_set", url=broker_url.split("@")[-1])
             except Exception as exc:
+                if queue_mode == "dramatiq":
+                    raise RuntimeError(
+                        f"QUEUE_MODE=dramatiq but Redis connection failed: {exc}"
+                    ) from exc
                 log.warning("dramatiq.redis_broker_failed", error=str(exc), fallback="stub")
                 from dramatiq.brokers.stub import StubBroker  # type: ignore[import-not-found]
 

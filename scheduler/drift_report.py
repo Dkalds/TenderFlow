@@ -161,7 +161,7 @@ def run_drift_report() -> dict[str, Any]:
             _, pval, _, _ = chi2_contingency(table)
             results["columns"][col] = {"p_value": float(pval), "drift": pval < _KS_ALPHA}
         except Exception:
-            pass
+            log.debug("chi2_drift_test_failed", column=col, exc_info=True)
 
     results["drift_detected"] = any(v.get("drift", False) for v in results["columns"].values())
 

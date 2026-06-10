@@ -232,5 +232,5 @@ def close() -> None:
             try:
                 _conn.close()
             except Exception:
-                pass
+                log.debug("duckdb_close_failed", exc_info=True)
             _conn = None

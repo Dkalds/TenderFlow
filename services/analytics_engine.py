@@ -64,7 +64,7 @@ class _DuckDBEngine:
                 try:
                     self._con.execute("DETACH src")
                 except Exception:
-                    pass
+                    log.debug("duckdb_detach_src_failed", exc_info=True)
                 self._con.execute(f"ATTACH '{self._db_path}' AS src (TYPE sqlite, READ_ONLY)")
                 self._con.execute(
                     "CREATE OR REPLACE TABLE lic AS "
@@ -105,7 +105,7 @@ class _DuckDBEngine:
                 log.debug("duckdb_engine_invalidated_by_manifest")
                 self._refresh()
         except Exception:
-            pass
+            log.debug("duckdb_manifest_refresh_check_failed", exc_info=True)
 
     def execute(self, sql: str, params: list[Any] | None = None) -> duckdb.DuckDBPyRelation:
         """Ejecuta una query y devuelve la relación DuckDB (llama .df() para DataFrame)."""

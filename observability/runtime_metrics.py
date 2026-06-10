@@ -103,6 +103,18 @@ try:
         "Número de escritores SQLite concurrentes activos",
     )
 
+    # ── Parser field completeness ─────────────────────────────────────────
+    parser_field_null_total = Counter(
+        "parser_field_null_total",
+        "Licitaciones parseadas con campo crítico NULL (por campo)",
+        ["field"],
+    )
+
+    parser_entries_total = Counter(
+        "parser_entries_total",
+        "Total de entries parseadas por el parser CODICE",
+    )
+
     _AVAILABLE = True
 except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
@@ -129,4 +141,6 @@ except ImportError:  # pragma: no cover
     sqlite_busy_errors_total = _NoopMetric()  # type: ignore[assignment]
     db_write_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_concurrent_writers = _NoopMetric()  # type: ignore[assignment]
+    parser_field_null_total = _NoopMetric()  # type: ignore[assignment]
+    parser_entries_total = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False
