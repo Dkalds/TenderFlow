@@ -2,16 +2,19 @@
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
+const ModulosBarChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const TiposPieChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TiposPieChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const ModulosTreemap = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosTreemap })), { ssr: false, loading: () => <Skeleton className="h-[350px] w-full rounded-md" /> });
+const TiposTreemap = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TiposTreemap })), { ssr: false, loading: () => <Skeleton className="h-[350px] w-full rounded-md" /> });
+const TipoEstadoStackedChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TipoEstadoStackedChart })), { ssr: false, loading: () => <Skeleton className="h-[360px] w-full rounded-md" /> });
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
-import { TreemapContent } from "@/components/charts/treemap-content";
 import {
   FolderKanban,
   Hash,
@@ -22,20 +25,6 @@ import {
   Percent,
   ArrowUpDown,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  Treemap,
-} from "recharts";
 
 interface ModuloItem {
   modulo: string;
@@ -187,7 +176,7 @@ export default function ProyectosModulosPage() {
     }
     return [...byTipo.values()]
       .sort((a, b) => (totals.get(String(b.tipo)) ?? 0) - (totals.get(String(a.tipo)) ?? 0))
-      .slice(0, 12);
+      .slice(0, 12) as Array<{ tipo: string; [estado: string]: number | string }>;
   }, [data]);
 
   // Average importe per module table
@@ -348,41 +337,7 @@ export default function ProyectosModulosPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : modulosSorted.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(300, modulosSorted.length * 30)}
-              >
-                <BarChart
-                  data={modulosSorted}
-                  layout="vertical"
-                  margin={{ left: 80 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    className="stroke-border"
-                  />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis
-                    dataKey="modulo"
-                    type="category"
-                    width={80}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <Tooltip
-                    formatter={(value) => [
-                      formatNumber(value as number),
-                      "Licitaciones",
-                    ]}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill={CHART_SERIES[1]}
-                    radius={[0, 4, 4, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <ModulosBarChart data={modulosSorted} />
             ) : (
               <EmptyState />
             )}
@@ -398,41 +353,7 @@ export default function ProyectosModulosPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : tiposPie.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <PieChart>
-                  <Pie
-                    data={tiposPie}
-                    dataKey="count"
-                    nameKey="tipo"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={140}
-                    label={({
-                      name,
-                      percent,
-                    }: {
-                      name?: string;
-                      percent?: number;
-                    }) =>
-                      `${name ?? ""} (${((percent ?? 0) * 100).toFixed(1)}%)`
-                    }
-                    labelLine={{ strokeWidth: 1 }}
-                  >
-                    {tiposPie.map((_, idx) => (
-                      <Cell
-                        key={idx}
-                        fill={getSeriesColor(idx)}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => formatNumber(value as number)}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <TiposPieChart data={tiposPie} />
             ) : (
               <EmptyState />
             )}
@@ -452,16 +373,7 @@ export default function ProyectosModulosPage() {
             {isLoading ? (
               <Skeleton className="h-[350px] w-full" />
             ) : modulosTreemap.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={350}>
-                <Treemap
-                  data={modulosTreemap}
-                  dataKey="size"
-                  nameKey="name"
-                  content={<TreemapContent minWidth={35} minHeight={22} fontSize={10} valueFontSize={9} borderRadius={3} formatValue={(v) => formatCurrency(v)} />}
-                />
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <ModulosTreemap data={modulosTreemap} />
             ) : (
               <EmptyState />
             )}
@@ -478,16 +390,7 @@ export default function ProyectosModulosPage() {
             {isLoading ? (
               <Skeleton className="h-[350px] w-full" />
             ) : tiposTreemap.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={350}>
-                <Treemap
-                  data={tiposTreemap}
-                  dataKey="size"
-                  nameKey="name"
-                  content={<TreemapContent minWidth={35} minHeight={22} fontSize={10} valueFontSize={9} borderRadius={3} formatValue={(v) => formatCurrency(v)} />}
-                />
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <TiposTreemap data={tiposTreemap} />
             ) : (
               <EmptyState />
             )}
@@ -504,29 +407,7 @@ export default function ProyectosModulosPage() {
           {isLoading ? (
             <Skeleton className="h-[360px] w-full" />
           ) : tipoEstadoData.length > 0 ? (
-            <ChartErrorBoundary>
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(320, tipoEstadoData.length * 42)}
-              >
-                <BarChart data={tipoEstadoData} layout="vertical" margin={{ left: 120 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis dataKey="tipo" type="category" width={110} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v, name) => [formatNumber(v as number), name as string]} />
-                  <Legend />
-                  {tipoEstadoEstados.map((estado, idx) => (
-                    <Bar
-                      key={estado}
-                      dataKey={estado}
-                      name={estado}
-                      stackId="estado"
-                      fill={getSeriesColor(idx)}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartErrorBoundary>
+            <TipoEstadoStackedChart data={tipoEstadoData} estados={tipoEstadoEstados} />
           ) : (
             <EmptyState />
           )}

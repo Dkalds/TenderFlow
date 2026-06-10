@@ -19,41 +19,11 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### Deprecar o realinear `scheduler/run_update.py` con `scheduler/jobs/*`
-- **Área:** `scheduler/`
-- **Problema:** `scheduler/run_update.py` es un tercer entrypoint de orquestación que ha driftado respecto a `scheduler/jobs/daily_atom.py` y `scheduler/jobs/recent_bulk.py`: solo llama `kpi_precompute` (best-effort), sin `run_aggregates_precompute()` ni (desde RFC 086) `run_analytics_export()`. Si se sigue usando, produce `kpi_snapshots`/`mat_*` inconsistentes con los jobs canónicos y un cuarto camino de orquestación sin el orden export→manifest→KPI que exige RFC 086.
-- **Acceptance criteria:**
-  - Decidir entre (a) deprecar `scheduler/run_update.py` (marcar como legacy/no usar, redirigir callers a `scheduler/jobs/*`) o (b) hacer que delegue íntegramente en `daily_atom.run()` / `recent_bulk.run()` (o en un job equivalente) para no duplicar lógica.
-  - Si se deprecía, documentar la migración en `docs/AGENT_PLAYBOOK.md` y/o `docs/runbooks/` y verificar que ningún workflow de CI/cron lo invoca directamente.
-  - Si se realinea, añadir tests que verifiquen el mismo orden ingesta→export-parquet/manifest→KPI→aggregates que `daily_atom.py`/`recent_bulk.py`.
-- **Files de partida:** [scheduler/run_update.py](../scheduler/run_update.py), [scheduler/jobs/daily_atom.py](../scheduler/jobs/daily_atom.py), [scheduler/jobs/recent_bulk.py](../scheduler/jobs/recent_bulk.py).
-- **Riesgo:** medio — afecta orquestación del scheduler; verificar qué invoca `run_update.py` antes de tocarlo (cron jobs, workflows).
+*(sin ítems abiertos)*
 
 ---
 
 ## P3 — Nice to have
-
-### Diferir librerías de charts pesadas con `next/dynamic`
-- **Área:** `web/`
-- **Problema:** ~10 páginas del dashboard importan `recharts` (y algunas `d3`/force-graph) de forma **estática** (`calendario`, `calidad-datos`, `clusters`, `competidores`, `ecosistema-partners`, `geografia`, `licitadores`, `pipeline-alertas`, `proyectos-modulos`, …), frente a solo 8 usos de `next/dynamic` en todo el frontend. Recharts es pesado (~100 KB+). Next code-splittea por ruta, pero el chunk de cada ruta carga recharts de forma eager al entrar, retrasando el primer paint. La página `organos` ya demuestra el patrón correcto (`Treemap` vía `dynamic(..., { ssr: false })`).
-- **Acceptance criteria:**
-  - Para páginas con muchos primitivos de recharts, **extraer el chart a un subcomponente** propio y `dynamic`-importarlo (`ssr: false`) + `Skeleton` de fallback (no basta con dynamic-importar cada primitivo suelto).
-  - Medir antes/después con `next build` (tamaño del chunk por ruta) en 2-3 páginas piloto.
-  - Sin regresiones visuales (los charts siguen renderizando) — verificar con la app corriendo.
-- **Files de partida:** las páginas listadas; patrón de referencia [web/src/app/(dashboard)/organos/page.tsx](../web/src/app/(dashboard)/organos/page.tsx) (línea ~44).
-- **Riesgo:** medio — refactor de extracción por página + verificación visual; merece pasada deliberada, no en lote con otros cambios.
-
-### Dividir los archivos/componentes "God" más grandes
-- **Área:** `web/`, `dashboard/`, `db/`
-- **Problema:** Varios archivos superan ~800-1100 LOC, lo que dificulta navegación, review y testing:
-  - Frontend: `competidores/page.tsx` (980), `pipeline-alertas/page.tsx` (854), `tecnologias/page.tsx` (818), `proyectos-modulos/page.tsx` (737). Páginas que mezclan fetching, transformaciones de datos y render de múltiples charts en un único componente.
-  - Backend: `db/migrations.py` (1121, legacy ya deprecado a favor de Alembic — candidato a poda), `dashboard/stats/_base.py` (1070), `scraper/ml_classifier.py` (880).
-- **Acceptance criteria:**
-  - Extraer de las páginas frontend más grandes los bloques de transformación de datos a hooks/`lib` y los charts a subcomponentes (objetivo orientativo: < ~400 LOC por página).
-  - Evaluar si `db/migrations.py` puede reducirse/archivarse ahora que Alembic es la fuente de verdad (ver ADR-008).
-  - Sin cambios de comportamiento; `tsc`/`vitest`/`mypy` siguen verdes.
-- **Files de partida:** los listados arriba.
-- **Riesgo:** medio — refactor amplio; hacerlo por archivo con verificación, no en bloque.
 
 ### Hook PostToolUse para marcar graph como stale tras edits a `.py`
 - **Área:** `.claude/settings.json`
@@ -147,6 +117,14 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-24] **P3: SecretStr para 3 secrets** — `GOOGLE_CLIENT_SECRET`, `API_HMAC_SECRET`, `TURSO_AUTH_TOKEN` migrados a `SecretStr`; 10 call sites actualizados con `.get_secret_value()`.  <!-- pragma: allowlist secret -->
 - [2026-05-24] **P4: MaxBodyMiddleware fail-loud** — `api/app.py`: `except Exception: pass` → `log.warning("max_body_middleware_unavailable", exc_info=True)`.
 - [2026-05-24] **P5: ProcessPoolExecutor para 4 jobs pesados** — `daily_atom`, `recent_bulk`, `retention_cleanup`, `faiss_rebuild` ejecutados en proceso separado con `ProcessPoolExecutor(max_workers=1)` + `proc.kill()` en timeout.
+- [2026-06-10] **P2: Deprecar o realinear `scheduler/run_update.py`** — Resuelto por ADR-012: `run_update.py` ahora delega íntegramente en `scheduler/pipeline_runs.py` (`run_daily_pipeline`, `run_bulk_pipeline`, `run_backfill_pipeline`), que ejecutan la misma secuencia canónica que `daily_atom` y `recent_bulk`. 31 tests de paridad lo verifican. Commits `9e816d6`, `6bf0b5b`.
+- [2026-06-10] **P1→Cerrado: Dashboard solo vía services/ (ADR-013 / §3.8)** — Los 11 módulos de `dashboard/` que importaban `db.*` directamente fueron migrados a `services/`. 6 nuevos service wrappers (`audit`, `users`, `notifications`, `saved_filters`, `feature_flags`, `dlq`) + extensión de `watchlist` y `licitaciones`. Test lint `test_dashboard_db_imports.py` con 0 violaciones conocidas. `import sqlite3` eliminado de `detalle.py`. Commit `1f6bf10`.
+- [2026-06-10] **P2: Métricas SQLite BUSY + tripwires ADR-004** — 3 métricas Prometheus nuevas (`sqlite_busy_errors_total`, `db_write_duration_seconds`, `db_concurrent_writers`) instrumentadas en `db/connection.py::connect()`. Tripwires cuantitativos añadidos a ADR-004 (>10 BUSY/h → evaluar Postgres, p99 write >500ms → investigar, >3 concurrent writers → review). Commit `6bf0b5b`.
+- [2026-06-10] **P2: ADR-013 jerarquía materializaciones analíticas** — ADR define camino canónico: SQLite = caché OLTP, Parquet = snapshot offline, DuckDB = motor opcional. Materialización solo en pipeline canónica (ADR-012). Commit `6bf0b5b`.
+- [2026-06-10] **P3: Healthcheck reporta queue_mode** — `scheduler/healthcheck.py` ahora reporta `"queue_mode": "dramatiq" | "stub" | "inline"`. Commit `6bf0b5b`.
+- [2026-06-10] **P3: Extras pyproject por rol** — `[queue]` (dramatiq+redis), `[analytics]` (duckdb), `[crypto]` (cryptography) añadidos a `pyproject.toml`. Commit `6bf0b5b`.
+- [2026-06-10] **P3: Dynamic recharts en 10 páginas frontend** — Extraídos 32 chart blocks de 10 páginas a 10 chart subcomponents (`components/charts/*-charts.tsx`). Cada página ahora importa sus charts con `next/dynamic({ ssr: false })` + Skeleton fallback, eliminando recharts del bundle inicial. 0 imports estáticos de recharts en páginas (solo en subcomponentes). `tsc --noEmit` 0 errores.
+- [2026-06-10] **P3: Split archivos God** — `dashboard/stats/_base.py` (1070→794 LOC): `risk_flags` + `score_oportunidad` extraídos a `_scoring.py` (273 LOC). Frontend: charts extraídos a subcomponentes (cubierto por el ítem dynamic recharts). `db/migrations.py`: evaluado, no purgable (lo usa `init_db` en runtime), congelado per ADR-008. `ml_classifier.py` (880): evaluado, cohesivo (ya delega a `ml_pipeline.py`), no merece split forzado.
 - [2026-05-24] **P6: sys.path hack eliminado** — `scheduler/retention.py` creado con lógica completa; `scripts/retention_cleanup.py` reescrito como thin CLI wrapper.
 - [2026-05-24] **P7: DB pool timeout** — `_pool.get(timeout=acquire_timeout)` con default 10s desde `DB_POOL_TIMEOUT`; `queue.Empty` → `RuntimeError` descriptivo.
 - [2026-05-24] **P8: Mypy overrides cerrados para 5 módulos** — `config.settings`, `shared.auth_core`, `api.auth`, `db.audit`, `db.totp` removidos de `ignore_errors`; errores de tipo corregidos en los 5 módulos.

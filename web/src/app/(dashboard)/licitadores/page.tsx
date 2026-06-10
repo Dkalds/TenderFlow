@@ -2,10 +2,15 @@
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { ExportPopover } from "@/components/export-popover";
+const LicitadoresRankingBarChart = dynamic(() => import("@/components/charts/licitadores-charts").then(m => ({ default: m.LicitadoresRankingBarChart })), { ssr: false, loading: () => <Skeleton className="h-[500px] w-full rounded-md" /> });
+const LicitadoresGeoCcaaChart = dynamic(() => import("@/components/charts/licitadores-charts").then(m => ({ default: m.LicitadoresGeoCcaaChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const LicitadoresEstacionalidadChart = dynamic(() => import("@/components/charts/licitadores-charts").then(m => ({ default: m.LicitadoresEstacionalidadChart })), { ssr: false, loading: () => <Skeleton className="h-[350px] w-full rounded-md" /> });
+const LicitadoresTop10ImporteChart = dynamic(() => import("@/components/charts/licitadores-charts").then(m => ({ default: m.LicitadoresTop10ImporteChart })), { ssr: false, loading: () => <Skeleton className="h-[350px] w-full rounded-md" /> });
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +18,7 @@ import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
-import { CHART_SERIES } from "@/lib/chart-colors";
 import {
   Trophy,
   Hash,
@@ -26,18 +29,6 @@ import {
   MapPin,
   TrendingUp,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  Line,
-  ComposedChart,
-} from "recharts";
 
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -293,25 +284,7 @@ export default function LicitadoresPage() {
           {isLoading ? (
             <Skeleton className="h-[500px] w-full" />
           ) : barData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={Math.max(400, barData.length * 32)}>
-              <BarChart
-                data={barData}
-                layout="vertical"
-                margin={{ left: 180 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis
-                  dataKey="nombre"
-                  type="category"
-                  tick={{ fontSize: 11 }}
-                  width={170}
-                  tickFormatter={(v: string) => truncate(v, 30)}
-                />
-                <Tooltip formatter={(v) => formatNumber(v as number)} />
-                <Bar dataKey="count" fill="hsl(160, 60%, 45%)" radius={[0, 4, 4, 0]} name="Adjudicaciones" />
-              </BarChart>
-            </ResponsiveContainer>
+            <LicitadoresRankingBarChart data={barData} />
           ) : (
             <EmptyState />
           )}
@@ -406,26 +379,7 @@ export default function LicitadoresPage() {
           {isLoading ? (
             <Skeleton className="h-[400px] w-full" />
           ) : geoByCcaa.length > 0 ? (
-            <ChartErrorBoundary>
-            <ResponsiveContainer width="100%" height={Math.max(300, geoByCcaa.length * 30)}>
-              <BarChart
-                data={geoByCcaa}
-                layout="vertical"
-                margin={{ left: 140 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis
-                  dataKey="ccaa"
-                  type="category"
-                  tick={{ fontSize: 11 }}
-                  width={130}
-                />
-                <Tooltip formatter={(v) => [formatNumber(v as number), "Adjudicaciones"]} />
-                <Bar dataKey="count" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} name="Adjudicaciones" />
-              </BarChart>
-            </ResponsiveContainer>
-            </ChartErrorBoundary>
+            <LicitadoresGeoCcaaChart data={geoByCcaa} />
           ) : (
             <EmptyState />
           )}
@@ -448,24 +402,7 @@ export default function LicitadoresPage() {
           {isLoading ? (
             <Skeleton className="h-[400px] w-full" />
           ) : estacionalidadData.length > 0 ? (
-            <ChartErrorBoundary>
-            <ResponsiveContainer width="100%" height={350}>
-              <ComposedChart data={estacionalidadData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatCurrency(v)} />
-                <Tooltip
-                  formatter={(v, name) =>
-                    name === "Importe" ? formatCurrency(Number(v ?? 0)) : formatNumber(Number(v ?? 0))
-                  }
-                />
-                <Legend />
-                <Bar yAxisId="left" dataKey="count" fill={CHART_SERIES[0]} radius={[4, 4, 0, 0]} name="Adjudicaciones" />
-                <Line yAxisId="right" type="monotone" dataKey="importe" stroke={CHART_SERIES[1]} strokeWidth={2} dot={{ r: 3 }} name="Importe" />
-              </ComposedChart>
-            </ResponsiveContainer>
-            </ChartErrorBoundary>
+            <LicitadoresEstacionalidadChart data={estacionalidadData} />
           ) : (
             <EmptyState />
           )}
@@ -479,21 +416,7 @@ export default function LicitadoresPage() {
         </CardHeader>
         <CardContent>
           {!isLoading && evolutionData.length > 0 ? (
-            <ChartErrorBoundary>
-            <ResponsiveContainer width="100%" height={Math.max(350, evolutionData.length * 35)}>
-              <BarChart
-                data={evolutionData}
-                layout="vertical"
-                margin={{ left: 160, right: 20 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatCurrency(v)} />
-                <YAxis dataKey="nombre" type="category" tick={{ fontSize: 11 }} width={150} />
-                <Tooltip formatter={(v) => [formatCurrency(v as number), "Importe"]} />
-                <Bar dataKey="importe" fill={CHART_SERIES[0]} name="Importe Total" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            </ChartErrorBoundary>
+            <LicitadoresTop10ImporteChart data={evolutionData} />
           ) : (
             <Skeleton className="h-[300px] w-full" />
           )}

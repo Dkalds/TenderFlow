@@ -7,6 +7,12 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { KpiCard } from "@/components/charts/kpi-card";
 const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const CompetitorsBarChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsBarChart })), { ssr: false, loading: () => <Skeleton className="h-[500px] w-full rounded-md" /> });
+const CompetitorsPieChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsPieChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const CompetitorsScatterChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsScatterChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const CompetitorsTreemap = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsTreemap })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const CompetitorsPositioningChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsPositioningChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const CompetitorsEstacionalidadChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsEstacionalidadChart })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,8 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
-import { TreemapContent } from "@/components/charts/treemap-content";
+import type { ScatterPoint } from "@/components/charts/competitors-charts";
 import {
   Hash,
   Target,
@@ -32,27 +37,6 @@ import {
   Search,
   Users,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  ScatterChart,
-  Scatter,
-  ZAxis,
-  Label,
-  LabelList,
-  Treemap,
-  Legend,
-  Line,
-  ComposedChart,
-} from "recharts";
 
 
 interface Competitor {
@@ -71,18 +55,6 @@ interface Competitor {
   ultima?: string;
 }
 
-interface EstacionalidadEntry {
-  mes: number;
-  count: number;
-  importe: number;
-}
-
-interface ScatterPoint {
-  nombre: string;
-  ticket_medio: number;
-  n_organos: number;
-}
-
 interface HeatmapEntry {
   ccaa: string;
   empresa: string;
@@ -98,7 +70,7 @@ interface CompetitorsData {
   competitors: Competitor[];
   scatter_data?: ScatterPoint[];
   heatmap_ccaa?: HeatmapEntry[];
-  estacionalidad?: EstacionalidadEntry[];
+  estacionalidad?: { mes: number; count: number; importe: number }[];
 }
 
 type SortKey = "nombre" | "count" | "importe" | "cuota" | "contratos_por_anio" | "importe_medio" | "baja_media" | "nif" | "ofertas_medias" | "pct_monopolio" | "pct_top_organo" | "ultima";
@@ -395,25 +367,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[500px] w-full" />
             ) : barData.length > 0 ? (
               <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={Math.max(400, barData.length * 32)}>
-                <BarChart
-                  data={barData}
-                  layout="vertical"
-                  margin={{ left: 180 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tick={{ fontSize: 12 }} />
-                  <YAxis
-                    dataKey="nombre"
-                    type="category"
-                    tick={{ fontSize: 11 }}
-                    width={170}
-                    tickFormatter={(v: string) => truncate(v, 30)}
-                  />
-                  <Tooltip formatter={(v) => formatNumber(v as number)} />
-                  <Bar dataKey="count" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} name="Adjudicaciones" />
-                </BarChart>
-              </ResponsiveContainer>
+              <CompetitorsBarChart data={barData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -431,27 +385,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : pieData.length > 0 ? (
               <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={140}
-                    label={({ name, percent }: { name?: string; percent?: number }) =>
-                      `${name ?? ""}: ${((percent ?? 0) * 100).toFixed(1)}%`
-                    }
-                    labelLine={{ strokeWidth: 1 }}
-                  >
-                    {pieData.map((_, idx) => (
-                      <Cell key={idx} fill={getSeriesColor(idx)} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v) => formatCurrency(v as number)} />
-                </PieChart>
-              </ResponsiveContainer>
+              <CompetitorsPieChart data={pieData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -472,62 +406,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : scatterData.length > 0 ? (
               <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    type="number"
-                    dataKey="ticket_medio"
-                    name="Ticket Medio"
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v: number) => formatCurrency(v)}
-                  >
-                    <Label value="Ticket Medio" position="bottom" offset={0} style={{ fontSize: 12 }} />
-                  </XAxis>
-                  <YAxis
-                    type="number"
-                    dataKey="n_organos"
-                    name="Organos"
-                    tick={{ fontSize: 11 }}
-                  >
-                    <Label value="N. Organos" angle={-90} position="left" offset={0} style={{ fontSize: 12 }} />
-                  </YAxis>
-                  <ZAxis range={[40, 400]} />
-                  <Tooltip
-                    cursor={{ strokeDasharray: "3 3" }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const d = payload[0].payload as ScatterPoint;
-                      return (
-                        <div className="rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
-                          <p className="font-medium">{d.nombre}</p>
-                          <p>Ticket medio: {formatCurrency(d.ticket_medio)}</p>
-                          <p>Organos: {formatNumber(d.n_organos)}</p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Scatter
-                    data={scatterData}
-                    fill={CHART_SERIES[0]}
-                    fillOpacity={0.7}
-                  >
-                    <LabelList
-                      dataKey="nombre"
-                      position="top"
-                      style={{ fontSize: 12 }}
-                      content={({ x, y, value }) => {
-                        if (!scatterTop5.has(value as string)) return null;
-                        return (
-                          <text x={x as number} y={(y as number) - 8} textAnchor="middle" fontSize={12} fill="hsl(var(--foreground))">
-                            {truncate(value as string, 18)}
-                          </text>
-                        );
-                      }}
-                    />
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
+              <CompetitorsScatterChart data={scatterData} top5Names={scatterTop5} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -599,30 +478,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : treemapData.length > 0 ? (
               <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <Treemap
-                  data={treemapData}
-                  dataKey="size"
-                  nameKey="name"
-                  aspectRatio={4 / 3}
-                  stroke="hsl(var(--border))"
-                  content={<TreemapContent minWidth={50} minHeight={30} fontSize={11} valueFontSize={10} borderRadius={2} opacity={1} formatValue={(v) => formatCurrency(v)} />}
-                >
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const d = payload[0].payload;
-                      return (
-                        <div className="rounded-md border bg-popover px-3 py-2 text-sm shadow-md">
-                          <p className="font-medium">{d.name}</p>
-                          <p>Importe: {formatCurrency(d.size)}</p>
-                          <p>Adjudicaciones: {formatNumber(d.count)}</p>
-                        </div>
-                      );
-                    }}
-                  />
-                </Treemap>
-              </ResponsiveContainer>
+              <CompetitorsTreemap data={treemapData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -639,65 +495,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : positioningData.length > 0 ? (
               <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <ScatterChart margin={{ top: 20, right: 20, bottom: 30, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    type="number"
-                    dataKey="baja_media"
-                    name="Baja Media"
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v: number) => `${v.toFixed(0)}%`}
-                  >
-                    <Label value="Baja Media %" position="bottom" offset={10} style={{ fontSize: 12 }} />
-                  </XAxis>
-                  <YAxis
-                    type="number"
-                    dataKey="importe_medio"
-                    name="Importe Medio"
-                    tick={{ fontSize: 11 }}
-                    scale="log"
-                    domain={["auto", "auto"]}
-                    tickFormatter={(v: number) => formatCurrency(v)}
-                  >
-                    <Label value="Importe Medio (log)" angle={-90} position="left" offset={0} style={{ fontSize: 12 }} />
-                  </YAxis>
-                  <ZAxis dataKey="count" range={[40, 600]} name="Contratos" />
-                  <Tooltip
-                    cursor={{ strokeDasharray: "3 3" }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const d = payload[0].payload as (typeof positioningData)[0];
-                      return (
-                        <div className="rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
-                          <p className="font-medium">{d.nombre}</p>
-                          <p>Baja media: {d.baja_media.toFixed(1)}%</p>
-                          <p>Importe medio: {formatCurrency(d.importe_medio)}</p>
-                          <p>Contratos: {formatNumber(d.count)}</p>
-                          <p>% Monopolio: {d.pct_monopolio.toFixed(1)}%</p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Scatter data={positioningData} fill={CHART_SERIES[2]} fillOpacity={0.7}>
-                    <LabelList
-                      dataKey="nombre"
-                      position="top"
-                      content={({ x, y, value }) => {
-                        const top5Names = new Set(
-                          [...positioningData].sort((a, b) => b.count - a.count).slice(0, 5).map((d) => d.nombre),
-                        );
-                        if (!top5Names.has(value as string)) return null;
-                        return (
-                          <text x={x as number} y={(y as number) - 8} textAnchor="middle" fontSize={10} fill="hsl(var(--foreground))">
-                            {truncate(value as string, 18)}
-                          </text>
-                        );
-                      }}
-                    />
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
+              <CompetitorsPositioningChart data={positioningData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -714,22 +512,7 @@ export default function CompetidoresPage() {
           </CardHeader>
           <CardContent>
             <ChartErrorBoundary>
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={estacionalidadData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatCurrency(v)} />
-                <Tooltip
-                  formatter={(v, name) =>
-                    name === "Importe" ? formatCurrency(Number(v ?? 0)) : formatNumber(Number(v ?? 0))
-                  }
-                />
-                <Legend />
-                <Bar yAxisId="left" dataKey="count" fill={CHART_SERIES[0]} radius={[4, 4, 0, 0]} name="Adjudicaciones" />
-                <Line yAxisId="right" type="monotone" dataKey="importe" stroke={CHART_SERIES[1]} strokeWidth={2} dot={{ r: 3 }} name="Importe" />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <CompetitorsEstacionalidadChart data={estacionalidadData} />
             </ChartErrorBoundary>
           </CardContent>
         </Card>

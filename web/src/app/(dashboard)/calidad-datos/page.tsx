@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import {
   Card,
   CardContent,
@@ -21,16 +22,7 @@ import {
   Boxes,
 } from "lucide-react";
 import { formatNumber, formatPercent, cn } from "@/lib/utils";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+const CalidadCompletenessChart = dynamic(() => import("@/components/charts/calidad-datos-charts").then(m => ({ default: m.CalidadCompletenessChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });
 
 interface ColumnCompleteness {
   columna: string;
@@ -50,12 +42,6 @@ interface QualityData {
   last_scrape_hours_ago?: number;
   last_scrape_at?: string;
   [key: string]: unknown;
-}
-
-function barColor(pct: number): string {
-  if (pct >= 90) return "#22c55e"; // green-500
-  if (pct >= 70) return "#eab308"; // yellow-500
-  return "#ef4444"; // red-500
 }
 
 function freshnessInfo(hours: number | null | undefined): {
@@ -196,30 +182,7 @@ export default function CalidadDatosPage() {
               ))}
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={Math.max(chartData.length * 40, 200)}>
-              <BarChart
-                data={chartData}
-                layout="vertical"
-                margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" domain={[0, 100]} unit="%" />
-                <YAxis
-                  type="category"
-                  dataKey="columna"
-                  width={75}
-                  tick={{ fontSize: 12 }}
-                />
-                <Tooltip
-                  formatter={(value) => [`${Number(value).toFixed(1)}%`, "Completitud"]}
-                />
-                <Bar dataKey="pct" radius={[0, 4, 4, 0]} barSize={20}>
-                  {chartData.map((entry, idx) => (
-                    <Cell key={idx} fill={barColor(entry.pct)} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <CalidadCompletenessChart data={chartData} />
           )}
         </CardContent>
       </Card>

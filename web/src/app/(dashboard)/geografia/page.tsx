@@ -8,27 +8,14 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 const SpainMap = dynamic(() => import("@/components/charts/spain-map").then(m => ({ default: m.SpainMap })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const GeografiaBarChart = dynamic(() => import("@/components/charts/geografia-charts").then(m => ({ default: m.GeografiaBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const GeografiaPieChart = dynamic(() => import("@/components/charts/geografia-charts").then(m => ({ default: m.GeografiaPieChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { MapPin, Hash, Trophy, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, Map } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
 
 interface GeoItem {
   ccaa: string;
@@ -302,41 +289,7 @@ export default function GeografiaPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : barData.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(300, barData.length * 30)}
-              >
-                <BarChart
-                  data={barData}
-                  layout="vertical"
-                  margin={{ left: 120 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    className="stroke-border"
-                  />
-                  <XAxis type="number" tick={{ fontSize: 12 }} />
-                  <YAxis
-                    dataKey="ccaa"
-                    type="category"
-                    width={120}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <Tooltip
-                    formatter={(value) => [
-                      formatNumber(value as number),
-                      "Licitaciones",
-                    ]}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill={CHART_SERIES[0]}
-                    radius={[0, 4, 4, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <GeografiaBarChart data={barData} />
             ) : (
               <EmptyState />
             )}
@@ -354,41 +307,7 @@ export default function GeografiaPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : pieData.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="importe"
-                    nameKey="ccaa"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={140}
-                    label={({
-                      name,
-                      percent,
-                    }: {
-                      name?: string;
-                      percent?: number;
-                    }) =>
-                      `${name ?? ""} (${((percent ?? 0) * 100).toFixed(1)}%)`
-                    }
-                    labelLine={{ strokeWidth: 1 }}
-                  >
-                    {pieData.map((_, idx) => (
-                      <Cell
-                        key={idx}
-                        fill={getSeriesColor(idx)}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => formatCurrency(value as number)}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <GeografiaPieChart data={pieData} />
             ) : (
               <EmptyState />
             )}

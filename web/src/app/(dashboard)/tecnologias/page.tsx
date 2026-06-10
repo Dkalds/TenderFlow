@@ -2,11 +2,16 @@
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
+const TecnologiasEvolutionChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasEvolutionChart })), { ssr: false, loading: () => <Skeleton className="h-[340px] w-full rounded-md" /> });
+const TecnologiasVolumeBarChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasVolumeBarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const TecnologiasImporteBarChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasImporteBarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const TecnologiasDonutChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasDonutChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const TecnologiasGeoBarChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasGeoBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,7 +19,6 @@ import { ExportPopover } from "@/components/export-popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
-import { getSeriesColor } from "@/lib/chart-colors";
 import {
   Cpu,
   Hash,
@@ -28,21 +32,6 @@ import {
   Percent,
   Map as MapIcon,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  AreaChart,
-  Area,
-} from "recharts";
 
 interface TecnologiaItem {
   tecnologia: string;
@@ -356,41 +345,7 @@ export default function TecnologiasPage() {
           {isLoading ? (
             <Skeleton className="h-[340px] w-full" />
           ) : evolData.length > 0 && evolTechs.length > 0 ? (
-            <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={340}>
-                <AreaChart data={evolData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v: number) =>
-                      trendMetric === "importe" ? formatCurrency(v) : formatNumber(v)
-                    }
-                  />
-                  <Tooltip
-                    formatter={(v, name) => [
-                      trendMetric === "importe"
-                        ? formatCurrency(v as number)
-                        : formatNumber(v as number),
-                      name as string,
-                    ]}
-                  />
-                  <Legend />
-                  {evolTechs.map((tech, idx) => (
-                    <Area
-                      key={tech}
-                      type="monotone"
-                      dataKey={tech}
-                      name={tech}
-                      stackId="1"
-                      stroke={getSeriesColor(idx)}
-                      fill={getSeriesColor(idx)}
-                      fillOpacity={0.5}
-                    />
-                  ))}
-                </AreaChart>
-              </ResponsiveContainer>
-            </ChartErrorBoundary>
+            <TecnologiasEvolutionChart data={evolData} techs={evolTechs} trendMetric={trendMetric} />
           ) : (
             <EmptyState />
           )}
@@ -410,28 +365,7 @@ export default function TecnologiasPage() {
             {isLoading ? (
               <Skeleton className="h-[420px] w-full" />
             ) : volumeBar.length > 0 ? (
-              <ChartErrorBoundary>
-                <ResponsiveContainer width="100%" height={Math.max(300, volumeBar.length * 28)}>
-                  <BarChart data={volumeBar} layout="vertical" margin={{ left: 110 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis dataKey="tecnologia" type="category" width={100} tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      formatter={(v, _n, p) => [
-                        `${formatNumber(v as number)} lic · ${formatCurrency(
-                          (p?.payload as TecnologiaItem)?.importe ?? 0,
-                        )}`,
-                        "Volumen",
-                      ]}
-                    />
-                    <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                      {volumeBar.map((entry, idx) => (
-                        <Cell key={idx} fill={entry._color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <TecnologiasVolumeBarChart data={volumeBar} />
             ) : (
               <EmptyState />
             )}
@@ -449,32 +383,7 @@ export default function TecnologiasPage() {
             {isLoading ? (
               <Skeleton className="h-[420px] w-full" />
             ) : importeBar.length > 0 ? (
-              <ChartErrorBoundary>
-                <ResponsiveContainer width="100%" height={Math.max(300, importeBar.length * 28)}>
-                  <BarChart data={importeBar} layout="vertical" margin={{ left: 110 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(v: number) => formatCurrency(v)}
-                    />
-                    <YAxis dataKey="tecnologia" type="category" width={100} tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      formatter={(v, _n, p) => [
-                        `${formatCurrency(v as number)} · ${formatNumber(
-                          (p?.payload as TecnologiaItem)?.count ?? 0,
-                        )} lic`,
-                        "Importe",
-                      ]}
-                    />
-                    <Bar dataKey="importe" radius={[0, 4, 4, 0]}>
-                      {importeBar.map((entry, idx) => (
-                        <Cell key={idx} fill={entry._color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <TecnologiasImporteBarChart data={importeBar} />
             ) : (
               <EmptyState />
             )}
@@ -492,31 +401,7 @@ export default function TecnologiasPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : donutData.length > 0 ? (
-              <ChartErrorBoundary>
-                <ResponsiveContainer width="100%" height={400}>
-                  <PieChart>
-                    <Pie
-                      data={donutData}
-                      dataKey="count"
-                      nameKey="tecnologia"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={70}
-                      outerRadius={140}
-                      label={({ name, percent }: { name?: string; percent?: number }) =>
-                        `${name ?? ""} (${((percent ?? 0) * 100).toFixed(1)}%)`
-                      }
-                      labelLine={{ strokeWidth: 1 }}
-                    >
-                      {donutData.map((_, idx) => (
-                        <Cell key={idx} fill={getSeriesColor(idx)} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => formatNumber(value as number)} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <TecnologiasDonutChart data={donutData} />
             ) : (
               <EmptyState />
             )}
@@ -535,20 +420,7 @@ export default function TecnologiasPage() {
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : geoData.length > 0 && geoTechs.length > 0 ? (
-              <ChartErrorBoundary>
-                <ResponsiveContainer width="100%" height={Math.max(360, geoData.length * 34)}>
-                  <BarChart data={geoData} layout="vertical" margin={{ left: 90 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis dataKey="ccaa" type="category" width={84} tick={{ fontSize: 10 }} />
-                    <Tooltip formatter={(v, name) => [formatNumber(v as number), name as string]} />
-                    <Legend />
-                    {geoTechs.map((tech, idx) => (
-                      <Bar key={tech} dataKey={tech} name={tech} fill={getSeriesColor(idx)} />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <TecnologiasGeoBarChart data={geoData} techs={geoTechs} />
             ) : (
               <EmptyState />
             )}

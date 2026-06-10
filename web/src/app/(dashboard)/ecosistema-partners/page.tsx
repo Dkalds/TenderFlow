@@ -15,6 +15,8 @@ import { DataTable } from "@/components/ui/data-table";
 import { type ColumnDef } from "@tanstack/react-table";
 
 const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(m => ({ default: m.ForceGraph })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const GanadoresCountBarChart = dynamic(() => import("@/components/charts/ecosistema-partners-charts").then(m => ({ default: m.GanadoresCountBarChart })), { ssr: false, loading: () => <Skeleton className="h-[450px] w-full rounded-md" /> });
+const GanadoresImporteBarChart = dynamic(() => import("@/components/charts/ecosistema-partners-charts").then(m => ({ default: m.GanadoresImporteBarChart })), { ssr: false, loading: () => <Skeleton className="h-[450px] w-full rounded-md" /> });
 import {
   formatCurrency,
   formatNumber,
@@ -22,19 +24,8 @@ import {
   truncate,
   cn,
 } from "@/lib/utils";
-import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { CHART_SERIES } from "@/lib/chart-colors";
 import { Button } from "@/components/ui/button";
 import { Network, Hash, Users, Search, Trophy, TrendingUp } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -572,27 +563,7 @@ export default function EcosistemaPartnersPage() {
             {isLoading ? (
               <Skeleton className="h-[450px] w-full" />
             ) : filteredTopWinners.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={Math.max(350, filteredTopWinners.length * 30)}>
-                <BarChart
-                  data={filteredTopWinners}
-                  layout="vertical"
-                  margin={{ left: 180 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tick={{ fontSize: 12 }} />
-                  <YAxis
-                    dataKey="nombre"
-                    type="category"
-                    tick={{ fontSize: 11 }}
-                    width={170}
-                    tickFormatter={(v: string) => truncate(v, 28)}
-                  />
-                  <Tooltip formatter={(v) => [formatNumber(v as number), "Adjudicaciones"]} />
-                  <Bar dataKey="count" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} name="Adjudicaciones" />
-                </BarChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <GanadoresCountBarChart data={filteredTopWinners} />
             ) : (
               <EmptyState />
             )}
@@ -608,27 +579,7 @@ export default function EcosistemaPartnersPage() {
             {isLoading ? (
               <Skeleton className="h-[450px] w-full" />
             ) : filteredTopWinnersByImporte.length > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={Math.max(350, filteredTopWinnersByImporte.length * 30)}>
-                <BarChart
-                  data={filteredTopWinnersByImporte}
-                  layout="vertical"
-                  margin={{ left: 180 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
-                  <YAxis
-                    dataKey="nombre"
-                    type="category"
-                    tick={{ fontSize: 11 }}
-                    width={170}
-                    tickFormatter={(v: string) => truncate(v, 28)}
-                  />
-                  <Tooltip formatter={(v) => [formatCurrency(v as number), "Importe"]} />
-                  <Bar dataKey="importe" fill={CHART_SERIES[1]} radius={[0, 4, 4, 0]} name="Importe" />
-                </BarChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <GanadoresImporteBarChart data={filteredTopWinnersByImporte} />
             ) : (
               <EmptyState />
             )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -10,16 +11,8 @@ import { cn, formatNumber, formatCurrency } from "@/lib/utils";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import type { TrendPoint } from "@/generated/api";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
+const CalendarioMonthlyChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioMonthlyChart })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
+const CalendarioDowChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioDowChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });
 
 interface TrendsResponse {
   series: TrendPoint[];
@@ -350,27 +343,7 @@ export default function CalendarioPage() {
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : monthlyData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(v: number) => formatCurrency(v)}
-                />
-                <Tooltip
-                  formatter={(value, name) =>
-                    name === "Importe" ? formatCurrency(Number(value ?? 0)) : formatNumber(Number(value ?? 0))
-                  }
-                />
-                <Legend />
-                <Bar yAxisId="left" dataKey="publicaciones" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} name="Publicaciones" />
-                <Bar yAxisId="right" dataKey="importe" fill="hsl(160, 60%, 45%)" radius={[4, 4, 0, 0]} name="Importe" />
-              </BarChart>
-            </ResponsiveContainer>
+            <CalendarioMonthlyChart data={monthlyData} />
           ) : (
             <EmptyState />
           )}
@@ -386,15 +359,7 @@ export default function CalendarioPage() {
           {isLoading ? (
             <Skeleton className="h-[200px] w-full" />
           ) : dowData.some((d) => d.promedio > 0) ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={dowData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="dia" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="promedio" fill="hsl(280, 65%, 60%)" radius={[4, 4, 0, 0]} name="Promedio diario" />
-              </BarChart>
-            </ResponsiveContainer>
+            <CalendarioDowChart data={dowData} />
           ) : (
             <EmptyState />
           )}

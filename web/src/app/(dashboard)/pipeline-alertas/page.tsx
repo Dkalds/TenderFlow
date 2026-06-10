@@ -8,6 +8,9 @@ import { KpiCard } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
 const GanttChart = dynamic(() => import("@/components/charts/gantt-chart").then(m => ({ default: m.GanttChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const PipelineHorizonChart = dynamic(() => import("@/components/charts/pipeline-charts").then(m => ({ default: m.PipelineHorizonChart })), { ssr: false, loading: () => <Skeleton className="h-[260px] w-full rounded-md" /> });
+const PipelineQuarterlyChart = dynamic(() => import("@/components/charts/pipeline-charts").then(m => ({ default: m.PipelineQuarterlyChart })), { ssr: false, loading: () => <Skeleton className="h-[260px] w-full rounded-md" /> });
+const PipelineUrgencyScatter = dynamic(() => import("@/components/charts/pipeline-charts").then(m => ({ default: m.PipelineUrgencyScatter })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +24,6 @@ import {
   truncate,
   cn,
 } from "@/lib/utils";
-import { numberFormatter, smartFormatter } from "@/lib/chart-formatters";
 import { Bell,
   Clock,
   AlertTriangle,
@@ -33,22 +35,6 @@ import { Bell,
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-  Cell,
-  ReferenceLine,
-  Line,
-  ComposedChart,
-  Legend,
-} from "recharts";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -147,29 +133,6 @@ function forecastBadgeColor(estado: string | null | undefined) {
   if (low.includes("menos") || low.includes("<")) return "secondary" as const;
   return "outline" as const;
 }
-
-const HORIZON_COLORS: Record<string, string> = {
-  "0-7d": "#ef4444",
-  "7-30d": "#f97316",
-  "30-90d": "#eab308",
-  "90+d": "#22c55e",
-};
-
-function horizonColor(label: string) {
-  for (const [key, color] of Object.entries(HORIZON_COLORS)) {
-    if (label.includes(key) || label.toLowerCase().includes(key))
-      return color;
-  }
-  // Try to parse by position
-  if (label.includes("7")) return "#ef4444";
-  if (label.includes("30")) return "#f97316";
-  if (label.includes("90")) return "#eab308";
-  return "#22c55e";
-}
-
-/* ------------------------------------------------------------------ */
-/*  Page                                                              */
-/* ------------------------------------------------------------------ */
 
 export default function PipelineAlertasPage() {
   // Local filter state for forecast
@@ -403,28 +366,7 @@ export default function PipelineAlertasPage() {
             {isLoading ? (
               <Skeleton className="h-[260px] w-full" />
             ) : (pipelineData?.por_horizonte?.length ?? 0) > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart
-                  data={pipelineData!.por_horizonte}
-                  layout="vertical"
-                  margin={{ left: 10, right: 20, top: 5, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis type="category" dataKey="horizonte" width={80} tick={{ fontSize: 12 }} />
-                  <Tooltip formatter={numberFormatter} />
-                  <Bar dataKey="count" name="Licitaciones" radius={[0, 4, 4, 0]}>
-                    {pipelineData!.por_horizonte.map((entry, i) => (
-                      <Cell
-                        key={i}
-                        fill={horizonColor(entry.horizonte)}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <PipelineHorizonChart data={pipelineData!.por_horizonte} />
             ) : (
               <EmptyState />
             )}
@@ -440,45 +382,7 @@ export default function PipelineAlertasPage() {
             {isLoading ? (
               <Skeleton className="h-[260px] w-full" />
             ) : (pipelineData?.por_trimestre?.length ?? 0) > 0 ? (
-              <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={260}>
-                <ComposedChart
-                  data={pipelineData!.por_trimestre}
-                  margin={{ left: 10, right: 20, top: 5, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="trimestre" tick={{ fontSize: 11 }} />
-                  <YAxis
-                    yAxisId="left"
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v) => formatCurrency(v)}
-                  />
-                  <Tooltip formatter={smartFormatter} />
-                  <Legend />
-                  <Bar
-                    yAxisId="left"
-                    dataKey="count"
-                    name="Licitaciones"
-                    fill="hsl(var(--primary))"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="importe"
-                    name="Importe"
-                    stroke="#f97316"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <PipelineQuarterlyChart data={pipelineData!.por_trimestre} />
             ) : (
               <EmptyState />
             )}
@@ -497,44 +401,7 @@ export default function PipelineAlertasPage() {
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : (pipelineData?.urgencia_valor?.length ?? 0) > 0 ? (
-            <ChartErrorBoundary>
-            <ResponsiveContainer width="100%" height={300}>
-              <ScatterChart margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  type="number"
-                  dataKey="dias_restantes"
-                  name="Dias restantes"
-                  tick={{ fontSize: 11 }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="importe"
-                  name="Importe"
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => formatCurrency(v)}
-                />
-                <Tooltip formatter={smartFormatter} />
-                <ReferenceLine
-                  x={7}
-                  stroke="#ef4444"
-                  strokeDasharray="5 5"
-                  label={{ value: "7d", fill: "#ef4444", fontSize: 11 }}
-                />
-                <Scatter
-                  data={pipelineData!.urgencia_valor}
-                  name="Oportunidades"
-                >
-                  {pipelineData!.urgencia_valor.map((point, i) => (
-                    <Cell
-                      key={i}
-                      fill={point.es_urgente ? "#ef4444" : "#3b82f6"}
-                    />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
-              </ChartErrorBoundary>
+            <PipelineUrgencyScatter data={pipelineData!.urgencia_valor} />
           ) : (
             <EmptyState />
           )}
