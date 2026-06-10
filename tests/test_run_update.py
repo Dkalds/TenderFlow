@@ -1,21 +1,27 @@
-"""Tests para scheduler/run_update.py — lógica de orquestación del pipeline."""
+"""Tests para scheduler/run_update.py — lógica de orquestación del pipeline.
+
+Actualizado para ADR-012: run_update.py ahora delega en pipeline_runs.
+"""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
-# main() — modos de ejecución
+# main() — modos de ejecución (delegando en pipeline_runs)
 # ---------------------------------------------------------------------------
 
 
 def test_main_daily_returns_0_on_ok():
-    """--daily con status ok devuelve código 0."""
-    mock_result = {"status": "ok", "inserted": [], "modified": []}
+    """--daily con pipeline exitosa devuelve código 0."""
+    pipeline_result = {
+        "status": "ok",
+        "ingestion_result": {"status": "ok", "inserted": [], "modified": []},
+        "steps": {},
+    }
 
     with (
-        patch("scheduler.run_update.update_daily", return_value=mock_result),
-        patch("scheduler.run_update.check_and_notify"),
+        patch("scheduler.run_update.run_daily_pipeline", return_value=pipeline_result),
         patch("scheduler.run_update.count_licitaciones", return_value=100),
         patch("sys.argv", ["run_update", "--daily"]),
     ):
@@ -26,12 +32,14 @@ def test_main_daily_returns_0_on_ok():
     assert code == 0
 
 
-def test_main_daily_returns_1_on_error_status():
-    """--daily con status distinto de ok devuelve código 1."""
-    mock_result = {"status": "error"}
-
+def test_main_daily_returns_1_on_error():
+    """--daily con pipeline que lanza excepción devuelve código 1."""
     with (
-        patch("scheduler.run_update.update_daily", return_value=mock_result),
+        patch(
+            "scheduler.run_update.run_daily_pipeline",
+            side_effect=RuntimeError("ingestion failed"),
+        ),
+        patch("scheduler.run_update.notify"),
         patch("sys.argv", ["run_update", "--daily"]),
     ):
         from scheduler import run_update
@@ -43,11 +51,14 @@ def test_main_daily_returns_1_on_error_status():
 
 def test_main_recent_ok_returns_0():
     """Modo reciente sin fallos devuelve 0."""
-    ok_results = [{"status": "ok", "nuevas": 5, "actualizadas": 2}]
+    pipeline_result = {
+        "status": "ok",
+        "ingestion_results": [{"status": "ok", "nuevas": 5, "actualizadas": 2}],
+        "steps": {},
+    }
 
     with (
-        patch("scheduler.run_update.update_recent", return_value=ok_results),
-        patch("scheduler.run_update.check_and_notify"),
+        patch("scheduler.run_update.run_bulk_pipeline", return_value=pipeline_result),
         patch("scheduler.run_update.count_licitaciones", return_value=200),
         patch("sys.argv", ["run_update"]),
     ):
@@ -59,15 +70,12 @@ def test_main_recent_ok_returns_0():
 
 
 def test_main_recent_with_failures_returns_1():
-    """Modo reciente con meses fallidos devuelve 1 y notifica."""
-    results = [
-        {"status": "ok", "nuevas": 3, "actualizadas": 0},
-        {"status": "error", "nuevas": 0, "actualizadas": 0, "year": 2024, "month": 1},
-    ]
-
+    """Modo reciente con pipeline que falla devuelve 1 y notifica."""
     with (
-        patch("scheduler.run_update.update_recent", return_value=results),
-        patch("scheduler.run_update.count_licitaciones", return_value=100),
+        patch(
+            "scheduler.run_update.run_bulk_pipeline",
+            side_effect=RuntimeError("bulk failed for 1 month(s)"),
+        ),
         patch("scheduler.run_update.notify") as mock_notify,
         patch("sys.argv", ["run_update"]),
     ):
@@ -82,7 +90,10 @@ def test_main_recent_with_failures_returns_1():
 def test_main_fatal_exception_returns_1():
     """Excepción fatal en el pipeline devuelve 1 y notifica CRITICAL."""
     with (
-        patch("scheduler.run_update.update_recent", side_effect=RuntimeError("boom")),
+        patch(
+            "scheduler.run_update.run_bulk_pipeline",
+            side_effect=RuntimeError("boom"),
+        ),
         patch("scheduler.run_update.notify") as mock_notify,
         patch("sys.argv", ["run_update"]),
     ):
@@ -92,7 +103,6 @@ def test_main_fatal_exception_returns_1():
 
     assert code == 1
     call_args = mock_notify.call_args
-    # Primer argumento posicional debe ser AlertLevel.CRITICAL
     from observability import AlertLevel
 
     assert call_args[0][0] == AlertLevel.CRITICAL
@@ -100,11 +110,14 @@ def test_main_fatal_exception_returns_1():
 
 def test_main_backfill_ok():
     """--backfill sin fallos devuelve 0."""
-    results = [{"status": "ok", "nuevas": 10, "actualizadas": 5}]
+    pipeline_result = {
+        "status": "ok",
+        "ingestion_results": [{"status": "ok", "nuevas": 10, "actualizadas": 5}],
+        "steps": {},
+    }
 
     with (
-        patch("scheduler.run_update.backfill", return_value=results),
-        patch("scheduler.run_update.check_and_notify"),
+        patch("scheduler.run_update.run_backfill_pipeline", return_value=pipeline_result),
         patch("scheduler.run_update.count_licitaciones", return_value=300),
         patch("sys.argv", ["run_update", "--backfill", "2024", "1"]),
     ):
@@ -116,43 +129,30 @@ def test_main_backfill_ok():
 
 
 # ---------------------------------------------------------------------------
-# _handle_daily_result
+# _log_daily_summary
 # ---------------------------------------------------------------------------
 
 
-def test_handle_daily_result_skips_on_non_ok():
-    """Si status != ok, no se invoca check_and_notify ni notify."""
-    log_mock = MagicMock()
-    with (
-        patch("scheduler.run_update.check_and_notify") as mock_wl,
-        patch("scheduler.run_update.notify") as mock_notify,
-        patch("scheduler.run_update.count_licitaciones", return_value=0),
-    ):
-        from scheduler import run_update
-
-        run_update._handle_daily_result({"status": "error"}, log_mock)
-
-    mock_wl.assert_not_called()
-    mock_notify.assert_not_called()
-
-
-def test_handle_daily_result_notifies_on_modifications():
+def test_log_daily_summary_notifies_on_modifications():
     """Si hay modificaciones, se llama notify con AlertLevel.INFO."""
     log_mock = MagicMock()
-    result = {
+    pipeline_result = {
         "status": "ok",
-        "inserted": ["LIC-001"],
-        "modified": ["LIC-002", "LIC-003"],
+        "ingestion_result": {
+            "status": "ok",
+            "inserted": ["LIC-001"],
+            "modified": ["LIC-002", "LIC-003"],
+        },
+        "steps": {},
     }
 
     with (
-        patch("scheduler.run_update.check_and_notify"),
         patch("scheduler.run_update.count_licitaciones", return_value=50),
         patch("scheduler.run_update.notify") as mock_notify,
     ):
         from scheduler import run_update
 
-        run_update._handle_daily_result(result, log_mock)
+        run_update._log_daily_summary(pipeline_result, log_mock)
 
     mock_notify.assert_called_once()
     from observability import AlertLevel
@@ -160,36 +160,21 @@ def test_handle_daily_result_notifies_on_modifications():
     assert mock_notify.call_args[0][0] == AlertLevel.INFO
 
 
-def test_handle_daily_result_no_notify_when_no_modifications():
+def test_log_daily_summary_no_notify_when_no_modifications():
     """Sin modificaciones no se llama notify."""
     log_mock = MagicMock()
-    result = {"status": "ok", "inserted": ["LIC-001"], "modified": []}
+    pipeline_result = {
+        "status": "ok",
+        "ingestion_result": {"status": "ok", "inserted": ["LIC-001"], "modified": []},
+        "steps": {},
+    }
 
     with (
-        patch("scheduler.run_update.check_and_notify"),
         patch("scheduler.run_update.count_licitaciones", return_value=10),
         patch("scheduler.run_update.notify") as mock_notify,
     ):
         from scheduler import run_update
 
-        run_update._handle_daily_result(result, log_mock)
+        run_update._log_daily_summary(pipeline_result, log_mock)
 
     mock_notify.assert_not_called()
-
-
-def test_handle_daily_result_watchlist_exception_is_logged():
-    """Si check_and_notify lanza excepción, se loguea pero no propaga."""
-    log_mock = MagicMock()
-    result = {"status": "ok", "inserted": [], "modified": []}
-
-    with (
-        patch("scheduler.run_update.check_and_notify", side_effect=RuntimeError("wl error")),
-        patch("scheduler.run_update.count_licitaciones", return_value=0),
-        patch("scheduler.run_update.notify"),
-    ):
-        from scheduler import run_update
-
-        # No debe lanzar excepción
-        run_update._handle_daily_result(result, log_mock)
-
-    log_mock.exception.assert_called_once_with("watchlist_alert_error_daily")

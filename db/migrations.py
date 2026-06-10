@@ -496,6 +496,18 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         "users_password_hash",
         "",  # handled programmatically (ALTER TABLE ADD COLUMN, idempotente)
     ),
+    (
+        34,
+        "job_locks",
+        """
+        CREATE TABLE IF NOT EXISTS job_locks (
+            name         TEXT PRIMARY KEY,
+            acquired_at  TEXT NOT NULL,
+            expires_at   TEXT NOT NULL,
+            holder       TEXT NOT NULL DEFAULT ''
+        );
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -611,6 +623,9 @@ ROLLBACKS: dict[int, str] = {
         DROP INDEX IF EXISTS idx_lic_ml_proba;
         DROP INDEX IF EXISTS idx_adj_nombre_importe;
         DROP INDEX IF EXISTS idx_adj_ccaa_nombre;
+    """,
+    34: """
+        DROP TABLE IF EXISTS job_locks;
     """,
 }
 

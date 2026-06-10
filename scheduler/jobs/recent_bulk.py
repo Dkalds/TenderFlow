@@ -1,4 +1,4 @@
-"""Bulk refresh of recent months + downstream KPI/aggregates/watchlist."""
+"""Bulk refresh of recent months + downstream canonical pipeline (ADR-012)."""
 
 from __future__ import annotations
 
@@ -21,26 +21,8 @@ def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
 
 
 def run() -> None:
-    """Refresh the last N months of data and run downstream precomputations."""
-    from db.analytics import run_analytics_export
-    from scheduler.aggregates_precompute import run_aggregates_precompute
-    from scheduler.kpi_precompute import run_kpi_precompute
-    from scheduler.watchlist_alerts import check_and_notify
-    from scraper.pipeline import update_recent
+    """Refresh the last N months of data via the canonical pipeline_runs sequence."""
+    from scheduler.pipeline_runs import run_bulk_pipeline
 
     months = _env_int("SCHEDULER_BULK_MONTHS", 3)
-    results = update_recent(months)
-    failed = [r for r in results if r.get("status") not in ("ok", "no_publicado")]
-    if failed:
-        raise RuntimeError(f"bulk refresh failed for {len(failed)} month(s): {failed}")
-
-    # Snapshot Parquet de hechos analíticos + manifest de linaje (RFC 086).
-    # Best-effort: nunca debe abortar el pipeline si el export falla.
-    try:
-        run_analytics_export()
-    except Exception:
-        log.debug("recent_bulk_analytics_export_failed")
-
-    run_kpi_precompute()
-    run_aggregates_precompute()
-    check_and_notify()
+    run_bulk_pipeline(months)

@@ -215,6 +215,13 @@ CREATE TABLE IF NOT EXISTS domain_events (
 CREATE INDEX IF NOT EXISTS idx_domain_events_aggregate ON domain_events(aggregate_type, aggregate_id);
 CREATE INDEX IF NOT EXISTS idx_domain_events_type      ON domain_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_domain_events_created   ON domain_events(created_at);
+
+CREATE TABLE IF NOT EXISTS job_locks (
+    name         TEXT PRIMARY KEY,
+    acquired_at  TEXT NOT NULL,
+    expires_at   TEXT NOT NULL,
+    holder       TEXT NOT NULL DEFAULT ''
+);
 """
 
 
