@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 # ── engine_available ──────────────────────────────────────────────────────────
@@ -146,8 +147,20 @@ def test_build_engine_returns_none_on_import_error():
 # ── maybe_refresh ─────────────────────────────────────────────────────────────
 
 
-def test_maybe_refresh_triggers_refresh_when_signal_newer():
-    """_DuckDBEngine.maybe_refresh() llama _refresh si la señal es más nueva."""
+def _make_manifest(generated_at_ts: float):
+    """Construye un Manifest fake con generated_at_timestamp() == generated_at_ts."""
+    from shared.parquet_manifest import Manifest
+
+    return Manifest(
+        generated_at=datetime.fromtimestamp(generated_at_ts, tz=UTC).isoformat(),
+        engine="duckdb-parquet",
+        row_counts={"licitaciones": 1, "adjudicaciones": 1},
+        source_db_mtime=generated_at_ts,
+    )
+
+
+def test_maybe_refresh_triggers_refresh_when_manifest_newer():
+    """_DuckDBEngine.maybe_refresh() llama _refresh si el manifest es más nuevo."""
     mock_duckdb = MagicMock()
     mock_con = _make_mock_con()
     mock_duckdb.connect.return_value = mock_con
@@ -171,14 +184,16 @@ def test_maybe_refresh_triggers_refresh_when_signal_newer():
 
         engine._refresh = _fake_refresh
 
-        with patch("shared.cache_signal.get_signal_timestamp", return_value=9999.0):
+        with patch(
+            "shared.parquet_manifest.read_manifest", return_value=_make_manifest(9999.0)
+        ):
             engine.maybe_refresh()
 
     assert refresh_called, "Se esperaba que _refresh fuera llamado"
 
 
-def test_maybe_refresh_skips_when_signal_older():
-    """_DuckDBEngine.maybe_refresh() no llama _refresh si la señal es anterior."""
+def test_maybe_refresh_skips_when_manifest_older():
+    """_DuckDBEngine.maybe_refresh() no llama _refresh si el manifest es anterior."""
     mock_duckdb = MagicMock()
     mock_con = _make_mock_con()
     mock_duckdb.connect.return_value = mock_con
@@ -202,7 +217,73 @@ def test_maybe_refresh_skips_when_signal_older():
 
         engine._refresh = _fake_refresh
 
-        with patch("shared.cache_signal.get_signal_timestamp", return_value=1000.0):
+        with patch(
+            "shared.parquet_manifest.read_manifest", return_value=_make_manifest(1000.0)
+        ):
             engine.maybe_refresh()
 
     assert not refresh_called, "No se esperaba llamada a _refresh"
+
+
+def test_maybe_refresh_skips_when_manifest_equal():
+    """_DuckDBEngine.maybe_refresh() no llama _refresh si el manifest es igual al attach."""
+    mock_duckdb = MagicMock()
+    mock_con = _make_mock_con()
+    mock_duckdb.connect.return_value = mock_con
+
+    with patch.dict("sys.modules", {"duckdb": mock_duckdb}):
+        from importlib import reload
+
+        import services.analytics_engine as ae_module
+
+        reload(ae_module)
+
+        engine = ae_module._DuckDBEngine.__new__(ae_module._DuckDBEngine)
+        engine._con = mock_con
+        engine._db_path = "/fake/path.db"
+        engine._attached_at = 5000.0
+
+        refresh_called = []
+
+        def _fake_refresh():
+            refresh_called.append(True)
+
+        engine._refresh = _fake_refresh
+
+        with patch(
+            "shared.parquet_manifest.read_manifest", return_value=_make_manifest(5000.0)
+        ):
+            engine.maybe_refresh()
+
+    assert not refresh_called, "No se esperaba llamada a _refresh cuando generated_at == attached_at"
+
+
+def test_maybe_refresh_skips_when_manifest_missing():
+    """_DuckDBEngine.maybe_refresh() no llama _refresh si el manifest es None (ausente/corrupto)."""
+    mock_duckdb = MagicMock()
+    mock_con = _make_mock_con()
+    mock_duckdb.connect.return_value = mock_con
+
+    with patch.dict("sys.modules", {"duckdb": mock_duckdb}):
+        from importlib import reload
+
+        import services.analytics_engine as ae_module
+
+        reload(ae_module)
+
+        engine = ae_module._DuckDBEngine.__new__(ae_module._DuckDBEngine)
+        engine._con = mock_con
+        engine._db_path = "/fake/path.db"
+        engine._attached_at = 0.0
+
+        refresh_called = []
+
+        def _fake_refresh():
+            refresh_called.append(True)
+
+        engine._refresh = _fake_refresh
+
+        with patch("shared.parquet_manifest.read_manifest", return_value=None):
+            engine.maybe_refresh()
+
+    assert not refresh_called, "No se esperaba llamada a _refresh cuando el manifest es None"

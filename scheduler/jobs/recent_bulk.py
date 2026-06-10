@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
 
 def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
     raw = os.environ.get(name)
@@ -18,6 +22,7 @@ def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
 
 def run() -> None:
     """Refresh the last N months of data and run downstream precomputations."""
+    from db.analytics import run_analytics_export
     from scheduler.aggregates_precompute import run_aggregates_precompute
     from scheduler.kpi_precompute import run_kpi_precompute
     from scheduler.watchlist_alerts import check_and_notify
@@ -28,6 +33,14 @@ def run() -> None:
     failed = [r for r in results if r.get("status") not in ("ok", "no_publicado")]
     if failed:
         raise RuntimeError(f"bulk refresh failed for {len(failed)} month(s): {failed}")
+
+    # Snapshot Parquet de hechos analíticos + manifest de linaje (RFC 086).
+    # Best-effort: nunca debe abortar el pipeline si el export falla.
+    try:
+        run_analytics_export()
+    except Exception:
+        log.debug("recent_bulk_analytics_export_failed")
+
     run_kpi_precompute()
     run_aggregates_precompute()
     check_and_notify()

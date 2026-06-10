@@ -85,13 +85,24 @@ class _DuckDBEngine:
             log.warning("duckdb_engine_refresh_failed", error=str(exc))
 
     def maybe_refresh(self) -> None:
-        """Invalida y recarga si cache_signal es más reciente que el último attach."""
-        try:
-            from shared.cache_signal import get_signal_timestamp
+        """Invalida y recarga si el manifest Parquet es más reciente que el último attach.
 
-            sig_ts = get_signal_timestamp()
-            if sig_ts > self._attached_at:
-                log.debug("duckdb_engine_invalidated_by_signal")
+        Lee ``generated_at`` de ``DATA_DIR/parquet/_manifest.json`` (RFC 086). Si
+        el manifest no existe o no se puede leer, no refresca — mantiene el
+        comportamiento previo a la introducción del manifest (no rompe si el
+        export Parquet nunca corrió).
+        """
+        try:
+            from config import settings
+            from shared.parquet_manifest import read_manifest
+
+            manifest_path = settings.DATA_DIR / "parquet" / "_manifest.json"
+            manifest = read_manifest(manifest_path)
+            if manifest is None:
+                return
+            generated_ts = manifest.generated_at_timestamp()
+            if generated_ts > self._attached_at:
+                log.debug("duckdb_engine_invalidated_by_manifest")
                 self._refresh()
         except Exception:
             pass

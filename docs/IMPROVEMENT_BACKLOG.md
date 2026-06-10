@@ -19,7 +19,15 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-*(sin ítems abiertos)*
+### Deprecar o realinear `scheduler/run_update.py` con `scheduler/jobs/*`
+- **Área:** `scheduler/`
+- **Problema:** `scheduler/run_update.py` es un tercer entrypoint de orquestación que ha driftado respecto a `scheduler/jobs/daily_atom.py` y `scheduler/jobs/recent_bulk.py`: solo llama `kpi_precompute` (best-effort), sin `run_aggregates_precompute()` ni (desde RFC 086) `run_analytics_export()`. Si se sigue usando, produce `kpi_snapshots`/`mat_*` inconsistentes con los jobs canónicos y un cuarto camino de orquestación sin el orden export→manifest→KPI que exige RFC 086.
+- **Acceptance criteria:**
+  - Decidir entre (a) deprecar `scheduler/run_update.py` (marcar como legacy/no usar, redirigir callers a `scheduler/jobs/*`) o (b) hacer que delegue íntegramente en `daily_atom.run()` / `recent_bulk.run()` (o en un job equivalente) para no duplicar lógica.
+  - Si se deprecía, documentar la migración en `docs/AGENT_PLAYBOOK.md` y/o `docs/runbooks/` y verificar que ningún workflow de CI/cron lo invoca directamente.
+  - Si se realinea, añadir tests que verifiquen el mismo orden ingesta→export-parquet/manifest→KPI→aggregates que `daily_atom.py`/`recent_bulk.py`.
+- **Files de partida:** [scheduler/run_update.py](../scheduler/run_update.py), [scheduler/jobs/daily_atom.py](../scheduler/jobs/daily_atom.py), [scheduler/jobs/recent_bulk.py](../scheduler/jobs/recent_bulk.py).
+- **Riesgo:** medio — afecta orquestación del scheduler; verificar qué invoca `run_update.py` antes de tocarlo (cron jobs, workflows).
 
 ---
 

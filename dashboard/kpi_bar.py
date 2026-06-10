@@ -161,6 +161,29 @@ def _snapshot_series(snapshot: dict[str, Any], key: str) -> list[float] | None:
     return values or None
 
 
+def _analytics_freshness_caption() -> str | None:
+    """Devuelve el texto de frescura del snapshot Parquet, o ``None`` si no hay manifest.
+
+    Lee ``generated_at`` de ``DATA_DIR/parquet/_manifest.json`` (RFC 086).
+    No lanza excepciones — si el manifest no existe o falla la lectura, no se
+    muestra ningún indicador.
+    """
+    try:
+        from datetime import datetime
+
+        from config import settings
+        from shared.parquet_manifest import read_manifest
+
+        manifest_path = settings.DATA_DIR / "parquet" / "_manifest.json"
+        manifest = read_manifest(manifest_path)
+        if manifest is None:
+            return None
+        ts = datetime.fromisoformat(manifest.generated_at)
+        return f"Datos analíticos a las {ts.strftime('%H:%M')}"
+    except Exception:
+        return None
+
+
 @st.fragment
 def render_kpi_bar(df: pd.DataFrame) -> None:
     """Renderiza la barra de 5 KPIs con tooltips, sparklines e iconos SVG."""
@@ -241,3 +264,7 @@ def render_kpi_bar(df: pd.DataFrame) -> None:
             ),
             unsafe_allow_html=True,
         )
+
+    freshness = _analytics_freshness_caption()
+    if freshness:
+        st.caption(freshness)

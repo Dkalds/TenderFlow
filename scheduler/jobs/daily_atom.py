@@ -9,6 +9,7 @@ log = get_logger(__name__)
 
 def run() -> None:
     """Execute the daily ATOM pipeline and all dependent downstream jobs."""
+    from db.analytics import run_analytics_export
     from scheduler.aggregates_precompute import run_aggregates_precompute
     from scheduler.anomaly_alerts import run_anomaly_checks
     from scheduler.dlq_retry import retry_failed_extractions
@@ -41,6 +42,13 @@ def run() -> None:
             precompute_ml_tecnologias(force=False)
     except Exception:
         log.debug("daily_precompute_ml_tecnologias_failed")
+
+    # Snapshot Parquet de hechos analíticos + manifest de linaje (RFC 086).
+    # Best-effort: nunca debe abortar el pipeline si el export falla.
+    try:
+        run_analytics_export()
+    except Exception:
+        log.debug("daily_analytics_export_failed")
 
     run_kpi_precompute()
     run_aggregates_precompute()
