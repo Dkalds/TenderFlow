@@ -205,7 +205,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Build Docker image (runtime target)
-        run: docker build --target runtime --tag licitaciones-sap:ci .
+        run: docker build -f docker/Dockerfile.api --target runtime --tag licitaciones-sap:ci .
 
       - name: Smoke test (image starts)
         run: |
