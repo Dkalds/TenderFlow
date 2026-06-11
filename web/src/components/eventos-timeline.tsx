@@ -24,6 +24,7 @@ const TIPO_LABELS: Record<string, string> = {
   prorroga: "Prórroga",
   anulacion: "Anulación",
   cambio_estado: "Cambio de estado",
+  recurso: "Recurso",
 };
 
 const TIPO_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -34,6 +35,7 @@ const TIPO_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "o
   prorroga: "secondary",
   anulacion: "destructive",
   cambio_estado: "outline",
+  recurso: "destructive",
 };
 
 const TIPO_DOT: Record<string, string> = {
@@ -44,6 +46,7 @@ const TIPO_DOT: Record<string, string> = {
   prorroga: "bg-amber-500",
   anulacion: "bg-destructive",
   cambio_estado: "bg-muted-foreground",
+  recurso: "bg-destructive",
 };
 
 export function EventosTimeline({ licitacionId }: { licitacionId: string }) {
