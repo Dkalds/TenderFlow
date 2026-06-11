@@ -177,6 +177,20 @@ class Settings(BaseSettings):
     DAILY_MAX_PAGES: int = 50
     BACKFILL_MAX_WORKERS: int = 3
 
+    # ── Conectores autonómicos / TACRC (RFC 20260611-1, Fase 5) ─────────
+    # Dataset Socrata de publicaciones de la PSCP en el portal de
+    # transparencia de la Generalitat. Sin default: la regla operativa del
+    # RFC exige validar el dataset contra la API viva antes de ingerir —
+    # descubrilo con `python scripts/probe_pscp.py` y fijalo por entorno.
+    PSCP_DOMAIN: str = "analisi.transparenciacatalunya.cat"
+    PSCP_DATASET_ID: str = ""
+    # App token Socrata opcional (solo necesario si aparece rate limiting).
+    PSCP_APP_TOKEN: SecretStr = SecretStr("")
+    # Índice HTML público de resoluciones del TACRC (Ministerio de Hacienda).
+    # Sin default por el mismo motivo: validar la URL viva con
+    # `python -m scraper.connectors.tacrc --check` antes de programarlo.
+    TACRC_INDEX_URL: str = ""
+
     # ── Embeddings / NLP ─────────────────────────────────────────────────
     # Modelo sentence-transformers a usar. Cambiar a un modelo multilingual para
     # soporte completo de idiomas adicionales (PT, FR, DE, IT, etc.)
