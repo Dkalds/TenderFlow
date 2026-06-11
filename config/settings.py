@@ -188,14 +188,20 @@ class Settings(BaseSettings):
     PSCP_DATASET_ID: str = "ybgg-dgi6"
     # App token Socrata opcional (solo necesario si aparece rate limiting).
     PSCP_APP_TOKEN: SecretStr = SecretStr("")
-    # Buscador público de resoluciones del TACRC (Ministerio de Hacienda).
-    # URL verificada; el HTML que devuelve no, así que validar con
-    # `python -m scraper.connectors.tacrc --check` antes de programarlo.
-    # Los PDFs enlazados siguen el patrón
-    # "Recurso NNNN-AAAA (Res NNNN) DD-MM-AAAA.pdf" que el parser entiende.
+    # Índice de resoluciones TACRC (Ministerio de Hacienda).
+    #
+    # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):
+    # - BuscadordeResoluciones.aspx → SharePoint JS-rendered, 0 resoluciones
+    #   parseadas con lxml (sin headless browser). NO usar como default.
+    # - Resoluciones-Pleno.aspx → HTML estático con 17 PDFs embebidos;
+    #   parser extrae 17 resoluciones. VALIDADO ✓
+    #
+    # Resoluciones-Pleno cubre solo resoluciones del Pleno (doctrinales); las
+    # resoluciones individuales de recurso quedan pendientes de otro índice.
+    # Para cobertura completa, configurar TACRC_INDEX_URL por entorno.
     TACRC_INDEX_URL: str = (
         "https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/"
-        "TACRC/Paginas/BuscadordeResoluciones.aspx"
+        "TACRC/Paginas/Resoluciones-Pleno.aspx"
     )
 
     # ── Embeddings / NLP ─────────────────────────────────────────────────

@@ -59,8 +59,25 @@ _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
         "data_publicacio_fase",
     ),
     "fecha_limite": ("termini_presentacio_ofertes", "data_limit_presentacio"),
-    "importe": ("pressupost_licitacio", "import_licitacio", "pressupost_de_licitacio"),
-    "importe_adjudicacion": ("import_adjudicacio", "import_adjudicacio_sense_iva"),
+    # Validado contra API viva ybgg-dgi6 (2026-06-11): los campos reales son
+    # pressupost_licitacio_sense (sin IVA) y pressupost_licitacio_amb (con IVA).
+    # Se mantienen los candidatos históricos como fallback por si el dataset
+    # cambia de nombre en futuras versiones.
+    "importe": (
+        "pressupost_licitacio_sense",
+        "pressupost_licitacio_amb",
+        "pressupost_licitacio",
+        "import_licitacio",
+        "pressupost_de_licitacio",
+    ),
+    # import_adjudicacio_sense (sin IVA) es el campo real; import_adjudicacio_amb_iva
+    # también existe pero incluye IVA (menos comparable con PLACSP).
+    "importe_adjudicacion": (
+        "import_adjudicacio_sense",
+        "import_adjudicacio_amb_iva",
+        "import_adjudicacio",
+        "import_adjudicacio_sense_iva",
+    ),
     "cpv": ("codi_cpv", "cpv"),
     "tipo_contrato": ("tipus_contracte", "tipus_de_contracte"),
     "fase": ("fase_publicacio", "fase", "tipus_publicacio"),

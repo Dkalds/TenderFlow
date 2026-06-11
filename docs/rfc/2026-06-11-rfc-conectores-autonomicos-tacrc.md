@@ -191,23 +191,27 @@ calibración del dedupe necesita datos reales).
 - **Frontend**: badge "Recurrido" + bloque Recursos en el detail panel y tipo
   `recurso` en el timeline. El filtro por `fuente` del paso 7 no se
   implementó: ninguna vista actual muestra esa columna.
-- **Validación de fuentes (2026-06-11, vía búsqueda web — el entorno no tenía
-  egress HTTP directo):**
-  - Dataset PSCP identificado y fijado como default: **`ybgg-dgi6`**
-    ("Contractació pública a Catalunya: publicacions a la Plataforma de
-    serveis de contractació pública", portal oficial
-    analisi.transparenciacatalunya.cat). Los **nombres de campo siguen sin
-    validar** contra la API: correr
-    `python scripts/probe_pscp.py --dataset ybgg-dgi6` antes del backfill.
-  - URL del buscador TACRC verificada y fijada como default:
-    `https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/TACRC/Paginas/BuscadordeResoluciones.aspx`.
-    Los PDFs reales siguen el patrón
-    `Recurso NNNN-AAAA (Res NNNN) DD-MM-AAAA.pdf`; el parser se endureció
-    para extraer resolución/recurso/fecha de ese formato (test con URL real).
-    Ojo: la página es SharePoint (.aspx) y puede renderizar el listado por
-    JS — el `--check` decidirá si hace falta apuntar a un índice alternativo.
-- **Acceptance pendiente de datos reales** (requieren las fuentes vivas):
-  backfill PSCP, medición del solape PSCP↔PLACSP, vinculación de ≥1 caso
-  TACRC real y el spot-check del clasificador en catalán. El resto de
-  criterios quedan cubiertos por tests (`test_connectors_pscp.py`,
-  `test_dedupe.py`, `test_resoluciones_tacrc.py`).
+- **Validación de fuentes (2026-06-11, máquina local con egress HTTP real):**
+  - **PSCP — dataset `ybgg-dgi6` validado ✓**. Campos reales confirmados
+    contra la API Socrata. Dos mismatches en `_FIELD_CANDIDATES` corregidos:
+    - `importe`: `pressupost_licitacio` no existía; campos reales son
+      `pressupost_licitacio_sense` (sin IVA) y `pressupost_licitacio_amb`.
+    - `importe_adjudicacion`: `import_adjudicacio_sense_iva` no existía;
+      campo real es `import_adjudicacio_sense`. Ambos corregidos en
+      `scraper/connectors/pscp.py`.
+    - Resto de 12 conceptos: OK, primeros candidatos coinciden exactamente.
+  - **TACRC — `BuscadordeResoluciones.aspx` NO funciona**: SharePoint
+    JS-rendered, 0 resoluciones parseadas con lxml. Índice alternativo
+    encontrado: **`Resoluciones-Pleno.aspx`** — HTML estático con 17 PDFs
+    embebidos; parser extrae 17 resoluciones (exit 0). Actualizado como
+    default en `config/settings.py`.
+    - Limitación: solo resoluciones doctrinales del Pleno. Las resoluciones
+      individuales de recurso (el volumen principal) requieren un índice
+      estático aún no identificado (el buscador no es raseable sin JS).
+- **Acceptance pendiente de datos reales**:
+  - Backfill PSCP + medición del solape PSCP↔PLACSP.
+  - Vinculación de ≥1 caso TACRC real (las 17 resoluciones de Pleno son
+    doctrinales; el vínculo depende de expedientes comunes en BD).
+  - Spot-check del clasificador en catalán (requiere muestra PSCP ingerida).
+  - El resto de criterios quedan cubiertos por tests (`test_connectors_pscp.py`,
+    `test_dedupe.py`, `test_resoluciones_tacrc.py`).
