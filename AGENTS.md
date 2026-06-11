@@ -19,6 +19,11 @@ Hay un knowledge graph en `graphify-out/` con god nodes, comunidades y relacione
 
 Dirty graphify-out/ tras hooks o updates incrementales es **normal** — no es razón para saltarse graphify. Solo saltátelo si la tarea es sobre stale graph output o el usuario lo dice explícito.
 
+**Fallback sin CLI**: `graphify` es una herramienta local del mantenedor — **no está en PyPI ni npm, no intentes instalarla**. En entornos donde el CLI no existe (CI, sesiones remotas de Claude Code):
+- Leé los artefactos commiteados directamente: `graphify-out/graph.json`, `graphify-out/wiki/` o `GRAPH_REPORT.md`, en vez de invocar el CLI.
+- Si `graphify-out/` faltara por completo → navegá con grep + [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) y el mapa de áreas de abajo. No es un error: seguí con la tarea.
+- El post-flight `graphify update .` solo aplica si `which graphify` resuelve; si no, omitilo (el hook ya deja `graphify-out/.graph_stale` para regenerar local).
+
 Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) el graph no tiene el detalle necesario, (c) el graph está ausente o stale.
 
 ---
@@ -84,7 +89,7 @@ Slash-commands de Claude Code (en `.claude/commands/`):
 ## 5. Workflow estándar
 
 **Pre-flight (siempre):**
-1. Si `graphify-out/graph.json` existe → `graphify query "<intent>"` antes que grep.
+1. Si `graphify-out/graph.json` existe → `graphify query "<intent>"` antes que grep (o leé el JSON/wiki directo si el CLI no está instalado — ver fallback en §1).
 2. Lee [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) si vas a tocar un área que no conocés.
 3. Revisa [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) si te pidieron "encuentra una mejora".
 
@@ -94,7 +99,7 @@ Slash-commands de Claude Code (en `.claude/commands/`):
 
 **Post-flight (siempre tras editar `.py`):**
 1. Corre `/check` (o `make lint && make typecheck && make test-unit`).
-2. Corre `graphify update .` (AST-only, gratis, sin API). Si hubo cambios estructurales (nuevos módulos, renames), considerá `graphify update . --force`.
+2. Si el CLI está disponible (`which graphify`), corre `graphify update .` (AST-only, gratis, sin API). Si hubo cambios estructurales (nuevos módulos, renames), considerá `graphify update . --force`. Si el CLI no está (CI/remoto), omití este paso.
 3. Si el cambio rompe convenciones documentadas, abrí un ADR en `docs/adr/` antes de mergear.
 4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), movélo a **Cerrados** (o anotá progreso parcial) en ese mismo momento. No dejarlo para después.
 

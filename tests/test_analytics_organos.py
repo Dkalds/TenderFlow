@@ -138,6 +138,61 @@ def test_get_organos_empty():
     assert result.organos == []
 
 
+def test_get_organos_q_accent_insensitive():
+    """q sin tildes encuentra órganos con tildes (y viceversa), case-insensitive."""
+    rows = _lic_rows()
+    rows.append(
+        {
+            "id_externo": "L4",
+            "titulo": "CPD",
+            "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
+            "importe": 50_000.0,
+            "estado": "PUB",
+            "fecha_publicacion": "2025-03-01",
+            "ccaa": "Madrid",
+            "tipo_contrato": "2",
+            "url": None,
+            "modulos_str": None,
+        }
+    )
+    with patch("services.analytics.organos.load_stats_dataframe", return_value=rows):
+        sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
+        con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
+
+    for result in (sin_tildes, con_tildes):
+        assert [o.organo_contratacion for o in result.organos] == [
+            "Gerencia de Informática de la Seguridad Social"
+        ]
+
+
+def test_get_organos_q_filters_before_limit():
+    """Un órgano fuera del top-limit sigue siendo encontrable con q."""
+    rows = _lic_rows()  # ORG A: 2 lics, ORG B: 1 lic
+    rows.append(
+        {
+            "id_externo": "L4",
+            "titulo": "CPD",
+            "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
+            "importe": 50_000.0,
+            "estado": "PUB",
+            "fecha_publicacion": "2025-03-01",
+            "ccaa": "Madrid",
+            "tipo_contrato": "2",
+            "url": None,
+            "modulos_str": None,
+        }
+    )
+    # limit=1: sin q solo saldría ORG A; con q el match aparece igual
+    with patch("services.analytics.organos.load_stats_dataframe", return_value=rows):
+        sin_q = get_organos(OrganosFilters(limit=1))
+        con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
+
+    assert [o.organo_contratacion for o in sin_q.organos] == ["ORG A"]
+    assert [o.organo_contratacion for o in con_q.organos] == [
+        "Gerencia de Informática de la Seguridad Social"
+    ]
+
+
 # ── get_organo_detail ───────────────────────────────────────────────────────
 
 

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useDebounce } from "@/hooks/use-debounce";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ExportPopover } from "@/components/export-popover";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { foldText, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { TreemapContent } from "@/components/charts/treemap-content";
 import {
@@ -110,10 +111,15 @@ export default function OrganosPage() {
   const [filter, setFilter] = useState("");
   const [selectedOrgano, setSelectedOrgano] = useState<string | null>(null);
 
+  // Búsqueda server-side (accent-insensitive): sin q el API devuelve solo el
+  // top-50 por actividad, así que un órgano fuera de ese ranking jamás
+  // aparecería filtrando solo en cliente.
+  const debouncedFilter = useDebounce(filter, 300);
   const { data, isLoading, error } = useFilteredQuery<OrganosResponse>(
-    ["analytics", "organos"],
+    ["analytics", "organos", debouncedFilter],
     "/api/v1/analytics/organos",
     { staleTime: 5 * 60 * 1000 },
+    debouncedFilter ? { q: debouncedFilter } : undefined,
   );
 
   const { data: detailData, isLoading: detailLoading } =
@@ -149,11 +155,11 @@ export default function OrganosPage() {
 
   const filteredItems = useMemo(() => {
     if (!filter) return items;
-    const q = filter.toLowerCase();
+    const q = foldText(filter);
     return items.filter(
       (i) =>
-        i.organo_contratacion.toLowerCase().includes(q) ||
-        (i.ccaa && i.ccaa.toLowerCase().includes(q)),
+        foldText(i.organo_contratacion).includes(q) ||
+        (i.ccaa && foldText(i.ccaa).includes(q)),
     );
   }, [items, filter]);
 
@@ -175,7 +181,7 @@ export default function OrganosPage() {
     if (breakdown && breakdown.length > 0) {
       // Filter by local search if active
       const relevant = filter
-        ? breakdown.filter((b) => b.organo.toLowerCase().includes(filter.toLowerCase()))
+        ? breakdown.filter((b) => foldText(b.organo).includes(foldText(filter)))
         : breakdown;
       const map = new Map<string, { name: string; children: { name: string; size: number }[] }>();
       for (const item of relevant) {

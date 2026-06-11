@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
 from services.licitaciones import load_stats_dataframe
+from services.normalization import fold_text
 
 log = get_logger(__name__)
 
@@ -25,6 +26,7 @@ class OrganosFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
+    q: str | None = None
     limit: int = 50
 
 
@@ -73,6 +75,17 @@ def _load_df() -> pd.DataFrame:
     return df
 
 
+def _fold_series(s: pd.Series) -> pd.Series:
+    """Versión vectorizada de fold_text: sin tildes + casefold, NaN → ""."""
+    return (
+        s.fillna("")
+        .str.normalize("NFKD")
+        .str.encode("ascii", "ignore")
+        .str.decode("ascii")
+        .str.casefold()
+    )
+
+
 def _apply_filters(df: pd.DataFrame, filters: OrganosFilters) -> pd.DataFrame:
     if df.empty:
         return df
@@ -86,6 +99,14 @@ def _apply_filters(df: pd.DataFrame, filters: OrganosFilters) -> pd.DataFrame:
         df = df[df["ccaa"] == filters.ccaa]
     if filters.tecnologia:
         df = df[df["tecnologia"] == filters.tecnologia]
+    if filters.q:
+        # Matching accent/case-insensitive sobre el nombre del órgano,
+        # ANTES de agrupar/limitar: así un órgano fuera del top-N sigue
+        # siendo encontrable ("Informatica" matchea "Informática").
+        mask = _fold_series(df["organo_contratacion"]).str.contains(
+            fold_text(filters.q), regex=False
+        )
+        df = df[mask]
     return df
 
 
@@ -140,7 +161,7 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
         for _, row in g_limited.iterrows()
     ]
 
-    # Treemap breakdown: top 30 organos × tipo_contrato
+    # Treemap breakdown: top 30 organos x tipo_contrato
     treemap_breakdown: list[TreemapItem] = []
     if "tipo_contrato" in df.columns:
         top30_organos = set(g.head(30)["organo_contratacion"])

@@ -67,3 +67,14 @@ export function truncate(text: string | null | undefined, max = 80): string {
   if (!text) return "";
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
+
+/**
+ * Fold text for accent/case-insensitive matching:
+ * foldText("Informática") === foldText("INFORMATICA").
+ */
+export function foldText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}

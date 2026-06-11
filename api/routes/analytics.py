@@ -187,6 +187,11 @@ def organos(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    q: str | None = Query(
+        default=None,
+        max_length=200,
+        description="Search organo name (accent/case-insensitive substring)",
+    ),
     limit: int = Query(default=50, ge=1, le=500, description="Max organos to return"),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> OrganosResult:
@@ -196,6 +201,7 @@ def organos(
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        q=q,
         limit=limit,
     )
     return get_organos(filters)

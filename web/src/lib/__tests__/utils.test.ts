@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   cn,
+  foldText,
   formatCurrency,
   formatNumber,
   formatPercent,
@@ -290,5 +291,29 @@ describe("truncate", () => {
 
   it("truncates a string of length 2 with max=1", () => {
     expect(truncate("ab", 1)).toBe("a...");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// foldText
+// ---------------------------------------------------------------------------
+
+describe("foldText", () => {
+  it("strips accents and lowercases", () => {
+    expect(foldText("Informática")).toBe("informatica");
+    expect(foldText("INFORMÁTICA")).toBe(foldText("informatica"));
+  });
+
+  it("folds ñ to n", () => {
+    expect(foldText("Señalización")).toBe("senalizacion");
+  });
+
+  it("leaves plain ascii unchanged", () => {
+    expect(foldText("c++")).toBe("c++");
+  });
+
+  it("matches accented organ names from unaccented queries", () => {
+    const organo = "Gerencia de Informática de la Seguridad Social";
+    expect(foldText(organo).includes(foldText("gerencia de informatica"))).toBe(true);
   });
 });

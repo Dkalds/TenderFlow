@@ -130,3 +130,21 @@ class TestParseUteMembers:
 
     def test_dedupe(self):
         assert parse_ute_members("UTE EMPRESA - EMPRESA SA") == ["EMPRESA"]
+
+
+class TestFoldText:
+    def test_strips_accents_and_case(self):
+        from services.normalization import fold_text
+
+        assert fold_text("Informática") == "informatica"
+        assert fold_text("INFORMÁTICA") == fold_text("informatica")
+
+    def test_enie(self):
+        from services.normalization import fold_text
+
+        assert fold_text("Señalización") == "senalizacion"
+
+    def test_plain_ascii_unchanged(self):
+        from services.normalization import fold_text
+
+        assert fold_text("c++") == "c++"
