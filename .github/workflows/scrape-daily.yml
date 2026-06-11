@@ -49,3 +49,29 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           LOG_FORMAT: json
         run: python -m scheduler.run_update --daily
+
+      # Conectores Fase 5 (RFC 20260611-1). Se omiten hasta que sus
+      # variables estén configuradas tras validar las fuentes vivas
+      # (scripts/probe_pscp.py · python -m scraper.connectors.tacrc --check).
+      - name: Run PSCP Catalunya connector
+        if: vars.PSCP_DATASET_ID != ''
+        continue-on-error: true
+        env:
+          ENV: dev
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
+          PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
+          LOG_FORMAT: json
+        run: python -m scraper.connectors.pscp
+
+      - name: Run TACRC resoluciones connector
+        if: vars.TACRC_INDEX_URL != ''
+        continue-on-error: true
+        env:
+          ENV: dev
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          TACRC_INDEX_URL: ${{ vars.TACRC_INDEX_URL }}
+          LOG_FORMAT: json
+        run: python -m scraper.connectors.tacrc
