@@ -6,8 +6,10 @@
 
 import {
   BarChart3,
+  Briefcase,
   Building2,
   Calendar,
+  CalendarClock,
   Eye,
   Flag,
   Globe,
@@ -137,6 +139,20 @@ export const SECTIONS: NavSection[] = [
         description:
           "Empresas adjudicatarias, cuota de mercado y analisis comparativo.",
         icon: Trophy,
+      },
+      {
+        label: "Renovaciones",
+        slug: "renovaciones",
+        description:
+          "Contratos que vencen proximamente: cartera en juego por empresa y pipeline comercial.",
+        icon: CalendarClock,
+      },
+      {
+        label: "Empresas",
+        slug: "empresas",
+        description:
+          "Maestro de empresas canonicas: buscador, perfil competitivo, aliases y vigilancia.",
+        icon: Briefcase,
       },
       {
         label: "Licitadores",

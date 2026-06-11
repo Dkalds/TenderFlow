@@ -9,6 +9,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { EventosTimeline } from "@/components/eventos-timeline";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 
@@ -156,6 +157,12 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             <p className="text-sm whitespace-pre-wrap">{l.descripcion}</p>
           </div>
         )}
+
+        {/* Eventos de contrato */}
+        <div className="mt-6 space-y-3">
+          <h3 className="text-sm font-medium text-muted-foreground">Línea de tiempo</h3>
+          <EventosTimeline licitacionId={l.id_externo} />
+        </div>
 
         {/* External link */}
         {l.url && (
