@@ -98,6 +98,13 @@ def _run_watchlist_notify() -> None:
     from scheduler.watchlist_alerts import check_and_notify
 
     check_and_notify()
+    # Alertas de movimientos de competidores (watchlist por empresa, v36)
+    try:
+        from scheduler.competitor_alerts import check_and_notify as check_competitors
+
+        check_competitors()
+    except Exception as e:
+        log.warning("competitor_alerts_failed", error=str(e))
 
 
 def _run_dlq_retry() -> None:

@@ -127,6 +127,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_empresa_review_pending
     ON empresa_review_queue(alias_normalizado, COALESCE(nif, ''), candidato_empresa_id)
     WHERE status = 'pending';
 
+CREATE TABLE IF NOT EXISTS watchlist_empresas (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_key         TEXT NOT NULL,
+    empresa_id       INTEGER NOT NULL REFERENCES empresas(empresa_id) ON DELETE CASCADE,
+    email            TEXT,
+    frequency        TEXT NOT NULL DEFAULT 'daily',
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    last_notified_at TEXT,
+    UNIQUE(user_key, empresa_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wl_emp_user ON watchlist_empresas(user_key);
+
 CREATE TABLE IF NOT EXISTS adjudicaciones (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     licitacion_id           TEXT NOT NULL,
