@@ -4,7 +4,7 @@ title: Fase 5 — Conectores autonómicos (PSCP Catalunya primero) y resolucione
 issue: N/A (roadmap interno, Crítica 4 cobertura de datos)
 author: agent:architect
 date: 2026-06-11
-status: draft
+status: implemented (v1)
 supersedes:
 ---
 
@@ -170,4 +170,29 @@ calibración del dedupe necesita datos reales).
 
 ## Notas de review
 
-<pendiente>
+**Implementación v1 (2026-06-11, rama `claude/adoring-cray-olrwcr`):**
+
+- **5.1 PSCP**: `scraper/connectors/pscp.py` + `scripts/probe_pscp.py`. El
+  entorno de implementación no tenía acceso de red al dominio Socrata, así
+  que el paso 1 (sondeo de la API viva) queda materializado como script: el
+  dataset se fija por entorno (`PSCP_DATASET_ID`) tras correr el probe, y el
+  mapeo usa listas de candidatos por concepto (`_FIELD_CANDIDATES`) que el
+  probe contrasta contra el dataset real. El conector falla con mensaje claro
+  si el dataset no está configurado.
+- **5.2 Dedupe**: migración v39 + `services/dedupe.py`. La cola de revisión
+  usa columna `status` en la propia tabla (la preferencia del RFC). Solo los
+  `confirmed` se excluyen de analytics; los `pending` cuentan hasta revisión.
+- **5.3 TACRC**: migración v40 (incluye rebuild guardado de
+  `contrato_eventos` para ampliar el CHECK con `recurso`) +
+  `services/resoluciones.py` + `scraper/connectors/tacrc.py`. La URL del
+  índice también es config (`TACRC_INDEX_URL`) con `--check` de validación.
+- **Scheduler**: pasos en `scrape-daily.yml` condicionados a
+  `vars.PSCP_DATASET_ID` / `vars.TACRC_INDEX_URL` y `continue-on-error`.
+- **Frontend**: badge "Recurrido" + bloque Recursos en el detail panel y tipo
+  `recurso` en el timeline. El filtro por `fuente` del paso 7 no se
+  implementó: ninguna vista actual muestra esa columna.
+- **Acceptance pendiente de datos reales** (requieren las fuentes vivas):
+  backfill PSCP, medición del solape PSCP↔PLACSP, vinculación de ≥1 caso
+  TACRC real y el spot-check del clasificador en catalán. El resto de
+  criterios quedan cubiertos por tests (`test_connectors_pscp.py`,
+  `test_dedupe.py`, `test_resoluciones_tacrc.py`).
