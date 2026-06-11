@@ -99,3 +99,5 @@ mappin
 conector
 relevante
 inicial
+ortogonal
+fases
