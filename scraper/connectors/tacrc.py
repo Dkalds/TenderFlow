@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import unquote
 
 import requests
 from lxml import html as lxml_html
@@ -40,6 +41,10 @@ _TIMEOUT = 60
 _NUM_RESOLUCION_RE = re.compile(r"resoluci[oó]n\s*n?[ºo°.]*\s*(\d{1,5}/\d{4})", re.IGNORECASE)
 _NUM_BARE_RE = re.compile(r"\b(\d{1,5}/\d{4})\b")
 _NUM_RECURSO_RE = re.compile(r"recurso\s*n?[ºo°.]*\s*(\d{1,5}/\d{4})", re.IGNORECASE)
+# Patrones de los PDFs reales del TACRC en hacienda.gob.es, p. ej.
+# "Recurso 1443-2025 (Res 1782) 04-12-2025.pdf"
+_RECURSO_GUION_RE = re.compile(r"recursos?\s*(\d{1,5})-(\d{4})", re.IGNORECASE)
+_RES_PAREN_RE = re.compile(r"\(\s*res\.?\s*(\d{1,5})\s*\)", re.IGNORECASE)
 _FECHA_RE = re.compile(r"(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})")
 _FECHA_ISO_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 _EXPEDIENTE_RE = re.compile(r"expediente\s*[:\s]\s*([A-Za-z0-9][\w\./\-]{2,40})", re.IGNORECASE)
@@ -75,16 +80,42 @@ def _sentido(text: str) -> str | None:
     return None
 
 
+def _extraer_numero_recurso(textos: tuple[str, ...]) -> str | None:
+    """Número de recurso: prefijo 'Recurso nº NNN/AAAA' o el patrón de los
+    PDFs reales del TACRC ('Recurso 1443-2025'), normalizado a NNN/AAAA."""
+    for texto in textos:
+        m = _NUM_RECURSO_RE.search(texto)
+        if m:
+            return str(m.group(1))
+    for texto in textos:
+        m = _RECURSO_GUION_RE.search(texto)
+        if m:
+            return f"{int(m.group(1))}/{m.group(2)}"
+    return None
+
+
 def _extraer_numero_resolucion(
-    texto_link: str, texto_fila: str, numero_recurso: str | None
+    textos: tuple[str, ...], numero_recurso: str | None, fecha: str | None
 ) -> str | None:
-    """Número de resolución: prefijo explícito primero; un número suelto solo
-    si no es el del recurso (ambos comparten el formato NNN/AAAA)."""
-    for texto in (texto_link, texto_fila):
+    """Número de resolución, en orden de confianza: prefijo explícito
+    ('Resolución nº NNN/AAAA'), el patrón de los PDFs reales '(Res NNNN)'
+    (año inferido del recurso o de la fecha), y por último un número suelto
+    que no sea el del recurso (ambos comparten el formato NNN/AAAA)."""
+    for texto in textos:
         m = _NUM_RESOLUCION_RE.search(texto)
         if m:
-            return m.group(1)
-    for texto in (texto_link, texto_fila):
+            return str(m.group(1))
+    year = None
+    if numero_recurso and "/" in numero_recurso:
+        year = numero_recurso.rsplit("/", 1)[-1]
+    elif fecha:
+        year = fecha[:4]
+    if year:
+        for texto in textos:
+            m = _RES_PAREN_RE.search(texto)
+            if m:
+                return f"{int(m.group(1))}/{year}"
+    for texto in textos:
         candidatos = [str(n) for n in _NUM_BARE_RE.findall(texto) if n != numero_recurso]
         if candidatos:
             return candidatos[0]
@@ -121,18 +152,19 @@ def parse_index(page_html: str | bytes, base_url: str = "") -> list[Resolucion]:
         texto = re.sub(r"\s+", " ", texto).strip()
 
         texto_link = " ".join(link.itertext())
-        recurso = _NUM_RECURSO_RE.search(texto)
-        numero = _extraer_numero_resolucion(
-            texto_link, texto, recurso.group(1) if recurso else None
-        )
+        href_decodificado = unquote(href)
+        textos = (texto_link, href_decodificado, texto)
+        numero_recurso = _extraer_numero_recurso(textos)
+        fecha = _fecha_iso(f"{texto} {href_decodificado}")
+        numero = _extraer_numero_resolucion(textos, numero_recurso, fecha)
         es_pdf = href.lower().endswith(".pdf") or "pdf" in href.lower()
         if not numero or not (es_pdf or "resoluci" in href.lower()):
             continue
         expediente = _EXPEDIENTE_RE.search(texto)
         res = Resolucion(
             numero_resolucion=numero,
-            numero_recurso=recurso.group(1) if recurso else None,
-            fecha=_fecha_iso(texto),
+            numero_recurso=numero_recurso,
+            fecha=fecha,
             expediente=expediente.group(1) if expediente else None,
             sentido=_sentido(texto),
             url_pdf=href if es_pdf else None,

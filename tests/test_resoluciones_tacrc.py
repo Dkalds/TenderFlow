@@ -58,6 +58,25 @@ def test_parse_index_extrae_metadatos():
     assert por_numero["124/2026"].fecha == "2026-03-16"
 
 
+def test_parse_index_patron_pdf_real_hacienda():
+    # Formato real de los PDFs del TACRC en hacienda.gob.es:
+    # "Recurso NNNN-AAAA (Res NNNN) DD-MM-AAAA.pdf" (verificado 2026-06)
+    html = """
+    <html><body><ul>
+      <li><a href="https://www.hacienda.gob.es/TACRC/Resoluciones/A%C3%B1o%202025/Recurso%201443-2025%20(Res%201782)%2004-12-2025.pdf">
+        Recurso 1443-2025 (Res 1782) 04-12-2025</a></li>
+    </ul></body></html>
+    """
+    items = parse_index(html)
+
+    assert len(items) == 1
+    res = items[0]
+    assert res.numero_resolucion == "1782/2025"
+    assert res.numero_recurso == "1443/2025"
+    assert res.fecha == "2025-12-04"
+    assert res.url_pdf.endswith(".pdf")
+
+
 def test_parse_index_vacio_o_sin_enlaces():
     assert parse_index("") == []
     assert parse_index("<html><body><p>nada</p></body></html>") == []

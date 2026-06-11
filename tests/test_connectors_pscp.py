@@ -101,10 +101,18 @@ def test_pscp_since_aplica_solape_de_un_dia():
     assert len(connector._since(None)) == 10  # lookback por defecto YYYY-MM-DD
 
 
-def test_pscp_fetch_sin_dataset_falla_claro():
+def test_pscp_fetch_sin_dataset_falla_claro(monkeypatch):
+    from config import settings
+
+    monkeypatch.setattr(settings, "PSCP_DATASET_ID", "")
     connector = PscpConnector(dataset_id="")
     with pytest.raises(RuntimeError, match="PSCP_DATASET_ID"):
         list(connector.fetch(None))
+
+
+def test_pscp_dataset_default_validado():
+    # ybgg-dgi6 = "Contractació pública: publicacions a la PSCP" (portal oficial)
+    assert PscpConnector().dataset_id == "ybgg-dgi6"
 
 
 def test_pscp_fetch_pagina_y_avanza_cursor():

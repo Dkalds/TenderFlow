@@ -179,17 +179,24 @@ class Settings(BaseSettings):
 
     # ── Conectores autonómicos / TACRC (RFC 20260611-1, Fase 5) ─────────
     # Dataset Socrata de publicaciones de la PSCP en el portal de
-    # transparencia de la Generalitat. Sin default: la regla operativa del
-    # RFC exige validar el dataset contra la API viva antes de ingerir —
-    # descubrilo con `python scripts/probe_pscp.py` y fijalo por entorno.
+    # transparencia de la Generalitat. El id ybgg-dgi6 ("Contractació
+    # pública a Catalunya: publicacions a la PSCP") está verificado contra
+    # el portal oficial; los NOMBRES DE CAMPO siguen sin validar contra la
+    # API viva — correr `python scripts/probe_pscp.py --dataset ybgg-dgi6`
+    # antes del primer backfill y ajustar _FIELD_CANDIDATES si difieren.
     PSCP_DOMAIN: str = "analisi.transparenciacatalunya.cat"
-    PSCP_DATASET_ID: str = ""
+    PSCP_DATASET_ID: str = "ybgg-dgi6"
     # App token Socrata opcional (solo necesario si aparece rate limiting).
     PSCP_APP_TOKEN: SecretStr = SecretStr("")
-    # Índice HTML público de resoluciones del TACRC (Ministerio de Hacienda).
-    # Sin default por el mismo motivo: validar la URL viva con
+    # Buscador público de resoluciones del TACRC (Ministerio de Hacienda).
+    # URL verificada; el HTML que devuelve no, así que validar con
     # `python -m scraper.connectors.tacrc --check` antes de programarlo.
-    TACRC_INDEX_URL: str = ""
+    # Los PDFs enlazados siguen el patrón
+    # "Recurso NNNN-AAAA (Res NNNN) DD-MM-AAAA.pdf" que el parser entiende.
+    TACRC_INDEX_URL: str = (
+        "https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/"
+        "TACRC/Paginas/BuscadordeResoluciones.aspx"
+    )
 
     # ── Embeddings / NLP ─────────────────────────────────────────────────
     # Modelo sentence-transformers a usar. Cambiar a un modelo multilingual para

@@ -191,6 +191,21 @@ calibración del dedupe necesita datos reales).
 - **Frontend**: badge "Recurrido" + bloque Recursos en el detail panel y tipo
   `recurso` en el timeline. El filtro por `fuente` del paso 7 no se
   implementó: ninguna vista actual muestra esa columna.
+- **Validación de fuentes (2026-06-11, vía búsqueda web — el entorno no tenía
+  egress HTTP directo):**
+  - Dataset PSCP identificado y fijado como default: **`ybgg-dgi6`**
+    ("Contractació pública a Catalunya: publicacions a la Plataforma de
+    serveis de contractació pública", portal oficial
+    analisi.transparenciacatalunya.cat). Los **nombres de campo siguen sin
+    validar** contra la API: correr
+    `python scripts/probe_pscp.py --dataset ybgg-dgi6` antes del backfill.
+  - URL del buscador TACRC verificada y fijada como default:
+    `https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/TACRC/Paginas/BuscadordeResoluciones.aspx`.
+    Los PDFs reales siguen el patrón
+    `Recurso NNNN-AAAA (Res NNNN) DD-MM-AAAA.pdf`; el parser se endureció
+    para extraer resolución/recurso/fecha de ese formato (test con URL real).
+    Ojo: la página es SharePoint (.aspx) y puede renderizar el listado por
+    JS — el `--check` decidirá si hace falta apuntar a un índice alternativo.
 - **Acceptance pendiente de datos reales** (requieren las fuentes vivas):
   backfill PSCP, medición del solape PSCP↔PLACSP, vinculación de ≥1 caso
   TACRC real y el spot-check del clasificador en catalán. El resto de
