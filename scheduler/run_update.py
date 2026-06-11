@@ -63,7 +63,9 @@ def main() -> int:
         if args.daily:
             pipeline_result = run_daily_pipeline()
             _log_daily_summary(pipeline_result, log)
-            return 0
+            # Retorna 1 si la ingesta falló (alerta ya enviada en pipeline).
+            ingestion_status = pipeline_result.get("ingestion_result", {}).get("status", "ok")
+            return 0 if ingestion_status == "ok" else 1
         elif args.backfill:
             pipeline_result = run_backfill_pipeline(args.backfill[0], args.backfill[1])
         else:

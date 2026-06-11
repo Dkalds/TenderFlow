@@ -164,18 +164,28 @@ def run_daily_pipeline() -> dict[str, Any]:
         Dict con ``ingestion_result``, ``steps`` y ``status``.
 
     Raises:
-        RuntimeError: Si la ingesta falla (status != "ok").
+        RuntimeError: Solo si la ingesta falla con un status inesperado.
+            Los errores ya manejados en ``process_daily`` (``error_fetch``,
+            ``error_persistencia``) no relanzarán excepción para evitar
+            doble-alerta — las notificaciones ya se enviaron dentro del pipeline.
     """
     from scraper.pipeline import update_daily
 
-    result = update_daily()
-    if result.get("status") != "ok":
-        raise RuntimeError(f"daily ingestion failed: {result.get('status')}")
+    # Estos estados ya producen alertas dentro de process_daily; no re-lanzar.
+    _HANDLED_STATUSES = frozenset({"error_fetch", "error_persistencia"})
 
+    result = update_daily()
+    status = result.get("status", "error")
+
+    if status != "ok" and status not in _HANDLED_STATUSES:
+        raise RuntimeError(f"daily ingestion failed: {status}")
+
+    # Los pasos post-ingesta operan sobre la BD existente y deben correr
+    # incluso si el fetch falló (evita dejar KPIs y ML desactualizados).
     step_results = _run_post_ingestion_steps()
 
     return {
-        "status": "ok",
+        "status": status,
         "ingestion_result": result,
         "steps": step_results,
     }
