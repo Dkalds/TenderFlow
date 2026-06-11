@@ -148,6 +148,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_dedupe
     ON contrato_eventos(history_id, tipo, COALESCE(campo, ''))
     WHERE history_id IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS licitaciones_duplicados (
+    licitacion_id TEXT PRIMARY KEY REFERENCES licitaciones(id_externo) ON DELETE CASCADE,
+    canonical_id  TEXT NOT NULL REFERENCES licitaciones(id_externo) ON DELETE CASCADE,
+    clave_match   TEXT,
+    confianza     REAL NOT NULL DEFAULT 1.0,
+    status        TEXT NOT NULL DEFAULT 'confirmed'
+                  CHECK(status IN ('confirmed','pending','rejected')),
+    detectado_en  TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at   TEXT,
+    resolved_by   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lic_dup_canonical ON licitaciones_duplicados(canonical_id);
+CREATE INDEX IF NOT EXISTS idx_lic_dup_status    ON licitaciones_duplicados(status);
+
 CREATE TABLE IF NOT EXISTS watchlist_empresas (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     user_key         TEXT NOT NULL,

@@ -12,6 +12,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from services.dedupe import exclude_duplicados_sql
 
 _GROUP_COLUMNS = {
     "empresa": ("a.empresa_id", "COALESCE(e.nombre_canonico, a.nombre)"),
@@ -61,7 +62,7 @@ def bajas_agregadas(
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {_VALID_PAIR}
+        WHERE {_VALID_PAIR} AND {exclude_duplicados_sql()}
     """  # noqa: S608
     params: list[Any] = []
     if cpv_prefix:
@@ -99,7 +100,7 @@ def baja_de_referencia(
                ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {_VALID_PAIR}
+        WHERE {_VALID_PAIR} AND {exclude_duplicados_sql()}
     """  # noqa: S608 — _VALID_PAIR es un fragmento constante; valores con ?
     params: list[Any] = []
     if organo:

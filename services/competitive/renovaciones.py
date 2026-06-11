@@ -16,6 +16,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from services.dedupe import exclude_duplicados_sql
 
 # Expresión SQL reutilizable para la fecha de fin efectiva del contrato.
 # substr(x, 1, 10) normaliza timestamps ISO a fecha pura; CAST a INT porque
@@ -71,6 +72,7 @@ def proximas_renovaciones(
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         WHERE {_FECHA_FIN_SQL} BETWEEN date('now')
               AND date('now', '+' || ? || ' months')
+          AND {exclude_duplicados_sql()}
     """  # noqa: S608 — _FECHA_FIN_SQL es un fragmento constante; valores con ?
     params: list[Any] = [months_ahead]
     if empresa_id is not None:
@@ -107,6 +109,7 @@ def resumen_renovaciones(*, months_ahead: int = 12) -> list[dict[str, Any]]:
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         WHERE {_FECHA_FIN_SQL} BETWEEN date('now')
               AND date('now', '+' || ? || ' months')
+          AND {exclude_duplicados_sql()}
         GROUP BY a.empresa_id, empresa
         ORDER BY importe_en_juego DESC
         LIMIT 100

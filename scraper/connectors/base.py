@@ -108,13 +108,19 @@ class ConnectorRunResult:
 
 
 def _post_ingestion(source_id: str) -> None:
-    """Resolución de empresas + eventos de contrato + caché. Fail-open."""
+    """Resolución de empresas + dedupe + eventos de contrato + caché. Fail-open."""
     try:
         from services.entity_resolution import resolve_unlinked_adjudicaciones
 
         resolve_unlinked_adjudicaciones(fuente=source_id)
     except Exception as e:
         log.warning("connector_entity_resolution_failed", source=source_id, error=str(e))
+    try:
+        from services.dedupe import detect_duplicates
+
+        detect_duplicates(fuente=source_id)
+    except Exception as e:
+        log.warning("connector_dedupe_failed", source=source_id, error=str(e))
     try:
         from services.contract_events import derive_new_events
 

@@ -11,6 +11,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from services.dedupe import exclude_duplicados_sql
 
 _SEGMENT_COLUMNS = {
     "cpv": "substr(l.cpv, 1, 2)",
@@ -55,7 +56,7 @@ def cuota_mercado(
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-            WHERE a.importe_adjudicado > 0 {filters}
+            WHERE a.importe_adjudicado > 0 AND {exclude_duplicados_sql()} {filters}
             GROUP BY a.empresa_id, empresa
         )
         SELECT empresa_id, empresa, es_ute, contratos, importe, ofertas_medias,
@@ -92,6 +93,7 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             WHERE a.importe_adjudicado > 0 AND {seg_col} IS NOT NULL
+              AND {exclude_duplicados_sql()}
             GROUP BY segmento, a.empresa_id
         ),
         totales AS (
@@ -106,7 +108,8 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
                (SELECT COUNT(*) FROM adjudicaciones a2
                 JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
                 WHERE {seg_col.replace("l.", "l2.")} = p.segmento
-                  AND a2.importe_adjudicado > 0) AS contratos,
+                  AND a2.importe_adjudicado > 0
+                  AND {exclude_duplicados_sql("l2.id_externo")}) AS contratos,
                ROUND(SUM((p.importe * 100.0 / t.total) * (p.importe * 100.0 / t.total)), 0)
                    AS hhi
         FROM por_empresa p
@@ -128,56 +131,60 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
     with connect_read() as c:
         totales = rows_to_dicts(
             c.execute(
-                """
+                f"""
                 SELECT COUNT(*) AS contratos,
                        COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total,
                        ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias,
                        MIN(a.fecha_adjudicacion) AS primera_adjudicacion,
                        MAX(a.fecha_adjudicacion) AS ultima_adjudicacion
-                FROM adjudicaciones a WHERE a.empresa_id = ?
-                """,
+                FROM adjudicaciones a
+                WHERE a.empresa_id = ? AND {exclude_duplicados_sql("a.licitacion_id")}
+                """,  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
                 (empresa_id,),
             )
         )
         por_cpv = rows_to_dicts(
             c.execute(
-                """
+                f"""
                 SELECT substr(l.cpv, 1, 2) AS cpv2,
                        COUNT(*) AS contratos,
                        COALESCE(SUM(a.importe_adjudicado), 0) AS importe
                 FROM adjudicaciones a
                 JOIN licitaciones l ON l.id_externo = a.licitacion_id
                 WHERE a.empresa_id = ? AND l.cpv IS NOT NULL
+                  AND {exclude_duplicados_sql()}
                 GROUP BY cpv2 ORDER BY importe DESC LIMIT 10
-                """,
+                """,  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
                 (empresa_id,),
             )
         )
         por_ccaa = rows_to_dicts(
             c.execute(
-                """
+                f"""
                 SELECT l.ccaa,
                        COUNT(*) AS contratos,
                        COALESCE(SUM(a.importe_adjudicado), 0) AS importe
                 FROM adjudicaciones a
                 JOIN licitaciones l ON l.id_externo = a.licitacion_id
                 WHERE a.empresa_id = ? AND l.ccaa IS NOT NULL
+                  AND {exclude_duplicados_sql()}
                 GROUP BY l.ccaa ORDER BY importe DESC LIMIT 20
-                """,
+                """,  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
                 (empresa_id,),
             )
         )
         organos = rows_to_dicts(
             c.execute(
-                """
+                f"""
                 SELECT l.organo_contratacion AS organo,
                        COUNT(*) AS contratos,
                        COALESCE(SUM(a.importe_adjudicado), 0) AS importe
                 FROM adjudicaciones a
                 JOIN licitaciones l ON l.id_externo = a.licitacion_id
                 WHERE a.empresa_id = ? AND l.organo_contratacion IS NOT NULL
+                  AND {exclude_duplicados_sql()}
                 GROUP BY organo ORDER BY importe DESC LIMIT 10
-                """,
+                """,  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
                 (empresa_id,),
             )
         )
