@@ -126,12 +126,12 @@ def test_detect_cpv_distinto_va_a_revision(db):
     from db.database import connect_read
 
     with connect_read() as c:
-        sql = f"SELECT COUNT(*) FROM licitaciones l WHERE {exclude_duplicados_sql()}"
-        assert c.execute(sql).fetchone()[0] == 2  # noqa: S608
+        sql = f"SELECT COUNT(*) FROM licitaciones l WHERE {exclude_duplicados_sql()}"  # noqa: S608
+        assert c.execute(sql).fetchone()[0] == 2
 
     assert resolve_pending("pscp:EXP-9", accept=True, resolved_by="test")
     with connect_read() as c:
-        assert c.execute(sql).fetchone()[0] == 1  # noqa: S608
+        assert c.execute(sql).fetchone()[0] == 1
     assert review_pending() == []
 
 

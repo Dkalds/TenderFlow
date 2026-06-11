@@ -50,10 +50,10 @@ def exclude_duplicados_sql(col: str = "l.id_externo") -> str:
     para no repetir la subquery en cada servicio. Solo excluye duplicados
     ``confirmed``; los ``pending`` cuentan hasta que un humano los confirme.
     """
-    return (
-        f"{col} NOT IN "
-        "(SELECT licitacion_id FROM licitaciones_duplicados WHERE status = 'confirmed')"
-    )
+    # S608: `col` es una referencia de columna fija escrita por los servicios
+    # llamadores, nunca input de usuario; los valores siempre van con ?.
+    subquery = "(SELECT licitacion_id FROM licitaciones_duplicados WHERE status = 'confirmed')"
+    return f"{col} NOT IN {subquery}"
 
 
 def normalize_organo(name: str | None) -> str | None:

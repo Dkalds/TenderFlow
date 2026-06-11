@@ -26,6 +26,7 @@ _TIPOS_VALIDOS = {
     "prorroga",
     "anulacion",
     "cambio_estado",
+    "recurso",
 }
 
 

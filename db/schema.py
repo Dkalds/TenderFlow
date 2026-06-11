@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS contrato_eventos (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     licitacion_id TEXT NOT NULL REFERENCES licitaciones(id_externo) ON DELETE CASCADE,
     tipo          TEXT NOT NULL CHECK(tipo IN
-                  ('adjudicacion','formalizacion','modificacion','prorroga','anulacion','cambio_estado')),
+                  ('adjudicacion','formalizacion','modificacion','prorroga','anulacion','cambio_estado','recurso')),
     fecha         TEXT NOT NULL,
     campo         TEXT,
     valor_antes   TEXT,
@@ -161,6 +161,26 @@ CREATE TABLE IF NOT EXISTS licitaciones_duplicados (
 );
 CREATE INDEX IF NOT EXISTS idx_lic_dup_canonical ON licitaciones_duplicados(canonical_id);
 CREATE INDEX IF NOT EXISTS idx_lic_dup_status    ON licitaciones_duplicados(status);
+
+CREATE TABLE IF NOT EXISTS resoluciones_recurso (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    tribunal          TEXT NOT NULL DEFAULT 'tacrc',
+    numero_resolucion TEXT NOT NULL,
+    numero_recurso    TEXT,
+    fecha             TEXT,
+    expediente        TEXT,
+    organo            TEXT,
+    sentido           TEXT CHECK(sentido IS NULL OR sentido IN
+                      ('estimado','desestimado','inadmitido','desistimiento')),
+    url_pdf           TEXT,
+    resumen           TEXT,
+    licitacion_id     TEXT REFERENCES licitaciones(id_externo),
+    fecha_extraccion  TEXT NOT NULL,
+    UNIQUE(tribunal, numero_resolucion)
+);
+CREATE INDEX IF NOT EXISTS idx_resoluciones_lic     ON resoluciones_recurso(licitacion_id);
+CREATE INDEX IF NOT EXISTS idx_resoluciones_fecha   ON resoluciones_recurso(fecha);
+CREATE INDEX IF NOT EXISTS idx_resoluciones_sentido ON resoluciones_recurso(sentido, fecha);
 
 CREATE TABLE IF NOT EXISTS watchlist_empresas (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
