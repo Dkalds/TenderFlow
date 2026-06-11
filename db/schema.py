@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS licitaciones (
     ml_proba_max        REAL,
     ml_tech_principal   TEXT,
     fecha_actualizacion_fuente TEXT CHECK(fecha_actualizacion_fuente IS NULL OR fecha_actualizacion_fuente GLOB '????-??-??*'),
+    fuente              TEXT NOT NULL DEFAULT 'placsp',
     fecha_extraccion    TEXT NOT NULL
 );
 
@@ -354,6 +355,11 @@ def _ensure_licitaciones_columns(conn: Any) -> None:
         except Exception:
             # Columna ya existe (race) o nombre inválido
             log.debug("ensure_column_skip", column=col)
+    # Índice de fuente (v37): se crea aquí y no en SCHEMA para no fallar en
+    # BDs legacy donde la columna acaba de añadirse en el bucle anterior.
+    if "fuente" in expected:
+        conn.execute("UPDATE licitaciones SET fuente = 'placsp' WHERE fuente IS NULL")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lic_fuente ON licitaciones(fuente)")
 
 
 def _ensure_adjudicaciones_columns(conn: Any) -> None:

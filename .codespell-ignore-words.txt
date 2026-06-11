@@ -96,3 +96,6 @@ assertIn
 analisis
 sesion
 mappin
+conector
+relevante
+inicial

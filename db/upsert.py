@@ -70,6 +70,9 @@ class Licitacion:
     ml_proba_max: float | None = None
     ml_tech_principal: str | None = None
     fecha_actualizacion_fuente: str | None = None
+    # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
+    # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
+    fuente: str = "placsp"
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
