@@ -128,6 +128,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_empresa_review_pending
     ON empresa_review_queue(alias_normalizado, COALESCE(nif, ''), candidato_empresa_id)
     WHERE status = 'pending';
 
+CREATE TABLE IF NOT EXISTS contrato_eventos (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    licitacion_id TEXT NOT NULL REFERENCES licitaciones(id_externo) ON DELETE CASCADE,
+    tipo          TEXT NOT NULL CHECK(tipo IN
+                  ('adjudicacion','formalizacion','modificacion','prorroga','anulacion','cambio_estado')),
+    fecha         TEXT NOT NULL,
+    campo         TEXT,
+    valor_antes   TEXT,
+    valor_despues TEXT,
+    importe_delta REAL,
+    detalle       TEXT,
+    history_id    INTEGER,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_eventos_lic  ON contrato_eventos(licitacion_id, fecha);
+CREATE INDEX IF NOT EXISTS idx_eventos_tipo ON contrato_eventos(tipo, fecha);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_dedupe
+    ON contrato_eventos(history_id, tipo, COALESCE(campo, ''))
+    WHERE history_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS watchlist_empresas (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     user_key         TEXT NOT NULL,

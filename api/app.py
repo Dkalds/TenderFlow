@@ -47,6 +47,7 @@ from api.routes.ask import router as ask_router
 from api.routes.auth import router as auth_router
 from api.routes.competitive import router as competitive_router
 from api.routes.empresas import router as empresas_router
+from api.routes.eventos import router as eventos_router
 from api.routes.exports import router as exports_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
@@ -379,6 +380,7 @@ app.include_router(
 app.include_router(licitaciones_router, prefix="/api/v1")
 app.include_router(empresas_router, prefix="/api/v1")
 app.include_router(competitive_router, prefix="/api/v1")
+app.include_router(eventos_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(feedback_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")

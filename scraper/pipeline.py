@@ -62,6 +62,14 @@ def _resolve_empresas_post_ingestion(fuente: str) -> None:
         resolve_unlinked_adjudicaciones(fuente=fuente)
     except Exception as e:
         log.warning("entity_resolution_post_ingestion_failed", fuente=fuente, error=str(e))
+    # Eventos de contrato (v38): deriva adjudicación/modificación/prórroga
+    # de las filas nuevas de licitaciones_history. Fail-open.
+    try:
+        from services.contract_events import derive_new_events
+
+        derive_new_events()
+    except Exception as e:
+        log.warning("contract_events_post_ingestion_failed", fuente=fuente, error=str(e))
 
 
 def _signal_post_ingestion(fuente: str) -> None:
