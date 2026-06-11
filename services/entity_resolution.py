@@ -19,7 +19,8 @@ histórico (scripts/backfill_empresas.py) y para el hook post-ingesta.
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 from db.database import connect
 from db.empresas import (
@@ -81,7 +82,7 @@ def _fuzzy_candidate(alias: str, caches: EmpresaCaches) -> tuple[int, float] | N
 
 
 def _resolve_simple(
-    conn,
+    conn: Any,
     caches: EmpresaCaches,
     pending: set[tuple[str, str]],
     stats: ResolutionStats,
@@ -161,7 +162,7 @@ def _resolve_simple(
 
 
 def _resolve_ute(
-    conn,
+    conn: Any,
     caches: EmpresaCaches,
     stats: ResolutionStats,
     *,
@@ -232,17 +233,30 @@ def resolve_unlinked_adjudicaciones(
                 continue
 
             members = parse_ute_members(nombre)
+            empresa_id: int | None
             if members:
                 empresa_id = _resolve_ute(
-                    conn, caches, stats,
-                    nombre=nombre, nif_norm=nif_norm, alias=alias,
-                    members=members, fuente=fuente,
+                    conn,
+                    caches,
+                    stats,
+                    nombre=nombre,
+                    nif_norm=nif_norm,
+                    alias=alias,
+                    members=members,
+                    fuente=fuente,
                 )
             else:
                 empresa_id = _resolve_simple(
-                    conn, caches, pending, stats,
-                    nombre=nombre, nif_norm=nif_norm, alias=alias,
-                    es_pyme=row.get("es_pyme"), fuente=fuente, fuzzy=fuzzy,
+                    conn,
+                    caches,
+                    pending,
+                    stats,
+                    nombre=nombre,
+                    nif_norm=nif_norm,
+                    alias=alias,
+                    es_pyme=row.get("es_pyme"),
+                    fuente=fuente,
+                    fuzzy=fuzzy,
                 )
             if empresa_id is not None:
                 link_adjudicacion(conn, int(row["id"]), empresa_id)
