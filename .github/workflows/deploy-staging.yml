@@ -83,7 +83,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and push API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile.api
