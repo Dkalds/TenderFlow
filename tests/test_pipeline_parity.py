@@ -15,7 +15,10 @@ class TestDailyPipelineParity:
 
     def test_run_update_daily_delegates_to_canonical(self) -> None:
         """run_update --daily calls run_daily_pipeline from pipeline_runs."""
-        with patch("scheduler.run_update.run_daily_pipeline") as mock_pipeline:
+        with (
+            patch("scheduler.run_update.run_daily_pipeline") as mock_pipeline,
+            patch("scheduler.run_update.count_licitaciones", return_value=0),
+        ):
             mock_pipeline.return_value = {
                 "status": "ok",
                 "ingestion_result": {"status": "ok", "inserted": [], "modified": []},
@@ -48,7 +51,10 @@ class TestBulkPipelineParity:
 
     def test_run_update_bulk_delegates_to_canonical(self) -> None:
         """run_update --months calls run_bulk_pipeline from pipeline_runs."""
-        with patch("scheduler.run_update.run_bulk_pipeline") as mock_pipeline:
+        with (
+            patch("scheduler.run_update.run_bulk_pipeline") as mock_pipeline,
+            patch("scheduler.run_update.count_licitaciones", return_value=0),
+        ):
             mock_pipeline.return_value = {
                 "status": "ok",
                 "ingestion_results": [{"status": "ok", "nuevas": 5, "actualizadas": 2}],

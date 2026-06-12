@@ -816,7 +816,9 @@ class TestPersistSnapshots:
         ]
         n = _persist_snapshots(mock_conn, snapshots)
         assert n == 2
-        assert mock_conn.execute.call_count == 3
+        # 1 DELETE (execute) + 1 INSERT batch (executemany)
+        assert mock_conn.execute.call_count == 1
+        assert mock_conn.executemany.call_count == 1
 
 
 class TestRunKpiPrecompute:
@@ -1067,7 +1069,7 @@ class TestRunDailyAtom:
     def test_failure(self, mock_update: MagicMock) -> None:
         from scheduler.jobs.daily_atom import run
 
-        with pytest.raises(RuntimeError, match="daily atom failed"):
+        with pytest.raises(RuntimeError, match="daily ingestion failed"):
             run()
 
 
