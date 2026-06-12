@@ -191,15 +191,21 @@ calibración del dedupe necesita datos reales).
 - **Frontend**: badge "Recurrido" + bloque Recursos en el detail panel y tipo
   `recurso` en el timeline. El filtro por `fuente` del paso 7 no se
   implementó: ninguna vista actual muestra esa columna.
-- **Validación de fuentes (2026-06-11, máquina local con egress HTTP real):**
+- **Validación de fuentes (2026-06-11, probe ejecutado en máquina local con
+  egress HTTP real):**
   - **PSCP — dataset `ybgg-dgi6` validado ✓**. Campos reales confirmados
     contra la API Socrata. Dos mismatches en `_FIELD_CANDIDATES` corregidos:
     - `importe`: `pressupost_licitacio` no existía; campos reales son
       `pressupost_licitacio_sense` (sin IVA) y `pressupost_licitacio_amb`.
     - `importe_adjudicacion`: `import_adjudicacio_sense_iva` no existía;
-      campo real es `import_adjudicacio_sense`. Ambos corregidos en
-      `scraper/connectors/pscp.py`.
+      campo real es `import_adjudicacio_sense`.
     - Resto de 12 conceptos: OK, primeros candidatos coinciden exactamente.
+  - **PSCP — mejoras derivadas del probe**: se aprovechan campos reales que
+    el mapeo inicial no usaba (`codi_nuts` → NUTS por fila con fallback ES51,
+    `ofertes_rebudes` → `n_ofertas_recibidas`, `data_publicacio_*` de cada
+    fase como candidatos de fecha), y el fetch incremental pasa al campo de
+    sistema Socrata `:updated_at` — cada fila es una publicación de fase con
+    SU propio campo de fecha, y `:updated_at` es el único común y no nulo.
   - **TACRC — `BuscadordeResoluciones.aspx` NO funciona**: SharePoint
     JS-rendered, 0 resoluciones parseadas con lxml. Índice alternativo
     encontrado: **`Resoluciones-Pleno.aspx`** — HTML estático con 17 PDFs
@@ -207,7 +213,13 @@ calibración del dedupe necesita datos reales).
     default en `config/settings.py`.
     - Limitación: solo resoluciones doctrinales del Pleno. Las resoluciones
       individuales de recurso (el volumen principal) requieren un índice
-      estático aún no identificado (el buscador no es raseable sin JS).
+      estático aún no identificado (el buscador no es rascable sin JS);
+      el conector tiene `--check --dump` para diagnosticar candidatos, y la
+      petición real del buscador es localizable en DevTools → Network.
+  - **TACRC — parser endurecido con el patrón real de los PDFs publicados**
+    (`Recurso NNNN-AAAA (Res NNNN) DD-MM-AAAA.pdf`): número de recurso con
+    guion normalizado a `NNN/AAAA`, resolución desde `(Res NNNN)` con año
+    inferido y fecha desde el href decodificado (test con URL real).
 - **Acceptance pendiente de datos reales**:
   - Backfill PSCP + medición del solape PSCP↔PLACSP.
   - Vinculación de ≥1 caso TACRC real (las 17 resoluciones de Pleno son

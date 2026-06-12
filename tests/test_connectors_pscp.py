@@ -13,14 +13,16 @@ from scraper.connectors.pscp import PscpConnector, _fase_to_estado, _field, _num
 
 
 def _pscp_record():
+    # Nombres de campo del dataset real ybgg-dgi6 (probe del 2026-06-11)
     return {
         "codi_expedient": "CTTI-2026-00123",
         "objecte_contracte": "Implantació i suport de SAP S/4HANA al CTTI",
         "nom_organ": "Centre de Telecomunicacions i Tecnologies de la Informació",
         "data_publicacio_anunci": "2026-05-20T00:00:00.000",
         "termini_presentacio_ofertes": "2026-06-15T14:00:00.000",
-        "pressupost_licitacio": "1250000.50",
+        "pressupost_licitacio_sense": "1250000.50",
         "codi_cpv": "72000000, 48000000",
+        "codi_nuts": "ES511",
         "tipus_contracte": "Serveis",
         "fase_publicacio": "Anunci de licitació",
         "enllac_publicacio": {"url": "https://contractaciopublica.cat/ca/detall/123"},
@@ -43,7 +45,7 @@ def test_pscp_parse_anuncio_licitacion():
     assert lic.fecha_publicacion == "2026-05-20"
     assert lic.fecha_limite == "2026-06-15"
     assert lic.url == "https://contractaciopublica.cat/ca/detall/123"
-    assert lic.nuts_code == "ES51"
+    assert lic.nuts_code == "ES511"  # codi_nuts real de la fila
     assert lic.ccaa == "Cataluña"
     assert "SAP" in (lic.tecnologia or "")  # char_wb detecta SAP en catalán
     assert parsed.adjudicaciones == []
@@ -54,7 +56,8 @@ def test_pscp_parse_adjudicacion_crea_adjudicacion():
     record["fase_publicacio"] = "Adjudicació"
     record["denominacio_adjudicatari"] = "Seidor Consulting SL"
     record["identificacio_adjudicatari"] = "B-61420352"
-    record["import_adjudicacio"] = "990000"
+    record["import_adjudicacio_sense"] = "990000"
+    record["ofertes_rebudes"] = "4"
     record["data_adjudicacio_contracte"] = "2026-08-01T00:00:00.000"
 
     parsed = PscpConnector(dataset_id="test-test").parse(
@@ -67,6 +70,7 @@ def test_pscp_parse_adjudicacion_crea_adjudicacion():
     assert adj.nombre == "Seidor Consulting SL"
     assert adj.nif == "B-61420352"
     assert adj.importe_adjudicado == 990000.0
+    assert adj.n_ofertas_recibidas == 4
     assert adj.fecha_adjudicacion == "2026-08-01"
     assert adj.licitacion_id == "pscp:CTTI-2026-00123"
 
@@ -88,11 +92,10 @@ def test_fase_to_estado_mapea_fases_catalanas():
 
 
 def test_field_candidates_y_number():
-    record = {"import_licitacio": "1.234,56"}  # solo segundo candidato
-    assert _field(record, "importe") == "1.234,56"
-    # coma decimal europea no parseable como float compuesto → None es válido
-    assert _number({"pressupost_licitacio": "1250000.50"}, "importe") == 1250000.50
-    assert _number({"pressupost_licitacio": "n/d"}, "importe") is None
+    record = {"pressupost_licitacio_amb": "1512500.61"}  # solo segundo candidato
+    assert _field(record, "importe") == "1512500.61"
+    assert _number({"pressupost_licitacio_sense": "1250000.50"}, "importe") == 1250000.50
+    assert _number({"pressupost_licitacio_sense": "n/d"}, "importe") is None
 
 
 def test_pscp_since_aplica_solape_de_un_dia():
@@ -135,8 +138,10 @@ def test_pscp_fetch_pagina_y_avanza_cursor():
             self.calls.append(params)
             return FakeResponse(self.pages[len(self.calls) - 1])
 
-    rec1 = _pscp_record()
-    rec2 = dict(_pscp_record(), codi_expedient="X-2", data_publicacio_anunci="2026-05-22")
+    rec1 = dict(_pscp_record(), **{":updated_at": "2026-05-21T08:00:00.000Z"})
+    rec2 = dict(
+        _pscp_record(), codi_expedient="X-2", **{":updated_at": "2026-05-22T09:00:00.000Z"}
+    )
     session = FakeSession(pages=[[rec1, rec2]])
     connector = PscpConnector(dataset_id="abcd-1234", session=session)
 
@@ -145,4 +150,4 @@ def test_pscp_fetch_pagina_y_avanza_cursor():
     assert [n.natural_id for n in notices] == ["CTTI-2026-00123", "X-2"]
     assert connector.new_cursor() == {"last_seen_updated": "2026-05-22"}
     where = session.calls[0]["$where"]
-    assert "data_publicacio_anunci >= '2026-05-20'" in where  # solape de 1 día
+    assert ":updated_at >= '2026-05-20'" in where  # solape de 1 día

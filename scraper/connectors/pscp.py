@@ -43,32 +43,37 @@ SOURCE_ID = "pscp"
 _PAGE_SIZE = 1000
 _TIMEOUT = 60
 _PAGE_PAUSE_S = 0.5  # cortesía con la API pública
-# Toda la PSCP es contratación catalana: NUTS2 Cataluña.
+# Toda la PSCP es contratación catalana: NUTS2 Cataluña (fallback si la
+# fila no trae codi_nuts).
 _NUTS_CATALUNYA = "ES51"
+# Campo de sistema Socrata para el fetch incremental.
+_CURSOR_FIELD = ":updated_at"
 
 # Candidatos de nombre de campo por concepto, en orden de preferencia.
-# Validados/ajustados con scripts/probe_pscp.py contra el dataset vivo;
-# el parser usa el primero presente en cada registro.
+# Validados contra el dataset vivo ybgg-dgi6 el 2026-06-11 (salida real de
+# scripts/probe_pscp.py); el parser usa el primero presente en cada registro.
 _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
     "expediente": ("codi_expedient", "numero_expedient", "expedient", "id"),
-    "titulo": ("objecte_contracte", "descripcio", "titol", "denominacio"),
-    "organo": ("nom_organ", "organ_contractant", "nom_ambit", "organ"),
+    "titulo": ("objecte_contracte", "denominacio", "descripcio", "titol"),
+    "organo": ("nom_organ", "nom_unitat", "nom_departament_ens", "nom_ambit"),
     "fecha_publicacion": (
         "data_publicacio_anunci",
-        "data_publicacio",
-        "data_publicacio_fase",
+        "data_publicacio_adjudicacio",
+        "data_publicacio_formalitzacio",
+        "data_publicacio_contracte",
+        "data_publicacio_avaluacio",
     ),
     "fecha_limite": ("termini_presentacio_ofertes", "data_limit_presentacio"),
     # Validado contra API viva ybgg-dgi6 (2026-06-11): los campos reales son
-    # pressupost_licitacio_sense (sin IVA) y pressupost_licitacio_amb (con IVA).
-    # Se mantienen los candidatos históricos como fallback por si el dataset
-    # cambia de nombre en futuras versiones.
+    # pressupost_licitacio_sense (sin IVA, convención del modelo canónico) y
+    # pressupost_licitacio_amb (con IVA). Se mantienen candidatos históricos
+    # como fallback por si el dataset cambia de nombre en futuras versiones.
     "importe": (
         "pressupost_licitacio_sense",
         "pressupost_licitacio_amb",
+        "valor_estimat_contracte",
         "pressupost_licitacio",
         "import_licitacio",
-        "pressupost_de_licitacio",
     ),
     # import_adjudicacio_sense (sin IVA) es el campo real; import_adjudicacio_amb_iva
     # también existe pero incluye IVA (menos comparable con PLACSP).
@@ -85,6 +90,8 @@ _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
     "nif_adjudicatario": ("identificacio_adjudicatari", "nif_adjudicatari"),
     "fecha_adjudicacion": ("data_adjudicacio_contracte", "data_adjudicacio"),
     "url": ("enllac_publicacio", "url_publicacio", "enllac"),
+    "nuts": ("codi_nuts",),
+    "n_ofertas": ("ofertes_rebudes",),
 }
 
 # Fase de publicación PSCP (catalán, folded) → estado canónico PLACSP.
@@ -178,9 +185,6 @@ class PscpConnector:
     def _resource_url(self) -> str:
         return f"https://{self.domain}/resource/{self.dataset_id}.json"
 
-    def _date_field(self) -> str:
-        return _FIELD_CANDIDATES["fecha_publicacion"][0]
-
     def _since(self, cursor: dict[str, Any] | None) -> str:
         from datetime import UTC, datetime, timedelta
 
@@ -200,7 +204,6 @@ class PscpConnector:
                 "viva con `python scripts/probe_pscp.py` y fijalo por entorno "
                 "(regla operativa del RFC 20260611-1)."
             )
-        date_field = self._date_field()
         since = self._since(cursor)
         headers = {"X-App-Token": self.app_token} if self.app_token else {}
         offset = 0
@@ -209,8 +212,13 @@ class PscpConnector:
             resp = self._session.get(
                 self._resource_url,
                 params={
-                    "$where": f"{date_field} >= '{since}'",
-                    "$order": f"{date_field} ASC",
+                    # Incremental sobre el campo de sistema Socrata: cada fila
+                    # del dataset es una publicación de fase con SU campo de
+                    # fecha (anunci/adjudicació/formalització…); :updated_at
+                    # es el único común a todas y nunca nulo.
+                    "$select": f"{_CURSOR_FIELD}, *",
+                    "$where": f"{_CURSOR_FIELD} >= '{since}'",
+                    "$order": f"{_CURSOR_FIELD} ASC",
                     "$limit": str(_PAGE_SIZE),
                     "$offset": str(offset),
                 },
@@ -227,9 +235,11 @@ class PscpConnector:
                 natural_id = _text(record, "expediente")
                 if not natural_id:
                     continue
-                pub_date = _date(record, "fecha_publicacion")
-                if pub_date and (self._max_pub_date is None or pub_date > self._max_pub_date):
-                    self._max_pub_date = pub_date
+                marca = str(record.get(_CURSOR_FIELD) or "")[:10] or _date(
+                    record, "fecha_publicacion"
+                )
+                if marca and (self._max_pub_date is None or marca > self._max_pub_date):
+                    self._max_pub_date = marca
                 yield RawNotice(natural_id=natural_id, payload=record)
             if len(records) < _PAGE_SIZE:
                 break
@@ -255,6 +265,9 @@ class PscpConnector:
         tecnologias = sorted(tech_matches)
         keywords = sorted({kw for kws in tech_matches.values() for kw in kws})
 
+        nuts = (_text(record, "nuts") or _NUTS_CATALUNYA).upper()
+        ccaa = nuts_to_ccaa(nuts) or nuts_to_ccaa(_NUTS_CATALUNYA)
+
         lic = Licitacion(
             id_externo=f"{SOURCE_ID}:{raw.natural_id}",
             titulo=titulo[:500],
@@ -269,14 +282,15 @@ class PscpConnector:
             url=_text(record, "url"),
             raw_keywords=",".join(keywords) or None,
             tecnologia=",".join(tecnologias) or None,
-            nuts_code=_NUTS_CATALUNYA,
-            ccaa=nuts_to_ccaa(_NUTS_CATALUNYA),
+            nuts_code=nuts,
+            ccaa=ccaa,
             fuente=SOURCE_ID,
         )
 
         adjudicaciones: list[Adjudicacion] = []
         adjudicatario = _text(record, "adjudicatario")
         if adjudicatario:
+            n_ofertas = _number(record, "n_ofertas")
             adjudicaciones.append(
                 Adjudicacion(
                     licitacion_id=lic.id_externo,
@@ -285,8 +299,9 @@ class PscpConnector:
                     importe_adjudicado=_number(record, "importe_adjudicacion"),
                     fecha_adjudicacion=_date(record, "fecha_adjudicacion")
                     or lic.fecha_publicacion,
-                    nuts_code=_NUTS_CATALUNYA,
-                    ccaa=lic.ccaa,
+                    n_ofertas_recibidas=int(n_ofertas) if n_ofertas is not None else None,
+                    nuts_code=nuts,
+                    ccaa=ccaa,
                 )
             )
         return ParsedTender(licitacion=lic, adjudicaciones=adjudicaciones)
