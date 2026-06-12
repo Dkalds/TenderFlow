@@ -27,6 +27,7 @@ test.describe("Theme", () => {
 
       // Classes should be different after toggling
       // (this is a soft assertion since theme implementation varies)
+      expect(classAfterSecondClick).not.toBe(classAfterClick);
     }
   });
 });

@@ -45,7 +45,7 @@ class TestXmlParsingThroughput:
         xml_bytes = _build_simple_atom(n)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
 
-        root = ET.fromstring(xml_bytes)
+        root = ET.fromstring(xml_bytes)  # noqa: S314 - synthetic trusted XML built in-test
         entries = root.findall("atom:entry", ns)
         assert len(entries) == n
 
@@ -72,7 +72,8 @@ class TestBulkUpsertPerformance:
         from db.database import Licitacion, init_db, set_db_path_override
         from db.upsert import upsert_licitaciones
 
-        tmp = tempfile.mktemp(suffix=".db")
+        fd, tmp = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
         set_db_path_override(tmp)
         try:
             init_db()

@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
-import { cn, formatNumber, formatCurrency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import type { TrendPoint } from "@/generated/api";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";

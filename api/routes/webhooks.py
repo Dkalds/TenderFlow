@@ -377,7 +377,6 @@ async def ping(
     import hashlib
     import hmac as _hmac
     import json
-    import time as _time
 
     import requests
 
@@ -439,7 +438,7 @@ async def ping(
         except requests.RequestException as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
-                await _asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s
+                await _asyncio.sleep(0.5 * (2**attempt))  # 0.5s, 1s
 
     _repo.record_delivery(
         webhook_id,

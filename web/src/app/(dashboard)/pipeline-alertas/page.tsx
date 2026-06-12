@@ -14,7 +14,6 @@ const PipelineUrgencyScatter = dynamic(() => import("@/components/charts/pipelin
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
