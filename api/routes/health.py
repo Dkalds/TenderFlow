@@ -52,7 +52,8 @@ def _check_redis() -> str:
 
         import redis as _redis
 
-        client = _redis.from_url(redis_url, socket_connect_timeout=2)
+        from_url: Any = _redis.from_url
+        client = from_url(redis_url, socket_connect_timeout=2)
         client.ping()
         return "ok"
     except Exception:
