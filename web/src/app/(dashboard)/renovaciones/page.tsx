@@ -52,6 +52,8 @@ interface Renovacion {
   fecha_adjudicacion: string | null;
   fecha_fin_efectiva: string | null;
   dias_restantes: number | null;
+  riesgo_cambio: number | null;
+  retencion_model_version: number | null;
 }
 
 interface ResumenEmpresa {
@@ -263,6 +265,7 @@ export default function RenovacionesPage() {
                     <TableHead>Adjudicatario</TableHead>
                     <TableHead>Órgano</TableHead>
                     <TableHead className="text-right">Importe</TableHead>
+                    <TableHead className="text-right">Riesgo de cambio</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -307,6 +310,24 @@ export default function RenovacionesPage() {
                         {r.importe_adjudicado != null
                           ? formatCurrency(r.importe_adjudicado)
                           : "—"}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {r.riesgo_cambio != null ? (
+                          <Badge
+                            variant={
+                              r.riesgo_cambio >= 0.6
+                                ? "destructive"
+                                : r.riesgo_cambio >= 0.35
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                            title={`Modelo de retención v${r.retencion_model_version ?? "?"}`}
+                          >
+                            {(r.riesgo_cambio * 100).toFixed(0)}%
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
