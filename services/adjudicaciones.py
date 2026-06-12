@@ -39,11 +39,17 @@ def load_adjudicaciones(
 
     df["fecha_adjudicacion"] = pd.to_datetime(df["fecha_adjudicacion"], errors="coerce")
     df["fecha_publicacion"] = pd.to_datetime(
-        df["fecha_publicacion"], errors="coerce", format="mixed", utc=True,
+        df["fecha_publicacion"],
+        errors="coerce",
+        format="mixed",
+        utc=True,
     )
     for col in (
-        "importe_adjudicado", "importe_pagable", "oferta_minima",
-        "oferta_maxima", "importe_licitacion",
+        "importe_adjudicado",
+        "importe_pagable",
+        "oferta_minima",
+        "oferta_maxima",
+        "importe_licitacion",
     ):
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -66,7 +72,10 @@ def load_adjudicaciones(
             pass
 
     df["es_ute"] = df["nombre"].str.contains(
-        r"\bU\.?T\.?E\.?\b", case=False, na=False, regex=True,
+        r"\bU\.?T\.?E\.?\b",
+        case=False,
+        na=False,
+        regex=True,
     )
 
     try:
@@ -83,7 +92,8 @@ def load_adjudicaciones(
         df["nif_norm"] = None
 
     df["empresa_key"] = df["nif_norm"].where(
-        df["nif_norm"].notna() & (df["nif_norm"] != ""), df["nombre_norm"],
+        df["nif_norm"].notna() & (df["nif_norm"] != ""),
+        df["nombre_norm"],
     )
 
     return df

@@ -159,14 +159,21 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
         return df
 
     df["fecha_publicacion"] = pd.to_datetime(
-        df["fecha_publicacion"], errors="coerce", format="mixed", utc=True,
+        df["fecha_publicacion"],
+        errors="coerce",
+        format="mixed",
+        utc=True,
     )
     df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
     df["mes"] = month_start(df["fecha_publicacion"])
     df["anyo"] = df["fecha_publicacion"].dt.year
 
     # Enrichment
-    desc_col = df["descripcion"].fillna("") if "descripcion" in df.columns else pd.Series("", index=df.index)
+    desc_col = (
+        df["descripcion"].fillna("")
+        if "descripcion" in df.columns
+        else pd.Series("", index=df.index)
+    )
     text_blob = df["titulo"].fillna("") + " " + desc_col
 
     try:
@@ -188,7 +195,9 @@ def load_dataframe(limit: int | None = None) -> pd.DataFrame:
 
     try:
         stripped_estado = df["estado"].str.strip()
-        df["estado_desc"] = stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
+        df["estado_desc"] = (
+            stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
+        )
     except Exception:
         df["estado_desc"] = ""
 

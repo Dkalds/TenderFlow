@@ -22,6 +22,7 @@ def _escape_like(s: str) -> str:
     """Escape SQL LIKE wildcards (%, _) in user input."""
     return s.replace("%", r"\%").replace("_", r"\_")
 
+
 # Columnas devueltas en listados (resumen)
 _SUMMARY_COLS = [
     licitaciones.c.id_externo,

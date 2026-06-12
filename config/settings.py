@@ -480,6 +480,7 @@ class Settings(BaseSettings):
             )
         return v
 
+
 def _load() -> Settings:
     return Settings()
 

@@ -297,8 +297,7 @@ class PscpConnector:
                     nombre=adjudicatario,
                     nif=_text(record, "nif_adjudicatario"),
                     importe_adjudicado=_number(record, "importe_adjudicacion"),
-                    fecha_adjudicacion=_date(record, "fecha_adjudicacion")
-                    or lic.fecha_publicacion,
+                    fecha_adjudicacion=_date(record, "fecha_adjudicacion") or lic.fecha_publicacion,
                     n_ofertas_recibidas=int(n_ofertas) if n_ofertas is not None else None,
                     nuts_code=nuts,
                     ccaa=ccaa,

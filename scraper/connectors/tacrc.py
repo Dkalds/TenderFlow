@@ -186,12 +186,10 @@ def fetch_index(index_url: str | None = None, *, session: requests.Session | Non
         )
     resp = (session or requests).get(url, timeout=_TIMEOUT)
     resp.raise_for_status()
-    return resp.text
+    return str(resp.text)
 
 
-def run(
-    index_url: str | None = None, *, session: requests.Session | None = None
-) -> dict[str, Any]:
+def run(index_url: str | None = None, *, session: requests.Session | None = None) -> dict[str, Any]:
     """Ciclo completo de ingesta TACRC: fetch → parse → upsert → vinculación.
 
     Cursor ``tacrc`` (last_seen_updated = fecha máxima vista): en ejecuciones

@@ -178,7 +178,9 @@ class TestClusterLicitaciones:
         fake_embeddings = np.random.randn(n, 10).astype(np.float32)
         with (
             patch.object(cl, "_get_embeddings", return_value=fake_embeddings),
-            patch("db.repositories.aggregates.AggregateRepository.load_mat_clusters", return_value=[]),
+            patch(
+                "db.repositories.aggregates.AggregateRepository.load_mat_clusters", return_value=[]
+            ),
         ):
             result = cl.cluster_licitaciones(df, n_clusters=3)
         assert "cluster_id" in result.columns

@@ -24,11 +24,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--train", action="store_true", help="Re-entrena antes de puntuar")
     parser.add_argument(
-        "--model", choices=("baja", "retencion", "all"), default="all",
+        "--model",
+        choices=("baja", "retencion", "all"),
+        default="all",
         help="Qué modelo entrenar/puntuar (default: all)",
     )
     parser.add_argument(
-        "--activate", action="store_true",
+        "--activate",
+        action="store_true",
         help="Con --train: activa la versión aunque ML_PRED_AUTO_ACTIVATE esté off",
     )
     parser.add_argument("--hasta", help="Fecha de corte de entrenamiento YYYY-MM-DD (solo baja)")

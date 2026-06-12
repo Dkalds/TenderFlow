@@ -26,14 +26,23 @@ def _empresa(c, nombre):
     return cur.lastrowid
 
 
-def _contrato(c, lic_id, *, organo="Organo A", cpv="72000000", fecha_adj,
-              fecha_fin=None, empresa_id, importe=100_000.0, adjudicado=90_000.0):
+def _contrato(
+    c,
+    lic_id,
+    *,
+    organo="Organo A",
+    cpv="72000000",
+    fecha_adj,
+    fecha_fin=None,
+    empresa_id,
+    importe=100_000.0,
+    adjudicado=90_000.0,
+):
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
         " importe, fecha_fin, fuente, fecha_publicacion, fecha_extraccion) "
         "VALUES (?, ?, ?, ?, 'Madrid', ?, ?, 'placsp', ?, datetime('now'))",
-        (lic_id, f"Servicio mantenimiento {lic_id}", organo, cpv, importe,
-         fecha_fin, fecha_adj),
+        (lic_id, f"Servicio mantenimiento {lic_id}", organo, cpv, importe, fecha_fin, fecha_adj),
     )
     c.execute(
         "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
@@ -55,14 +64,18 @@ def test_par_retenido_y_perdido(db):
         incumbente = _empresa(c, "Incumbente SL")
         rival = _empresa(c, "Rival SA")
         # Contrato 1 vence 2025-06; lo renueva el mismo → label 1
-        _contrato(c, "C1", fecha_adj="2023-06-01", fecha_fin="2025-06-01",
-                  empresa_id=incumbente)
+        _contrato(c, "C1", fecha_adj="2023-06-01", fecha_fin="2025-06-01", empresa_id=incumbente)
         _contrato(c, "C1-SIG", fecha_adj="2025-07-01", empresa_id=incumbente)
         # Contrato 2 (otro órgano) vence 2025-09; lo gana otro → label 0
-        _contrato(c, "C2", organo="Organo B", fecha_adj="2023-09-01",
-                  fecha_fin="2025-09-01", empresa_id=incumbente)
-        _contrato(c, "C2-SIG", organo="Organo B", fecha_adj="2025-10-01",
-                  empresa_id=rival)
+        _contrato(
+            c,
+            "C2",
+            organo="Organo B",
+            fecha_adj="2023-09-01",
+            fecha_fin="2025-09-01",
+            empresa_id=incumbente,
+        )
+        _contrato(c, "C2-SIG", organo="Organo B", fecha_adj="2025-10-01", empresa_id=rival)
 
     pares = construir_pares()
 
@@ -93,8 +106,15 @@ def test_features_anti_fuga_y_auditoria(db):
     with connect() as c:
         e1 = _empresa(c, "Veterana SL")
         _contrato(c, "OLD", fecha_adj="2022-01-01", empresa_id=e1)  # relación previa
-        _contrato(c, "C1", fecha_adj="2023-06-01", fecha_fin="2025-06-01",
-                  empresa_id=e1, importe=100_000.0, adjudicado=80_000.0)
+        _contrato(
+            c,
+            "C1",
+            fecha_adj="2023-06-01",
+            fecha_fin="2025-06-01",
+            empresa_id=e1,
+            importe=100_000.0,
+            adjudicado=80_000.0,
+        )
         _contrato(c, "C1-SIG", fecha_adj="2025-07-01", empresa_id=e1)
 
     pares = construir_pares()
@@ -142,13 +162,27 @@ def _sembrar_pares(c, n=120):
         sig = f"{2022 + yyyy}-{mm + 1:02d}-20"
         if i % 2 == 0:
             organo = f"Organo F{i % 7}"
-            _contrato(c, f"F{i}", organo=organo, fecha_adj=adj, fecha_fin=fin,
-                      empresa_id=fiel, adjudicado=92_000.0)
+            _contrato(
+                c,
+                f"F{i}",
+                organo=organo,
+                fecha_adj=adj,
+                fecha_fin=fin,
+                empresa_id=fiel,
+                adjudicado=92_000.0,
+            )
             _contrato(c, f"F{i}-SIG", organo=organo, fecha_adj=sig, empresa_id=fiel)
         else:
             organo = f"Organo G{i % 7}"
-            _contrato(c, f"G{i}", organo=organo, fecha_adj=adj, fecha_fin=fin,
-                      empresa_id=fragil, adjudicado=70_000.0)
+            _contrato(
+                c,
+                f"G{i}",
+                organo=organo,
+                fecha_adj=adj,
+                fecha_fin=fin,
+                empresa_id=fragil,
+                adjudicado=70_000.0,
+            )
             _contrato(c, f"G{i}-SIG", organo=organo, fecha_adj=sig, empresa_id=rival)
     return fiel, fragil
 
@@ -165,8 +199,15 @@ def test_entrenar_y_puntuar_retencion(db, monkeypatch, tmp_path):
     with connect() as c:
         fiel, _ = _sembrar_pares(c)
         # Vencimiento futuro del incumbente fiel para el scoring
-        _contrato(c, "FUTURO", organo="Organo F1", fecha_adj="2025-09-01",
-                  fecha_fin="2026-10-01", empresa_id=fiel, adjudicado=92_000.0)
+        _contrato(
+            c,
+            "FUTURO",
+            organo="Organo F1",
+            fecha_adj="2025-09-01",
+            fecha_fin="2026-10-01",
+            empresa_id=fiel,
+            adjudicado=92_000.0,
+        )
 
     resumen = entrenar(activar=False, model_path=tmp_path / "ret.pkl")
 

@@ -40,11 +40,7 @@ class SignalAwareCache(Generic[_T]):
         """Devuelve el valor cacheado si sigue fresco; si no, llama a ``loader``."""
         now = time.time()
         sig = get_signal_timestamp()
-        fresh = (
-            self._valid
-            and (now - self._loaded_at) < self._ttl
-            and sig <= self._signal_ts
-        )
+        fresh = self._valid and (now - self._loaded_at) < self._ttl and sig <= self._signal_ts
         if fresh:
             return cast("_T", self._value)
         value = loader()

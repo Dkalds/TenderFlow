@@ -165,9 +165,8 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
     treemap_breakdown: list[TreemapItem] = []
     if "tipo_contrato" in df.columns:
         top30_organos = set(g.head(30)["organo_contratacion"])
-        tm_df = (
-            df[df["organo_contratacion"].isin(top30_organos)]
-            .dropna(subset=["importe", "tipo_contrato"])
+        tm_df = df[df["organo_contratacion"].isin(top30_organos)].dropna(
+            subset=["importe", "tipo_contrato"]
         )
         if not tm_df.empty:
             tm_g = (

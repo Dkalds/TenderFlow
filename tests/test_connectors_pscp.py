@@ -139,9 +139,7 @@ def test_pscp_fetch_pagina_y_avanza_cursor():
             return FakeResponse(self.pages[len(self.calls) - 1])
 
     rec1 = dict(_pscp_record(), **{":updated_at": "2026-05-21T08:00:00.000Z"})
-    rec2 = dict(
-        _pscp_record(), codi_expedient="X-2", **{":updated_at": "2026-05-22T09:00:00.000Z"}
-    )
+    rec2 = dict(_pscp_record(), codi_expedient="X-2", **{":updated_at": "2026-05-22T09:00:00.000Z"})
     session = FakeSession(pages=[[rec1, rec2]])
     connector = PscpConnector(dataset_id="abcd-1234", session=session)
 

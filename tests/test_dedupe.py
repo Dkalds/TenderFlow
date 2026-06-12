@@ -71,12 +71,22 @@ def test_detect_marca_duplicado_exacto_y_excluye_en_analytics(db):
 
     with connect() as c:
         _insert_lic(
-            c, "EXP-2026-42", fuente="placsp", organo="Departament de Salut",
-            cpv="72000000", fecha_pub="2026-05-01", extraccion="2026-05-02T00:00:00",
+            c,
+            "EXP-2026-42",
+            fuente="placsp",
+            organo="Departament de Salut",
+            cpv="72000000",
+            fecha_pub="2026-05-01",
+            extraccion="2026-05-02T00:00:00",
         )
         _insert_lic(
-            c, "pscp:EXP-2026-42", fuente="pscp", organo="DEPARTAMENT DE SALUT",
-            cpv="72004000", fecha_pub="2026-05-03", extraccion="2026-05-04T00:00:00",
+            c,
+            "pscp:EXP-2026-42",
+            fuente="pscp",
+            organo="DEPARTAMENT DE SALUT",
+            cpv="72004000",
+            fecha_pub="2026-05-03",
+            extraccion="2026-05-04T00:00:00",
         )
         _insert_adj(c, "EXP-2026-42", "Acme Consulting SL", 100000.0)
         _insert_adj(c, "pscp:EXP-2026-42", "Acme Consulting SL", 100000.0)
@@ -107,12 +117,22 @@ def test_detect_cpv_distinto_va_a_revision(db):
 
     with connect() as c:
         _insert_lic(
-            c, "EXP-9", fuente="placsp", organo="Ajuntament de Girona",
-            cpv="48000000", fecha_pub="2026-05-01", extraccion="2026-05-02T00:00:00",
+            c,
+            "EXP-9",
+            fuente="placsp",
+            organo="Ajuntament de Girona",
+            cpv="48000000",
+            fecha_pub="2026-05-01",
+            extraccion="2026-05-02T00:00:00",
         )
         _insert_lic(
-            c, "pscp:EXP-9", fuente="pscp", organo="Ajuntament de Girona",
-            cpv="72000000", fecha_pub="2026-05-01", extraccion="2026-05-02T00:00:00",
+            c,
+            "pscp:EXP-9",
+            fuente="pscp",
+            organo="Ajuntament de Girona",
+            cpv="72000000",
+            fecha_pub="2026-05-01",
+            extraccion="2026-05-02T00:00:00",
         )
 
     result = detect_duplicates(fuente="pscp")
@@ -140,12 +160,22 @@ def test_detect_es_incremental_por_cursor(db):
 
     with connect() as c:
         _insert_lic(
-            c, "EXP-1", fuente="placsp", organo="Organo X", cpv="72000000",
-            fecha_pub="2026-05-01", extraccion="2026-05-02T00:00:00",
+            c,
+            "EXP-1",
+            fuente="placsp",
+            organo="Organo X",
+            cpv="72000000",
+            fecha_pub="2026-05-01",
+            extraccion="2026-05-02T00:00:00",
         )
         _insert_lic(
-            c, "pscp:EXP-1", fuente="pscp", organo="Organo X", cpv="72000000",
-            fecha_pub="2026-05-01", extraccion="2026-05-02T00:00:00",
+            c,
+            "pscp:EXP-1",
+            fuente="pscp",
+            organo="Organo X",
+            cpv="72000000",
+            fecha_pub="2026-05-01",
+            extraccion="2026-05-02T00:00:00",
         )
 
     first = detect_duplicates(fuente="pscp")
@@ -160,8 +190,13 @@ def test_detect_sin_match_no_marca(db):
 
     with connect() as c:
         _insert_lic(
-            c, "pscp:EXP-solo", fuente="pscp", organo="Organo Y", cpv="72000000",
-            fecha_pub="2026-05-01", extraccion="2026-05-02T00:00:00",
+            c,
+            "pscp:EXP-solo",
+            fuente="pscp",
+            organo="Organo Y",
+            cpv="72000000",
+            fecha_pub="2026-05-01",
+            extraccion="2026-05-02T00:00:00",
         )
 
     result = detect_duplicates(fuente="pscp")

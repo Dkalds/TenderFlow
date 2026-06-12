@@ -25,7 +25,13 @@ def set_flag(
     user_emails: str = "",
     description: str = "",
 ) -> None:
-    _set_flag(name, enabled=enabled, rollout_pct=rollout_pct, user_emails=user_emails, description=description)
+    _set_flag(
+        name,
+        enabled=enabled,
+        rollout_pct=rollout_pct,
+        user_emails=user_emails,
+        description=description,
+    )
 
 
 def delete_flag(name: str) -> bool:

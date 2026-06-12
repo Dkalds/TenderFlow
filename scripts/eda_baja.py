@@ -40,14 +40,17 @@ def main() -> int:
     print(f"== Target: baja = (importe - adjudicado) / importe — {n} pares válidos ==")
     print(f"  media={sum(bajas) / n:.4f}  p5={pct(0.05):.4f}  p25={pct(0.25):.4f}")
     print(f"  p50={pct(0.50):.4f}  p75={pct(0.75):.4f}  p95={pct(0.95):.4f}  p99={pct(0.99):.4f}")
-    print(f"  max={bajas[-1]:.4f}  · negativos (adjudicado>presupuesto): "
-          f"{sum(1 for b in bajas if b < 0)} ({sum(1 for b in bajas if b < 0) * 100 / n:.1f}%)")
-    print(f"  Sugerencia de truncamiento: clip superior en p99={pct(0.99):.3f} "
-          f"(el modelo usa 0.95 fijo; ajustar si p99 difiere mucho)")
+    print(
+        f"  max={bajas[-1]:.4f}  · negativos (adjudicado>presupuesto): "
+        f"{sum(1 for b in bajas if b < 0)} ({sum(1 for b in bajas if b < 0) * 100 / n:.1f}%)"
+    )
+    print(
+        f"  Sugerencia de truncamiento: clip superior en p99={pct(0.99):.3f} "
+        f"(el modelo usa 0.95 fijo; ajustar si p99 difiere mucho)"
+    )
 
     con_ofertas = sum(1 for f in filas if f.features.get("n_ofertas") is not None)
-    print(f"\n== n_ofertas_recibidas poblado: {con_ofertas}/{n} "
-          f"({con_ofertas * 100 / n:.1f}%) ==")
+    print(f"\n== n_ofertas_recibidas poblado: {con_ofertas}/{n} ({con_ofertas * 100 / n:.1f}%) ==")
 
     por_cpv2 = Counter(str(f.features["cpv2"]) for f in filas)
     print("\n== Volumen por CPV-2 (top 15) ==")
@@ -55,8 +58,10 @@ def main() -> int:
         print(f"  {cpv2}: {count}")
 
     con_hist = sum(1 for f in filas if f.features.get("baja_media_organo_cpv4") is not None)
-    print(f"\n== Cobertura del agregado órgano-CPV4 (feature más específica): "
-          f"{con_hist}/{n} ({con_hist * 100 / n:.1f}%) ==")
+    print(
+        f"\n== Cobertura del agregado órgano-CPV4 (feature más específica): "
+        f"{con_hist}/{n} ({con_hist * 100 / n:.1f}%) =="
+    )
     return 0
 
 

@@ -76,8 +76,14 @@ def test_entrenar_registra_version_y_metricas(db, monkeypatch, tmp_path):
 
     assert resumen["status"] == "ok"
     assert resumen["activado"] is False
-    for clave in ("mae_p50", "mae_baseline", "mejora_relativa",
-                  "cobertura_intervalo_80", "pinball_p10", "pinball_p90"):
+    for clave in (
+        "mae_p50",
+        "mae_baseline",
+        "mejora_relativa",
+        "cobertura_intervalo_80",
+        "pinball_p10",
+        "pinball_p90",
+    ):
         assert clave in resumen
 
     # Registrada SIN activar (política del RFC: activación manual)
@@ -156,7 +162,8 @@ def test_prediccion_inexistente_devuelve_none(db):
 
 def test_baseline_intervalo_valido():
     fila = FilaDataset(
-        licitacion_id="X", fecha="2026-06-01",
+        licitacion_id="X",
+        fecha="2026-06-01",
         features={"baja_media_organo_cpv4": 0.20},
     )
     pred = predecir_baseline([fila])[0]
@@ -184,6 +191,4 @@ def test_api_prediccion_baja(client, auth):
     data = resp.json()
     assert {"p10", "p50", "p90", "model_version", "computed_at", "serving"} <= set(data)
 
-    assert client.get(
-        "/api/v1/licitaciones/NADA/prediccion-baja", headers=auth
-    ).status_code == 404
+    assert client.get("/api/v1/licitaciones/NADA/prediccion-baja", headers=auth).status_code == 404

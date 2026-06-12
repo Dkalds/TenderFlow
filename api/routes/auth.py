@@ -262,9 +262,7 @@ async def register(body: RegisterRequest, response: Response) -> UserInfo:
 
     if get_user_by_email(body.email):
         log.warning("signup_rejected", email=body.email, reason="email_exists")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     display_name = (body.display_name or "").strip() or None
     user_id = create_user(

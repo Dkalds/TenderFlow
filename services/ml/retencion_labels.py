@@ -128,18 +128,12 @@ def _features_historicas(
     ]
     total_seg = sum(float(c["importe_adjudicado"]) for c in segmento_previo)
     importe_empresa = sum(
-        float(c["importe_adjudicado"])
-        for c in segmento_previo
-        if c.get("empresa_id") == empresa_id
+        float(c["importe_adjudicado"]) for c in segmento_previo if c.get("empresa_id") == empresa_id
     )
     por_empresa: dict[Any, float] = defaultdict(float)
     for c in segmento_previo:
         por_empresa[c.get("empresa_id") or c.get("nombre")] += float(c["importe_adjudicado"])
-    hhi = (
-        sum((v * 100.0 / total_seg) ** 2 for v in por_empresa.values())
-        if total_seg > 0
-        else None
-    )
+    hhi = sum((v * 100.0 / total_seg) ** 2 for v in por_empresa.values()) if total_seg > 0 else None
 
     importe = adj.get("importe")
     adjudicado = adj.get("importe_adjudicado")
@@ -149,9 +143,7 @@ def _features_historicas(
         else None
     )
     antiguedad = (
-        (fin_dt - _fecha_dt(str(previos[0]["fecha_adjudicacion"]))).days / 30.0
-        if previos
-        else None
+        (fin_dt - _fecha_dt(str(previos[0]["fecha_adjudicacion"]))).days / 30.0 if previos else None
     )
     ev = eventos.get(str(adj["licitacion_id"]), {})
     return {
@@ -219,8 +211,14 @@ def construir_pares(*, ventana_meses: int = VENTANA_MESES) -> list[ParRetencion]
                 fecha_sucesor=str(sucesora["fecha_adjudicacion"])[:10],
                 label=1 if sucesora.get("empresa_id") == empresa_id else 0,
                 features=_features_historicas(
-                    adjudicaciones, eventos, adj=adj, fin=str(fin), fin_dt=fin_dt,
-                    organo_n=organo_n, cpv4=cpv4, empresa_id=empresa_id,
+                    adjudicaciones,
+                    eventos,
+                    adj=adj,
+                    fin=str(fin),
+                    fin_dt=fin_dt,
+                    organo_n=organo_n,
+                    cpv4=cpv4,
+                    empresa_id=empresa_id,
                 ),
                 titulo_original=adj.get("titulo"),
                 titulo_sucesor=sucesora.get("titulo"),
@@ -250,9 +248,7 @@ def features_para_vencimientos(*, months_ahead: int = 12) -> list[ParRetencion]:
     adjudicaciones = _cargar_adjudicaciones()
     eventos = _eventos_por_licitacion()
     hoy = datetime.now().strftime("%Y-%m-%d")
-    limite = (
-        _fecha_dt(hoy) + timedelta(days=months_ahead * 30)
-    ).strftime("%Y-%m-%d")
+    limite = (_fecha_dt(hoy) + timedelta(days=months_ahead * 30)).strftime("%Y-%m-%d")
 
     filas: list[ParRetencion] = []
     vistos: set[str] = set()
@@ -282,8 +278,14 @@ def features_para_vencimientos(*, months_ahead: int = 12) -> list[ParRetencion]:
                 fecha_sucesor="",
                 label=-1,
                 features=_features_historicas(
-                    adjudicaciones, eventos, adj=adj, fin=hoy, fin_dt=_fecha_dt(hoy),
-                    organo_n=organo_n, cpv4=cpv4, empresa_id=int(empresa_id),
+                    adjudicaciones,
+                    eventos,
+                    adj=adj,
+                    fin=hoy,
+                    fin_dt=_fecha_dt(hoy),
+                    organo_n=organo_n,
+                    cpv4=cpv4,
+                    empresa_id=int(empresa_id),
                 ),
                 titulo_original=adj.get("titulo"),
                 empresa_original=adj.get("nombre"),

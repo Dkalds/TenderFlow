@@ -33,9 +33,7 @@ def load_caches(conn: Any) -> EmpresaCaches:
     """Carga los índices NIF/alias de todas las empresas existentes."""
     nif_map: dict[str, int] = {}
     nif_canon: dict[int, str | None] = {}
-    for empresa_id, nif in conn.execute(
-        "SELECT empresa_id, nif_canonico FROM empresas"
-    ).fetchall():
+    for empresa_id, nif in conn.execute("SELECT empresa_id, nif_canonico FROM empresas").fetchall():
         nif_canon[int(empresa_id)] = nif
         if nif:
             nif_map[nif] = int(empresa_id)
@@ -194,7 +192,9 @@ def apply_review(review_id: int, *, accept: bool, resolved_by: str = "") -> int 
         if accept and candidato_id is not None:
             empresa_id = int(candidato_id)
         else:
-            empresa_id = create_empresa(c, nombre_canonico=nombre_original.strip(), nif_canonico=nif)
+            empresa_id = create_empresa(
+                c, nombre_canonico=nombre_original.strip(), nif_canonico=nif
+            )
         add_alias(c, empresa_id, alias, nif_variante=nif, fuente="review", confianza=1.0)
         if nif:
             set_nif_canonico_if_null(c, empresa_id, nif)

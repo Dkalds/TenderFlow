@@ -119,7 +119,7 @@ def _resolve_and_validate(url: str) -> str:
         raise ValueError(f"No DNS records for {host}")
 
     # Pick first resolved IP and validate
-    resolved_ip = addrs[0][4][0]
+    resolved_ip = str(addrs[0][4][0])
     try:
         addr = ipaddress.ip_address(resolved_ip)
     except ValueError as exc:

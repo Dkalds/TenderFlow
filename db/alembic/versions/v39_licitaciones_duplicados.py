@@ -44,12 +44,9 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_lic_dup_canonical "
-        "ON licitaciones_duplicados(canonical_id)"
+        "CREATE INDEX IF NOT EXISTS idx_lic_dup_canonical ON licitaciones_duplicados(canonical_id)"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_lic_dup_status ON licitaciones_duplicados(status)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_lic_dup_status ON licitaciones_duplicados(status)")
 
 
 def downgrade() -> None:

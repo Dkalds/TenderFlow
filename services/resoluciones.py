@@ -60,8 +60,7 @@ def upsert_resoluciones(items: list[Resolucion]) -> tuple[int, int]:
     with connect() as c:
         for res in items:
             existing = c.execute(
-                "SELECT id FROM resoluciones_recurso "
-                "WHERE tribunal = ? AND numero_resolucion = ?",
+                "SELECT id FROM resoluciones_recurso WHERE tribunal = ? AND numero_resolucion = ?",
                 (res.tribunal, res.numero_resolucion),
             ).fetchone()
             values = asdict(res)
@@ -100,10 +99,7 @@ def upsert_resoluciones(items: list[Resolucion]) -> tuple[int, int]:
 
 def _registrar_evento_recurso(c: Any, licitacion_id: str, res: dict[str, Any]) -> bool:
     """Evento ``recurso`` en la línea de tiempo (solo resoluciones estimatorias)."""
-    detalle = (
-        f"Resolución {res['tribunal'].upper()} {res['numero_resolucion']} "
-        f"({res['sentido']})"
-    )
+    detalle = f"Resolución {res['tribunal'].upper()} {res['numero_resolucion']} ({res['sentido']})"
     ya_existe = c.execute(
         "SELECT 1 FROM contrato_eventos "
         "WHERE licitacion_id = ? AND tipo = 'recurso' AND detalle = ?",

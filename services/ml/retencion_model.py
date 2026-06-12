@@ -57,9 +57,7 @@ def _ece(y_true: npt.NDArray[np.float64], y_prob: npt.NDArray[np.float64], bins:
         mask = (y_prob >= lo) & (y_prob < hi if b < bins - 1 else y_prob <= hi)
         if not mask.any():
             continue
-        ece += abs(float(y_prob[mask].mean()) - float(y_true[mask].mean())) * (
-            mask.sum() / total
-        )
+        ece += abs(float(y_prob[mask].mean()) - float(y_true[mask].mean())) * (mask.sum() / total)
     return ece
 
 

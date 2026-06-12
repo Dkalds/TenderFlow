@@ -125,9 +125,7 @@ class _HhiExpansivo:
         total = self._totales.get(segmento) or 0.0
         if total <= 0:
             return None
-        return sum(
-            (importe * 100.0 / total) ** 2 for importe in self._importes[segmento].values()
-        )
+        return sum((importe * 100.0 / total) ** 2 for importe in self._importes[segmento].values())
 
     def agregar(self, segmento: str | None, empresa: Any, importe: float | None) -> None:
         if segmento is None or not importe or importe <= 0:
@@ -231,9 +229,7 @@ def construir_dataset_baja(
         baja = (float(row["importe"]) - float(row["importe_adjudicado"])) / float(row["importe"])
 
         features = _features_estaticas(row, fecha)
-        features.update(
-            acum.features_historicas(organo=organo, cpv4=cpv4, ccaa=ccaa, fecha=fecha)
-        )
+        features.update(acum.features_historicas(organo=organo, cpv4=cpv4, ccaa=ccaa, fecha=fecha))
         filas.append(
             FilaDataset(
                 licitacion_id=str(row["id_externo"]),

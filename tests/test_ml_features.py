@@ -20,8 +20,19 @@ def db(tmp_db):
     return db_mod
 
 
-def _insert_par(c, lic_id, *, fecha, organo="Organo A", cpv="72000000", ccaa="Madrid",
-                importe=100_000.0, adjudicado=85_000.0, n_ofertas=None, empresa=None):
+def _insert_par(
+    c,
+    lic_id,
+    *,
+    fecha,
+    organo="Organo A",
+    cpv="72000000",
+    ccaa="Madrid",
+    importe=100_000.0,
+    adjudicado=85_000.0,
+    n_ofertas=None,
+    empresa=None,
+):
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
         " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
@@ -114,8 +125,9 @@ def test_target_y_columnas(db):
     from db.database import connect
 
     with connect() as c:
-        _insert_par(c, "L1", fecha="2026-02-10", importe=200_000.0,
-                    adjudicado=170_000.0, n_ofertas=5)
+        _insert_par(
+            c, "L1", fecha="2026-02-10", importe=200_000.0, adjudicado=170_000.0, n_ofertas=5
+        )
 
     filas, _ = construir_dataset_baja()
 

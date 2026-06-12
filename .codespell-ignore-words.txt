@@ -101,3 +101,15 @@ relevante
 inicial
 ortogonal
 fases
+fiel
+registr
+suport
+tecnologies
+direccion
+ambiguos
+instruccion
+regresion
+convencion
+potencial
+purgable
+secuencial

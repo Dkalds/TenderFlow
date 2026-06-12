@@ -113,7 +113,9 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_anomaly_checks": _make_mock("anomaly_checks"),
         }
 
-        with patch.multiple("scheduler.pipeline_runs", **{k.split(".")[-1]: v for k, v in patches.items()}):
+        with patch.multiple(
+            "scheduler.pipeline_runs", **{k.split(".")[-1]: v for k, v in patches.items()}
+        ):
             results = _run_post_ingestion_steps()
 
         assert called == CANONICAL_STEPS

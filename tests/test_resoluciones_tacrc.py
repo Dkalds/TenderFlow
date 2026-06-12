@@ -166,8 +166,14 @@ def test_link_desestimado_no_genera_evento(db):
             ("EXP-7", "Contrato", "Organo Z"),
         )
     upsert_resoluciones(
-        [_resolucion_estimada(numero_resolucion="200/2026", expediente="EXP-7",
-                              organo="Organo Z", sentido="desestimado")]
+        [
+            _resolucion_estimada(
+                numero_resolucion="200/2026",
+                expediente="EXP-7",
+                organo="Organo Z",
+                sentido="desestimado",
+            )
+        ]
     )
 
     stats = link_unlinked()
@@ -232,6 +238,9 @@ def test_api_resoluciones_filtra_por_sentido(client, auth):
     items = resp.json()["items"]
     assert len(items) == 1 and items[0]["numero_resolucion"] == "123/2026"
 
-    assert client.get(
-        "/api/v1/resoluciones", params={"sentido": "inventado"}, headers=auth
-    ).status_code == 422
+    assert (
+        client.get(
+            "/api/v1/resoluciones", params={"sentido": "inventado"}, headers=auth
+        ).status_code
+        == 422
+    )

@@ -62,8 +62,14 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
             "(licitacion_id, p10, p50, p90, model_version, computed_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (p.licitacion_id, round(p.p10, 5), round(p.p50, 5), round(p.p90, 5),
-                 version, computed_at)
+                (
+                    p.licitacion_id,
+                    round(p.p10, 5),
+                    round(p.p50, 5),
+                    round(p.p90, 5),
+                    version,
+                    computed_at,
+                )
                 for p in preds
             ],
         )
@@ -113,8 +119,7 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
             "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
             " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (f.licitacion_id, f.empresa_id, round(p, 5), round(1 - p, 5),
-                 version, computed_at)
+                (f.licitacion_id, f.empresa_id, round(p, 5), round(1 - p, 5), version, computed_at)
                 for f, p in zip(filas, probas, strict=True)
             ],
         )

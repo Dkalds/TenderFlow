@@ -40,8 +40,7 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pred_baja_computed "
-        "ON predicciones_baja(computed_at)"
+        "CREATE INDEX IF NOT EXISTS idx_pred_baja_computed ON predicciones_baja(computed_at)"
     )
 
 

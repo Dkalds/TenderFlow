@@ -53,9 +53,7 @@ def test_signal_invalidates_cache(monkeypatch):
     def fake_signal() -> float:
         return fake_ts["value"]
 
-    monkeypatch.setattr(
-        "services._data_cache.get_signal_timestamp", fake_signal
-    )
+    monkeypatch.setattr("services._data_cache.get_signal_timestamp", fake_signal)
 
     calls = {"n": 0}
 

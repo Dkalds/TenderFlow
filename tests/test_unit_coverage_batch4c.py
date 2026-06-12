@@ -456,5 +456,3 @@ class TestUpdateRecent:
 
             results = update_recent(months_back=2)
         assert len(results) == 2
-
-
