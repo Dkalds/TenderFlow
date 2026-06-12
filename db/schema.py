@@ -182,6 +182,16 @@ CREATE INDEX IF NOT EXISTS idx_resoluciones_lic     ON resoluciones_recurso(lici
 CREATE INDEX IF NOT EXISTS idx_resoluciones_fecha   ON resoluciones_recurso(fecha);
 CREATE INDEX IF NOT EXISTS idx_resoluciones_sentido ON resoluciones_recurso(sentido, fecha);
 
+CREATE TABLE IF NOT EXISTS predicciones_baja (
+    licitacion_id TEXT PRIMARY KEY REFERENCES licitaciones(id_externo) ON DELETE CASCADE,
+    p10           REAL NOT NULL,
+    p50           REAL NOT NULL,
+    p90           REAL NOT NULL,
+    model_version INTEGER,
+    computed_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pred_baja_computed ON predicciones_baja(computed_at);
+
 CREATE TABLE IF NOT EXISTS watchlist_empresas (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     user_key         TEXT NOT NULL,

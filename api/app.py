@@ -55,6 +55,7 @@ from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
 from api.routes.models import router as models_router
+from api.routes.predicciones import router as predicciones_router
 from api.routes.resoluciones import router as resoluciones_router
 from api.routes.search import router as search_router
 from api.routes.security import router as security_router
@@ -383,6 +384,7 @@ app.include_router(empresas_router, prefix="/api/v1")
 app.include_router(competitive_router, prefix="/api/v1")
 app.include_router(eventos_router, prefix="/api/v1")
 app.include_router(resoluciones_router, prefix="/api/v1")
+app.include_router(predicciones_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(feedback_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")

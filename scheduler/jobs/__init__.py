@@ -31,6 +31,8 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
     from scheduler.jobs.faiss_rebuild import run as run_faiss_rebuild
+    from scheduler.jobs.ml_predicciones import run_retrain as run_ml_retrain
+    from scheduler.jobs.ml_predicciones import run_scoring as run_ml_scoring
     from scheduler.jobs.recent_bulk import run as run_recent_bulk
     from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
     from scheduler.jobs.wal_checkpoint import run as run_wal_checkpoint
@@ -68,6 +70,22 @@ def build_default_registry() -> list[ScheduledJob]:
             interval_env="SCHEDULER_FAISS_REBUILD_INTERVAL_MINUTES",
             default_interval_minutes=60,
             initial_offset_minutes=5,
+            heavy=True,
+        ),
+        ScheduledJob(
+            name="ml_scoring_baja",
+            fn=run_ml_scoring,
+            interval_env="SCHEDULER_ML_SCORING_INTERVAL_MINUTES",
+            default_interval_minutes=1440,  # nocturno
+            initial_offset_minutes=240,  # tras la ingesta diaria
+            heavy=True,  # construye el dataset histórico completo
+        ),
+        ScheduledJob(
+            name="ml_retrain_baja",
+            fn=run_ml_retrain,
+            interval_env="SCHEDULER_ML_RETRAIN_INTERVAL_MINUTES",
+            default_interval_minutes=43_200,  # mensual
+            initial_offset_minutes=720,
             heavy=True,
         ),
         # ── Light jobs (daemon threads) ───────────────────────────────
