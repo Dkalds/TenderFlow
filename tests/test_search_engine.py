@@ -62,14 +62,14 @@ def test_faiss_search_returns_hits_when_index_available() -> None:
 
     faiss_module = MagicMock()
     faiss_module.FaissIndex.load.return_value = mock_index
-    with patch.dict("sys.modules", {"dashboard.faiss_index": faiss_module}):
+    with patch.dict("sys.modules", {"services.faiss_index": faiss_module}):
         hits = faiss_search("consultoría", top_k=5, embedding_model="")
 
     assert hits == [("lic-001", 0.9), ("lic-002", 0.7)]
 
 
 def test_faiss_search_returns_empty_on_exception() -> None:
-    with patch.dict("sys.modules", {"dashboard.faiss_index": None}):  # type: ignore[dict-item]
+    with patch.dict("sys.modules", {"services.faiss_index": None}):  # type: ignore[dict-item]
         hits = faiss_search("test", top_k=5, embedding_model="")
     assert hits == []
 
@@ -260,7 +260,7 @@ def test_rag_query_with_both_sources() -> None:
     faiss_module.FaissIndex.load.return_value = faiss_index
 
     with (
-        patch.dict("sys.modules", {"dashboard.faiss_index": faiss_module}),
+        patch.dict("sys.modules", {"services.faiss_index": faiss_module}),
         patch(_REPO_PATH) as mock_repo,
     ):
         mock_repo.fts5_bm25_search.return_value = [("lic-001", 1.0), ("lic-002", 0.5)]
@@ -273,7 +273,7 @@ def test_rag_query_with_both_sources() -> None:
 
 def test_rag_query_falls_back_to_fts_only() -> None:
     with (
-        patch.dict("sys.modules", {"dashboard.faiss_index": None}),  # type: ignore[dict-item]
+        patch.dict("sys.modules", {"services.faiss_index": None}),  # type: ignore[dict-item]
         patch(_REPO_PATH) as mock_repo,
     ):
         mock_repo.fts5_bm25_search.return_value = [("lic-A", 0.8)]
@@ -285,7 +285,7 @@ def test_rag_query_falls_back_to_fts_only() -> None:
 
 def test_rag_query_falls_back_to_like() -> None:
     with (
-        patch.dict("sys.modules", {"dashboard.faiss_index": None}),  # type: ignore[dict-item]
+        patch.dict("sys.modules", {"services.faiss_index": None}),  # type: ignore[dict-item]
         patch(_REPO_PATH) as mock_repo,
     ):
         mock_repo.fts5_bm25_search.return_value = []

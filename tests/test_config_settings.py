@@ -18,7 +18,6 @@ def make_settings(**kwargs):
 
     env = {
         "ENV": "dev",
-        "DASHBOARD_PASSWORD_HASH": "",
         "SIGNING_KEY": "",
         "API_HMAC_SECRET": "",
         **kwargs,
@@ -193,22 +192,12 @@ def test_ml_uncertainty_equal_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_prod_requires_password_hash():
-    from config.settings import Settings
-
-    with pytest.raises(Exception, match="DASHBOARD_PASSWORD_HASH"):
-        Settings(
-            ENV="prod", DASHBOARD_PASSWORD_HASH="", SIGNING_KEY="x" * 32, API_HMAC_SECRET="x" * 32
-        )
-
-
 def test_prod_requires_signing_key():
     from config.settings import Settings
 
     with pytest.raises(Exception, match="SIGNING_KEY"):
         Settings(
             ENV="prod",
-            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
             SIGNING_KEY="",
             API_HMAC_SECRET="x" * 32,
         )
@@ -220,7 +209,6 @@ def test_prod_requires_api_hmac_secret():
     with pytest.raises(Exception, match="API_HMAC_SECRET"):
         Settings(
             ENV="prod",
-            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="",
         )
@@ -232,7 +220,6 @@ def test_prod_api_hmac_secret_too_short():
     with pytest.raises(Exception, match="32 caracteres"):
         Settings(
             ENV="prod",
-            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="short",  # pragma: allowlist secret
         )
@@ -246,9 +233,7 @@ def test_prod_valid_config():
         warnings.simplefilter("ignore")
         s = Settings(
             ENV="prod",
-            DASHBOARD_PASSWORD="",
             GF_SECURITY_ADMIN_PASSWORD="",
-            DASHBOARD_PASSWORD_HASH="$2b$12$abc",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,
             REDIS_URL="redis://localhost:6379/0",

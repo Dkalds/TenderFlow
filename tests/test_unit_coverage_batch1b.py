@@ -701,7 +701,7 @@ class TestFallbackActors:
         with patch.dict(
             "sys.modules",
             {
-                "dashboard.faiss_index": mock_faiss,
+                "services.faiss_index": mock_faiss,
                 "db.database": MagicMock(connect=mock_connect),
             },
         ):

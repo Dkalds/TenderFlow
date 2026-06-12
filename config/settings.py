@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     # ── OAuth ────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: SecretStr = SecretStr("")
-    OAUTH_REDIRECT_URI: str = "http://localhost:8501"
+    OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/oauth/google/callback"
     OAUTH_ALLOWED_EMAILS: str = ""
     OAUTH_ALLOWED_DOMAINS: str = ""
     OAUTH_ADMIN_EMAILS: str = ""
