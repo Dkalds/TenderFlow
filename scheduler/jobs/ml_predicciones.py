@@ -17,19 +17,26 @@ log = get_logger(__name__)
 
 
 def run_scoring() -> dict[str, Any]:
-    from services.ml.scoring import score_predicciones_baja
+    from services.ml.drift import comprobar_drift_baja
+    from services.ml.scoring import score_predicciones_baja, score_predicciones_retencion
 
-    return score_predicciones_baja()
+    baja = score_predicciones_baja()
+    retencion = score_predicciones_retencion()
+    drift = comprobar_drift_baja()
+    return {"baja": baja, "retencion": retencion, "drift": drift}
 
 
 def run_retrain() -> dict[str, Any]:
-    from services.ml.baja_model import entrenar
+    from services.ml.baja_model import entrenar as entrenar_baja
+    from services.ml.retencion_model import entrenar as entrenar_retencion
 
-    resumen = entrenar()
-    if resumen.get("status") == "ok" and not resumen.get("activado"):
-        log.info(
-            "ml_retrain_pending_activation",
-            version=resumen.get("version"),
-            cumple_criterios=resumen.get("cumple_criterios"),
-        )
-    return resumen
+    resultados = {"baja": entrenar_baja(), "retencion": entrenar_retencion()}
+    for nombre, resumen in resultados.items():
+        if resumen.get("status") == "ok" and not resumen.get("activado"):
+            log.info(
+                "ml_retrain_pending_activation",
+                modelo=nombre,
+                version=resumen.get("version"),
+                cumple_criterios=resumen.get("cumple_criterios"),
+            )
+    return resultados

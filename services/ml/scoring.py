@@ -82,6 +82,46 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     }
 
 
+def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
+    """Puntúa el riesgo de cambio de manos en los vencimientos próximos.
+
+    A diferencia de la baja, aquí no hay baseline honesto que servir (una
+    probabilidad sin modelo calibrado no tiene semántica): sin versión activa
+    el batch se salta y la columna queda vacía en el frontend.
+    """
+    from db.model_registry import get_active
+
+    activa = get_active("retencion_model")
+    if not activa:
+        log.info("retencion_scoring_skip", reason="sin_modelo_activo")
+        return {"status": "sin_modelo", "filas": 0}
+
+    from services.ml.retencion_labels import features_para_vencimientos
+    from services.ml.retencion_model import RetencionModel
+
+    filas = features_para_vencimientos(months_ahead=months_ahead)
+    if not filas:
+        return {"status": "sin_vencimientos", "filas": 0}
+
+    modelo = RetencionModel.load(Path(str(activa["path"])))
+    probas = modelo.predict_proba_retencion(filas)
+    computed_at = now_utc_iso()
+    version = int(activa["version"])
+    with connect() as c:
+        c.executemany(
+            "INSERT OR REPLACE INTO predicciones_retencion "
+            "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
+            " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (f.licitacion_id, f.empresa_id, round(p, 5), round(1 - p, 5),
+                 version, computed_at)
+                for f, p in zip(filas, probas, strict=True)
+            ],
+        )
+    log.info("retencion_scoring_done", filas=len(filas), model_version=version)
+    return {"status": "ok", "filas": len(filas), "model_version": version}
+
+
 def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:
     """Lectura de la predicción materializada para una licitación."""
     with connect_read() as c:

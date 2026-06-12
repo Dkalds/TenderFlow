@@ -192,6 +192,16 @@ CREATE TABLE IF NOT EXISTS predicciones_baja (
 );
 CREATE INDEX IF NOT EXISTS idx_pred_baja_computed ON predicciones_baja(computed_at);
 
+CREATE TABLE IF NOT EXISTS predicciones_retencion (
+    licitacion_id  TEXT PRIMARY KEY REFERENCES licitaciones(id_externo) ON DELETE CASCADE,
+    empresa_id     INTEGER REFERENCES empresas(empresa_id),
+    prob_retencion REAL NOT NULL,
+    riesgo_cambio  REAL NOT NULL,
+    model_version  INTEGER,
+    computed_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pred_ret_riesgo ON predicciones_retencion(riesgo_cambio DESC);
+
 CREATE TABLE IF NOT EXISTS watchlist_empresas (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     user_key         TEXT NOT NULL,
