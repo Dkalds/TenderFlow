@@ -11,8 +11,6 @@ Lógica:
 
 from __future__ import annotations
 
-import hashlib
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -36,12 +34,9 @@ _MAX_IMMEDIATE_EMAILS_PER_RUN = 1
 
 def _user_key() -> str:
     """Deriva una clave opaca y estable a partir de la configuración local."""
-    from config import settings
+    from shared.user_key import user_key
 
-    seed = settings.DASHBOARD_PASSWORD.get_secret_value() or os.environ.get(
-        "COMPUTERNAME", "default"
-    )
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+    return user_key()
 
 
 def _query_licitaciones_since(cpv_prefix: str, since_date: str) -> list[dict[str, Any]]:

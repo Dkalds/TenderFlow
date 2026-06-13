@@ -127,7 +127,7 @@ tenderflow/
 │   ├── backup_db.py              #   Backup de la BD
 │   ├── retrain.py                #   Reentrenamiento del modelo ML
 │   ├── rotate_api_keys.py        #   Rotación de API keys
-│   └── ...                       #   dedupe, hash_password, retention, coverage
+│   └── ...                       #   dedupe, retention, coverage
 ├── docs/                         # Documentación técnica
 │   ├── adr/                      #   Architecture Decision Records (ADR-001..007)
 │   ├── runbooks/                 #   Playbooks operativos (backup, DLQ, DR, ...)

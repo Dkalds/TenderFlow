@@ -18,9 +18,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 import requests
+
+# Ejecutable como `python scripts/probe_pscp.py` desde el raíz del repo
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 DOMAIN = "analisi.transparenciacatalunya.cat"
 CATALOG_URL = "https://api.us.socrata.com/api/catalog/v1"

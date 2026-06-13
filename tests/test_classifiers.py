@@ -1,4 +1,4 @@
-"""Tests para dashboard/classifiers.py — clasificadores de datos."""
+"""Tests para services/classification — clasificadores de datos."""
 
 from __future__ import annotations
 

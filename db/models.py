@@ -76,6 +76,7 @@ licitaciones = Table(
     Column("ml_proba_max", Float),
     Column("ml_tech_principal", String),
     Column("fecha_actualizacion_fuente", String),
+    Column("fuente", String, nullable=False, default="placsp"),
     Column("fecha_extraccion", String, nullable=False),
 )
 
@@ -116,6 +117,7 @@ adjudicaciones = Table(
     Column("oferta_maxima", Float),
     Column("result_code", String),
     Column("result_description", Text),
+    Column("empresa_id", Integer),
     Column("fecha_extraccion", String, nullable=False),
 )
 

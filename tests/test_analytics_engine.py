@@ -184,9 +184,7 @@ def test_maybe_refresh_triggers_refresh_when_manifest_newer():
 
         engine._refresh = _fake_refresh
 
-        with patch(
-            "shared.parquet_manifest.read_manifest", return_value=_make_manifest(9999.0)
-        ):
+        with patch("shared.parquet_manifest.read_manifest", return_value=_make_manifest(9999.0)):
             engine.maybe_refresh()
 
     assert refresh_called, "Se esperaba que _refresh fuera llamado"
@@ -217,9 +215,7 @@ def test_maybe_refresh_skips_when_manifest_older():
 
         engine._refresh = _fake_refresh
 
-        with patch(
-            "shared.parquet_manifest.read_manifest", return_value=_make_manifest(1000.0)
-        ):
+        with patch("shared.parquet_manifest.read_manifest", return_value=_make_manifest(1000.0)):
             engine.maybe_refresh()
 
     assert not refresh_called, "No se esperaba llamada a _refresh"
@@ -250,12 +246,12 @@ def test_maybe_refresh_skips_when_manifest_equal():
 
         engine._refresh = _fake_refresh
 
-        with patch(
-            "shared.parquet_manifest.read_manifest", return_value=_make_manifest(5000.0)
-        ):
+        with patch("shared.parquet_manifest.read_manifest", return_value=_make_manifest(5000.0)):
             engine.maybe_refresh()
 
-    assert not refresh_called, "No se esperaba llamada a _refresh cuando generated_at == attached_at"
+    assert not refresh_called, (
+        "No se esperaba llamada a _refresh cuando generated_at == attached_at"
+    )
 
 
 def test_maybe_refresh_skips_when_manifest_missing():

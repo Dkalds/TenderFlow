@@ -46,8 +46,7 @@ class TestJobLockAcquire:
         past = datetime.now(UTC) - timedelta(seconds=10)
         with connect() as conn:
             conn.execute(
-                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (?, ?, ?, ?)",
                 ("test_job", past.isoformat(), past.isoformat(), "old"),
             )
 
@@ -103,13 +102,12 @@ class TestGetAllLocks:
         past = datetime.now(UTC) - timedelta(seconds=10)
         with connect() as conn:
             conn.execute(
-                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (?, ?, ?, ?)",
                 ("expired_job", past.isoformat(), past.isoformat(), "old"),
             )
 
         locks = get_all_locks()
-        names = [l["name"] for l in locks]
+        names = [lock["name"] for lock in locks]
         assert "active_job" in names
         assert "expired_job" not in names
 

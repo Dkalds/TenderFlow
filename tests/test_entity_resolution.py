@@ -32,9 +32,7 @@ def insert_adj(db, nombre, nif=None, lic_id="LIC-001", importe=100000.0):
     """Inserta una adjudicación directa (sin pasar por el parser)."""
     from db.upsert import Adjudicacion, replace_adjudicaciones_batch
 
-    adj = Adjudicacion(
-        licitacion_id=lic_id, nombre=nombre, nif=nif, importe_adjudicado=importe
-    )
+    adj = Adjudicacion(licitacion_id=lic_id, nombre=nombre, nif=nif, importe_adjudicado=importe)
     total, failed = replace_adjudicaciones_batch({lic_id: [adj]})
     assert failed == 0
     return total
@@ -56,10 +54,7 @@ def test_v35_tables_exist(db):
 
     with connect() as c:
         tables = {
-            r[0]
-            for r in c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
     assert {
         "empresas",
@@ -118,9 +113,9 @@ def test_nif_match_links_to_existing(db):
 
     with connect() as c:
         n_empresas = c.execute("SELECT COUNT(*) FROM empresas").fetchone()[0]
-        n_distinct = c.execute(
-            "SELECT COUNT(DISTINCT empresa_id) FROM adjudicaciones"
-        ).fetchone()[0]
+        n_distinct = c.execute("SELECT COUNT(DISTINCT empresa_id) FROM adjudicaciones").fetchone()[
+            0
+        ]
     assert n_empresas == 1
     assert n_distinct == 1
 

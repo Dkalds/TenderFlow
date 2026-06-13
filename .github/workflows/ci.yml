@@ -137,7 +137,7 @@ jobs:
       - name: Run migration rollback tests
         env:
           ENV: dev
-        run: pytest tests/test_migrations_rollback.py -v --no-cov
+        run: pytest tests/test_rollback_alembic_migrations.py tests/test_rollback_legacy_migrations.py -v --no-cov
 
   # ── Security audit (independiente) ──────────────────────────────────
   audit:

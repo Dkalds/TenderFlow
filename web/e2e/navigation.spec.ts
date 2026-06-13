@@ -70,6 +70,7 @@ test.describe("Navigation", () => {
         );
         // We allow API fetch errors since backend may not be running
         // But there should be no JS/React errors
+        expect(unexpectedErrors).toHaveLength(0);
       });
     }
   });

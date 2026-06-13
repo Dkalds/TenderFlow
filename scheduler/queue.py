@@ -6,7 +6,7 @@ crea actores Dramatiq sobre Redis. En caso contrario usa un StubBroker
 
 Actores disponibles:
 - ``enqueue_bulk_download(year, month)`` — delega en scraper.bulk_downloader
-- ``enqueue_rebuild_embeddings()``       — delega en dashboard.faiss_index.build
+- ``enqueue_rebuild_embeddings()``       — delega en services.faiss_index.build
 
 Cuando un actor agota sus reintentos Dramatiq, ``DLQMiddleware`` registra el
 fallo en ``failed_extractions`` (DLQ SQLite) y lanza una alerta.
@@ -156,8 +156,8 @@ if _dramatiq is not None:
         """Reconstruye el índice FAISS de embeddings en background."""
         import pandas as pd
 
-        from services.faiss_index import FaissIndex
         from db.database import connect
+        from services.faiss_index import FaissIndex
 
         log.info("queue.rebuild_embeddings.start")
         with connect() as c:
@@ -181,8 +181,8 @@ else:
         """Inline fallback (dramatiq not installed)."""
         import pandas as pd
 
-        from services.faiss_index import FaissIndex
         from db.database import connect
+        from services.faiss_index import FaissIndex
 
         with connect() as c:
             cur = c.execute("SELECT id_externo, titulo, descripcion FROM licitaciones")

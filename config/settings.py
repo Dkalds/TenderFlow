@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # pipeline ML. Requiere: pip install licitaciones-sap[ml-embeddings]
     ML_USE_EMBEDDINGS: bool = False
 
+    # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
+    # Si True, el re-entrenamiento mensual activa la versión nueva
+    # automáticamente cuando bate todas las métricas vs la activa (criterios
+    # del RFC). Por defecto la activación es manual (model_registry).
+    ML_PRED_AUTO_ACTIVATE: bool = False
+
     # ── DB / Upsert ──────────────────────────────────────────────────────
     # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk
     # se ejecuta en su propia transacción, liberando el write lock entre chunks.
@@ -107,7 +113,7 @@ class Settings(BaseSettings):
     # ── OAuth ────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: SecretStr = SecretStr("")
-    OAUTH_REDIRECT_URI: str = "http://localhost:8501"
+    OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/oauth/google/callback"
     OAUTH_ALLOWED_EMAILS: str = ""
     OAUTH_ALLOWED_DOMAINS: str = ""
     OAUTH_ADMIN_EMAILS: str = ""
@@ -473,6 +479,7 @@ class Settings(BaseSettings):
                 f"Se esperaba uno de {allowed}, se recibió: {v!r}"
             )
         return v
+
 
 def _load() -> Settings:
     return Settings()

@@ -22,9 +22,8 @@ import {
   ComposedChart,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { EmptyState } from "@/components/ui/empty-state";
 import { TreemapContent } from "@/components/charts/treemap-content";
-import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */

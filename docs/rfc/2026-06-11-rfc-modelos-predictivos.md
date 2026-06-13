@@ -4,7 +4,7 @@ title: Fase 6 — Modelos predictivos: baja ganadora y probabilidad de adjudicac
 issue: N/A (roadmap interno, Crítica 5 analítica predictiva)
 author: agent:architect
 date: 2026-06-11
-status: draft
+status: implemented (v1)
 supersedes:
 ---
 
@@ -176,4 +176,40 @@ por API con honestidad — que ya es útil).
 
 ## Notas de review
 
-<pendiente>
+**Implementación v1 (2026-06-11, rama `migracion-UI`):**
+
+- **Paso 1** — `services/ml/features.py`: dataset en orden cronológico con
+  acumuladores incrementales; anti-fuga por construcción (las features de
+  cada fila se extraen antes de incorporarla), verificado por test.
+  Desviación documentada: HHI del segmento con ventana expansiva en lugar de
+  24 meses móviles (misma garantía anti-fuga, coste O(1) por fila).
+- **Paso 2** — `scripts/eda_baja.py` (target, volumen por CPV-2, %
+  n_ofertas, sugerencia de truncamiento). Pendiente de correr sobre la BD
+  real para fijar el clip definitivo (v1 usa 0.95).
+- **Paso 3** — `services/ml/baja_model.py`: 3×HGB cuantílico p10/p50/p90,
+  split temporal, baseline de medias del segmento y criterio de honestidad
+  (registra siempre, activa solo si MAE mejora ≥10% y cobertura ∈ [75,85]%).
+- **Paso 4** — migración v41 + scoring batch idempotente
+  (`services/ml/scoring.py`, INSERT OR REPLACE) + `GET
+  /licitaciones/{id}/prediccion-baja` (siempre con model_version y
+  computed_at; NULL = baseline) + intervalo visible en el detail panel.
+- **Paso 5** — `services/ml/retencion_labels.py` (pares órgano
+  normalizado + CPV-4, ventana ±18 meses, empresa vía maestro) +
+  `scripts/audit_retencion.py`. **La auditoría manual de 50 pares queda
+  pendiente de la BD real** — bloquear la activación del modelo hasta
+  hacerla.
+- **Paso 6** — `services/ml/retencion_model.py` (HGB + isotónica; PR-AUC,
+  Brier, ECE) + migración v42 + columna "Riesgo de cambio" en Renovaciones
+  (LEFT JOIN; vacía sin modelo activo — sin baseline honesto para una
+  probabilidad).
+- **Paso 7** — jobs `ml_scoring_baja` (nocturno) y `ml_retrain_baja`
+  (mensual, registra sin activar salvo `ML_PRED_AUTO_ACTIVATE`) + drift PSI
+  por feature en cada batch con alerta vía observability.
+
+**Acceptance pendiente de datos reales**: métricas del modelo vs baseline
+(MAE/cobertura/PR-AUC/ECE solo evaluables con el histórico real — si no se
+alcanzan, el entregable es el baseline servido con honestidad, ya
+operativo), auditoría de 50 pares, y EDA sobre BD real. Cubierto por tests:
+anti-fuga, idempotencia del batch (doble ejecución), trazabilidad
+model_version/computed_at, registro inactivo + rollback con get_active
+(`test_ml_features.py`, `test_ml_baja_model.py`, `test_ml_retencion.py`).

@@ -18,7 +18,6 @@ from db.users import list_users as _list_users
 from db.users import log_access as _log_access
 from db.users import set_admin as _set_admin
 
-
 # ── User CRUD ──────────────────────────────────────────────────────────────
 
 
@@ -30,8 +29,10 @@ def get_or_create_oauth_user(
     display_name: str | None = None,
 ) -> int:
     return _get_or_create_oauth_user(
-        email=email, oauth_provider=oauth_provider,
-        oauth_sub=oauth_sub, display_name=display_name,
+        email=email,
+        oauth_provider=oauth_provider,
+        oauth_sub=oauth_sub,
+        display_name=display_name,
     )
 
 

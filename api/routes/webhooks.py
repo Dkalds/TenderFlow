@@ -119,7 +119,7 @@ def _resolve_and_validate(url: str) -> str:
         raise ValueError(f"No DNS records for {host}")
 
     # Pick first resolved IP and validate
-    resolved_ip = addrs[0][4][0]
+    resolved_ip = str(addrs[0][4][0])
     try:
         addr = ipaddress.ip_address(resolved_ip)
     except ValueError as exc:
@@ -438,7 +438,7 @@ async def ping(
         except requests.RequestException as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
-                await _asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s
+                await _asyncio.sleep(0.5 * (2**attempt))  # 0.5s, 1s
 
     _repo.record_delivery(
         webhook_id,

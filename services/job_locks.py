@@ -58,14 +58,12 @@ def acquire(name: str, ttl_seconds: int = 600, holder: str = "") -> bool:
                 return False
             # Expired lock — replace it
             conn.execute(
-                "UPDATE job_locks SET acquired_at = ?, expires_at = ?, holder = ? "
-                "WHERE name = ?",
+                "UPDATE job_locks SET acquired_at = ?, expires_at = ?, holder = ? WHERE name = ?",
                 (now_iso, expires_iso, holder, name),
             )
         else:
             conn.execute(
-                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (?, ?, ?, ?)",
                 (name, now_iso, expires_iso, holder),
             )
 
@@ -77,7 +75,7 @@ def release(name: str) -> bool:
     """Release a named lock. Returns True if the lock existed and was deleted."""
     with connect() as conn:
         cursor = conn.execute("DELETE FROM job_locks WHERE name = ?", (name,))
-        deleted = cursor.rowcount > 0  # type: ignore[union-attr]
+        deleted: bool = cursor.rowcount > 0
 
     if deleted:
         log.info("job_lock_released", name=name)

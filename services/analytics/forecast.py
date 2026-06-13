@@ -221,7 +221,7 @@ def forecast_volume(
             initialization_method="estimated",
         ).fit(optimized=True)
         forecast_vals = model.forecast(months_ahead)
-        std_err = (hist["valor"].std() or 1.0) * 1.5  # banda ~1.5σ aproximada
+        std_err = (hist["valor"].std() or 1.0) * 1.5  # banda ~1.5 sigma aproximada
     except Exception:
         # Fallback: regresión lineal simple
         import numpy as np

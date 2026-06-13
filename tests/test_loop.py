@@ -121,14 +121,23 @@ class TestJobRegistry:
         assert "anomaly_checks" in names
         assert "drift_report" in names
         assert "wal_checkpoint" in names
-        assert len(registry) == 9
+        assert "ml_scoring_baja" in names
+        assert "ml_retrain_baja" in names
+        assert len(registry) == 11
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry
 
         registry = build_default_registry()
         heavy_names = {j.name for j in registry if j.heavy}
-        assert heavy_names == {"daily_atom", "recent_bulk", "retention_cleanup", "faiss_rebuild"}
+        assert heavy_names == {
+            "daily_atom",
+            "recent_bulk",
+            "retention_cleanup",
+            "faiss_rebuild",
+            "ml_scoring_baja",
+            "ml_retrain_baja",
+        }
 
     def test_all_jobs_have_callable_fn(self):
         from scheduler.jobs import build_default_registry

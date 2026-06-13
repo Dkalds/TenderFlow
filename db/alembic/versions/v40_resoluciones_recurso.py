@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 revision: str = "v40_resoluciones_recurso"
 down_revision: str | Sequence[str] | None = "v39_licitaciones_duplicados"
@@ -72,24 +72,26 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_resoluciones_lic "
-        "ON resoluciones_recurso(licitacion_id)"
+        "CREATE INDEX IF NOT EXISTS idx_resoluciones_lic ON resoluciones_recurso(licitacion_id)"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_resoluciones_fecha ON resoluciones_recurso(fecha)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_resoluciones_fecha ON resoluciones_recurso(fecha)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_resoluciones_sentido "
         "ON resoluciones_recurso(sentido, fecha)"
     )
 
     # Rebuild de contrato_eventos solo si el CHECK aún no admite 'recurso'.
-    conn = op.get_bind()
-    current_ddl = conn.execute(
-        sa.text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'contrato_eventos'")
-    ).scalar()
-    if not current_ddl or "'recurso'" in current_ddl:
-        return
+    # En modo offline (alembic --sql) no se puede introspeccionar el CHECK
+    # actual; el script se aplica sobre una BD real, así que reconstruimos.
+    if not context.is_offline_mode():
+        conn = op.get_bind()
+        current_ddl = conn.execute(
+            sa.text(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'contrato_eventos'"
+            )
+        ).scalar()
+        if not current_ddl or "'recurso'" in current_ddl:
+            return
     op.execute(_EVENTOS_DDL_NUEVO)
     op.execute(
         "INSERT INTO contrato_eventos_new "

@@ -5,7 +5,7 @@ issue: N/A (consolidacion roadmap interno)
 author: agent:architect
 date: 2026-05-28
 status: draft
-supersedes: 
+supersedes:
 ---
 
 ## Problema

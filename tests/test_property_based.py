@@ -11,9 +11,9 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from services.normalization import normalize_company
 from scraper.codice_parser import parse_summary
 from scraper.filters import matches_sap
+from services.normalization import normalize_company
 
 # ── shared strategies ─────────────────────────────────────────────────────────
 

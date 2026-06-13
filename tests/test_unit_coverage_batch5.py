@@ -70,7 +70,9 @@ class TestGenerateExcel:
     def test_timezone_aware_datetime_stripped(self) -> None:
         from services.exports import generate_excel
 
-        df = pd.DataFrame({"fecha": pd.to_datetime(["2024-01-01"]).tz_localize("UTC"), "titulo": ["Test"]})
+        df = pd.DataFrame(
+            {"fecha": pd.to_datetime(["2024-01-01"]).tz_localize("UTC"), "titulo": ["Test"]}
+        )
         result = generate_excel(df.to_dict("records"), columns=["fecha", "titulo"])
         assert isinstance(result, bytes)
 

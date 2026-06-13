@@ -13,16 +13,14 @@ from unittest.mock import MagicMock, patch
 
 
 class TestClusterLicitaciones:
-    def test_delegates_to_dashboard_clustering(self):
+    def test_delegates_to_clustering_engine(self):
         import pandas as pd
 
         mock_cl = MagicMock()
         df = pd.DataFrame({"a": [1, 2]})
         mock_cl.return_value = df
         mock_mod = MagicMock(cluster_licitaciones=mock_cl)
-        with patch.dict(
-            "sys.modules", {"dashboard": MagicMock(), "dashboard.clustering": mock_mod}
-        ):
+        with patch.dict("sys.modules", {"services.clustering_engine": mock_mod}):
             from services.clusters import cluster_licitaciones
 
             result = cluster_licitaciones(df, n_clusters=5)
@@ -34,9 +32,7 @@ class TestClusterLicitaciones:
 
         mock_cl = MagicMock(return_value=pd.DataFrame())
         mock_mod = MagicMock(cluster_licitaciones=mock_cl)
-        with patch.dict(
-            "sys.modules", {"dashboard": MagicMock(), "dashboard.clustering": mock_mod}
-        ):
+        with patch.dict("sys.modules", {"services.clustering_engine": mock_mod}):
             from services.clusters import cluster_licitaciones
 
             df = pd.DataFrame({"x": [1]})

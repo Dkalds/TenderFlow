@@ -206,8 +206,10 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         else:
             adj_org = adj_df.copy()
 
-        nombre_col = "nombre_canonico" if "nombre_canonico" in adj_org.columns else (
-            "nombre" if "nombre" in adj_org.columns else "adjudicatario"
+        nombre_col = (
+            "nombre_canonico"
+            if "nombre_canonico" in adj_org.columns
+            else ("nombre" if "nombre" in adj_org.columns else "adjudicatario")
         )
 
         if nombre_col in adj_org.columns:
@@ -265,22 +267,36 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
                 empresa = None
                 if nombre_col in row.index:
                     empresa = str(row[nombre_col]) if pd.notna(row[nombre_col]) else None
-                baja = float(row["baja_pct"]) if "baja_pct" in row.index and pd.notna(row.get("baja_pct")) else None
+                baja = (
+                    float(row["baja_pct"])
+                    if "baja_pct" in row.index and pd.notna(row.get("baja_pct"))
+                    else None
+                )
                 fecha_adj = None
                 if "fecha_adjudicacion" in row.index and pd.notna(row.get("fecha_adjudicacion")):
                     try:
-                        fecha_adj = str(pd.Timestamp(row["fecha_adjudicacion"]).strftime("%d/%m/%Y"))
+                        fecha_adj = str(
+                            pd.Timestamp(row["fecha_adjudicacion"]).strftime("%d/%m/%Y")
+                        )
                     except Exception:
                         pass
-                adj_lookup[lid] = {"empresa": empresa, "baja_pct": baja, "fecha_adjudicacion": fecha_adj}
+                adj_lookup[lid] = {
+                    "empresa": empresa,
+                    "baja_pct": baja,
+                    "fecha_adjudicacion": fecha_adj,
+                }
 
     top_scored = []
     for _, row in top_scored_df.iterrows():
         eid = str(row.get("id_externo", ""))
         adj_info = adj_lookup.get(eid, {})
         score = float(row["_score"])
-        estado_raw = str(row["estado"]) if "estado" in row.index and pd.notna(row.get("estado")) else None
-        titulo_raw = str(row["titulo"]) if "titulo" in row.index and pd.notna(row.get("titulo")) else None
+        estado_raw = (
+            str(row["estado"]) if "estado" in row.index and pd.notna(row.get("estado")) else None
+        )
+        titulo_raw = (
+            str(row["titulo"]) if "titulo" in row.index and pd.notna(row.get("titulo")) else None
+        )
         tipo_contrato_raw = (
             str(row["tipo_contrato"])
             if "tipo_contrato" in row.index and pd.notna(row.get("tipo_contrato"))
@@ -294,13 +310,21 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
                 importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
                 score=score,
                 banda=_score_to_banda(score),
-                ccaa=str(row["ccaa"]) if "ccaa" in row.index and pd.notna(row.get("ccaa")) else None,
+                ccaa=str(row["ccaa"])
+                if "ccaa" in row.index and pd.notna(row.get("ccaa"))
+                else None,
                 estado=estado_raw,
-                estado_desc=ESTADO_LABELS.get(estado_raw.strip(), estado_raw) if estado_raw else None,
-                modulos_str=str(row["modulos_str"]) if "modulos_str" in row.index and pd.notna(row.get("modulos_str")) else None,
+                estado_desc=ESTADO_LABELS.get(estado_raw.strip(), estado_raw)
+                if estado_raw
+                else None,
+                modulos_str=str(row["modulos_str"])
+                if "modulos_str" in row.index and pd.notna(row.get("modulos_str"))
+                else None,
                 url=str(row["url"]) if "url" in row.index and pd.notna(row.get("url")) else None,
                 tipo_proyecto=detect_project_type(titulo_raw) if titulo_raw else None,
-                tipo_contrato_desc=tipo_contrato_label(tipo_contrato_raw) if tipo_contrato_raw else None,
+                tipo_contrato_desc=tipo_contrato_label(tipo_contrato_raw)
+                if tipo_contrato_raw
+                else None,
                 cpv_desc=cpv_label(cpv_raw) if cpv_raw else None,
                 empresa=adj_info.get("empresa"),
                 baja_pct=adj_info.get("baja_pct"),

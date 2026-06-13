@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
+from alembic import context, op
 
 revision: str = "v35_empresa_master"
 down_revision: str | Sequence[str] | None = "v34_job_locks"
@@ -92,6 +92,17 @@ def upgrade() -> None:
         if stmt.strip():
             op.execute(stmt)
 
+    if context.is_offline_mode():
+        # En modo offline (alembic --sql) no se puede introspeccionar la BD;
+        # el script se aplica sobre una BD real con adjudicaciones ya presente
+        # (v1-v13 creadas por el sistema casero), así que emitimos el DDL.
+        op.execute(
+            "ALTER TABLE adjudicaciones ADD COLUMN empresa_id INTEGER "
+            "REFERENCES empresas(empresa_id)"
+        )
+        op.execute("CREATE INDEX IF NOT EXISTS idx_adj_empresa ON adjudicaciones(empresa_id)")
+        return
+
     bind = op.get_bind()
     # adjudicaciones puede no existir (BD alembic-only sin baseline aplicado)
     # o ya tener la columna (BD inicializada vía init_db con SCHEMA actual).
@@ -100,17 +111,14 @@ def upgrade() -> None:
     ).fetchone()
     if table_exists:
         cols = {
-            row[1]
-            for row in bind.exec_driver_sql("PRAGMA table_info(adjudicaciones)").fetchall()
+            row[1] for row in bind.exec_driver_sql("PRAGMA table_info(adjudicaciones)").fetchall()
         }
         if "empresa_id" not in cols:
             op.execute(
                 "ALTER TABLE adjudicaciones ADD COLUMN empresa_id INTEGER "
                 "REFERENCES empresas(empresa_id)"
             )
-        op.execute(
-            "CREATE INDEX IF NOT EXISTS idx_adj_empresa ON adjudicaciones(empresa_id)"
-        )
+        op.execute("CREATE INDEX IF NOT EXISTS idx_adj_empresa ON adjudicaciones(empresa_id)")
 
 
 def downgrade() -> None:

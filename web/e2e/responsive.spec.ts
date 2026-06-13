@@ -6,7 +6,7 @@ test.describe("Responsive Layout", () => {
     await page.goto("/resumen");
 
     // On mobile, sidebar should be hidden and hamburger should be visible
-    const hamburger = page.getByRole("button", { name: /menu|hamburger/i }).or(
+    const _hamburger = page.getByRole("button", { name: /menu|hamburger/i }).or(
       page.locator("[data-testid='mobile-menu']").or(
         page.locator("button.md\\:hidden, button.lg\\:hidden")
       )

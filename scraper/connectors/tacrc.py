@@ -186,12 +186,10 @@ def fetch_index(index_url: str | None = None, *, session: requests.Session | Non
         )
     resp = (session or requests).get(url, timeout=_TIMEOUT)
     resp.raise_for_status()
-    return resp.text
+    return str(resp.text)
 
 
-def run(
-    index_url: str | None = None, *, session: requests.Session | None = None
-) -> dict[str, Any]:
+def run(index_url: str | None = None, *, session: requests.Session | None = None) -> dict[str, Any]:
     """Ciclo completo de ingesta TACRC: fetch → parse → upsert → vinculación.
 
     Cursor ``tacrc`` (last_seen_updated = fecha máxima vista): en ejecuciones
@@ -237,13 +235,31 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Solo valida la URL del índice (fetch + parse, sin escribir en BD)",
     )
+    parser.add_argument(
+        "--dump",
+        metavar="ARCHIVO",
+        help="Con --check: guarda el HTML recibido para diagnóstico del parser",
+    )
     args = parser.parse_args(argv)
 
     if args.check:
-        items = parse_index(fetch_index(args.url), base_url=args.url or settings.TACRC_INDEX_URL)
+        page = fetch_index(args.url)
+        if args.dump:
+            from pathlib import Path
+
+            Path(args.dump).write_text(page, encoding="utf-8")
+            print(f"HTML recibido guardado en {args.dump} ({len(page)} bytes)")
+        items = parse_index(page, base_url=args.url or settings.TACRC_INDEX_URL)
         print(f"TACRC --check: {len(items)} resoluciones detectadas en el índice")
         for res in items[:5]:
             print(f"  {res.numero_resolucion}  fecha={res.fecha}  sentido={res.sentido}")
+        if not items:
+            print(
+                "Sin resultados: la página probablemente carga el listado por JS. "
+                "Reintentá con --dump diagnostico.html para inspeccionar lo recibido, "
+                "o localizá en las DevTools del navegador (pestaña Network) la URL "
+                "de la petición que devuelve el listado y pasala con --url."
+            )
         return 0 if items else 1
 
     from db.database import init_db

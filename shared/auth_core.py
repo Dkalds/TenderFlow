@@ -186,8 +186,7 @@ def verify_password(candidate: str, pw_hash: str) -> bool:
     if not pw_hash:
         log.warning(
             "no_password_hash_configured",
-            hint="Configura DASHBOARD_PASSWORD_HASH. "
-            "Genera el hash con: python scripts/hash_password.py",
+            hint="El usuario no tiene password_hash en BD (¿cuenta creada solo por OAuth?).",
         )
         return False
 

@@ -16,7 +16,7 @@ import {
   Area,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 import { getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */

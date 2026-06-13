@@ -66,10 +66,13 @@ def proximas_renovaciones(
                l.duracion_valor,
                l.duracion_unidad,
                {_FECHA_FIN_SQL} AS fecha_fin_efectiva,
-               CAST(julianday({_FECHA_FIN_SQL}) - julianday('now') AS INTEGER) AS dias_restantes
+               CAST(julianday({_FECHA_FIN_SQL}) - julianday('now') AS INTEGER) AS dias_restantes,
+               pr.riesgo_cambio,
+               pr.model_version AS retencion_model_version
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
+        LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
         WHERE {_FECHA_FIN_SQL} BETWEEN date('now')
               AND date('now', '+' || ? || ' months')
           AND {exclude_duplicados_sql()}

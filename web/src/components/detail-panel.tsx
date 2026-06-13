@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { EventosTimeline } from "@/components/eventos-timeline";
+import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
@@ -165,6 +166,9 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
           <h3 className="text-sm font-medium text-muted-foreground">Línea de tiempo</h3>
           <EventosTimeline licitacionId={l.id_externo} />
         </div>
+
+        {/* Predicción de baja (Fase 6) */}
+        <PrediccionBajaBlock licitacionId={l.id_externo} />
 
         {/* Resoluciones de recursos (TACRC) */}
         <ResolucionesBlock licitacionId={l.id_externo} />
