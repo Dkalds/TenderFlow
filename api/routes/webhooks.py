@@ -377,7 +377,6 @@ async def ping(
     import hashlib
     import hmac as _hmac
     import json
-    import time as _time
 
     import requests
 
