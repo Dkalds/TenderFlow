@@ -90,17 +90,6 @@ class SearchRequest(BaseModel):
     allowed_ids: list[str] | None = None
 
 
-class SearchResult(BaseModel):
-    """Resultado de búsqueda con score."""
-
-    id_externo: str
-    titulo: str | None = None
-    organo_contratacion: str | None = None
-    importe: float | None = None
-    score: float = 0.0
-    source: str = ""
-
-
 # ── Watchlist (F1) ──────────────────────────────────────────────────────────
 
 
@@ -122,20 +111,6 @@ class WatchlistEntry(BaseModel):
     updated_at: datetime | None = None
 
 
-class WatchlistAlertDTO(BaseModel):
-    """Alerta generada por scheduler/watchlist_alerts.py."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    user_id: str
-    licitacion_id: str
-    kind: str = Field(
-        description="estado_cambio|fecha_proxima|importe_actualizado|nueva_adjudicacion"
-    )
-    payload: dict[str, str | int | float | None] = Field(default_factory=dict)
-    created_at: datetime | None = None
-
-
 # ── Clustering (F1) ─────────────────────────────────────────────────────────
 
 
@@ -152,18 +127,3 @@ class ClusterSummary(BaseModel):
     silhouette: float | None = None
     inertia: float | None = None
     computed_at: datetime | None = None
-
-
-class ClusteringRunDTO(BaseModel):
-    """Metadata de una ejecución de clustering, persistida en model_registry."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    run_id: str
-    algorithm: str = "minibatch_kmeans"
-    k: int = Field(ge=2)
-    n_samples: int = Field(ge=0)
-    dataset_hash: str
-    model_artifact_uri: str | None = None
-    metrics: dict[str, float] = Field(default_factory=dict)
-    created_at: datetime | None = None

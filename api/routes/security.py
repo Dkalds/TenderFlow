@@ -7,7 +7,6 @@ POST /api/v1/security/leaked-key      — recibe notificaciones de GitHub Secret
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel
 
 from api.auth import AuthContext, require_scope
 from api.middleware import _trusted_client_ip
@@ -20,12 +19,6 @@ router = APIRouter(prefix="/security", tags=["security"])
 
 
 # ── CSP report endpoint ───────────────────────────────────────────────────────
-
-
-class CSPReport(BaseModel):
-    """Estructura de un reporte CSP (RFC 7486 / CSP Level 3)."""
-
-    model_config = {"extra": "allow"}
 
 
 @router.post(

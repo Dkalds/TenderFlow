@@ -383,10 +383,6 @@ class ETagMiddleware(BaseHTTPMiddleware):
             body += chunk
             if len(body) > self._max_bytes:
                 # Demasiado grande: devolver sin ETag (reconstruir la respuesta)
-
-                async def _passthrough(b: bytes = body) -> bytes:
-                    return b
-
                 return Response(
                     content=body,
                     status_code=response.status_code,
