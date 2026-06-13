@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parent.parent
 
-# En entornos donde el paquete se instala en site-packages (e.g. Streamlit Cloud),
+# En entornos donde el paquete se instala en site-packages (e.g. despliegues gestionados),
 # _ROOT apuntaría a un directorio sin permisos de escritura.  Usamos un
 # directorio escribible como fallback.
 _DEFAULT_DATA_DIR = _ROOT / "data"
@@ -35,11 +35,6 @@ class Settings(BaseSettings):
     DATA_DIR: Path = _DEFAULT_DATA_DIR
     DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None
-
-    # ── Dashboard ────────────────────────────────────────────────────────
-    DASHBOARD_PASSWORD: SecretStr = SecretStr("")
-    DASHBOARD_PASSWORD_HASH: str = ""  # bcrypt hash — requerido en ENV=prod
-    DASHBOARD_CACHE_TTL: int = 300
 
     # ── ML ───────────────────────────────────────────────────────────────
     # Umbral de confianza para clasificar como SAP sin keywords (0.0-1.0)
@@ -105,7 +100,9 @@ class Settings(BaseSettings):
     OTEL_SERVICE_NAME: str = "licitaciones-sap"
     # Fracción de trazas a muestrear [0.0-1.0]. Las trazas con error se
     # muestrean siempre independientemente de este valor.
-    OTEL_SAMPLE_RATIO: float = 0.01
+    # Default 0.1 (10%) — suficiente para debugging en un sistema de scraping
+    # con volumen moderado. Ajustar a 0.01 en entornos de alto tráfico.
+    OTEL_SAMPLE_RATIO: float = 0.1
 
     # ── OAuth ────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
@@ -120,7 +117,7 @@ class Settings(BaseSettings):
     #   python -c "import secrets; print(secrets.token_hex(32))"
     # Orígenes CORS permitidos en prod (lista separada por comas, vacío = bloquear todo)
     # En dev se usa "*" automáticamente.
-    # Ej: "https://dashboard.example.com,https://api.example.com"
+    # Ej: "https://app.example.com,https://api.example.com"
     CORS_ALLOWED_ORIGINS: str = ""
 
     # Secreto HMAC para hashear API keys (32+ chars). Si vacío usa SHA-256 plain.
@@ -180,6 +177,33 @@ class Settings(BaseSettings):
     DAILY_MAX_PAGES: int = 50
     BACKFILL_MAX_WORKERS: int = 3
 
+    # ── Conectores autonómicos / TACRC (RFC 20260611-1, Fase 5) ─────────
+    # Dataset Socrata de publicaciones de la PSCP en el portal de
+    # transparencia de la Generalitat. El id ybgg-dgi6 ("Contractació
+    # pública a Catalunya: publicacions a la PSCP") está verificado contra
+    # el portal oficial; los NOMBRES DE CAMPO siguen sin validar contra la
+    # API viva — correr `python scripts/probe_pscp.py --dataset ybgg-dgi6`
+    # antes del primer backfill y ajustar _FIELD_CANDIDATES si difieren.
+    PSCP_DOMAIN: str = "analisi.transparenciacatalunya.cat"
+    PSCP_DATASET_ID: str = "ybgg-dgi6"
+    # App token Socrata opcional (solo necesario si aparece rate limiting).
+    PSCP_APP_TOKEN: SecretStr = SecretStr("")
+    # Índice de resoluciones TACRC (Ministerio de Hacienda).
+    #
+    # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):
+    # - BuscadordeResoluciones.aspx → SharePoint JS-rendered, 0 resoluciones
+    #   parseadas con lxml (sin headless browser). NO usar como default.
+    # - Resoluciones-Pleno.aspx → HTML estático con 17 PDFs embebidos;
+    #   parser extrae 17 resoluciones. VALIDADO ✓
+    #
+    # Resoluciones-Pleno cubre solo resoluciones del Pleno (doctrinales); las
+    # resoluciones individuales de recurso quedan pendientes de otro índice.
+    # Para cobertura completa, configurar TACRC_INDEX_URL por entorno.
+    TACRC_INDEX_URL: str = (
+        "https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/"
+        "TACRC/Paginas/Resoluciones-Pleno.aspx"
+    )
+
     # ── Embeddings / NLP ─────────────────────────────────────────────────
     # Modelo sentence-transformers a usar. Cambiar a un modelo multilingual para
     # soporte completo de idiomas adicionales (PT, FR, DE, IT, etc.)
@@ -207,6 +231,11 @@ class Settings(BaseSettings):
     # ── Cola de tareas (Dramatiq, opcional) ──────────────────────────────
     # Si se deja vacío se usa StubBroker (ejecución síncrona, para dev/tests).
     DRAMATIQ_BROKER_URL: str = ""
+
+    # Modo de cola explícito: "auto" (default) detecta dramatiq/redis automáticamente.
+    # En producción, se recomienda setear "dramatiq" para fail-fast si falta Redis.
+    # Valores: "auto" | "dramatiq" | "inline"
+    QUEUE_MODE: str = "auto"
 
     # ── Validators ───────────────────────────────────────────────────────
 
@@ -292,15 +321,6 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _validate_prod_password(self) -> Settings:
-        if self.ENV in ("prod", "staging") and not self.DASHBOARD_PASSWORD_HASH:
-            raise ValueError(
-                "DASHBOARD_PASSWORD_HASH (hash bcrypt) es obligatorio en ENV=prod. "
-                "Genera el hash con: python scripts/hash_password.py"
-            )
-        return self
-
-    @model_validator(mode="after")
     def _validate_prod_signing_key(self) -> Settings:
         if self.ENV in ("prod", "staging") and not self.SIGNING_KEY.get_secret_value():
             raise ValueError(
@@ -359,22 +379,6 @@ class Settings(BaseSettings):
             return self
         from shared.password_policy import check_password_strength
 
-        # Validar DASHBOARD_PASSWORD si se usa (legacy, sin hash)
-        dash_pw = self.DASHBOARD_PASSWORD.get_secret_value()
-        if dash_pw:
-            result = check_password_strength(
-                dash_pw,
-                min_length=16,
-                label="DASHBOARD_PASSWORD",
-            )
-            if not result.is_strong:
-                raise ValueError(
-                    f"DASHBOARD_PASSWORD es débil: {result.summary}. "
-                    "Usa una contraseña de al menos 16 caracteres con mayúsculas, "
-                    "minúsculas, dígitos y caracteres especiales. "
-                    "Mejor aún: usa DASHBOARD_PASSWORD_HASH con argon2/bcrypt."
-                )
-
         # Validar GF_SECURITY_ADMIN_PASSWORD
         gf_pw = self.GF_SECURITY_ADMIN_PASSWORD.get_secret_value()
         if gf_pw:
@@ -411,7 +415,7 @@ class Settings(BaseSettings):
             warnings.warn(
                 "CORS_ALLOWED_ORIGINS está vacío en ENV=prod. Todas las solicitudes "
                 "cross-origin serán bloqueadas. Configura los orígenes permitidos: "
-                'CORS_ALLOWED_ORIGINS="https://dashboard.example.com"',
+                'CORS_ALLOWED_ORIGINS="https://app.example.com"',
                 stacklevel=2,
             )
         return self
@@ -469,12 +473,6 @@ class Settings(BaseSettings):
                 f"Se esperaba uno de {allowed}, se recibió: {v!r}"
             )
         return v
-
-    @field_validator("DASHBOARD_CACHE_TTL", mode="before")
-    @classmethod
-    def _parse_cache_ttl(cls, v: object) -> int:
-        return int(str(v))
-
 
 def _load() -> Settings:
     return Settings()

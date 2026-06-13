@@ -1,8 +1,8 @@
 """Servicio de licitaciones — acceso de lectura enriquecido.
 
 Centraliza la lógica de carga, filtrado y paginación de licitaciones.
-Delega en ``db/repositories/licitaciones.py`` para queries SQL y en
-``dashboard/data_loader.py`` para enriquecimiento DataFrame (transición gradual).
+Delega en ``db/repositories/licitaciones.py`` para queries SQL y aplica
+enriquecimiento (clasificadores, normalización) inline.
 """
 
 from __future__ import annotations
@@ -14,10 +14,17 @@ import pandas as pd
 from db.repositories.licitaciones import LicitacionRepository
 from observability.histograms import timed_query
 from observability.logging import get_logger
+from services._data_cache import SignalAwareCache
 
 log = get_logger(__name__)
 
 _repo = LicitacionRepository()
+
+# Caché de la carga full-table para stats/analytics. Invalidada por TTL o por
+# la señal de ingesta (shared.cache_signal). Todos los servicios de analytics
+# llaman a load_stats_dataframe() en cada request, reconstruyendo el DataFrame;
+# cachear el snapshot evita N relecturas de SQLite por petición.
+_stats_cache: SignalAwareCache[list[dict[str, Any]]] = SignalAwareCache()
 
 # ── Columnas reutilizadas por load_raw / stats ───────────────────────────
 _RAW_COLUMNS = (
@@ -49,7 +56,7 @@ def list_licitaciones(
     offset: int = 0,
     sort: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Lista paginada de licitaciones (API/dashboard).
+    """Lista paginada de licitaciones para consumidores de la aplicación.
 
     Returns:
         (items, total) donde items son dicts con campos de resumen.
@@ -74,14 +81,14 @@ def get_licitacion_detail(id_externo: str) -> dict[str, Any] | None:
         return _repo.get_by_id(id_externo)
 
 
-# ── Carga raw para el dashboard (sin enriquecimiento) ────────────────────
+# ── Carga raw para consumidores de datos (sin enriquecimiento) ───────────
 
 
 def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
     """Carga licitaciones clasificadas (raw, sin enriquecimiento).
 
     Devuelve lista de dicts para que ``data_loader`` convierta a DataFrame
-    y aplique transformaciones Streamlit.
+    y aplique transformaciones de presentación.
     """
     from db.database import init_db
 
@@ -91,9 +98,24 @@ def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
 
 
 def load_stats_dataframe() -> list[dict[str, Any]]:
-    """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento)."""
-    with timed_query("svc_load_stats"):
-        return _repo.load_stats(_STATS_COLUMNS)
+    """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento).
+
+    El resultado se cachea en memoria (TTL + señal de ingesta). Los consumidores
+    construyen ``DataFrame`` nuevos a partir de la lista, por lo que compartir la
+    referencia entre llamadas es seguro. Usar :func:`clear_stats_cache` para
+    forzar recarga (tras una ingesta o en tests).
+    """
+
+    def _load() -> list[dict[str, Any]]:
+        with timed_query("svc_load_stats"):
+            return _repo.load_stats(_STATS_COLUMNS)
+
+    return _stats_cache.get(_load)
+
+
+def clear_stats_cache() -> None:
+    """Invalida la caché de :func:`load_stats_dataframe`."""
+    _stats_cache.clear()
 
 
 # ── Búsquedas especializadas ─────────────────────────────────────────────
@@ -116,15 +138,82 @@ def search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
 
 
 def load_dataframe(limit: int | None = None) -> pd.DataFrame:
-    """Proxy al data_loader existente — transición gradual hacia services.
+    """Carga licitaciones enriquecidas desde la BD.
 
-    Las pages siguen usando ``dashboard.data_loader.load_dataframe()`` directamente
-    hasta que todas migren. Este wrapper permite que el código nuevo use la capa
-    de servicios de forma transparente.
+    Obtiene datos raw via ``load_raw()`` y aplica enriquecimiento
+    (clasificadores, normalización, geo) inline.
     """
-    from dashboard.data_loader import load_dataframe as _dl_load
+    from services.classification import (
+        ESTADO_LABELS,
+        TIPO_CONTRATO_LABELS,
+        cpv_label,
+        detect_modules,
+        detect_project_type,
+    )
+    from shared.dates import month_start
+    from shared.geo import nuts_to_ccaa
 
-    return _dl_load(limit=limit)
+    rows = load_raw(limit=limit)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    df["fecha_publicacion"] = pd.to_datetime(
+        df["fecha_publicacion"], errors="coerce", format="mixed", utc=True,
+    )
+    df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    df["mes"] = month_start(df["fecha_publicacion"])
+    df["anyo"] = df["fecha_publicacion"].dt.year
+
+    # Enrichment
+    desc_col = df["descripcion"].fillna("") if "descripcion" in df.columns else pd.Series("", index=df.index)
+    text_blob = df["titulo"].fillna("") + " " + desc_col
+
+    try:
+        df["modulos"] = text_blob.apply(detect_modules)
+        df["modulos_str"] = df["modulos"].str.join(", ")
+    except Exception:
+        df["modulos"] = [[] for _ in range(len(df))]
+        df["modulos_str"] = ""
+
+    try:
+        df["tipo_proyecto"] = text_blob.apply(detect_project_type)
+    except Exception:
+        df["tipo_proyecto"] = "Otro"
+
+    try:
+        df["cpv_desc"] = df["cpv"].apply(cpv_label)
+    except Exception:
+        df["cpv_desc"] = ""
+
+    try:
+        stripped_estado = df["estado"].str.strip()
+        df["estado_desc"] = stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
+    except Exception:
+        df["estado_desc"] = ""
+
+    try:
+        stripped_tc = df["tipo_contrato"].str.strip()
+        mapped_tc = stripped_tc.map(TIPO_CONTRATO_LABELS)
+        unmapped = mapped_tc.isna() & stripped_tc.notna() & (stripped_tc != "")
+        mapped_tc[unmapped] = "Tipo " + stripped_tc[unmapped]
+        df["tipo_contrato_desc"] = mapped_tc.fillna("—")
+    except Exception:
+        df["tipo_contrato_desc"] = ""
+
+    # Backfill CCAA
+    if "ccaa" in df.columns and "nuts_code" in df.columns:
+        try:
+            mask = df["ccaa"].isna() & df["nuts_code"].notna()
+            df.loc[mask, "ccaa"] = df.loc[mask, "nuts_code"].apply(nuts_to_ccaa)
+        except Exception:
+            pass
+
+    for col in ("ccaa", "estado", "tipo_contrato", "provincia", "tipo_proyecto"):
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+
+    return df
 
 
 def load_adjudicaciones(
@@ -132,10 +221,10 @@ def load_adjudicaciones(
     limit: int | None = None,
     ccaa_filter: tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
-    """Proxy a la carga de adjudicaciones del data_loader."""
-    from dashboard.data_loader import load_adjudicaciones as _dl_adj
+    """Proxy a la carga de adjudicaciones enriquecidas."""
+    from services.adjudicaciones import load_adjudicaciones as _svc_adj
 
-    return _dl_adj(limit=limit, ccaa_filter=ccaa_filter)
+    return _svc_adj(limit=limit, ccaa_filter=ccaa_filter)
 
 
 # ── Búsqueda avanzada (POST /licitaciones/search) ────────────────────────
@@ -227,3 +316,15 @@ def search_for_ask(
     if not docs:
         docs = _repo.search_like_for_ask(question, ccaa=ccaa, limit=top_k)
     return docs
+
+
+def load_licitaciones_for_index() -> pd.DataFrame:
+    """Load id_externo, titulo, descripcion for FAISS index building (§3.8)."""
+    from db.database import connect, init_db
+
+    init_db()
+    with connect() as c:
+        cursor = c.execute("SELECT id_externo, titulo, descripcion FROM licitaciones")
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+    return pd.DataFrame(rows, columns=cols)

@@ -15,19 +15,19 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_entrypoint_script_exists() -> None:
-    entrypoint = ROOT / "docker-entrypoint-api.sh"
-    assert entrypoint.exists(), "docker-entrypoint-api.sh must exist in project root"
+    entrypoint = ROOT / "docker" / "docker-entrypoint-api.sh"
+    assert entrypoint.exists(), "docker/docker-entrypoint-api.sh must exist"
 
 
 def test_entrypoint_script_is_executable() -> None:
-    entrypoint = ROOT / "docker-entrypoint-api.sh"
+    entrypoint = ROOT / "docker" / "docker-entrypoint-api.sh"
     import platform
     import subprocess
 
     if platform.system() == "Windows":
         # On Windows, check git's executable bit tracking instead of filesystem permissions
         result = subprocess.run(
-            ["git", "ls-files", "--stage", "docker-entrypoint-api.sh"],
+            ["git", "ls-files", "--stage", "docker/docker-entrypoint-api.sh"],
             capture_output=True,
             text=True,
             cwd=str(ROOT),
@@ -47,34 +47,34 @@ def test_entrypoint_script_is_executable() -> None:
 
 def test_entrypoint_uses_exec() -> None:
     """exec ensures uvicorn replaces sh as PID 1 for signal propagation."""
-    entrypoint = ROOT / "docker-entrypoint-api.sh"
+    entrypoint = ROOT / "docker" / "docker-entrypoint-api.sh"
     content = entrypoint.read_text()
     assert "exec " in content, "entrypoint must use 'exec' to replace shell as PID 1"
     assert "uvicorn" in content, "entrypoint must invoke uvicorn"
 
 
 def test_entrypoint_has_shebang() -> None:
-    entrypoint = ROOT / "docker-entrypoint-api.sh"
+    entrypoint = ROOT / "docker" / "docker-entrypoint-api.sh"
     content = entrypoint.read_text()
     assert content.startswith("#!/bin/sh"), "entrypoint must have #!/bin/sh shebang"
 
 
 def test_dockerfile_api_uses_entrypoint_exec_form() -> None:
     """Dockerfile.api must use ENTRYPOINT exec form, not shell form CMD."""
-    dockerfile = ROOT / "Dockerfile.api"
+    dockerfile = ROOT / "docker" / "Dockerfile.api"
     content = dockerfile.read_text()
     # Must NOT have the old sh -c pattern
     assert 'CMD ["sh", "-c"' not in content, (
         "Dockerfile.api must not use sh -c wrapper (prevents signal propagation)"
     )
     # Must have ENTRYPOINT in exec form
-    assert 'ENTRYPOINT ["docker-entrypoint-api.sh"]' in content, (
+    assert 'ENTRYPOINT ["' in content and "docker-entrypoint-api.sh" in content, (
         "Dockerfile.api must use ENTRYPOINT exec form with docker-entrypoint-api.sh"
     )
 
 
 def test_entrypoint_expands_forwarded_allow_ips() -> None:
     """Entrypoint must reference FORWARDED_ALLOW_IPS for env var expansion."""
-    entrypoint = ROOT / "docker-entrypoint-api.sh"
+    entrypoint = ROOT / "docker" / "docker-entrypoint-api.sh"
     content = entrypoint.read_text()
     assert "FORWARDED_ALLOW_IPS" in content, "entrypoint must reference FORWARDED_ALLOW_IPS env var"

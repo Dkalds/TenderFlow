@@ -27,18 +27,25 @@ log = get_logger(__name__)
 # ── DLQ Middleware ────────────────────────────────────────────────────────────
 
 
-def _make_dlq_middleware():
+def _make_dlq_middleware() -> Any | None:
     """Crea el DLQMiddleware de Dramatiq que registra fallos en la DLQ SQLite.
 
     Devuelve None si Dramatiq no está disponible.
     """
     try:
-        import dramatiq  # type: ignore[import]
+        import dramatiq  # type: ignore[import-not-found]
 
-        class DLQMiddleware(dramatiq.Middleware):
+        class DLQMiddleware(dramatiq.Middleware):  # type: ignore[misc]
             """Registra mensajes fallidos en la DLQ SQLite tras agotar retries Dramatiq."""
 
-            def after_process_message(self, broker, message, *, result=None, exception=None):
+            def after_process_message(
+                self,
+                broker: Any,
+                message: Any,
+                *,
+                result: Any = None,
+                exception: BaseException | None = None,
+            ) -> None:
                 # Solo actuar si hubo excepción y no quedan más reintentos
                 if exception is None:
                     return
@@ -75,16 +82,29 @@ def _make_dlq_middleware():
 
 def _setup_broker() -> Any:
     try:
-        import dramatiq  # type: ignore[import]
+        import dramatiq
 
         from config import settings
 
+        queue_mode = getattr(settings, "QUEUE_MODE", "auto")
         dlq_middleware = _make_dlq_middleware()
 
+        # Fail-fast: if QUEUE_MODE=dramatiq but no broker URL, crash early
         broker_url = getattr(settings, "DRAMATIQ_BROKER_URL", "")
+        if queue_mode == "dramatiq" and not broker_url:
+            raise RuntimeError(
+                "QUEUE_MODE=dramatiq but DRAMATIQ_BROKER_URL is empty. "
+                "Set DRAMATIQ_BROKER_URL or use QUEUE_MODE=auto for fallback."
+            )
+
+        if queue_mode == "inline":
+            # Force inline mode regardless of dramatiq availability
+            log.info("queue.inline_mode_forced")
+            return None
+
         if broker_url:
             try:
-                from dramatiq.brokers.redis import RedisBroker  # type: ignore[import]
+                from dramatiq.brokers.redis import RedisBroker  # type: ignore[import-not-found]
 
                 broker = RedisBroker(url=broker_url)
                 if dlq_middleware:
@@ -92,15 +112,19 @@ def _setup_broker() -> Any:
                 dramatiq.set_broker(broker)
                 log.info("dramatiq.broker_set", url=broker_url.split("@")[-1])
             except Exception as exc:
+                if queue_mode == "dramatiq":
+                    raise RuntimeError(
+                        f"QUEUE_MODE=dramatiq but Redis connection failed: {exc}"
+                    ) from exc
                 log.warning("dramatiq.redis_broker_failed", error=str(exc), fallback="stub")
-                from dramatiq.brokers.stub import StubBroker  # type: ignore[import]
+                from dramatiq.brokers.stub import StubBroker  # type: ignore[import-not-found]
 
                 broker = StubBroker()
                 if dlq_middleware:
                     broker.add_middleware(dlq_middleware)
                 dramatiq.set_broker(broker)
         else:
-            from dramatiq.brokers.stub import StubBroker  # type: ignore[import]
+            from dramatiq.brokers.stub import StubBroker
 
             broker = StubBroker()
             if dlq_middleware:
@@ -118,7 +142,7 @@ _dramatiq = _setup_broker()
 
 if _dramatiq is not None:
 
-    @_dramatiq.actor(max_retries=2, time_limit=3600_000)  # 1 h max
+    @_dramatiq.actor(max_retries=2, time_limit=3600_000)  # type: ignore[untyped-decorator]
     def enqueue_bulk_download(year: int, month: int) -> None:
         """Descarga el bulk XML de un mes completo en background."""
         from scraper.bulk_downloader import download_month
@@ -127,12 +151,12 @@ if _dramatiq is not None:
         result = download_month(year, month, force=False)
         log.info("queue.bulk_download.done", path=str(result))
 
-    @_dramatiq.actor(max_retries=1, time_limit=7200_000)  # 2 h max
+    @_dramatiq.actor(max_retries=1, time_limit=7200_000)  # type: ignore[untyped-decorator]
     def enqueue_rebuild_embeddings() -> None:
         """Reconstruye el índice FAISS de embeddings en background."""
         import pandas as pd
 
-        from dashboard.faiss_index import FaissIndex
+        from services.faiss_index import FaissIndex
         from db.database import connect
 
         log.info("queue.rebuild_embeddings.start")
@@ -147,17 +171,17 @@ if _dramatiq is not None:
 else:
     # Fallback stub functions for environments without dramatiq
 
-    def enqueue_bulk_download(year: int, month: int) -> None:  # type: ignore[misc]
+    def enqueue_bulk_download(year: int, month: int) -> None:
         """Inline fallback (dramatiq not installed)."""
         from scraper.bulk_downloader import download_month
 
         download_month(year, month, force=False)
 
-    def enqueue_rebuild_embeddings() -> None:  # type: ignore[misc]
+    def enqueue_rebuild_embeddings() -> None:
         """Inline fallback (dramatiq not installed)."""
         import pandas as pd
 
-        from dashboard.faiss_index import FaissIndex
+        from services.faiss_index import FaissIndex
         from db.database import connect
 
         with connect() as c:

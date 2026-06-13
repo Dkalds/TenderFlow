@@ -259,7 +259,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
 
     fecha_pub = _issue_date(entry, cfs) or fecha_upd
 
-    return Licitacion(
+    lic = Licitacion(
         id_externo=id_externo,
         titulo=titulo or "(sin título)",
         descripcion=summary,
@@ -283,6 +283,26 @@ def parse_entry(entry: Any) -> Licitacion | None:
         prorroga_descripcion=prorroga,
         tecnologia=",".join(tecnologias),
     )
+
+    # Track NULL % for critical fields (silent data loss detection)
+    try:
+        from observability.runtime_metrics import parser_entries_total, parser_field_null_total
+
+        parser_entries_total.inc()
+        _critical = {
+            "organo_contratacion": lic.organo_contratacion,
+            "importe": lic.importe,
+            "cpv": lic.cpv,
+            "estado": lic.estado,
+            "fecha_publicacion": lic.fecha_publicacion,
+        }
+        for field, value in _critical.items():
+            if value is None:
+                parser_field_null_total.labels(field=field).inc()
+    except Exception:
+        pass
+
+    return lic
 
 
 def parse_entry_unfiltered(entry: Any) -> Licitacion | None:

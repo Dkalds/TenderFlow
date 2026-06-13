@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 
-from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db, run_ml
+from api.routes.dual_auth import require_any_auth
 from db.audit import log_event
 from db.repositories.feedback import FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
@@ -64,7 +66,7 @@ class FeedbackResponse(BaseModel):
 )
 async def submit_feedback(
     body: FeedbackRequest,
-    ctx: AuthContext = Depends(require_api_key),
+    ctx: dict[str, Any] = Depends(require_any_auth),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> FeedbackResponse:
     """Registra el feedback de relevancia de una licitación.
@@ -106,7 +108,7 @@ async def submit_feedback(
 
     log_event(
         event_type="feedback.submitted",
-        user_key=ctx.key_hash[:8],
+        user_key=ctx.get("key_hash", ctx.get("email", "session"))[:8],
         resource=f"licitacion:{body.expediente}",
         detail={"relevante": body.relevante},
     )
@@ -120,8 +122,8 @@ async def submit_feedback(
     responses={401: {"description": "API key inválida"}},
 )
 async def feedback_stats(
-    _ctx: AuthContext = Depends(require_api_key),
-) -> dict:
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, Any]:
     """Devuelve estadísticas agregadas del feedback recogido."""
     return await run_db(_repo.stats)
 
@@ -134,8 +136,8 @@ async def feedback_stats(
 async def feedback_queue(
     strategy: str = Query("uncertainty", description="uncertainty | random"),
     limit: int = Query(20, ge=1, le=200),
-    _ctx: AuthContext = Depends(require_api_key),
-) -> dict:
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, Any]:
     """Devuelve licitaciones priorizadas para etiquetado.
 
     - ``uncertainty``: prioriza las que el modelo clasifica con menor confianza.
@@ -153,7 +155,7 @@ async def feedback_queue(
 
             texts = [f"{c['titulo']} {c.get('descripcion') or ''}" for c in candidates]
 
-            def _predict() -> list:
+            def _predict() -> list[dict[str, Any]]:
                 from scraper.ml_classifier import SAPClassifier
 
                 clf = SAPClassifier.load()

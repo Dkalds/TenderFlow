@@ -245,6 +245,7 @@ class TestApiKeyExpiration:
     def test_expired_key_returns_401(self, client, api_db):
         """Una API key con expires_at en el pasado devuelve 401."""
         from api.auth import create_api_key, hash_api_key
+        from db.connection import close_pool
         from db.database import connect
 
         raw = create_api_key("expiring-key")
@@ -257,6 +258,9 @@ class TestApiKeyExpiration:
                 "UPDATE api_keys SET expires_at = ? WHERE key_hash = ?",
                 (past, key_hash),
             )
+        # Force a fresh connection so the ASGI thread reads the committed UPDATE
+        # instead of a stale thread-local snapshot (SQLite _local.conn isolation).
+        close_pool()
 
         resp = client.get("/api/v1/licitaciones", headers={"X-API-Key": raw})
         assert resp.status_code == 401

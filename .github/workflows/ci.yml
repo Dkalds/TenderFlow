@@ -14,13 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Lint & Type check
+  # ── Static analysis: merged quality + pre-commit (misma setup) ──────
+  static-analysis:
+    name: Lint, typecheck & pre-commit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -38,21 +42,25 @@ jobs:
         run: ruff format --check .
 
       - name: Type check (mypy)
-        run: mypy dashboard/ scraper/ db/ scheduler/ observability/ config/ api/ shared/
+        run: mypy scraper/ db/ scheduler/ observability/ config/ api/ shared/
 
+      - uses: pre-commit/action@v3.0.1
+
+  # ── Tests: multiplataforma, independiente ──────────────────────────
   test:
     name: Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -66,7 +74,7 @@ jobs:
       - name: Run tests with coverage
         env:
           ENV: dev
-        run: pytest --cov=. --cov-report=term-missing --cov-report=xml
+        run: pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=70
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@v4
@@ -98,62 +106,23 @@ jobs:
           name: diff-cover-report
           path: diff-cover.html
 
-  pre-commit:
-    name: pre-commit checks
+  # ── Schema: merged dry-run + rollback tests ────────────────────────
+  schema-migrations:
+    name: Schema migrations (dry-run + rollback)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
 
-      - name: Install project dependencies
+      - name: Install dev dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install -e .
-
-      - uses: pre-commit/action@v3.0.1
-
-  audit:
-    name: Security audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pip-audit
-          pip install -r requirements.txt
-
-      - name: Audit dependencies
-        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2024-277 --ignore-vuln PYSEC-2026-161
-
-  migrations-dryrun:
-    name: Alembic migrations dry-run
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
           pip install -e .
 
       - name: Generate SQL for all migrations (no apply)
@@ -165,13 +134,20 @@ jobs:
           head -n 200 /tmp/migrations.sql
           test -s /tmp/migrations.sql
 
-  migrations-rollback:
-    name: Alembic migrations rollback
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Run migration rollback tests
+        env:
+          ENV: dev
+        run: pytest tests/test_migrations_rollback.py -v --no-cov
 
-      - uses: actions/setup-python@v5
+  # ── Security audit (independiente) ──────────────────────────────────
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -179,21 +155,25 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
-          pip install -e .
+          pip install pip-audit
+          pip install -r requirements.txt
 
-      - name: Run migration rollback tests
-        env:
-          ENV: dev
-        run: pytest tests/test_migrations_rollback.py -v --no-cov
+      - name: Audit dependencies
+        # CVEs ignoradas (re-evaluar trimestralmente):
+        #   PYSEC-2024-277 — dependencia transitiva, no afecta a rutas críticas. Última revisión: 2026-05.
+        #   PYSEC-2026-161 — sin fix disponible. Última revisión: 2026-05.
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2024-277 --ignore-vuln PYSEC-2026-161
 
+  # ── SAST: depende de static-analysis (ahorra runner si lint falla) ─
   bandit:
     name: SAST (bandit)
+    needs: [static-analysis]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -204,9 +184,9 @@ jobs:
       - name: Run bandit
         # Lee la configuración de [tool.bandit] en pyproject.toml
         run: |
-          bandit -c pyproject.toml -r api db scraper scheduler dashboard shared config \
+          bandit -c pyproject.toml -r api db scraper scheduler shared config \
             --format json --output bandit-report.json || true
-          bandit -c pyproject.toml -r api db scraper scheduler dashboard shared config
+          bandit -c pyproject.toml -r api db scraper scheduler shared config
 
       - name: Upload bandit report
         if: always()
@@ -215,14 +195,17 @@ jobs:
           name: bandit-report
           path: bandit-report.json
 
+  # ── Docker: depende de tests (solo build si tests pasan) ───────────
   docker-build:
     name: Docker build + Trivy scan
+    needs: [test]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build Docker image (runtime target)
-        run: docker build --target runtime --tag licitaciones-sap:ci .
+        run: docker build -f docker/Dockerfile.api --target runtime --tag licitaciones-sap:ci .
 
       - name: Smoke test (image starts)
         run: |
@@ -259,15 +242,49 @@ jobs:
           name: trivy-results
           path: trivy-results.sarif
 
+  # ── Agents sync check (independiente) ──────────────────────────────
   agents-sync-check:
     name: Agents Sync Check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Verify agents canon is in sync with generated files
         run: python scripts/sync_agents.py --check
+
+  # ── Frontend: typecheck, lint, unit tests, build ────────────────────
+  frontend:
+    name: Frontend (typecheck · lint · test · build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests (vitest)
+        run: npm run test
+
+      - name: Build
+        run: npm run build

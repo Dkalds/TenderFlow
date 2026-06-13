@@ -102,6 +102,43 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
             warnings.append(f"dlq_above_threshold:{dlq_count}")
         checks.append({"name": "dlq_below_threshold", "ok": dlq_ok})
 
+        # ── Plano de orquestación activo (ADR-012) ────────────────────
+        import os
+
+        active_plane = os.environ.get("SCHEDULER_PLANE", "unknown")
+        info["active_plane"] = active_plane
+
+        # Última pipeline canónica: timestamp del último KPI snapshot
+        last_kpi = c.execute(
+            "SELECT computed_at FROM kpi_snapshots ORDER BY computed_at DESC LIMIT 1"
+        ).fetchone()
+        info["last_pipeline_run"] = last_kpi[0] if last_kpi else None
+
+        # Locks activos (ADR-012)
+        try:
+            now_iso = datetime.now(UTC).isoformat()
+            active_locks = c.execute(
+                "SELECT name, holder, expires_at FROM job_locks WHERE expires_at > ?",
+                (now_iso,),
+            ).fetchall()
+            info["active_locks"] = [
+                {"name": r[0], "holder": r[1], "expires_at": r[2]} for r in active_locks
+            ]
+        except Exception:
+            info["active_locks"] = []
+
+        # ── Modo de cola de tareas (Punto 5) ──────────────────────────
+        try:
+            from scheduler.queue import _dramatiq
+
+            if _dramatiq is not None:
+                broker_url = os.environ.get("DRAMATIQ_BROKER_URL", "")
+                info["queue_mode"] = "dramatiq" if broker_url else "stub"
+            else:
+                info["queue_mode"] = "inline"
+        except Exception:
+            info["queue_mode"] = "unknown"
+
     if errors:
         status = "critical"
     elif warnings:

@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: tenderflow-api
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.api
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ENV
+        value: prod
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: OAUTH_REDIRECT_URI
+        sync: false
+      - key: SIGNING_KEY
+        sync: false
+      - key: API_HMAC_SECRET
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"

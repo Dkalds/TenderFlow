@@ -19,6 +19,11 @@ Hay un knowledge graph en `graphify-out/` con god nodes, comunidades y relacione
 
 Dirty graphify-out/ tras hooks o updates incrementales es **normal** — no es razón para saltarse graphify. Solo saltátelo si la tarea es sobre stale graph output o el usuario lo dice explícito.
 
+**Fallback sin CLI**: `graphify` es una herramienta local del mantenedor — **no está en PyPI ni npm, no intentes instalarla**. En entornos donde el CLI no existe (CI, sesiones remotas de Claude Code):
+- Leé los artefactos commiteados directamente: `graphify-out/graph.json`, `graphify-out/wiki/` o `GRAPH_REPORT.md`, en vez de invocar el CLI.
+- Si `graphify-out/` faltara por completo → navegá con grep + [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) y el mapa de áreas de abajo. No es un error: seguí con la tarea.
+- El post-flight `graphify update .` solo aplica si `which graphify` resuelve; si no, omitilo (el hook ya deja `graphify-out/.graph_stale` para regenerar local).
+
 Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) el graph no tiene el detalle necesario, (c) el graph está ausente o stale.
 
 ---
@@ -32,7 +37,7 @@ Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) 
 | `services/` | Lógica de dominio (licitaciones, classification, clusters, normalization, analytics) | `services/licitaciones.py` | Core; usa `db.repositories.*` |
 | `db/` | Persistencia (SQLite/Turso), upsert idempotente, migraciones alembic | `db/database.py` (fachada → `connection/schema/upsert`) | `db.database`, `db.users` **strict** |
 | `api/` | FastAPI REST | `api/app.py` (`uvicorn api.app:app`) | Rutas en `api/routes/` |
-| `dashboard/` | Streamlit UI | `dashboard/app.py` | Typing **no strict** salvo `dashboard.bootstrap` |
+| `web/` | Frontend Next.js | `web/` | Consume la API tipada generada desde OpenAPI |
 | `scraper/` | Pipeline PLACSP (ZIPs + ATOM), parser CODICE/UBL, clasificador ML | `scraper/pipeline.py` | `ml_*` con SQL manual (S608 suppressed) |
 | `scheduler/` | Jobs (run_update, kpi_precompute), loop | `scheduler/loop.py` | Cron de GitHub Actions |
 | `llm/` | Cliente LLM y providers | `llm/client.py` | Opcional |
@@ -45,13 +50,15 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 
 ## 3. Invariantes que nunca romper
 
-1. **Typing strict en core**: `db.database`, `db.users`, `dashboard.bootstrap` pasan mypy strict. `config/*` y `shared/*` están en proceso de migración a strict (ver bloque de overrides en `pyproject.toml`). Si tocás estos módulos, **no empeores** el estado de typing — no añadas `# type: ignore` ni `Any` sin justificar, y priorizá cerrar overrides existentes sobre abrir nuevos.
+1. **Typing strict en core**: `db.database` y `db.users` pasan mypy strict. `config/*` y `shared/*` están en proceso de migración a strict (ver bloque de overrides en `pyproject.toml`). Si tocás estos módulos, **no empeores** el estado de typing — no añadas `# type: ignore` ni `Any` sin justificar, y priorizá cerrar overrides existentes sobre abrir nuevos.
 2. **Upsert idempotente**: cualquier escritura desde scraper debe poder re-ejecutarse sin duplicar (ver `db/upsert.py`).
 3. **Migraciones append-only**: nunca modificar migraciones alembic ya commiteadas. Siempre nueva revisión.
 4. **Auto-marking de tests**: `tests/conftest.py` aplica markers (unit/integration/e2e/property/load) por nombre de archivo. **No marcar a mano** — renombrar el test si necesitás otro marker.
-5. **DTOs Pydantic v2** son el contrato API↔dashboard (`shared/dto.py`). Cambios a campos requieren migración consciente.
+5. **DTOs Pydantic v2** son el contrato API↔web (`shared/dto.py`). Cambios a campos requieren migración consciente.
 6. **HMAC-signed CSRF + argon2/bcrypt** para auth (`shared/auth_core.py`). No reemplazar por algo más débil.
 7. **Pre-commit obligatorio**: ruff + mypy + bandit + gitleaks + detect-secrets corren en cada commit. No bypassear con `--no-verify`.
+8. **Frontend siempre vía API**: `web/` no accede a `db.*` ni a la capa Python de servicios de forma directa; consume `api/` mediante HTTP/OpenAPI y contratos tipados. Código nuevo **debe** respetar este invariante.
+9. **Un solo plano de orquestación por entorno**: los planos GitHub Actions y APScheduler nunca corren activos contra la misma BD (ADR-012). Variable `SCHEDULER_PLANE` declara el dueño.
 
 ---
 
@@ -61,12 +68,12 @@ Fuente única: [Makefile](Makefile). Targets clave:
 
 ```bash
 make test-unit        # rápido (unit, no slow) — usá esto durante desarrollo
-make test             # full suite excepto integration_e2e y dashboard_smoke
+make test             # full suite excepto integration_e2e
 make test-integration # tests con BD real
 make lint             # ruff check
 make typecheck        # mypy .
 make api              # arranca FastAPI en :8080
-make dashboard        # arranca Streamlit
+make web-dev          # arranca Next.js en :3000
 make scrape-daily     # corre scraper en modo daily
 make doctor           # verifica entorno (scripts/doctor.py)
 ```
@@ -82,7 +89,7 @@ Slash-commands de Claude Code (en `.claude/commands/`):
 ## 5. Workflow estándar
 
 **Pre-flight (siempre):**
-1. Si `graphify-out/graph.json` existe → `graphify query "<intent>"` antes que grep.
+1. Si `graphify-out/graph.json` existe → `graphify query "<intent>"` antes que grep (o leé el JSON/wiki directo si el CLI no está instalado — ver fallback en §1).
 2. Lee [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) si vas a tocar un área que no conocés.
 3. Revisa [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) si te pidieron "encuentra una mejora".
 
@@ -92,7 +99,7 @@ Slash-commands de Claude Code (en `.claude/commands/`):
 
 **Post-flight (siempre tras editar `.py`):**
 1. Corre `/check` (o `make lint && make typecheck && make test-unit`).
-2. Corre `graphify update .` (AST-only, gratis, sin API). Si hubo cambios estructurales (nuevos módulos, renames), considerá `graphify update . --force`.
+2. Si el CLI está disponible (`which graphify`), corre `graphify update .` (AST-only, gratis, sin API). Si hubo cambios estructurales (nuevos módulos, renames), considerá `graphify update . --force`. Si el CLI no está (CI/remoto), omití este paso.
 3. Si el cambio rompe convenciones documentadas, abrí un ADR en `docs/adr/` antes de mergear.
 4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), movélo a **Cerrados** (o anotá progreso parcial) en ese mismo momento. No dejarlo para después.
 

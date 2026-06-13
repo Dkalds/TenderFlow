@@ -87,7 +87,7 @@ def _strip_pii(event: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any]:
 def set_user_context(user_id_hash: str, *, locale: str | None = None) -> None:
     """Asocia el span/scope actual a un usuario opaco (hash)."""
     try:
-        import sentry_sdk  # type: ignore[import-not-found]
+        import sentry_sdk
     except ImportError:
         return
     sentry_sdk.set_user({"id": user_id_hash, **({"locale": locale} if locale else {})})

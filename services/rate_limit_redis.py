@@ -29,11 +29,11 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 try:  # pragma: no cover - dependencia opcional
-    import redis  # type: ignore[import-not-found]
+    import redis
 
     _REDIS_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    redis = None  # type: ignore[assignment]
+    redis = None
     _REDIS_AVAILABLE = False
 
 

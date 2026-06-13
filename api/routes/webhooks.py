@@ -18,6 +18,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 import urllib.parse
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
@@ -87,6 +88,59 @@ def _is_ssrf_url(url: str) -> bool:
         return False
     except Exception:
         return True  # cualquier error → bloquear
+
+
+def _resolve_and_validate(url: str) -> str:
+    """Resolve DNS at delivery time and return the IP-pinned URL.
+
+    Prevents DNS rebinding (TOCTOU): resolves the hostname NOW,
+    validates against private networks, and returns a URL with the
+    IP address substituted so ``requests.post`` doesn't re-resolve.
+
+    Raises:
+        ValueError: if the URL resolves to a private/reserved IP.
+    """
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError("URL sin hostname")
+
+    # Re-check rebinding suffixes at delivery time
+    host_lower = host.lower()
+    if any(host_lower.endswith(suffix) for suffix in _DNS_REBINDING_SUFFIXES):
+        raise ValueError(f"Dominio de DNS rebinding bloqueado: {host}")
+
+    try:
+        addrs = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError(f"DNS resolution failed for {host}: {exc}") from exc
+
+    if not addrs:
+        raise ValueError(f"No DNS records for {host}")
+
+    # Pick first resolved IP and validate
+    resolved_ip = addrs[0][4][0]
+    try:
+        addr = ipaddress.ip_address(resolved_ip)
+    except ValueError as exc:
+        raise ValueError(f"Invalid resolved IP {resolved_ip}") from exc
+
+    for net in _PRIVATE_NETWORKS:
+        if addr in net:
+            raise ValueError(f"Resolved IP {resolved_ip} is in private network {net}")
+
+    # Build IP-pinned URL: replace hostname with resolved IP, pass original
+    # Host header via requests so TLS SNI and virtual hosts still work.
+    port = parsed.port
+    if ":" in resolved_ip:  # IPv6
+        netloc = f"[{resolved_ip}]:{port}" if port else f"[{resolved_ip}]"
+    else:
+        netloc = f"{resolved_ip}:{port}" if port else resolved_ip
+
+    pinned_url = urllib.parse.urlunparse(
+        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+    )
+    return pinned_url
 
 
 # ── Modelos ──────────────────────────────────────────────────────────────────
@@ -230,7 +284,7 @@ async def create(
 )
 async def list_all(
     _ctx: AuthContext = Depends(require_scope("webhooks:read")),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     return _repo.list_all()
 
 
@@ -242,7 +296,7 @@ async def list_all(
 async def get_one(
     webhook_id: int,
     _ctx: AuthContext = Depends(require_scope("webhooks:read")),
-) -> dict:
+) -> dict[str, Any]:
     wh = _repo.get_by_id(webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
@@ -262,7 +316,7 @@ async def update(
     webhook_id: int,
     body: WebhookUpdate,
     ctx: AuthContext = Depends(require_scope("webhooks:write")),
-) -> dict:
+) -> dict[str, Any]:
     """Actualiza nombre, URL, event_types o active de un webhook existente."""
     found = _repo.update(
         webhook_id,
@@ -317,12 +371,13 @@ async def delete(
 async def ping(
     webhook_id: int,
     ctx: AuthContext = Depends(require_scope("webhooks:write")),
-) -> dict:
+) -> dict[str, Any]:
     """Envía un payload de prueba al URL del webhook para verificar conectividad."""
     import asyncio as _asyncio
     import hashlib
     import hmac as _hmac
     import json
+    import time as _time
 
     import requests
 
@@ -342,37 +397,58 @@ async def ping(
     ).encode()
     sig = _hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
 
+    # DNS pinning: resolve NOW, validate, pin IP to prevent rebinding
+    url = str(wh["url"])
+    original_host = urllib.parse.urlparse(url).hostname or ""
     try:
-        resp = await _asyncio.to_thread(
-            requests.post,
-            str(wh["url"]),
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "X-Webhook-Signature": f"sha256={sig}",
-                "X-Webhook-Event": "ping",
-                "User-Agent": "licitaciones-sap-webhook/1.0",
-            },
-            timeout=5.0,
-        )
-        ok = 200 <= resp.status_code < 300
-        _repo.record_delivery(
-            webhook_id,
-            status_code=resp.status_code,
-            success=ok,
-            event_type="ping",
-            payload_size=len(payload),
-        )
-        return {"success": ok, "status_code": resp.status_code}
-    except requests.RequestException as exc:
-        _repo.record_delivery(
-            webhook_id,
-            status_code=0,
-            success=False,
-            event_type="ping",
-            payload_size=len(payload),
-        )
-        return {"success": False, "error": str(exc)}
+        pinned_url = _resolve_and_validate(url)
+    except ValueError as exc:
+        log.warning("webhook_ping_ssrf_blocked", webhook_id=webhook_id, error=str(exc))
+        return {"success": False, "error": f"SSRF blocked: {exc}"}
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Webhook-Signature": f"sha256={sig}",
+        "X-Webhook-Event": "ping",
+        "User-Agent": "licitaciones-sap-webhook/1.0",
+        "Host": original_host,  # preserve original Host for TLS SNI / vhosts
+    }
+
+    # Retry with exponential backoff (max 2 retries)
+    max_attempts = 3
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            resp = await _asyncio.to_thread(
+                requests.post,
+                pinned_url,
+                data=payload,
+                headers=headers,
+                timeout=5.0,
+                verify=True,
+            )
+            ok = 200 <= resp.status_code < 300
+            _repo.record_delivery(
+                webhook_id,
+                status_code=resp.status_code,
+                success=ok,
+                event_type="ping",
+                payload_size=len(payload),
+            )
+            return {"success": ok, "status_code": resp.status_code, "attempts": attempt + 1}
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < max_attempts - 1:
+                await _asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s
+
+    _repo.record_delivery(
+        webhook_id,
+        status_code=0,
+        success=False,
+        event_type="ping",
+        payload_size=len(payload),
+    )
+    return {"success": False, "error": str(last_exc), "attempts": max_attempts}
 
 
 @router.get(
@@ -387,7 +463,7 @@ async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
     _ctx: AuthContext = Depends(require_scope("webhooks:read")),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     if _repo.get_by_id(webhook_id) is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")

@@ -1,6 +1,6 @@
 """Cache unificado con backends Memory (LRU+TTL) y Redis.
 
-Reemplaza ``api/cache.py`` y ``dashboard/cache.py`` con una única implementación
+Reemplaza las implementaciones históricas de caché con una única implementación
 thread-safe y correctamente testeada.
 
 Uso::
@@ -21,12 +21,18 @@ Backends:
 
 from __future__ import annotations
 
+import asyncio
+import functools
+import inspect
 import json
 import os
 import threading
 import time
 from collections import OrderedDict
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
 
 from observability.logging import get_logger
 
@@ -192,7 +198,7 @@ def get_cache(namespace: str = "default") -> _MemoryBackend | _RedisBackend:
     ``REDIS_URL`` está configurado, Memory como fallback).
 
     Args:
-        namespace: Identificador lógico del cache (ej. "api", "dashboard").
+        namespace: Identificador lógico del cache (ej. "api", "analytics").
                    Prefija todas las keys en Redis para evitar colisiones.
     """
     if namespace in _instances:
@@ -211,9 +217,10 @@ def get_cache(namespace: str = "default") -> _MemoryBackend | _RedisBackend:
 def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
     """Intenta conectar con Redis; si falla devuelve MemoryBackend.
 
-    En producción (``ENV=prod``), lanza ``RuntimeError`` si Redis no está
-    disponible — el cache compartido es obligatorio para coherencia entre
-    procesos.
+    Siempre falla suavemente a MemoryBackend — es preferible tener datos
+    potencialmente stale a devolver 500.  El error se loggea a nivel
+    ``error`` para que monitoreo lo capte.  Si el paquete ``redis`` no
+    está instalado, se hace fallback silencioso con un warning.
     """
     try:
         from config import settings
@@ -224,13 +231,20 @@ def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
         backend = _RedisBackend(settings.REDIS_URL, namespace=namespace)
         log.info("shared_cache_redis_connected", namespace=namespace)
         return backend
+    except ImportError as exc:
+        log.warning(
+            "shared_cache_redis_module_missing",
+            error=str(exc),
+            fallback="memory",
+        )
+        return _MemoryBackend()
     except Exception as exc:
-        if os.getenv("ENV", "").lower() == "prod":
-            raise RuntimeError(
-                f"Redis no disponible en producción (REDIS_URL configurado pero "
-                f"la conexión falló): {exc}"
-            ) from exc
-        log.info("shared_cache_redis_unavailable", error=str(exc), fallback="memory")
+        log.error(
+            "shared_cache_redis_unavailable",
+            error=str(exc),
+            env=os.getenv("ENV", ""),
+            fallback="memory",
+        )
         return _MemoryBackend()
 
 
@@ -247,3 +261,97 @@ def reset_cache(namespace: str | None = None) -> None:
             _redis_available = None
         else:
             _instances.pop(namespace, None)
+
+
+# ---------------------------------------------------------------------------
+# Decorador de cache para endpoints (con protección anti-estampida)
+# ---------------------------------------------------------------------------
+
+T = TypeVar("T")
+_cache_locks: dict[str, asyncio.Lock] = {}
+_cache_locks_mutex = threading.Lock()
+
+
+def _get_cache_lock(key: str) -> asyncio.Lock:
+    """Obtiene (o crea) un ``asyncio.Lock`` por *key* de forma thread-safe."""
+    if key not in _cache_locks:
+        with _cache_locks_mutex:
+            if key not in _cache_locks:
+                _cache_locks[key] = asyncio.Lock()
+    return _cache_locks[key]
+
+
+def cache_response(
+    ttl: int = 300,
+    namespace: str = "analytics",
+) -> Callable[..., Any]:
+    """Decorador que cachea respuestas de endpoints FastAPI.
+
+    Características:
+      - **Anti-estampida**: usa ``asyncio.Lock`` por clave para que si
+        N peticiones idénticas llegan simultáneamente, solo 1 ejecute la
+        función pesada y las demás esperen el resultado cacheado.
+      - **Async-native**: el wrapper es ``async def``, lo que evita que
+        FastAPI despache la llamada al threadpool *antes* de revisar caché.
+        Si la función subyacente es síncrona, se ejecuta con
+        ``anyio.to_thread.run_sync`` **dentro** del lock.
+      - Compatible con funciones que devuelven ``pydantic.BaseModel`` (se
+        cachea como dict vía ``model_dump()``).
+
+    Args:
+        ttl: Tiempo de vida en segundos (default 5 min).
+        namespace: Namespace del backend de cache.
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        is_sync = not inspect.iscoroutinefunction(func)
+
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            cache = get_cache(namespace)
+
+            # --- Build cache key ---
+            key_parts = [func.__name__]
+            for k, v in sorted(kwargs.items()):
+                if k.startswith("_"):
+                    # Skip private/internal args like _user dependency
+                    continue
+                if isinstance(v, BaseModel):
+                    key_parts.append(f"{k}:{v.model_dump_json(exclude_none=True)}")
+                elif v is not None:
+                    key_parts.append(f"{k}:{v}")
+            cache_key = "|".join(key_parts)
+
+            # --- Fast path (no lock) ---
+            cached = cache.get(cache_key)
+            if cached is not None:
+                log.debug("cache_hit", key=cache_key, func=func.__name__)
+                return cached
+
+            # --- Stampede-protected slow path ---
+            lock = _get_cache_lock(cache_key)
+            async with lock:
+                # Double-check inside lock
+                cached = cache.get(cache_key)
+                if cached is not None:
+                    log.debug("cache_hit_after_lock", key=cache_key, func=func.__name__)
+                    return cached
+
+                log.debug("cache_miss", key=cache_key, func=func.__name__)
+                if is_sync:
+                    import anyio.to_thread
+
+                    result = await anyio.to_thread.run_sync(
+                        functools.partial(func, *args, **kwargs),
+                    )
+                else:
+                    result = await func(*args, **kwargs)
+
+                # Serialize Pydantic → dict for cache backends
+                val = result.model_dump() if isinstance(result, BaseModel) else result
+                cache.set(cache_key, val, ttl=ttl)
+                return result
+
+        return wrapper
+
+    return decorator

@@ -43,6 +43,9 @@ nivel:
                                         ``licitaciones_history``.
 - ``replace_adjudicaciones()``        — reemplaza adjudicaciones de una
                                         licitación (idempotente: DELETE + INSERT).
+- ``replace_adjudicaciones_batch()``  — batch version: reemplaza adjudicaciones
+                                        de múltiples licitaciones en una sola
+                                        transacción (menos contención de lock).
 - ``count_licitaciones()``            — total de filas en la tabla.
 - ``log_extraccion()``                — registra una ejecución de extracción.
 - ``get_cursor()`` / ``set_cursor()`` — lectura/escritura del cursor de
@@ -96,6 +99,7 @@ from db.upsert import (
     get_history,
     log_extraccion,
     replace_adjudicaciones,
+    replace_adjudicaciones_batch,
     search_fts,
     set_cursor,
     upsert_licitaciones,
@@ -126,6 +130,7 @@ __all__ = [
     "get_history",
     "log_extraccion",
     "replace_adjudicaciones",
+    "replace_adjudicaciones_batch",
     "search_fts",
     "set_cursor",
     "upsert_licitaciones",

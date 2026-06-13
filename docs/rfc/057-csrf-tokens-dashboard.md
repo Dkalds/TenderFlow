@@ -4,8 +4,11 @@ title: Implementar CSRF tokens para sesiones del dashboard
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/57
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: obsolete
 ---
+
+> Obsoleto: este RFC describe CSRF para el dashboard Streamlit eliminado y se conserva solo como referencia histórica.
+
 
 ## Contexto
 

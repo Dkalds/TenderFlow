@@ -53,10 +53,9 @@
       "automerge": false
     },
     {
-      "groupName": "Streamlit & dashboard",
+      "groupName": "Data & analytics",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackageNames": [
-        "streamlit",
         "plotly",
         "pandas",
         "numpy"

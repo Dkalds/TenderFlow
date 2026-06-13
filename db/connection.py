@@ -318,15 +318,33 @@ def close_pool() -> None:
 
 @contextmanager
 def connect() -> Iterator[Any]:
-    """Context manager de escritura. Hace commit al salir, rollback en error."""
+    """Context manager de escritura. Hace commit al salir, rollback en error.
+
+    Instrumenta latencia de commit y errores SQLITE_BUSY (tripwires ADR-004).
+    """
+    import time as _time
+
+    from observability.runtime_metrics import (
+        db_concurrent_writers,
+        db_write_duration_seconds,
+        sqlite_busy_errors_total,
+    )
+
     conn = _get_conn()
+    db_concurrent_writers.inc()
     try:
         yield conn
+        t0 = _time.monotonic()
         conn.commit()
-    except Exception:
+        db_write_duration_seconds.observe(_time.monotonic() - t0)
+    except Exception as exc:
+        _exc_str = str(exc).lower()
+        if "busy" in _exc_str or "locked" in _exc_str:
+            sqlite_busy_errors_total.inc()
         conn.rollback()
         raise
     finally:
+        db_concurrent_writers.inc(-1)
         _return_conn(conn)
 
 

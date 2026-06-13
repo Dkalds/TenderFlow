@@ -1,8 +1,8 @@
 """Job de pre-cálculo de KPIs — se ejecuta tras cada scraping.
 
 Calcula métricas clave sobre las licitaciones y las persiste en la tabla
-``kpi_snapshots``. El dashboard puede leer estos snapshots en vez de
-recalcular sobre el DataFrame completo en cada sesión.
+``kpi_snapshots``. Los consumidores pueden leer estos snapshots en vez de
+recalcular sobre el DataFrame completo en cada ejecución.
 
 También puede exportar agregados materializados a Parquet usando
 :mod:`db.analytics` (DuckDB opcional) para análisis offline (F2).
@@ -28,7 +28,7 @@ log = get_logger(__name__)
 
 
 def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
-    """Calcula todos los KPIs desde la BD directamente (sin cargar Streamlit).
+    """Calcula todos los KPIs desde la BD directamente.
 
     Returns:
         Lista de {metrica, dimension, valor, valor_text}.
@@ -165,15 +165,19 @@ def _persist_snapshots(conn: Any, snapshots: list[dict[str, Any]]) -> int:
     conn.execute(
         "DELETE FROM kpi_snapshots"  # Limpiar todos antes de insertar nuevo snapshot completo
     )
-    n = 0
-    for s in snapshots:
-        conn.execute(
-            "INSERT INTO kpi_snapshots (computed_at, metrica, dimension, valor, valor_text) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (s["computed_at"], s["metrica"], s["dimension"], s.get("valor"), s.get("valor_text")),
-        )
-        n += 1
-    return n
+    if not snapshots:
+        return 0
+    rows = [
+        (s["computed_at"], s["metrica"], s["dimension"], s.get("valor"), s.get("valor_text"))
+        for s in snapshots
+    ]
+    # executemany: una sola sentencia en vez de N round-trips a SQLite.
+    conn.executemany(
+        "INSERT INTO kpi_snapshots (computed_at, metrica, dimension, valor, valor_text) "
+        "VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
+    return len(rows)
 
 
 def run_kpi_precompute() -> dict[str, Any]:
@@ -337,7 +341,7 @@ def get_latest_snapshot(metrica: str, dimension: str = "global") -> dict[str, An
 def get_all_latest() -> dict[str, Any]:
     """Devuelve todos los snapshots más recientes como un dict plano.
 
-    Útil para que el dashboard cargue todos los KPIs pre-calculados de una vez.
+    Útil para cargar todos los KPIs pre-calculados de una vez.
     """
     from db.database import connect
 

@@ -1,16 +1,17 @@
 # Dependencias productivas — compiladas con pip-compile a requirements.txt
 requests>=2.31.0,<3
+httpx>=0.27.0,<1
 lxml>=5.0.0,<7
 pandas>=2.1.0,<3
-streamlit>=1.33.0,<2
 plotly>=5.18.0,<7
 python-dateutil>=2.8.2,<3
 tenacity>=8.2.0,<10
 openpyxl>=3.1.0,<4
-libsql>=0.1.0,<1
+libsql>=0.1.0,<0.3
 python-dotenv>=1.0.0,<2
 pydantic-settings>=2.0.0,<3
-streamlit-aggrid>=0.3.3,<1
+# Validación de emails para pydantic EmailStr (api/routes/auth.py)
+email-validator>=2.0.0,<3
 structlog>=24.1.0,<26
 pybreaker>=1.0.0,<2
 reportlab>=4.0,<5
@@ -23,10 +24,12 @@ scikit-learn>=1.3.0,<2
 # opentelemetry-exporter-otlp-proto-http>=1.20.0,<3
 # Búsqueda semántica vectorial (opcional — instalar manualmente si se necesita)
 # faiss-cpu>=1.7.4,<2
-# sentence-transformers>=2.2.0,<4  # arrastra torch (~2 GB), no apto para Streamlit Cloud
+# sentence-transformers>=2.2.0,<4  # arrastra torch (~2 GB)
 # Métricas Prometheus (opcional — fallback a fichero texto si no está instalado)
 prometheus_client>=0.19.0,<1
-# Password hashing seguro para autenticación del dashboard
+# Prometheus auto-instrumentación HTTP para FastAPI (métricas RED por handler)
+prometheus-fastapi-instrumentator>=8.0.0,<9
+# Password hashing seguro para autenticación
 bcrypt>=4.0,<5
 # Cifrado simétrico (Fernet/AES) para secretos TOTP y derivación de webhook keys
 cryptography>=43.0,<47
@@ -36,7 +39,14 @@ argon2-cffi>=23.1.0,<25
 alembic>=1.13.0,<2
 # API REST
 fastapi>=0.110.0,<1
+# Starlette pinned explicitly — fastapi 0.136 ships with 0.52.x but >=1.0.1
+# is needed for bugfixes; without this pin the Dockerfile had a force-reinstall hack.
+starlette>=1.0.1,<2
 # Forecasting — suavizado exponencial (ExponentialSmoothing) para tendencias
 statsmodels>=0.14.0,<1
 # Análisis de redes de proveedores (partners.py)
 networkx>=3.0,<4
+# TTL cache para nonce store OAuth anti-replay (shared/auth_core.py)
+cachetools>=5.3.0,<8
+# Compresión Brotli para respuestas API (~20% mejor que GZip)
+brotli-asgi>=1.4.0,<2

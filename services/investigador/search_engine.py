@@ -1,7 +1,7 @@
 """Motor de búsqueda híbrido — extrae la lógica RAG de investigador.py.
 
 Encapsula búsqueda FAISS (semántica) + FTS5/BM25 (léxica) + LIKE fallback
-con reranking híbrido. Función pura sin dependencia de Streamlit.
+con reranking híbrido. Función pura y reutilizable.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def escape_fts5(query: str) -> str:
 def faiss_search(question: str, top_k: int, embedding_model: str) -> list[tuple[str, float]]:
     """Búsqueda semántica FAISS. Devuelve (id_externo, score ∈ [0,1])."""
     try:
-        from dashboard.faiss_index import FaissIndex
+        from services.faiss_index import FaissIndex
 
         idx = FaissIndex.load()
         return idx.search(question, k=top_k, threshold=0.25)

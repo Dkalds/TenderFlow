@@ -31,5 +31,10 @@
   "error.unavailable": "Servicio temporalmente no disponible. Intenta de nuevo en unos minutos.",
   "auth.login": "Iniciar sesión",
   "auth.logout": "Cerrar sesión",
-  "auth.user": "Usuario {name}"
+  "auth.user": "Usuario {name}",
+  "api.logged_out": "Logged out",
+  "api.rate_limit": "Rate limit excedido. Intenta de nuevo más tarde.",
+  "api.body_too_large": "Request body demasiado grande (máx. 1 MB).",
+  "api.method_not_allowed": "Método no permitido.",
+  "api.not_found": "Recurso no encontrado."
 }

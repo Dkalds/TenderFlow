@@ -24,7 +24,7 @@ log = get_logger(__name__)
 _VALID_LABELS: frozenset[str] = frozenset(TECH_LABELS)
 
 
-class SentenceEmbeddingTransformer(BaseEstimator, TransformerMixin):
+class SentenceEmbeddingTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
     """Wraps sentence-transformers to produce dense embeddings for sklearn pipelines.
 
     Requires: pip install sentence-transformers (optional dependency).
@@ -37,15 +37,16 @@ class SentenceEmbeddingTransformer(BaseEstimator, TransformerMixin):
         self.batch_size = batch_size
         self._model = None
 
-    def fit(self, X, y=None):
+    def fit(self, X: Any, y: Any = None) -> SentenceEmbeddingTransformer:
         return self
 
-    def transform(self, X):
+    def transform(self, X: Any) -> Any:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
             self._model = SentenceTransformer(self.model_name)
         texts = list(X) if not isinstance(X, list) else X
+        assert self._model is not None
         return self._model.encode(texts, batch_size=self.batch_size, show_progress_bar=False)
 
 
@@ -264,9 +265,13 @@ def validate_training_data(
     log.info("validate_training_data.start", n_rows=n_rows)
 
     # ── Text length check ──────────────────────────────────────────────
-    titulo = df["titulo"].fillna("") if "titulo" in df.columns else ""
-    desc = df["descripcion"].fillna("") if "descripcion" in df.columns else ""
-    combined = (titulo + " " + desc).str.strip() if n_rows > 0 else []
+    titulo = df["titulo"].fillna("") if "titulo" in df.columns else pd.Series("", index=df.index)
+    desc = (
+        df["descripcion"].fillna("")
+        if "descripcion" in df.columns
+        else pd.Series("", index=df.index)
+    )
+    combined = (titulo + " " + desc).str.strip() if n_rows > 0 else pd.Series(dtype=str)
     if n_rows > 0:
         lengths = combined.str.len()
         short_mask = lengths <= min_text_len
@@ -391,8 +396,8 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     pos_rows = df[mask_pos]
     neg_rows = df[mask_neg]
 
-    pos_texts = [_text_for_row(r) for r in pos_rows.to_dict("records")]
-    neg_texts_all = [_text_for_row(r) for r in neg_rows.to_dict("records")]
+    pos_texts = [_text_for_row(r) for r in pos_rows.to_dict("records")]  # type: ignore[arg-type]
+    neg_texts_all = [_text_for_row(r) for r in neg_rows.to_dict("records")]  # type: ignore[arg-type]
 
     # Balancear: máx. 2x positivos en negativos
     max_neg = min(len(neg_texts_all), len(pos_texts) * 2)

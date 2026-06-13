@@ -6,51 +6,50 @@ Playbooks de respuesta rápida para los incidentes más comunes del sistema.
 
 ## Índice
 
-1. [Dashboard inaccesible](#1-dashboard-inaccesible)
+1. [Frontend web inaccesible](#1-frontend-web-inaccesible)
 2. [Scraper sin ejecutarse >36h](#2-scraper-sin-ejecutarse-36h)
 3. [DLQ con >50 entradas sin resolver](#3-dlq-con-50-entradas-sin-resolver)
 4. [Base de datos corrupta o inaccesible](#4-base-de-datos-corrupta-o-inaccesible)
 5. [Caída de frescura de datos](#5-caída-de-frescura-de-datos)
 6. [Errores de autenticación en cascada](#6-errores-de-autenticación-en-cascada)
-7. [Uso excesivo de memoria del proceso Streamlit](#7-uso-excesivo-de-memoria-del-proceso-streamlit)
-8. [Fallo de backup diario](#8-fallo-de-backup-diario)
+7. [Fallo de backup diario](#7-fallo-de-backup-diario)
 
 ---
 
-## 1. Dashboard inaccesible
+## 1. Frontend web inaccesible
 
-**Síntomas:** HTTP 5xx o timeout en la URL del dashboard. Alertas del healthcheck.
+**Síntomas:** HTTP 5xx o timeout en la URL del frontend web. Alertas del healthcheck.
 
 **Diagnóstico:**
 
 ```bash
-# 1. Verificar que el proceso está en marcha
-ps aux | grep streamlit
+# 1. Verificar que el servicio está en marcha
+docker compose ps web
 
 # 2. Ver logs recientes
-tail -n 100 logs/streamlit.log  # o journalctl -u licitaciones-dashboard
+docker compose logs web --tail 100  # o journalctl -u licitaciones-web
 
 # 3. Comprobar healthcheck interno
-python -c "from scheduler.healthcheck import run_healthcheck; print(run_healthcheck())"
+curl -fsS http://localhost:3000/ > /dev/null
 ```
 
 **Resolución:**
 
 ```bash
 # Reiniciar el servicio
-make restart  # o systemctl restart licitaciones-dashboard
+docker compose restart web  # o systemctl restart licitaciones-web
 
-# Si el problema persiste: revisar si la DB está bloqueada
-python -c "from db.database import connect; print(connect().__enter__().execute('SELECT 1').fetchone())"
+# Si el problema persiste: revisar si la API responde
+curl -fsS http://localhost:8080/api/v1/health/ready
 ```
 
-**Escalado:** Si el dashboard no vuelve en 10 minutos → notificar al equipo.
+**Escalado:** Si el frontend web no vuelve en 10 minutos → notificar al equipo.
 
 ---
 
 ## 2. Scraper sin ejecutarse >36h
 
-**Síntomas:** KPI "Antigüedad scrape" > 36h en el dashboard de Calidad de Datos.
+**Síntomas:** KPI "Antigüedad scrape" > 36h en el panel de Calidad de Datos.
 
 **Diagnóstico:**
 
@@ -165,7 +164,7 @@ fuser data/*.db  # Linux
 
 ## 5. Caída de frescura de datos
 
-**Síntomas:** Datos del dashboard parecen no actualizarse aunque el scraper ejecuta.
+**Síntomas:** Datos del frontend web parecen no actualizarse aunque el scraper ejecuta.
 
 **Diagnóstico:**
 
@@ -187,11 +186,11 @@ print(connect().__enter__().execute('SELECT COUNT(*), MAX(fecha_publicacion) FRO
 **Resolución:**
 
 ```bash
-# Forzar invalidación de caché del dashboard (crea el fichero de señal)
+# Forzar invalidación de caché de la aplicación (crea el fichero de señal)
 python -c "from shared.cache_signal import write_cache_signal; write_cache_signal()"
 
-# Si la app está en ejecución, también se puede usar el endpoint admin
-# → Dashboard → Observabilidad → "Invalidar caché"
+# Si la app está en ejecución, también se puede usar la acción
+# de observabilidad para invalidar la caché
 ```
 
 ---
@@ -241,40 +240,7 @@ print('Limpiado')
 
 ---
 
-## 7. Uso excesivo de memoria del proceso Streamlit
-
-**Síntomas:** El proceso Streamlit ocupa >2 GB RAM, respuestas lentas o OOM.
-
-**Diagnóstico:**
-
-```bash
-# Ver uso de memoria del proceso
-ps aux | grep streamlit
-# O con psutil:
-python -c "import psutil, os; p = psutil.Process(os.getpid()); print(p.memory_info())"
-
-# Cuántos objetos en caché
-python -c "from dashboard.data_loader import _load_dataframe_shared; print(_load_dataframe_shared.cache_info())" 2>/dev/null || echo "No disponible"
-```
-
-**Resolución:**
-
-```bash
-# 1. Invalidar caches manualmente
-python -c "from dashboard.data_loader import invalidate_caches; invalidate_caches()"
-
-# 2. Si el problema persiste, reiniciar el proceso
-make restart
-
-# 3. Verificar que DASHBOARD_CACHE_TTL está configurado (default: sin TTL = cache indefinida)
-python -c "from config import settings; print(settings.DASHBOARD_CACHE_TTL)"
-```
-
-**Preventivo:** Configurar `DASHBOARD_CACHE_TTL=3600` en `.env` para limitar la vida de la caché.
-
----
-
-## 8. Fallo de backup diario
+## 7. Fallo de backup diario
 
 **Síntomas:** GitHub Actions workflow `backup.yml` falla, o no hay backups nuevos en S3.
 

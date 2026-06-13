@@ -8,16 +8,18 @@ Rollbacks: cada versión puede tener asociada una función ``down`` en
 
 .. deprecated::
    **Este módulo gestiona v1-v32 (sistema legado)**. El sistema de migraciones
-   canónico del proyecto es **Alembic** (``db/alembic/``). Desde v22 en
-   adelante, todas las migraciones nuevas se crean en Alembic.
+   canónico del proyecto es **Alembic** (``db/alembic/``). Todas las
+   migraciones nuevas se crean exclusivamente en Alembic.
 
-   Plan de consolidación:
+   Estado de consolidación (completada 2026-06-02):
    - v1-v13: cubiertos por el baseline Alembic ``baseline001``
-   - v14-v32: cubiertos por las migraciones Alembic v14-v22+
+   - v14-v22: cubiertos por las migraciones Alembic v14-v22
+   - v23-v32: cubiertos por las migraciones Alembic v23-v32
    - Este módulo se mantiene en modo lectura/compatibilidad para bases de datos
-     existentes que todavía lo usen. No añadir nuevas migraciones aquí.
+     existentes que todavía lo ejecuten. No añadir nuevas migraciones aquí.
 
    Para nuevas migraciones: ``alembic revision --autogenerate -m "descripcion"``
+   o ``alembic revision -m "descripcion"`` para migraciones manuales.
 
 .. note::
 
@@ -489,6 +491,23 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         -- para tolerar la ausencia de tablas en entornos de test.
         """,
     ),
+    (
+        33,
+        "users_password_hash",
+        "",  # handled programmatically (ALTER TABLE ADD COLUMN, idempotente)
+    ),
+    (
+        34,
+        "job_locks",
+        """
+        CREATE TABLE IF NOT EXISTS job_locks (
+            name         TEXT PRIMARY KEY,
+            acquired_at  TEXT NOT NULL,
+            expires_at   TEXT NOT NULL,
+            holder       TEXT NOT NULL DEFAULT ''
+        );
+        """,
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -605,10 +624,13 @@ ROLLBACKS: dict[int, str] = {
         DROP INDEX IF EXISTS idx_adj_nombre_importe;
         DROP INDEX IF EXISTS idx_adj_ccaa_nombre;
     """,
+    34: """
+        DROP TABLE IF EXISTS job_locks;
+    """,
 }
 
 # Migraciones que NO se pueden revertir (solo ADD COLUMN sin DROP COLUMN)
-_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10, 14, 15, 30}
+_IRREVERSIBLE_VERSIONS = {3, 4, 6, 10, 14, 15, 30, 33}
 
 
 def current_version(conn: Any) -> int:
@@ -684,6 +706,9 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 32: índices de rendimiento (programático, tolera tablas ausentes)
         if version == 32:
             _apply_v32_perf_indexes(conn)
+        # Migración 33: password_hash column on users (sign-up email/password)
+        if version == 33:
+            _apply_v33_password_hash(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -962,6 +987,18 @@ def _apply_v10_is_admin(conn: Any) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
     except Exception:
         log.warning("migration_step_error", version=10, column="is_admin", exc_info=True)
+
+
+def _apply_v33_password_hash(conn: Any) -> None:
+    """Añade columna password_hash a users si no existe (idempotente).
+
+    Habilita el registro de usuarios locales con email + password (sign-up sin
+    Google OAuth). La columna es nullable: los usuarios OAuth no tienen hash.
+    """
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+    except Exception:
+        log.warning("migration_step_error", version=33, column="password_hash", exc_info=True)
 
 
 def _apply_v14_tecnologia(conn: Any) -> None:

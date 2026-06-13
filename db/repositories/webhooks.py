@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
 from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
+
+log = get_logger(__name__)
 
 
 def _get_webhook_master_key() -> str:
@@ -70,7 +73,7 @@ class WebhookRepository:
     def delete(self, webhook_id: int) -> bool:
         with connect() as c:
             cur = c.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
-            return cur.rowcount > 0
+            return cast(bool, cur.rowcount > 0)
 
     def update(
         self,
@@ -104,7 +107,7 @@ class WebhookRepository:
                 "UPDATE webhooks SET " + ", ".join(sets) + " WHERE id = ?",
                 tuple(params),
             )
-            return cur.rowcount > 0
+            return cast(bool, cur.rowcount > 0)
 
     def get_secret(self, webhook_id: int) -> str | None:
         """Get the effective signing secret for a webhook.
@@ -143,7 +146,7 @@ class WebhookRepository:
                     (webhook_id, event_type, status_code, 1 if success else 0, payload_size, now),
                 )
             except Exception:
-                pass  # tabla no existe aún — no crítico
+                log.debug("webhook_delivery_insert_failed", webhook_id=webhook_id, exc_info=True)
             if success:
                 c.execute(
                     "UPDATE webhooks SET last_triggered_at = ?, last_status = ?, failure_count = 0 WHERE id = ?",
@@ -181,7 +184,7 @@ class WebhookRepository:
         if not row:
             return None
         try:
-            return json.loads(row[0])
+            return cast(dict[str, Any], json.loads(row[0]))
         except Exception:
             return None
 

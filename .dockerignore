@@ -33,6 +33,9 @@ docs/
 *.md
 !README.md
 
+# Entorno virtual Python
+.venv/
+
 # IDE
 .vscode/
 .idea/

@@ -31,7 +31,7 @@ def _pandera_installed() -> bool:
 
 if _PANDERA_AVAILABLE:
 
-    class LicitacionSchema(pa.DataFrameModel):
+    class LicitacionSchema(pa.DataFrameModel):  # type: ignore[misc]
         """Schema del DataFrame base de licitaciones (post-enriquecimiento)."""
 
         id_externo: Series[str] = pa.Field(nullable=False)
@@ -48,7 +48,7 @@ if _PANDERA_AVAILABLE:
             coerce = True
             strict = False  # allow extra columns
 
-    class AdjudicacionSchema(pa.DataFrameModel):
+    class AdjudicacionSchema(pa.DataFrameModel):  # type: ignore[misc]
         """Schema del DataFrame de adjudicaciones."""
 
         licitacion_id: Series[str] = pa.Field(nullable=False)
@@ -60,7 +60,7 @@ if _PANDERA_AVAILABLE:
             coerce = True
             strict = False
 
-    class KpiSnapshotSchema(pa.DataFrameModel):
+    class KpiSnapshotSchema(pa.DataFrameModel):  # type: ignore[misc]
         """Schema para datos pre-computados de KPI."""
 
         metric_name: Series[str] = pa.Field(nullable=False)
@@ -96,11 +96,11 @@ def validate_licitaciones(df: pd.DataFrame, *, lazy: bool = True) -> pd.DataFram
     """
     if not _PANDERA_AVAILABLE:
         return df
-    return LicitacionSchema.validate(df, lazy=lazy)  # type: ignore[return-value]
+    return LicitacionSchema.validate(df, lazy=lazy)  # type: ignore[no-any-return]
 
 
 def validate_adjudicaciones(df: pd.DataFrame, *, lazy: bool = True) -> pd.DataFrame:
     """Valida el DataFrame de adjudicaciones contra el schema."""
     if not _PANDERA_AVAILABLE:
         return df
-    return AdjudicacionSchema.validate(df, lazy=lazy)  # type: ignore[return-value]
+    return AdjudicacionSchema.validate(df, lazy=lazy)  # type: ignore[no-any-return]

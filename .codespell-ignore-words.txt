@@ -93,3 +93,11 @@ contener
 imposible
 arquitectural
 assertIn
+analisis
+sesion
+mappin
+conector
+relevante
+inicial
+ortogonal
+fases

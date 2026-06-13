@@ -11,15 +11,12 @@ dependencies = [
     "requests>=2.31.0,<3",
     "lxml>=5.0.0,<7",
     "pandas>=2.1.0,<3",
-    "streamlit>=1.33.0,<2",
-    "plotly>=5.18.0,<7",
     "python-dateutil>=2.8.2,<3",
     "tenacity>=8.2.0,<10",
     "openpyxl>=3.1.0,<4",
-    "libsql>=0.1.0,<1",
+    "libsql>=0.1.0,<0.3",
     "python-dotenv>=1.0.0,<2",
     "pydantic-settings>=2.0.0,<3",
-    "streamlit-aggrid>=0.3.3,<1",
     "structlog>=24.1.0,<26",
     "pybreaker>=1.0.0,<2",
     "reportlab>=4.0,<5",
@@ -32,6 +29,8 @@ dependencies = [
     "alembic>=1.13.0,<2",
     "fastapi>=0.110.0,<1",
     "redis>=5.0,<6",
+    "cachetools>=5.3.0,<8",
+    "brotli-asgi>=1.4.0,<2",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +59,23 @@ tracing = [
     "opentelemetry-sdk>=1.20.0,<3",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
     "opentelemetry-instrumentation-fastapi>=0.45b0,<2",
+]
+# Cola de tareas asíncrona (Dramatiq + Redis). Scheduler en producción.
+# Instalar con: pip install tenderflow[queue]
+# Sin este extra, scheduler/queue.py opera en modo inline síncrono.
+queue = [
+    "dramatiq[redis]>=1.14.0,<2",
+]
+# Motor DuckDB para exports Parquet analíticos pesados.
+# Instalar con: pip install tenderflow[analytics]
+# Sin este extra, db/analytics.py usa pandas como fallback.
+analytics = [
+    "duckdb>=0.10.0,<2",
+]
+# Cifrado de webhooks y secretos derivados.
+# Instalar con: pip install tenderflow[crypto]
+crypto = [
+    "cryptography>=42.0,<50",
 ]
 
 [tool.setuptools.packages.find]
@@ -101,35 +117,34 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002", "SIM117", "F841", "E402"]
-"dashboard/*" = ["S110", "RUF001", "RUF002", "RUF003"]  # unicode UI chars are intentional
-"dashboard/session_keys.py" = ["S105"]  # LOGIN_PWD is a session-state key name, not a password
-"db/database.py" = ["S608", "E402", "RUF022"]  # SQL built from internal dataclass-field constants; E402 intentional facade re-exports
-"scraper/ml_classifier.py" = ["S608", "E402"]  # SQL built from internal schema-detection strings; E402 re-exports at module bottom
+"db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
+"scraper/ml_classifier.py" = ["E402"]  # E402 re-exports at module bottom
 "api/routes/licitaciones.py" = ["E402"]  # TypeVar declared before imports for Python 3.11 compatibility
-"db/alembic/*" = ["S608"]   # SQL in migrations is schema-only, not user-controlled
-"db/events.py" = ["S608"]   # SQL built from internal event-type constants
-"db/feature_store.py" = ["S608"]  # SQL built from internal feature-name constants
-"db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
-"dashboard/pages/investigador.py" = ["S608"]  # SQL built from validated filter params
-"services/investigador/*" = ["S608"]  # SQL built from escaped FTS5 queries and placeholders
+# S608: SQL built from internal dataclass-field/schema constants, not user input.
+# These files ONLY construct SQL from controlled code constants — no user data reaches the column/table names.
+"db/acl.py" = ["S608"]
+"db/analytics.py" = ["S608"]
 "db/connection.py" = ["S608"]  # get_table_columns uses table param from internal callers only
-"db/upsert.py" = ["S608"]  # SQL built from internal dataclass-field constants, not user input
-"scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings, not user input
-"api/routes/ask.py" = ["S608"]  # SQL built from FTS5 query with validated user input
-"db/dlq.py" = ["S608"]  # SQL with placeholders for internal IDs
-"db/notifications.py" = ["S608"]  # SQL with placeholders for internal IDs
-"db/repositories/adjudicaciones.py" = ["S608"]  # SQL filter builder uses validated column names
-"db/repositories/extraction_runs.py" = ["S608"]  # SQL built from internal column constants
-"db/repositories/watchlist.py" = ["S608"]  # SQL built from internal column constants and placeholders
-"db/repositories/api_keys.py" = ["S608"]  # SQL built from internal column constants
-"db/repositories/base.py" = ["S608"]  # SQL built from internal column constants
-"db/repositories/webhooks.py" = ["S608"]  # SQL built from internal column constants
-"scheduler/retention.py" = ["S608"]  # SQL built from internal table/column constants
-"services/auth.py" = ["S608"]  # SQL built from internal column constants
-"services/extraction_runs.py" = ["S608"]  # SQL built from internal column constants
-"services/gdpr.py" = ["S608"]  # SQL built from internal table constants
-"services/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
-"services/watchlist.py" = ["S608"]  # SQL built from internal column constants
+"db/dlq.py" = ["S608"]  # placeholders-for-IDs pattern, not user data
+"db/notifications.py" = ["S608"]  # placeholders-for-IDs pattern, not user data
+"db/upsert.py" = ["S608"]  # SQL built from internal dataclass-field constants
+"db/alembic/*" = ["S608"]  # SQL in migrations is schema-only, not user-controlled
+"db/repositories/adjudicaciones.py" = ["S608"]
+"db/repositories/api_keys.py" = ["S608"]
+"db/repositories/extraction_runs.py" = ["S608"]
+"db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
+"db/repositories/watchlist.py" = ["S608"]
+"db/repositories/webhooks.py" = ["S608"]
+"scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings
+"api/routes/ask.py" = ["S608"]  # FTS5 query with validated user input via parameterized queries
+"services/investigador/*" = ["S608"]
+"services/auth.py" = ["S608"]
+"services/extraction_runs.py" = ["S608"]
+"services/gdpr.py" = ["S608"]
+"services/licitaciones.py" = ["S608"]
+"services/watchlist.py" = ["S608"]
+# S608 removed from these files — handled inline with # noqa: S608 + justification:
+#   db/events.py, db/feature_store.py, db/repositories/base.py, scheduler/retention.py
 
 [tool.ruff.format]
 quote-style = "double"
@@ -141,32 +156,12 @@ strict = true
 exclude = ["scripts/"]
 
 # ── Módulos que PASAN mypy strict (sin override) ─────────────────────────
-# dashboard.bootstrap, dashboard.session_keys, dashboard.theme.*,
-# dashboard.pages._base, dashboard.router, dashboard.filters.*,
-# config.*, db.database, db.users, shared.*
-# Añadir módulos aquí al limpiarlos; retirarlos del bloque de overrides.
+# Todos los módulos de producción pasan strict desde 2026-05-29.
+# Solo tests y scripts mantienen override (no requieren strict).
 
-# Módulos que aún no pasan strict — ir reduciendo esta lista progresivamente
+# Tests y scripts — no requieren strict typing
 [[tool.mypy.overrides]]
 module = [
-    "dashboard.app",
-    "dashboard.components.*",
-    "dashboard.embeddings",
-    "dashboard.kpi_bar",
-    "dashboard.pages.admin",
-    "dashboard.pages.calidad_datos",
-    "dashboard.pages.clusters",
-    "dashboard.pages.competidores.*",
-    "dashboard.pages.detalle",
-    "dashboard.pages.geografia",
-    "dashboard.pages.mi_watchlist",
-    "dashboard.pages.observabilidad",
-    "dashboard.pages.organos",
-    "dashboard.pages.pipeline_alertas",
-    "dashboard.pages.proyectos_modulos",
-    "dashboard.pages.resumen",
-    "dashboard.pages.tecnologias",
-    "dashboard.pages.tendencias",
     "tests.*",
     "scripts.*",
 ]
@@ -178,24 +173,11 @@ disallow_any_generics = false
 warn_unused_ignores = false
 disallow_untyped_calls = false
 
-# Módulos con errores type-arg / no-any-return / no-untyped-call pre-existentes
-[[tool.mypy.overrides]]
-module = [
-    "scraper.atom_live",
-    "dashboard.utils.dates",
-    "services.rate_limit_redis",
-    "shared.cache",
-]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-warn_return_any = false
-disallow_any_generics = false
-disallow_untyped_calls = false
-warn_unused_ignores = false
-
 # Dependencias sin stubs útiles
 [[tool.mypy.overrides]]
 module = [
+    "duckdb",
+    "duckdb.*",
     "libsql",
     "libsql.*",
     "libsql_experimental",
@@ -205,12 +187,6 @@ module = [
     "lxml.*",
     "dateutil",
     "dateutil.*",
-    "streamlit",
-    "streamlit.*",
-    "st_aggrid",
-    "st_aggrid.*",
-    "plotly",
-    "plotly.*",
     "reportlab",
     "reportlab.*",
     "faiss",
@@ -238,58 +214,14 @@ module = [
     "redis.*",
     "rq",
     "rq.*",
-    "duckdb",
-    "duckdb.*",
     "requests",
     "requests.*",
     "cachetools",
     "cachetools.*",
+    "statsmodels",
+    "statsmodels.*",
 ]
 ignore_missing_imports = true
-
-# Módulos pendientes de tipado estricto — ir limpiando progresivamente
-# P8 (2026-05-23): config.settings, shared.auth_core, api.auth, db.audit, db.totp
-#                  cerrados (mypy clean). Removidos de ignore_errors.
-[[tool.mypy.overrides]]
-module = [
-    "shared.i18n",
-    "shared.schemas",
-    "api.cache",
-    "api.app",
-    "api.routes.licitaciones",
-    "api.routes.webhooks",
-    "api.routes.security",
-    "api.routes.meta",
-    "api.routes.me",
-    "api.routes.exports",
-    "api.routes.feedback",
-    "api.routes.health",
-    "db.analytics",
-    "db.webhooks",
-    "db.repositories.webhooks",
-    "db.repositories.feedback",
-    "observability.sentry",
-    "scraper.ml_pipeline",
-    "scraper.ml_classifier",
-    "dashboard.pages.tendencias_cpv",
-    "dashboard.pages.comparador",
-    "dashboard.pages.investigador",
-    "dashboard.pages.active_learning",
-    "dashboard.forecast",
-    "dashboard.stats._base",
-    "scheduler.concept_drift",
-    "scheduler.drift_monitor",
-    "scheduler.drift_report",
-    "scheduler.queue",
-    "scheduler.loop",
-]
-ignore_errors = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-warn_return_any = false
-disallow_any_generics = false
-warn_unused_ignores = false
-disallow_untyped_calls = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -308,12 +240,10 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["api", "db", "scraper", "scheduler", "services", "shared", "observability", "config", "dashboard", "llm"]
+source = ["api", "db", "scraper", "scheduler", "services", "shared", "observability", "config", "llm"]
 omit = [
     "tests/*",
     "*/__pycache__/*",
-    "dashboard/utils/chart_helpers.py",
-    "dashboard/utils/lazy.py",
     "scripts/*",
     "scheduler/register_daily_task_windows.ps1",
 ]
@@ -323,8 +253,7 @@ omit = [
 # 51 → 55 (2026-05-23): tests de threshold_tuning, model_registry, feature_store, drift_report
 # 55 → 60 (2026-05-23): Bloque 4 Fase 1 — tests de middleware, shared/cache, scheduler/loop,
 #                        contract tests DTOs, tests de api/middleware y scraper/resilience
-# 60 → 65 (2026-05-23): Bloque 4 Fase 2 — tests de services/watchlist, services/analytics_engine,
-#                        cerrando overrides mypy para dashboard.cache y dashboard.data_loader
+# 60 → 65 (2026-05-23): Bloque 4 Fase 2 — tests de services/watchlist, services/analytics_engine
 # 65 → 70 (2026-05-23): B12 — tests para api/routes/ask.py, stream.py, search.py (22 tests nuevos)
 fail_under = 70
 exclude_lines = [
@@ -336,7 +265,7 @@ exclude_lines = [
 
 [tool.bandit]
 # Configuración para el hook de pre-commit: bandit -c pyproject.toml -r
-targets = ["api", "db", "scraper", "scheduler", "dashboard", "shared", "config"]
+targets = ["api", "db", "scraper", "scheduler", "shared", "config"]
 skips = [
     "B101",  # assert — cubierto por ruff S101 ya ignorado en tests
     "B603",  # subprocess sin shell — permitido en scheduler

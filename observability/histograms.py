@@ -1,10 +1,9 @@
-"""Histogramas de rendimiento para el dashboard.
+"""Histogramas de rendimiento para render y queries de BD.
 
-Expone helpers para medir tiempos de render de páginas y queries de BD,
+Expone helpers para medir tiempos de render y queries de BD,
 usables como decoradores o context managers.
 
 Métricas añadidas:
-  - dashboard_render_seconds{page}   — Tiempo de render de cada página Streamlit
   - db_query_seconds{query}          — Tiempo de consultas SQLite
 
 Los valores se registran en structlog (siempre) y opcionalmente en
@@ -35,12 +34,6 @@ log = get_logger(__name__)
 try:
     from prometheus_client import Histogram
 
-    _RENDER_HIST = Histogram(
-        "dashboard_render_seconds",
-        "Tiempo de render de una página del dashboard (segundos)",
-        ["page"],
-        buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
-    )
     _QUERY_HIST = Histogram(
         "db_query_seconds",
         "Tiempo de ejecución de queries SQLite (segundos)",
@@ -69,12 +62,7 @@ def timed_render(page: str) -> Generator[None]:
         yield
     finally:
         elapsed = time.monotonic() - t0
-        log.debug("dashboard_render_seconds", page=page, seconds=round(elapsed, 4))
-        if _PROM_AVAILABLE:
-            try:
-                _RENDER_HIST.labels(page=page).observe(elapsed)
-            except Exception:
-                pass  # No interrumpir el flujo si Prometheus falla
+        log.debug("render_seconds", page=page, seconds=round(elapsed, 4))
 
 
 @contextmanager
@@ -99,4 +87,4 @@ def timed_query(query: str) -> Generator[None]:
             try:
                 _QUERY_HIST.labels(query=query).observe(elapsed)
             except Exception:
-                pass
+                log.debug("prometheus_query_observe_failed", exc_info=True)

@@ -70,6 +70,9 @@ class Licitacion:
     ml_proba_max: float | None = None
     ml_tech_principal: str | None = None
     fecha_actualizacion_fuente: str | None = None
+    # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
+    # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
+    fuente: str = "placsp"
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
@@ -149,6 +152,40 @@ def replace_adjudicaciones(licitacion_id: str, items: Iterable[Adjudicacion]) ->
             )
             n += 1
     return n
+
+
+def replace_adjudicaciones_batch(
+    adj_por_lic: dict[str, list[Adjudicacion]],
+) -> tuple[int, int]:
+    """Reemplaza adjudicaciones para múltiples licitaciones en una sola transacción.
+
+    Agrupa todos los DELETEs y INSERTs en un único ``connect()`` context
+    (transacción), reduciendo la contención del lock de SQLite vs. el
+    patrón N+1 de llamar ``replace_adjudicaciones`` por cada licitación.
+
+    Returns:
+        Tuple of (total items persisted, number of licitaciones that failed).
+    """
+    total = 0
+    failed = 0
+    with connect() as c:
+        for lic_id, adjs in adj_por_lic.items():
+            try:
+                c.execute(
+                    "DELETE FROM adjudicaciones WHERE licitacion_id = ?",
+                    [lic_id],
+                )
+                for adj in adjs:
+                    data = asdict(adj)
+                    vals = [data[k] for k in _ADJ_KEYS]
+                    c.execute(
+                        f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
+                        vals,
+                    )
+                    total += 1
+            except Exception:
+                failed += 1
+    return total, failed
 
 
 def log_extraccion(

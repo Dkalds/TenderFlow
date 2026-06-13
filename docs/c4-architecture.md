@@ -22,7 +22,7 @@ C4Context
     System_Ext(otlp, "OTLP collector", "Trazas + métricas")
     System_Ext(slack, "Slack / Email", "Canal de alertas")
 
-    Rel(user, licitaciones, "Consulta dashboard, exporta informes")
+    Rel(user, licitaciones, "Consulta el frontend web, exporta informes")
     Rel(admin, licitaciones, "Administra modelos, flags y usuarios")
     Rel(licitaciones, plataforma, "Descarga diaria CODICE + Atom live", "HTTPS")
     Rel(licitaciones, oauth, "Login federado")
@@ -40,7 +40,7 @@ C4Container
     Person(user, "Analista comercial")
 
     System_Boundary(s1, "Licitaciones SAP") {
-        Container(streamlit, "Dashboard", "Streamlit", "UI analítica y exploración")
+        Container(web, "Web frontend", "Next.js", "UI analítica y exploración")
         Container(api, "API REST", "FastAPI", "API pública v1 con auth por API-Key")
         Container(scraper, "Scraper", "Python", "CODICE bulk + Atom live")
         Container(sched, "Scheduler", "APScheduler", "KPI precompute, drift, retrain, alertas")
@@ -53,10 +53,9 @@ C4Container
     System_Ext(plataforma, "Plataforma SP")
     System_Ext(otlp, "OTLP")
 
-    Rel(user, streamlit, "HTTPS")
+    Rel(user, web, "HTTPS")
     Rel(user, api, "HTTPS + X-API-Key")
-    Rel(streamlit, db, "SQL")
-    Rel(streamlit, duckdb, "SQL analítico")
+    Rel(web, api, "Consume API REST")
     Rel(api, db, "SQL")
     Rel(scraper, plataforma, "HTTPS")
     Rel(scraper, db, "INSERT/UPDATE")
@@ -64,7 +63,6 @@ C4Container
     Rel(sched, duckdb, "Materialize Parquet")
     Rel(sched, models, "Re-entrena y publica versión")
     Rel(api, models, "Lee versión activa")
-    Rel_R(streamlit, otlp, "Traces")
     Rel_R(api, otlp, "Traces")
 ```
 
@@ -102,10 +100,9 @@ C4Component
 La codebase se organiza en capas con dependencias unidireccionales:
 
 ```
-dashboard/  ──┐
-              ├──► services/ ──► db/ + shared/
-api/        ──┤      (dominio)    (persistencia + utilidades)
-scheduler/  ──┘
+web/        ──► api/
+api/        ──► services/ ──► db/ + shared/
+scheduler/  ──► services/      (dominio)    (persistencia + utilidades)
 ```
 
 * `services/` contiene lógica de dominio pura (normalización,
@@ -113,8 +110,7 @@ scheduler/  ──┘
   Ver ADR-007.
 * `shared/` aloja helpers transversales (auth core, signing, i18n,
   geo, schemas Pandera).
-* `dashboard/normalize.py` y `dashboard/classifiers.py` son shims que
-  re-exportan desde `services/` por compatibilidad hacia atrás.
+* `web/` consume la API REST y no accede a `services/` o `db/` directamente.
 
 ## Notas de mantenimiento
 

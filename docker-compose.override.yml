@@ -11,35 +11,10 @@
 # - REDIS_PASSWORD simplificada para dev local
 
 services:
-  dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile.dashboard
-      target: runtime  # evita rebuild completo en dev
-    volumes:
-      - licitaciones_data:/data
-      - ./dashboard:/app/dashboard:ro  # hot-reload dashboard
-      - ./shared:/app/shared:ro
-      - ./config:/app/config:ro
-      - ./db:/app/db:ro
-      - ./services:/app/services:ro
-      - ./observability:/app/observability:ro
-    environment:
-      ENV: dev
-      LOG_FORMAT: console
-      REDIS_URL: redis://:dev-password@redis:6379/0
-      REDIS_PASSWORD: dev-password
-    mem_limit: "0"  # sin límite en dev
-    # Override del healthcheck para arranque más rápido en dev
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "10",
-             "http://localhost:8501/_stcore/health"]
-      start_period: 60s
-
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
       - licitaciones_data:/data
@@ -60,7 +35,7 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
       - licitaciones_data:/data

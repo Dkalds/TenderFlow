@@ -346,7 +346,7 @@ Reglas de seguimiento personalizadas por usuario (migraciones 2, 3, 4, 8).
 
 ---
 
-### `users` — Usuarios del dashboard
+### `users` — Usuarios del frontend web
 
 Usuarios registrados vía OAuth (migración 8).
 
@@ -364,7 +364,7 @@ Usuarios registrados vía OAuth (migración 8).
 
 ### `access_log` — Log de accesos
 
-Registro de cada inicio de sesión en el dashboard (migración 9).
+Registro de cada inicio de sesión en el frontend web (migración 9).
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -410,7 +410,7 @@ Ventana deslizante de timestamps por clave para rate limiting anti-bruteforce (m
 
 ### `kpi_snapshots` — KPIs pre-calculados
 
-Snapshots de métricas pre-calculadas para acelerar la carga del dashboard (migración 13).
+Snapshots de métricas pre-calculadas para acelerar la carga del frontend web (migración 13).
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -469,10 +469,7 @@ scraper/filters.py           ←── Filtra por keywords SAP (+ ML classifier)
                                          (job separado post-scraping)
       │
       ▼
-dashboard/data_loader.py     ←── Carga DataFrame (cached @st.cache_resource)
-      │
-      ▼
-dashboard/app.py             ←── Dashboard Streamlit (KPIs, páginas, filtros)
+api/routes/analytics.py      ←── Expone KPIs y agregados al frontend web
 ```
 
 ---

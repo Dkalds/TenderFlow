@@ -16,12 +16,13 @@ import io
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 
 from api.auth import AuthContext, require_api_key
+from api.routes.auth import get_current_session_user
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -49,10 +50,10 @@ def _gc_store() -> None:
 
 def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
     """Genera un PDF tabular simple con reportlab."""
-    from reportlab.lib import colors  # type: ignore[import-untyped]
-    from reportlab.lib.pagesizes import A4, landscape  # type: ignore[import-untyped]
-    from reportlab.lib.styles import getSampleStyleSheet  # type: ignore[import-untyped]
-    from reportlab.platypus import (  # type: ignore[import-untyped]
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import (
         Paragraph,
         SimpleDocTemplate,
         Spacer,
@@ -215,3 +216,48 @@ def delete_export(
 
 
 __all__ = ["router"]
+
+
+# ── Synchronous CSV/Excel download ───────────────────────────────────────────
+
+
+@router.get("/download")
+async def download_export(
+    format: Literal["csv", "excel"] = Query("csv"),
+    q: str | None = Query(None),
+    estado: str | None = Query(None),
+    ccaa: str | None = Query(None),
+    tecnologia: str | None = Query(None),
+    fecha_desde: str | None = Query(None),
+    fecha_hasta: str | None = Query(None),
+    limit: int = Query(10000, ge=1, le=50000),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> StreamingResponse:
+    """Synchronous CSV or Excel download with current filters."""
+    from services.exports import generate_csv, generate_excel, get_export_filename
+    from services.licitaciones import fetch_for_pdf
+
+    rows = fetch_for_pdf(ccaa=ccaa, estado=estado, q=q, limit=limit)
+    # Apply extra filters not supported by fetch_for_pdf
+    if tecnologia:
+        rows = [r for r in rows if r.get("tecnologia") == tecnologia]
+    if fecha_desde:
+        rows = [r for r in rows if (r.get("fecha_publicacion") or "") >= fecha_desde]
+    if fecha_hasta:
+        rows = [r for r in rows if (r.get("fecha_publicacion") or "") <= fecha_hasta]
+
+    filename = get_export_filename(format)
+
+    if format == "excel":
+        content = generate_excel(rows)
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        content = generate_csv(rows)
+        media_type = "text/csv; charset=utf-8"
+
+    log.info("export_download", format=format, n_rows=len(rows))
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

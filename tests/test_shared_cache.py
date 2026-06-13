@@ -7,8 +7,6 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -392,15 +390,17 @@ class TestTryRedis:
 
             assert isinstance(result, _MemoryBackend)
 
-    def test_redis_connection_failure_raises_in_prod(self):
+    def test_redis_connection_failure_returns_memory_even_in_prod(self):
         mod = _fresh_import()
         with (
             self._patch_settings(redis_url="redis://bad:6379/0"),
             patch("shared.cache._RedisBackend", side_effect=ConnectionError("down")),
             patch.dict("os.environ", {"ENV": "prod"}, clear=False),
-            pytest.raises(RuntimeError, match="Redis no disponible en producción"),
         ):
-            mod._try_redis("ns")
+            result = mod._try_redis("ns")
+            from shared.cache import _MemoryBackend
+
+            assert isinstance(result, _MemoryBackend)
 
     def test_settings_import_failure_returns_memory_in_dev(self):
         mod = _fresh_import()

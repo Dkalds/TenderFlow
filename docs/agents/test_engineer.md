@@ -41,7 +41,7 @@ Antes de cualquier acción, leé `AGENTS.md` secciones 2 (áreas), 3 (invariante
 
 | Token en nombre | Marker |
 |---|---|
-| `_e2e`, `visual_regression`, `dashboard_smoke`, `dashboard_pages` | `e2e` |
+| `_e2e`, `visual_regression` | `e2e` |
 | `performance`, `load` | `load` |
 | `property`, `properties`, `property_based` | `property` |
 | `integration_e2e` | `integration` |

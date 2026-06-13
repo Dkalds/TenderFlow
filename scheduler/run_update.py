@@ -20,23 +20,11 @@ from observability import (
     get_logger,
     notify,
 )
-from scheduler.watchlist_alerts import check_and_notify
-from scraper.pipeline import backfill, update_daily, update_recent
-
-
-def _run_kpi_precompute_best_effort(log: Any) -> None:
-    """Refresh KPI snapshots after successful ingestion without failing the run."""
-    try:
-        from scheduler.kpi_precompute import run_kpi_precompute
-
-        result = run_kpi_precompute()
-        log.info(
-            "kpi_precompute_completed",
-            n_metricas=result.get("n_metricas"),
-            elapsed_ms=result.get("elapsed_ms"),
-        )
-    except Exception:
-        log.exception("kpi_precompute_failed")
+from scheduler.pipeline_runs import (
+    run_backfill_pipeline,
+    run_bulk_pipeline,
+    run_daily_pipeline,
+)
 
 
 def main() -> int:
@@ -73,60 +61,29 @@ def main() -> int:
 
     try:
         if args.daily:
-            result = update_daily()
-            _handle_daily_result(result, log)
-            if result.get("status") == "ok":
-                _run_kpi_precompute_best_effort(log)
-            return 0 if result.get("status") == "ok" else 1
+            pipeline_result = run_daily_pipeline()
+            _log_daily_summary(pipeline_result, log)
+            # Retorna 1 si la ingesta falló (alerta ya enviada en pipeline).
+            ingestion_status = pipeline_result.get("ingestion_result", {}).get("status", "ok")
+            return 0 if ingestion_status == "ok" else 1
         elif args.backfill:
-            results = backfill(args.backfill[0], args.backfill[1])
+            pipeline_result = run_backfill_pipeline(args.backfill[0], args.backfill[1])
         else:
-            results = update_recent(args.months)
+            pipeline_result = run_bulk_pipeline(args.months)
     except Exception as e:
         log.exception("pipeline_fatal_error")
         notify(AlertLevel.CRITICAL, "Pipeline licitaciones falló con error fatal", body=str(e))
         return 1
 
-    failed = [r for r in results if r.get("status") not in ("ok", "no_publicado")]
-    total_nuevas = sum(r.get("nuevas", 0) for r in results)
-    total_act = sum(r.get("actualizadas", 0) for r in results)
-    total_db = count_licitaciones()
-    log.info(
-        "pipeline_summary",
-        nuevas=total_nuevas,
-        actualizadas=total_act,
-        total_bd=total_db,
-        meses_fallidos=len(failed),
-    )
-
-    if failed:
-        notify(
-            AlertLevel.WARN,
-            "Pipeline licitaciones con meses fallidos",
-            body=f"{len(failed)} mes(es) con error.",
-            meses_fallidos=[f"{r['year']}-{r['month']:02d}:{r['status']}" for r in failed],
-            nuevas=total_nuevas,
-            total_bd=total_db,
-        )
-        return 1
-
-    _run_kpi_precompute_best_effort(log)
-
-    try:
-        check_and_notify()
-    except Exception:
-        log.exception("watchlist_alert_error")
-
+    _log_bulk_summary(pipeline_result, log)
     return 0
 
 
-def _handle_daily_result(result: dict[str, Any], log: Any) -> None:
-    """Procesa resultado del carril diario: alertas watchlist + notificación."""
-    if result.get("status") != "ok":
-        return
-
-    inserted = result.get("inserted", [])
-    modified = result.get("modified", [])
+def _log_daily_summary(pipeline_result: dict[str, Any], log: Any) -> None:
+    """Log resumen del carril diario."""
+    ingestion = pipeline_result.get("ingestion_result", {})
+    inserted = ingestion.get("inserted", [])
+    modified = ingestion.get("modified", [])
     total_nuevas = len(inserted)
     total_modificadas = len(modified)
 
@@ -135,15 +92,9 @@ def _handle_daily_result(result: dict[str, Any], log: Any) -> None:
         nuevas=total_nuevas,
         modificadas=total_modificadas,
         total_bd=count_licitaciones(),
+        steps=pipeline_result.get("steps"),
     )
 
-    # Disparar alertas watchlist (cubre tanto nuevas como existentes)
-    try:
-        check_and_notify()
-    except Exception:
-        log.exception("watchlist_alert_error_daily")
-
-    # Notificar si hubo modificaciones interesantes
     if total_modificadas > 0:
         notify(
             AlertLevel.INFO,
@@ -153,6 +104,22 @@ def _handle_daily_result(result: dict[str, Any], log: Any) -> None:
             nuevas=total_nuevas,
             modificadas=total_modificadas,
         )
+
+
+def _log_bulk_summary(pipeline_result: dict[str, Any], log: Any) -> None:
+    """Log resumen del carril bulk/backfill."""
+    results = pipeline_result.get("ingestion_results", [])
+    total_nuevas = sum(r.get("nuevas", 0) for r in results)
+    total_act = sum(r.get("actualizadas", 0) for r in results)
+    total_db = count_licitaciones()
+
+    log.info(
+        "pipeline_summary",
+        nuevas=total_nuevas,
+        actualizadas=total_act,
+        total_bd=total_db,
+        steps=pipeline_result.get("steps"),
+    )
 
 
 if __name__ == "__main__":

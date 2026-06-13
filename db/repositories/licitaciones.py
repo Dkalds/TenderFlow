@@ -17,6 +17,11 @@ from db.repositories.base import rows_to_dicts
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+
+def _escape_like(s: str) -> str:
+    """Escape SQL LIKE wildcards (%, _) in user input."""
+    return s.replace("%", r"\%").replace("_", r"\_")
+
 # Columnas devueltas en listados (resumen)
 _SUMMARY_COLS = [
     licitaciones.c.id_externo,
@@ -97,7 +102,7 @@ class LicitacionRepository:
             )
 
         if q:
-            like = f"%{q}%"
+            like = f"%{_escape_like(q)}%"
             clauses.append(
                 or_(
                     licitaciones.c.titulo.like(like),
@@ -442,7 +447,7 @@ class LicitacionRepository:
         ]
 
         if q:
-            like = f"%{q}%"
+            like = f"%{_escape_like(q)}%"
             clauses.append(
                 or_(
                     licitaciones.c.titulo.like(like),
@@ -604,8 +609,9 @@ class LicitacionRepository:
             conditions.append("estado = ?")
             params.append(estado)
         if q:
-            conditions.append("(titulo LIKE ? OR descripcion LIKE ?)")
-            params.extend([f"%{q}%", f"%{q}%"])
+            conditions.append("(titulo LIKE ? ESCAPE '\\' OR descripcion LIKE ? ESCAPE '\\')")
+            eq = _escape_like(q)
+            params.extend([f"%{eq}%", f"%{eq}%"])
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         with connect_read() as c:
             cur = c.execute(
@@ -684,8 +690,8 @@ class LicitacionRepository:
             with connect_read() as c:
                 cur = c.execute(
                     "SELECT id_externo FROM licitaciones "
-                    "WHERE titulo LIKE ? OR descripcion LIKE ? LIMIT ?",
-                    [f"%{token}%", f"%{token}%", top_k],
+                    "WHERE titulo LIKE ? ESCAPE '\\' OR descripcion LIKE ? ESCAPE '\\' LIMIT ?",
+                    [f"%{_escape_like(token)}%", f"%{_escape_like(token)}%", top_k],
                 )
                 return [(r[0], 0.20) for r in cur.fetchall()]
         except Exception:
@@ -739,8 +745,8 @@ class LicitacionRepository:
         words = [w for w in question.split() if len(w) > 3][:5]
         if not words:
             return []
-        like_clauses = " OR ".join("titulo LIKE ?" for _ in words)
-        params: list[Any] = [f"%{w}%" for w in words]
+        like_clauses = " OR ".join("titulo LIKE ? ESCAPE '\\'" for _ in words)
+        params: list[Any] = [f"%{_escape_like(w)}%" for w in words]
         conditions = [f"({like_clauses})"]
         if ccaa:
             conditions.append("ccaa = ?")

@@ -245,7 +245,7 @@ def traced(span_name: str | None = None) -> Callable[[F], F]:
                     if "session_hash" in ctx:
                         span.set_attribute("session.hash", str(ctx["session_hash"]))
                 except Exception:
-                    pass
+                    log.debug("span_contextvars_propagation_failed", exc_info=True)
 
                 try:
                     return fn(*args, **kwargs)
@@ -256,7 +256,7 @@ def traced(span_name: str | None = None) -> Callable[[F], F]:
                         span.record_exception(exc)
                         span.set_status(StatusCode.ERROR, _redact_span_text(str(exc)))
                     except Exception:
-                        pass
+                        log.debug("span_record_exception_failed", exc_info=True)
                     raise
 
         return wrapper  # type: ignore[return-value]

@@ -11,7 +11,6 @@ periódica.
 |----------------------------|-----------------------------------|----------|-------------|-----------------------------|
 | `TURSO_AUTH_TOKEN`         | Acceso a la BD remota Turso       | 90 días  | Maintainer  | GitHub Secrets + `.env`     |
 | `TURSO_DATABASE_URL`       | URL libSQL de la BD remota        | Al migrar| Maintainer  | GitHub Secrets + `.env`     |
-| `DASHBOARD_PASSWORD`       | Login único del dashboard         | 60 días  | Maintainer  | Streamlit secrets / `.env`  |
 | `ALERT_EMAIL_TO`           | Destinatario de alertas por email | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_USER`          | Cuenta remitente Gmail            | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_PASSWORD`      | App Password de Gmail (16 chars)  | 90 días              | Maintainer | GitHub Secrets + `.env` |
@@ -25,13 +24,6 @@ periódica.
 3. Actualizar el `.env` local de cada maintainer.
 4. Ejecutar `python -m scheduler.healthcheck` para verificar conectividad.
 5. Revocar el token viejo: `turso db tokens invalidate <db-name> <old-token>`.
-
-### Dashboard password
-
-1. Generar nueva password con `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-2. Actualizar secret en Streamlit Cloud / servidor y en `.env` local.
-3. Si hay usuarios pegando el hash en compartidos, rotarlo también.
-4. Comunicar a los usuarios vía canal interno antes de la hora H.
 
 ## Workflow de recordatorio automatizado
 
@@ -54,8 +46,8 @@ los secretos cuando lleven más de 90 días.
 
 ## Protección de endpoints
 
-- Dashboard: HMAC `compare_digest` para password, rate-limit progresivo
-  (2ⁿ backoff) tras 3 intentos fallidos, sesión limitada a 8h.
+- Frontend web: rate-limit progresivo (2ⁿ backoff) tras 3 intentos
+  fallidos y sesiones con caducidad limitada.
 - SQL: todas las queries usan parámetros posicionales. Los nombres de columna se
   validan contra regex `^[a-zA-Z_]\w*$` antes de usarse en `ALTER TABLE`.
 - XML: lxml con `resolve_entities=False`, `no_network=True` para prevenir XXE.

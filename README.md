@@ -11,7 +11,7 @@ Inteligencia de licitaciones del Sector Público español.
 | **Scraper** | Descarga ZIPs mensuales (bulk) y feed ATOM en vivo de PLACSP. Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
 | **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
 | **Base de datos** | SQLite local o Turso cloud (réplica embebida). Upsert idempotente, historial de cambios, DLQ |
-| **Dashboard** | Streamlit con KPIs, mapas, gráficos Plotly, comparador de periodos, watchlist, exportación PDF/Excel |
+| **Web frontend** | Next.js con interfaz principal para explorar la plataforma y consumir la API |
 | **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo) |
 | **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, alertas por nivel de severidad |
 | **Autenticación** | Password con rate limiting + Google OAuth 2.0, HMAC-signed CSRF state |
@@ -38,7 +38,7 @@ Inteligencia de licitaciones del Sector Público español.
                           ┌──────────────┼──────────────┐
                           ▼              ▼              ▼
               ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-              │ GitHub       │  │ Streamlit UI │  │ Alertas      │
+              │ GitHub       │  │  Next.js UI  │  │ Alertas      │
               │ Actions cron │  │ KPIs+gráficos│  │ email/SMTP   │
               └──────────────┘  └──────────────┘  └──────────────┘
 ```
@@ -56,13 +56,13 @@ tenderflow/
 │   └── secrets.py                #   Gestión segura de secretos
 ├── shared/                       # Utilidades cross-cutting (sin lógica de negocio)
 │   ├── auth_core.py              #   Crypto de auth (argon2/bcrypt, HMAC, PKCE)
-│   ├── dto.py                    #   DTOs Pydantic v2 (contrato API ↔ dashboard)
+│   ├── dto.py                    #   DTOs Pydantic v2 (contrato API ↔ web)
 │   ├── geo.py                    #   NUTS3 → CCAA
 │   ├── i18n.py                   #   Internacionalización (es/en)
 │   ├── schemas.py                #   Esquemas pandera para validación de DataFrames
 │   ├── signing.py                #   Rotación de claves de firma (kid/JWKS)
 │   ├── types.py                  #   TypedDicts y alias compartidos
-│   └── cache_signal.py           #   Señal de invalidación scraper → dashboard
+│   └── cache_signal.py           #   Señal de invalidación scraper → frontend
 ├── services/                     # Capa de dominio (lógica de negocio pura)
 │   ├── licitaciones.py           #   Reglas y agregaciones de licitaciones
 │   ├── normalization.py          #   Normalización de empresas y NIFs
@@ -102,20 +102,6 @@ tenderflow/
 │   ├── ml_training.py            #   Entrenamiento y re-cómputo de ml_proba
 │   ├── ml_pipeline.py            #   Pipeline ML de extremo a extremo
 │   └── resilience.py             #   Circuit breaker, reintentos, timeouts
-├── dashboard/                    # UI analítica (Streamlit)
-│   ├── app.py                    #   Entry point Streamlit
-│   ├── auth.py                   #   Password + Google OAuth 2.0
-│   ├── data_loader.py            #   Carga y enriquecimiento con caché
-│   ├── router.py                 #   Router de páginas
-│   ├── clustering.py             #   Clustering de licitaciones (MiniBatchKMeans)
-│   ├── forecast.py               #   Predicción de tendencias
-│   ├── faiss_index.py            #   Búsqueda semántica con FAISS (opcional)
-│   ├── components/               #   Cards, KPIs, navegación, toasts, iconos
-│   ├── filters/                  #   Estado de filtros y sidebar
-│   ├── pages/                    #   Una página Streamlit por sección (~20 páginas)
-│   ├── stats/                    #   Funciones estadísticas
-│   ├── theme/                    #   Tokens de diseño, CSS, plantilla Plotly
-│   └── utils/                    #   Exportación PDF/Excel, formato, geo, seguridad
 ├── scheduler/                    # Tareas programadas
 │   ├── loop.py                   #   Bucle principal del scheduler (Docker)
 │   ├── run_update.py             #   Entry point para cron / GitHub Actions
@@ -159,7 +145,7 @@ tenderflow/
 │   ├── train-model.yml           #   Entrenamiento programado del clasificador
 │   └── ...                       #   backup, changelog, release, release-sdk
 ├── Dockerfile                    # Multi-stage build (deps + runtime)
-├── docker-compose.yml            # dashboard + api + scheduler (+ monitoring opcional)
+├── docker-compose.yml            # web + api + scheduler (+ monitoring opcional)
 └── data/                         # BD SQLite + modelos + métricas (gitignored)
 ```
 
@@ -190,7 +176,7 @@ pip install -e ".[ml]"
 docker compose up -d
 ```
 
-El dashboard estará disponible en http://localhost:8501.
+La web estará disponible en http://localhost:3000 y la API en http://localhost:8080.
 El scheduler ejecuta actualizaciones automáticamente en el mismo stack.
 
 ---
@@ -201,7 +187,7 @@ Crea un archivo `.env` en la raíz del proyecto:
 
 ```dotenv
 # ── Entorno ─────────────────────────────────────────────
-ENV=dev   # "prod" obliga a definir DASHBOARD_PASSWORD
+ENV=dev
 
 # ── Base de datos (elige una opción) ────────────────────
 
@@ -212,13 +198,10 @@ ENV=dev   # "prod" obliga a definir DASHBOARD_PASSWORD
 TURSO_DATABASE_URL=libsql://<tu-db>.turso.io
 TURSO_AUTH_TOKEN=<token-con-permisos-rw>
 
-# ── Dashboard ────────────────────────────────────────────
-DASHBOARD_PASSWORD=<contraseña-segura-32-chars>   # vacío = sin autenticación
-
 # ── OAuth Google (opcional) ──────────────────────────────
 GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=<client-secret>
-OAUTH_REDIRECT_URI=http://localhost:8501
+OAUTH_REDIRECT_URI=http://localhost:3000
 OAUTH_ALLOWED_EMAILS=persona@empresa.com,otra@empresa.com
 OAUTH_ALLOWED_DOMAINS=empresa.com
 OAUTH_ADMIN_EMAILS=admin@empresa.com
@@ -233,7 +216,6 @@ ALERT_SMTP_PASSWORD=<app-password-gmail>
 ```
 
 > **Importante:** `.env` está en `.gitignore`. Nunca lo commitees.
-> Si usas Streamlit Cloud, define estas variables en *App settings → Secrets*.
 
 ---
 
@@ -262,15 +244,7 @@ veces no duplica registros.
 python -m scheduler.run_update --daily
 ```
 
-### 4. Lanzar el dashboard
-
-```bash
-streamlit run dashboard/app.py
-```
-
-Abre http://localhost:8501.
-
-### 5. Entrenar el clasificador ML
+### 4. Entrenar el clasificador ML
 
 ```bash
 python -m scraper.ml_classifier train
@@ -283,28 +257,7 @@ Requiere al menos 50 registros en la BD. El modelo se guarda en
 
 ## Despliegue
 
-### Opción A — Streamlit Cloud + Turso (recomendado, sin servidores)
-
-1. **Turso**: crea una base de datos en https://turso.tech y obtén
-   `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.
-
-2. **Streamlit Cloud**: https://share.streamlit.io → "New app"
-   - Repo: tu fork, branch `master`, main file: `dashboard/app.py`
-   - *App settings → Secrets*: añade todas las variables del `.env`
-
-3. **GitHub Actions**: configura los secrets en el repositorio
-   (*Settings → Secrets and variables → Actions*) y los workflows
-   de `.github/workflows/` corren automáticamente.
-
-| Workflow | Frecuencia | Descripción |
-|----------|------------|-------------|
-| `scrape.yml` | Diario 06:00 UTC | Bulk mensual (últimos 3 meses) |
-| `scrape-daily.yml` | Cada 4 horas | Feed ATOM en vivo |
-| `healthcheck.yml` | Cada 6 horas | Verificación de frescura de datos |
-
-También puedes ejecutarlos manualmente desde la pestaña **Actions**.
-
-### Opción B — Docker (autohospedado)
+### Docker (autohospedado)
 
 ```bash
 cp .env.example .env   # edita con tus credenciales
@@ -312,7 +265,7 @@ docker compose up -d
 ```
 
 El `docker-compose.yml` levanta tres servicios principales que comparten el mismo
-volumen de datos: `dashboard` (Streamlit), `api` (FastAPI REST) y `scheduler`
+volumen de datos: `web` (Next.js), `api` (FastAPI REST) y `scheduler`
 (cron de scraping). Opcionalmente, con `--profile monitoring`, también
 Prometheus y Grafana.
 
@@ -323,6 +276,9 @@ API_HMAC_SECRET=<secreto-hmac-32+-chars>
 FORWARDED_ALLOW_IPS=<ip-o-rango-del-reverse-proxy>
 GF_SECURITY_ADMIN_PASSWORD=<password-admin-grafana>
 ```
+
+Los workflows de `.github/workflows/` siguen disponibles para scraping,
+healthchecks y despliegues automatizados.
 
 ---
 
@@ -374,7 +330,7 @@ ruff check .
 ruff format .
 
 # Tipos
-mypy dashboard/ scraper/ db/ scheduler/ observability/ config/
+mypy scraper/ db/ scheduler/ observability/ config/ api/ shared/
 
 # Tests con cobertura (umbral: 50%)
 pytest

@@ -68,9 +68,13 @@ class AdjudicacionRepository:
         sql = (
             "SELECT a.*, l.titulo, l.organo_contratacion, l.url AS url_lic, "
             "       l.fecha_publicacion, "
-            "       l.importe AS importe_licitacion "
+            "       l.importe AS importe_licitacion, "
+            "       e.nombre_canonico AS empresa_nombre_master, "
+            "       e.nif_canonico AS empresa_nif_master, "
+            "       e.es_ute AS empresa_es_ute "
             "FROM adjudicaciones a "
             "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+            "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
         )
         params: list[Any] = []
         if ccaa_filter:

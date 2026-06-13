@@ -1,7 +1,7 @@
 """Servicio de clusters — orquesta clustering de licitaciones.
 
 En el futuro (Fase 3), delegará en tablas materializadas.
-Por ahora, proxy al módulo ``dashboard/clustering.py``.
+Por ahora, envuelve ``services.clustering_engine``.
 """
 
 from __future__ import annotations
@@ -19,6 +19,6 @@ def cluster_licitaciones(
     n_clusters: int = 8,
 ) -> pd.DataFrame:
     """Clusteriza licitaciones y devuelve DataFrame con cluster_id/cluster_label."""
-    from dashboard.clustering import cluster_licitaciones as _cl
+    from services.clustering_engine import cluster_licitaciones as _cl
 
     return _cl(df, n_clusters=n_clusters)

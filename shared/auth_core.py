@@ -1,14 +1,14 @@
-"""Lógica de autenticación pura — sin dependencias de Streamlit ni de la capa web.
+"""Lógica central de autenticación y utilidades criptográficas compartidas.
 
-Este módulo centraliza las operaciones criptográficas compartidas entre el
-dashboard y la API REST:
+Este módulo centraliza las operaciones criptográficas compartidas entre la
+aplicación y la API REST:
 
 * Verificación de contraseñas (argon2/bcrypt)
 * Firma y verificación de tokens OAuth state (HMAC-SHA256)
 * Validación de emails OAuth contra allowlists
 
-Al no importar ``streamlit``, puede usarse de forma segura en tests unitarios,
-tareas del scheduler, y cualquier módulo sin contexto de Streamlit.
+Puede usarse de forma segura en tests unitarios, tareas del scheduler y otros
+módulos compartidos.
 
 **Nonce store para anti-replay OAuth**:
 Por defecto usa un ``cachetools.TTLCache`` en memoria (proceso único, testing).
@@ -218,6 +218,23 @@ def verify_password(candidate: str, pw_hash: str) -> bool:
         return False
 
 
+def hash_password(password: str) -> str:
+    """Hashea *password* para almacenarlo en ``users.password_hash``.
+
+    Usa **Argon2id** (recomendado) y cae a **bcrypt** si argon2-cffi no está
+    instalado. El hash resultante lleva un prefijo (``$argon2id$`` o ``$2b$``)
+    que :func:`verify_password` reconoce automáticamente.
+    """
+    try:
+        from argon2 import PasswordHasher
+
+        return PasswordHasher().hash(password)
+    except ImportError:
+        import bcrypt
+
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
 # ---------------------------------------------------------------------------
 # OAuth state: HMAC-signed token
 # ---------------------------------------------------------------------------
@@ -250,6 +267,11 @@ def generate_oauth_state() -> str:
         get_signing_key(),
         payload.encode(),
         hashlib.sha256,
+        # Truncated to 128 bits (32 hex chars). SHA-256 full output is 256 bits (64 hex)
+        # but 128 bits is more than sufficient for HMAC signatures on short-lived OAuth
+        # state tokens (max_age ≤ 600s). Shorter signatures also reduce the URL size in
+        # OAuth redirect flows. If interoperability with external systems is needed in
+        # the future, consider switching to the full 64-char digest.
     ).hexdigest()[:32]
     return f"{payload}:{signature}"
 
@@ -290,6 +312,7 @@ def verify_oauth_state(
         get_signing_key(),
         payload.encode(),
         hashlib.sha256,
+        # Truncated to 128 bits — see generate_oauth_state() for rationale.
     ).hexdigest()[:32]
     valid = hmac.compare_digest(signature, expected)
     if valid:

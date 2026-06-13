@@ -59,8 +59,8 @@ def run_once(model_name: str = "sap_classifier") -> DriftStatus:
     except ImportError:
         compute_f1_drop = None  # type: ignore[assignment]
 
-    psi = float(compute_psi()) if compute_psi else 0.0
-    f1_drop = float(compute_f1_drop(model_name)) if compute_f1_drop else 0.0
+    psi = float(compute_psi()) if compute_psi is not None else 0.0
+    f1_drop = float(compute_f1_drop(model_name)) if compute_f1_drop is not None else 0.0
 
     severity, detail = _classify(psi, f1_drop)
     status = DriftStatus(psi=psi, f1_drop=f1_drop, severity=severity, detail=detail)
@@ -78,9 +78,9 @@ def run_once(model_name: str = "sap_classifier") -> DriftStatus:
             from observability.alerts import notify
 
             notify(
+                level=severity,
                 title=f"[drift:{severity}] {model_name}",
                 body=detail,
-                severity=severity,
                 tags={"model": model_name, "psi": str(round(psi, 3))},
             )
         except (ImportError, RuntimeError) as exc:

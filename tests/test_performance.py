@@ -208,7 +208,7 @@ class TestClusteringPerformance:
 
     def test_cluster_1k_rows_tfidf(self):
         """Clustering sobre 1K filas con TF-IDF debe completar en <10s."""
-        from dashboard.clustering import _tfidf_embeddings
+        from services.clustering_engine import _tfidf_embeddings
 
         texts = [
             f"Sistema SAP S/4HANA implantación módulo {'FI' if i % 3 == 0 else 'MM'} "
@@ -228,7 +228,7 @@ class TestClusteringPerformance:
         import numpy as np
         import pandas as pd
 
-        from dashboard.clustering import cluster_licitaciones
+        from services.clustering_engine import cluster_licitaciones
 
         rng = np.random.default_rng(42)
         df = pd.DataFrame(
@@ -242,12 +242,9 @@ class TestClusteringPerformance:
             }
         )
 
-        # Forzar cache clear para el benchmark
-        cluster_licitaciones.clear()
         t0 = time.monotonic()
         result = cluster_licitaciones(df, n_clusters=5)
         elapsed = time.monotonic() - t0
 
         assert "cluster_id" in result.columns
         assert elapsed < 30.0, f"Clustering 500 filas tardó {elapsed:.1f}s (máx 30s)"
-        cluster_licitaciones.clear()

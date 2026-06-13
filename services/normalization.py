@@ -1,12 +1,13 @@
 """Normalización de nombres de empresas y NIFs.
 
-Lógica de dominio pura — sin dependencias de Streamlit ni de la capa web.
-Reutilizable desde scraper, API REST y dashboard.
+Lógica de dominio pura y reutilizable desde distintas capas de la aplicación.
+Reutilizable desde scraper, API REST y otros servicios.
 
 Las funciones públicas son:
     normalize_company(name)  →  str | None
     normalize_nif(nif)       →  str | None
     parse_ute_members(name)  →  list[str]
+    fold_text(text)          →  str
 """
 
 from __future__ import annotations
@@ -51,6 +52,14 @@ _WS_RE = re.compile(r"\s+")
 def _strip_accents(text: str) -> str:
     nfkd = unicodedata.normalize("NFKD", text)
     return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
+def fold_text(text: str) -> str:
+    """Pliega texto para matching accent/case-insensitive (sin tildes + casefold).
+
+    Pensado para búsquedas de usuario: ``fold_text("Informática") == fold_text("INFORMATICA")``.
+    """
+    return _strip_accents(text).casefold()
 
 
 def normalize_company(name: str | None) -> str | None:

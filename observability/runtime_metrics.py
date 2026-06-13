@@ -86,6 +86,35 @@ try:
         buckets=(5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0),
     )
 
+    # ── SQLite write health (ADR-004 tripwires) ───────────────────────────
+    sqlite_busy_errors_total = Counter(
+        "sqlite_busy_errors_total",
+        "Errores SQLITE_BUSY detectados (tripwire ADR-004: >10/h → evaluar Postgres)",
+    )
+
+    db_write_duration_seconds = Histogram(
+        "db_write_duration_seconds",
+        "Latencia de commits de escritura SQLite (tripwire ADR-004: p99 >500ms)",
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+    )
+
+    db_concurrent_writers = Gauge(
+        "db_concurrent_writers",
+        "Número de escritores SQLite concurrentes activos",
+    )
+
+    # ── Parser field completeness ─────────────────────────────────────────
+    parser_field_null_total = Counter(
+        "parser_field_null_total",
+        "Licitaciones parseadas con campo crítico NULL (por campo)",
+        ["field"],
+    )
+
+    parser_entries_total = Counter(
+        "parser_entries_total",
+        "Total de entries parseadas por el parser CODICE",
+    )
+
     _AVAILABLE = True
 except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
@@ -109,4 +138,9 @@ except ImportError:  # pragma: no cover
     db_pool_acquire_timeout_total = _NoopMetric()  # type: ignore[assignment]
     faiss_rebuild_total = _NoopMetric()  # type: ignore[assignment]
     faiss_rebuild_duration_seconds = _NoopMetric()  # type: ignore[assignment]
+    sqlite_busy_errors_total = _NoopMetric()  # type: ignore[assignment]
+    db_write_duration_seconds = _NoopMetric()  # type: ignore[assignment]
+    db_concurrent_writers = _NoopMetric()  # type: ignore[assignment]
+    parser_field_null_total = _NoopMetric()  # type: ignore[assignment]
+    parser_entries_total = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False

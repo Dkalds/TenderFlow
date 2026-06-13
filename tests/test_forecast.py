@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from dashboard.forecast import build_forecast_df, estimate_end_date, to_months
+from services.analytics.forecast import build_forecast_df, estimate_end_date, to_months
 
 
 class TestToMonths:

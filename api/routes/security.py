@@ -6,6 +6,8 @@ POST /api/v1/security/leaked-key      — recibe notificaciones de GitHub Secret
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from api.auth import AuthContext, require_scope
@@ -78,7 +80,7 @@ async def leaked_key_notification(
     request: Request,
     x_github_public_key_identifier: str | None = Header(None),
     x_github_public_key_signature: str | None = Header(None),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Endpoint registrado en GitHub Secret Scanning Partner Program.
 
     GitHub envía una request firmada cuando detecta un token ``lic_`` en un
@@ -161,7 +163,9 @@ async def leaked_key_notification(
     summary="Verificar integridad del audit log (hash chain)",
     tags=["admin"],
 )
-async def verify_audit_integrity(auth: AuthContext = Depends(require_scope("admin"))) -> dict:
+async def verify_audit_integrity(
+    auth: AuthContext = Depends(require_scope("admin")),
+) -> dict[str, Any]:
     """Recorre el audit log y verifica que el hash chain no ha sido alterado.
 
     Requiere autenticación + scope ``admin``.

@@ -106,6 +106,45 @@ def test_persist_snapshots_returns_count(tmp_db):
     assert n == 1
 
 
+def test_persist_snapshots_batch_inserts_all_rows(tmp_db):
+    """executemany persiste todas las filas del batch (count == len)."""
+    db_mod, _ = tmp_db
+
+    from scheduler.kpi_precompute import _persist_snapshots
+
+    snapshots = [
+        {
+            "metrica": f"m{i}",
+            "dimension": "global",
+            "valor": i,
+            "valor_text": None,
+            "computed_at": "2024-01-01T00:00:00",
+        }
+        for i in range(5)
+    ]
+
+    with db_mod.connect() as c:
+        n = _persist_snapshots(c, snapshots)
+        row = c.execute("SELECT COUNT(*) FROM kpi_snapshots").fetchone()
+
+    assert n == 5
+    assert row[0] == 5
+
+
+def test_persist_snapshots_empty_returns_zero(tmp_db):
+    """Lista vacía: 0 filas, no inserta nada (pero limpia las previas)."""
+    db_mod, _ = tmp_db
+
+    from scheduler.kpi_precompute import _persist_snapshots
+
+    with db_mod.connect() as c:
+        n = _persist_snapshots(c, [])
+        row = c.execute("SELECT COUNT(*) FROM kpi_snapshots").fetchone()
+
+    assert n == 0
+    assert row[0] == 0
+
+
 def test_persist_snapshots_clears_previous(tmp_db):
     """_persist_snapshots borra los snapshots anteriores antes de insertar."""
     db_mod, _ = tmp_db

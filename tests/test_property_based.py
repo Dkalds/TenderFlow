@@ -2,8 +2,7 @@
 
 Targets:
   - scraper.codice_parser.parse_summary
-  - dashboard.utils.security.safe_url
-  - dashboard.normalize.normalize_company
+  - services.normalization.normalize_company
   - scraper.filters.matches_sap
 """
 
@@ -12,8 +11,7 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from dashboard.normalize import normalize_company
-from dashboard.utils.security import safe_url
+from services.normalization import normalize_company
 from scraper.codice_parser import parse_summary
 from scraper.filters import matches_sap
 
@@ -88,59 +86,6 @@ class TestParseSummaryProperties:
         assert result.get("organo_contratacion") == organo.strip()
         assert result.get("estado") == estado
         assert result.get("moneda") == "EUR"
-
-
-# ── safe_url ──────────────────────────────────────────────────────────────────
-
-
-class TestSafeUrlProperties:
-    @given(_text_or_none)
-    def test_returns_none_or_string(self, url):
-        """safe_url always returns None or str, never raises."""
-        result = safe_url(url)
-        assert result is None or isinstance(result, str)
-
-    @given(_text_or_none)
-    def test_non_http_returns_none(self, url):
-        """URLs that don't start with http:// or https:// are rejected."""
-        if url is not None and not url.strip().lower().startswith(("http://", "https://")):
-            assert safe_url(url) is None
-
-    @given(st.text(min_size=1, max_size=100).map(lambda s: "http://" + s))
-    def test_http_url_accepted(self, url):
-        """http:// URLs are always accepted and returned stripped."""
-        result = safe_url(url)
-        assert result == url.strip()
-
-    @given(st.text(min_size=1, max_size=100).map(lambda s: "https://" + s))
-    def test_https_url_accepted(self, url):
-        """https:// URLs are always accepted and returned stripped."""
-        result = safe_url(url)
-        assert result == url.strip()
-
-    @given(st.text(min_size=1, max_size=100).map(lambda s: "HTTPS://" + s))
-    def test_https_case_insensitive(self, url):
-        """Scheme check is case-insensitive."""
-        result = safe_url(url)
-        assert result == url.strip()
-
-    @given(
-        st.sampled_from(
-            ["javascript:", "data:", "ftp://", "file://", "vbscript:", "mailto:"]
-        ).flatmap(lambda prefix: st.text(min_size=0, max_size=80).map(lambda s: prefix + s))
-    )
-    def test_dangerous_schemes_rejected(self, url):
-        """Known dangerous/non-http schemes are always rejected."""
-        assert safe_url(url) is None
-
-    @given(_non_str)
-    def test_non_string_returns_none(self, value):
-        """Non-string inputs always return None without raising."""
-        assert safe_url(value) is None  # type: ignore[arg-type]
-
-    @given(st.just(None))
-    def test_none_returns_none(self, url):
-        assert safe_url(url) is None
 
 
 # ── normalize_company ─────────────────────────────────────────────────────────

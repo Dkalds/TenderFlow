@@ -8,7 +8,7 @@
   },
   "customizations": {
     "codespaces": {
-      "openFiles": ["README.md", "dashboard/app.py"]
+      "openFiles": ["README.md"]
     },
     "vscode": {
       "settings": {
@@ -47,13 +47,9 @@
   },
   "postCreateCommand": "pip install --user -r requirements-dev.txt && pip install --user -e . && pre-commit install && python scripts/doctor.py || true",
   "postAttachCommand": {
-    "info": "echo 'Run: make app  (dashboard) or make api  (REST API). Doctor: make doctor.'"
+    "info": "echo 'Run: make api  (REST API). Doctor: make doctor.'"
   },
   "portsAttributes": {
-    "8501": {
-      "label": "Streamlit Dashboard",
-      "onAutoForward": "openPreview"
-    },
     "8080": {
       "label": "FastAPI REST",
       "onAutoForward": "notify"
@@ -67,7 +63,7 @@
       "onAutoForward": "silent"
     }
   },
-  "forwardPorts": [8501, 8080],
+  "forwardPorts": [8080],
   "remoteEnv": {
     "PYTHONPATH": "${containerWorkspaceFolder}",
     "PYTHONDONTWRITEBYTECODE": "1",

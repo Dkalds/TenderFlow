@@ -23,7 +23,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run Semgrep
         run: semgrep scan --config=p/ci --config=p/python --config=p/security-audit --config=p/owasp-top-ten --error --sarif --output=semgrep.sarif
@@ -41,11 +41,11 @@ jobs:
     name: detect-secrets scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -62,9 +62,9 @@ jobs:
     name: Bandit SAST
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -93,9 +93,9 @@ jobs:
     name: Dependency vulnerability scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -107,6 +107,10 @@ jobs:
           pip install --no-deps "starlette>=1.0.1"
           pip install pip-audit
 
+      # NOTA: Los CVE ignorados en ci.yml (audit job) se re-evalúan aquí sin --ignore-vuln.
+      # Si este job falla por esos mismos CVE, es señal de que ya tienen fix y se pueden
+      # eliminar del ignore list en ci.yml.
+      # Refs: PYSEC-2024-277, PYSEC-2026-161
       - name: Run pip-audit
         run: pip-audit --strict --desc
 
@@ -118,10 +122,9 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - { dockerfile: "Dockerfile.api", tag: "licitaciones-api:ci" }
-          - { dockerfile: "Dockerfile.dashboard", tag: "licitaciones-dashboard:ci" }
+          - { dockerfile: "docker/Dockerfile.api", tag: "licitaciones-api:ci" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build image
         run: docker build -f ${{ matrix.image.dockerfile }} -t ${{ matrix.image.tag }} .
@@ -159,8 +162,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Remind about credential rotation
         run: |
-          echo "::notice title=Rotación de credenciales::Recuerda rotar TURSO_AUTH_TOKEN y DASHBOARD_PASSWORD cada 90 días. Última verificación: $(date -u +%Y-%m-%d). Doc: docs/SECURITY.md"
+          echo "::notice title=Rotación de credenciales::Recuerda rotar TURSO_AUTH_TOKEN cada 90 días. Última verificación: $(date -u +%Y-%m-%d). Doc: docs/SECURITY.md"

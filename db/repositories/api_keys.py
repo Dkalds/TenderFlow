@@ -9,6 +9,9 @@ from typing import Any
 
 from db.database import connect, connect_read, get_table_columns, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class ApiKeyRepository:
@@ -157,7 +160,7 @@ class ApiKeyRepository:
                     (now_utc_iso(), key_id),
                 )
         except Exception:
-            pass
+            log.debug("api_key_update_last_used_failed", key_id=key_id, exc_info=True)
 
     def create(self, name: str, scopes: str = "*") -> str:
         raw = secrets.token_urlsafe(32)

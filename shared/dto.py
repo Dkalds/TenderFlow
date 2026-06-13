@@ -1,4 +1,4 @@
-"""DTOs Pydantic v2 para la frontera FastAPI ↔ dashboard.
+"""DTOs Pydantic v2 para la frontera FastAPI ↔ aplicación.
 
 Define los modelos de datos para serialización/deserialización en la API.
 Estos modelos son el contrato público del sistema.
@@ -97,7 +97,7 @@ class WatchlistEntry(BaseModel):
     """Entrada de la watchlist de un usuario.
 
     Contrato compartido entre `services/watchlist.py`, `api/routes/watchlist_feed.py`
-    y la página `dashboard/pages/mi_watchlist.py`.
+    y las vistas de watchlist de la aplicación.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -115,7 +115,7 @@ class WatchlistEntry(BaseModel):
 
 
 class ClusterSummary(BaseModel):
-    """Resumen de un cluster generado por `services/clusters.py`/`dashboard/clustering.py`."""
+    """Resumen de un cluster generado por `services/clusters.py`."""
 
     model_config = ConfigDict(from_attributes=True)
 

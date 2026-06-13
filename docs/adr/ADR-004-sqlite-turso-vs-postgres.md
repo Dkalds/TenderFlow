@@ -47,6 +47,24 @@ optional remote replica for production deployments.
   standard enough that most queries port directly; FTS5 would need to be
   replaced with `pg_trgm` or a dedicated search engine.
 
+## Migration Tripwires (added 2026-06-10)
+
+Quantitative criteria instrumented in Prometheus (`observability/runtime_metrics.py`)
+that signal the need to evaluate migration to PostgreSQL:
+
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| `sqlite_busy_errors_total` | >10 per hour (sustained) | Evaluate Postgres migration |
+| `db_write_duration_seconds` p99 | >500ms | Investigate write contention |
+| `db_concurrent_writers` | >3 sustained | Architecture review (ADR supuesto: single writer) |
+
+**Current writers** (2026-06-10): scraper pipeline, scheduler (KPI/aggregates/drift),
+API (webhooks, exports, API keys, watchlist, auth), dashboard (sessions/auth).
+The original "single writer" assumption from ADR-004 no longer holds; these
+tripwires provide a proactive migration signal instead of reacting to incidents.
+
+Grafana alert rule: `rate(sqlite_busy_errors_total[1h]) > 10` → PagerDuty/Slack.
+
 ## Alternatives Considered
 
 | Alternative | Reason rejected |

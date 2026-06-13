@@ -27,11 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from api.auth import (  # require_api_key: used by list_ask_models
-    AuthContext,
-    require_api_key,
-    require_scope,
-)
+from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -156,22 +152,31 @@ def _stream_ask(request: AskRequest) -> Any:
 )
 async def ask_question(
     body: AskRequest,
-    auth: AuthContext = Depends(require_scope("ask:read")),
+    user: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
     """Responde a preguntas sobre licitaciones usando RAG + LLM.
 
     Recupera las licitaciones más relevantes mediante FTS5 y las usa como
     contexto para generar una respuesta con el modelo LLM configurado.
 
-    Requiere scope ``ask:read``.
+    Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
     """
+    # Scope check for API key auth only (session users always allowed)
+    if user.get("auth_method") == "api_key":
+        scopes_str = user.get("scopes", "")
+        scopes = frozenset(s.strip() for s in scopes_str.split(",") if s.strip())
+        if "*" not in scopes and "ask:read" not in scopes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado. Scope insuficiente.",
+            )
 
     log.info(
         "ask.request",
         model=body.model,
         top_k=body.top_k,
         question_len=len(body.question),
-        user_key_id=auth.key_id,
+        user_key_id=user.get("user_id"),
     )
 
     generator = _stream_ask(body)
@@ -191,7 +196,7 @@ async def ask_question(
     summary="Modelos LLM disponibles para el endpoint /ask",
 )
 async def list_ask_models(
-    auth: AuthContext = Depends(require_api_key),
+    _user: dict[str, Any] = Depends(require_any_auth),
 ) -> AskModelInfo:
     """Lista los modelos LLM disponibles para usar en POST /api/v1/ask."""
     from llm.client import AVAILABLE_MODELS

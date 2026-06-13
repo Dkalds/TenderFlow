@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from config import settings
 from observability.logging import get_logger
@@ -52,6 +52,8 @@ from scraper.ml_pipeline import (
 )
 
 if TYPE_CHECKING:
+    import numpy as np
+    import numpy.typing as npt
     import pandas as pd
 
 log = get_logger(__name__)
@@ -292,7 +294,7 @@ class SAPClassifier:
                     cost_fn=cost_fn,
                 )
                 # Sustituir pipeline por versión calibrada y actualizar threshold
-                self.pipeline = tune_result.calibrated  # type: ignore[assignment]
+                self.pipeline = tune_result.calibrated
                 self._threshold = tune_result.threshold
                 metrics["optimal_threshold"] = round(tune_result.threshold, 4)
                 metrics["fbeta_calibrated"] = round(tune_result.fbeta, 4)
@@ -385,7 +387,9 @@ class SAPClassifier:
         threshold = self._threshold
         return [(float(p[1]) >= threshold, float(p[1])) for p in probas]
 
-    def predict_proba(self, texts: list[str], *, entity_ids: list[str] | None = None):
+    def predict_proba(
+        self, texts: list[str], *, entity_ids: list[str] | None = None
+    ) -> npt.NDArray[np.floating[Any]]:
         """Devuelve la matriz de probabilidades sklearn (shape: [n, 2]).
 
         Columna 0 = P(no-SAP), columna 1 = P(SAP). Idéntico a
@@ -722,7 +726,7 @@ class SAPClassifier:
             threshold=obj._threshold,
             trained_at=obj.metadata.get("trained_at", "legacy"),
         )
-        return obj
+        return cast(SAPClassifier, obj)
 
     @classmethod
     def is_available(cls, path: Path | None = None) -> bool:

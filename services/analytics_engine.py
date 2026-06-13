@@ -64,7 +64,7 @@ class _DuckDBEngine:
                 try:
                     self._con.execute("DETACH src")
                 except Exception:
-                    pass
+                    log.debug("duckdb_detach_src_failed", exc_info=True)
                 self._con.execute(f"ATTACH '{self._db_path}' AS src (TYPE sqlite, READ_ONLY)")
                 self._con.execute(
                     "CREATE OR REPLACE TABLE lic AS "
@@ -85,16 +85,27 @@ class _DuckDBEngine:
             log.warning("duckdb_engine_refresh_failed", error=str(exc))
 
     def maybe_refresh(self) -> None:
-        """Invalida y recarga si cache_signal es más reciente que el último attach."""
-        try:
-            from shared.cache_signal import get_signal_timestamp
+        """Invalida y recarga si el manifest Parquet es más reciente que el último attach.
 
-            sig_ts = get_signal_timestamp()
-            if sig_ts > self._attached_at:
-                log.debug("duckdb_engine_invalidated_by_signal")
+        Lee ``generated_at`` de ``DATA_DIR/parquet/_manifest.json`` (RFC 086). Si
+        el manifest no existe o no se puede leer, no refresca — mantiene el
+        comportamiento previo a la introducción del manifest (no rompe si el
+        export Parquet nunca corrió).
+        """
+        try:
+            from config import settings
+            from shared.parquet_manifest import read_manifest
+
+            manifest_path = settings.DATA_DIR / "parquet" / "_manifest.json"
+            manifest = read_manifest(manifest_path)
+            if manifest is None:
+                return
+            generated_ts = manifest.generated_at_timestamp()
+            if generated_ts > self._attached_at:
+                log.debug("duckdb_engine_invalidated_by_manifest")
                 self._refresh()
         except Exception:
-            pass
+            log.debug("duckdb_manifest_refresh_check_failed", exc_info=True)
 
     def execute(self, sql: str, params: list[Any] | None = None) -> duckdb.DuckDBPyRelation:
         """Ejecuta una query y devuelve la relación DuckDB (llama .df() para DataFrame)."""
@@ -119,19 +130,14 @@ def _build_engine() -> _DuckDBEngine | None:
         return None
 
 
+_engine_singleton: _DuckDBEngine | None = None
+_engine_initialized = False
+
+
 def get_engine() -> _DuckDBEngine | None:
-    """Devuelve el singleton DuckDB, cacheado por Streamlit.
-
-    Importa streamlit sólo si disponible (no falla en scripts/tests).
-    """
-    try:
-        import streamlit as st
-
-        @st.cache_resource
-        def _cached_engine() -> _DuckDBEngine | None:
-            return _build_engine()
-
-        return _cached_engine()
-    except Exception:
-        # Fuera de contexto Streamlit (tests, scripts)
-        return _build_engine()
+    """Devuelve el singleton DuckDB, cacheado en memoria."""
+    global _engine_singleton, _engine_initialized
+    if not _engine_initialized:
+        _engine_singleton = _build_engine()
+        _engine_initialized = True
+    return _engine_singleton

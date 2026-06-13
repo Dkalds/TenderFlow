@@ -12,3 +12,4 @@ Rules:
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context
 - After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+- The `graphify` CLI is a maintainer-local tool, NOT on PyPI/npm — never try to install it. If the CLI is missing: read the committed artifacts (`graphify-out/graph.json` / `wiki/` / `GRAPH_REPORT.md`) directly; if `graphify-out/` is absent entirely, fall back to grep + docs/AGENT_PLAYBOOK.md and skip all `graphify` commands (including the post-edit `graphify update .`).
