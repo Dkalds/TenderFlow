@@ -779,12 +779,12 @@ export default function CompetidoresPage() {
 
       {/* Drill-down Sheet */}
       <Sheet open={!!drillDownCompany} onOpenChange={(open) => !open && setDrillDownCompany(null)}>
-        <SheetContent>
+        <SheetContent className="flex flex-col overflow-hidden">
           <SheetHeader>
             <SheetTitle>{drillDownCompany?.nombre}</SheetTitle>
           </SheetHeader>
           {drillDownCompany && (
-            <div className="mt-6 space-y-4">
+            <div className="mt-6 space-y-4 overflow-y-auto flex-1 pr-4">
               {drillDownCompany.nif && (
                 <Badge variant="outline">NIF: {drillDownCompany.nif}</Badge>
               )}
