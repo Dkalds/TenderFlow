@@ -131,7 +131,7 @@ export const SpainMap = React.memo(function SpainMap({
 
   React.useEffect(() => {
     let cancelled = false;
-    fetch("/data/spain-ccaa.geojson")
+    fetch("/data/spain-ccaa.json")
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
