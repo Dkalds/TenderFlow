@@ -24,6 +24,9 @@ class CompetitorFilters(BaseModel):
     fecha_desde: date | None = None
     fecha_hasta: date | None = None
     ccaa: str | None = None
+    tecnologia: str | None = None
+    estado: str | None = None
+    importe_min: float | None = None
     limit: int = 20
 
 
@@ -34,13 +37,14 @@ class CompetitorEntry(BaseModel):
     count: int
     importe: float
     cuota: float
+    empresa_id: int | None = None
     nif: str | None = None
     contratos_por_anio: float = 0.0
     importe_medio: float = 0.0
     baja_media: float | None = None
     n_organos: int = 0
     ofertas_medias: float | None = None
-    pct_monopolio: float = 0.0
+    pct_monopolio: float | None = None
     pct_top_organo: float = 0.0
     ultima: str | None = None
 
@@ -76,6 +80,8 @@ class CompetitorResult(BaseModel):
     hhi: float = 0.0
     pct_oferta_unica: float = 0.0
     total_adjudicaciones: int = 0
+    total_empresas: int = 0
+    importe_total: float = 0.0
     scatter_data: list[ScatterPoint] = Field(default_factory=list)
     heatmap_ccaa: list[HeatmapCcaaCell] = Field(default_factory=list)
     pct_pyme: float = 0.0
@@ -105,11 +111,29 @@ def _load_df(ccaa: str | None) -> pd.DataFrame:
             ),
             errors="coerce",
         )
-        if "empresa" not in df.columns:
-            if "adjudicatario" in df.columns:
-                df["empresa"] = df["adjudicatario"]
-            elif "nombre" in df.columns:
-                df["empresa"] = df["nombre"]
+        # Clave de agrupación canónica: nombre del maestro de empresas (v35),
+        # con fallback al nombre crudo del adjudicatario. Sin esto las cuotas y
+        # el HHI se fragmentan entre variantes del mismo adjudicatario
+        # ("Accenture S.L." vs "Accenture, S.L.U." cuentan como dos).
+        raw_name = df["adjudicatario"] if "adjudicatario" in df.columns else df.get("nombre")
+        master_name = df.get("empresa_nombre_master")
+        if master_name is not None and raw_name is not None:
+            df["empresa"] = master_name.where(
+                master_name.notna() & (master_name.astype(str) != ""), raw_name
+            )
+        elif master_name is not None:
+            df["empresa"] = master_name
+        elif raw_name is not None:
+            df["empresa"] = raw_name
+        # NIF: preferir el canónico del maestro sobre el de la adjudicación.
+        master_nif = df.get("empresa_nif_master")
+        if master_nif is not None:
+            base_nif = df["nif"] if "nif" in df.columns else None
+            df["nif"] = (
+                master_nif.where(master_nif.notna() & (master_nif.astype(str) != ""), base_nif)
+                if base_nif is not None
+                else master_nif
+            )
     return df
 
 
@@ -122,6 +146,14 @@ def _apply_filters(df: pd.DataFrame, filters: CompetitorFilters) -> pd.DataFrame
     if filters.fecha_hasta is not None and "fecha_adjudicacion" in df.columns:
         ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
         df = df[df["fecha_adjudicacion"] <= ts]
+    # Eje de producto: segmentación por tecnología (SAP, Salesforce, …).
+    if filters.tecnologia and "tecnologia" in df.columns:
+        df = df[df["tecnologia"] == filters.tecnologia]
+    if filters.estado and "estado" in df.columns:
+        df = df[df["estado"] == filters.estado]
+    if filters.importe_min is not None and "importe_licitacion" in df.columns:
+        imp = pd.to_numeric(df["importe_licitacion"], errors="coerce")
+        df = df[imp >= filters.importe_min]
     return df
 
 
@@ -185,6 +217,12 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         nif_first = df.dropna(subset=["nif"]).groupby("empresa")["nif"].first()
         nif_by_empresa = {str(k): str(v) for k, v in nif_first.items()}
 
+    # empresa_id canónico per empresa (para enlazar perfil / watchlist)
+    empresa_id_map: dict[str, int] = {}
+    if "empresa_id" in df.columns:
+        eid_first = df.dropna(subset=["empresa_id"]).groupby("empresa")["empresa_id"].first()
+        empresa_id_map = {str(k): int(v) for k, v in eid_first.items() if pd.notna(v)}
+
     # n_organos per empresa
     n_organos_map: dict[str, int] = {}
     if "organo_contratacion" in df.columns:
@@ -204,17 +242,32 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             if pd.notna(v)
         }
 
-    # pct_monopolio per empresa (% licitaciones where empresa was only bidder)
+    # Señal de "oferta única" basada en el número REAL de ofertantes
+    # (``n_ofertas_recibidas``), no en el nº de adjudicatarios: la tabla
+    # ``adjudicaciones`` solo contiene ganadores, así que contar adjudicatarios
+    # distintos por licitación da ~1 siempre y no mide competencia. Solo se
+    # consideran licitaciones que reportan el dato (cobertura parcial según fuente).
     lic_id_col = "id_externo" if "id_externo" in df.columns else "licitacion_id"
-    pct_monopolio_map: dict[str, float] = {}
+    single_bid_lics: set[object] = set()
+    lics_con_ofertas: set[object] = set()
+    if lic_id_col in df.columns and "n_ofertas_recibidas" in df.columns:
+        _ofertas_lic = pd.to_numeric(df["n_ofertas_recibidas"], errors="coerce")
+        _per_lic = df.assign(_ofertas=_ofertas_lic).dropna(subset=["_ofertas"])
+        ofertas_por_lic = _per_lic.groupby(lic_id_col)["_ofertas"].max()
+        lics_con_ofertas = set(ofertas_por_lic.index)
+        single_bid_lics = set(ofertas_por_lic[ofertas_por_lic <= 1].index)
+
+    # pct_monopolio per empresa (% de sus licitaciones —con dato— sin rival)
+    pct_monopolio_map: dict[str, float | None] = {}
     if lic_id_col in df.columns:
-        bids_per_lic = df.groupby(lic_id_col)["empresa"].nunique()
-        single_bid_lics = set(bids_per_lic[bids_per_lic == 1].index)
         for emp_name, emp_sub in df.groupby("empresa"):
-            emp_lics = emp_sub[lic_id_col].unique()
+            emp_lics = set(emp_sub[lic_id_col].unique()) & lics_con_ofertas
             total_emp = len(emp_lics)
-            mono = sum(1 for lic in emp_lics if lic in single_bid_lics)
-            pct_monopolio_map[str(emp_name)] = (mono / total_emp * 100) if total_emp > 0 else 0.0
+            if total_emp == 0:
+                pct_monopolio_map[str(emp_name)] = None  # sin cobertura → desconocido
+                continue
+            mono = len(emp_lics & single_bid_lics)
+            pct_monopolio_map[str(emp_name)] = mono / total_emp * 100
 
     # pct_top_organo per empresa (% from their most common organo)
     pct_top_organo_map: dict[str, float] = {}
@@ -238,13 +291,14 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             count=int(row["count"]),
             importe=float(row["importe"] or 0),
             cuota=float(row["cuota"]),
+            empresa_id=empresa_id_map.get(row["empresa"]),
             nif=nif_by_empresa.get(row["empresa"]),
             contratos_por_anio=float(row["count"]) / n_years,
             importe_medio=float(row["importe"] or 0) / max(int(row["count"]), 1),
             baja_media=baja_by_empresa.get(row["empresa"]),
             n_organos=int(n_organos_map.get(row["empresa"], 0)),
             ofertas_medias=ofertas_map.get(row["empresa"]),
-            pct_monopolio=pct_monopolio_map.get(row["empresa"], 0.0),
+            pct_monopolio=pct_monopolio_map.get(row["empresa"]),
             pct_top_organo=pct_top_organo_map.get(row["empresa"], 0.0),
             ultima=ultima_map.get(row["empresa"]),
         )
@@ -253,13 +307,10 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
 
     hhi = _compute_hhi(g["cuota"])
 
-    # Single-bid percentage: licitaciones with only one bidder
-    pct_unica = 0.0
-    if lic_id_col in df.columns:
-        bids_per_lic = df.groupby(lic_id_col)["empresa"].nunique()
-        single_bid = int((bids_per_lic == 1).sum())
-        total_lics = len(bids_per_lic)
-        pct_unica = (single_bid / total_lics * 100) if total_lics else 0.0
+    # % de licitaciones con un solo ofertante (sobre las que reportan
+    # ``n_ofertas_recibidas``). Bandera roja clásica de contratación pública.
+    total_lics = len(lics_con_ofertas)
+    pct_unica = (len(single_bid_lics) / total_lics * 100) if total_lics else 0.0
 
     # Scatter data: ticket_medio vs n_organos
     scatter_data: list[ScatterPoint] = []
@@ -273,11 +324,14 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             ScatterPoint(nombre=row["empresa"], ticket_medio=ticket, n_organos=n_organos)
         )
 
-    # Heatmap: top 10 empresas x CCAAs
+    # Desglose CCAA x empresa para las empresas listadas (``filters.limit``).
+    # El heatmap del front muestra su propio top 10, pero el drill-down de
+    # cualquier competidor de la tabla necesita su desglose: limitar a 10 aquí
+    # dejaba vacío el panel de detalle para las posiciones 11..N.
     heatmap_ccaa: list[HeatmapCcaaCell] = []
     if "ccaa" in df.columns:
-        top10_empresas = g.head(10)["empresa"].tolist()
-        hm_df = df[df["empresa"].isin(top10_empresas)]
+        listed_empresas = g.head(filters.limit)["empresa"].tolist()
+        hm_df = df[df["empresa"].isin(listed_empresas)]
         hm_counts = hm_df.groupby(["ccaa", "empresa"]).size().reset_index(name="count")
         heatmap_ccaa = [
             HeatmapCcaaCell(ccaa=str(r["ccaa"]), empresa=str(r["empresa"]), count=int(r["count"]))
@@ -315,6 +369,8 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         hhi=hhi,
         pct_oferta_unica=pct_unica,
         total_adjudicaciones=total,
+        total_empresas=len(g),
+        importe_total=total_importe,
         scatter_data=scatter_data,
         heatmap_ccaa=heatmap_ccaa,
         pct_pyme=pct_pyme,
