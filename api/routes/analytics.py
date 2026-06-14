@@ -141,6 +141,9 @@ def competitors(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by technology"),
+    estado: str | None = Query(default=None, description="Filter by tender status"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     limit: int = Query(default=20, ge=1, le=100, description="Max competitors to return"),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> CompetitorResult:
@@ -149,6 +152,9 @@ def competitors(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
+        tecnologia=tecnologia,
+        estado=estado,
+        importe_min=importe_min,
         limit=limit,
     )
     return get_competitors(filters)

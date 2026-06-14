@@ -67,7 +67,7 @@ class AdjudicacionRepository:
         """Carga adjudicaciones raw con datos de la licitación asociada."""
         sql = (
             "SELECT a.*, l.titulo, l.organo_contratacion, l.url AS url_lic, "
-            "       l.fecha_publicacion, "
+            "       l.fecha_publicacion, l.tecnologia, l.estado, "
             "       l.importe AS importe_licitacion, "
             "       e.nombre_canonico AS empresa_nombre_master, "
             "       e.nif_canonico AS empresa_nif_master, "
