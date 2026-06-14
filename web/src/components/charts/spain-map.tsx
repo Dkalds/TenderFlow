@@ -6,7 +6,7 @@ import type { Layer, LeafletMouseEvent } from "leaflet";
 import { GeoJSON, MapContainer, ZoomControl } from "react-leaflet";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
-import spainGeoJson from "@/data/spain-ccaa.json";
+import spainGeoJson from "@/data/spain-ccaa";
 
 interface CcaaData {
   ccaa: string;
