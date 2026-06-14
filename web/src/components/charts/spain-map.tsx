@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import type { LatLngExpression } from "leaflet";
+import { CircleMarker, MapContainer, TileLayer, Tooltip, ZoomControl } from "react-leaflet";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
 
@@ -18,28 +20,26 @@ interface SpainMapProps {
   onCcaaClick?: (ccaa: string) => void;
 }
 
-// Simplified schematic regions positioned in a grid-like map
-// Each region is a polygon in a 600x500 viewBox
-const CCAA_PATHS: Record<string, string> = {
-  Galicia: "M 20,40 L 90,40 L 90,120 L 20,120 Z",
-  Asturias: "M 95,40 L 170,40 L 170,85 L 95,85 Z",
-  Cantabria: "M 175,40 L 235,40 L 235,85 L 175,85 Z",
-  "País Vasco": "M 240,40 L 310,40 L 310,85 L 240,85 Z",
-  Navarra: "M 315,40 L 385,40 L 385,100 L 315,100 Z",
-  "La Rioja": "M 240,90 L 310,90 L 310,130 L 240,130 Z",
-  Aragón: "M 315,105 L 420,105 L 420,230 L 315,230 Z",
-  Cataluña: "M 425,40 L 530,40 L 530,180 L 425,180 Z",
-  "Castilla y León": "M 20,125 L 235,125 L 235,230 L 20,230 Z",
-  Madrid: "M 170,235 L 250,235 L 250,290 L 170,290 Z",
-  "Castilla-La Mancha": "M 170,295 L 380,295 L 380,380 L 170,380 Z",
-  "Comunidad Valenciana": "M 385,235 L 460,235 L 460,380 L 385,380 Z",
-  Extremadura: "M 20,235 L 165,235 L 165,360 L 20,360 Z",
-  Andalucía: "M 20,365 L 380,365 L 380,470 L 20,470 Z",
-  Murcia: "M 385,385 L 460,385 L 460,440 L 385,440 Z",
-  "Islas Baleares": "M 470,200 L 570,200 L 570,260 L 470,260 Z",
-  "Canarias": "M 20,485 L 160,485 L 160,540 L 20,540 Z",
-  Ceuta: "M 175,450 L 195,450 L 195,470 L 175,470 Z",
-  Melilla: "M 200,450 L 220,450 L 220,470 L 200,470 Z",
+const CCAA_COORDS: Record<string, [number, number]> = {
+  Galicia: [42.75, -8.5],
+  Asturias: [43.35, -5.85],
+  Cantabria: [43.2, -4.0],
+  "País Vasco": [43.0, -2.55],
+  Navarra: [42.67, -1.65],
+  "La Rioja": [42.3, -2.45],
+  Aragón: [41.65, -0.9],
+  Cataluña: [41.75, 1.65],
+  "Castilla y León": [41.7, -4.75],
+  Madrid: [40.42, -3.7],
+  "Castilla-La Mancha": [39.5, -3.0],
+  "Comunidad Valenciana": [39.48, -0.4],
+  Extremadura: [39.0, -6.0],
+  Andalucía: [37.45, -4.5],
+  Murcia: [37.98, -1.13],
+  "Islas Baleares": [39.6, 2.9],
+  Canarias: [28.4, -15.5],
+  Ceuta: [35.89, -5.31],
+  Melilla: [35.29, -2.94],
 };
 
 // Name normalization map
@@ -116,9 +116,6 @@ export const SpainMap = React.memo(function SpainMap({
   className,
   onCcaaClick,
 }: SpainMapProps) {
-  const [hoveredCcaa, setHoveredCcaa] = React.useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
-
   const valueMap = React.useMemo(() => {
     const map = new Map<string, number>();
     for (const d of data) {
@@ -139,89 +136,67 @@ export const SpainMap = React.memo(function SpainMap({
     return interpolateColor(t, colorScale);
   };
 
-  const hoveredValue = hoveredCcaa ? valueMap.get(hoveredCcaa) : undefined;
+  const getRadius = (ccaa: string) => {
+    const val = valueMap.get(ccaa);
+    if (val == null) return 7;
+    const t = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
+    return 7 + t * 15;
+  };
+
+  const points = React.useMemo(
+    () =>
+      Object.entries(CCAA_COORDS).map(([ccaa, latlng]) => ({
+        ccaa,
+        latlng: latlng as LatLngExpression,
+      })),
+    [],
+  );
 
   return (
-    <div className={cn("relative w-full", className)}>
-      <svg viewBox="0 0 580 550" style={{ height, width: "100%" }} className="block" role="img" aria-label="Mapa de España">
-        <title>Mapa de España</title>
-        {Object.entries(CCAA_PATHS).map(([name, path]) => (
-          <path
-            key={name}
-            d={path}
-            fill={getColor(name)}
-            stroke={hoveredCcaa === name ? "hsl(var(--foreground))" : "hsl(var(--border))"}
-            strokeWidth={hoveredCcaa === name ? 2.5 : 1}
-            className="cursor-pointer motion-safe:transition-colors"
-            tabIndex={0}
-            role="button"
-            aria-label={name}
-            onMouseEnter={(e) => {
-              setHoveredCcaa(name);
-              const rect = (e.target as SVGPathElement).ownerSVGElement?.getBoundingClientRect();
-              setTooltipPos({
-                x: e.clientX - (rect?.left ?? 0),
-                y: e.clientY - (rect?.top ?? 0) - 10,
-              });
-            }}
-            onMouseMove={(e) => {
-              const rect = (e.target as SVGPathElement).ownerSVGElement?.getBoundingClientRect();
-              setTooltipPos({
-                x: e.clientX - (rect?.left ?? 0),
-                y: e.clientY - (rect?.top ?? 0) - 10,
-              });
-            }}
-            onMouseLeave={() => setHoveredCcaa(null)}
-            onClick={() => onCcaaClick?.(name)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onCcaaClick?.(name);
-              }
-            }}
-          />
-        ))}
-        {/* Labels for each CCAA */}
-        {Object.entries(CCAA_PATHS).map(([name, path]) => {
-          // Calculate center from path
-          const nums = path.match(/[\d.]+/g)?.map(Number) ?? [];
-          const xs: number[] = [];
-          const ys: number[] = [];
-          for (let i = 0; i < nums.length; i += 2) {
-            xs.push(nums[i]);
-            ys.push(nums[i + 1]);
-          }
-          const cx = xs.reduce((a, b) => a + b, 0) / xs.length;
-          const cy = ys.reduce((a, b) => a + b, 0) / ys.length;
-          const isSmall = name === "Ceuta" || name === "Melilla" || name === "La Rioja";
+    <div className={cn("relative w-full overflow-hidden rounded-md border border-border", className)}>
+      <MapContainer
+        center={[40.2, -3.7]}
+        zoom={5}
+        minZoom={4}
+        maxZoom={9}
+        zoomControl={false}
+        scrollWheelZoom
+        style={{ height, width: "100%" }}
+      >
+        <ZoomControl position="bottomright" />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {points.map(({ ccaa, latlng }) => {
+          const value = valueMap.get(ccaa);
           return (
-            <text
-              key={`label-${name}`}
-              x={cx}
-              y={cy}
-              textAnchor="middle"
-              dominantBaseline="central"
-              fill="hsl(var(--foreground))"
-              fontSize={isSmall ? 12 : 12}
-              className="pointer-events-none select-none"
+            <CircleMarker
+              key={ccaa}
+              center={latlng}
+              radius={getRadius(ccaa)}
+              pathOptions={{
+                color: "hsl(var(--foreground))",
+                weight: 1.2,
+                fillColor: getColor(ccaa),
+                fillOpacity: value == null ? 0.4 : 0.85,
+              }}
+              eventHandlers={{
+                click: () => onCcaaClick?.(ccaa),
+              }}
             >
-              {name}
-            </text>
+              <Tooltip direction="top" offset={[0, -8]} opacity={0.98}>
+                <div className="text-xs">
+                  <p className="font-medium">{ccaa}</p>
+                  <p>
+                    {metric}: {value != null ? formatNumber(value) : "Sin datos"}
+                  </p>
+                </div>
+              </Tooltip>
+            </CircleMarker>
           );
         })}
-      </svg>
-
-      {/* Tooltip */}
-      {hoveredCcaa && (
-        <div
-          role="tooltip"
-          className="absolute z-20 rounded border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow pointer-events-none -translate-x-1/2 -translate-y-full"
-          style={{ left: tooltipPos.x, top: tooltipPos.y }}
-        >
-          <p className="font-medium">{hoveredCcaa}</p>
-          <p>{metric}: {hoveredValue != null ? formatNumber(hoveredValue) : "Sin datos"}</p>
-        </div>
-      )}
+      </MapContainer>
     </div>
   );
 });

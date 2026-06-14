@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/components/providers";
 import { RouteProgress } from "@/components/route-progress";
 import "nprogress/nprogress.css";
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 const geistSans = Geist({
