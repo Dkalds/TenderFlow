@@ -28,13 +28,15 @@ export function EmptyState({
       )}
       role="status"
     >
-      <Icon className="h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
-      <p className="text-sm font-medium text-muted-foreground">{title}</p>
+      <span className="grid h-14 w-14 place-items-center rounded-2xl border border-primary/15 bg-primary/8 text-primary">
+        <Icon className="h-6 w-6" aria-hidden="true" />
+      </span>
+      <p className="text-sm font-semibold text-foreground">{title}</p>
       {hint && (
-        <p className="text-xs text-muted-foreground/70">{hint}</p>
+        <p className="max-w-sm text-xs text-muted-foreground">{hint}</p>
       )}
       {actionLabel && onAction && (
-        <Button variant="outline" size="sm" onClick={onAction}>
+        <Button variant="outline" size="sm" onClick={onAction} className="mt-1">
           {actionLabel}
         </Button>
       )}

@@ -15,29 +15,29 @@ describe("KpiCard", () => {
   it("renders title and value text", () => {
     render(<KpiCard title="Total" value="1.234" />);
     expect(screen.getByText("Total")).toBeInTheDocument();
-    expect(screen.getByText("1.234")).toBeInTheDocument();
+    expect(screen.getByLabelText("1.234")).toBeInTheDocument();
   });
 
   it("shows loading skeleton when loading={true}", () => {
     const { container } = render(<KpiCard title="Total" loading={true} />);
     // Value text should not be present; Skeleton div should be rendered
-    expect(screen.queryByText("1.234")).not.toBeInTheDocument();
-    // Skeleton renders a div with animate-pulse class or data-slot="skeleton"
-    const skeleton = container.querySelector('[data-slot="skeleton"]') ?? container.querySelector('.animate-pulse');
+    expect(screen.queryByLabelText("1.234")).not.toBeInTheDocument();
+    // Skeleton renders a div with the shimmer treatment
+    const skeleton = container.querySelector('[data-slot="skeleton"]') ?? container.querySelector('.tf-shimmer');
     expect(skeleton).not.toBeNull();
   });
 
   it("shows trend up arrow when trend is positive", () => {
     const { container } = render(<KpiCard title="Total" value="100" trend={5.3} />);
-    // TrendingUp icon renders as svg — check for the green color class
-    const trendSpan = container.querySelector(".text-green-600");
+    // Positive trend pill uses the success token color
+    const trendSpan = container.querySelector(".text-success");
     expect(trendSpan).not.toBeNull();
     expect(trendSpan?.textContent).toContain("+5.3%");
   });
 
   it("shows trend down arrow when trend is negative", () => {
     const { container } = render(<KpiCard title="Total" value="100" trend={-3.2} />);
-    const trendSpan = container.querySelector(".text-red-600");
+    const trendSpan = container.querySelector(".text-destructive");
     expect(trendSpan).not.toBeNull();
     expect(trendSpan?.textContent).toContain("-3.2%");
   });
@@ -71,8 +71,8 @@ describe("KpiCard", () => {
 
   it("does not render trend section when trend is undefined", () => {
     const { container } = render(<KpiCard title="Total" value="100" />);
-    expect(container.querySelector(".text-green-600")).toBeNull();
-    expect(container.querySelector(".text-red-600")).toBeNull();
+    expect(container.querySelector(".text-success")).toBeNull();
+    expect(container.querySelector(".text-destructive")).toBeNull();
   });
 
   it("shows dash when value is not provided", () => {

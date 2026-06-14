@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatedNumber } from "@/components/motion";
 
 export interface KpiCardProps {
   title: string;
@@ -45,7 +46,7 @@ export const KpiCard = React.memo(function KpiCard({
         </CardTitle>
         <div className="absolute right-4 top-4 flex items-center gap-1.5">
           {anomaly && (
-            <span className="grid h-6 w-6 place-items-center rounded-md bg-amber-500/15 text-amber-500" title="Anomal\u00eda detectada (desviaci\u00f3n >2\u03c3)">
+            <span className="grid h-6 w-6 place-items-center rounded-md bg-warning/15 text-warning" title="Anomal\u00eda detectada (desviaci\u00f3n >2\u03c3)">
               <AlertTriangle className="h-3.5 w-3.5" />
             </span>
           )}
@@ -60,16 +61,21 @@ export const KpiCard = React.memo(function KpiCard({
         {loading ? (
           <Skeleton className="h-8 w-24" />
         ) : (
-          <div className="font-mono text-[1.75rem] font-bold leading-none tracking-normal text-foreground">{value ?? "-"}</div>
+          <AnimatedNumber
+            value={value ?? "-"}
+            className="tf-tnum block text-[1.75rem] font-bold leading-none text-foreground"
+          />
         )}
 
         {!loading && (subtitle || trend != null) && (
-          <div className="mt-1 flex items-center gap-2 text-xs">
+          <div className="mt-1.5 flex items-center gap-2 text-xs">
             {trend != null && (
               <span
                 className={cn(
-                  "flex items-center gap-0.5 font-medium",
-                  trend >= 0 ? "text-green-600" : "text-red-600"
+                  "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-semibold tabular-nums",
+                  trend >= 0
+                    ? "bg-success/12 text-success"
+                    : "bg-destructive/12 text-destructive"
                 )}
               >
                 {trend >= 0 ? (

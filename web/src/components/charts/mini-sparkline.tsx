@@ -22,7 +22,7 @@ export const MiniSparkline = React.memo(function MiniSparkline({
   if (!data || data.length < 2) return null;
 
   const chartData = data.map((v, i) => ({ v, i }));
-  const color = up ? "hsl(83 69% 44%)" : "hsl(0 72% 51%)";
+  const color = up ? "hsl(var(--success))" : "hsl(var(--destructive))";
 
   return (
     <div className={className} style={{ width, height }}>

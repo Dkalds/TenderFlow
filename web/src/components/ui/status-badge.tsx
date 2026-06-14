@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2,
   Clock,
@@ -16,54 +15,37 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+/* ── Token-based variants ──────────────────────────────────────────── */
+
+type Variant = "info" | "success" | "warning" | "destructive" | "neutral";
+
+/* Static class strings so Tailwind's JIT can detect them. */
+const VARIANT_CLASS: Record<Variant, string> = {
+  info: "border-info/25 bg-info/12 text-info",
+  success: "border-success/25 bg-success/12 text-success",
+  warning: "border-warning/30 bg-warning/15 text-warning",
+  destructive: "border-destructive/25 bg-destructive/12 text-destructive",
+  neutral: "border-muted-foreground/20 bg-muted-foreground/10 text-muted-foreground",
+};
+
 /* ── Estado (tender state) ─────────────────────────────────────────── */
 
-const ESTADO_STYLES: Record<string, { className: string; icon: LucideIcon }> = {
-  Publicada: {
-    className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-    icon: Clock,
-  },
-  Adjudicada: {
-    className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-    icon: CheckCircle2,
-  },
-  Resuelta: {
-    className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300",
-    icon: FileCheck,
-  },
-  Desierta: {
-    className: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
-    icon: AlertTriangle,
-  },
-  Anulada: {
-    className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-    icon: XCircle,
-  },
-  "En plazo": {
-    className: "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-300",
-    icon: Timer,
-  },
+const ESTADO_STYLES: Record<string, { variant: Variant; icon: LucideIcon }> = {
+  Publicada: { variant: "info", icon: Clock },
+  Adjudicada: { variant: "success", icon: CheckCircle2 },
+  Resuelta: { variant: "success", icon: FileCheck },
+  Desierta: { variant: "neutral", icon: AlertTriangle },
+  Anulada: { variant: "destructive", icon: XCircle },
+  "En plazo": { variant: "info", icon: Timer },
 };
 
 /* ── Band (scoring band) ───────────────────────────────────────────── */
 
-const BAND_STYLES: Record<string, { className: string; icon: LucideIcon }> = {
-  Caliente: {
-    className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-    icon: Flame,
-  },
-  Atractiva: {
-    className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-    icon: ThermometerSun,
-  },
-  Tibia: {
-    className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-    icon: Snowflake,
-  },
-  Descarte: {
-    className: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
-    icon: Ban,
-  },
+const BAND_STYLES: Record<string, { variant: Variant; icon: LucideIcon }> = {
+  Caliente: { variant: "destructive", icon: Flame },
+  Atractiva: { variant: "warning", icon: ThermometerSun },
+  Tibia: { variant: "info", icon: Snowflake },
+  Descarte: { variant: "neutral", icon: Ban },
 };
 
 /* ── Component ─────────────────────────────────────────────────────── */
@@ -87,16 +69,24 @@ export function StatusBadge({
 
   const styles = kind === "estado" ? ESTADO_STYLES : BAND_STYLES;
   const entry = styles[value];
+  const variant: Variant = entry?.variant ?? "neutral";
   const Icon = entry?.icon;
 
   return (
-    <Badge
-      variant="secondary"
-      className={cn("text-xs gap-1", entry?.className, className)}
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
+        VARIANT_CLASS[variant],
+        className,
+      )}
       aria-label={`${kind === "estado" ? "Estado" : "Puntuación"}: ${value}`}
     >
-      {showIcon && Icon && <Icon className="h-3 w-3" aria-hidden="true" />}
+      {showIcon && Icon ? (
+        <Icon className="h-3 w-3" aria-hidden="true" />
+      ) : (
+        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden="true" />
+      )}
       {value}
-    </Badge>
+    </span>
   );
 }
