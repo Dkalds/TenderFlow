@@ -10,4 +10,7 @@ exec python -m uvicorn api.app:app \
     --port "${PORT:-8080}" \
     --proxy-headers \
     --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-*}" \
+    --limit-concurrency "${UVICORN_LIMIT_CONCURRENCY:-20}" \
+    --backlog "${UVICORN_BACKLOG:-64}" \
+    --timeout-keep-alive "${UVICORN_KEEPALIVE:-5}" \
     "$@"
