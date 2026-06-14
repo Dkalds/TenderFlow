@@ -99,8 +99,8 @@ export function EventosTimeline({ licitacionId }: { licitacionId: string }) {
             {ev.importe_delta != null && ev.importe_delta !== 0 && ev.tipo !== "adjudicacion" && (
               <span
                 className={cn(
-                  "text-xs font-medium",
-                  ev.importe_delta > 0 ? "text-green-600" : "text-red-600",
+                  "text-xs font-medium tabular-nums",
+                  ev.importe_delta > 0 ? "text-success" : "text-destructive",
                 )}
               >
                 {ev.importe_delta > 0 ? "+" : ""}

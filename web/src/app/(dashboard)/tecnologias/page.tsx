@@ -104,22 +104,28 @@ interface ScoringResponse {
   opportunities: ScoredItem[];
 }
 
-/** Sequential green scale (light -> dark) used to color the "volumen" bars by importe. */
-function greenScale(t: number): string {
-  const l = 86 - Math.min(Math.max(t, 0), 1) * 52;
-  return `hsl(142, 55%, ${l}%)`;
+/**
+ * Sequential scale on the primary accent — used to color the "volumen" bars by importe.
+ * Stays within the token palette so charts feel cohesive across pages.
+ */
+function primaryScale(t: number): string {
+  const alpha = 0.25 + Math.min(Math.max(t, 0), 1) * 0.7;
+  return `hsl(var(--primary) / ${alpha})`;
 }
 
-/** Sequential blue scale (light -> dark) used to color the "importe" bars by count. */
-function blueScale(t: number): string {
-  const l = 88 - Math.min(Math.max(t, 0), 1) * 55;
-  return `hsl(221, 70%, ${l}%)`;
+/**
+ * Sequential scale on the secondary chart accent (--chart-2) — used for the
+ * "importe" bars so the two stacks read as related but distinct.
+ */
+function accentScale(t: number): string {
+  const alpha = 0.25 + Math.min(Math.max(t, 0), 1) * 0.7;
+  return `hsl(var(--chart-2) / ${alpha})`;
 }
 
 function heatColor(value: number, max: number): string {
-  if (value === 0 || max === 0) return "hsl(var(--muted))";
-  const l = 92 - (value / max) * 57;
-  return `hsl(142, 55%, ${l}%)`;
+  if (value === 0 || max === 0) return "hsl(var(--muted) / 0.4)";
+  const alpha = 0.12 + (value / max) * 0.83;
+  return `hsl(var(--primary) / ${alpha})`;
 }
 
 export default function TecnologiasPage() {
@@ -175,7 +181,7 @@ export default function TecnologiasPage() {
     return [...items]
       .sort((a, b) => b.count - a.count)
       .slice(0, 15)
-      .map((i) => ({ ...i, _color: greenScale(i.importe / maxImp) }))
+      .map((i) => ({ ...i, _color: primaryScale(i.importe / maxImp) }))
       .reverse();
   }, [items]);
 
@@ -186,7 +192,7 @@ export default function TecnologiasPage() {
     return [...withImporte]
       .sort((a, b) => b.importe - a.importe)
       .slice(0, 15)
-      .map((i) => ({ ...i, _color: blueScale(i.count / maxN) }))
+      .map((i) => ({ ...i, _color: accentScale(i.count / maxN) }))
       .reverse();
   }, [items]);
 

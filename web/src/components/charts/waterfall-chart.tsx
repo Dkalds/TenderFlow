@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
+import { ChartTooltip } from "@/components/charts/chart-tooltip";
 
 interface WaterfallPoint {
   period: string;
@@ -62,18 +63,26 @@ export function WaterfallChart({ data, height = 300, className }: WaterfallChart
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const d = payload[0]?.payload as TransformedPoint;
+              const deltaColor = d.isPositive
+                ? "hsl(var(--success))"
+                : "hsl(var(--destructive))";
               return (
-                <div className="rounded border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow">
-                  <p className="font-medium">{d.period}</p>
-                  <p>
-                    Delta:{" "}
-                    <span className={d.isPositive ? "text-green-600" : "text-red-600"}>
-                      {d.isPositive ? "+" : "-"}
-                      {formatNumber(d.delta)}
-                    </span>
-                  </p>
-                  <p>Acumulado: {formatNumber(d.cumulative)}</p>
-                </div>
+                <ChartTooltip
+                  active
+                  label={d.period}
+                  payload={[
+                    {
+                      name: "Delta",
+                      value: `${d.isPositive ? "+" : "-"}${formatNumber(d.delta)}`,
+                      color: deltaColor,
+                    },
+                    {
+                      name: "Acumulado",
+                      value: formatNumber(d.cumulative),
+                      color: "hsl(var(--muted-foreground))",
+                    },
+                  ]}
+                />
               );
             }}
           />
@@ -82,7 +91,7 @@ export function WaterfallChart({ data, height = 300, className }: WaterfallChart
             {transformed.map((entry, index) => (
               <Cell
                 key={index}
-                fill={entry.isPositive ? "hsl(142 71% 45%)" : "hsl(var(--destructive))"}
+                fill={entry.isPositive ? "hsl(var(--success))" : "hsl(var(--destructive))"}
               />
             ))}
           </Bar>

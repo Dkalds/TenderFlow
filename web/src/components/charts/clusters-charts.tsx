@@ -47,13 +47,30 @@ function BoxTooltip({
   if (!active || !payload || payload.length === 0) return null;
   const d = payload[0].payload;
   return (
-    <div className="rounded-lg border bg-background p-2 text-xs shadow-md">
-      <p className="mb-1 font-medium">{d.label}</p>
-      <p>max: {formatCurrency(d.max)}</p>
-      <p>Q3: {formatCurrency(d.q3)}</p>
-      <p className="font-medium">mediana: {formatCurrency(d.median)}</p>
-      <p>Q1: {formatCurrency(d.q1)}</p>
-      <p>min: {formatCurrency(d.min)}</p>
+    <div className="tf-tnum min-w-[10rem] rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+      <p className="mb-1 text-xs font-semibold text-foreground">{d.label}</p>
+      <dl className="space-y-0.5">
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">max</dt>
+          <dd className="font-medium">{formatCurrency(d.max)}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">Q3</dt>
+          <dd className="font-medium">{formatCurrency(d.q3)}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">mediana</dt>
+          <dd className="font-semibold text-primary">{formatCurrency(d.median)}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">Q1</dt>
+          <dd className="font-medium">{formatCurrency(d.q1)}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">min</dt>
+          <dd className="font-medium">{formatCurrency(d.min)}</dd>
+        </div>
+      </dl>
     </div>
   );
 }

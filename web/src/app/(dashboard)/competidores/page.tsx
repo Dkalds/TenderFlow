@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Stagger } from "@/components/motion";
 
 import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
 import type { ScatterPoint } from "@/components/charts/competitors-charts";
@@ -379,42 +380,50 @@ export default function CompetidoresPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Total Adjudicaciones"
-          value={isLoading ? undefined : formatNumber(data?.total_adjudicaciones)}
-          icon={Hash}
-          loading={isLoading}
-        />
-        <KpiCard
-          title="HHI Concentracion"
-          value={isLoading ? undefined : formatNumber(data?.hhi)}
-          subtitle={
-            data?.hhi != null
-              ? data.hhi < 1500
-                ? "Mercado competitivo"
-                : data.hhi < 2500
-                  ? "Concentracion moderada"
-                  : "Mercado concentrado"
-              : undefined
-          }
-          icon={Target}
-          loading={isLoading}
-        />
-        <KpiCard
-          title="% Oferta Unica"
-          value={isLoading ? undefined : formatPercent(data?.pct_oferta_unica)}
-          subtitle="Licitaciones con un solo ofertante"
-          icon={AlertTriangle}
-          loading={isLoading}
-        />
-        <KpiCard
-          title="Top Competidor"
-          value={isLoading ? undefined : truncate(data?.top_competidor ?? data?.competitors?.[0]?.nombre ?? "-", 30)}
-          icon={Crown}
-          loading={isLoading}
-        />
-      </div>
+      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stagger.Item>
+          <KpiCard
+            title="Total Adjudicaciones"
+            value={isLoading ? undefined : formatNumber(data?.total_adjudicaciones)}
+            icon={Hash}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="HHI Concentracion"
+            value={isLoading ? undefined : formatNumber(data?.hhi)}
+            subtitle={
+              data?.hhi != null
+                ? data.hhi < 1500
+                  ? "Mercado competitivo"
+                  : data.hhi < 2500
+                    ? "Concentracion moderada"
+                    : "Mercado concentrado"
+                : undefined
+            }
+            icon={Target}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="% Oferta Unica"
+            value={isLoading ? undefined : formatPercent(data?.pct_oferta_unica)}
+            subtitle="Licitaciones con un solo ofertante"
+            icon={AlertTriangle}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="Top Competidor"
+            value={isLoading ? undefined : truncate(data?.top_competidor ?? data?.competitors?.[0]?.nombre ?? "-", 30)}
+            icon={Crown}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+      </Stagger>
 
       {/* Charts Row 1: Bar + Pie */}
       <div className="grid gap-6 lg:grid-cols-2">

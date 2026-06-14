@@ -115,8 +115,8 @@ export function KpiBar({ kpis = [], loading = false }: KpiBarProps) {
                 {kpi.trend != null && (
                   <span
                     className={cn(
-                      "flex items-center gap-0.5 text-xs",
-                      kpi.trend >= 0 ? "text-green-600" : "text-red-600"
+                      "flex items-center gap-0.5 text-xs font-medium tabular-nums",
+                      kpi.trend >= 0 ? "text-success" : "text-destructive"
                     )}
                   >
                     {kpi.trend >= 0 ? (

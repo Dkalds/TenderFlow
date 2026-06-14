@@ -89,21 +89,20 @@ function computeYoY(series: TrendPoint[], field: "count" | "importe") {
   return ((sumRecent - sumPrior) / sumPrior) * 100;
 }
 
-const HEATMAP_COLORS = [
-  "bg-gray-100 dark:bg-gray-800",
-  "bg-blue-100 dark:bg-blue-900",
-  "bg-blue-200 dark:bg-blue-800",
-  "bg-blue-300 dark:bg-blue-700",
-  "bg-blue-400 dark:bg-blue-600",
-  "bg-blue-500 dark:bg-blue-500",
-  "bg-blue-600 dark:bg-blue-400",
-];
-
-function getHeatmapColor(value: number, max: number): string {
-  if (max === 0 || value === 0) return HEATMAP_COLORS[0];
-  const idx = Math.min(Math.floor((value / max) * (HEATMAP_COLORS.length - 1)) + 1, HEATMAP_COLORS.length - 1);
-  return HEATMAP_COLORS[idx];
+/**
+ * Heatmap intensity — returns an inline style using the primary accent token
+ * with variable alpha, so the scale lives in one place and respects the theme.
+ */
+function heatmapCellStyle(value: number, max: number): { backgroundColor: string } {
+  if (max === 0 || value === 0) {
+    return { backgroundColor: "hsl(var(--muted) / 0.4)" };
+  }
+  const alpha = 0.12 + (value / max) * 0.83;
+  return { backgroundColor: `hsl(var(--primary) / ${alpha})` };
 }
+
+/** 7-step legend swatches mirroring the cell scale above. */
+const HEATMAP_LEGEND_STEPS = [0, 0.16, 0.32, 0.48, 0.64, 0.8, 0.95] as const;
 
 /* ── Component ──────────────────────────────────────────────────────── */
 
@@ -348,14 +347,15 @@ export default function TendenciasPage() {
                     {heatmapData.meses.map((mes) => {
                       const cell = heatmapData.grid.find((g) => g.mes === mes && g.estado === estado);
                       const value = cell?.value ?? 0;
+                      const intensity = heatmapData.maxVal > 0 ? value / heatmapData.maxVal : 0;
                       return (
                         <div
                           key={`${estado}-${mes}`}
                           className={cn(
                             "w-14 h-8 shrink-0 m-0.5 rounded-sm flex items-center justify-center text-xs font-medium transition-colors",
-                            getHeatmapColor(value, heatmapData.maxVal),
-                            value > 0 ? "text-white" : "text-muted-foreground",
+                            intensity > 0.55 ? "text-primary-foreground" : "text-foreground/80",
                           )}
+                          style={heatmapCellStyle(value, heatmapData.maxVal)}
                           title={`${estado} - ${mes}: ${value}`}
                         >
                           {value > 0 ? value : ""}
@@ -366,8 +366,17 @@ export default function TendenciasPage() {
                 ))}
                 <div className="flex items-center gap-2 mt-4">
                   <span className="text-xs text-muted-foreground">Menos</span>
-                  {HEATMAP_COLORS.map((color, i) => (
-                    <div key={i} className={cn("w-6 h-4 rounded-sm", color)} />
+                  {HEATMAP_LEGEND_STEPS.map((alpha, i) => (
+                    <div
+                      key={i}
+                      className="w-6 h-4 rounded-sm border border-border/40"
+                      style={{
+                        backgroundColor:
+                          alpha === 0
+                            ? "hsl(var(--muted) / 0.4)"
+                            : `hsl(var(--primary) / ${alpha})`,
+                      }}
+                    />
                   ))}
                   <span className="text-xs text-muted-foreground">Mas</span>
                 </div>

@@ -3,6 +3,7 @@
 import { KpiCard } from "@/components/charts/kpi-card";
 import { MiniSparkline } from "@/components/charts/mini-sparkline";
 import { useMemo } from "react";
+import { Stagger } from "@/components/motion";
 import { isAnomaly } from "@/lib/anomaly-detection";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import {
@@ -46,78 +47,96 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Nuevas 24h"
-          value={hoyLoading ? undefined : formatNumber(hoy?.nuevas_24h)}
-          icon={Flame}
-          loading={hoyLoading}
-          sparkline={sparklines ? <MiniSparkline data={sparklines.count} up /> : undefined}
-          anomaly={anomalyFlags.count}
-        />
-        <KpiCard
-          title="Vencen 48h"
-          value={hoyLoading ? undefined : formatNumber(hoy?.vencen_48h)}
-          icon={Clock}
-          loading={hoyLoading}
-          className={hoy && hoy.vencen_48h > 0 ? "border-destructive/50" : undefined}
-        />
-        <KpiCard
-          title="Calientes"
-          value={hoyLoading ? undefined : formatNumber(hoy?.calientes)}
-          icon={Flame}
-          loading={hoyLoading}
-        />
-        <KpiCard
-          title="Total activas"
-          value={hoyLoading ? undefined : formatNumber(hoy?.total_activas)}
-          icon={Activity}
-          loading={hoyLoading}
-        />
-      </div>
+      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stagger.Item>
+          <KpiCard
+            title="Nuevas 24h"
+            value={hoyLoading ? undefined : formatNumber(hoy?.nuevas_24h)}
+            icon={Flame}
+            loading={hoyLoading}
+            sparkline={sparklines ? <MiniSparkline data={sparklines.count} up /> : undefined}
+            anomaly={anomalyFlags.count}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="Vencen 48h"
+            value={hoyLoading ? undefined : formatNumber(hoy?.vencen_48h)}
+            icon={Clock}
+            loading={hoyLoading}
+            className={hoy && hoy.vencen_48h > 0 ? "border-destructive/50" : undefined}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="Calientes"
+            value={hoyLoading ? undefined : formatNumber(hoy?.calientes)}
+            icon={Flame}
+            loading={hoyLoading}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="Total activas"
+            value={hoyLoading ? undefined : formatNumber(hoy?.total_activas)}
+            icon={Activity}
+            loading={hoyLoading}
+          />
+        </Stagger.Item>
+      </Stagger>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <KpiCard
-          title="Total Licitaciones"
-          value={isLoading ? undefined : formatNumber(overview?.total_licitaciones)}
-          icon={Hash}
-          loading={isLoading}
-          sparkline={sparklines ? <MiniSparkline data={sparklines.count} up /> : undefined}
-          anomaly={anomalyFlags.count}
-        />
-        <KpiCard
-          title="Importe Total"
-          value={isLoading ? undefined : formatCurrency(overview?.importe_total)}
-          icon={DollarSign}
-          loading={isLoading}
-          sparkline={sparklines ? <MiniSparkline data={sparklines.importe} up /> : undefined}
-          anomaly={anomalyFlags.importe}
-        />
-        <KpiCard
-          title="Importe Medio"
-          value={isLoading ? undefined : formatCurrency(overview?.importe_medio)}
-          icon={BarChart3}
-          loading={isLoading}
-        />
-        <KpiCard
-          title="Organos Unicos"
-          value={isLoading ? undefined : formatNumber(overview?.organos_unicos)}
-          icon={Building2}
-          trend={overview?.yoy_delta}
-          loading={isLoading}
-        />
-        <KpiCard
-          title="CCAA cubiertas"
-          value={
-            isLoading
-              ? undefined
-              : `${formatNumber(overview?.concentracion_geo_top3 != null ? Math.round((overview.concentracion_geo_top3 / 100) * 17) : undefined)}/17`
-          }
-          subtitle="Cobertura geografica"
-          icon={MapPin}
-          loading={isLoading}
-        />
-      </div>
+      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <Stagger.Item>
+          <KpiCard
+            title="Total Licitaciones"
+            value={isLoading ? undefined : formatNumber(overview?.total_licitaciones)}
+            icon={Hash}
+            loading={isLoading}
+            sparkline={sparklines ? <MiniSparkline data={sparklines.count} up /> : undefined}
+            anomaly={anomalyFlags.count}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="Importe Total"
+            value={isLoading ? undefined : formatCurrency(overview?.importe_total)}
+            icon={DollarSign}
+            loading={isLoading}
+            sparkline={sparklines ? <MiniSparkline data={sparklines.importe} up /> : undefined}
+            anomaly={anomalyFlags.importe}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="Importe Medio"
+            value={isLoading ? undefined : formatCurrency(overview?.importe_medio)}
+            icon={BarChart3}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="Organos Unicos"
+            value={isLoading ? undefined : formatNumber(overview?.organos_unicos)}
+            icon={Building2}
+            trend={overview?.yoy_delta}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="CCAA cubiertas"
+            value={
+              isLoading
+                ? undefined
+                : `${formatNumber(overview?.concentracion_geo_top3 != null ? Math.round((overview.concentracion_geo_top3 / 100) * 17) : undefined)}/17`
+            }
+            subtitle="Cobertura geografica"
+            icon={MapPin}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+      </Stagger>
     </>
   );
 }
