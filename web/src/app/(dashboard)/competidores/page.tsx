@@ -5,6 +5,9 @@ import React, { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/components/charts/kpi-card";
 const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 const CompetitorsBarChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsBarChart })), { ssr: false, loading: () => <Skeleton className="h-[500px] w-full rounded-md" /> });
@@ -36,11 +39,14 @@ import {
   ArrowDown,
   Search,
   Users,
+  Eye,
+  TrendingDown,
 } from "lucide-react";
 
 
 interface Competitor {
   nombre: string;
+  empresa_id?: number;
   nif?: string;
   count: number;
   importe: number;
@@ -61,8 +67,17 @@ interface HeatmapEntry {
   count: number;
 }
 
+interface BajaItem {
+  grupo: string;
+  grupo_id?: number;
+  contratos: number;
+  baja_media_pct: number | null;
+}
+
 interface CompetitorsData {
   total_adjudicaciones: number;
+  total_empresas?: number;
+  importe_total?: number;
   hhi: number;
   pct_oferta_unica: number;
   pct_pyme: number;
@@ -82,7 +97,7 @@ function heatColor(value: number, max: number): string {
   if (max === 0) return "transparent";
   const intensity = value / max;
   const alpha = Math.max(0.08, intensity);
-  return `rgba(37, 99, 235, ${alpha})`;
+  return `hsl(var(--primary) / ${alpha})`;
 }
 
 export default function CompetidoresPage() {
@@ -90,7 +105,38 @@ export default function CompetidoresPage() {
     ["analytics", "competitors"],
     "/api/v1/analytics/competitors",
     { staleTime: 5 * 60 * 1000 },
+    { limit: "100" },
   );
+
+  // Ranking de bajas por empresa (quién oferta más agresivo). Honra ccaa global
+  // vía useFilteredQuery; el endpoint ignora el resto de filtros.
+  const { data: bajasData } = useFilteredQuery<{ items: BajaItem[] }>(
+    ["competitive", "bajas-empresa"],
+    "/api/v1/competitive/bajas",
+    { staleTime: 5 * 60 * 1000 },
+    { group_by: "empresa", min_contratos: "5", limit: "15" },
+  );
+
+  const queryClient = useQueryClient();
+  const { data: watchlist } = useQuery<{ items: { empresa_id: number }[] }>({
+    queryKey: ["watchlist-empresas"],
+    queryFn: () => fetchWithAuth("/api/v1/competitive/watchlist"),
+    staleTime: 60 * 1000,
+  });
+  const watchedIds = useMemo(
+    () => new Set((watchlist?.items ?? []).map((w) => w.empresa_id)),
+    [watchlist],
+  );
+  const toggleWatch = useMutation({
+    mutationFn: async (e: { empresa_id: number; watched: boolean }) =>
+      e.watched
+        ? apiMutate("DELETE", `/api/v1/competitive/watchlist/${e.empresa_id}`)
+        : apiMutate("POST", "/api/v1/competitive/watchlist", {
+            empresa_id: e.empresa_id,
+            frequency: "daily",
+          }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["watchlist-empresas"] }),
+  });
 
   const [search, setSearch] = useState("");
   const { sortKey, sortDir, toggleSort } = useSortToggle<SortKey>("count");
@@ -135,11 +181,16 @@ export default function CompetidoresPage() {
     if (!filteredCompetitors.length) return [];
     const sorted = [...filteredCompetitors].sort((a, b) => b.importe - a.importe);
     const top10 = sorted.slice(0, 10);
-    const otrosImporte = sorted.slice(10).reduce((s, c) => s + c.importe, 0);
+    const top10Importe = top10.reduce((s, c) => s + c.importe, 0);
+    // Sin búsqueda, "Otros" = mercado total − top 10 (incluye la cola fuera de
+    // los `limit` competidores devueltos). Con búsqueda, solo lo filtrado visible.
+    const otrosImporte = search
+      ? sorted.slice(10).reduce((s, c) => s + c.importe, 0)
+      : Math.max((data?.importe_total ?? top10Importe) - top10Importe, 0);
     const result = top10.map((c) => ({ name: truncate(c.nombre, 25), value: c.importe }));
     if (otrosImporte > 0) result.push({ name: "Otros", value: otrosImporte });
     return result;
-  }, [filteredCompetitors]);
+  }, [filteredCompetitors, search, data]);
 
   // Top 20 bar chart data (filtered)
   const barData = useMemo(() => {
@@ -204,15 +255,16 @@ export default function CompetidoresPage() {
     const maxCuota = Math.max(...allComps.map((c) => c.cuota), 1);
     const maxCpa = Math.max(...allComps.map((c) => c.contratos_por_anio ?? 0), 1);
     const maxIm = Math.max(...allComps.map((c) => c.importe_medio ?? 0), 1);
+    const maxBaja = Math.max(...allComps.map((c) => c.baja_media ?? 0), 1);
 
-    const dims = ["Contratos", "Importe", "Cuota", "Contratos/Año", "Importe Medio", "Competitividad"];
+    const dims = ["Contratos", "Importe", "Cuota", "Contratos/Año", "Importe Medio", "Agresividad baja"];
     const normalize = (c: Competitor) => [
       (c.count / maxCount) * 100,
       (c.importe / maxImporte) * 100,
       (c.cuota / maxCuota) * 100,
       ((c.contratos_por_anio ?? 0) / maxCpa) * 100,
       ((c.importe_medio ?? 0) / maxIm) * 100,
-      100 - (c.baja_media ?? 0),
+      ((c.baja_media ?? 0) / maxBaja) * 100,
     ];
 
     const valsA = normalize(compA);
@@ -271,6 +323,14 @@ export default function CompetidoresPage() {
       .sort((a, b) => b.count - a.count);
   }, [drillDownCompany, data]);
 
+  // Ranking de bajas por empresa (más agresivas primero)
+  const bajasSorted = useMemo(() => {
+    const items = (bajasData?.items ?? []).filter((b) => b.baja_media_pct != null);
+    const sorted = [...items].sort((a, b) => (b.baja_media_pct ?? 0) - (a.baja_media_pct ?? 0));
+    const maxBaja = Math.max(...sorted.map((b) => b.baja_media_pct ?? 0), 1);
+    return { rows: sorted.slice(0, 12), maxBaja };
+  }, [bajasData]);
+
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
@@ -289,7 +349,7 @@ export default function CompetidoresPage() {
     { key: "importe_medio", label: "Importe Medio" },
     { key: "baja_media", label: "Baja Media %" },
     { key: "ofertas_medias", label: "Ofertas Medias" },
-    { key: "pct_monopolio", label: "% Monopolio" },
+    { key: "pct_monopolio", label: "% Sin comp." },
     { key: "pct_top_organo", label: "% Top Organo" },
     { key: "ultima", label: "Ultima Adj." },
   ];
@@ -344,6 +404,7 @@ export default function CompetidoresPage() {
         <KpiCard
           title="% Oferta Unica"
           value={isLoading ? undefined : formatPercent(data?.pct_oferta_unica)}
+          subtitle="Licitaciones con un solo ofertante"
           icon={AlertTriangle}
           loading={isLoading}
         />
@@ -508,12 +569,51 @@ export default function CompetidoresPage() {
       {estacionalidadData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Estacionalidad Mensual</CardTitle>
+            <CardTitle className="text-base">Estacionalidad del mercado (filtrado)</CardTitle>
           </CardHeader>
           <CardContent>
             <ChartErrorBoundary>
             <CompetitorsEstacionalidadChart data={estacionalidadData} />
             </ChartErrorBoundary>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bajas por empresa: quién oferta más agresivo */}
+      {bajasSorted.rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingDown className="h-4 w-4" />
+              Empresas mas agresivas en precio (baja media)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {bajasSorted.rows.map((b) => (
+                <div key={b.grupo_id ?? b.grupo} className="flex items-center gap-2 text-sm">
+                  <span className="w-48 truncate" title={b.grupo}>
+                    {truncate(b.grupo, 32)}
+                  </span>
+                  <div className="h-4 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${((b.baja_media_pct ?? 0) / bajasSorted.maxBaja) * 100}%` }}
+                    />
+                  </div>
+                  <span className="w-14 text-right tabular-nums text-xs">
+                    {formatPercent(b.baja_media_pct ?? 0)}
+                  </span>
+                  <span className="w-10 text-right tabular-nums text-xs text-muted-foreground">
+                    {formatNumber(b.contratos)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Baja media = (presupuesto − adjudicado) / presupuesto, sobre empresas con ≥ 5
+              contratos. La cifra gris es el nº de contratos.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -598,7 +698,7 @@ export default function CompetidoresPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredSorted.map((c, idx) => (
-                    <TableRow key={idx} className="border-b last:border-0 hover:bg-muted/50">
+                    <TableRow key={c.nif ?? c.nombre ?? idx} className="border-b last:border-0 hover:bg-muted/50">
                       <TableCell className="px-2 py-2">
                         <Checkbox
                           className="h-5 w-5"
@@ -637,7 +737,7 @@ export default function CompetidoresPage() {
             <>
               <Separator className="my-3" />
               <p className="text-xs text-muted-foreground">
-                Mostrando {filteredSorted.length} de {data?.competitors.length ?? 0} competidores
+                Mostrando {filteredSorted.length} de {data?.total_empresas ?? data?.competitors.length ?? 0} competidores
               </p>
             </>
           )}
@@ -657,6 +757,23 @@ export default function CompetidoresPage() {
               )}
               {drillDownCompany.ultima && (
                 <p className="text-xs text-muted-foreground">Ultima adjudicacion: {drillDownCompany.ultima}</p>
+              )}
+              {drillDownCompany.empresa_id != null && (
+                <Button
+                  variant={watchedIds.has(drillDownCompany.empresa_id) ? "secondary" : "default"}
+                  size="sm"
+                  className="gap-2"
+                  disabled={toggleWatch.isPending}
+                  onClick={() =>
+                    toggleWatch.mutate({
+                      empresa_id: drillDownCompany.empresa_id!,
+                      watched: watchedIds.has(drillDownCompany.empresa_id!),
+                    })
+                  }
+                >
+                  <Eye className="h-4 w-4" />
+                  {watchedIds.has(drillDownCompany.empresa_id) ? "Vigilando" : "Vigilar empresa"}
+                </Button>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="rounded-lg border p-3">
@@ -690,8 +807,10 @@ export default function CompetidoresPage() {
                   </p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">% Monopolio</p>
-                  <p className="text-lg font-bold">{formatPercent(drillDownCompany.pct_monopolio ?? 0)}</p>
+                  <p className="text-xs text-muted-foreground">% Sin competencia</p>
+                  <p className="text-lg font-bold">
+                    {drillDownCompany.pct_monopolio != null ? formatPercent(drillDownCompany.pct_monopolio) : "—"}
+                  </p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Ofertas Medias</p>
@@ -700,11 +819,11 @@ export default function CompetidoresPage() {
               </div>
 
               {/* CCAA breakdown */}
-              {drillDownCcaa.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="text-sm font-medium mb-2">Actividad por CCAA</p>
+              <>
+                <Separator />
+                <div>
+                  <p className="text-sm font-medium mb-2">Actividad por CCAA</p>
+                  {drillDownCcaa.length > 0 ? (
                     <div className="space-y-1">
                       {drillDownCcaa.slice(0, 8).map((h) => {
                         const maxCount = drillDownCcaa[0]?.count ?? 1;
@@ -722,9 +841,13 @@ export default function CompetidoresPage() {
                         );
                       })}
                     </div>
-                  </div>
-                </>
-              )}
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Sin desglose por CCAA disponible para esta empresa.
+                    </p>
+                  )}
+                </div>
+              </>
 
               <Separator />
               <div className="grid grid-cols-2 gap-3 text-sm">
