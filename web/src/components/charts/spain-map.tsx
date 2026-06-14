@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import type { LatLngExpression } from "leaflet";
-import { CircleMarker, MapContainer, TileLayer, Tooltip, ZoomControl } from "react-leaflet";
+import type { FeatureCollection, Feature, Geometry } from "geojson";
+import type { Layer, LeafletMouseEvent } from "leaflet";
+import { GeoJSON, MapContainer, ZoomControl } from "react-leaflet";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
 
@@ -20,29 +21,30 @@ interface SpainMapProps {
   onCcaaClick?: (ccaa: string) => void;
 }
 
-const CCAA_COORDS: Record<string, [number, number]> = {
-  Galicia: [42.75, -8.5],
-  Asturias: [43.35, -5.85],
-  Cantabria: [43.2, -4.0],
-  "País Vasco": [43.0, -2.55],
-  Navarra: [42.67, -1.65],
-  "La Rioja": [42.3, -2.45],
-  Aragón: [41.65, -0.9],
-  Cataluña: [41.75, 1.65],
-  "Castilla y León": [41.7, -4.75],
-  Madrid: [40.42, -3.7],
-  "Castilla-La Mancha": [39.5, -3.0],
-  "Comunidad Valenciana": [39.48, -0.4],
-  Extremadura: [39.0, -6.0],
-  Andalucía: [37.45, -4.5],
-  Murcia: [37.98, -1.13],
-  "Islas Baleares": [39.6, 2.9],
-  Canarias: [28.4, -15.5],
-  Ceuta: [35.89, -5.31],
-  Melilla: [35.29, -2.94],
+// Maps GeoJSON "name" → canonical name used by the app
+const GEO_TO_CANONICAL: Record<string, string> = {
+  "Castilla-Leon": "Castilla y León",
+  "Cataluña": "Cataluña",
+  "Ceuta": "Ceuta",
+  "Murcia": "Murcia",
+  "La Rioja": "La Rioja",
+  "Baleares": "Islas Baleares",
+  "Canarias": "Canarias",
+  "Cantabria": "Cantabria",
+  "Andalucia": "Andalucía",
+  "Asturias": "Asturias",
+  "Valencia": "Comunidad Valenciana",
+  "Melilla": "Melilla",
+  "Navarra": "Navarra",
+  "Galicia": "Galicia",
+  "Aragon": "Aragón",
+  "Madrid": "Madrid",
+  "Extremadura": "Extremadura",
+  "Castilla-La Mancha": "Castilla-La Mancha",
+  "Pais Vasco": "País Vasco",
 };
 
-// Name normalization map
+// Name normalization for incoming data
 const CCAA_ALIASES: Record<string, string> = {
   "comunidad de madrid": "Madrid",
   "madrid": "Madrid",
@@ -95,7 +97,6 @@ const COLOR_SCALES = {
 
 function interpolateColor(t: number, scale: "blue" | "green" | "orange"): string {
   const s = COLOR_SCALES[scale];
-  // Parse HSL components and interpolate
   const parse = (c: string) => {
     const m = c.match(/hsl\((\d+)\s+(\d+)%\s+(\d+)%\)/);
     return m ? { h: +m[1], s: +m[2], l: +m[3] } : { h: 0, s: 0, l: 50 };
@@ -108,6 +109,13 @@ function interpolateColor(t: number, scale: "blue" | "green" | "orange"): string
   return `hsl(${h} ${sat}% ${l}%)`;
 }
 
+function formatCompact(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return formatNumber(n);
+}
+
 export const SpainMap = React.memo(function SpainMap({
   data,
   metric = "Valor",
@@ -116,6 +124,17 @@ export const SpainMap = React.memo(function SpainMap({
   className,
   onCcaaClick,
 }: SpainMapProps) {
+  const [geoData, setGeoData] = React.useState<FeatureCollection | null>(null);
+  const [hoveredCcaa, setHoveredCcaa] = React.useState<string | null>(null);
+  const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
+
+  React.useEffect(() => {
+    fetch("/data/spain-ccaa.geojson")
+      .then((r) => r.json())
+      .then((d: FeatureCollection) => setGeoData(d))
+      .catch(() => {});
+  }, []);
+
   const valueMap = React.useMemo(() => {
     const map = new Map<string, number>();
     for (const d of data) {
@@ -129,74 +148,113 @@ export const SpainMap = React.memo(function SpainMap({
     return { minVal: Math.min(...values, 0), maxVal: Math.max(...values, 1) };
   }, [data]);
 
-  const getColor = (ccaa: string) => {
-    const val = valueMap.get(ccaa);
-    if (val == null) return "hsl(var(--muted))";
-    const t = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
-    return interpolateColor(t, colorScale);
-  };
-
-  const getRadius = (ccaa: string) => {
-    const val = valueMap.get(ccaa);
-    if (val == null) return 7;
-    const t = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
-    return 7 + t * 15;
-  };
-
-  const points = React.useMemo(
-    () =>
-      Object.entries(CCAA_COORDS).map(([ccaa, latlng]) => ({
-        ccaa,
-        latlng: latlng as LatLngExpression,
-      })),
-    [],
+  const getColor = React.useCallback(
+    (ccaa: string) => {
+      const val = valueMap.get(ccaa);
+      if (val == null) return "hsl(210 15% 92%)";
+      const t = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
+      return interpolateColor(t, colorScale);
+    },
+    [valueMap, minVal, maxVal, colorScale],
   );
+
+  const hoveredValue = hoveredCcaa ? valueMap.get(hoveredCcaa) : undefined;
+
+  const style = React.useCallback(
+    (feature: Feature<Geometry, { name: string }> | undefined) => {
+      const geoName = feature?.properties?.name ?? "";
+      const canonical = GEO_TO_CANONICAL[geoName] ?? geoName;
+      const isHovered = canonical === hoveredCcaa;
+      return {
+        fillColor: getColor(canonical),
+        fillOpacity: 0.85,
+        color: isHovered ? "#1e293b" : "#94a3b8",
+        weight: isHovered ? 2.5 : 1,
+      };
+    },
+    [getColor, hoveredCcaa],
+  );
+
+  const onEachFeature = React.useCallback(
+    (feature: Feature<Geometry, { name: string }>, layer: Layer) => {
+      const geoName = feature.properties?.name ?? "";
+      const canonical = GEO_TO_CANONICAL[geoName] ?? geoName;
+      const val = valueMap.get(canonical);
+      const label = val != null ? formatCompact(val) : "";
+
+      // Permanent label in the center of each region
+      if ("bindTooltip" in layer && typeof layer.bindTooltip === "function") {
+        (layer as Layer & { bindTooltip: (content: string, opts: Record<string, unknown>) => void }).bindTooltip(
+          `<div style="text-align:center;font-weight:600;font-size:11px;line-height:1.2;color:#1e293b">
+            ${canonical}<br/>
+            <span style="font-size:13px">${label}</span>
+          </div>`,
+          {
+            permanent: true,
+            direction: "center",
+            className: "ccaa-label",
+          },
+        );
+      }
+
+      if ("on" in layer && typeof layer.on === "function") {
+        layer.on({
+          mouseover: () => setHoveredCcaa(canonical),
+          mouseout: () => setHoveredCcaa(null),
+          mousemove: (e: LeafletMouseEvent) => {
+            setTooltipPos({ x: e.containerPoint.x, y: e.containerPoint.y });
+          },
+          click: () => onCcaaClick?.(canonical),
+        });
+      }
+    },
+    [valueMap, onCcaaClick],
+  );
+
+  if (!geoData) {
+    return (
+      <div
+        className={cn("flex items-center justify-center rounded-md border border-border bg-muted/30", className)}
+        style={{ height }}
+      >
+        <span className="text-sm text-muted-foreground">Cargando mapa…</span>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("relative w-full overflow-hidden rounded-md border border-border", className)}>
       <MapContainer
-        center={[40.2, -3.7]}
-        zoom={5}
-        minZoom={4}
-        maxZoom={9}
+        center={[40.0, -3.7]}
+        zoom={6}
+        minZoom={5}
+        maxZoom={8}
         zoomControl={false}
         scrollWheelZoom
-        style={{ height, width: "100%" }}
+        style={{ height, width: "100%", background: "#f8fafc" }}
       >
         <ZoomControl position="bottomright" />
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        <GeoJSON
+          key={`${colorScale}-${data.length}-${maxVal}`}
+          data={geoData}
+          style={style}
+          onEachFeature={onEachFeature}
         />
-        {points.map(({ ccaa, latlng }) => {
-          const value = valueMap.get(ccaa);
-          return (
-            <CircleMarker
-              key={ccaa}
-              center={latlng}
-              radius={getRadius(ccaa)}
-              pathOptions={{
-                color: "hsl(var(--foreground))",
-                weight: 1.2,
-                fillColor: getColor(ccaa),
-                fillOpacity: value == null ? 0.4 : 0.85,
-              }}
-              eventHandlers={{
-                click: () => onCcaaClick?.(ccaa),
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -8]} opacity={0.98}>
-                <div className="text-xs">
-                  <p className="font-medium">{ccaa}</p>
-                  <p>
-                    {metric}: {value != null ? formatNumber(value) : "Sin datos"}
-                  </p>
-                </div>
-              </Tooltip>
-            </CircleMarker>
-          );
-        })}
       </MapContainer>
+
+      {/* Hover tooltip */}
+      {hoveredCcaa && (
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute z-[1000] -translate-x-1/2 -translate-y-full rounded border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md"
+          style={{ left: tooltipPos.x, top: tooltipPos.y - 12 }}
+        >
+          <p className="font-semibold">{hoveredCcaa}</p>
+          <p>
+            {metric}: {hoveredValue != null ? formatNumber(hoveredValue) : "Sin datos"}
+          </p>
+        </div>
+      )}
     </div>
   );
 });

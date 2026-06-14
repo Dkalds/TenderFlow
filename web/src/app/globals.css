@@ -331,3 +331,16 @@ body {
 .recharts-cartesian-axis-tick-value {
   fill: hsl(var(--muted-foreground));
 }
+
+/* Permanent CCAA labels on choropleth map */
+.ccaa-label {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  pointer-events: none;
+  text-shadow: 0 0 3px #fff, 0 0 6px #fff, 0 1px 2px rgba(0,0,0,0.12);
+}
+.ccaa-label::before {
+  display: none !important;
+}
