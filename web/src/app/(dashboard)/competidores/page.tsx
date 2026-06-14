@@ -889,7 +889,7 @@ export default function CompetidoresPage() {
                   {isLoadingDrillDownProfile ? (
                     <Skeleton className="h-24 w-full" />
                   ) : (drillDownProfile?.contratos_recientes?.length ?? 0) > 0 ? (
-                    <div className="space-y-2">
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                       {drillDownProfile?.contratos_recientes?.map((contract) => (
                         <div key={contract.licitacion_id} className="rounded-md border p-2">
                           <p className="text-sm font-medium truncate" title={contract.titulo ?? contract.licitacion_id}>
