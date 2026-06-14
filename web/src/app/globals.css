@@ -2,8 +2,8 @@
 
 /*
  * TenderFlow design tokens.
- * Corporate market-intelligence dashboard: neutral base, green primary,
- * high-density data surfaces, and consistent chart colors.
+ * Premium market-intelligence dashboard: neutral base, indigo accent,
+ * layered surfaces, refined elevation, and consistent chart colors.
  */
 
 @layer base {
@@ -15,27 +15,38 @@
     --card-foreground: 240 8% 5%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 8% 5%;
-    --primary: 83 69% 36%;
+    --primary: 245 72% 56%;
     --primary-foreground: 0 0% 100%;
     --secondary: 60 7% 92%;
     --secondary-foreground: 240 8% 10%;
     --muted: 60 7% 92%;
     --muted-foreground: 210 2% 47%;
-    --accent: 83 69% 36%;
+    --accent: 245 72% 56%;
     --accent-foreground: 0 0% 100%;
     --destructive: 352 81% 40%;
     --destructive-foreground: 0 0% 98%;
-    --border: 210 2% 47% / 0.22;
-    --input: 210 2% 47% / 0.26;
-    --ring: 83 69% 36%;
-    --radius: 0.5rem;
+    --success: 142 70% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 92% 44%;
+    --warning-foreground: 30 60% 10%;
+    --info: 213 90% 50%;
+    --info-foreground: 0 0% 100%;
+    --border: 222 10% 44% / 0.32;
+    --input: 222 10% 44% / 0.32;
+    --ring: 245 72% 56%;
+    --radius: 0.625rem;
+
+    /* Elevation scale (premium, soft, layered) */
+    --tf-shadow-sm: 0 1px 2px hsl(240 8% 5% / 0.06), 0 1px 1px hsl(240 8% 5% / 0.04);
+    --tf-shadow-md: 0 2px 4px hsl(240 8% 5% / 0.05), 0 8px 20px -10px hsl(240 8% 5% / 0.18);
+    --tf-shadow-lg: 0 1px 0 hsl(0 0% 100% / 0.6) inset, 0 12px 36px -12px hsl(240 8% 5% / 0.22);
 
     /* Chart colors */
-    --chart-1: 83 69% 44%;
+    --chart-1: 245 72% 60%;
     --chart-2: 194 79% 64%;
     --chart-3: 40 100% 58%;
     --chart-4: 88 61% 56%;
-    --chart-5: 246 100% 78%;
+    --chart-5: 280 65% 68%;
     --chart-6: 172 100% 38%;
     --chart-7: 15 100% 64%;
     --chart-8: 210 2% 47%;
@@ -57,25 +68,35 @@
     --card-foreground: 0 0% 98%;
     --popover: 240 8% 10%;
     --popover-foreground: 0 0% 98%;
-    --primary: 83 69% 44%;
-    --primary-foreground: 240 8% 5%;
+    --primary: 246 84% 70%;
+    --primary-foreground: 240 8% 7%;
     --secondary: 240 8% 11%;
     --secondary-foreground: 0 0% 98%;
     --muted: 240 8% 13%;
     --muted-foreground: 60 2% 63%;
-    --accent: 83 69% 44%;
+    --accent: 246 60% 58%;
     --accent-foreground: 0 0% 98%;
     --destructive: 352 81% 49%;
     --destructive-foreground: 0 0% 98%;
-    --border: 210 2% 47% / 0.22;
-    --input: 210 2% 47% / 0.28;
-    --ring: 83 69% 44%;
+    --success: 142 62% 46%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 54%;
+    --warning-foreground: 38 100% 8%;
+    --info: 213 90% 64%;
+    --info-foreground: 213 100% 8%;
+    --border: 220 12% 60% / 0.22;
+    --input: 220 12% 60% / 0.26;
+    --ring: 246 84% 70%;
 
-    --chart-1: 83 69% 44%;
+    --tf-shadow-sm: 0 1px 2px hsl(240 8% 2% / 0.5);
+    --tf-shadow-md: 0 2px 6px hsl(240 8% 2% / 0.45), 0 10px 24px -12px hsl(240 8% 2% / 0.6);
+    --tf-shadow-lg: 0 1px 0 hsl(0 0% 100% / 0.05) inset, 0 16px 40px -16px hsl(240 8% 1% / 0.75);
+
+    --chart-1: 246 84% 70%;
     --chart-2: 194 79% 64%;
     --chart-3: 40 100% 58%;
     --chart-4: 88 61% 56%;
-    --chart-5: 246 100% 78%;
+    --chart-5: 280 70% 74%;
     --chart-6: 172 100% 38%;
     --chart-7: 15 100% 64%;
     --chart-8: 210 2% 47%;
@@ -133,10 +154,25 @@
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
-  --radius: var(--radius);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-sm: var(--tf-shadow-sm);
+  --shadow: var(--tf-shadow-sm);
+  --shadow-md: var(--tf-shadow-md);
+  --shadow-lg: var(--tf-shadow-lg);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -212,12 +248,53 @@ body {
 
 .tf-card-shadow {
   box-shadow:
-    inset 0 1px 0 hsl(0 0% 100% / 0.04),
-    0 8px 24px -16px hsl(240 8% 2% / 0.7);
+    inset 0 1px 0 hsl(0 0% 100% / 0.05),
+    0 1px 2px hsl(240 8% 2% / 0.4),
+    0 18px 40px -22px hsl(240 8% 1% / 0.7);
 }
 
 .light .tf-card-shadow {
-  box-shadow: 0 1px 2px hsl(240 8% 5% / 0.06), 0 16px 34px -24px hsl(240 8% 5% / 0.22);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.7),
+    0 1px 2px hsl(240 8% 5% / 0.05),
+    0 18px 38px -24px hsl(240 8% 5% / 0.2);
+}
+
+/* Tabular figures for large numeric displays (KPIs, metrics) */
+.tf-tnum {
+  font-feature-settings: "tnum" 1, "cv11" 1, "ss01" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Premium shimmer skeleton */
+.tf-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--muted-foreground) / 0.1);
+}
+.tf-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    hsl(var(--muted-foreground) / 0.08),
+    transparent
+  );
+  animation: tf-shimmer 1.6s infinite;
+}
+@keyframes tf-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-shimmer::after {
+    animation: none;
+  }
 }
 
 /* NProgress bar — match primary color */
@@ -227,4 +304,30 @@ body {
 }
 #nprogress .peg {
   box-shadow: 0 0 10px hsl(var(--primary)), 0 0 5px hsl(var(--primary)) !important;
+}
+
+/* Branded Recharts tooltips — theme-aware surface for every default tooltip */
+.recharts-default-tooltip {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--tf-shadow-md) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  padding: 0.5rem 0.75rem !important;
+}
+.recharts-tooltip-wrapper:focus,
+.recharts-tooltip-wrapper:focus-visible {
+  outline: none;
+}
+.recharts-default-tooltip .recharts-tooltip-label {
+  color: hsl(var(--foreground)) !important;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.recharts-default-tooltip .recharts-tooltip-item {
+  color: hsl(var(--popover-foreground)) !important;
+  padding: 0 !important;
+}
+.recharts-cartesian-axis-tick-value {
+  fill: hsl(var(--muted-foreground));
 }

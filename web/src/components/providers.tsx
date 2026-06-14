@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { SessionProvider } from "@/lib/auth";
+import { MotionProvider } from "@/components/motion";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = React.useState(
@@ -27,7 +28,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         disableTransitionOnChange
       >
         <SessionProvider>
-          <NuqsAdapter>{children}</NuqsAdapter>
+          <MotionProvider>
+            <NuqsAdapter>{children}</NuqsAdapter>
+          </MotionProvider>
         </SessionProvider>
       </ThemeProvider>
     </QueryClientProvider>
