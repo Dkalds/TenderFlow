@@ -271,8 +271,24 @@ def test_perfil_empresa(db):
     from db.database import connect_read
     from services.competitive.mercado import perfil_empresa
 
-    insert_contract(db, "M-20", "Profiled SL", nif="B88888888", cpv="72000000", ccaa="Madrid")
-    insert_contract(db, "M-21", "Profiled SL", nif="B88888888", cpv="48000000", ccaa="Cataluña")
+    insert_contract(
+        db,
+        "M-20",
+        "Profiled SL",
+        nif="B88888888",
+        cpv="72000000",
+        ccaa="Madrid",
+        fecha_adjudicacion="2025-01-01",
+    )
+    insert_contract(
+        db,
+        "M-21",
+        "Profiled SL",
+        nif="B88888888",
+        cpv="48000000",
+        ccaa="Cataluña",
+        fecha_adjudicacion="2025-03-01",
+    )
     resolve(db)
 
     with connect_read() as c:
@@ -283,6 +299,8 @@ def test_perfil_empresa(db):
     assert perfil["totales"]["contratos"] == 2
     assert len(perfil["por_cpv"]) == 2
     assert len(perfil["por_ccaa"]) == 2
+    assert len(perfil["contratos_recientes"]) == 2
+    assert perfil["contratos_recientes"][0]["licitacion_id"] == "M-21"
 
 
 # ---------------------------------------------------------------------------

@@ -89,6 +89,18 @@ interface CompetitorsData {
   estacionalidad?: { mes: number; count: number; importe: number }[];
 }
 
+interface CompetitorRecentContract {
+  licitacion_id: string;
+  titulo?: string | null;
+  organo_contratacion?: string | null;
+  fecha_adjudicacion?: string | null;
+  importe_adjudicado?: number | null;
+}
+
+interface CompetitorProfile {
+  contratos_recientes?: CompetitorRecentContract[];
+}
+
 type SortKey = "nombre" | "count" | "importe" | "cuota" | "contratos_por_anio" | "importe_medio" | "baja_media" | "nif" | "ofertas_medias" | "pct_monopolio" | "pct_top_organo" | "ultima";
 
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -143,6 +155,18 @@ export default function CompetidoresPage() {
   const { sortKey, sortDir, toggleSort } = useSortToggle<SortKey>("count");
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [drillDownCompany, setDrillDownCompany] = useState<Competitor | null>(null);
+  const drillDownCompanyId = drillDownCompany?.empresa_id;
+  const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } = useQuery<CompetitorProfile>({
+    queryKey: ["competitive-company-profile", drillDownCompanyId],
+    queryFn: () => {
+      if (drillDownCompanyId == null) {
+        throw new Error("Empresa no seleccionada");
+      }
+      return fetchWithAuth(`/api/v1/competitive/empresas/${drillDownCompanyId}/perfil`);
+    },
+    enabled: drillDownCompanyId != null,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const toggleCompareSelection = useCallback((nombre: string) => {
     setSelectedCompanies((prev) => {
@@ -854,6 +878,38 @@ export default function CompetidoresPage() {
                     <p className="text-xs text-muted-foreground">
                       Sin desglose por CCAA disponible para esta empresa.
                     </p>
+                  )}
+                </div>
+              </>
+
+              <>
+                <Separator />
+                <div>
+                  <p className="text-sm font-medium mb-2">Contratos recientes</p>
+                  {isLoadingDrillDownProfile ? (
+                    <Skeleton className="h-24 w-full" />
+                  ) : (drillDownProfile?.contratos_recientes?.length ?? 0) > 0 ? (
+                    <div className="space-y-2">
+                      {drillDownProfile?.contratos_recientes?.map((contract) => (
+                        <div key={contract.licitacion_id} className="rounded-md border p-2">
+                          <p className="text-sm font-medium truncate" title={contract.titulo ?? contract.licitacion_id}>
+                            {contract.titulo ?? contract.licitacion_id}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {contract.fecha_adjudicacion?.slice(0, 10) ?? "Sin fecha"}
+                            {" · "}
+                            {formatCurrency(contract.importe_adjudicado ?? 0)}
+                          </p>
+                          {contract.organo_contratacion && (
+                            <p className="text-xs text-muted-foreground truncate" title={contract.organo_contratacion}>
+                              {contract.organo_contratacion}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Sin contratos disponibles para esta empresa.</p>
                   )}
                 </div>
               </>

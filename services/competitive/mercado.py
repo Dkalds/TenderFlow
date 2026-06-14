@@ -188,10 +188,29 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
                 (empresa_id,),
             )
         )
+        contratos_recientes = rows_to_dicts(
+            c.execute(
+                f"""
+                SELECT a.licitacion_id,
+                       l.titulo,
+                       l.organo_contratacion,
+                       a.fecha_adjudicacion,
+                       a.importe_adjudicado
+                FROM adjudicaciones a
+                LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id
+                WHERE a.empresa_id = ?
+                  AND {exclude_duplicados_sql("a.licitacion_id")}
+                ORDER BY a.fecha_adjudicacion DESC
+                LIMIT 12
+                """,  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
+                (empresa_id,),
+            )
+        )
     return {
         "empresa_id": empresa_id,
         "totales": totales[0] if totales else {},
         "por_cpv": por_cpv,
         "por_ccaa": por_ccaa,
         "organos_principales": organos,
+        "contratos_recientes": contratos_recientes,
     }
