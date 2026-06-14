@@ -6,6 +6,7 @@ import type { Layer, LeafletMouseEvent } from "leaflet";
 import { GeoJSON, MapContainer, ZoomControl } from "react-leaflet";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
+import spainGeoJson from "@/data/spain-ccaa.json";
 
 interface CcaaData {
   ccaa: string;
@@ -124,16 +125,9 @@ export const SpainMap = React.memo(function SpainMap({
   className,
   onCcaaClick,
 }: SpainMapProps) {
-  const [geoData, setGeoData] = React.useState<FeatureCollection | null>(null);
+  const geoData = spainGeoJson as unknown as FeatureCollection;
   const [hoveredCcaa, setHoveredCcaa] = React.useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
-
-  React.useEffect(() => {
-    fetch("/data/spain-ccaa.geojson")
-      .then((r) => r.json())
-      .then((d: FeatureCollection) => setGeoData(d))
-      .catch(() => {});
-  }, []);
 
   const valueMap = React.useMemo(() => {
     const map = new Map<string, number>();
@@ -210,17 +204,6 @@ export const SpainMap = React.memo(function SpainMap({
     },
     [valueMap, onCcaaClick],
   );
-
-  if (!geoData) {
-    return (
-      <div
-        className={cn("flex items-center justify-center rounded-md border border-border bg-muted/30", className)}
-        style={{ height }}
-      >
-        <span className="text-sm text-muted-foreground">Cargando mapa…</span>
-      </div>
-    );
-  }
 
   return (
     <div className={cn("relative w-full overflow-hidden rounded-md border border-border", className)}>
