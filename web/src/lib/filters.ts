@@ -203,8 +203,16 @@ export function filtersToParams(filters: FilterValues): Record<string, string> {
 
 /**
  * Hook to get filter params ready for API calls.
+ * Returns a stable reference (via JSON serialization) so React Query
+ * doesn't refetch on every render.
  */
 export function useFilterParams(): Record<string, string> {
   const { q, rango, estados, ccaas, tecnologias, importeMin } = useFilters();
-  return filtersToParams({ q, rango, estados, ccaas, tecnologias, importeMin });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable deps via JSON
+  return useMemo(
+    () => filtersToParams({ q, rango, estados, ccaas, tecnologias, importeMin }),
+    // Serialize to string so object identity doesn't cause unnecessary recalculations
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [q, rango.desde, rango.hasta, estados.join(), ccaas.join(), tecnologias.join(), importeMin],
+  );
 }

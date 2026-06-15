@@ -196,14 +196,19 @@ export default function DetallePage() {
   // Fetch licitaciones
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ["licitaciones", queryParams],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const sp = new URLSearchParams(queryParams);
-      const res = await fetch(`/api/v1/licitaciones?${sp}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch licitaciones");
+      const res = await fetch(`/api/v1/licitaciones?${sp}`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`Failed to fetch licitaciones: ${res.status}`);
       return res.json() as Promise<LicitacionesResponse>;
     },
     staleTime: 30_000,
     placeholderData: (prev) => prev,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });
 
   // Fetch scoring
