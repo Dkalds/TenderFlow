@@ -11,11 +11,12 @@ import type { NextConfig } from "next";
  */
 const CSP_REPORT_ONLY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https://lh3.googleusercontent.com",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'self' https://vercel.live https://*.launchdarkly.com",
+  "frame-src 'self' https://vercel.live",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
