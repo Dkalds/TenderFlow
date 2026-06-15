@@ -29,6 +29,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Stagger } from "@/components/motion";
 
 import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { useFilters } from "@/lib/filters";
+import { toggleValue } from "@/lib/chart-interaction";
 import type { ScatterPoint } from "@/components/charts/competitors-charts";
 import {
   Hash,
@@ -152,6 +154,12 @@ export default function CompetidoresPage() {
   });
 
   const [search, setSearch] = useState("");
+  const { ccaas, setCcaas } = useFilters();
+  const activeCcaa = useMemo(() => new Set(ccaas), [ccaas]);
+  const toggleCcaa = useCallback(
+    (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas)),
+    [ccaas, setCcaas],
+  );
   const { sortKey, sortDir, toggleSort } = useSortToggle<SortKey>("count");
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [drillDownCompany, setDrillDownCompany] = useState<Competitor | null>(null);
@@ -512,6 +520,7 @@ export default function CompetidoresPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Actividad por CCAA y Empresa</CardTitle>
+            <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -527,9 +536,16 @@ export default function CompetidoresPage() {
                   {/* Header row */}
                   <div className="font-medium text-muted-foreground p-1" />
                   {heatmapData.ccaas.map((ccaa) => (
-                    <div key={ccaa} className="font-medium text-muted-foreground p-1 text-center truncate" title={ccaa}>
+                    <button
+                      key={ccaa}
+                      type="button"
+                      onClick={() => toggleCcaa(ccaa)}
+                      aria-pressed={activeCcaa.has(ccaa)}
+                      className={`cursor-pointer rounded-sm p-1 text-center font-medium truncate transition-colors hover:bg-muted ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                      title={`Filtrar por ${ccaa}`}
+                    >
                       {truncate(ccaa, 10)}
-                    </div>
+                    </button>
                   ))}
                   {/* Data rows */}
                   {heatmapData.empresas.map((empresa) => (

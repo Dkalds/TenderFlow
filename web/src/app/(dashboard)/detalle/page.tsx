@@ -24,7 +24,8 @@ import { t } from "@/lib/i18n";
 import { formatCurrency, formatDate, truncate, cn } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { useFilterParams } from "@/lib/filters";
+import { useFilterParams, useFilters } from "@/lib/filters";
+import { toggleValue } from "@/lib/chart-interaction";
 import { DetailPanel, type LicitacionDetail } from "@/components/detail-panel";
 import { Comparator } from "@/components/comparator";
 import { ExportPopover } from "@/components/export-popover";
@@ -126,6 +127,15 @@ interface MergedRow extends LicitacionSummary {
 export default function DetallePage() {
   const searchParams = useSearchParams();
   const filterParams = useFilterParams();
+  const { ccaas, setCcaas, tecnologias, setTecnologias } = useFilters();
+  const toggleCcaa = useCallback(
+    (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas)),
+    [ccaas, setCcaas],
+  );
+  const toggleTecnologia = useCallback(
+    (tec: string) => setTecnologias(toggleValue(tec, tecnologias)),
+    [tecnologias, setTecnologias],
+  );
 
   // State
   const [search, setSearch] = useState("");
@@ -335,7 +345,26 @@ export default function DetallePage() {
         accessorKey: "ccaa",
         header: "CCAA",
         size: 120,
-        cell: ({ getValue }) => truncate(getValue<string>(), 20),
+        cell: ({ getValue }) => {
+          const ccaa = getValue<string>();
+          if (!ccaa) return "-";
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCcaa(ccaa);
+              }}
+              className={cn(
+                "rounded px-1 text-left hover:underline",
+                ccaas.includes(ccaa) && "font-semibold text-primary",
+              )}
+              title={`Filtrar por ${ccaa}`}
+            >
+              {truncate(ccaa, 20)}
+            </button>
+          );
+        },
       },
       {
         accessorKey: "cpv",
@@ -351,11 +380,28 @@ export default function DetallePage() {
         size: 110,
         cell: ({ getValue }) => {
           const tech = getValue<string | null>();
-          return tech ? <Badge variant="outline" className="text-xs">{tech}</Badge> : "-";
+          if (!tech) return "-";
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleTecnologia(tech);
+              }}
+              title={`Filtrar por ${tech}`}
+            >
+              <Badge
+                variant={tecnologias.includes(tech) ? "default" : "outline"}
+                className="cursor-pointer text-xs"
+              >
+                {tech}
+              </Badge>
+            </button>
+          );
         },
       },
     ],
-    [compact],
+    [compact, ccaas, tecnologias, toggleCcaa, toggleTecnologia],
   );
 
   const totalPages = Math.ceil((data?.total ?? 0) / pagination.pageSize);

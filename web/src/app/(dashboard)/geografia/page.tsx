@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useFilters } from "@/lib/filters";
+import { toggleValue } from "@/lib/chart-interaction";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,6 +50,10 @@ export default function GeografiaPage() {
   const [provSortKey, setProvSortKey] = useState<ProvSortKey>("count");
   const [provSortDir, setProvSortDir] = useState<SortDir>("desc");
   const [mapMetric, setMapMetric] = useState<"count" | "importe">("count");
+
+  const { ccaas, setCcaas } = useFilters();
+  const activeCcaa = useMemo(() => new Set(ccaas), [ccaas]);
+  const toggleCcaa = (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas));
 
   const { data, isLoading, error } = useFilteredQuery<GeographyResponse>(
     ["analytics", "geography"],
@@ -274,6 +280,7 @@ export default function GeografiaPage() {
               data={mapData}
               metric={mapMetric === "count" ? "Licitaciones" : "Importe €"}
               height={480}
+              onCcaaClick={toggleCcaa}
             />
           )}
         </CardContent>
@@ -284,12 +291,13 @@ export default function GeografiaPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">CCAAs por Cantidad</CardTitle>
+            <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : barData.length > 0 ? (
-              <GeografiaBarChart data={barData} />
+              <GeografiaBarChart data={barData} onSelect={toggleCcaa} />
             ) : (
               <EmptyState />
             )}
@@ -302,12 +310,13 @@ export default function GeografiaPage() {
             <CardTitle className="text-base">
               Distribucion por Importe
             </CardTitle>
+            <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
             ) : pieData.length > 0 ? (
-              <GeografiaPieChart data={pieData} />
+              <GeografiaPieChart data={pieData} onSelect={toggleCcaa} />
             ) : (
               <EmptyState />
             )}
@@ -319,6 +328,7 @@ export default function GeografiaPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Todas las CCAAs</CardTitle>
+          <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -366,10 +376,14 @@ export default function GeografiaPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedItems.map((item, idx) => (
+                  {sortedItems.map((item, idx) => {
+                    const isActive = activeCcaa.has(item.ccaa);
+                    return (
                     <TableRow
                       key={idx}
-                      className="border-b border-border/50 hover:bg-muted/50"
+                      onClick={() => toggleCcaa(item.ccaa)}
+                      aria-pressed={isActive}
+                      className={`cursor-pointer border-b border-border/50 hover:bg-muted/50 ${isActive ? "bg-primary/10" : ""}`}
                     >
                       <TableCell className="py-2 pr-4 font-medium">{item.ccaa}</TableCell>
                       <TableCell className="py-2 pr-4 text-right tabular-nums">
@@ -382,7 +396,8 @@ export default function GeografiaPage() {
                         {formatPercent(item.pct)}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                   {sortedItems.length === 0 && (
                     <TableRow>
                       <TableCell

@@ -16,6 +16,7 @@ import {
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { chartClickField } from "@/lib/chart-interaction";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -33,7 +34,13 @@ interface GeoPieEntry {
 
 /* ── Exported chart components ─────────────────────────────────── */
 
-export function GeografiaBarChart({ data }: { data: GeoBarEntry[] }) {
+export function GeografiaBarChart({
+  data,
+  onSelect,
+}: {
+  data: GeoBarEntry[];
+  onSelect?: (ccaa: string) => void;
+}) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer
@@ -44,6 +51,7 @@ export function GeografiaBarChart({ data }: { data: GeoBarEntry[] }) {
           data={data}
           layout="vertical"
           margin={{ left: 120 }}
+          className={onSelect ? "cursor-pointer" : undefined}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -66,6 +74,11 @@ export function GeografiaBarChart({ data }: { data: GeoBarEntry[] }) {
             dataKey="count"
             fill={CHART_SERIES[0]}
             radius={[0, 4, 4, 0]}
+            onClick={(entry) => {
+              if (!onSelect) return;
+              const ccaa = chartClickField(entry, "ccaa");
+              if (ccaa) onSelect(ccaa);
+            }}
           />
         </BarChart>
       </ResponsiveContainer>
@@ -73,11 +86,17 @@ export function GeografiaBarChart({ data }: { data: GeoBarEntry[] }) {
   );
 }
 
-export function GeografiaPieChart({ data }: { data: GeoPieEntry[] }) {
+export function GeografiaPieChart({
+  data,
+  onSelect,
+}: {
+  data: GeoPieEntry[];
+  onSelect?: (ccaa: string) => void;
+}) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={400}>
-        <PieChart>
+        <PieChart className={onSelect ? "cursor-pointer" : undefined}>
           <Pie
             data={data}
             dataKey="importe"
@@ -85,6 +104,11 @@ export function GeografiaPieChart({ data }: { data: GeoPieEntry[] }) {
             cx="50%"
             cy="50%"
             outerRadius={140}
+            onClick={(entry) => {
+              if (!onSelect) return;
+              const ccaa = chartClickField(entry, "ccaa");
+              if (ccaa) onSelect(ccaa);
+            }}
             label={({
               name,
               percent,
