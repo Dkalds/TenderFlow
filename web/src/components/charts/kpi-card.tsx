@@ -12,6 +12,17 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedNumber } from "@/components/motion";
 
+/** Vertical accent stripe color, keyed to the design-system score bands. */
+type KpiAccent = "primary" | "hot" | "warm" | "cold" | "skip";
+
+const ACCENT_BG: Record<KpiAccent, string> = {
+  primary: "bg-primary",
+  hot: "bg-[hsl(var(--score-hot))]",
+  warm: "bg-[hsl(var(--score-warm))]",
+  cold: "bg-[hsl(var(--score-cold))]",
+  skip: "bg-[hsl(var(--score-skip))]",
+};
+
 export interface KpiCardProps {
   title: string;
   value?: string;
@@ -22,6 +33,10 @@ export interface KpiCardProps {
   sparkline?: React.ReactNode;
   /** Show anomaly warning badge (2σ deviation detected) */
   anomaly?: boolean;
+  /** Left accent stripe color, keyed to score bands. */
+  accent?: KpiAccent;
+  /** Optional target/threshold shown next to the trend (e.g. "meta 1.000"). */
+  target?: string;
   loading?: boolean;
   className?: string;
 }
@@ -35,11 +50,19 @@ export const KpiCard = React.memo(function KpiCard({
   icon: Icon,
   sparkline,
   anomaly = false,
+  accent,
+  target,
   loading = false,
   className,
 }: KpiCardProps) {
   return (
-    <Card className={cn("group relative overflow-hidden hover:-translate-y-0.5 hover:border-primary/45", className)}>
+    <Card className={cn("group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg", className)}>
+      {accent && (
+        <span
+          aria-hidden="true"
+          className={cn("absolute inset-y-0 left-0 w-1", ACCENT_BG[accent])}
+        />
+      )}
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="pr-8 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {title}
@@ -67,7 +90,7 @@ export const KpiCard = React.memo(function KpiCard({
           />
         )}
 
-        {!loading && (subtitle || trend != null) && (
+        {!loading && (subtitle || trend != null || target) && (
           <div className="mt-1.5 flex items-center gap-2 text-xs">
             {trend != null && (
               <span
@@ -92,6 +115,9 @@ export const KpiCard = React.memo(function KpiCard({
             )}
             {subtitle && !trendLabel && (
               <span className="text-muted-foreground">{subtitle}</span>
+            )}
+            {target && (
+              <span className="text-muted-foreground/80 tabular-nums">meta {target}</span>
             )}
           </div>
         )}

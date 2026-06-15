@@ -7,6 +7,7 @@ const SankeyChart = dynamic(
   { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> },
 );
 import { ExportPopover } from "@/components/export-popover";
+import { CopilotBar } from "@/components/copilot-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -166,15 +167,22 @@ export default function ResumenPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Resumen</h1>
-          <p className="text-muted-foreground">
-            Top licitaciones, distribucion por estado y salud competitiva del mercado.
-          </p>
+      <section className="tf-card-shadow relative overflow-hidden rounded-xl border border-border bg-card/70 p-5">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent"
+        />
+        <div className="relative flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Resumen</h1>
+            <p className="text-muted-foreground">
+              Top licitaciones, distribucion por estado y salud competitiva del mercado.
+            </p>
+          </div>
+          <ExportPopover />
         </div>
-        <ExportPopover />
-      </div>
+        <CopilotBar className="relative mt-4 max-w-2xl" />
+      </section>
 
       <NovedadesBanner data={novedades.data} isLoading={novedades.isLoading} />
 

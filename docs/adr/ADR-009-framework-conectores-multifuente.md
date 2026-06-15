@@ -51,10 +51,13 @@ decisiones bloqueantes:
   autonómicas (Fase 5) son un conector cada una.
 - **Negativo:** inconsistencia estética: filas PLACSP sin prefijo, resto con
   él. Mitigada por la columna `fuente`.
-- **Pendiente (registrado, no implementado):** dedupe cross-fuente — un
-  contrato grande aparece en PLACSP *y* TED. Requiere una clave débil de
-  matching (órgano normalizado + expediente nacional + CPV); se abordará
-  cuando haya datos TED reales para calibrarla.
+- **Resuelto (Fase 5.2, RFC 20260611-1):** dedupe cross-fuente — un contrato
+  grande que aparece en PLACSP *y* TED se marca de forma reversible en
+  `licitaciones_duplicados` (`services/dedupe.py`); las consultas analíticas lo
+  excluyen vía `exclude_duplicados_sql()`. La clave débil de matching es
+  órgano normalizado + expediente nacional + CPV-4. Un guardrail de test
+  (`tests/test_dedup_guardrail.py`) falla en CI si una consulta analítica nueva
+  sobre `licitaciones`/`adjudicaciones` omite el filtro.
 - **Pendiente:** retrofit del pipeline PLACSP (bulk + ATOM) sobre el contrato
   `Connector`. El pipeline actual sigue siendo el camino de producción para
   PLACSP; el retrofit se hará con sus tests como red de seguridad.

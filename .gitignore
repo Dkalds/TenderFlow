@@ -92,3 +92,5 @@ web/out/
 
 .vercel
 .env*
+
+.vercel

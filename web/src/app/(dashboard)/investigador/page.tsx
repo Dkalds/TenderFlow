@@ -30,6 +30,7 @@ import {
 import { formatCurrency, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
+import { streamAsk } from "@/lib/ask-stream";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -266,66 +267,18 @@ export default function InvestigadorPage() {
             data.hits ?? data.results ?? data.items ?? [];
           setSearchResults(hits);
         } else {
-          // SSE streaming for Ask mode
-          const res = await fetch("/api/v1/ask", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              question: q,
-              model: config.model || undefined,
-              top_k: config.topK,
-              ...filterExtras,
-            }),
+          // SSE streaming for Ask mode — shared client (see lib/ask-stream.ts).
+          setStreaming(true);
+          setAskAnswer("");
+          await streamAsk({
+            question: q,
+            model: config.model || undefined,
+            topK: config.topK,
+            extras: filterExtras,
             signal: abort.signal,
+            onToken: setAskAnswer,
           });
-          if (!res.ok) throw new Error(`Error ${res.status}`);
-
-          // Check if response is SSE or regular JSON
-          const contentType = res.headers.get("content-type") ?? "";
-          if (contentType.includes("text/event-stream") && res.body) {
-            setStreaming(true);
-            setAskAnswer("");
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let accumulated = "";
-            let buffer = "";
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              // Keep incomplete last line in buffer
-              buffer = lines.pop() ?? "";
-
-              for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith("data: ")) continue;
-                const payload = trimmed.slice(6);
-                if (payload === "[DONE]") break;
-                try {
-                  const parsed = JSON.parse(payload);
-                  if (parsed.text) {
-                    accumulated += parsed.text;
-                    setAskAnswer(accumulated);
-                  }
-                } catch {
-                  // Non-JSON SSE line, accumulate as raw text
-                  accumulated += payload;
-                  setAskAnswer(accumulated);
-                }
-              }
-            }
-            setStreaming(false);
-          } else {
-            // Fallback: regular JSON response
-            const data = await res.json();
-            setAskAnswer(
-              data.answer ?? data.text ?? "Sin respuesta disponible.",
-            );
-          }
+          setStreaming(false);
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;

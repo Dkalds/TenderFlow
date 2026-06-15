@@ -239,11 +239,22 @@ body {
 }
 
 .tf-sidebar-surface {
-  background: linear-gradient(180deg, hsl(240 8% 7%), hsl(240 8% 5%));
+  background: linear-gradient(180deg, hsl(240 8% 7% / 0.82), hsl(240 8% 5% / 0.72));
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
 }
 
 .light .tf-sidebar-surface {
-  background: linear-gradient(180deg, hsl(0 0% 100%), hsl(60 12% 95%));
+  background: linear-gradient(180deg, hsl(0 0% 100% / 0.82), hsl(60 12% 95% / 0.72));
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tf-sidebar-surface {
+    background: linear-gradient(180deg, hsl(240 8% 7%), hsl(240 8% 5%));
+  }
+  .light .tf-sidebar-surface {
+    background: linear-gradient(180deg, hsl(0 0% 100%), hsl(60 12% 95%));
+  }
 }
 
 .tf-card-shadow {
@@ -258,6 +269,29 @@ body {
     inset 0 1px 0 hsl(0 0% 100% / 0.7),
     0 1px 2px hsl(240 8% 5% / 0.05),
     0 18px 38px -24px hsl(240 8% 5% / 0.2);
+}
+
+/* Glass surfaces — frosted chrome for shell + overlays.
+   Falls back to a solid surface where backdrop-filter is unsupported. */
+.tf-glass {
+  background: hsl(var(--card) / 0.7);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+}
+
+.tf-glass-strong {
+  background: hsl(var(--popover) / 0.85);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  backdrop-filter: blur(16px) saturate(1.5);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tf-glass {
+    background: hsl(var(--card));
+  }
+  .tf-glass-strong {
+    background: hsl(var(--popover));
+  }
 }
 
 /* Tabular figures for large numeric displays (KPIs, metrics) */

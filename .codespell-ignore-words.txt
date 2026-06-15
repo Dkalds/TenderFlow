@@ -48,6 +48,8 @@ mis
 responde
 importan
 infor
+funcion
+templat
 abstracto
 vectores
 previos

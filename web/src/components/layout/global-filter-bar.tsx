@@ -47,7 +47,7 @@ export function GlobalFilterBar() {
   };
 
   return (
-    <div className="sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 bg-card/95 px-4 py-2 backdrop-blur">
+    <div className="tf-glass sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2">
       <SearchAutocomplete
         className="min-w-56 flex-1 sm:max-w-80"
         aria-label="Buscar licitaciones"

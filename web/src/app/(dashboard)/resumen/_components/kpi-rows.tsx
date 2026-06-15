@@ -53,6 +53,7 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
             title="Nuevas 24h"
             value={hoyLoading ? undefined : formatNumber(hoy?.nuevas_24h)}
             icon={Flame}
+            accent="cold"
             loading={hoyLoading}
             sparkline={sparklines ? <MiniSparkline data={sparklines.count} up /> : undefined}
             anomaly={anomalyFlags.count}
@@ -63,6 +64,7 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
             title="Vencen 48h"
             value={hoyLoading ? undefined : formatNumber(hoy?.vencen_48h)}
             icon={Clock}
+            accent="hot"
             loading={hoyLoading}
             className={hoy && hoy.vencen_48h > 0 ? "border-destructive/50" : undefined}
           />
@@ -72,6 +74,7 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
             title="Calientes"
             value={hoyLoading ? undefined : formatNumber(hoy?.calientes)}
             icon={Flame}
+            accent="warm"
             loading={hoyLoading}
           />
         </Stagger.Item>
@@ -80,6 +83,7 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
             title="Total activas"
             value={hoyLoading ? undefined : formatNumber(hoy?.total_activas)}
             icon={Activity}
+            accent="primary"
             loading={hoyLoading}
           />
         </Stagger.Item>

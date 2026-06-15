@@ -1,0 +1,107 @@
+"""Tests del monitor de calibración del modelo de baja (closed-loop).
+
+Verifica que la cobertura empírica del intervalo p10-p90 se calcula sobre los
+pares predicción↔baja realizada, que respeta el umbral mínimo de evaluadas y
+que degradaciones de cobertura se clasifican como warn/crit. Fail-open.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from services.ml.calibration import comprobar_calibracion_baja
+
+
+@pytest.fixture()
+def db(tmp_db):
+    db_mod, _ = tmp_db
+    return db_mod
+
+
+def _sembrar_par(c, lic_id, importe, baja_realizada, p10, p50, p90):
+    """Inserta licitación + adjudicación (baja real) + predicción servida."""
+    c.execute(
+        "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
+        " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
+        "VALUES (?, 'Lic', 'Organo A', '72000000', 'Madrid', ?, 'Servicios', "
+        " 'placsp', '2026-01-01', datetime('now'))",
+        (lic_id, importe),
+    )
+    c.execute(
+        "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
+        " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
+        "VALUES (?, 'Empresa X', ?, '2026-03-01', 3, datetime('now'))",
+        (lic_id, importe * (1 - baja_realizada)),
+    )
+    c.execute(
+        "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
+        " computed_at) VALUES (?, ?, ?, ?, 1, datetime('now'))",
+        (lic_id, p10, p50, p90),
+    )
+
+
+def test_sin_suficientes_evaluadas_devuelve_sin_datos(db):
+    with db.connect() as c:
+        for i in range(5):
+            _sembrar_par(c, f"L{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30)
+    res = comprobar_calibracion_baja()
+    assert res["status"] == "sin_datos"
+    assert res["n"] == 5
+
+
+def test_intervalos_bien_calibrados_status_ok(db):
+    with db.connect() as c:
+        # 36 cubiertos (realizada 0.20 dentro de [0.10, 0.30]) y 4 fuera.
+        for i in range(36):
+            _sembrar_par(c, f"OK{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30)
+        for i in range(4):
+            _sembrar_par(c, f"NO{i}", 100_000.0, 0.20, 0.50, 0.55, 0.60)
+    res = comprobar_calibracion_baja()
+    assert res["status"] == "ok"
+    assert res["n"] == 40
+    assert res["cobertura"] == pytest.approx(0.90, abs=0.01)
+
+
+def test_intervalos_sobreconfiados_alertan(db, monkeypatch):
+    alertas = []
+    import observability.alerts as alerts_mod
+
+    monkeypatch.setattr(
+        alerts_mod, "notify", lambda level, title, body="", **kw: alertas.append((level, title))
+    )
+    with db.connect() as c:
+        # Intervalo estrecho [0.19, 0.21] pero la baja real oscila mucho:
+        # casi ninguno cae dentro => cobertura ~0 => crit.
+        for i in range(40):
+            real = 0.05 if i % 2 == 0 else 0.40
+            _sembrar_par(c, f"X{i}", 100_000.0, real, 0.19, 0.20, 0.21)
+    res = comprobar_calibracion_baja()
+    assert res["status"] in {"warn", "crit"}
+    assert res["cobertura"] < 0.65
+    assert alertas, "una calibración degradada debe disparar alerta"
+
+
+def test_excluye_duplicados_confirmados(db):
+    with db.connect() as c:
+        for i in range(40):
+            _sembrar_par(c, f"D{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30)
+        # Marca 10 como duplicados confirmados: deben quedar fuera del cálculo.
+        for i in range(10):
+            c.execute(
+                "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, "
+                " confianza, status, clave_match) VALUES (?, 'D39', 1.0, 'confirmed', 'test')",
+                (f"D{i}",),
+            )
+    res = comprobar_calibracion_baja()
+    assert res["n"] == 30
+
+
+def test_fail_open_si_falla_la_query(db, monkeypatch):
+    import services.ml.calibration as cal_mod
+
+    def _boom(*a, **k):
+        raise RuntimeError("db caída")
+
+    monkeypatch.setattr(cal_mod, "connect_read", _boom)
+    res = comprobar_calibracion_baja()
+    assert res["status"] == "error"

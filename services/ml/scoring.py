@@ -18,6 +18,7 @@ from typing import Any
 from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
 from services.competitive.bajas import _VALID_PAIR
+from services.dedupe import exclude_duplicados_sql
 from services.ml.baja_model import MODEL_NAME, BajaModel, Prediccion, predecir_baseline
 from services.ml.features import features_licitaciones_abiertas
 
@@ -29,8 +30,8 @@ def _media_global_baja() -> float:
         SELECT AVG((l.importe - a.importe_adjudicado) / l.importe)
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {_VALID_PAIR}
-    """  # noqa: S608 — _VALID_PAIR es un fragmento constante
+        WHERE {_VALID_PAIR} AND {exclude_duplicados_sql()}
+    """  # noqa: S608 — _VALID_PAIR y exclude_duplicados_sql son fragmentos constantes
     with connect_read() as c:
         row = c.execute(sql).fetchone()
     return float(row[0]) if row and row[0] is not None else 0.12

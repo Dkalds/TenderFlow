@@ -6,6 +6,8 @@ import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatNumber, truncate } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import { useFilters } from "@/lib/filters";
+import { chartClickField, toggleValue } from "@/lib/chart-interaction";
 import {
   BarChart,
   Bar,
@@ -32,11 +34,14 @@ export function EstadoTiposCharts({
   isLoading,
   tiposLoading,
 }: EstadoTiposChartsProps) {
+  const { estados, setEstados } = useFilters();
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Distribucion por Estado</CardTitle>
+          <p className="text-xs text-muted-foreground">Clic en un estado para filtrar</p>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -44,7 +49,7 @@ export function EstadoTiposCharts({
           ) : porEstado && porEstado.length > 0 ? (
             <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={320}>
-                <PieChart>
+                <PieChart className="cursor-pointer">
                   <Pie
                     data={porEstado}
                     dataKey="n"
@@ -53,6 +58,10 @@ export function EstadoTiposCharts({
                     cy="50%"
                     outerRadius={110}
                     innerRadius={55}
+                    onClick={(entry) => {
+                      const estado = chartClickField(entry, "estado");
+                      if (estado) setEstados(toggleValue(estado, estados));
+                    }}
                     label={({ name, value }: { name?: string; value?: number }) =>
                       `${name ?? ""}: ${value ?? 0}`
                     }

@@ -95,7 +95,7 @@ export function TopNav() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 h-[60px] border-b border-border/70 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+      <header className="tf-glass sticky top-0 z-40 h-[60px] border-b border-border/70">
         <div className="flex h-full items-center gap-3 px-4">
           {/* Mobile hamburger */}
           <Button
@@ -200,7 +200,7 @@ export function TopNav() {
               </Button>
               {userMenuOpen && (
                 <div
-                  className="absolute right-0 top-full mt-1 w-48 rounded-md border bg-popover p-1 shadow-md"
+                  className="tf-glass-strong absolute right-0 top-full mt-1 w-48 rounded-md border p-1 shadow-md"
                   role="menu"
                   tabIndex={-1}
                   onKeyDown={(e) => {
@@ -242,7 +242,7 @@ export function TopNav() {
             onClick={() => setMobileOpen(false)}
             onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
           />
-          <nav className="absolute left-0 top-14 bottom-0 w-72 bg-background border-r p-4 space-y-1 overflow-y-auto" aria-label="Navegación móvil">
+          <nav className="tf-glass-strong absolute left-0 top-14 bottom-0 w-72 border-r p-4 space-y-1 overflow-y-auto" aria-label="Navegación móvil">
             {visibleSections.map((section) => {
               const Icon = section.icon;
               const active = section.pages.some((p) => pathname === `/${p.slug}`);

@@ -63,7 +63,10 @@ API (webhooks, exports, API keys, watchlist, auth), dashboard (sessions/auth).
 The original "single writer" assumption from ADR-004 no longer holds; these
 tripwires provide a proactive migration signal instead of reacting to incidents.
 
-Grafana alert rule: `rate(sqlite_busy_errors_total[1h]) > 10` → PagerDuty/Slack.
+Las reglas están desplegadas en `observability/alert_rules.yml` (grupo
+`persistence_tripwires`), cargadas por Prometheus vía `rule_files`. El runbook
+de decisión —diagnóstico, mitigaciones por coste y criterio de migración— está
+en `docs/runbooks/persistence-tripwires.md`.
 
 ## Alternatives Considered
 

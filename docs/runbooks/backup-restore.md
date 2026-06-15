@@ -18,19 +18,16 @@ Crea un fichero comprimido en `data/backups/licitaciones_YYYYMMDD_HHMMSS.db.gz`.
 ## Verificar integridad del backup
 
 ```bash
-python - <<'EOF'
-import gzip, sqlite3, pathlib, sys
-backup = sorted(pathlib.Path("data/backups").glob("*.db.gz"))[-1]
-with gzip.open(backup) as f:
-    data = f.read()
-tmp = pathlib.Path("/tmp/verify_backup.db")
-tmp.write_bytes(data)
-con = sqlite3.connect(str(tmp))
-ok = con.execute("PRAGMA integrity_check").fetchone()[0]
-print(f"Backup: {backup.name} — integrity_check: {ok}")
-tmp.unlink()
-EOF
+python scripts/restore_db.py --verify                 # el último backup local
+python scripts/restore_db.py --verify path/al.db.gz   # uno concreto
 ```
+
+Corre `PRAGMA integrity_check` + query de humo (nº de tablas y filas en
+`licitaciones`) sobre una copia temporal. Exit code 0 = restaurable.
+
+> El workflow `.github/workflows/restore-drill.yml` ejecuta esta verificación
+> sobre el último backup de S3/R2 cada lunes — un backup no probado no es un
+> backup.
 
 ## Restaurar desde backup
 
@@ -41,28 +38,9 @@ make stop
 ```
 
 ```bash
-python - <<'EOF'
-import gzip, shutil, pathlib, sys
-
-# Seleccionar backup (modifica la fecha si no es el más reciente)
-backups = sorted(pathlib.Path("data/backups").glob("*.db.gz"))
-if not backups:
-    print("ERROR: No se encontraron backups en data/backups/")
-    sys.exit(1)
-
-backup = backups[-1]
-target = pathlib.Path("data/licitaciones.db")
-
-# Guardar versión actual como .bak
-if target.exists():
-    target.rename(str(target) + ".bak")
-    print(f"BD actual renombrada a {target}.bak")
-
-with gzip.open(backup) as f:
-    target.write_bytes(f.read())
-
-print(f"Restaurado: {backup.name} → {target}")
-EOF
+# Restaura el backup indicado sobre la BD destino, preservando la actual
+# como <target>.bak. Verifica el backup ANTES de tocar el destino.
+python scripts/restore_db.py --restore data/backups/licitaciones_YYYYMMDD_HHMMSS.db.gz
 ```
 
 ```bash

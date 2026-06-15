@@ -33,6 +33,12 @@ export function EvolucionMensual({ porMes, isLoading }: EvolucionMensualProps) {
           <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={porMes}>
+                <defs>
+                  <linearGradient id="evolucion-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHART_SERIES[0]} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={CHART_SERIES[0]} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="mes" tick={{ fontSize: 12 }} className="text-muted-foreground" />
                 <YAxis tick={{ fontSize: 12 }} className="text-muted-foreground" />
@@ -41,8 +47,8 @@ export function EvolucionMensual({ porMes, isLoading }: EvolucionMensualProps) {
                   type="monotone"
                   dataKey="n_licitaciones"
                   stroke={CHART_SERIES[0]}
-                  fill={CHART_SERIES[0]}
-                  fillOpacity={0.1}
+                  strokeWidth={2}
+                  fill="url(#evolucion-fill)"
                   name="Licitaciones"
                 />
               </AreaChart>

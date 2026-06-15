@@ -6,6 +6,8 @@ import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatNumber, formatCurrency, truncate } from "@/lib/utils";
 import { CHART_SERIES } from "@/lib/chart-colors";
+import { useFilters } from "@/lib/filters";
+import { chartClickField, toggleValue } from "@/lib/chart-interaction";
 import {
   BarChart,
   Bar,
@@ -29,6 +31,8 @@ export function ActivityTechCharts({
   isLoading,
   techLoading,
 }: ActivityTechChartsProps) {
+  const { tecnologias, setTecnologias } = useFilters();
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
@@ -42,6 +46,12 @@ export function ActivityTechCharts({
             <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={activityData}>
+                  <defs>
+                    <linearGradient id="activity-bar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={CHART_SERIES[0]} stopOpacity={0.95} />
+                      <stop offset="100%" stopColor={CHART_SERIES[0]} stopOpacity={0.5} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
@@ -53,7 +63,7 @@ export function ActivityTechCharts({
                   />
                   <Bar
                     dataKey="n_licitaciones"
-                    fill={CHART_SERIES[0]}
+                    fill="url(#activity-bar)"
                     radius={[4, 4, 0, 0]}
                     name="Licitaciones"
                   />
@@ -69,6 +79,7 @@ export function ActivityTechCharts({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Tecnologias en ultimo mes</CardTitle>
+          <p className="text-xs text-muted-foreground">Clic en una tecnologia para filtrar</p>
         </CardHeader>
         <CardContent>
           {techLoading ? (
@@ -76,7 +87,7 @@ export function ActivityTechCharts({
           ) : techData.length > 0 ? (
             <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={Math.max(300, techData.length * 32)}>
-                <BarChart data={techData} layout="vertical" margin={{ left: 100 }}>
+                <BarChart data={techData} layout="vertical" margin={{ left: 100 }} className="cursor-pointer">
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis type="number" tick={{ fontSize: 12 }} />
                   <YAxis
@@ -94,6 +105,10 @@ export function ActivityTechCharts({
                     fill={CHART_SERIES[1]}
                     radius={[0, 4, 4, 0]}
                     name="Licitaciones"
+                    onClick={(entry) => {
+                      const tec = chartClickField(entry, "tecnologia");
+                      if (tec) setTecnologias(toggleValue(tec, tecnologias));
+                    }}
                   />
                 </BarChart>
               </ResponsiveContainer>

@@ -17,13 +17,15 @@ log = get_logger(__name__)
 
 
 def run_scoring() -> dict[str, Any]:
+    from services.ml.calibration import comprobar_calibracion_baja
     from services.ml.drift import comprobar_drift_baja
     from services.ml.scoring import score_predicciones_baja, score_predicciones_retencion
 
     baja = score_predicciones_baja()
     retencion = score_predicciones_retencion()
     drift = comprobar_drift_baja()
-    return {"baja": baja, "retencion": retencion, "drift": drift}
+    calibracion = comprobar_calibracion_baja()
+    return {"baja": baja, "retencion": retencion, "drift": drift, "calibracion": calibracion}
 
 
 def run_retrain() -> dict[str, Any]:

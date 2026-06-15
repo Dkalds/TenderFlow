@@ -1,0 +1,51 @@
+# Reglas de alerta de Prometheus.
+#
+# Los tripwires de persistencia provienen de ADR-004 (SQLite/Turso vs Postgres):
+# señalan cuándo el supuesto "single writer" deja de sostenerse y hay que
+# evaluar la migración. Antes vivían solo como texto en el ADR; aquí se
+# despliegan de verdad. Runbook de decisión: docs/runbooks/persistence-tripwires.md
+#
+# Para que Prometheus las cargue, prometheus.yml las referencia en `rule_files`.
+
+groups:
+  - name: persistence_tripwires
+    rules:
+      - alert: SQLiteBusyErrorsHigh
+        # ADR-004: >10 BUSY/h sostenido → evaluar migración a Postgres.
+        expr: rate(sqlite_busy_errors_total[1h]) * 3600 > 10
+        for: 15m
+        labels:
+          severity: warning
+          adr: "004"
+        annotations:
+          summary: "SQLite BUSY errors por encima del tripwire (>10/h)"
+          description: >
+            rate(sqlite_busy_errors_total[1h]) supera 10/h sostenido.
+            Indica contención de escritura. Seguir
+            docs/runbooks/persistence-tripwires.md.
+
+      - alert: DBWriteLatencyHigh
+        # ADR-004: p99 de escritura >500ms → investigar contención.
+        expr: histogram_quantile(0.99, rate(db_write_duration_seconds_bucket[10m])) > 0.5
+        for: 15m
+        labels:
+          severity: warning
+          adr: "004"
+        annotations:
+          summary: "Latencia p99 de escritura DB > 500ms"
+          description: >
+            El p99 de db_write_duration_seconds supera 500ms durante 15m.
+            Investigar contención de escritura (ver runbook).
+
+      - alert: DBConcurrentWritersHigh
+        # ADR-004: >3 escritores concurrentes sostenido → review de arquitectura.
+        expr: max_over_time(db_concurrent_writers[10m]) > 3
+        for: 15m
+        labels:
+          severity: warning
+          adr: "004"
+        annotations:
+          summary: "Escritores concurrentes DB > 3"
+          description: >
+            db_concurrent_writers supera 3 sostenido. El supuesto single-writer
+            de ADR-004 ya no se sostiene; revisar arquitectura de persistencia.

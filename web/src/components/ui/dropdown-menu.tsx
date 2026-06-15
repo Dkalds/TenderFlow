@@ -67,7 +67,7 @@ const DropdownMenuContent = React.forwardRef<HTMLDivElement, DropdownMenuContent
         }}
         data-dropdown-content=""
         className={cn(
-          "absolute z-50 mt-2 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md",
+          "tf-glass-strong absolute z-50 mt-2 min-w-[8rem] overflow-hidden rounded-md border border-border p-1 text-popover-foreground shadow-md",
           "hidden data-[open]:block",
           align === "start" && "left-0",
           align === "center" && "left-1/2 -translate-x-1/2",
