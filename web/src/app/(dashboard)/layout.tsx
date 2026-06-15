@@ -5,6 +5,8 @@ import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { KpiBarConnected } from "@/components/layout/kpi-bar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
+import { CommandPalette } from "@/components/command-palette";
+import { GlobalCopilot } from "@/components/copilot-panel";
 import { PageTransition } from "@/components/motion";
 import { Toaster } from "sonner";
 
@@ -45,6 +47,8 @@ export default function DashboardLayout({
           </div>
         </DashboardShell>
       </div>
+      <CommandPalette />
+      <GlobalCopilot />
       <Toaster richColors position="bottom-right" />
     </div>
   );

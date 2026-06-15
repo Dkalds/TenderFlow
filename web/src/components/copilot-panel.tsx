@@ -15,6 +15,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { useAsk } from "@/hooks/use-ask";
+import { useUiStore } from "@/lib/ui-store";
 
 const EXAMPLE_QUESTIONS = [
   "¿Cuáles son las licitaciones más recientes?",
@@ -172,18 +173,34 @@ export function CopilotPanel({
   );
 }
 
-/** Premium hero ask-bar that launches the CopilotPanel. */
+/**
+ * Single global CopilotPanel mounted once in the dashboard layout. Driven by the
+ * UI store so the hero ask-bar, command palette and shortcuts share one panel.
+ */
+export function GlobalCopilot() {
+  const open = useUiStore((s) => s.copilotOpen);
+  const setOpen = useUiStore((s) => s.setCopilotOpen);
+  const seed = useUiStore((s) => s.copilotSeed);
+  return (
+    <CopilotPanel
+      open={open}
+      onOpenChange={setOpen}
+      seedQuestion={seed.q}
+      seedKey={seed.key}
+    />
+  );
+}
+
+/** Premium hero ask-bar that launches the global CopilotPanel via the UI store. */
 export function CopilotBar({ className }: { className?: string }) {
-  const [open, setOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
-  const [seed, setSeed] = React.useState({ q: "", key: 0 });
+  const openCopilot = useUiStore((s) => s.openCopilot);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const q = input.trim();
     if (!q) return;
-    setSeed((s) => ({ q, key: s.key + 1 }));
-    setOpen(true);
+    openCopilot(q);
   };
 
   return (
@@ -207,7 +224,6 @@ export function CopilotBar({ className }: { className?: string }) {
           </Button>
         </div>
       </form>
-      <CopilotPanel open={open} onOpenChange={setOpen} seedQuestion={seed.q} seedKey={seed.key} />
     </>
   );
 }

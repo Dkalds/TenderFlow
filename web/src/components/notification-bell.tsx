@@ -1,32 +1,67 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Bell } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
+import { fetchWithAuth, apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
 
 interface NotificationBellProps {
   className?: string;
 }
 
-interface Notification {
+interface NotificationItem {
+  id: string;
+  titulo: string | null;
+  importe: number | null;
+  organo_contratacion: string | null;
+  read: boolean;
+}
+
+interface HoyCounters {
+  calientes: number;
+  vencen_48h: number;
+  nuevas_24h: number;
+  total_activas: number;
+}
+
+interface NotificationsResult {
+  items: NotificationItem[];
+  unread_count: number;
+  hoy: HoyCounters;
+}
+
+/** Live item pushed via SSE (not yet persisted in the novedades feed). */
+interface LiveItem {
   id: string;
   message: string;
-  timestamp: Date;
 }
 
 const MAX_RECONNECT_DELAY = 60_000;
 const INITIAL_RECONNECT_DELAY = 1_000;
+const NOTIFICATIONS_KEY = ["notifications"] as const;
 
 export function NotificationBell({ className: _className }: NotificationBellProps) {
-  const [unreadCount, setUnreadCount] = React.useState(0);
-  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const queryClient = useQueryClient();
+  const [liveItems, setLiveItems] = React.useState<LiveItem[]>([]);
+  const [liveUnread, setLiveUnread] = React.useState(0);
   const [connected, setConnected] = React.useState(false);
 
+  // Persistent notifications (novedades since last visit + "today" counters).
+  const { data } = useQuery<NotificationsResult>({
+    queryKey: NOTIFICATIONS_KEY,
+    queryFn: () => fetchWithAuth<NotificationsResult>("/api/v1/notifications"),
+    refetchInterval: 5 * 60_000,
+    meta: { silent: true },
+  });
+
+  // Live push of brand-new licitaciones via SSE.
   React.useEffect(() => {
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout>;
@@ -43,14 +78,15 @@ export function NotificationBell({ className: _className }: NotificationBellProp
 
         es.addEventListener("licitaciones_nuevas", (event) => {
           try {
-            const data = JSON.parse(event.data);
-            const notif: Notification = {
+            const payload = JSON.parse(event.data);
+            const item: LiveItem = {
               id: crypto.randomUUID(),
-              message: data.message ?? `${data.count ?? 1} nuevas licitaciones`,
-              timestamp: new Date(),
+              message: payload.message ?? `${payload.count ?? 1} nuevas licitaciones`,
             };
-            setNotifications((prev) => [notif, ...prev].slice(0, 5));
-            setUnreadCount((prev) => prev + 1);
+            setLiveItems((prev) => [item, ...prev].slice(0, 5));
+            setLiveUnread((prev) => prev + 1);
+            // Refresh the persistent feed so new tenders surface in the list.
+            queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
           } catch (parseError) {
             reportError("NotificationBell.parse", parseError);
           }
@@ -75,19 +111,35 @@ export function NotificationBell({ className: _className }: NotificationBellProp
     }
 
     connect();
-
     return () => {
       es?.close();
       clearTimeout(reconnectTimer);
     };
-  }, []);
+  }, [queryClient]);
+
+  const items = data?.items ?? [];
+  const hoy = data?.hoy;
+  const unreadCount = (data?.unread_count ?? 0) + liveUnread;
+
+  /** Mark unread novedades as read and clear the live badge. */
+  const markAllRead = async () => {
+    setLiveUnread(0);
+    const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+    try {
+      await apiMutate("POST", "/api/v1/notifications/read", { ids: unreadIds });
+      queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+    } catch (err) {
+      reportError("NotificationBell.markRead", err);
+    }
+  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         className="relative rounded-md p-2 hover:bg-accent transition-colors"
-        aria-label="Notificaciones"
-        onClick={() => setUnreadCount(0)}
+        aria-label={`Notificaciones${unreadCount > 0 ? ` (${unreadCount} sin leer)` : ""}`}
+        onClick={markAllRead}
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
@@ -98,29 +150,72 @@ export function NotificationBell({ className: _className }: NotificationBellProp
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 p-2">
         <h4 className="mb-2 px-2 text-xs font-semibold text-muted-foreground">Notificaciones</h4>
-        {notifications.length === 0 ? (
-          <p className="px-2 py-4 text-center text-sm text-muted-foreground">
-            Sin notificaciones
-          </p>
-        ) : (
-          <ul className="space-y-1">
-            {notifications.map((n) => (
+
+        {hoy && (hoy.nuevas_24h > 0 || hoy.vencen_48h > 0 || hoy.calientes > 0) && (
+          <div className="mb-2 grid grid-cols-3 gap-1 px-1">
+            <HoyStat label="Nuevas 24h" value={hoy.nuevas_24h} />
+            <HoyStat label="Vencen 48h" value={hoy.vencen_48h} accent />
+            <HoyStat label="Calientes" value={hoy.calientes} />
+          </div>
+        )}
+
+        {liveItems.length > 0 && (
+          <ul className="mb-1 space-y-1">
+            {liveItems.map((n) => (
               <li
                 key={n.id}
-                className="rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                className="rounded-sm bg-primary/5 px-2 py-1.5 text-sm"
               >
                 <p>{n.message}</p>
-                <p className="text-xs text-muted-foreground">
-                  {n.timestamp.toLocaleTimeString("es-ES")}
-                </p>
               </li>
             ))}
           </ul>
         )}
+
+        {items.length === 0 && liveItems.length === 0 ? (
+          <p className="px-2 py-4 text-center text-sm text-muted-foreground">
+            Sin notificaciones
+          </p>
+        ) : (
+          <ul className="space-y-0.5">
+            {items.map((n) => (
+              <li key={n.id}>
+                <Link
+                  href={`/detalle?lic=${encodeURIComponent(n.id)}`}
+                  className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    {!n.read && (
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                    )}
+                    <span className="truncate">{n.titulo ?? n.id}</span>
+                  </span>
+                  {n.organo_contratacion && (
+                    <span className="block truncate pl-3.5 text-xs text-muted-foreground">
+                      {n.organo_contratacion}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {!connected && (
           <p className="mt-2 px-2 text-xs text-muted-foreground">Sin conexión en vivo</p>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function HoyStat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-background/50 px-2 py-1.5 text-center">
+      <div className={`text-sm font-semibold ${accent ? "text-destructive" : "text-foreground"}`}>
+        {value}
+      </div>
+      <div className="text-[10px] leading-tight text-muted-foreground">{label}</div>
+    </div>
   );
 }

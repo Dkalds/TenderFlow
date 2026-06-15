@@ -2,16 +2,17 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useUiStore } from "@/lib/ui-store";
 
 export function useKeyboardShortcuts() {
   const router = useRouter();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Ctrl+K / Cmd+K focuses search from anywhere (even inputs)
+      // Ctrl+K / Cmd+K opens the command palette from anywhere (even inputs).
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
-        document.querySelector<HTMLInputElement>("[data-search-input] input, input[data-search-input]")?.focus();
+        useUiStore.getState().toggleCommand();
         return;
       }
 

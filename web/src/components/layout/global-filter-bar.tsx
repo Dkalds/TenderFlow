@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { useFilters } from "@/lib/filters";
 import { useSearchHistory } from "@/lib/search-history";
+import { SavedViewsMenu } from "@/components/saved-views-menu";
 
 interface MetaFilters {
   estado: string[];
@@ -130,10 +131,13 @@ export function GlobalFilterBar() {
         </span>
       ))}
 
-      <Button variant="ghost" size="sm" className="ml-auto h-8 px-2 text-xs" onClick={filters.resetFilters}>
-        <RotateCcw className="h-3.5 w-3.5" />
-        Limpiar
-      </Button>
+      <div className="ml-auto flex items-center gap-1">
+        <SavedViewsMenu />
+        <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={filters.resetFilters}>
+          <RotateCcw className="h-3.5 w-3.5" />
+          Limpiar
+        </Button>
+      </div>
     </div>
   );
 }
