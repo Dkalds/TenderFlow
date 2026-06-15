@@ -46,13 +46,26 @@ export function formatPercent(
 
 /**
  * Format a date for display.
+ * Handles ISO (YYYY-MM-DD) and legacy DD/MM/YYYY formats from the CODICE parser.
  */
 export function formatDate(
   date: string | Date | null | undefined,
   locale = "es-ES",
 ): string {
   if (!date) return "-";
-  const d = typeof date === "string" ? new Date(date) : date;
+  let d: Date;
+  if (typeof date === "string") {
+    // Handle DD/MM/YYYY or DD-MM-YYYY (legacy CODICE format)
+    const dmy = date.match(/^(\d{2})[/\-](\d{2})[/\-](\d{4})$/);
+    if (dmy) {
+      d = new Date(`${dmy[3]}-${dmy[2]}-${dmy[1]}`);
+    } else {
+      d = new Date(date);
+    }
+  } else {
+    d = date;
+  }
+  if (isNaN(d.getTime())) return date?.toString() ?? "-";
   return d.toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
