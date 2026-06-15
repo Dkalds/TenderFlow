@@ -100,6 +100,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log.error("api_startup_db_error", error=str(exc))
         raise  # fail fast en todos los entornos
 
+    # Precalentar la caché de DataFrames al arrancar — evita que la primera
+    # request tarde 2-4 min cargando 28k filas desde SQLite.  El prewarm
+    # corre en un hilo para no bloquear el event loop de uvicorn.
+
+    async def _prewarm_caches() -> None:
+        try:
+            import time as _t
+
+            t0 = _t.monotonic()
+            from services.adjudicaciones import load_raw_adjudicaciones
+            from services.licitaciones import load_stats_dataframe
+
+            await asyncio.to_thread(load_stats_dataframe)
+            await asyncio.to_thread(load_raw_adjudicaciones)
+            elapsed = int((_t.monotonic() - t0) * 1000)
+            log.info("api_prewarm_done", elapsed_ms=elapsed)
+        except Exception as exc:
+            log.warning("api_prewarm_failed", error=str(exc))
+
+    asyncio.ensure_future(_prewarm_caches())
+
     # Limitar hilos del threadpool de anyio — evita CPU starvation en instancias
     # con pocos vCPUs (ej. Render Free 0.1 vCPU).  Sin este límite, FastAPI
     # despacha cada endpoint sync a un hilo nuevo (default 40), provocando que
