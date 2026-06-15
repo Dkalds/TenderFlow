@@ -52,7 +52,7 @@ jobs:
           opencode --version
 
       - name: Restore graphify cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: graphify-out/
           key: graphify-${{ github.sha }}
@@ -268,7 +268,7 @@ jobs:
 
       - name: Save graphify cache
         if: always()
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: graphify-out/
           key: graphify-${{ github.sha }}

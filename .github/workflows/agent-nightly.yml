@@ -63,7 +63,7 @@ jobs:
           echo "OpenCode version: $(opencode --version)"
 
       - name: Restore graphify cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: graphify-out/
           key: graphify-nightly-${{ github.sha }}
@@ -72,7 +72,7 @@ jobs:
             graphify-
 
       - name: Restore attempted-items state
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .github/agent-state/
           key: agent-state-${{ github.run_id }}
@@ -130,7 +130,7 @@ jobs:
           python scripts/agent_pick_item.py --mark-attempted "${{ steps.pick.outputs.slug }}"
 
       - name: Save attempted-items state
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .github/agent-state/
           key: agent-state-${{ github.run_id }}
@@ -326,7 +326,7 @@ jobs:
 
       - name: Save graphify cache
         if: always()
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: graphify-out/
           key: graphify-nightly-${{ github.sha }}
