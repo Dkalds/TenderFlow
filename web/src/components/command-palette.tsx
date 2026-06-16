@@ -28,6 +28,7 @@ import { SECTIONS } from "@/lib/navigation";
 import { useUiStore } from "@/lib/ui-store";
 import { useAdmin } from "@/hooks/use-admin";
 import { useDensity } from "@/lib/density";
+import { useWithFilters } from "@/lib/filters";
 
 /** Heuristic: a token with a digit and id-like separators is probably a tender id. */
 function looksLikeLicitacionId(value: string): boolean {
@@ -50,6 +51,7 @@ function CommandPaletteInner() {
   const { theme, setTheme } = useTheme();
   const { compact, toggleCompact } = useDensity();
   const isAdmin = useAdmin();
+  const withFilters = useWithFilters();
   const [search, setSearch] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -183,7 +185,7 @@ function CommandPaletteInner() {
                   <Command.Item
                     key={page.slug}
                     value={`${page.label} ${page.description}`}
-                    onSelect={() => run(() => router.push(`/${page.slug}`))}
+                    onSelect={() => run(() => router.push(withFilters(`/${page.slug}`)))}
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
                   >
                     <Icon className="h-4 w-4 text-muted-foreground" />

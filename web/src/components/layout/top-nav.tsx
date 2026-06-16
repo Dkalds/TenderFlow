@@ -25,7 +25,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
-import { useFilters } from "@/lib/filters";
+import { useFilters, useWithFilters } from "@/lib/filters";
 import { useSearchHistory } from "@/lib/search-history";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
@@ -49,6 +49,7 @@ export function TopNav() {
   const { locale, setLocale: setLocaleStore } = useLocale();
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
   const { q, setQ } = useFilters();
+  const withFilters = useWithFilters();
   const { history, addToHistory } = useSearchHistory();
 
   const handleLogout = async () => {
@@ -249,7 +250,7 @@ export function TopNav() {
               return (
                 <div key={section.label}>
                   <Link
-                    href={`/${section.pages[0].slug}`}
+                    href={withFilters(`/${section.pages[0].slug}`)}
                     onClick={() => setMobileOpen(false)}
                     className={cn(
                       "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
@@ -269,7 +270,7 @@ export function TopNav() {
                         return (
                           <Link
                             key={page.slug}
-                            href={`/${page.slug}`}
+                            href={withFilters(`/${page.slug}`)}
                             onClick={() => setMobileOpen(false)}
                             className={cn(
                               "flex items-center gap-2 px-3 py-2.5 rounded-md text-sm transition-colors",

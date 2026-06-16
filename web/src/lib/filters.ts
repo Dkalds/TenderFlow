@@ -3,6 +3,7 @@
  * Filters persist across page refreshes and are shareable via URL.
  */
 import { parseAsString, useQueryStates } from "nuqs";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 
 export interface DateRange {
@@ -199,6 +200,45 @@ export function filtersToParams(filters: FilterValues): Record<string, string> {
   if (filters.tecnologias.length) params.tecnologia = filters.tecnologias.join(",");
   if (filters.importeMin !== null) params.importe_min = String(filters.importeMin);
   return params;
+}
+
+/** URL param keys owned by the global filter state. */
+const FILTER_PARAM_KEYS = Object.keys(filterParsers);
+
+/**
+ * Current filter query string (with leading "?"), or "" when no filter is set.
+ * Lets navigation links carry the active filters across page changes so that
+ * jumping between pages doesn't silently reset them.
+ */
+export function useFiltersQueryString(): string {
+  const searchParams = useSearchParams();
+  return useMemo(() => {
+    const next = new URLSearchParams();
+    for (const key of FILTER_PARAM_KEYS) {
+      const value = searchParams.get(key);
+      if (value) next.set(key, value);
+    }
+    const qs = next.toString();
+    return qs ? `?${qs}` : "";
+  }, [searchParams]);
+}
+
+/**
+ * Append a filter query string to a navigation path. Paths that already carry
+ * their own query string (deep-links that open a specific filtered view) are
+ * returned untouched so they keep overriding the active filters.
+ */
+export function appendFiltersToPath(path: string, qs: string): string {
+  return qs && !path.includes("?") ? `${path}${qs}` : path;
+}
+
+/**
+ * Returns a helper that appends the active filters to a navigation path so
+ * page-to-page navigation preserves them (see {@link appendFiltersToPath}).
+ */
+export function useWithFilters(): (path: string) => string {
+  const qs = useFiltersQueryString();
+  return useCallback((path: string) => appendFiltersToPath(path, qs), [qs]);
 }
 
 /**

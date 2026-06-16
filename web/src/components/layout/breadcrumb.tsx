@@ -5,16 +5,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { findPage, findSection } from "@/lib/navigation";
+import { useWithFilters } from "@/lib/filters";
 
 export function Breadcrumb() {
   const pathname = usePathname();
+  const withFilters = useWithFilters();
   const slug = pathname.replace("/", "");
   const section = findSection(slug);
   const page = findPage(slug);
 
   if (!section || !page) return null;
 
-  const sectionHref = `/${section.pages[0].slug}`;
+  const sectionHref = withFilters(`/${section.pages[0].slug}`);
 
   return (
     <nav className="flex items-center gap-1.5 text-sm text-muted-foreground px-4 py-2">

@@ -4,7 +4,7 @@
  * Covers: filtersToParams (pure function)
  */
 import { describe, it, expect } from "vitest";
-import { filtersToParams } from "@/lib/filters";
+import { filtersToParams, appendFiltersToPath } from "@/lib/filters";
 import type { FilterValues } from "@/lib/filters";
 
 const emptyFilters: FilterValues = {
@@ -131,5 +131,30 @@ describe("filtersToParams", () => {
       tecnologia: "ERP",
       importe_min: "10000",
     });
+  });
+});
+
+describe("appendFiltersToPath", () => {
+  it("appends the filter query string to a plain path", () => {
+    expect(appendFiltersToPath("/detalle", "?estado=PUB")).toBe(
+      "/detalle?estado=PUB",
+    );
+  });
+
+  it("returns the path untouched when there are no active filters", () => {
+    expect(appendFiltersToPath("/detalle", "")).toBe("/detalle");
+  });
+
+  it("does NOT append when the path already carries its own query string", () => {
+    // Deep-links that set a specific filtered view must keep overriding.
+    expect(appendFiltersToPath("/detalle?lic=ABC123", "?estado=PUB")).toBe(
+      "/detalle?lic=ABC123",
+    );
+  });
+
+  it("leaves deep-links untouched even with no active filters", () => {
+    expect(appendFiltersToPath("/detalle?lic=ABC123", "")).toBe(
+      "/detalle?lic=ABC123",
+    );
   });
 });

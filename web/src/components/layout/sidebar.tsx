@@ -9,12 +9,14 @@ import { SECTIONS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAdmin } from "@/hooks/use-admin";
+import { useWithFilters } from "@/lib/filters";
 import { TenderFlowLogo, TenderFlowIcon } from "@/components/layout/tenderflow-logo";
 
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const isAdmin = useAdmin();
+  const withFilters = useWithFilters();
   const visibleSections = SECTIONS.filter((section) => !section.adminOnly || isAdmin);
 
   const { data: quality } = useQuery<{ last_scrape_hours_ago?: number }>({
@@ -48,11 +50,11 @@ export function Sidebar() {
     >
       <div className="flex h-[60px] items-center justify-between border-b border-border/70 px-3">
         {collapsed ? (
-          <Link href="/resumen" className="flex items-center justify-center w-full">
+          <Link href={withFilters("/resumen")} className="flex items-center justify-center w-full">
             <TenderFlowIcon size={32} />
           </Link>
         ) : (
-          <Link href="/resumen" className="flex min-w-0 items-center">
+          <Link href={withFilters("/resumen")} className="flex min-w-0 items-center">
             <TenderFlowLogo boxSize={32} />
           </Link>
         )}
@@ -83,7 +85,7 @@ export function Sidebar() {
               return (
                 <Link
                   key={page.slug}
-                  href={`/${page.slug}`}
+                  href={withFilters(`/${page.slug}`)}
                   title={collapsed ? page.label : undefined}
                   aria-current={active ? "page" : undefined}
                   className={cn(
