@@ -19,7 +19,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-*(sin ítems abiertos)*
+### [P2] Observabilidad de tokens y coste en el cliente LLM
+- **Área:** llm/ (client + providers), observability
+- **Problema:** `/ask` consume LLMs de pago pero `llm/client.py` solo mide latencia, no tokens ni coste. El usage real ya lo exponen ambos SDKs (Anthropic `get_final_message().usage`; OpenAI `stream_options={"include_usage": True}`) y se está descartando. Sin esta métrica no se puede ver el gasto ni alertar sobre picos.
+- **Acceptance criteria:**
+  - `llm_tokens_total{direction,source}` y `llm_cost_usd_total` se incrementan tras cada respuesta.
+  - Fallback de estimación marcado con `source="estimated"`; degrada limpio sin `prometheus_client`.
+  - Firma pública de `stream_llm_response` sin cambios; `/ask` sin tocar.
+- **Files de partida:** [llm/client.py](../llm/client.py), [llm/providers/openai_provider.py](../llm/providers/openai_provider.py), [llm/providers/anthropic_provider.py](../llm/providers/anthropic_provider.py)
+- **RFC:** [2026-06-17-rfc-observabilidad-tokens-coste-llm.md](rfc/2026-06-17-rfc-observabilidad-tokens-coste-llm.md)
+- **Riesgo:** bajo — aditivo; ningún consumidor existente cambia.
 
 ---
 
