@@ -120,11 +120,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             log.warning("api_prewarm_failed", error=str(exc))
 
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
-    app.state.pending_background_tasks: set[asyncio.Task[object]] = set()
+    app.state.pending_background_tasks = set()
 
-    task = asyncio.ensure_future(_prewarm_caches())
-    app.state.pending_background_tasks.add(task)
-    task.add_done_callback(app.state.pending_background_tasks.discard)
+    _prewarm_task = asyncio.ensure_future(_prewarm_caches())
+    app.state.pending_background_tasks.add(_prewarm_task)
+    _prewarm_task.add_done_callback(app.state.pending_background_tasks.discard)
 
     # Limitar hilos del threadpool de anyio — evita CPU starvation en instancias
     # con pocos vCPUs (ej. Render Free 0.1 vCPU).  Sin este límite, FastAPI
