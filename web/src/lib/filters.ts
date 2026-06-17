@@ -248,11 +248,13 @@ export function useWithFilters(): (path: string) => string {
  */
 export function useFilterParams(): Record<string, string> {
   const { q, rango, estados, ccaas, tecnologias, importeMin } = useFilters();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable deps via JSON
+  // Serialize arrays to strings so object identity doesn't cause unnecessary recalculations
+  const estadosKey = estados.join();
+  const ccaasKey = ccaas.join();
+  const tecnologiasKey = tecnologias.join();
   return useMemo(
     () => filtersToParams({ q, rango, estados, ccaas, tecnologias, importeMin }),
-    // Serialize to string so object identity doesn't cause unnecessary recalculations
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [q, rango.desde, rango.hasta, estados.join(), ccaas.join(), tecnologias.join(), importeMin],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable primitive deps via join()
+    [q, rango.desde, rango.hasta, estadosKey, ccaasKey, tecnologiasKey, importeMin],
   );
 }

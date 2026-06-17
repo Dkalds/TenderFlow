@@ -32,7 +32,7 @@ prometheus-fastapi-instrumentator>=8.0.0,<9
 # Password hashing seguro para autenticación
 bcrypt>=4.0,<5
 # Cifrado simétrico (Fernet/AES) para secretos TOTP y derivación de webhook keys
-cryptography>=43.0,<47
+cryptography>=48.0.1,<50
 # argon2-cffi: algoritmo preferido para nuevos hashes (bcrypt mantenido para compatibilidad)
 argon2-cffi>=23.1.0,<25
 # Migraciones de base de datos (Alembic gestiona v14+ tras el baseline casero)
