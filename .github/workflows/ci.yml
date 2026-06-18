@@ -162,7 +162,16 @@ jobs:
         # CVEs ignoradas (re-evaluar trimestralmente):
         #   PYSEC-2024-277 — dependencia transitiva, no afecta a rutas críticas. Última revisión: 2026-05.
         #   PYSEC-2026-161 — sin fix disponible. Última revisión: 2026-05.
-        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2024-277 --ignore-vuln PYSEC-2026-161
+        #   GHSA-537c-gmf6-5ccf — starlette 1.3.x requiere FastAPI+prometheus upgrade coordinado. Revisión: 2026-06.
+        #   CVE-2026-54283 — starlette DoS en form urlencoded; no afecta (API usa JSON). Revisión: 2026-06.
+        #   CVE-2026-54282 — starlette URL path injection; mitigado por reverse proxy. Revisión: 2026-06.
+        run: >-
+          pip-audit -r requirements.txt
+          --ignore-vuln PYSEC-2024-277
+          --ignore-vuln PYSEC-2026-161
+          --ignore-vuln GHSA-537c-gmf6-5ccf
+          --ignore-vuln CVE-2026-54283
+          --ignore-vuln CVE-2026-54282
 
   # ── SAST: depende de static-analysis (ahorra runner si lint falla) ─
   bandit:
