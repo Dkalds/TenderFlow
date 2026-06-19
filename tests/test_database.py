@@ -60,14 +60,14 @@ class TestReplaceAdjudicaciones:
     def test_inserta_adjudicacion(self, tmp_db):
         db_mod, _ = tmp_db
         db_mod.upsert_licitaciones([_make_lic()])
-        n = db_mod.replace_adjudicaciones("TEST-001", [_make_adj()])
+        n, _dropped = db_mod.replace_adjudicaciones("TEST-001", [_make_adj()])
         assert n == 1
 
     def test_reemplaza_adjudicaciones_existentes(self, tmp_db):
         db_mod, _ = tmp_db
         db_mod.upsert_licitaciones([_make_lic()])
         db_mod.replace_adjudicaciones("TEST-001", [_make_adj(nombre="Empresa A")])
-        n = db_mod.replace_adjudicaciones(
+        n, _dropped = db_mod.replace_adjudicaciones(
             "TEST-001", [_make_adj(nombre="Empresa B"), _make_adj(nombre="Empresa C")]
         )
         assert n == 2

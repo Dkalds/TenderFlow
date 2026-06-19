@@ -136,7 +136,16 @@ def test_anthropic_usage_sink_populated():
     with patch.dict("sys.modules", {"anthropic": mock_anthropic_mod}):
         from llm.providers.anthropic_provider import stream
 
-        result = list(stream("test?", [{"id_externo": "X", "titulo": "T"}], "claude-haiku-4-5", [], "key123", usage_sink=usage))
+        result = list(
+            stream(
+                "test?",
+                [{"id_externo": "X", "titulo": "T"}],
+                "claude-haiku-4-5",
+                [],
+                "key123",
+                usage_sink=usage,
+            )
+        )
 
     assert result == ["Hello", " world"]
     assert usage["input_tokens"] == 42
@@ -173,7 +182,16 @@ def test_openai_usage_sink_populated():
     with patch.dict("sys.modules", {"openai": mock_openai_mod}):
         from llm.providers.openai_provider import stream
 
-        result = list(stream("test?", [{"id_externo": "X", "titulo": "T"}], "gpt-4o-mini", [], "key123", usage_sink=usage))
+        result = list(
+            stream(
+                "test?",
+                [{"id_externo": "X", "titulo": "T"}],
+                "gpt-4o-mini",
+                [],
+                "key123",
+                usage_sink=usage,
+            )
+        )
 
     assert result == ["Hi", " there"]
     assert usage["input_tokens"] == 55

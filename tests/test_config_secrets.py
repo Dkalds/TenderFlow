@@ -252,12 +252,16 @@ def test_ttl_cache_expires_and_refetches(monkeypatch):
     m.clear_cache()
     monkeypatch.setattr(m, "_CACHE_TTL", 1.0)
 
-    with patch.dict(os.environ, {"TTL_SECRET": "old_value"}, clear=False):  # pragma: allowlist secret
+    with patch.dict(
+        os.environ, {"TTL_SECRET": "old_value"}, clear=False
+    ):  # pragma: allowlist secret
         r1 = m.get_secret("TTL_SECRET")
     assert r1 == "old_value"
 
     # Within TTL — should still get cached value even if env changed
-    with patch.dict(os.environ, {"TTL_SECRET": "new_value"}, clear=False):  # pragma: allowlist secret
+    with patch.dict(
+        os.environ, {"TTL_SECRET": "new_value"}, clear=False
+    ):  # pragma: allowlist secret
         r2 = m.get_secret("TTL_SECRET")
     assert r2 == "old_value"
 
@@ -267,7 +271,9 @@ def test_ttl_cache_expires_and_refetches(monkeypatch):
         m._cache["TTL_SECRET"] = (val, time.monotonic() - 2.0)
 
     # Now it should re-fetch
-    with patch.dict(os.environ, {"TTL_SECRET": "new_value"}, clear=False):  # pragma: allowlist secret
+    with patch.dict(
+        os.environ, {"TTL_SECRET": "new_value"}, clear=False
+    ):  # pragma: allowlist secret
         r3 = m.get_secret("TTL_SECRET")
     assert r3 == "new_value"
 
@@ -303,6 +309,8 @@ def test_none_not_cached_with_ttl(monkeypatch):
     assert "TTL_NONE_SECRET" not in m._cache
 
     # Second call with value now available should find it
-    with patch.dict(os.environ, {"TTL_NONE_SECRET": "found"}, clear=False):  # pragma: allowlist secret
+    with patch.dict(
+        os.environ, {"TTL_NONE_SECRET": "found"}, clear=False
+    ):  # pragma: allowlist secret
         r2 = m.get_secret("TTL_NONE_SECRET")
     assert r2 == "found"

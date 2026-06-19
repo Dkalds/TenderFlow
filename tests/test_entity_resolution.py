@@ -33,7 +33,7 @@ def insert_adj(db, nombre, nif=None, lic_id="LIC-001", importe=100000.0):
     from db.upsert import Adjudicacion, replace_adjudicaciones_batch
 
     adj = Adjudicacion(licitacion_id=lic_id, nombre=nombre, nif=nif, importe_adjudicado=importe)
-    total, failed = replace_adjudicaciones_batch({lic_id: [adj]})
+    total, _dropped, failed = replace_adjudicaciones_batch({lic_id: [adj]})
     assert failed == 0
     return total
 

@@ -70,7 +70,7 @@ def insert_contract(
         n_ofertas_recibidas=n_ofertas,
         ccaa=ccaa,
     )
-    _total, failed = replace_adjudicaciones_batch({lic_id: [adj]})
+    _total, _dropped, failed = replace_adjudicaciones_batch({lic_id: [adj]})
     assert failed == 0
 
 

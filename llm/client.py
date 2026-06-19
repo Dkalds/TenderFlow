@@ -124,8 +124,12 @@ def _record_usage(model: str, provider: str, usage: dict[str, int]) -> None:
 
     if tokens_c is not None:
         try:
-            tokens_c.labels(model=model, provider=provider, direction="input", source=source_label).inc(input_tokens)
-            tokens_c.labels(model=model, provider=provider, direction="output", source=source_label).inc(output_tokens)
+            tokens_c.labels(
+                model=model, provider=provider, direction="input", source=source_label
+            ).inc(input_tokens)
+            tokens_c.labels(
+                model=model, provider=provider, direction="output", source=source_label
+            ).inc(output_tokens)
         except Exception:
             pass
 
@@ -230,11 +234,15 @@ def stream_llm_response(
         if p == "openai":
             from llm.providers.openai_provider import stream as _stream
 
-            yield from _stream(question, docs, model, keywords, _get_key("OPENAI_API_KEY"), usage_sink=usage)
+            yield from _stream(
+                question, docs, model, keywords, _get_key("OPENAI_API_KEY"), usage_sink=usage
+            )
         elif p == "anthropic":
             from llm.providers.anthropic_provider import stream as _stream
 
-            yield from _stream(question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"), usage_sink=usage)
+            yield from _stream(
+                question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"), usage_sink=usage
+            )
         else:
             raise ValueError(f"Proveedor desconocido para modelo '{model}'")
     except Exception:

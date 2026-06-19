@@ -106,7 +106,9 @@ def admin_deactivate_user(
     elif body.action == "anonymize":
         anonymize_user(user_id)
     else:
-        raise HTTPException(status_code=400, detail="Invalid action. Use: deactivate|reactivate|anonymize.")
+        raise HTTPException(
+            status_code=400, detail="Invalid action. Use: deactivate|reactivate|anonymize."
+        )
 
     log_event(
         event_type=f"user.{body.action}",

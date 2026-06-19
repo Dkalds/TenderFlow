@@ -110,7 +110,7 @@ def _patch_all(**overrides):
         "scraper.pipeline.iter_xml_files": MagicMock(return_value=[]),
         "scraper.pipeline.parse_atom_bytes": MagicMock(return_value=[]),
         "scraper.pipeline.upsert_licitaciones": MagicMock(return_value=(0, 0)),
-        "scraper.pipeline.replace_adjudicaciones_batch": MagicMock(return_value=(0, 0)),
+        "scraper.pipeline.replace_adjudicaciones_batch": MagicMock(return_value=(0, 0, 0)),
         "scraper.pipeline.log_extraccion": MagicMock(),
         "scraper.pipeline.record_failure": MagicMock(),
         "scraper.pipeline.notify": MagicMock(),
@@ -203,7 +203,7 @@ class TestProcessMonth:
                 "scraper.pipeline.iter_xml_files": MagicMock(return_value=fake_files),
                 "scraper.pipeline.parse_atom_bytes": MagicMock(return_value=[(lic, [adj])]),
                 "scraper.pipeline.upsert_licitaciones": MagicMock(return_value=(1, 0)),
-                "scraper.pipeline.replace_adjudicaciones_batch": MagicMock(return_value=(1, 0)),
+                "scraper.pipeline.replace_adjudicaciones_batch": MagicMock(return_value=(1, 0, 0)),
             }
         ):
             result = process_month(2024, 1)

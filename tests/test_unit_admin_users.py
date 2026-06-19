@@ -36,7 +36,16 @@ class TestAdminListUsers:
 
     def test_lists_users(self, client):
         users_data = [
-            {"id": 1, "email": "a@b.com", "display_name": "A", "is_admin": 1, "created_at": "2026-01-01", "deactivated_at": None, "last_access": None, "oauth_provider": "google"},
+            {
+                "id": 1,
+                "email": "a@b.com",
+                "display_name": "A",
+                "is_admin": 1,
+                "created_at": "2026-01-01",
+                "deactivated_at": None,
+                "last_access": None,
+                "oauth_provider": "google",
+            },
         ]
         app.dependency_overrides[require_any_auth] = lambda: _admin_user()
         try:
@@ -58,7 +67,9 @@ class TestAdminDeactivateUser:
                 patch("api.routes.admin_users.deactivate_user") as mock_deact,
                 patch("api.routes.admin_users.log_event"),
             ):
-                resp = client.post("/api/v1/admin/users/5/deactivate", json={"action": "deactivate"})
+                resp = client.post(
+                    "/api/v1/admin/users/5/deactivate", json={"action": "deactivate"}
+                )
         finally:
             app.dependency_overrides.clear()
         assert resp.status_code == 200
@@ -69,7 +80,9 @@ class TestAdminDeactivateUser:
         app.dependency_overrides[require_any_auth] = lambda: _admin_user()
         try:
             with patch("api.routes.admin_users.get_user_by_id", return_value={"id": 1}):
-                resp = client.post("/api/v1/admin/users/1/deactivate", json={"action": "deactivate"})
+                resp = client.post(
+                    "/api/v1/admin/users/1/deactivate", json={"action": "deactivate"}
+                )
         finally:
             app.dependency_overrides.clear()
         assert resp.status_code == 400
