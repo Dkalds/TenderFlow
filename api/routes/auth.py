@@ -260,7 +260,7 @@ async def register(body: RegisterRequest, response: Response) -> UserInfo:
     if not check.is_strong:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=check.summary)
 
-    if get_user_by_email(body.email):
+    if get_user_by_email(body.email, include_deactivated=True):
         log.warning("signup_rejected", email=body.email, reason="email_exists")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 

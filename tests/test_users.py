@@ -77,7 +77,7 @@ class TestListUsers:
 
 
 class TestDeactivateUser:
-    def test_elimina_usuario(self, tmp_db):
+    def test_soft_delete_oculta_usuario(self, tmp_db):
         from db.users import deactivate_user, get_or_create_oauth_user, get_user_by_id
 
         uid = get_or_create_oauth_user(
@@ -87,9 +87,14 @@ class TestDeactivateUser:
         )
 
         deactivate_user(uid)
+        # Sin include_deactivated, aparece como None
         assert get_user_by_id(uid) is None
+        # Con include_deactivated, sigue existiendo
+        user = get_user_by_id(uid, include_deactivated=True)
+        assert user is not None
+        assert user["deactivated_at"] is not None
 
-    def test_elimina_access_log(self, tmp_db):
+    def test_conserva_access_log(self, tmp_db):
         db_mod, _ = tmp_db
         from db.users import deactivate_user, get_or_create_oauth_user, log_access
 
@@ -101,14 +106,70 @@ class TestDeactivateUser:
         log_access(auth_method="google", user_id=uid, email="todelete2@example.com")
         deactivate_user(uid)
 
+        # access_log se conserva tras soft-delete
         with db_mod.connect() as c:
             cur = c.execute("SELECT COUNT(*) FROM access_log WHERE user_id = ?", (uid,))
-            assert cur.fetchone()[0] == 0
+            assert cur.fetchone()[0] == 1
 
     def test_idempotente_usuario_inexistente(self, tmp_db):
         from db.users import deactivate_user
 
         deactivate_user(9999)  # no debe lanzar excepción
+
+
+class TestAnonymizeUser:
+    def test_nullifica_pii(self, tmp_db):
+        db_mod, _ = tmp_db
+        from db.users import (
+            anonymize_user,
+            get_or_create_oauth_user,
+            get_user_by_id,
+            log_access,
+        )
+
+        uid = get_or_create_oauth_user(
+            email="anon@example.com",
+            oauth_provider="google",
+            oauth_sub="sub_anon",
+            display_name="Anon User",
+        )
+        log_access(auth_method="google", user_id=uid, email="anon@example.com")
+
+        anonymize_user(uid)
+
+        user = get_user_by_id(uid, include_deactivated=True)
+        assert user is not None
+        assert user["email"] is None
+        assert user["display_name"] is None
+        assert user["oauth_sub"] is None
+        assert user["deactivated_at"] is not None
+
+        # access_log email anonimizado pero registro conservado
+        with db_mod.connect() as c:
+            row = c.execute(
+                "SELECT email, auth_method FROM access_log WHERE user_id = ?", (uid,)
+            ).fetchone()
+            assert row[0] is None  # email anonimizado
+            assert row[1] == "google"  # auth_method conservado
+
+    def test_conserva_esqueleto_audit(self, tmp_db):
+        db_mod, _ = tmp_db
+        from db.users import anonymize_user, get_or_create_oauth_user, log_access
+
+        uid = get_or_create_oauth_user(
+            email="audit@example.com",
+            oauth_provider="google",
+            oauth_sub="sub_audit",
+        )
+        log_access(auth_method="google", user_id=uid, email="audit@example.com")
+        anonymize_user(uid)
+
+        with db_mod.connect() as c:
+            row = c.execute(
+                "SELECT user_id, logged_in_at FROM access_log WHERE user_id = ?", (uid,)
+            ).fetchone()
+            assert row[0] == uid
+            assert row[1] is not None
 
 
 class TestSetAdmin:

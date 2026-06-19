@@ -22,6 +22,7 @@ from config import settings
 from db.database import Adjudicacion, Licitacion
 from observability.logging import get_logger
 from scraper.filters import matches_technology
+from shared.dates import to_iso_date
 from shared.geo import nuts_to_ccaa
 
 log = get_logger(__name__)
@@ -67,33 +68,6 @@ def _float(elem: Any, xpath: str) -> float | None:
         return None
 
 
-# Regex para detectar fechas DD/MM/YYYY o DD-MM-YYYY (formato español)
-_DATE_DMY_RE = re.compile(r"^(\d{2})[/\-](\d{2})[/\-](\d{4})$")
-
-
-def _normalize_date(raw: str | None) -> str | None:
-    """Normaliza una fecha a ISO 8601 (YYYY-MM-DD).
-
-    El XML CODICE del PLACSP mezcla formatos: la mayoría de fechas son ISO
-    (AwardDate, IssueDate, StartDate, EndDate) pero algunas llegan como
-    DD/MM/YYYY. ``new Date("14/06/2026")`` en JS interpreta mes=14 → bug.
-    """
-    if not raw:
-        return None
-    raw = raw.strip()
-    # Ya es ISO (YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS) → devolver los primeros 10 chars
-    if len(raw) >= 10 and raw[4] == "-" and raw[7] == "-":
-        return raw[:10]
-    # DD/MM/YYYY o DD-MM-YYYY → convertir
-    m = _DATE_DMY_RE.match(raw)
-    if m:
-        day, month, year = m.groups()
-        return f"{year}-{month}-{day}"
-    # Formato no reconocido — devolver como está y loguear
-    log.debug("codice_date_unrecognized_format", raw=raw)
-    return raw
-
-
 def parse_summary(summary: str | None) -> dict[str, Any]:
     """Extrae id/órgano/importe/estado del texto del summary."""
     if not summary:
@@ -132,7 +106,7 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
     for tr in results:
         result_code = _text(tr, "./cbc:ResultCode")
         result_desc = _text(tr, "./cbc:Description")
-        award_date = _normalize_date(_text(tr, "./cbc:AwardDate"))
+        award_date = to_iso_date(_text(tr, "./cbc:AwardDate"))
         n_ofertas = _int(tr, "./cbc:ReceivedTenderQuantity")
         oferta_min = _float(tr, "./cbc:LowerTenderAmount")
         oferta_max = _float(tr, "./cbc:HigherTenderAmount")
@@ -180,7 +154,11 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
 
 
 def _issue_date(entry: Any, cfs: str) -> str | None:
-    """Extrae la primera fecha de publicación (IssueDate) de ValidNoticeInfo."""
+    """Extrae la primera fecha de publicación (IssueDate) de ValidNoticeInfo.
+
+    Normaliza cada candidato a ISO antes de min() para que la comparación
+    lexicográfica sea cronológica.
+    """
     dates = entry.xpath(
         f"{cfs}/cacext:ValidNoticeInfo"
         "/cacext:AdditionalPublicationStatus"
@@ -188,7 +166,8 @@ def _issue_date(entry: Any, cfs: str) -> str | None:
         "/cbc:IssueDate/text()",
         namespaces=NS,
     )
-    return min(dates) if dates else None
+    normalized = [d for d in (to_iso_date(raw) for raw in dates) if d]
+    return min(normalized) if normalized else None
 
 
 def parse_entry(entry: Any) -> Licitacion | None:
@@ -252,8 +231,8 @@ def parse_entry(entry: Any) -> Licitacion | None:
     unit_attr = entry.xpath(f"{pp}/cbc:DurationMeasure/@unitCode", namespaces=NS)
     if unit_attr:
         duracion_unidad = unit_attr[0]
-    fecha_inicio = _normalize_date(_text(entry, f"{pp}/cbc:StartDate"))
-    fecha_fin = _normalize_date(_text(entry, f"{pp}/cbc:EndDate"))
+    fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
+    fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
 
     prorroga = _text(
         entry,
@@ -378,8 +357,8 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     duracion_valor = _float(entry, f"{pp}/cbc:DurationMeasure")
     unit_attr = entry.xpath(f"{pp}/cbc:DurationMeasure/@unitCode", namespaces=NS)
     duracion_unidad = unit_attr[0] if unit_attr else None
-    fecha_inicio = _normalize_date(_text(entry, f"{pp}/cbc:StartDate"))
-    fecha_fin = _normalize_date(_text(entry, f"{pp}/cbc:EndDate"))
+    fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
+    fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
     prorroga = _text(
         entry,
         f"{project_xp}/cac:ContractExtension/cac:OptionValidityPeriod/cbc:Description",

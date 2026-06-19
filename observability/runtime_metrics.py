@@ -115,6 +115,13 @@ try:
         "Total de entries parseadas por el parser CODICE",
     )
 
+    # ── Upsert row drops (RFC observabilidad-perdida-filas-upsert) ────────
+    upsert_rows_dropped_total = Counter(
+        "upsert_rows_dropped_total",
+        "Filas descartadas silenciosamente por INSERT OR IGNORE (violación de constraint)",
+        ["table"],
+    )
+
     _AVAILABLE = True
 except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
@@ -143,4 +150,5 @@ except ImportError:  # pragma: no cover
     db_concurrent_writers = _NoopMetric()  # type: ignore[assignment]
     parser_field_null_total = _NoopMetric()  # type: ignore[assignment]
     parser_entries_total = _NoopMetric()  # type: ignore[assignment]
+    upsert_rows_dropped_total = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False

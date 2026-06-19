@@ -95,6 +95,13 @@ class Settings(BaseSettings):
     # se ejecuta en su propia transacción, liberando el write lock entre chunks.
     UPSERT_CHUNK_SIZE: int = 500
 
+    # ── Secrets ───────────────────────────────────────────────────────────
+    # TTL (segundos) para el cache in-process de secretos. Tras expirar, el
+    # próximo get_secret() re-consulta el backend (vault/env). Permite que la
+    # rotación de secretos en vault se propague sin reiniciar el proceso.
+    # 0 = sin cache (re-fetch siempre). Default 300s (5 min).
+    SECRETS_CACHE_TTL_SECONDS: int = 300
+
     # ── Resiliencia ───────────────────────────────────────────────────────
     # Circuit breaker: backoff exponencial entre aperturas del circuito
     BREAKER_BASE_TIMEOUT: int = 60  # segundos — primer timeout tras apertura

@@ -71,10 +71,13 @@ def create_user(
         return int(cur.lastrowid)
 
 
-def get_user_by_id(user_id: int) -> dict[str, Any] | None:
+def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[str, Any] | None:
     """Devuelve un dict con los datos del usuario o None."""
     with connect() as c:
-        cur = c.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        sql = "SELECT * FROM users WHERE id = ?"
+        if not include_deactivated:
+            sql += " AND deactivated_at IS NULL"
+        cur = c.execute(sql, (user_id,))
         row = cur.fetchone()
         if not row:
             return None
@@ -82,10 +85,13 @@ def get_user_by_id(user_id: int) -> dict[str, Any] | None:
         return dict(zip(cols, row, strict=False))
 
 
-def get_user_by_email(email: str) -> dict[str, Any] | None:
+def get_user_by_email(email: str, *, include_deactivated: bool = False) -> dict[str, Any] | None:
     """Busca usuario por email."""
     with connect() as c:
-        cur = c.execute("SELECT * FROM users WHERE email = ?", (email,))
+        sql = "SELECT * FROM users WHERE email = ?"
+        if not include_deactivated:
+            sql += " AND deactivated_at IS NULL"
+        cur = c.execute(sql, (email,))
         row = cur.fetchone()
         if not row:
             return None
@@ -118,15 +124,17 @@ def set_admin_by_email(email: str, *, is_admin: bool) -> None:
         )
 
 
-def list_users(limit: int = 200) -> list[dict[str, Any]]:
+def list_users(limit: int = 200, *, include_deactivated: bool = False) -> list[dict[str, Any]]:
     """Devuelve todos los usuarios registrados con su último acceso."""
     with connect() as c:
+        where = "" if include_deactivated else "WHERE u.deactivated_at IS NULL "
         cur = c.execute(
             "SELECT u.id, u.email, u.display_name, u.oauth_provider, u.is_admin, "
-            "       u.created_at, "
+            "       u.created_at, u.deactivated_at, "
             "       MAX(a.logged_in_at) AS last_access "
             "FROM users u "
             "LEFT JOIN access_log a ON a.user_id = u.id "
+            f"{where}"
             "GROUP BY u.id "
             "ORDER BY last_access DESC NULLS LAST "
             "LIMIT ?",
@@ -137,10 +145,41 @@ def list_users(limit: int = 200) -> list[dict[str, Any]]:
 
 
 def deactivate_user(user_id: int) -> None:
-    """Elimina el usuario y sus entradas de acceso (borrado lógico via DELETE)."""
+    """Soft-delete: marca deactivated_at sin borrar datos ni audit trail."""
     with connect() as c:
-        c.execute("DELETE FROM access_log WHERE user_id = ?", (user_id,))
-        c.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        c.execute(
+            "UPDATE users SET deactivated_at = ? WHERE id = ? AND deactivated_at IS NULL",
+            (now_utc_iso(), user_id),
+        )
+
+
+def reactivate_user(user_id: int) -> None:
+    """Revierte un soft-delete (operación administrativa)."""
+    with connect() as c:
+        c.execute(
+            "UPDATE users SET deactivated_at = NULL WHERE id = ?",
+            (user_id,),
+        )
+
+
+def anonymize_user(user_id: int) -> None:
+    """Anonimiza PII del usuario (GDPR Art.17 erasure).
+
+    - Desactiva la cuenta si no lo estaba.
+    - Nullifica email, display_name, oauth_sub en users.
+    - Nullifica email en access_log.
+    - Conserva el esqueleto de auditoría (user_id, auth_method, logged_in_at).
+    """
+    with connect() as c:
+        c.execute(
+            "UPDATE users SET email = NULL, display_name = NULL, oauth_sub = NULL, "
+            "deactivated_at = COALESCE(deactivated_at, ?) WHERE id = ?",
+            (now_utc_iso(), user_id),
+        )
+        c.execute(
+            "UPDATE access_log SET email = NULL WHERE user_id = ?",
+            (user_id,),
+        )
 
 
 def log_access(

@@ -42,6 +42,7 @@ from api.middleware import (
     SecurityHeadersMiddleware,
     _trusted_client_ip,
 )
+from api.routes.admin_users import router as admin_users_router
 from api.routes.analytics import router as analytics_router
 from api.routes.ask import router as ask_router
 from api.routes.auth import router as auth_router
@@ -422,6 +423,7 @@ app.include_router(watchlist_feed_router, prefix="/api/v1")
 app.include_router(exports_router, prefix="/api/v1")
 app.include_router(saved_filters_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(admin_users_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 
 # ---------------------------------------------------------------------------

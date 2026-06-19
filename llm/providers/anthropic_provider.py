@@ -14,7 +14,7 @@ Hardening (B11):
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 from observability.logging import get_logger
@@ -81,6 +81,7 @@ def stream(
     model: str,
     keywords: list[str],
     api_key: str,
+    usage_sink: MutableMapping[str, int] | None = None,
 ) -> Iterator[str]:
     """Streaming Anthropic Messages API con retry y timeout.
 
@@ -90,6 +91,7 @@ def stream(
         model: Nombre del modelo Anthropic.
         keywords: Palabras clave para excerpts.
         api_key: Clave de API de Anthropic.
+        usage_sink: Si se provee, se rellena con input_tokens, output_tokens, source.
 
     Yields:
         Fragmentos de texto del modelo.
@@ -130,6 +132,18 @@ def stream(
                 for text in stream_obj.text_stream:
                     if text:
                         yield text
+                # Capturar usage real del SDK
+                if usage_sink is not None:
+                    try:
+                        final_msg = stream_obj.get_final_message()
+                        usage_sink["input_tokens"] = final_msg.usage.input_tokens
+                        usage_sink["output_tokens"] = final_msg.usage.output_tokens
+                        usage_sink["source"] = 0  # reported by SDK
+                    except Exception:
+                        # Fallback: estimar
+                        usage_sink["input_tokens"] = len(user_message) // 4
+                        usage_sink["output_tokens"] = 0
+                        usage_sink["source"] = 1  # estimated
             return  # éxito
         except Exception as exc:
             last_exc = exc

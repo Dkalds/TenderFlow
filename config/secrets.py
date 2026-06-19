@@ -16,6 +16,8 @@ Uso::
 from __future__ import annotations
 
 import os
+import threading
+import time
 
 from observability.logging import get_logger
 
@@ -26,8 +28,13 @@ _AZURE_VAULT_URL = os.environ.get("AZURE_KEYVAULT_URL", "")
 _AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
 _AWS_SECRET_PREFIX = os.environ.get("AWS_SECRET_PREFIX", "licitaciones-sap/")
 
-# In-process cache to avoid repeated external calls
-_cache: dict[str, str | None] = {}
+# TTL for cached secrets (seconds). 0 = no cache. Read from env at module load;
+# the Settings class also exposes SECRETS_CACHE_TTL_SECONDS for validation.
+_CACHE_TTL: float = float(os.environ.get("SECRETS_CACHE_TTL_SECONDS", "300"))
+
+# In-process cache: (value, fetched_at_monotonic)
+_cache: dict[str, tuple[str, float]] = {}
+_cache_lock = threading.Lock()
 
 
 def _get_from_env(name: str) -> str | None:
@@ -82,8 +89,14 @@ def get_secret(name: str, default: str | None = None) -> str | None:
     Returns:
         El valor del secreto o ``default``.
     """
-    if name in _cache:
-        return _cache[name]
+    now = time.monotonic()
+    with _cache_lock:
+        if name in _cache and _CACHE_TTL != 0:
+            cached_value, fetched_at = _cache[name]
+            if _CACHE_TTL < 0 or (now - fetched_at) < _CACHE_TTL:
+                return cached_value
+            # TTL expired — remove and re-fetch below
+            del _cache[name]
 
     value: str | None = None
     if _BACKEND == "azure_keyvault":
@@ -95,7 +108,8 @@ def get_secret(name: str, default: str | None = None) -> str | None:
 
     result = value if value is not None else default
     if result is not None:
-        _cache[name] = result
+        with _cache_lock:
+            _cache[name] = (result, time.monotonic())
     else:
         log.debug("secret_not_cached", secret_name=name, reason="resolved_to_none")
     return result
@@ -103,7 +117,8 @@ def get_secret(name: str, default: str | None = None) -> str | None:
 
 def clear_cache() -> None:
     """Limpia la cache de secretos (útil en tests o tras rotación)."""
-    _cache.clear()
+    with _cache_lock:
+        _cache.clear()
 
 
 def rotate_secret(name: str, new_value: str) -> None:
@@ -114,5 +129,6 @@ def rotate_secret(name: str, new_value: str) -> None:
     """
     if _BACKEND == "env":
         os.environ[name] = new_value
-    _cache.pop(name, None)
+    with _cache_lock:
+        _cache.pop(name, None)
     log.info("secret_rotated", name=name, backend=_BACKEND)

@@ -1,8 +1,9 @@
-"""Tests para config/secrets.py — backends, cache, rotación."""
+"""Tests para config/secrets.py — backends, cache, rotación, TTL."""
 
 from __future__ import annotations
 
 import os
+import time
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
@@ -237,3 +238,71 @@ def test_non_none_still_cached():
     ):  # pragma: allowlist secret
         r2 = m.get_secret("CACHED_OK_59")
     assert r1 == r2 == "value1"
+
+
+# ---------------------------------------------------------------------------
+# TTL cache expiration (RFC ttl-cache-secrets)
+# ---------------------------------------------------------------------------
+
+
+def test_ttl_cache_expires_and_refetches(monkeypatch):
+    """After TTL expires, get_secret re-fetches from backend."""
+    import config.secrets as m
+
+    m.clear_cache()
+    monkeypatch.setattr(m, "_CACHE_TTL", 1.0)
+
+    with patch.dict(os.environ, {"TTL_SECRET": "old_value"}, clear=False):  # pragma: allowlist secret
+        r1 = m.get_secret("TTL_SECRET")
+    assert r1 == "old_value"
+
+    # Within TTL — should still get cached value even if env changed
+    with patch.dict(os.environ, {"TTL_SECRET": "new_value"}, clear=False):  # pragma: allowlist secret
+        r2 = m.get_secret("TTL_SECRET")
+    assert r2 == "old_value"
+
+    # Simulate TTL expiration by backdating the cache entry
+    with m._cache_lock:
+        val, _ = m._cache["TTL_SECRET"]
+        m._cache["TTL_SECRET"] = (val, time.monotonic() - 2.0)
+
+    # Now it should re-fetch
+    with patch.dict(os.environ, {"TTL_SECRET": "new_value"}, clear=False):  # pragma: allowlist secret
+        r3 = m.get_secret("TTL_SECRET")
+    assert r3 == "new_value"
+
+
+def test_ttl_zero_disables_cache(monkeypatch):
+    """TTL=0 means no caching — always re-fetches."""
+    import config.secrets as m
+
+    m.clear_cache()
+    monkeypatch.setattr(m, "_CACHE_TTL", 0.0)
+
+    with patch.dict(os.environ, {"NO_CACHE_SECRET": "v1"}, clear=False):  # pragma: allowlist secret
+        r1 = m.get_secret("NO_CACHE_SECRET")
+    assert r1 == "v1"
+
+    with patch.dict(os.environ, {"NO_CACHE_SECRET": "v2"}, clear=False):  # pragma: allowlist secret
+        r2 = m.get_secret("NO_CACHE_SECRET")
+    assert r2 == "v2"
+
+
+def test_none_not_cached_with_ttl(monkeypatch):
+    """None results are still not cached even with TTL enabled."""
+    import config.secrets as m
+
+    m.clear_cache()
+    monkeypatch.setattr(m, "_CACHE_TTL", 300.0)
+
+    os.environ.pop("TTL_NONE_SECRET", None)
+    r1 = m.get_secret("TTL_NONE_SECRET")
+    assert r1 is None
+
+    # Should not be in cache
+    assert "TTL_NONE_SECRET" not in m._cache
+
+    # Second call with value now available should find it
+    with patch.dict(os.environ, {"TTL_NONE_SECRET": "found"}, clear=False):  # pragma: allowlist secret
+        r2 = m.get_secret("TTL_NONE_SECRET")
+    assert r2 == "found"

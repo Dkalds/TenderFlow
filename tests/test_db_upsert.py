@@ -122,8 +122,9 @@ def test_replace_adjudicaciones_inserts(db):
 
     upsert_licitaciones([make_licitacion()])
     adj = Adjudicacion(licitacion_id="TEST-001", nombre="Empresa SA", nif="B12345678")
-    n = replace_adjudicaciones("TEST-001", [adj])
+    n, dropped = replace_adjudicaciones("TEST-001", [adj])
     assert n == 1
+    assert dropped == 0
 
 
 def test_replace_adjudicaciones_replaces(db):

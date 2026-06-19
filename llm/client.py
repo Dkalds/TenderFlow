@@ -42,6 +42,15 @@ _MAX_QUESTION_LEN = 2000
 _MIN_QUESTION_LEN = 3
 _MAX_DOCS = 50
 
+# ── Precio por millón de tokens (USD): (input, output) ────────────────────────
+_PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.00),
+    "gpt-3.5-turbo": (0.50, 1.50),
+    "claude-sonnet-4-5": (3.00, 15.00),
+    "claude-haiku-4-5": (0.80, 4.00),
+}
+
 
 # ── Prometheus histogram (opcional — no falla si prometheus no está instalado) ─
 
@@ -65,6 +74,10 @@ def _get_llm_histogram() -> Any:
 _llm_histogram: Any = None
 _llm_histogram_init = False
 
+_llm_tokens_counter: Any = None
+_llm_cost_counter: Any = None
+_llm_counters_init = False
+
 
 def _histogram() -> Any:
     global _llm_histogram, _llm_histogram_init
@@ -75,6 +88,56 @@ def _histogram() -> Any:
         except Exception:
             log.debug("llm_histogram_init_failed", exc_info=True)
     return _llm_histogram
+
+
+def _get_token_counters() -> tuple[Any, Any]:
+    """Devuelve (tokens_counter, cost_counter) o (None, None)."""
+    global _llm_tokens_counter, _llm_cost_counter, _llm_counters_init
+    if not _llm_counters_init:
+        _llm_counters_init = True
+        try:
+            from prometheus_client import Counter
+
+            _llm_tokens_counter = Counter(
+                "llm_tokens_total",
+                "Tokens consumidos por el cliente LLM",
+                ["model", "provider", "direction", "source"],
+            )
+            _llm_cost_counter = Counter(
+                "llm_cost_usd_total",
+                "Coste estimado en USD por llamadas LLM",
+                ["model", "provider"],
+            )
+        except Exception:
+            log.debug("llm_counters_init_failed", exc_info=True)
+    return _llm_tokens_counter, _llm_cost_counter
+
+
+def _record_usage(model: str, provider: str, usage: dict[str, int]) -> None:
+    """Registra tokens y coste en Prometheus si hay datos."""
+    if not usage:
+        return
+    tokens_c, cost_c = _get_token_counters()
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    source_label = "reported" if usage.get("source", 1) == 0 else "estimated"
+
+    if tokens_c is not None:
+        try:
+            tokens_c.labels(model=model, provider=provider, direction="input", source=source_label).inc(input_tokens)
+            tokens_c.labels(model=model, provider=provider, direction="output", source=source_label).inc(output_tokens)
+        except Exception:
+            pass
+
+    if cost_c is not None and model in _PRICE_PER_MTOK:
+        price_in, price_out = _PRICE_PER_MTOK[model]
+        cost = (input_tokens * price_in + output_tokens * price_out) / 1_000_000
+        try:
+            cost_c.labels(model=model, provider=provider).inc(cost)
+        except Exception:
+            pass
+    elif model not in _PRICE_PER_MTOK:
+        log.debug("llm_cost_unknown_model", model=model)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -161,18 +224,18 @@ def stream_llm_response(
     p = provider_for(model)
     t0 = time.monotonic()
     status = "ok"
+    usage: dict[str, int] = {}
 
     try:
         if p == "openai":
             from llm.providers.openai_provider import stream as _stream
 
-            yield from _stream(question, docs, model, keywords, _get_key("OPENAI_API_KEY"))
+            yield from _stream(question, docs, model, keywords, _get_key("OPENAI_API_KEY"), usage_sink=usage)
         elif p == "anthropic":
             from llm.providers.anthropic_provider import stream as _stream
 
-            yield from _stream(question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"))
+            yield from _stream(question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"), usage_sink=usage)
         else:
-            # No debería llegar aquí gracias a _validate_request, pero por seguridad:
             raise ValueError(f"Proveedor desconocido para modelo '{model}'")
     except Exception:
         status = "error"
@@ -185,10 +248,13 @@ def stream_llm_response(
                 hist.labels(model=model, provider=p, status=status).observe(elapsed)
             except Exception:
                 log.debug("llm_histogram_observe_failed", exc_info=True)
+        _record_usage(model, p, usage)
         log.debug(
             "llm_client.stream_done",
             model=model,
             provider=p,
             elapsed_ms=int(elapsed * 1000),
             status=status,
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
         )

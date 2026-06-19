@@ -508,6 +508,11 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        35,
+        "users_deactivated_at",
+        "",  # handled programmatically (ALTER TABLE ADD COLUMN, idempotente)
+    ),
 ]
 
 # Columnas de la migración 6 — se aplican de forma programática porque
@@ -709,6 +714,9 @@ def apply_pending(conn: Any) -> list[int]:
         # Migración 33: password_hash column on users (sign-up email/password)
         if version == 33:
             _apply_v33_password_hash(conn)
+        # Migración 35: deactivated_at column on users (soft-delete)
+        if version == 35:
+            _apply_v35_deactivated_at(conn)
         conn.execute(
             "INSERT INTO schema_version (version, description, applied_at) VALUES (?, ?, ?)",
             (version, description, datetime.now(UTC).isoformat()),
@@ -999,6 +1007,18 @@ def _apply_v33_password_hash(conn: Any) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
     except Exception:
         log.warning("migration_step_error", version=33, column="password_hash", exc_info=True)
+
+
+def _apply_v35_deactivated_at(conn: Any) -> None:
+    """Añade columna deactivated_at a users si no existe (idempotente).
+
+    Habilita soft-delete: un usuario desactivado conserva su fila pero no puede
+    autenticarse. NULL = activo, TEXT ISO = timestamp de desactivación.
+    """
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN deactivated_at TEXT")
+    except Exception:
+        log.warning("migration_step_error", version=35, column="deactivated_at", exc_info=True)
 
 
 def _apply_v14_tecnologia(conn: Any) -> None:

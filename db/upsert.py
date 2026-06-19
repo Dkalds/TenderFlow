@@ -13,6 +13,10 @@ from typing import Any
 
 from config import HISTORY_TRACKED_FIELDS
 from db.connection import connect, now_utc_iso
+from observability.logging import get_logger
+from observability.runtime_metrics import upsert_rows_dropped_total
+
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Dataclasses de dominio
@@ -136,27 +140,41 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
     return nuevas, actualizadas
 
 
-def replace_adjudicaciones(licitacion_id: str, items: Iterable[Adjudicacion]) -> int:
-    """Reemplaza todas las adjudicaciones de una licitación (idempotente)."""
+def replace_adjudicaciones(licitacion_id: str, items: Iterable[Adjudicacion]) -> tuple[int, int]:
+    """Reemplaza todas las adjudicaciones de una licitación (idempotente).
+
+    Returns:
+        Tuple of (persisted, dropped) — filas insertadas reales y descartadas.
+    """
     items_list = list(items)
+    persisted = 0
+    dropped = 0
     with connect() as c:
         c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = ?", [licitacion_id])
-        n = 0
         for adj in items_list:
             data = asdict(adj)
             vals = [data[k] for k in _ADJ_KEYS]
-            # Column names come from dataclass fields (controlled code) — safe
-            c.execute(
+            cur = c.execute(
                 f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
                 vals,
             )
-            n += 1
-    return n
+            if cur.rowcount:
+                persisted += 1
+            else:
+                dropped += 1
+                upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
+                _log.warning(
+                    "upsert_row_dropped",
+                    table="adjudicaciones",
+                    licitacion_id=licitacion_id,
+                    nif=adj.nif,
+                )
+    return persisted, dropped
 
 
 def replace_adjudicaciones_batch(
     adj_por_lic: dict[str, list[Adjudicacion]],
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Reemplaza adjudicaciones para múltiples licitaciones en una sola transacción.
 
     Agrupa todos los DELETEs y INSERTs en un único ``connect()`` context
@@ -164,9 +182,11 @@ def replace_adjudicaciones_batch(
     patrón N+1 de llamar ``replace_adjudicaciones`` por cada licitación.
 
     Returns:
-        Tuple of (total items persisted, number of licitaciones that failed).
+        Tuple of (persisted, dropped, failed) — inserciones reales,
+        filas descartadas por constraint, y licitaciones con error.
     """
-    total = 0
+    persisted = 0
+    dropped = 0
     failed = 0
     with connect() as c:
         for lic_id, adjs in adj_por_lic.items():
@@ -178,14 +198,24 @@ def replace_adjudicaciones_batch(
                 for adj in adjs:
                     data = asdict(adj)
                     vals = [data[k] for k in _ADJ_KEYS]
-                    c.execute(
+                    cur = c.execute(
                         f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
                         vals,
                     )
-                    total += 1
+                    if cur.rowcount:
+                        persisted += 1
+                    else:
+                        dropped += 1
+                        upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
+                        _log.warning(
+                            "upsert_row_dropped",
+                            table="adjudicaciones",
+                            licitacion_id=lic_id,
+                            nif=adj.nif,
+                        )
             except Exception:
                 failed += 1
-    return total, failed
+    return persisted, dropped, failed
 
 
 def log_extraccion(

@@ -9,7 +9,7 @@ Hardening (B11):
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 from observability.logging import get_logger
@@ -81,6 +81,7 @@ def stream(
     model: str,
     keywords: list[str],
     api_key: str,
+    usage_sink: MutableMapping[str, int] | None = None,
 ) -> Iterator[str]:
     """Streaming OpenAI con retry y timeout.
 
@@ -90,6 +91,7 @@ def stream(
         model: Nombre del modelo OpenAI.
         keywords: Palabras clave para excerpts.
         api_key: Clave de API de OpenAI.
+        usage_sink: Si se provee, se rellena con input_tokens, output_tokens, source.
 
     Yields:
         Fragmentos de texto del modelo.
@@ -119,17 +121,32 @@ def stream(
     for attempt in range(1, max_attempts + 1):
         try:
             client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT)
-            stream_obj = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=_MAX_TOKENS,
-                temperature=_TEMPERATURE,
-                stream=True,
-            )
+            stream_kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": _MAX_TOKENS,
+                "temperature": _TEMPERATURE,
+                "stream": True,
+            }
+            if usage_sink is not None:
+                stream_kwargs["stream_options"] = {"include_usage": True}
+            stream_obj = client.chat.completions.create(**stream_kwargs)
+            output_chars = 0
             for chunk in stream_obj:
-                delta = chunk.choices[0].delta.content if chunk.choices else None
-                if delta:
-                    yield delta
+                if chunk.choices:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        output_chars += len(delta)
+                        yield delta
+                elif usage_sink is not None and hasattr(chunk, "usage") and chunk.usage:
+                    usage_sink["input_tokens"] = chunk.usage.prompt_tokens
+                    usage_sink["output_tokens"] = chunk.usage.completion_tokens
+                    usage_sink["source"] = 0  # reported by SDK
+            # Fallback si no recibimos usage del SDK
+            if usage_sink is not None and "input_tokens" not in usage_sink:
+                usage_sink["input_tokens"] = estimated_tokens
+                usage_sink["output_tokens"] = output_chars // 4
+                usage_sink["source"] = 1  # estimated
             return  # éxito — salir del retry loop
         except Exception as exc:
             last_exc = exc

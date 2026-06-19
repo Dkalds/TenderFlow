@@ -127,6 +127,7 @@ ignore = [
 "db/connection.py" = ["S608"]  # get_table_columns uses table param from internal callers only
 "db/dlq.py" = ["S608"]  # placeholders-for-IDs pattern, not user data
 "db/notifications.py" = ["S608"]  # placeholders-for-IDs pattern, not user data
+"db/users.py" = ["S608"]  # WHERE clause from controlled boolean, not user input
 "db/upsert.py" = ["S608"]  # SQL built from internal dataclass-field constants
 "db/alembic/*" = ["S608"]  # SQL in migrations is schema-only, not user-controlled
 "db/repositories/adjudicaciones.py" = ["S608"]

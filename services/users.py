@@ -11,11 +11,13 @@ from typing import Any
 from db.rate_limits import clear_login_attempts as _clear_login_attempts
 from db.rate_limits import is_login_locked_out as _is_login_locked_out
 from db.rate_limits import record_failed_login as _record_failed_login
+from db.users import anonymize_user as _anonymize_user
 from db.users import deactivate_user as _deactivate_user
 from db.users import get_or_create_oauth_user as _get_or_create_oauth_user
 from db.users import is_admin as _is_admin
 from db.users import list_users as _list_users
 from db.users import log_access as _log_access
+from db.users import reactivate_user as _reactivate_user
 from db.users import set_admin as _set_admin
 
 # ── User CRUD ──────────────────────────────────────────────────────────────
@@ -50,6 +52,14 @@ def list_users(limit: int = 200) -> list[dict[str, Any]]:
 
 def deactivate_user(user_id: int) -> None:
     _deactivate_user(user_id)
+
+
+def reactivate_user(user_id: int) -> None:
+    _reactivate_user(user_id)
+
+
+def anonymize_user(user_id: int) -> None:
+    _anonymize_user(user_id)
 
 
 def log_access(
