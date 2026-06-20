@@ -144,7 +144,7 @@ def test_stream_llm_response_dispatches_to_openai(monkeypatch):
     """Con modelo gpt-*, llama a openai_provider.stream."""
     chunks = ["Hello", " world"]
 
-    def fake_openai_stream(question, docs, model, keywords, api_key) -> Iterator[str]:
+    def fake_openai_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
         yield from chunks
 
     with patch("llm.providers.openai_provider.stream", fake_openai_stream):
@@ -161,7 +161,7 @@ def test_stream_llm_response_dispatches_to_anthropic(monkeypatch):
     """Con modelo claude-*, llama a anthropic_provider.stream."""
     chunks = ["Hola", " mundo"]
 
-    def fake_anthropic_stream(question, docs, model, keywords, api_key) -> Iterator[str]:
+    def fake_anthropic_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
         yield from chunks
 
     with patch("llm.providers.anthropic_provider.stream", fake_anthropic_stream):
@@ -220,7 +220,7 @@ def test_stream_llm_response_passes_api_key(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     received_key: list[str] = []
 
-    def fake_stream(question, docs, model, keywords, api_key) -> Iterator[str]:
+    def fake_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
         received_key.append(api_key)
         return iter([])
 

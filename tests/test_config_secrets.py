@@ -253,15 +253,19 @@ def test_ttl_cache_expires_and_refetches(monkeypatch):
     monkeypatch.setattr(m, "_CACHE_TTL", 1.0)
 
     with patch.dict(
-        os.environ, {"TTL_SECRET": "old_value"}, clear=False
-    ):  # pragma: allowlist secret
+        os.environ,
+        {"TTL_SECRET": "old_value"},  # pragma: allowlist secret
+        clear=False,
+    ):
         r1 = m.get_secret("TTL_SECRET")
     assert r1 == "old_value"
 
     # Within TTL — should still get cached value even if env changed
     with patch.dict(
-        os.environ, {"TTL_SECRET": "new_value"}, clear=False
-    ):  # pragma: allowlist secret
+        os.environ,
+        {"TTL_SECRET": "new_value"},  # pragma: allowlist secret
+        clear=False,
+    ):
         r2 = m.get_secret("TTL_SECRET")
     assert r2 == "old_value"
 
@@ -272,8 +276,10 @@ def test_ttl_cache_expires_and_refetches(monkeypatch):
 
     # Now it should re-fetch
     with patch.dict(
-        os.environ, {"TTL_SECRET": "new_value"}, clear=False
-    ):  # pragma: allowlist secret
+        os.environ,
+        {"TTL_SECRET": "new_value"},  # pragma: allowlist secret
+        clear=False,
+    ):
         r3 = m.get_secret("TTL_SECRET")
     assert r3 == "new_value"
 
