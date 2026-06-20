@@ -65,7 +65,7 @@ repos:
       - id: codespell
         args:
           - "--ignore-words=.codespell-ignore-words.txt"
-          - "--skip=*.lock,*.min.js,*.svg,.git,.venv,data,node_modules,.secrets.baseline,*.json,docs/adr/*,db/alembic/versions/*,graphify-out/*"
+          - "--skip=*.lock,*.min.js,*.svg,.git,.venv,data,node_modules,.secrets.baseline,*.json,docs/adr/*,docs/rfc/*,db/alembic/versions/*,graphify-out/*"
         exclude: '^(tests/fixtures/|\.agents/|requirements.*\.txt$)'
 
   - repo: https://github.com/Yelp/detect-secrets
