@@ -46,6 +46,17 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
+def _disable_rate_limiter(monkeypatch):
+    """Disable rate limiting in tests to avoid 429s from shared state."""
+
+    class _NoopLimiter:
+        def check(self, key, *, max_calls=120, window_seconds=60.0):
+            return True
+
+    monkeypatch.setattr("api.middleware.get_rate_limiter", lambda: _NoopLimiter())
+
+
+@pytest.fixture(autouse=True)
 def _clear_service_data_caches():
     """Limpia las cachés de full-table de la capa de servicios entre tests.
 
