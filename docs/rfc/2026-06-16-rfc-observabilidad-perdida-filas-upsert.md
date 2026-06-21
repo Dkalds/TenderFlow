@@ -4,7 +4,7 @@ title: Observabilidad de pérdida de filas en el upsert de adjudicaciones (INSER
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 ---
 
 ## Contexto
@@ -150,3 +150,29 @@ el mismo cambio.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22T00:00Z agent:claude — Implementado. Estado final:
+
+- ✅ Paso 1: `upsert_rows_dropped_total{table}` (Counter) añadido a
+  `observability/runtime_metrics.py` con el `_NoopMetric` fallback del
+  `except ImportError`.
+- ✅ Paso 2: `replace_adjudicaciones` (`db/upsert.py:143-172`) y
+  `replace_adjudicaciones_batch` (`:175-218`) leen `cur.rowcount`,
+  acumulan `persisted`/`dropped` y emiten métrica + `log.warning(
+  "upsert_row_dropped", ...)` por descarte. Retornos
+  `(persisted, dropped)` / `(persisted, dropped, failed)` documentados.
+- ✅ Paso 3: Callers actualizados — `scraper/pipeline.py:344-350,554-558`
+  y `scraper/connectors/base.py:159-165` desempaquetan `n_dropped`
+  y loguean `adj_rows_dropped` si `> 0`.
+- ✅ Paso 4: Tests añadidos a `tests/test_db_upsert.py`:
+  `test_replace_adjudicaciones_drops_constraint_violation` (acceptance
+  criterion central: CHECK violation → `dropped=1` + métrica
+  incrementada), `test_replace_adjudicaciones_idempotent_no_drops_on_reingest`,
+  `test_replace_adjudicaciones_batch_separates_persisted_from_dropped`.
+- ✅ Paso 6: Follow-up de clasificación `IntegrityError` + DLQ
+  registrado en `docs/IMPROVEMENT_BACKLOG.md` (P2) apuntando al RFC
+  `2026-06-16-rfc-dlq-violaciones-integridad-upsert.md`, que es el RFC
+  que escala este trabajo.
+- ⏸ Paso 5 (alerta Grafana `rate(upsert_rows_dropped_total) > 0`):
+  diferido — opcional según el propio RFC; la métrica ya queda expuesta
+  y la regla de alerta puede añadirse cuando se revisen los dashboards.

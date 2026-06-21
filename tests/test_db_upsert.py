@@ -148,6 +148,102 @@ def test_replace_adjudicaciones_replaces(db):
     assert "Empresa A" not in names
 
 
+def _drop_count() -> float | None:
+    """Lee upsert_rows_dropped_total{table='adjudicaciones'} desde el REGISTRY.
+
+    Devuelve None si prometheus_client no está instalado (las métricas serían
+    no-op y la verificación se omite — el contador del valor de retorno sigue
+    siendo el test principal).
+    """
+    try:
+        from prometheus_client import REGISTRY
+    except ImportError:
+        return None
+    val = REGISTRY.get_sample_value(
+        "upsert_rows_dropped_total",
+        {"table": "adjudicaciones"},
+    )
+    return float(val) if val is not None else 0.0
+
+
+def test_replace_adjudicaciones_drops_constraint_violation(db):
+    """Regresión RFC obs-perdida-filas-upsert (acceptance criterion).
+
+    Una adjudicación con `fecha_adjudicacion` no-ISO viola el `CHECK GLOB
+    '????-??-??*'` definido en db/schema.py para `adjudicaciones`. El
+    `INSERT OR IGNORE` descarta la fila silenciosamente; el contador debe
+    reflejarlo en `dropped` (no en `persisted`) y la métrica
+    `upsert_rows_dropped_total{table='adjudicaciones'}` debe incrementar.
+    """
+    from db.upsert import Adjudicacion, replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion()])
+    before = _drop_count()
+
+    bad = Adjudicacion(
+        licitacion_id="TEST-001",
+        nombre="Empresa X",
+        nif="B99999999",
+        fecha_adjudicacion="14/06/2026",  # no-ISO: viola CHECK GLOB
+    )
+    persisted, dropped = replace_adjudicaciones("TEST-001", [bad])
+
+    assert persisted == 0
+    assert dropped == 1
+    if before is not None:
+        after = _drop_count()
+        assert after is not None and after - before == 1.0
+
+
+def test_replace_adjudicaciones_idempotent_no_drops_on_reingest(db):
+    """Re-ingesta idéntica produce dropped=0 (idempotencia testeable).
+
+    El RFC señala explícitamente que con conteos honestos la idempotencia
+    se vuelve verificable: una segunda corrida con la misma adjudicación
+    debe persistir 1 (el DELETE previo limpia) y descartar 0.
+    """
+    from db.upsert import Adjudicacion, replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion()])
+    adj = Adjudicacion(licitacion_id="TEST-001", nombre="Empresa SA", nif="B12345678")
+
+    p1, d1 = replace_adjudicaciones("TEST-001", [adj])
+    p2, d2 = replace_adjudicaciones("TEST-001", [adj])
+
+    assert (p1, d1) == (1, 0)
+    assert (p2, d2) == (1, 0)
+
+
+def test_replace_adjudicaciones_batch_separates_persisted_from_dropped(db):
+    """La versión batch cuenta drops por separado de persisted y failed.
+
+    Un lote mixto (una válida + una con violación de CHECK) debe devolver
+    persisted=1, dropped=1, failed=0. `failed` solo cuenta excepciones reales;
+    `OR IGNORE` nunca las produce para violaciones de constraint.
+    """
+    from db.upsert import (
+        Adjudicacion,
+        replace_adjudicaciones_batch,
+        upsert_licitaciones,
+    )
+
+    upsert_licitaciones([make_licitacion()])
+
+    good = Adjudicacion(licitacion_id="TEST-001", nombre="Empresa OK", nif="B11111111")
+    bad = Adjudicacion(
+        licitacion_id="TEST-001",
+        nombre="Empresa Mala",
+        nif="B99999999",
+        fecha_adjudicacion="01/01/2026",  # no-ISO viola CHECK
+    )
+
+    persisted, dropped, failed = replace_adjudicaciones_batch({"TEST-001": [good, bad]})
+
+    assert persisted == 1
+    assert dropped == 1
+    assert failed == 0
+
+
 def test_replace_adjudicaciones_empty_clears(db):
     from db.database import connect
     from db.upsert import Adjudicacion, replace_adjudicaciones, upsert_licitaciones

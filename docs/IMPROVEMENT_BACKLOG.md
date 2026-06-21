@@ -19,16 +19,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### [P2] Miscount silencioso en `replace_adjudicaciones_batch` (`INSERT OR IGNORE`)
-- **Área:** `db/upsert.py` (adjudicaciones)
-- **Problema:** `replace_adjudicaciones[_batch]` usa `INSERT OR IGNORE`. Si el `CHECK` GLOB de `fecha_adjudicacion` (o cualquier otra constraint) rechaza una fila, SQLite la **descarta en silencio** pero `total += 1` la cuenta como persistida. El RFC norm-fechas cerró el origen más común (el parser normaliza ahora), pero el contador sigue sobreestimando ante cualquier otra violación de integridad y oculta pérdidas reales de datos.
+### [P2] Clasificar `IntegrityError` (dedup vs CHECK/FK) y enrutar a DLQ en upsert
+- **Área:** `db/upsert.py` (adjudicaciones), `db/dlq.py`
+- **Problema:** Con el RFC `obs-perdida-filas-upsert` ya implementado, los descartes del `INSERT OR IGNORE` son visibles (contador `dropped` + métrica `upsert_rows_dropped_total` + log `upsert_row_dropped`). Pero el log no distingue **causa**: un `UNIQUE` legítimo (dedup intra-XML) y una violación de `CHECK`/FK (pérdida real de datos) se loguean igual y se mezclan en la métrica. Para recuperabilidad hay que separarlas y enrutar las violaciones reales a la DLQ.
 - **Acceptance criteria:**
-  - Contador refleja **solo** filas realmente insertadas (`cursor.rowcount` o re-count tras commit).
-  - Métrica/log si `expected - inserted > 0` (drops silenciosos detectables en Grafana).
-  - Test de regresión: una adjudicación que viola el CHECK no se cuenta como insertada.
-- **Files de partida:** [db/upsert.py](../db/upsert.py)
-- **RFC origen:** [2026-06-16-rfc-normalizacion-canonica-fechas-ingesta.md](rfc/2026-06-16-rfc-normalizacion-canonica-fechas-ingesta.md) (sección "Qué NO se hace")
-- **Riesgo:** bajo — observabilidad / contador; no cambia lógica de escritura.
+  - `replace_adjudicaciones[_batch]` clasifica cada drop como `dedup` vs `integrity_violation` (inspeccionar `IntegrityError` o re-`SELECT` puntual).
+  - Las violaciones reales se persisten en `db/dlq.py` con motivo + payload para reintento.
+  - Métrica `upsert_rows_dropped_total` adquiere etiqueta `reason` (`dedup` | `integrity`).
+- **Files de partida:** [db/upsert.py](../db/upsert.py), [db/dlq.py](../db/dlq.py)
+- **RFC:** [2026-06-16-rfc-dlq-violaciones-integridad-upsert.md](rfc/2026-06-16-rfc-dlq-violaciones-integridad-upsert.md) (follow-up explícito del RFC obs-perdida-filas paso 6)
+- **Riesgo:** medio — cambia el manejo de errores del hot path de ingesta.
 
 ### [P2] Observabilidad de tokens y coste en el cliente LLM
 - **Área:** llm/ (client + providers), observability
