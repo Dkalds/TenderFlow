@@ -47,6 +47,13 @@ export function formatPercent(
 /**
  * Format a date for display.
  * Handles ISO (YYYY-MM-DD) and legacy DD/MM/YYYY formats from the CODICE parser.
+ *
+ * NOTE (temporal — defensa en profundidad): the CODICE parser now normalises
+ * every date to ISO at the ingestion boundary (RFC norm-fechas, 2026-06-16)
+ * and the DB rejects non-ISO via CHECK GLOB. This safety net only matters for
+ * legacy rows older than migration v22 that the backfill has not yet rewritten.
+ * Remove the DD/MM/YYYY branch once the backfill (step 5 of the RFC, gated by
+ * human approval) has run in production.
  */
 export function formatDate(
   date: string | Date | null | undefined,

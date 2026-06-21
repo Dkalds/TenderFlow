@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import textwrap
 
 import pytest
@@ -373,3 +374,111 @@ class TestParseAtomBytes:
         assert len(results) == 1
         _, adjs = results[0]
         assert len(adjs) == 1
+
+
+# ─── normalización de fechas (regresión RFC norm-fechas) ─────────────────────
+
+
+def _make_entry_with_issue_dates(
+    id_externo: str = "DATE-001",
+    issue_dates: tuple[str, ...] = ("2026-06-14",),
+) -> str:
+    """Entry SAP con uno o varios IssueDate (acepta formatos mezclados).
+
+    Inyecta cada `IssueDate` dentro de
+    `ValidNoticeInfo/AdditionalPublicationStatus/AdditionalPublicationDocumentReference`,
+    que es el XPath que consume `_issue_date()` en el parser.
+    """
+    cbc = _NS["cbc"]
+    cac = _NS["cac"]
+    cacext = _NS["cacext"]
+    cbcext = _NS["cbcext"]
+    issue_blocks = "".join(
+        f"""
+        <cacext:AdditionalPublicationStatus>
+          <cacext:AdditionalPublicationDocumentReference>
+            <cbc:IssueDate>{d}</cbc:IssueDate>
+          </cacext:AdditionalPublicationDocumentReference>
+        </cacext:AdditionalPublicationStatus>"""
+        for d in issue_dates
+    )
+    return (
+        f'<entry xmlns="http://www.w3.org/2005/Atom"\n'
+        f'       xmlns:cbc="{cbc}"\n'
+        f'       xmlns:cac="{cac}"\n'
+        f'       xmlns:cacext="{cacext}"\n'
+        f'       xmlns:cbcext="{cbcext}">\n'
+        f"  <id>https://example.com/{id_externo}</id>\n"
+        f"  <title>Sistema SAP ERP</title>\n"
+        f"  <updated>2026-06-14T00:00:00Z</updated>\n"
+        f'  <link href="https://example.com/{id_externo}" rel="alternate"/>\n'
+        f"  <summary>Id licitación: {id_externo}; "
+        f"Órgano de Contratación: Test; Importe: 1000 EUR; Estado: PUB</summary>\n"
+        f"  <cacext:ContractFolderStatus>\n"
+        f"    <cbc:ContractFolderID>{id_externo}</cbc:ContractFolderID>\n"
+        f"    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>\n"
+        f"    <cacext:LocatedContractingParty>\n"
+        f"      <cac:Party>\n"
+        f"        <cac:PartyName><cbc:Name>Test</cbc:Name></cac:PartyName>\n"
+        f"      </cac:Party>\n"
+        f"    </cacext:LocatedContractingParty>\n"
+        f"    <cac:ProcurementProject>\n"
+        f"      <cbc:Name>Sistema SAP ERP</cbc:Name>\n"
+        f"      <cac:BudgetAmount>\n"
+        f'        <cbc:TaxExclusiveAmount currencyID="EUR">1000</cbc:TaxExclusiveAmount>\n'
+        f"      </cac:BudgetAmount>\n"
+        f"    </cac:ProcurementProject>\n"
+        f"    <cacext:ValidNoticeInfo>"
+        f"{issue_blocks}\n"
+        f"    </cacext:ValidNoticeInfo>\n"
+        f"  </cacext:ContractFolderStatus>\n"
+        f"</entry>\n"
+    )
+
+
+_ISO_GLOB_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
+class TestDateNormalization:
+    """Regresión del RFC norm-fechas (2026-06-16): el parser nunca debe
+    producir un valor que viole el CHECK GLOB('????-??-??*') de las
+    columnas fecha_* en `licitaciones`/`adjudicaciones` (db/schema.py)."""
+
+    def _get_entry(self, entry_xml: str):
+        feed = _make_atom_feed(entry_xml)
+        root = etree.fromstring(feed)
+        return root.find("{http://www.w3.org/2005/Atom}entry")
+
+    def test_issue_date_dmy_produces_iso_fecha_publicacion(self):
+        """Un IssueDate en formato DD/MM/YYYY genera fecha_publicacion ISO
+        (escenario clásico del bug fijado en commit 1166964)."""
+        entry = self._get_entry(_make_entry_with_issue_dates(issue_dates=("14/06/2026",)))
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_publicacion == "2026-06-14"
+        assert _ISO_GLOB_PREFIX.match(lic.fecha_publicacion or "")
+
+    def test_issue_date_mixed_formats_picks_chronological_minimum(self):
+        """Con IssueDates en formatos mezclados, _issue_date normaliza antes
+        de min() → mínimo CRONOLÓGICO. Sin normalizar, el min lexicográfico
+        de ('2026-06-14', '15/01/2026') sería '15/01/2026' (porque '1' < '2'),
+        violando además el CHECK GLOB."""
+        entry = self._get_entry(
+            _make_entry_with_issue_dates(
+                issue_dates=("2026-06-14", "15/01/2026"),
+            )
+        )
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_publicacion == "2026-01-15"
+
+    def test_all_date_fields_pass_check_glob(self):
+        """Todos los campos de fecha del parser cumplen el shape ISO
+        que exige el CHECK GLOB en db/schema.py."""
+        entry = self._get_entry(_make_entry_with_issue_dates(issue_dates=("01/02/2026",)))
+        lic = parse_entry(entry)
+        assert lic is not None
+        for field in ("fecha_publicacion", "fecha_actualizacion_fuente"):
+            val = getattr(lic, field)
+            if val is not None:
+                assert _ISO_GLOB_PREFIX.match(val), f"{field}={val!r} no pasa CHECK GLOB"

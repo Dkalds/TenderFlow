@@ -4,7 +4,7 @@ title: Normalización canónica de fechas ISO-8601 en el boundary de ingesta COD
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 ---
 
 ## Contexto
@@ -183,3 +183,21 @@ real está en el backfill (paso 5), gated por OK humano.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22T00:00Z agent:claude — Implementado. Estado final:
+
+- ✅ Paso 1: `to_iso_date` vive en `shared/dates.py` (strict-typed, idempotente).
+- ✅ Paso 2: `scraper/codice_parser.py` importa `to_iso_date` y lo aplica a
+  `AwardDate`, `StartDate`, `EndDate` y dentro de `_issue_date` antes de
+  `min()`; la copia local `_normalize_date` quedó eliminada. Ambos
+  `parse_entry` y `parse_entry_unfiltered` cubiertos.
+- ✅ Paso 3: `tests/test_property_dates.py` cubre el contrato de
+  `to_iso_date` (round-trip, DMY→ISO, idempotencia, passthrough); este RFC
+  añade además `tests/test_codice_parser.py::TestDateNormalization` con
+  el test de regresión end-to-end del CHECK (acceptance criterion 3).
+- ✅ Paso 6: ítem nuevo en `docs/IMPROVEMENT_BACKLOG.md` (P2) sobre el
+  miscount de `INSERT OR IGNORE` en `replace_adjudicaciones_batch`.
+- ✅ Paso 7: comentario "temporal — defensa en profundidad" añadido a
+  `web/src/lib/utils.ts::formatDate` con el plan de retirada.
+- ⏸ Paso 4 (pandera): diferido por baja prioridad, según el propio RFC.
+- ⏸ Paso 5 (revisión Alembic de backfill): gated por OK humano (§6).

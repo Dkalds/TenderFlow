@@ -19,6 +19,17 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] Miscount silencioso en `replace_adjudicaciones_batch` (`INSERT OR IGNORE`)
+- **Área:** `db/upsert.py` (adjudicaciones)
+- **Problema:** `replace_adjudicaciones[_batch]` usa `INSERT OR IGNORE`. Si el `CHECK` GLOB de `fecha_adjudicacion` (o cualquier otra constraint) rechaza una fila, SQLite la **descarta en silencio** pero `total += 1` la cuenta como persistida. El RFC norm-fechas cerró el origen más común (el parser normaliza ahora), pero el contador sigue sobreestimando ante cualquier otra violación de integridad y oculta pérdidas reales de datos.
+- **Acceptance criteria:**
+  - Contador refleja **solo** filas realmente insertadas (`cursor.rowcount` o re-count tras commit).
+  - Métrica/log si `expected - inserted > 0` (drops silenciosos detectables en Grafana).
+  - Test de regresión: una adjudicación que viola el CHECK no se cuenta como insertada.
+- **Files de partida:** [db/upsert.py](../db/upsert.py)
+- **RFC origen:** [2026-06-16-rfc-normalizacion-canonica-fechas-ingesta.md](rfc/2026-06-16-rfc-normalizacion-canonica-fechas-ingesta.md) (sección "Qué NO se hace")
+- **Riesgo:** bajo — observabilidad / contador; no cambia lógica de escritura.
+
 ### [P2] Observabilidad de tokens y coste en el cliente LLM
 - **Área:** llm/ (client + providers), observability
 - **Problema:** `/ask` consume LLMs de pago pero `llm/client.py` solo mide latencia, no tokens ni coste. El usage real ya lo exponen ambos SDKs (Anthropic `get_final_message().usage`; OpenAI `stream_options={"include_usage": True}`) y se está descartando. Sin esta métrica no se puede ver el gasto ni alertar sobre picos.
