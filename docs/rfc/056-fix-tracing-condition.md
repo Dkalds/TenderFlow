@@ -4,7 +4,7 @@ title: Fix incorrect condition in tracing.py that allows spans without OpenTelem
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/56
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

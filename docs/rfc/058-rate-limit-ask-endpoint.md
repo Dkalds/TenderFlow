@@ -4,7 +4,7 @@ title: Añadir rate limiting al endpoint /api/v1/ask (LLM)
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/58
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

@@ -4,7 +4,7 @@ title: Documentar la fachada db.database
 issue: "(test local — sin issue de GitHub)"
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 supersedes: ~
 ---
 

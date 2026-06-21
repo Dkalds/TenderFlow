@@ -4,7 +4,7 @@ title: "Fix broken Make targets — heredoc indentation and stale type-ignore"
 issue: https://github.com/Dkalds/TenderFlow/issues/85
 author: agent:architect
 date: 2026-05-26
-status: approved
+status: implemented
 ---
 
 ## Contexto

@@ -4,7 +4,7 @@ title: "No cachear valores None en config/secrets.py"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/59
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

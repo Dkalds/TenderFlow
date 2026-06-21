@@ -4,7 +4,7 @@ title: "Fix IDOR en export jobs — validar ownership por key_hash"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/50
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

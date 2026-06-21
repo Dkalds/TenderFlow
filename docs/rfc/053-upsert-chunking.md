@@ -4,7 +4,7 @@ title: Chunked upsert_licitaciones_with_history para liberar write lock
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/53
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

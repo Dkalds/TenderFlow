@@ -4,7 +4,7 @@ title: Alinear reset_timeout inicial del CircuitBreaker con BREAKER_BASE_TIMEOUT
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/52
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

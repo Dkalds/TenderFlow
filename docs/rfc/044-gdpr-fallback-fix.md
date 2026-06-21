@@ -4,7 +4,7 @@ title: "GDPR get_user_id_from_key_id debe retornar None en lugar de fallback al 
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/44
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

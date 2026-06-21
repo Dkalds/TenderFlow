@@ -4,7 +4,7 @@ title: "OAuth nonce store: fail-closed con fallback in-memory"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/62
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

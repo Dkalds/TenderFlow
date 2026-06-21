@@ -4,7 +4,7 @@ title: Eliminar secretos de webhook en texto plano usando derivación HMAC
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/49
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

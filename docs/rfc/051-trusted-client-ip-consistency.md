@@ -4,7 +4,7 @@ title: Uso consistente de _trusted_client_ip para prevenir IP spoofing
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/51
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

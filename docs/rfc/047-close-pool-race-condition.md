@@ -4,7 +4,7 @@ title: "Fix race condition en close_pool() — lock durante drain del pool"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/47
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto

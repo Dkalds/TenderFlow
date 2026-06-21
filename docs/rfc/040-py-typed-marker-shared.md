@@ -4,7 +4,7 @@ title: Add PEP 561 py.typed marker to shared/ package
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/40
 author: agent:architect
 date: 2026-05-24
-status: approved
+status: implemented
 ---
 
 ## Contexto
