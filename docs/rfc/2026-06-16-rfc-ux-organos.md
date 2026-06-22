@@ -118,3 +118,14 @@ Gaps de UX:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (totales + fechas).** Backend: `OrganosResult` gana
+`importe_total` (suma sobre TODO el dataset filtrado) en `services/analytics/organos.py`;
+`concentracion_top10` ya se calculaba bien sobre todos los órganos (no solo el
+top-50). Frontend (`organos/page.tsx`): las cards "Importe Total" y "Concentración
+Top 10" ahora usan `data.importe_total` / `data.concentracion_top10` del backend en
+vez de recalcular sobre el top-50 (antes inflaba concentración y subestimaba
+importe). `fecha_adjudicacion` con `formatDate`. Tests: +1 backend
+(`test_get_organos_totales_sobre_dataset_completo_no_top_n`), 13/13 verde; mypy
+limpio; `tsc`/`eslint`/`vitest` (285) verde. **Diferido:** acción "ver licitaciones
+del órgano" en el Sheet (drill-down al listado filtrado).

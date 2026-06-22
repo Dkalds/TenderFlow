@@ -53,6 +53,7 @@ class OrganosResult(BaseModel):
 
     organos: list[OrganoEntry] = Field(default_factory=list)
     total_organos: int = 0
+    importe_total: float = 0.0
     concentracion_top10: float = 0.0
     treemap_breakdown: list[TreemapItem] = Field(default_factory=list)
 
@@ -127,6 +128,9 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
 
     total = len(df)
     total_organos = int(df["organo_contratacion"].nunique())
+    # Importe total sobre TODO el dataset filtrado (no la suma del top-N que
+    # devuelve `organos`): la card "Importe Total" debe reflejar el mercado real.
+    importe_total = float(df["importe"].sum(skipna=True) or 0.0)
 
     # Group by organo
     g = (
@@ -187,6 +191,7 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
     result = OrganosResult(
         organos=organos,
         total_organos=total_organos,
+        importe_total=round(importe_total, 2),
         concentracion_top10=round(concentracion_top10, 2),
         treemap_breakdown=treemap_breakdown,
     )

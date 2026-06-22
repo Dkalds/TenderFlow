@@ -20,7 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ExportPopover } from "@/components/export-popover";
-import { foldText, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { foldText, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { TreemapContent } from "@/components/charts/treemap-content";
 import {
@@ -63,6 +63,8 @@ interface TreemapBreakdownItem {
 interface OrganosResponse {
   organos: OrganoItem[];
   total_organos: number;
+  importe_total?: number;
+  concentracion_top10?: number;
   treemap_breakdown?: TreemapBreakdownItem[];
 }
 
@@ -139,17 +141,11 @@ export default function OrganosPage() {
 
   const items = useMemo(() => data?.organos ?? [], [data]);
 
-  const top10Concentration = useMemo(() => {
-    if (items.length === 0) return 0;
-    const totalCount = items.reduce((s, i) => s + i.count, 0);
-    const top10Count = items.slice(0, 10).reduce((s, i) => s + i.count, 0);
-    return totalCount > 0 ? (top10Count / totalCount) * 100 : 0;
-  }, [items]);
-
-  const totalImporte = useMemo(
-    () => items.reduce((s, i) => s + i.importe, 0),
-    [items],
-  );
+  // Totales reales del backend (sobre TODO el dataset), no la suma del top-50
+  // que devuelve `items`: antes "Concentración Top 10" se inflaba (denominador =
+  // top-50) e "Importe Total" se subestimaba (ignoraba órganos fuera del top-50).
+  const top10Concentration = data?.concentracion_top10 ?? 0;
+  const totalImporte = data?.importe_total ?? 0;
 
   const topOrgano = items.length > 0 ? items[0].organo_contratacion : "-";
 
@@ -698,7 +694,7 @@ export default function OrganosPage() {
                               <span>📉 {s.baja_pct.toFixed(1)}% baja</span>
                             )}
                             {s.fecha_adjudicacion && (
-                              <span>📅 {s.fecha_adjudicacion}</span>
+                              <span>📅 {formatDate(s.fecha_adjudicacion)}</span>
                             )}
                             {s.modulos_str && (
                               <span className="text-primary">{s.modulos_str}</span>
