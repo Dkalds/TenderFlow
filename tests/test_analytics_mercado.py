@@ -91,6 +91,9 @@ def test_tecnologias_kpis_and_explode():
     assert labels == {"SAP", "Oracle", "Salesforce"}
     assert res.n_tecnologias == 3
     assert res.sin_clasificar == 2
+    # total = todas las licitaciones en alcance (denominador de cobertura).
+    assert res.total >= res.sin_clasificar
+    assert res.total - res.sin_clasificar > 0  # hay clasificadas
     # SAP = 5 direct + 2 comma rows = 7, and is the leader.
     sap = next(e for e in res.tecnologias if e.tecnologia == "SAP")
     assert sap.count == 7

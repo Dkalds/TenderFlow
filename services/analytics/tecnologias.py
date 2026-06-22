@@ -81,6 +81,9 @@ class TecnologiasResult(BaseModel):
 
     tecnologias: list[TecnologiaEntry] = Field(default_factory=list)
     sin_clasificar: int = 0
+    # Total de licitaciones en alcance (denominador para la cobertura del
+    # clasificador: % clasificado = (total - sin_clasificar) / total).
+    total: int = 0
     # KPIs
     n_tecnologias: int = 0
     tecnologia_lider: str | None = None
@@ -296,7 +299,7 @@ def get_tecnologias(filters: TecnologiasFilters) -> TecnologiasResult:
     classified = _explode_classified(df)
 
     if classified.empty:
-        return TecnologiasResult(sin_clasificar=sin_clasificar)
+        return TecnologiasResult(sin_clasificar=sin_clasificar, total=total)
 
     entries = _build_entries(classified, total)
 
@@ -313,6 +316,7 @@ def get_tecnologias(filters: TecnologiasFilters) -> TecnologiasResult:
     result = TecnologiasResult(
         tecnologias=entries,
         sin_clasificar=sin_clasificar,
+        total=total,
         n_tecnologias=n_tecnologias,
         tecnologia_lider=lider.tecnologia if lider else None,
         lider_count=lider.count if lider else 0,
