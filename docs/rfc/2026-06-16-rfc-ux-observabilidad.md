@@ -86,3 +86,13 @@ Problemas:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado.** Grafana por config: `web/src/lib/runtime-config.ts`
+(`getGrafanaUrl()` lee `NEXT_PUBLIC_GRAFANA_URL`; devuelve `null` si falta/blank).
+La card oculta el enlace y muestra una nota de "no configurada" en vez del
+`localhost:3001` roto. Salud en vivo: auto-refresh de 30s ya existente + botón
+"Refrescar" manual (spinner con `isFetching`) + hora del último check. Rol claro:
+subtítulo "infra/SRE" con cross-link a Calidad de Datos; `dlq_count` enlaza a
+`/calidad-datos` ("Inspeccionar DLQ"). Tests: `runtime-config.test.ts` (3). Verde:
+`tsc`/`eslint`/`vitest` (18 files, 279 tests). **Pendiente (§6):** añadir
+`NEXT_PUBLIC_GRAFANA_URL` a `.env.example` (edición de `.env*` requiere OK humano).
