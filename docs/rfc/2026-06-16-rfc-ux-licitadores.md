@@ -92,3 +92,10 @@ con dos UX divergentes.
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
 <!-- Decisión consolidar vs diferenciar: requiere input del dueño de producto. -->
+
+2026-06-22 — **Implementado (Consolidar).** Decisión de producto: **consolidar**.
+`/licitadores` ahora redirige a `/competidores` (server-side `redirect()`), sin
+romper deep-links. Eliminada la entrada "Licitadores" de la navegación
+(`web/src/lib/navigation.ts`) y su icono `Medal` (import muerto). El análisis
+competitivo vive solo en `competidores`; cualquier mejora futura se hace una vez.
+Verde: `tsc`/`eslint`/`vitest` (19 files, 285 tests).
