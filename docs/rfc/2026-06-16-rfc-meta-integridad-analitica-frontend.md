@@ -190,3 +190,12 @@ check de CI; el riesgo está en no romper páginas al quitar las derivaciones cl
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
 <!-- Decisión de producto/arquitectura: aprobar el invariante habilita el ADR-014 y el check de CI. -->
+
+2026-06-22 — **Implementado (parcial, guardarraíles).** Graduado a
+[ADR-014](../adr/ADR-014-integridad-analitica-frontend.md). Entregado: doc canónico
+`docs/frontend-data-invariants.md`, sección en `web/AGENTS.md`, check
+`scripts/check_frontend_invariants.py` (modo aviso, detecta las 5 categorías; 13
+hallazgos reales pendientes en 9 páginas), target `make check-frontend-invariants`,
+y allowlist `fdi-allow` en el fallback SSR de `web/src/lib/api-client.ts`. **Pendiente:**
+wiring del check al job `frontend` de CI (requiere OK humano §6) y migración de las
+páginas de Patrón 1 (se cierran vía sus RFCs por página).

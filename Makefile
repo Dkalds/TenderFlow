@@ -1,4 +1,4 @@
-.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -35,6 +35,9 @@ check:  ## Lint + typecheck + tests unitarios (ideal para desarrollo)
 	ruff check .
 	mypy .
 	pytest tests/ -m "unit and not slow" -q
+
+check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, modo aviso)
+	python scripts/check_frontend_invariants.py
 
 # ── Tests ────────────────────────────────────────────────────────────────
 test:  ## Suite de tests estándar (excluye integration_e2e)
