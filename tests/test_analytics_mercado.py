@@ -197,6 +197,37 @@ def test_proyectos_modulos_yoy_tipo_estado_cpv():
     assert all(c.cpv_desc for c in res.cpv)
 
 
+def test_proyectos_modulos_importe_distinct_sin_doble_conteo():
+    """Una licitación con varios módulos SAP cuenta su importe UNA vez (no por módulo)."""
+    rows = [
+        {
+            "id_externo": "M1",
+            "titulo": "Implantacion SAP FI y CO integrados",  # detecta FI + CO
+            "organo_contratacion": "Org",
+            "ccaa": "Madrid",
+            "cpv": "72000000",
+            "importe": 1_000_000.0,
+            "tecnologia": "SAP",
+            "estado": "ADJ",
+            "tipo_contrato": "2",
+            "fecha_publicacion": _iso(30),
+        },
+    ]
+    with patch.object(pm_mod, "load_stats_dataframe", return_value=rows):
+        res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
+
+    # FI y CO detectados → 2 filas de módulo…
+    mods = {m.modulo for m in res.modulos}
+    assert {"FI", "CO"} <= mods
+    # …pero 1 sola licitación clasificada, con su importe contado UNA vez.
+    assert res.total_clasificados == 1
+    assert res.importe_total_sap == 1_000_000.0
+    assert res.ticket_medio_sap == 1_000_000.0
+    # La suma de filas de módulo SÍ doble-cuenta (FI 1M + CO 1M = 2M): por eso el
+    # KPI debe venir de importe_total_sap distinct, no de sum(modulos.importe).
+    assert sum(m.importe for m in res.modulos) == 2_000_000.0
+
+
 # ---------------------------------------------------------------------------
 # clusters
 # ---------------------------------------------------------------------------

@@ -83,3 +83,13 @@ distorsionan.) Además no hay drill-down de módulo/tipo al listado.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (KPIs distinct).** Backend
+(`services/analytics/proyectos_modulos.py`): `ProyectosModulosResult` gana
+`importe_total_sap` y `ticket_medio_sap` calculados a nivel **licitación distinct**
+(`_build_modulos` devuelve el importe sumado una vez por licitación clasificada, no
+por fila de módulo). Frontend: la card "Ticket Medio SAP" usa `data.ticket_medio_sap`
+del backend en vez de `sum(modulos.importe)/sum(modulos.count)` (que inflaba por
+multi-módulo). Tests: +1 backend (FI+CO en una licitación → importe contado una vez),
+9/9 verde; mypy limpio; `tsc`/`eslint`/`vitest` (285) verde. **Diferido:** drill-down
+de módulo/tipo/celda al listado filtrado.

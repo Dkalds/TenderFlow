@@ -61,6 +61,8 @@ interface ProyectosModulosResponse {
   modulos: ModuloItem[];
   tipos_proyecto: TipoProyectoItem[];
   total_clasificados: number;
+  importe_total_sap?: number;
+  ticket_medio_sap?: number;
   total_modulos: number;
   total_tipos: number;
   total?: number;
@@ -89,12 +91,9 @@ export default function ProyectosModulosPage() {
   const modulos = useMemo(() => data?.modulos ?? [], [data]);
   const tipos = useMemo(() => data?.tipos_proyecto ?? [], [data]);
 
-  // SAP-specific KPIs
-  const ticketMedioSAP = useMemo(() => {
-    const totalImporte = modulos.reduce((s, m) => s + m.importe, 0);
-    const totalCount = modulos.reduce((s, m) => s + m.count, 0);
-    return totalCount > 0 ? totalImporte / totalCount : 0;
-  }, [modulos]);
+  // SAP-specific KPIs — a nivel licitación distinct desde el backend, NO la suma
+  // de filas de módulo (una licitación con módulos A+B contaba doble el importe).
+  const ticketMedioSAP = data?.ticket_medio_sap ?? 0;
 
   const pctMultiModulo = useMemo(() => {
     const total = data?.total ?? modulos.reduce((s, m) => s + m.count, 0);
