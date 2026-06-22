@@ -129,13 +129,13 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
         </Stagger.Item>
         <Stagger.Item>
           <KpiCard
-            title="CCAA cubiertas"
+            title="Concentracion top-3 CCAA"
             value={
-              isLoading
+              isLoading || overview?.concentracion_geo_top3 == null
                 ? undefined
-                : `${formatNumber(overview?.concentracion_geo_top3 != null ? Math.round((overview.concentracion_geo_top3 / 100) * 17) : undefined)}/17`
+                : `${Math.round(overview.concentracion_geo_top3)}%`
             }
-            subtitle="Cobertura geografica"
+            subtitle="Importe en las 3 CCAA principales"
             icon={MapPin}
             loading={isLoading}
           />
