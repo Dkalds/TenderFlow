@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -249,7 +249,17 @@ export default function TendenciasCpvPage() {
       {showForecast && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Prevision Volumen (6 meses)</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">Prevision Volumen (6 meses)</CardTitle>
+              <Badge variant="outline" className="text-amber-600 border-amber-400">
+                Global del mercado
+              </Badge>
+            </div>
+            <CardDescription>
+              Previsión del volumen <strong>global</strong>, no de los CPV
+              seleccionados arriba. Pendiente de soportar forecast por CPV en el
+              backend.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {forecastLoading ? (
@@ -263,7 +273,8 @@ export default function TendenciasCpvPage() {
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip />
                   <Area type="monotone" dataKey="upper" stroke="none" fill={CHART_SERIES[0]} fillOpacity={0.1} />
-                  <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(0, 0%, 100%)" fillOpacity={1} />
+                  {/* Goma theme-safe: token de fondo de la card, no blanco (rompía en dark mode). */}
+                  <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--card))" fillOpacity={1} />
                   <Line type="monotone" dataKey="historico" stroke={CHART_SERIES[0]} strokeWidth={2} dot={{ r: 2 }} />
                   <Line type="monotone" dataKey="forecast_val" stroke={CHART_SERIES[0]} strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2 }} />
                 </AreaChart>

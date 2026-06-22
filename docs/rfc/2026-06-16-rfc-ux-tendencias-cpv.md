@@ -78,3 +78,12 @@ defecto de correctitud:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (parcial, frontend).** (1) El forecast overlay es global
+(`/forecast/volume` sin CPV); mientras no exista el per-CPV se **etiqueta explícito**
+("Global del mercado" + `CardDescription`) para no leerse como previsión del CPV
+seleccionado — opción "mínimo aceptable" del propio RFC. Además, fix del hack de
+banda blanca (`hsl(0,0%,100%)` → `hsl(var(--card))`, igual que en ux-tendencias;
+no estaba listado en este RFC pero el smell vivía aquí también, línea 266). Verde:
+`tsc`/`eslint`/`vitest` (19 files, 285 tests). **Diferido (requiere backend):**
+forecast por CPV (`forecast/volume?cpv=...`) y drill-down al listado por CPV.
