@@ -124,3 +124,15 @@ Gaps menores de UX:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (agregación backend).** Backend
+(`services/analytics/geography.py`): `GeoResult` gana `by_provincia` (count +
+importe por provincia) agregado sobre TODO el dataset filtrado. Frontend
+(`geografia/page.tsx`): la tabla de provincias consume `data.by_provincia` vía la
+query `useFilteredQuery` existente (respeta los filtros globales) en vez del
+`fetch("/api/v1/licitaciones?limit=500")` + agregación cliente (eliminados ese
+fetch y las interfaces muertas). Tests: +2 backend (agrega dataset completo;
+respeta filtro de tecnología), mypy limpio; `tsc`/`eslint`/`vitest` (285) verde.
+`check_frontend_invariants`: `large-limit` 3→2. **Diferido:** filas de provincia
+clicables (drill-down, requiere filtro de provincia en el sistema global) y a11y
+del `SpainMap`.

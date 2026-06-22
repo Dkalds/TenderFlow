@@ -3,7 +3,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
@@ -26,17 +25,15 @@ interface GeoItem {
   pct: number;
 }
 
+interface ProvinciaItem {
+  provincia: string;
+  count: number;
+  importe: number;
+}
+
 interface GeographyResponse {
   by_ccaa: GeoItem[];
-}
-
-interface LicitacionItem {
-  provincia?: string;
-  importe?: number;
-}
-
-interface LicitacionesResponse {
-  items: LicitacionItem[];
+  by_provincia?: ProvinciaItem[];
 }
 
 
@@ -60,20 +57,6 @@ export default function GeografiaPage() {
     "/api/v1/analytics/geography",
     { staleTime: 5 * 60 * 1000 },
   );
-
-  // Fetch licitaciones for province aggregation
-  const { data: licData, isLoading: licLoading } =
-    useQuery<LicitacionesResponse>({
-      queryKey: ["licitaciones", "provinces"],
-      queryFn: async () => {
-        const res = await fetch("/api/v1/licitaciones?limit=500", {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to fetch licitaciones");
-        return res.json();
-      },
-      staleTime: 5 * 60 * 1000,
-    });
 
   const items = useMemo(() => data?.by_ccaa ?? [], [data]);
 
@@ -140,23 +123,9 @@ export default function GeografiaPage() {
     return sorted;
   }, [items, sortKey, sortDir]);
 
-  // Province aggregation
-  const provinciaData = useMemo(() => {
-    const lics = licData?.items ?? [];
-    const agg: Record<string, { count: number; importe: number }> = {};
-    for (const lic of lics) {
-      if (!lic.provincia) continue;
-      const prov = lic.provincia;
-      if (!agg[prov]) agg[prov] = { count: 0, importe: 0 };
-      agg[prov].count += 1;
-      agg[prov].importe += lic.importe ?? 0;
-    }
-    return Object.entries(agg).map(([provincia, vals]) => ({
-      provincia,
-      count: vals.count,
-      importe: vals.importe,
-    }));
-  }, [licData]);
+  // Provincias agregadas en backend sobre el dataset completo y respetando los
+  // filtros globales (vía useFilteredQuery), no un sample cliente de limit=500.
+  const provinciaData = useMemo(() => data?.by_provincia ?? [], [data]);
 
   const sortedProvincias = useMemo(() => {
     const sorted = [...provinciaData];
@@ -421,7 +390,7 @@ export default function GeografiaPage() {
           <CardTitle className="text-base">Provincias</CardTitle>
         </CardHeader>
         <CardContent>
-          {licLoading ? (
+          {isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="h-10 w-full" />
