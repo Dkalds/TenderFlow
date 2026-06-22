@@ -27,7 +27,8 @@ import {
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
-import { CalendarClock, Euro, Building2, Timer, ExternalLink, Search } from "lucide-react";
+import { opportunityScore } from "@/lib/opportunity-score";
+import { CalendarClock, Euro, Flame, TrendingUp, ExternalLink, Search } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -96,24 +97,49 @@ export default function RenovacionesPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const horizonteDias = Number(meses) * 30;
+
   const items = useMemo(() => {
     const all = data?.items ?? [];
-    if (!empresaSearch) return all;
+    const scored = all.map((r) => ({
+      ...r,
+      _score: opportunityScore({
+        riesgoCambio: r.riesgo_cambio,
+        importe: r.importe_adjudicado,
+        diasRestantes: r.dias_restantes,
+        horizonteDias,
+      }),
+    }));
     const q = empresaSearch.toLowerCase();
-    return all.filter(
-      (r) =>
-        (r.empresa ?? "").toLowerCase().includes(q) ||
-        (r.organo_contratacion ?? "").toLowerCase().includes(q) ||
-        (r.titulo ?? "").toLowerCase().includes(q),
-    );
-  }, [data, empresaSearch]);
+    const filtered = empresaSearch
+      ? scored.filter(
+          (r) =>
+            (r.empresa ?? "").toLowerCase().includes(q) ||
+            (r.organo_contratacion ?? "").toLowerCase().includes(q) ||
+            (r.titulo ?? "").toLowerCase().includes(q),
+        )
+      : scored;
+    // Priorizar por oportunidad (riesgo × importe × urgencia), no por proximidad.
+    return [...filtered].sort((a, b) => b._score - a._score);
+  }, [data, empresaSearch, horizonteDias]);
 
+  const maxScore = useMemo(
+    () => items.reduce((m, r) => Math.max(m, r._score), 0),
+    [items],
+  );
+
+  // Umbral de "alto riesgo de cambio" (alineado con el badge de la tabla).
+  const ALTO_RIESGO = 0.6;
   const kpis = useMemo(() => {
     const all = data?.items ?? [];
     const importe = all.reduce((acc, r) => acc + (r.importe_adjudicado ?? 0), 0);
-    const en30 = all.filter((r) => (r.dias_restantes ?? 9999) <= 30).length;
-    const empresas = new Set(all.map((r) => r.empresa_id ?? r.empresa)).size;
-    return { contratos: all.length, importe, en30, empresas };
+    const importeAltoRiesgo = all
+      .filter((r) => (r.riesgo_cambio ?? 0) >= ALTO_RIESGO)
+      .reduce((acc, r) => acc + (r.importe_adjudicado ?? 0), 0);
+    const calientes = all.filter(
+      (r) => (r.riesgo_cambio ?? 0) >= ALTO_RIESGO && (r.dias_restantes ?? 9999) <= 30,
+    ).length;
+    return { contratos: all.length, importe, importeAltoRiesgo, calientes };
   }, [data]);
 
   const topCartera = useMemo(
@@ -177,14 +203,16 @@ export default function RenovacionesPage() {
           icon={Euro}
         />
         <KpiCard
-          title="Vencen en 30 días"
-          value={isLoading ? "…" : formatNumber(kpis.en30)}
-          icon={Timer}
+          title="Importe en alto riesgo"
+          subtitle="Riesgo de cambio ≥ 60%"
+          value={isLoading ? "…" : formatCurrency(kpis.importeAltoRiesgo)}
+          icon={TrendingUp}
         />
         <KpiCard
-          title="Empresas afectadas"
-          value={isLoading ? "…" : formatNumber(kpis.empresas)}
-          icon={Building2}
+          title="Oportunidades calientes"
+          subtitle="Alto riesgo y ≤ 30 días"
+          value={isLoading ? "…" : formatNumber(kpis.calientes)}
+          icon={Flame}
         />
       </div>
 
@@ -233,7 +261,8 @@ export default function RenovacionesPage() {
           <div>
             <CardTitle>Contratos que vencen</CardTitle>
             <CardDescription>
-              {formatNumber(items.length)} contratos ordenados por proximidad del vencimiento.
+              {formatNumber(items.length)} contratos ordenados por oportunidad
+              (riesgo × importe × urgencia).
             </CardDescription>
           </div>
           <div className="relative w-full sm:w-72">
@@ -266,6 +295,7 @@ export default function RenovacionesPage() {
                     <TableHead>Órgano</TableHead>
                     <TableHead className="text-right">Importe</TableHead>
                     <TableHead className="text-right">Riesgo de cambio</TableHead>
+                    <TableHead className="text-right">Oportunidad</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -325,6 +355,23 @@ export default function RenovacionesPage() {
                           >
                             {(r.riesgo_cambio * 100).toFixed(0)}%
                           </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {r._score > 0 ? (
+                          (() => {
+                            const rel = maxScore > 0 ? Math.round((r._score / maxScore) * 100) : 0;
+                            return (
+                              <Badge
+                                variant={rel >= 66 ? "default" : rel >= 33 ? "secondary" : "outline"}
+                                title="Riesgo × importe × urgencia (relativo al máximo de la vista)"
+                              >
+                                {rel}
+                              </Badge>
+                            );
+                          })()
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
