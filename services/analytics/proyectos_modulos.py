@@ -397,9 +397,7 @@ def get_proyectos_modulos(filters: ProyectosModulosFilters) -> ProyectosModulosR
 
     modulos, total_clasificados, importe_total_sap = _build_modulos(df)
     tipos_proyecto = _build_tipos_proyecto(df)
-    ticket_medio_sap = (
-        importe_total_sap / total_clasificados if total_clasificados else 0.0
-    )
+    ticket_medio_sap = importe_total_sap / total_clasificados if total_clasificados else 0.0
 
     result = ProyectosModulosResult(
         modulos=modulos,

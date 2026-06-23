@@ -38,9 +38,7 @@ from pathlib import Path
 # ── Configuración de escaneo ──────────────────────────────────────────────
 DEFAULT_ROOT = Path("web/src")
 SCAN_SUFFIXES: tuple[str, ...] = (".ts", ".tsx")
-SKIP_DIR_PARTS: frozenset[str] = frozenset(
-    {"node_modules", ".next", "generated", "__tests__"}
-)
+SKIP_DIR_PARTS: frozenset[str] = frozenset({"node_modules", ".next", "generated", "__tests__"})
 SKIP_FILE_MARKERS: tuple[str, ...] = (".test.", ".spec.", ".stories.")
 ALLOW_MARKER = "fdi-allow"
 
@@ -129,9 +127,7 @@ def scan_file(path: Path) -> list[Finding]:
             if comment and category not in _COMMENT_BEARING:
                 continue
             if pattern.search(line):
-                findings.append(
-                    Finding(path, idx, category, line.strip()[:120])
-                )
+                findings.append(Finding(path, idx, category, line.strip()[:120]))
     return findings
 
 
@@ -159,9 +155,7 @@ def _report(findings: list[Finding], root: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--root", type=Path, default=DEFAULT_ROOT, help="Raíz a escanear"
-    )
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="Raíz a escanear")
     parser.add_argument(
         "--strict",
         action="store_true",
