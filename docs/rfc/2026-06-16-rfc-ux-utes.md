@@ -83,3 +83,14 @@ KPIs no tienen drill-down a sus UTEs/contratos.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-24 — **Implementado.** Backend (`services/analytics/utes.py`): `UTEResult`
+gana `socios_frecuentes` (pares de empresas que han co-licitado en UTE, vía
+`build_partnership_graph` sobre el df de UTEs; top-20 por nº de UTEs juntas). El
+endpoint `/api/v1/analytics/utes` ya existía → el campo se auto-expone. Frontend:
+nueva card "Socios Frecuentes (quién se asocia con quién)" con tabla
+empresa/socio/UTEs juntas/importe conjunto — responde la pregunta propia de la
+página, que antes solo mostraba miembros por frecuencia. Reusa el grafo de
+co-licitación real (no se duplica `ecosistema-partners`). Tests: 2 backend. Verde:
+pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285). **Diferido:** drill-down
+de miembro → sus UTEs/contratos en el listado.
