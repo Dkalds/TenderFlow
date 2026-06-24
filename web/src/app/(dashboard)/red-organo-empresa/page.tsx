@@ -21,140 +21,30 @@ import {
 import { GitBranch, Building2, Users, Network } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                             */
+/*  Types — grafo de adjudicaciones REALES (backend)                  */
 /* ------------------------------------------------------------------ */
 
-interface Competitor {
-  nombre: string;
-  count: number;
-  importe: number;
-  cuota: number;
+interface GraphNode {
+  name: string;
+  type: "organo" | "empresa";
+  degree: number;
+  importe_total: number;
+  key?: string | null;
 }
 
-interface HeatmapCell {
-  ccaa: string;
-  empresa: string;
-  count: number;
-}
-
-interface CompetitorsData {
-  total_adjudicaciones: number;
-  hhi: number;
-  competitors: Competitor[];
-  heatmap_ccaa: HeatmapCell[];
-}
-
-interface OrganoEntry {
-  organo_contratacion: string;
-  count: number;
-  importe: number;
-  pct: number;
-  ccaa?: string | null;
-}
-
-interface OrganosData {
-  total_organos: number;
-  organos: OrganoEntry[];
-  concentracion_top10: number;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Bipartite graph builder                                           */
-/* ------------------------------------------------------------------ */
-
-interface Relationship {
+interface GraphEdge {
   organo: string;
   empresa: string;
-  ccaa: string;
-  count: number;
+  contratos: number;
+  importe_total: number;
+  frecuencia_anual: number;
 }
 
-function buildBipartiteData(
-  organos: OrganoEntry[],
-  competitors: Competitor[],
-  heatmap: HeatmapCell[],
-) {
-  const topOrganos = [...organos]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-  const topEmpresas = [...competitors]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-
-  const empresaNames = new Set(topEmpresas.map((e) => e.nombre));
-
-  // Build organo→ccaa map
-  const organoCcaa = new Map<string, string>();
-  for (const o of topOrganos) {
-    if (o.ccaa) organoCcaa.set(o.organo_contratacion, o.ccaa);
-  }
-
-  // Build empresa→ccaa map from heatmap
-  const empresaCcaas = new Map<string, Set<string>>();
-  for (const cell of heatmap) {
-    if (!empresaNames.has(cell.empresa)) continue;
-    const s = empresaCcaas.get(cell.empresa) ?? new Set();
-    s.add(cell.ccaa);
-    empresaCcaas.set(cell.empresa, s);
-  }
-
-  // Build relationships: organo↔empresa if they share CCAA
-  const relationships: Relationship[] = [];
-  const linkMap = new Map<string, number>();
-
-  for (const organo of topOrganos) {
-    const oCcaa = organoCcaa.get(organo.organo_contratacion);
-    if (!oCcaa) continue;
-    for (const empresa of topEmpresas) {
-      const eCcaas = empresaCcaas.get(empresa.nombre);
-      if (!eCcaas?.has(oCcaa)) continue;
-      // Find count from heatmap
-      const cell = heatmap.find(
-        (h) => h.empresa === empresa.nombre && h.ccaa === oCcaa,
-      );
-      const count = cell?.count ?? 1;
-      const key = `${organo.organo_contratacion}::${empresa.nombre}`;
-      linkMap.set(key, (linkMap.get(key) ?? 0) + count);
-      relationships.push({
-        organo: organo.organo_contratacion,
-        empresa: empresa.nombre,
-        ccaa: oCcaa,
-        count,
-      });
-    }
-  }
-
-  // Nodes
-  const nodes = [
-    ...topOrganos.map((o) => ({
-      id: `org::${o.organo_contratacion}`,
-      label: truncate(o.organo_contratacion, 28),
-      group: "organo",
-      size: o.count * 100,
-    })),
-    ...topEmpresas.map((e) => ({
-      id: `emp::${e.nombre}`,
-      label: truncate(e.nombre, 28),
-      group: "empresa",
-      size: e.importe,
-    })),
-  ];
-
-  // Links
-  const links: { source: string; target: string; weight: number }[] = [];
-  for (const [key, weight] of linkMap) {
-    const [organo, empresa] = key.split("::");
-    links.push({
-      source: `org::${organo}`,
-      target: `emp::${empresa}`,
-      weight: Math.min(weight, 8),
-    });
-  }
-
-  // Sorted relationships table
-  const sortedRels = [...relationships].sort((a, b) => b.count - a.count);
-
-  return { nodes, links, relationships: sortedRels };
+interface OrganCompanyGraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  total_organos: number;
+  total_empresas: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -166,56 +56,71 @@ export default function RedOrganoEmpresaPage() {
   const [maxOrganos, setMaxOrganos] = useState(10);
   const [maxEmpresas, setMaxEmpresas] = useState(10);
 
-  const {
-    data: competitorsData,
-    isLoading: loadingComp,
-    error: errorComp,
-  } = useFilteredQuery<CompetitorsData>(
-    ["analytics", "competitors"],
-    "/api/v1/analytics/competitors",
+  const { data, isLoading, error } = useFilteredQuery<OrganCompanyGraphResponse>(
+    [
+      "analytics",
+      "organ-company-graph",
+      String(minContratos),
+      String(maxOrganos),
+      String(maxEmpresas),
+    ],
+    "/api/v1/analytics/organ-company-graph",
     { staleTime: 5 * 60 * 1000 },
+    {
+      min_contratos: String(minContratos),
+      top_organos: String(maxOrganos),
+      top_empresas: String(maxEmpresas),
+    },
   );
 
-  const {
-    data: organosData,
-    isLoading: loadingOrg,
-    error: errorOrg,
-  } = useFilteredQuery<OrganosData>(
-    ["analytics", "organos"],
-    "/api/v1/analytics/organos",
-    { staleTime: 5 * 60 * 1000 },
+  const nodes = useMemo(() => data?.nodes ?? [], [data]);
+  const edges = useMemo(() => data?.edges ?? [], [data]);
+
+  // ForceGraph: nodos/aristas reales (peso = nº de contratos reales).
+  const { graphNodes, graphLinks } = useMemo(() => {
+    const gNodes = nodes.map((n) => ({
+      id: `${n.type}::${n.name}`,
+      label: truncate(n.name, 28),
+      group: n.type,
+      size: Math.max(n.importe_total, 1),
+    }));
+    const gLinks = edges.map((e) => ({
+      source: `organo::${e.organo}`,
+      target: `empresa::${e.empresa}`,
+      weight: Math.min(e.contratos, 8),
+    }));
+    return { graphNodes: gNodes, graphLinks: gLinks };
+  }, [nodes, edges]);
+
+  // Aristas ordenadas para la tabla.
+  const sortedEdges = useMemo(
+    () => [...edges].sort((a, b) => b.contratos - a.contratos),
+    [edges],
   );
 
-  const isLoading = loadingComp || loadingOrg;
-  const error = errorComp || errorOrg;
-
-  const { nodes, links, relationships } = useMemo(() => {
-    if (!competitorsData || !organosData)
-      return { nodes: [], links: [], relationships: [] };
-    // Pass only top N organos/empresas based on sliders
-    const slicedOrganos = [...organosData.organos].sort((a, b) => b.count - a.count).slice(0, maxOrganos);
-    const slicedCompetitors = [...competitorsData.competitors].sort((a, b) => b.count - a.count).slice(0, maxEmpresas);
-    const result = buildBipartiteData(
-      slicedOrganos,
-      slicedCompetitors,
-      competitorsData.heatmap_ccaa,
+  // Matriz órgano×empresa con CONTRATOS REALES (top-10 por importe).
+  const matrix = useMemo(() => {
+    const organos = nodes.filter((n) => n.type === "organo");
+    const empresas = nodes.filter((n) => n.type === "empresa");
+    const topOrg = [...organos].sort((a, b) => b.importe_total - a.importe_total).slice(0, 10);
+    const topEmp = [...empresas].sort((a, b) => b.importe_total - a.importe_total).slice(0, 10);
+    const cell = new Map<string, number>();
+    for (const e of edges) cell.set(`${e.organo}|${e.empresa}`, e.contratos);
+    const grid = topOrg.map((org) =>
+      topEmp.map((emp) => cell.get(`${org.name}|${emp.name}`) ?? 0),
     );
-    // Filter links by minContratos
-    const filteredLinks = result.links.filter((l) => l.weight >= minContratos);
-    const filteredRels = result.relationships.filter((r) => r.count >= minContratos);
-    return { nodes: result.nodes, links: filteredLinks, relationships: filteredRels };
-  }, [competitorsData, organosData, maxOrganos, maxEmpresas, minContratos]);
+    const maxCount = Math.max(1, ...grid.flat());
+    return { topOrg, topEmp, grid, maxCount };
+  }, [nodes, edges]);
 
   // KPIs
-  const totalOrganos = organosData?.total_organos ?? 0;
-  const totalEmpresas = competitorsData?.competitors.length ?? 0;
-  const totalLinks = links.length;
-  const possiblePairs = Math.min(
-    (organosData?.organos.length ?? 0),
-    10,
-  ) * Math.min((competitorsData?.competitors.length ?? 0), 10);
-  const densidad =
-    possiblePairs > 0 ? (totalLinks / possiblePairs) * 100 : 0;
+  const totalOrganos = data?.total_organos ?? 0;
+  const totalEmpresas = data?.total_empresas ?? 0;
+  const totalLinks = edges.length;
+  const nOrgNodes = graphNodes.filter((n) => n.group === "organo").length;
+  const nEmpNodes = graphNodes.filter((n) => n.group === "empresa").length;
+  const possiblePairs = nOrgNodes * nEmpNodes;
+  const densidad = possiblePairs > 0 ? (totalLinks / possiblePairs) * 100 : 0;
 
   if (error) {
     return (
@@ -234,7 +139,8 @@ export default function RedOrganoEmpresaPage() {
             Red Organo-Empresa
           </h1>
           <p className="text-muted-foreground">
-            Grafo bipartito entre organos de contratacion y empresas.
+            Grafo bipartito de adjudicaciones reales: un enlace existe solo si el
+            organo adjudico contratos a la empresa.
           </p>
         </div>
         <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "red-organo-empresa" }} />
@@ -299,7 +205,7 @@ export default function RedOrganoEmpresaPage() {
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-[420px] w-full" />
-          ) : nodes.length > 0 ? (
+          ) : graphNodes.length > 0 ? (
             <>
               <div className="mb-3 flex gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
@@ -312,8 +218,8 @@ export default function RedOrganoEmpresaPage() {
                 </span>
               </div>
               <ForceGraph
-                nodes={nodes}
-                links={links}
+                nodes={graphNodes}
+                links={graphLinks}
                 height={420}
                 className="min-h-[420px]"
               />
@@ -322,14 +228,14 @@ export default function RedOrganoEmpresaPage() {
             <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted py-16">
               <Network className="h-16 w-16 text-muted-foreground/30 mb-4" />
               <p className="text-muted-foreground">
-                Sin datos de relaciones disponibles
+                Sin adjudicaciones para los filtros actuales
               </p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Heatmap matrix */}
+      {/* Matriz órgano-empresa (contratos reales) */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -340,114 +246,72 @@ export default function RedOrganoEmpresaPage() {
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-[400px] w-full" />
-          ) : (() => {
-            const topOrg = [...(organosData?.organos ?? [])]
-              .sort((a, b) => b.count - a.count)
-              .slice(0, 10);
-            const topEmp = [...(competitorsData?.competitors ?? [])]
-              .sort((a, b) => b.count - a.count)
-              .slice(0, 10);
-            if (topOrg.length === 0 || topEmp.length === 0)
-              return (
-                <EmptyState />
-              );
-
-            // Build lookup: organo→ccaa, empresa→ccaa→count
-            const organoCcaaMap = new Map<string, string>();
-            for (const o of topOrg)
-              if (o.ccaa) organoCcaaMap.set(o.organo_contratacion, o.ccaa);
-
-            const empCcaaCount = new Map<string, Map<string, number>>();
-            for (const cell of competitorsData?.heatmap_ccaa ?? []) {
-              let m = empCcaaCount.get(cell.empresa);
-              if (!m) {
-                m = new Map();
-                empCcaaCount.set(cell.empresa, m);
-              }
-              m.set(cell.ccaa, (m.get(cell.ccaa) ?? 0) + cell.count);
-            }
-
-            let maxCount = 1;
-            const matrix: number[][] = topOrg.map((org) => {
-              const ccaa = organoCcaaMap.get(org.organo_contratacion);
-              return topEmp.map((emp) => {
-                if (!ccaa) return 0;
-                const cnt = empCcaaCount.get(emp.nombre)?.get(ccaa) ?? 0;
-                if (cnt > maxCount) maxCount = cnt;
-                return cnt;
-              });
-            });
-
-            return (
-              <div className="overflow-x-auto">
-                <div className="min-w-[700px]">
-                  {/* Column headers */}
-                  <div className="flex">
-                    <div className="w-48 shrink-0" />
-                    {topEmp.map((e, idx) => (
-                      <div
-                        key={idx}
-                        className="flex-1 min-w-[60px] px-1 pb-2"
-                      >
-                        <div className="text-xs text-muted-foreground truncate -rotate-45 origin-bottom-left translate-x-4 w-20">
-                          {truncate(e.nombre, 20)}
-                        </div>
+          ) : matrix.topOrg.length === 0 || matrix.topEmp.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="min-w-[700px]">
+                {/* Column headers */}
+                <div className="flex">
+                  <div className="w-48 shrink-0" />
+                  {matrix.topEmp.map((e, idx) => (
+                    <div key={idx} className="flex-1 min-w-[60px] px-1 pb-2">
+                      <div className="text-xs text-muted-foreground truncate -rotate-45 origin-bottom-left translate-x-4 w-20">
+                        {truncate(e.name, 20)}
                       </div>
-                    ))}
-                  </div>
-                  {/* Rows */}
-                  <div className="mt-8 space-y-1">
-                    {matrix.map((row, rowIdx) => (
-                      <div key={rowIdx} className="flex items-center">
-                        <div className="w-48 shrink-0 pr-2 text-xs text-muted-foreground truncate text-right">
-                          {truncate(topOrg[rowIdx].organo_contratacion, 35)}
-                        </div>
-                        {row.map((val, colIdx) => (
-                           <div
-                         key={colIdx}
-                         className="flex-1 min-w-[60px] px-0.5"
-                         title={`${truncate(topOrg[rowIdx].organo_contratacion, 30)} — ${truncate(topEmp[colIdx].nombre, 30)}: ${val}`}
-                       >
-                            <div
-                              className="min-h-[44px] rounded-sm transition-colors flex items-center justify-center"
-                              style={{
-                                backgroundColor: `hsla(221, 83%, 53%, ${Math.max(0.05, val / maxCount)})`,
-                              }}
-                            >
-                              {val > 0 && (
-                                <span className="text-xs font-medium" style={{ color: val / maxCount > 0.4 ? "white" : "hsl(var(--foreground))" }}>
-                                  {val}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                    </div>
+                  ))}
+                </div>
+                {/* Rows */}
+                <div className="mt-8 space-y-1">
+                  {matrix.grid.map((row, rowIdx) => (
+                    <div key={rowIdx} className="flex items-center">
+                      <div className="w-48 shrink-0 pr-2 text-xs text-muted-foreground truncate text-right">
+                        {truncate(matrix.topOrg[rowIdx].name, 35)}
                       </div>
-                    ))}
-                  </div>
-                  {/* Legend */}
-                  <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>Baja</span>
-                    <div className="flex gap-0.5">
-                      {[0.05, 0.15, 0.3, 0.5, 0.7, 0.9].map((v) => (
+                      {row.map((val, colIdx) => (
                         <div
-                          key={v}
-                          className="h-4 w-6 rounded-sm"
-                          style={{
-                            backgroundColor: `hsla(221, 83%, 53%, ${v})`,
-                          }}
-                        />
+                          key={colIdx}
+                          className="flex-1 min-w-[60px] px-0.5"
+                          title={`${truncate(matrix.topOrg[rowIdx].name, 30)} — ${truncate(matrix.topEmp[colIdx].name, 30)}: ${val} contratos`}
+                        >
+                          <div
+                            className="min-h-[44px] rounded-sm transition-colors flex items-center justify-center"
+                            style={{
+                              backgroundColor: `hsla(221, 83%, 53%, ${Math.max(0.05, val / matrix.maxCount)})`,
+                            }}
+                          >
+                            {val > 0 && (
+                              <span className="text-xs font-medium" style={{ color: val / matrix.maxCount > 0.4 ? "white" : "hsl(var(--foreground))" }}>
+                                {val}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       ))}
                     </div>
-                    <span>Alta</span>
-                    <span className="ml-2">
-                      — Actividad en misma CCAA (estimada por co-ocurrencia geográfica)
-                    </span>
+                  ))}
+                </div>
+                {/* Legend */}
+                <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Baja</span>
+                  <div className="flex gap-0.5">
+                    {[0.05, 0.15, 0.3, 0.5, 0.7, 0.9].map((v) => (
+                      <div
+                        key={v}
+                        className="h-4 w-6 rounded-sm"
+                        style={{ backgroundColor: `hsla(221, 83%, 53%, ${v})` }}
+                      />
+                    ))}
                   </div>
+                  <span>Alta</span>
+                  <span className="ml-2">
+                    — N.º de adjudicaciones reales (organo → empresa)
+                  </span>
                 </div>
               </div>
-            );
-          })()}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -465,53 +329,42 @@ export default function RedOrganoEmpresaPage() {
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
-          ) : relationships.length > 0 ? (
+          ) : sortedEdges.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="text-left text-muted-foreground">
                     <TableHead>Organo</TableHead>
                     <TableHead>Empresa</TableHead>
-                    <TableHead>CCAA</TableHead>
                     <TableHead>Contratos</TableHead>
-                    <TableHead>Importe Est.</TableHead>
+                    <TableHead>Importe total</TableHead>
+                    <TableHead>Frec. anual</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {relationships.slice(0, 30).map((r, idx) => {
-                    // Estimate importe from competitor average
-                    const comp = competitorsData?.competitors.find((c) => c.nombre === r.empresa);
-                    const impMedio = comp && comp.count > 0 ? comp.importe / comp.count : 0;
-                    return (
+                  {sortedEdges.slice(0, 30).map((r, idx) => (
                     <TableRow key={idx}>
-                      <TableCell>
-                        {truncate(r.organo, 40)}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {truncate(r.empresa, 35)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{r.ccaa}</Badge>
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatNumber(r.count)}
+                      <TableCell>{truncate(r.organo, 40)}</TableCell>
+                      <TableCell className="font-medium">{truncate(r.empresa, 35)}</TableCell>
+                      <TableCell className="tabular-nums">{formatNumber(r.contratos)}</TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {formatCurrency(r.importe_total)}
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">
-                        {impMedio > 0 ? formatCurrency(impMedio * r.count) : "-"}
+                        {r.frecuencia_anual.toFixed(1)}
                       </TableCell>
                     </TableRow>
-                    );
-                  })}
+                  ))}
                 </TableBody>
               </Table>
               <Separator className="my-3" />
               <p className="text-xs text-muted-foreground">
-                {relationships.length} relaciones detectadas
+                {sortedEdges.length} relaciones de adjudicacion reales
               </p>
             </div>
           ) : (
             <p className="py-8 text-center text-muted-foreground">
-              Sin relaciones detectadas
+              Sin relaciones para los filtros actuales
             </p>
           )}
         </CardContent>

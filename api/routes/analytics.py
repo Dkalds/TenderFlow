@@ -32,6 +32,11 @@ from services.analytics.organo_detail import (
 )
 from services.analytics.organos import OrganosFilters, OrganosResult, get_organos
 from services.analytics.overview import OverviewFilters, OverviewResult, get_overview
+from services.analytics.red_organo_empresa import (
+    GraphFilters,
+    OrganCompanyGraphResult,
+    get_organ_company_graph,
+)
 from services.analytics.pipeline import PipelineFilters, PipelineResult, get_pipeline
 from services.analytics.proyectos_modulos import (
     ProyectosModulosFilters,
@@ -516,3 +521,22 @@ def compare_periods(
         tecnologia=tecnologia,
     )
     return get_compare_periods(filters)
+
+
+@router.get("/organ-company-graph", response_model=OrganCompanyGraphResult)
+def organ_company_graph(
+    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
+    min_contratos: int = Query(default=1, ge=1, le=100, description="Min contratos per edge"),
+    top_organos: int = Query(default=10, ge=1, le=50, description="Top N organos by importe"),
+    top_empresas: int = Query(default=10, ge=1, le=50, description="Top N empresas by importe"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> OrganCompanyGraphResult:
+    """Grafo bipartito órgano↔empresa de adjudicaciones reales (no co-ocurrencia CCAA)."""
+    return get_organ_company_graph(
+        GraphFilters(
+            ccaa=ccaa,
+            min_contratos=min_contratos,
+            top_organos=top_organos,
+            top_empresas=top_empresas,
+        )
+    )
