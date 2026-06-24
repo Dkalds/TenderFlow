@@ -50,6 +50,7 @@ from api.routes.competitive import router as competitive_router
 from api.routes.empresas import router as empresas_router
 from api.routes.eventos import router as eventos_router
 from api.routes.exports import router as exports_router
+from api.routes.feature_flags import router as feature_flags_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
 from api.routes.licitaciones import router as licitaciones_router
@@ -424,6 +425,7 @@ app.include_router(exports_router, prefix="/api/v1")
 app.include_router(saved_filters_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(admin_users_router, prefix="/api/v1")
+app.include_router(feature_flags_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 
 # ---------------------------------------------------------------------------

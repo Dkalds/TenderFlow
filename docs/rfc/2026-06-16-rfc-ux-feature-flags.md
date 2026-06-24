@@ -91,3 +91,15 @@ Problemas:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-24 — **Implementado.** Backend: nueva ruta `api/routes/feature_flags.py`
+(no existía) — `GET /api/v1/feature-flags` (cualquier autenticado) lista TODOS los
+flags de `services.feature_flags`; `PUT` (solo admin vía `require_any_auth`+is_admin)
+persiste enabled/rollout preservando `description`/`user_emails`, con `log_event`
+por cambio (auditoría). Registrada en `api/app.py`. Frontend: eliminado
+`LOCAL_FLAGS`; la lista se rellena **desde la API** (fuente de verdad), muestra
+"Último cambio" (`updated_at`) por flag y estados vacío/API-no-disponible honestos.
+Tests: 2 backend (GET expone flag solo-backend; PUT preserva description). Verde:
+pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285). `check_frontend_invariants`:
+`mock-data` 2→1. **Diferido:** mostrar el actor del último cambio (hoy se audita
+en `domain_events` pero no se expone en el GET).
