@@ -48,29 +48,23 @@ interface ApiKeysResponse {
   items?: ApiKey[];
 }
 
-const MOCK_USERS = [
-  {
-    email: "admin@empresa.com",
-    display_name: "Administrador",
-    is_admin: true,
-    active: true,
-    last_login: "2025-05-28T10:30:00Z",
-  },
-  {
-    email: "analista@empresa.com",
-    display_name: "Analista",
-    is_admin: false,
-    active: true,
-    last_login: "2025-05-27T14:15:00Z",
-  },
-  {
-    email: "operador@empresa.com",
-    display_name: "Operador",
-    is_admin: false,
-    active: false,
-    last_login: "2025-05-25T09:00:00Z",
-  },
-];
+interface ApiUser {
+  id: number;
+  email: string;
+  display_name?: string | null;
+  is_admin?: number | boolean;
+  deactivated_at?: string | null;
+  last_access?: string | null;
+}
+
+interface UserRow {
+  id: number;
+  email: string;
+  display_name: string;
+  is_admin: boolean;
+  active: boolean;
+  last_login: string | null;
+}
 
 export default function AdministracionPage() {
   const queryClient = useQueryClient();
@@ -103,6 +97,46 @@ export default function AdministracionPage() {
     },
   );
 
+  const {
+    data: usersData,
+    isLoading: usersLoading,
+    error: usersError,
+  } = useQuery<ApiUser[]>({
+    queryKey: ["admin-users"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/admin/users", { credentials: "include" });
+      if (res.status === 401) throw new Error("Sesion expirada");
+      if (res.status === 403) throw new Error("Requiere permisos de admin");
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const users = useMemo<UserRow[]>(
+    () =>
+      (usersData ?? []).map((u) => ({
+        id: u.id,
+        email: u.email,
+        display_name: u.display_name ?? "",
+        is_admin: !!u.is_admin,
+        active: !u.deactivated_at,
+        last_login: u.last_access ?? null,
+      })),
+    [usersData],
+  );
+
+  const toggleAdmin = useMutation({
+    mutationFn: (vars: { id: number; is_admin: boolean }) =>
+      apiMutate("PUT", `/api/v1/admin/users/${vars.id}/admin`, {
+        is_admin: vars.is_admin,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.success("Rol actualizado");
+    },
+    onError: () => toast.error("No se pudo cambiar el rol (¿eres admin?)"),
+  });
+
   const rotateKey = useMutation({
     mutationFn: () =>
       apiMutate<{ raw_token?: string; token?: string }>(
@@ -119,13 +153,11 @@ export default function AdministracionPage() {
     },
   });
 
-  type MockUser = (typeof MOCK_USERS)[number];
-
   const handleRevokeKey = useCallback(() => {
     toast.info("Funcionalidad en desarrollo");
   }, []);
 
-  const userColumns = useMemo<ColumnDef<MockUser>[]>(
+  const userColumns = useMemo<ColumnDef<UserRow>[]>(
     () => [
       { accessorKey: "email", header: "Email" },
       { accessorKey: "display_name", header: "Nombre" },
@@ -165,31 +197,39 @@ export default function AdministracionPage() {
       {
         accessorKey: "last_login",
         header: "Ultimo login",
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground">
-            {formatDate(getValue<string>())}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const v = getValue<string | null>();
+          return (
+            <span className="text-muted-foreground">
+              {v ? formatDate(v) : "—"}
+            </span>
+          );
+        },
       },
       {
         id: "acciones",
         header: "Acciones",
-        cell: () => (
+        cell: ({ row }) => (
           <div className="text-right">
             <Button
               variant="ghost"
               size="sm"
-              disabled
-              title="Requiere endpoint /admin/users"
+              disabled={toggleAdmin.isPending}
+              onClick={() =>
+                toggleAdmin.mutate({
+                  id: row.original.id,
+                  is_admin: !row.original.is_admin,
+                })
+              }
             >
-              Toggle admin
+              {row.original.is_admin ? "Quitar admin" : "Hacer admin"}
             </Button>
           </div>
         ),
         enableSorting: false,
       },
     ],
-    [],
+    [toggleAdmin],
   );
 
   const keyColumns = useMemo<ColumnDef<ApiKey>[]>(
@@ -378,15 +418,24 @@ export default function AdministracionPage() {
           <CardDescription>Gestion de usuarios y permisos</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground bg-muted/50 rounded-md p-2">
-            <Info className="h-4 w-4 shrink-0" />
-            <span>Conectar a API pendiente — datos de ejemplo</span>
-          </div>
-          <DataTable
-            columns={userColumns}
-            data={MOCK_USERS}
-            initialSorting={[{ id: "email", desc: false }]}
-          />
+          {usersLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : usersError ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
+              <Info className="h-4 w-4 shrink-0" />
+              <span>{(usersError as Error).message}</span>
+            </div>
+          ) : (
+            <DataTable
+              columns={userColumns}
+              data={users}
+              initialSorting={[{ id: "email", desc: false }]}
+            />
+          )}
         </CardContent>
       </Card>
 
