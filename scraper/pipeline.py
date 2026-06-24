@@ -345,7 +345,9 @@ def _process_month_impl(
     n_adj_failed = 0
     if adj_por_lic:
         try:
-            n_adj, n_adj_dropped, n_adj_failed = replace_adjudicaciones_batch(adj_por_lic)
+            n_adj, n_adj_dropped, n_adj_failed = replace_adjudicaciones_batch(
+                adj_por_lic, run_id=run_id, fuente=fuente
+            )
             if n_adj_dropped:
                 log.warning("adj_rows_dropped", dropped=n_adj_dropped, persisted=n_adj)
         except Exception as e:
@@ -553,7 +555,9 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
     # Adjudicaciones
     n_adj = 0
     if adj_por_lic:
-        n_adj, n_adj_dropped, _adj_failed = replace_adjudicaciones_batch(adj_por_lic)
+        n_adj, n_adj_dropped, _adj_failed = replace_adjudicaciones_batch(
+            adj_por_lic, run_id=run_id, fuente=fuente
+        )
         if n_adj_dropped:
             log.warning("adj_rows_dropped", dropped=n_adj_dropped, persisted=n_adj)
 

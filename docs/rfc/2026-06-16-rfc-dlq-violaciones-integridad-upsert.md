@@ -133,3 +133,20 @@ observabilidad que ya reestructura el conteo.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado.** `db/upsert.py`: `replace_adjudicaciones[_batch]`
+pasan de `INSERT OR IGNORE` ciego a `INSERT` explícito con catch por fila.
+`_classify_integrity_error` clasifica por el **mensaje** (backend-agnóstico
+sqlite3/libsql, como anticipa el RFC): `unique` → dedup benigno (ignora, no cuenta
+como dropped); `check`/`fk`/`notnull`/`other` → cuenta como dropped + va a la DLQ;
+no-constraint → re-lanza. Las violaciones se recolectan y se enrutan con
+`record_failure(scope="adjudicacion", payload_ref="lic:nif:importe")` **fuera** de
+la transacción (vía `_route_violations_to_dlq`), evitando anidar `connect()`.
+Params nuevos `run_id`/`fuente` (keyword-only, opcionales) hilados desde
+`pipeline.py` (×2) y `connectors/base.py` (`run_id=None, fuente=source_id`).
+Tests: 4 nuevos en `test_db_upsert.py` (CHECK→DLQ con payload_ref; UNIQUE dedup→no
+DLQ; batch no aborta; replay idempotente). Verde: 109 tests
+(`test_db_upsert` + consumidores), mypy y ruff limpios. Runbook actualizado con el
+caso `scope="adjudicacion"`. **No** se tocó el path de `licitaciones` (fuera de
+scope). El test de replay vía `dlq_retry` completo queda cubierto conceptualmente
+por la idempotencia verificada.

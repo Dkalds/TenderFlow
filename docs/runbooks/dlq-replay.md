@@ -37,6 +37,30 @@ retry_by_error_type("parse_error", max_items=50)
 EOF
 ```
 
+## Violaciones de integridad de adjudicaciones (`scope="adjudicacion"`)
+
+Una adjudicación que viola un constraint del schema (CHECK de fecha, FK a
+`licitaciones`, NOT NULL) ya no se descarta en silencio: el upsert la enruta a la
+DLQ con `scope="adjudicacion"` (RFC dlq-violaciones-integridad-upsert), de modo que
+es **replayable** en vez de perderse. El `payload_ref` localiza la fila exacta con
+el formato `licitacion_id:nif:importe_adjudicado`.
+
+Inspeccionar las violaciones de integridad pendientes:
+
+```bash
+python - <<'EOF'
+from db.dlq import list_unresolved
+for f in list_unresolved():
+    if f["scope"] == "adjudicacion":
+        print(f"  {f['payload_ref']:40s} {f['error_type']}  intentos={f['retry_count']}")
+EOF
+```
+
+Causa raíz típica: fechas no-ISO (`DD/MM/YYYY`) que violan el CHECK GLOB. Una vez
+corregida la causa (p. ej. tras aterrizar la normalización canónica de fechas), el
+replay reinserta la adjudicación de forma **idempotente** (DELETE-then-insert +
+`UNIQUE`), sin duplicar.
+
 ## Purgar mensajes irrecuperables (> 7 días)
 
 ```bash

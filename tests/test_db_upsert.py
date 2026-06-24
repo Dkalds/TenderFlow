@@ -362,3 +362,109 @@ def test_upsert_with_history_chunking_idempotent(db):
             "SELECT COUNT(*) FROM licitaciones WHERE id_externo LIKE 'IDEM-%'"
         ).fetchone()[0]
     assert count == 5
+
+
+# ---------------------------------------------------------------------------
+# replace_adjudicaciones — clasificación de integridad → DLQ
+# (RFC 2026-06-16 dlq-violaciones-integridad-upsert)
+# ---------------------------------------------------------------------------
+
+
+def _make_adj(**kwargs):
+    from db.upsert import Adjudicacion
+
+    defaults = {
+        "licitacion_id": "TEST-001",
+        "nombre": "EMPRESA UNO SL",
+        "nif": "B11111111",
+        "importe_adjudicado": 1000.0,
+        "fecha_adjudicacion": "2025-01-15",
+    }
+    defaults.update(kwargs)
+    return Adjudicacion(**defaults)
+
+
+def test_replace_adjudicaciones_check_violation_routed_to_dlq(db):
+    """Una adjudicación con fecha no-ISO (viola CHECK) entra en la DLQ, no se pierde."""
+    from db.database import connect
+    from db.upsert import replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    good = _make_adj(nif="B11111111", importe_adjudicado=1000.0)
+    bad = _make_adj(nif="B22222222", importe_adjudicado=2000.0, fecha_adjudicacion="15/01/2025")
+
+    persisted, dropped = replace_adjudicaciones(
+        "TEST-001", [good, bad], run_id="run-42", fuente="placsp"
+    )
+
+    assert persisted == 1
+    assert dropped == 1
+    with connect() as c:
+        rows = c.execute(
+            "SELECT fuente, payload_ref, error_message FROM failed_extractions "
+            "WHERE scope = 'adjudicacion'"
+        ).fetchall()
+    assert len(rows) == 1
+    fuente, payload_ref, err = rows[0]
+    assert fuente == "placsp"
+    assert payload_ref == "TEST-001:B22222222:2000.0"
+    assert "constraint" in err.lower()
+
+
+def test_replace_adjudicaciones_unique_dedup_not_in_dlq(db):
+    """Un duplicado intra-XML (UNIQUE) se deduplica y NO va a la DLQ (no es pérdida)."""
+    from db.dlq import list_unresolved
+    from db.upsert import replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    a = _make_adj(nif="B33333333", importe_adjudicado=500.0)
+    dup = _make_adj(nif="B33333333", importe_adjudicado=500.0)  # mismo (lic, nif, importe)
+
+    persisted, dropped = replace_adjudicaciones("TEST-001", [a, dup])
+
+    assert persisted == 1  # solo uno se inserta
+    assert dropped == 0  # el dedup benigno no cuenta como descartado
+    assert [f for f in list_unresolved() if f["scope"] == "adjudicacion"] == []
+
+
+def test_replace_adjudicaciones_batch_violation_does_not_abort(db):
+    """Una violación en una licitación no aborta el resto del batch."""
+    from db.upsert import replace_adjudicaciones_batch, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="LIC-A")])
+    upsert_licitaciones([make_licitacion(id_externo="LIC-B")])
+    batch = {
+        "LIC-A": [
+            _make_adj(licitacion_id="LIC-A", nif="A1", importe_adjudicado=100.0),
+            _make_adj(
+                licitacion_id="LIC-A", nif="A2", importe_adjudicado=200.0, fecha_adjudicacion="bad"
+            ),
+        ],
+        "LIC-B": [_make_adj(licitacion_id="LIC-B", nif="B1", importe_adjudicado=300.0)],
+    }
+
+    persisted, dropped, failed = replace_adjudicaciones_batch(batch, run_id="r", fuente="placsp")
+
+    assert persisted == 2  # A1 y B1 sobreviven
+    assert dropped == 1  # A2 (CHECK)
+    assert failed == 0  # ninguna licitación con error inesperado
+
+
+def test_replace_adjudicaciones_idempotent_replay(db):
+    """Re-ejecutar reinserta sin duplicar (idempotencia §3.2 preservada)."""
+    from db.database import connect
+    from db.upsert import replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    adj = _make_adj(nif="B99999999", importe_adjudicado=750.0)
+
+    replace_adjudicaciones("TEST-001", [adj])
+    p2, d2 = replace_adjudicaciones("TEST-001", [adj])  # replay
+
+    assert p2 == 1
+    assert d2 == 0
+    with connect() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = 'TEST-001'"
+        ).fetchone()[0]
+    assert count == 1
