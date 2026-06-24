@@ -59,80 +59,26 @@ interface CompetitorsData {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Graph builder                                                     */
+/*  Types — grafo de co-licitación REAL (UTE)                         */
 /* ------------------------------------------------------------------ */
 
-function buildGraphData(
-  competitors: Competitor[],
-  heatmap: HeatmapCell[],
-  highlightName: string,
-) {
-  const top = [...competitors]
-    .sort((a, b) => b.importe - a.importe)
-    .slice(0, 20);
-  const nameSet = new Set(top.map((c) => c.nombre));
+interface PartnerNode {
+  name: string;
+  contratos: number;
+  importe: number;
+}
 
-  // Build empresa→ccaa index from heatmap
-  const empresaCcaas = new Map<string, Map<string, number>>();
-  for (const cell of heatmap) {
-    if (!nameSet.has(cell.empresa)) continue;
-    let m = empresaCcaas.get(cell.empresa);
-    if (!m) {
-      m = new Map();
-      empresaCcaas.set(cell.empresa, m);
-    }
-    m.set(cell.ccaa, (m.get(cell.ccaa) ?? 0) + cell.count);
-  }
+interface PartnerEdge {
+  source: string;
+  target: string;
+  contratos: number;
+  importe: number;
+}
 
-  // Assign groups by dominant CCAA
-  const allCcaas: string[] = [];
-  const dominantCcaa = new Map<string, string>();
-  for (const [emp, ccaaMap] of empresaCcaas) {
-    let best = "";
-    let bestCount = 0;
-    for (const [ccaa, cnt] of ccaaMap) {
-      if (cnt > bestCount) {
-        best = ccaa;
-        bestCount = cnt;
-      }
-    }
-    dominantCcaa.set(emp, best);
-    if (best && !allCcaas.includes(best)) allCcaas.push(best);
-  }
-
-  const lowHL = highlightName.toLowerCase();
-  const nodes = top.map((c) => ({
-    id: c.nombre,
-    label: truncate(c.nombre, 30),
-    group: dominantCcaa.get(c.nombre) ?? "Otros",
-    size: c.importe,
-    _highlighted: lowHL ? c.nombre.toLowerCase().includes(lowHL) : false,
-  }));
-
-  // Links: co-occurrence in same CCAA
-  const links: { source: string; target: string; weight: number }[] = [];
-  for (let i = 0; i < top.length; i++) {
-    const mapA = empresaCcaas.get(top[i].nombre);
-    if (!mapA) continue;
-    for (let j = i + 1; j < top.length; j++) {
-      const mapB = empresaCcaas.get(top[j].nombre);
-      if (!mapB) continue;
-      let weight = 0;
-      for (const [ccaa, countA] of mapA) {
-        const countB = mapB.get(ccaa);
-        if (countB) weight += Math.min(countA, countB);
-      }
-      if (weight > 0) {
-        links.push({
-          source: top[i].nombre,
-          target: top[j].nombre,
-          weight: Math.min(weight, 8),
-        });
-      }
-    }
-  }
-
-  return { nodes, links };
+interface PartnershipGraphResponse {
+  nodes: PartnerNode[];
+  edges: PartnerEdge[];
+  total_utes: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -151,19 +97,31 @@ export default function EcosistemaPartnersPage() {
     { staleTime: 5 * 60 * 1000 },
   );
 
-  const graph = useMemo(() => {
-    if (!data) return { nodes: [], links: [] };
-    const g = buildGraphData(
-      data.competitors,
-      data.heatmap_ccaa,
-      search,
+  // Grafo de co-licitación REAL (UTE), acotado en backend por los sliders.
+  const { data: graphData, isLoading: graphLoading } =
+    useFilteredQuery<PartnershipGraphResponse>(
+      ["analytics", "partnership-graph", String(maxNodes), String(minWeight)],
+      "/api/v1/analytics/partnership-graph",
+      { staleTime: 5 * 60 * 1000 },
+      { top_nodes: String(maxNodes), min_contratos: String(minWeight) },
     );
-    // Apply sliders: filter nodes to top maxNodes, links to minWeight
-    const nodes = g.nodes.slice(0, maxNodes);
-    const nodeIds = new Set(nodes.map((n) => n.id));
-    const links = g.links.filter((l) => l.weight >= minWeight && nodeIds.has(l.source) && nodeIds.has(l.target));
+
+  const graph = useMemo(() => {
+    const lowHL = search.toLowerCase();
+    const nodes = (graphData?.nodes ?? []).map((n) => ({
+      id: n.name,
+      label: truncate(n.name, 30),
+      group: "empresa",
+      size: Math.max(n.importe, 1),
+      _highlighted: lowHL ? n.name.toLowerCase().includes(lowHL) : false,
+    }));
+    const links = (graphData?.edges ?? []).map((e) => ({
+      source: e.source,
+      target: e.target,
+      weight: Math.min(e.contratos, 8),
+    }));
     return { nodes, links };
-  }, [data, search, minWeight, maxNodes]);
+  }, [graphData, search]);
 
   const filteredPartners = useMemo(() => {
     if (!data?.competitors) return [];
@@ -300,7 +258,8 @@ export default function EcosistemaPartnersPage() {
             Ecosistema Partners
           </h1>
           <p className="text-muted-foreground">
-            Grafo de co-adjudicacion entre empresas.
+            Grafo de co-licitacion real: un enlace existe solo si las empresas han
+            formado UTE conjunta.
           </p>
         </div>
         <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "ecosistema-partners" }} />
@@ -446,7 +405,7 @@ export default function EcosistemaPartnersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {graphLoading ? (
             <Skeleton className="h-[420px] w-full" />
           ) : graph.nodes.length > 0 ? (
             <ForceGraph
@@ -459,7 +418,7 @@ export default function EcosistemaPartnersPage() {
             <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted py-16">
               <Network className="h-16 w-16 text-muted-foreground/30 mb-4" />
               <p className="text-muted-foreground">
-                Sin datos suficientes para construir el grafo
+                Sin co-licitaciones (UTE) para los filtros actuales
               </p>
             </div>
           )}

@@ -16,6 +16,11 @@ from observability.logging import get_logger
 from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
 from services.analytics.competitors import CompetitorFilters, CompetitorResult, get_competitors
+from services.analytics.ecosistema_partners import (
+    PartnerGraphFilters,
+    PartnershipGraphResult,
+    get_partnership_graph,
+)
 from services.analytics.forecast_svc import (
     ForecastFilters,
     ForecastVolumeResult,
@@ -32,11 +37,6 @@ from services.analytics.organo_detail import (
 )
 from services.analytics.organos import OrganosFilters, OrganosResult, get_organos
 from services.analytics.overview import OverviewFilters, OverviewResult, get_overview
-from services.analytics.red_organo_empresa import (
-    GraphFilters,
-    OrganCompanyGraphResult,
-    get_organ_company_graph,
-)
 from services.analytics.pipeline import PipelineFilters, PipelineResult, get_pipeline
 from services.analytics.proyectos_modulos import (
     ProyectosModulosFilters,
@@ -44,6 +44,11 @@ from services.analytics.proyectos_modulos import (
     get_proyectos_modulos,
 )
 from services.analytics.quality import QualityResult, get_quality
+from services.analytics.red_organo_empresa import (
+    GraphFilters,
+    OrganCompanyGraphResult,
+    get_organ_company_graph,
+)
 from services.analytics.resumen import (
     ResumenHoyFilters,
     ResumenHoyResult,
@@ -539,4 +544,19 @@ def organ_company_graph(
             top_organos=top_organos,
             top_empresas=top_empresas,
         )
+    )
+
+
+@router.get("/partnership-graph", response_model=PartnershipGraphResult)
+def partnership_graph(
+    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
+    min_contratos: int = Query(
+        default=1, ge=1, le=100, description="Min UTEs compartidas per edge"
+    ),
+    top_nodes: int = Query(default=20, ge=1, le=80, description="Top N empresas by importe"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> PartnershipGraphResult:
+    """Grafo de co-licitación real (UTE/co-adjudicación), no co-ocurrencia por CCAA."""
+    return get_partnership_graph(
+        PartnerGraphFilters(ccaa=ccaa, min_contratos=min_contratos, top_nodes=top_nodes)
     )
