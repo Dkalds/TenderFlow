@@ -20,6 +20,7 @@ import {
   Database,
   Users,
   Boxes,
+  CalendarClock,
 } from "lucide-react";
 import { formatNumber, formatPercent, cn } from "@/lib/utils";
 const CalidadCompletenessChart = dynamic(() => import("@/components/charts/calidad-datos-charts").then(m => ({ default: m.CalidadCompletenessChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });
@@ -39,6 +40,8 @@ interface QualityData {
   cobertura_nif?: number;
   cobertura_modulo_sap?: number;
   dlq_count?: number;
+  pct_fecha_iso?: number;
+  fechas_no_iso?: number;
   last_scrape_hours_ago?: number;
   last_scrape_at?: string;
   [key: string]: unknown;
@@ -85,6 +88,7 @@ export default function CalidadDatosPage() {
         ];
 
   const dlqCount = data?.dlq_count ?? 0;
+  const fechasNoIso = data?.fechas_no_iso ?? 0;
 
   return (
     <div className="space-y-6">
@@ -183,6 +187,58 @@ export default function CalidadDatosPage() {
             </div>
           ) : (
             <CalidadCompletenessChart data={chartData} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Date format consistency — formato, NO completitud (una fecha presente
+          pero DD/MM/YYYY cuenta como completa arriba, pero no-ISO aquí) */}
+      <Card
+        className={cn(
+          fechasNoIso > 0 &&
+            "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20",
+        )}
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarClock
+              className={cn(
+                "h-4 w-4",
+                fechasNoIso > 0 ? "text-amber-600" : "text-muted-foreground",
+              )}
+            />
+            Consistencia de formato de fecha
+          </CardTitle>
+          <CardDescription>
+            Fechas de publicacion en ISO-8601 (mide formato, no completitud)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-8 w-24" />
+          ) : (
+            <>
+              <p
+                className={cn(
+                  "text-2xl font-bold",
+                  fechasNoIso > 0 && "text-amber-600",
+                )}
+              >
+                {data?.pct_fecha_iso != null
+                  ? formatPercent(data.pct_fecha_iso)
+                  : "N/A"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {fechasNoIso > 0
+                  ? `${formatNumber(fechasNoIso)} fecha(s) en formato no-ISO (p. ej. DD/MM/YYYY)`
+                  : "Todas las fechas presentes en formato ISO"}
+              </p>
+              {fechasNoIso > 0 && (
+                <Badge variant="secondary" className="mt-2">
+                  Revisar normalizacion
+                </Badge>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

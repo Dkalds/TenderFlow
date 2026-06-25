@@ -91,6 +91,20 @@ def list_unresolved(limit: int = 100) -> list[dict[str, Any]]:
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
+def count_unresolved() -> int:
+    """Número de fallos abiertos (no resueltos y no agotados) en la DLQ.
+
+    Misma condición que :func:`list_unresolved`, pero un ``COUNT(*)`` barato:
+    lo usa el panel de Calidad de Datos para no infracontar la pérdida real.
+    """
+    with connect() as c:
+        row = c.execute(
+            "SELECT COUNT(*) FROM failed_extractions "
+            "WHERE resolved_at IS NULL AND exhausted_at IS NULL"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+
 def list_exhausted(limit: int = 100) -> list[dict[str, Any]]:
     """Devuelve fallos agotados (retry_count >= max_retries, nunca resueltos)."""
     with connect() as c:
