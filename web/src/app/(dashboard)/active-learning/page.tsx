@@ -48,19 +48,53 @@ interface FeedbackStats {
   [key: string]: unknown;
 }
 
+interface ModelVersionInfo {
+  version: number;
+  trained_at: string | null;
+  metrics: Record<string, number>;
+  trained_on_n_feedbacks?: number | null;
+}
+
+interface ModelInfo {
+  active: ModelVersionInfo | null;
+  feedbacks_since_train: number;
+  history: { version: number; trained_at: string | null; metrics: Record<string, number> }[];
+}
+
+type Strategy = "uncertainty" | "random";
+
+// Métrica "titular" para el panel de impacto, por orden de preferencia.
+function headlineMetric(metrics: Record<string, number>): { label: string; value: number } | null {
+  for (const key of ["pr_auc", "f1", "accuracy", "precision", "recall"]) {
+    if (typeof metrics[key] === "number") return { label: key, value: metrics[key] };
+  }
+  return null;
+}
+
 export default function ActiveLearningPage() {
   const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [strategy, setStrategy] = useState<Strategy>("uncertainty");
 
   const { data: queue, isLoading: queueLoading, isError: queueError } = useQuery<QueueResponse>({
-    queryKey: ["feedback-queue"],
+    queryKey: ["feedback-queue", strategy],
     queryFn: async () => {
       const res = await fetch(
-        "/api/v1/feedback/queue?strategy=uncertainty&limit=20",
+        `/api/v1/feedback/queue?strategy=${strategy}&limit=20`,
         { credentials: "include" },
       );
+      if (res.status === 401) throw new Error("Sesion expirada");
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const { data: modelInfo } = useQuery<ModelInfo>({
+    queryKey: ["feedback-model-info"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/feedback/model-info", { credentials: "include" });
       if (res.status === 401) throw new Error("Sesion expirada");
       if (!res.ok) throw new Error(`Error ${res.status}`);
       return res.json();
@@ -107,6 +141,17 @@ export default function ActiveLearningPage() {
     }
   }
   const hasTechData = Object.keys(techCounts).length > 0;
+
+  // Impacto del modelo: versión activa, métrica titular y su delta vs la versión
+  // anterior (history viene DESC por versión, [0] = activa, [1] = previa).
+  const activeModel = modelInfo?.active ?? null;
+  const metric = activeModel ? headlineMetric(activeModel.metrics) : null;
+  const prevMetric =
+    metric && modelInfo && modelInfo.history.length > 1
+      ? modelInfo.history[1]?.metrics?.[metric.label]
+      : undefined;
+  const metricTrend =
+    metric && typeof prevMetric === "number" ? metric.value - prevMetric : null;
 
   const handleLabel = (expediente: string, relevante: boolean) => {
     submitFeedback.mutate({
@@ -228,6 +273,57 @@ export default function ActiveLearningPage() {
               </p>
             </div>
           </div>
+
+          {/* Impacto real del etiquetado: estado del modelo (registry), no solo
+              el recuento de feedback. Cierra el bucle de active learning. */}
+          {activeModel ? (
+            <>
+              <Separator className="my-4" />
+              <div className="grid gap-4 sm:grid-cols-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Modelo activo</p>
+                  <p className="font-medium tabular-nums">v{activeModel.version}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Reentrenado</p>
+                  <p className="font-medium">
+                    {activeModel.trained_at
+                      ? new Date(activeModel.trained_at).toLocaleDateString("es-ES")
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">
+                    {metric ? metric.label.toUpperCase() : "Metrica"}
+                  </p>
+                  <p className="font-medium tabular-nums">
+                    {metric ? metric.value.toFixed(3) : "—"}
+                    {metricTrend != null && metricTrend !== 0 && (
+                      <span
+                        className={cn(
+                          "ml-1 text-xs",
+                          metricTrend > 0 ? "text-green-600" : "text-red-600",
+                        )}
+                      >
+                        {metricTrend > 0 ? "▲" : "▼"} {Math.abs(metricTrend).toFixed(3)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Etiquetas desde el reentreno</p>
+                  <p className="font-medium tabular-nums">
+                    {formatNumber(modelInfo?.feedbacks_since_train ?? 0)}
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Aun no hay un modelo registrado; etiqueta para habilitar el primer
+              entrenamiento.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -270,7 +366,26 @@ export default function ActiveLearningPage() {
       </div>
 
       {/* Labeling queue */}
-      <h2 className="text-xl font-semibold">Cola de etiquetado</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-xl font-semibold">Cola de etiquetado</h2>
+        <div className="flex items-center gap-1" role="group" aria-label="Estrategia de muestreo">
+          <span className="mr-1 text-xs text-muted-foreground">Estrategia:</span>
+          <Button
+            size="sm"
+            variant={strategy === "uncertainty" ? "default" : "outline"}
+            onClick={() => setStrategy("uncertainty")}
+          >
+            Incertidumbre
+          </Button>
+          <Button
+            size="sm"
+            variant={strategy === "random" ? "default" : "outline"}
+            onClick={() => setStrategy("random")}
+          >
+            Aleatoria
+          </Button>
+        </div>
+      </div>
 
       {queueError && (
         <Card className="border-destructive">

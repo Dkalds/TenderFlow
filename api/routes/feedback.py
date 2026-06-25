@@ -129,6 +129,24 @@ async def feedback_stats(
 
 
 @router.get(
+    "/model-info",
+    summary="Estado del modelo activo (cierre del bucle de active learning)",
+    responses={401: {"description": "API key inválida"}},
+)
+async def feedback_model_info(
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, Any]:
+    """Versión del modelo activo, etiquetas desde el último reentreno y tendencia
+    de métricas — para que el etiquetado muestre su impacto, no se sienta gratis.
+
+    Todo proviene del model registry (BD); no carga el modelo ML.
+    """
+    from db.model_registry import active_model_summary
+
+    return await run_db(active_model_summary)
+
+
+@router.get(
     "/queue",
     summary="Cola de active learning (uncertainty sampling)",
     responses={401: {"description": "API key inválida"}},

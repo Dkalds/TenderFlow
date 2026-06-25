@@ -155,6 +155,27 @@ def activate_version(name: str, version: int) -> bool:
     return True
 
 
+def active_model_summary(name: str = "sap_classifier") -> dict[str, Any]:
+    """Resumen del modelo activo para el panel de active learning.
+
+    Compone la versión activa, las etiquetas acumuladas desde su entrenamiento y
+    el histórico reciente de métricas (para ver la tendencia). Todo desde la BD;
+    **no carga el modelo ML**, así que es barato y seguro de exponer. Cierra el
+    bucle: el etiquetado deja de sentirse gratis porque se ve su impacto.
+    """
+    active = get_active(name)
+    history = [
+        {"version": h["version"], "trained_at": h["trained_at"], "metrics": h["metrics"]}
+        for h in list_versions(name, limit=10)
+    ]
+    return {
+        "name": name,
+        "active": active,
+        "feedbacks_since_train": feedbacks_since_last_train(name),
+        "history": history,
+    }
+
+
 def feedbacks_since_last_train(name: str = "sap_classifier") -> int:
     """Cuenta filas en ``ml_feedback`` desde el ``trained_at`` de la versión activa.
 

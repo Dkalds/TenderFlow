@@ -89,3 +89,29 @@ bucle de active-learning le faltan dos cosas:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-25 — **Implementado (criterios #1 y #3).**
+
+- **#1 Cerrar el bucle (impacto visible).** La card "Modelo de clasificación" solo
+  mostraba recuentos de feedback (`total_labels`, `pct_relevant`), no el efecto en
+  el modelo. Nuevo `db.model_registry.active_model_summary()` (compone
+  `get_active` + `list_versions` + `feedbacks_since_last_train`; **todo desde la BD,
+  no carga el modelo ML**) expuesto en `GET /api/v1/feedback/model-info`. El front
+  añade a la card: versión activa, fecha de reentreno, métrica titular
+  (pr_auc/f1/…) con **delta vs la versión anterior** (▲/▼), y nº de etiquetas
+  desde el último reentreno. "Tu etiquetado movió la métrica de X a Y" deja de ser
+  invisible.
+- **#3 Selector de estrategia.** El endpoint `/feedback/queue` ya soportaba
+  `uncertainty | random`, pero el front lo hardcodeaba a `uncertainty`. Ahora hay
+  un selector (Incertidumbre / Aleatoria) que re-consulta la cola; la estrategia
+  forma parte del `queryKey`.
+
+Tests: `active_model_summary` (compone versión activa + histórico + feedbacks; y
+caso sin modelo) en `tests/test_model_registry.py`. Verde:
+pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285); el scanner no añade
+hallazgos.
+
+**Diferido (criterio #2: etiquetado multi-clase).** Asignar tecnología/módulo a
+los items de la cola de "sin clasificar" requiere el contrato multi-clase en
+`/feedback` y la integración con el RFC de Tecnologías; el etiquetado sigue siendo
+binario (relevante sí/no) por ahora.
