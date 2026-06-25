@@ -268,6 +268,9 @@ def test_clusters_shape_and_labels():
     assert res.total == 30
     assert res.n_clusters_detectados == 3
     assert len(res.clusters) == 3
+    # Calidad de la partición expuesta (guía para elegir K).
+    assert res.silhouette is not None
+    assert -1.0 <= res.silhouette <= 1.0
     for c in res.clusters:
         assert c.n > 0
         assert c.label and c.label != ""
@@ -275,6 +278,9 @@ def test_clusters_shape_and_labels():
         b = c.importe_box
         assert b.min <= b.q1 <= b.median <= b.q3 <= b.max
         assert c.items  # bounded drill-down sample present
+        # Descriptores de identidad (interpretabilidad).
+        assert c.organo_dominante in {"Organo 0", "Organo 1", "Organo 2", "Organo 3"}
+        assert c.cpv_dominante  # cpv 72000000 → label legible no vacío
     # sorted by n descending
     sizes = [c.n for c in res.clusters]
     assert sizes == sorted(sizes, reverse=True)

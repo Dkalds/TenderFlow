@@ -115,3 +115,4 @@ convencion
 potencial
 purgable
 secuencial
+dominante

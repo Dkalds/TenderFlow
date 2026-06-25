@@ -90,3 +90,16 @@ El gap es de **UX de ML**, no de implementación:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-24 — **Implementado.** Backend (`services/analytics/clusters.py`):
+`ClustersResult` gana `silhouette` (calidad de la partición, calculada sobre los
+labels finales con `sample_size` acotado; el `silhouette_score` ya se usaba en
+`_optimal_k` pero no se exponía); `ClusterEntry` gana `cpv_dominante` (con
+`cpv_label`) y `organo_dominante` (moda por cluster) → tarjeta de identidad. El
+endpoint `/api/v1/analytics/clusters` ya existía. Frontend: nueva KPI "Calidad
+(silhouette)" con interpretación (buena/moderada/débil) que guía la elección de K;
+columnas "CPV dominante"/"Órgano dominante" en la tabla resumen. Tests: aserciones
+de silhouette + descriptores en `test_clusters_shape_and_labels`. Verde:
+pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285). **Diferido:** bridge del
+cluster al listado principal filtrado (drill-down ya existe in-page con la tabla de
+items; falta el enlace al listado global).
