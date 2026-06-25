@@ -176,13 +176,22 @@ def scoring(
     min_score: int = Query(default=0, ge=0, le=100, description="Minimum score threshold"),
     limit: int = Query(default=50, ge=1, le=500, description="Max opportunities to return"),
     band: str | None = Query(default=None, description="Filter by band (alta|media|baja)"),
+    ids: str | None = Query(
+        default=None,
+        description=(
+            "CSV de id_externo: puntúa exactamente esas licitaciones (alineado a la "
+            "página del listado), ignorando min_score/band/limit"
+        ),
+    ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> ScoringResult:
-    """Opportunity scoring — ranked by commercial potential."""
+    """Opportunity scoring — ranked by commercial potential, or page-aligned by ids."""
+    id_list = [i for i in ids.split(",") if i] if ids else None
     filters = ScoringFilters(
         min_score=min_score,
         limit=limit,
         band=band,
+        ids=id_list,
     )
     return get_scoring(filters)
 

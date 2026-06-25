@@ -22,6 +22,10 @@ class ScoringFilters(BaseModel):
     min_score: int = 0
     limit: int = 50
     band: str | None = None
+    # Page-aligned mode: cuando viene, se puntúan EXACTAMENTE esas licitaciones
+    # (las filas visibles del listado) y se ignoran min_score/band/limit. El
+    # listado paginado/ordenado/filtrado decide qué ids; el scoring solo se alinea.
+    ids: list[str] | None = None
 
 
 class ScoredOpportunity(BaseModel):
@@ -207,18 +211,31 @@ def get_scoring(filters: ScoringFilters) -> ScoringResult:
     if "fecha_limite" in df.columns:
         df["fecha_limite_dt"] = pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True)
 
-    # Compute P10/P90 for importe normalization
+    # Compute P10/P90 for importe normalization over the FULL dataset so the
+    # importe dimension queda consistente aunque solo puntuemos un subconjunto.
     valid_imp = df["importe"].dropna()
     imp_p10 = float(valid_imp.quantile(0.10)) if len(valid_imp) > 0 else 0.0
     imp_p90 = float(valid_imp.quantile(0.90)) if len(valid_imp) > 0 else 0.0
 
+    # Page-aligned mode: restringir a las filas pedidas (sus id_externo) antes de
+    # iterar. min_score/band/limit no aplican: el listado ya decidió el conjunto.
+    id_filter = {str(i) for i in filters.ids} if filters.ids else None
+    work = df
+    if id_filter is not None:
+        work = (
+            df[df["id_externo"].astype(str).isin(id_filter)]
+            if "id_externo" in df.columns
+            else df.iloc[0:0]
+        )
+
     scored: list[ScoredOpportunity] = []
-    for _, row in df.iterrows():
+    for _, row in work.iterrows():
         s, band, flags, desglose = _score_row(row, imp_p10, imp_p90)
-        if s < filters.min_score:
-            continue
-        if filters.band and band != filters.band:
-            continue
+        if id_filter is None:
+            if s < filters.min_score:
+                continue
+            if filters.band and band != filters.band:
+                continue
         scored.append(
             ScoredOpportunity(
                 id_externo=str(row.get("id_externo", "")),
@@ -234,8 +251,9 @@ def get_scoring(filters: ScoringFilters) -> ScoringResult:
             )
         )
 
-    scored.sort(key=lambda x: x.score, reverse=True)
-    scored = scored[: filters.limit]
+    if id_filter is None:
+        scored.sort(key=lambda x: x.score, reverse=True)
+        scored = scored[: filters.limit]
 
     result = ScoringResult(opportunities=scored, total_scored=len(scored))
     log.info("analytics_scoring_done", total=result.total_scored)
