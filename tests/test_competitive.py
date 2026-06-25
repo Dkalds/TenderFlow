@@ -192,6 +192,27 @@ def test_perfil_empresa_por_ccaa_es_por_empresa_y_completo(db):
     assert perfil["totales"]["contratos"] == 4
 
 
+def test_perfil_empresa_por_anio_traza_la_trayectoria(db):
+    """perfil_empresa.por_anio da la serie temporal (creciendo/declinando)."""
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+
+    # 1 contrato en 2023, 3 en 2024 → trayectoria al alza.
+    insert_contract(db, "A-1", "Trend SL", nif="B12121212", fecha_adjudicacion="2023-04-01")
+    for i in range(3):
+        insert_contract(db, f"A-2{i}", "Trend SL", nif="B12121212", fecha_adjudicacion="2024-07-01")
+    resolve(db)
+
+    with connect_read() as c:
+        empresa_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12121212'"
+        ).fetchone()[0]
+
+    perfil = perfil_empresa(empresa_id)
+    serie = [(r["anio"], r["contratos"]) for r in perfil["por_anio"]]
+    assert serie == [(2023, 1), (2024, 3)]  # orden cronológico, sin años nulos
+
+
 def test_resumen_renovaciones_agrega_por_empresa(db):
     from services.competitive.renovaciones import resumen_renovaciones
 

@@ -26,9 +26,12 @@ import {
   Eye,
   EyeOff,
   Handshake,
+  Minus,
   Percent,
   Search,
   ShieldQuestion,
+  TrendingDown,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -79,6 +82,7 @@ interface PerfilEmpresa {
   por_cpv: { cpv2: string; contratos: number; importe: number }[];
   por_ccaa: { ccaa: string; contratos: number; importe: number }[];
   organos_principales: { organo: string; contratos: number; importe: number }[];
+  por_anio?: { anio: number; contratos: number; importe: number }[];
 }
 
 interface WatchlistItem {
@@ -351,6 +355,14 @@ function EmpresaPerfil({ empresaId }: { empresaId: number }) {
 
         <Separator />
 
+        {/* Trayectoria temporal: ¿crece o decae? (señal competitiva) */}
+        {(perfil?.por_anio?.length ?? 0) > 0 && (
+          <>
+            <YearTrend rows={perfil!.por_anio!} />
+            <Separator />
+          </>
+        )}
+
         {/* Desgloses */}
         <div className="grid gap-6 lg:grid-cols-3">
           <MiniRanking
@@ -465,6 +477,55 @@ function MiniRanking({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/* Trayectoria temporal de la empresa: barras por año (orden cronológico) y un
+   indicador de tendencia comparando el último año con el anterior. */
+function YearTrend({ rows }: { rows: { anio: number; contratos: number; importe: number }[] }) {
+  const maxC = Math.max(...rows.map((r) => r.contratos), 1);
+  const last = rows[rows.length - 1];
+  const prev = rows.length > 1 ? rows[rows.length - 2] : null;
+  const delta = prev ? last.contratos - prev.contratos : 0;
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <h3 className="text-sm font-semibold">Trayectoria por año</h3>
+        {prev && (
+          <Badge
+            variant={delta > 0 ? "default" : delta < 0 ? "destructive" : "secondary"}
+            className="gap-1"
+          >
+            {delta > 0 ? (
+              <TrendingUp className="h-3 w-3" />
+            ) : delta < 0 ? (
+              <TrendingDown className="h-3 w-3" />
+            ) : (
+              <Minus className="h-3 w-3" />
+            )}
+            {delta > 0 ? `+${delta}` : delta} vs {prev.anio}
+          </Badge>
+        )}
+      </div>
+      <div className="space-y-1">
+        {rows.map((r) => (
+          <div key={r.anio} className="flex items-center gap-2 text-sm">
+            <span className="w-12 shrink-0 tabular-nums text-muted-foreground">{r.anio}</span>
+            <div className="h-4 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${(r.contratos / maxC) * 100}%` }}
+              />
+            </div>
+            <span className="w-8 shrink-0 text-right tabular-nums text-xs">{r.contratos}</span>
+            <span className="w-24 shrink-0 text-right font-mono text-xs text-muted-foreground">
+              {formatCurrency(r.importe)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
