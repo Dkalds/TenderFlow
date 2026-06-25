@@ -154,6 +154,38 @@ class LicitacionRepository:
 
     # ── public API ────────────────────────────────────────────────────────────
 
+    def ids_for_filters(
+        self,
+        *,
+        ccaa: list[str] | None = None,
+        tecnologia: list[str] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+        cap: int = 5000,
+    ) -> set[str]:
+        """Conjunto de ``id_externo`` que cumplen los filtros (multi-valor).
+
+        Lo usa la búsqueda semántica para restringir los hits a los filtros
+        activos (``allowed_ids``) sin fabricar el filtrado en el cliente. Devuelve
+        un set acotado a ``cap``. Sin cláusulas devuelve ``set()`` — el caller solo
+        debe invocarlo cuando hay al menos un filtro activo.
+        """
+        clauses: list[Any] = []
+        if ccaa:
+            clauses.append(licitaciones.c.ccaa.in_(ccaa))
+        if tecnologia:
+            clauses.append(licitaciones.c.tecnologia.in_(tecnologia))
+        if fecha_desde and _DATE_RE.match(fecha_desde):
+            clauses.append(licitaciones.c.fecha_publicacion >= fecha_desde)
+        if fecha_hasta and _DATE_RE.match(fecha_hasta):
+            clauses.append(licitaciones.c.fecha_publicacion <= fecha_hasta)
+        if not clauses:
+            return set()
+        stmt = select(licitaciones.c.id_externo).where(and_(*clauses)).limit(cap)
+        sql, params = compile_query(stmt)
+        with connect_read() as c:
+            return {row[0] for row in c.execute(sql, params).fetchall()}
+
     def list_paginated(
         self,
         *,

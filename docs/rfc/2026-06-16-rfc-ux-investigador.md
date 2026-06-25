@@ -105,3 +105,30 @@ compatibilidad.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-25 — **Implementado (criterios #1 y #2).** Al investigar el #1 apareció un
+bug peor que el descrito: la búsqueda posteaba a `/api/v1/search` (**inexistente**;
+el endpoint real es `/api/v1/search/semantic`) → modo búsqueda **roto** (404), y
+además mandaba solo `ccaas[0]`/`tecnologias[0]` a un endpoint que de todas formas
+ignoraba todo filtro.
+
+- **Endpoint arreglado y con filtros.** `SemanticSearchRequest` acepta `ccaa`/
+  `tecnologia` (multi-valor), `fecha_desde`/`fecha_hasta`. Cuando hay filtros, el
+  endpoint calcula `allowed_ids` vía nueva `LicitacionRepository.ids_for_filters`
+  (multi-valor con `IN`, AND entre dimensiones, acotado) y `_run` **filtra antes de
+  recortar a top_k** (ampliando el pool de candidatos) para no quedarse corto. Sin
+  filtros, comportamiento idéntico al previo.
+- **Frontend.** Corregido el path → `/api/v1/search/semantic`; se mandan **todos**
+  los valores seleccionados (multi-CCAA/tecnología + rango de fechas), no `[0]`;
+  chips de "Filtros activos" para que la relación sea explícita (no un flag oculto).
+- **#2 Citas clicables** ya existían (`renderAnswer` enlaza `[EXP-...]` al detalle).
+
+Tests: `ids_for_filters` (multi-valor, combinación AND, rango de fechas, cap) en
+`tests/test_licitaciones_filters.py`; y a nivel endpoint en `tests/test_search_route.py`
+(los filtros restringen a `allowed_ids`; sin filtros devuelve todos). Verde:
+pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285); el scanner no añade
+hallazgos.
+
+**Diferido:** feedback de relevancia (👍/👎) sobre resultados y respuesta RAG (#3) —
+alimentaría el active-learning; y threading de filtros al `/ask` (RAG), que hoy
+sigue ignorándolos. El historial sigue en `localStorage` (menor, #4).

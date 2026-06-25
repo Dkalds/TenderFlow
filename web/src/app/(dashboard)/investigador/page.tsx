@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Card,
@@ -180,6 +180,17 @@ export default function InvestigadorPage() {
   // Global filters
   const globalFilters = useFilters();
 
+  // Filtros activos sobre la búsqueda (chips), para que la relación sea explícita
+  // y no un flag escondido: si está activado, se ve qué acota los resultados.
+  const activeSearchFilters = useMemo(() => {
+    if (!config.useGlobalFilters) return [] as string[];
+    const chips = [...globalFilters.ccaas, ...globalFilters.tecnologias];
+    if (globalFilters.rango.desde || globalFilters.rango.hasta) {
+      chips.push(`${globalFilters.rango.desde ?? "…"} → ${globalFilters.rango.hasta ?? "…"}`);
+    }
+    return chips;
+  }, [config.useGlobalFilters, globalFilters]);
+
   // Load persisted state after mount to avoid SSR hydration mismatch
   useEffect(() => {
     setHistory(loadHistory()); // eslint-disable-line react-hooks/set-state-in-effect
@@ -238,18 +249,22 @@ export default function InvestigadorPage() {
       setStreaming(false);
       addHistory(q);
 
-      // Build filter params if enabled
+      // Filtros globales → se mandan TODOS los valores (no solo el primero) y el
+      // backend restringe los resultados (allowed_ids). Antes se enviaba
+      // ccaas[0]/tecnologias[0] a un endpoint inexistente (/api/v1/search): falsa
+      // sensacion de filtrado y, de hecho, busqueda rota (ADR-014).
       const filterExtras: Record<string, unknown> = {};
       if (config.useGlobalFilters) {
-        if (globalFilters.ccaas.length > 0)
-          filterExtras.ccaa = globalFilters.ccaas[0];
+        if (globalFilters.ccaas.length > 0) filterExtras.ccaa = globalFilters.ccaas;
         if (globalFilters.tecnologias.length > 0)
-          filterExtras.tecnologia = globalFilters.tecnologias[0];
+          filterExtras.tecnologia = globalFilters.tecnologias;
+        if (globalFilters.rango.desde) filterExtras.fecha_desde = globalFilters.rango.desde;
+        if (globalFilters.rango.hasta) filterExtras.fecha_hasta = globalFilters.rango.hasta;
       }
 
       try {
         if (mode === "search") {
-          const res = await fetch("/api/v1/search", {
+          const res = await fetch("/api/v1/search/semantic", {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
@@ -489,6 +504,18 @@ export default function InvestigadorPage() {
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setQuery(h); handleSubmit(h); } }}
                 >
                   {h}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Filtros activos sobre la búsqueda: relación explícita (no un flag oculto) */}
+          {activeSearchFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <span className="text-xs text-muted-foreground">Filtros activos:</span>
+              {activeSearchFilters.map((f) => (
+                <Badge key={f} variant="outline" className="text-xs">
+                  {f}
                 </Badge>
               ))}
             </div>
