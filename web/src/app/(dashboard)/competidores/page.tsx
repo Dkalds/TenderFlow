@@ -99,7 +99,14 @@ interface CompetitorRecentContract {
   importe_adjudicado?: number | null;
 }
 
+interface CompetitorCcaaEntry {
+  ccaa: string;
+  contratos: number;
+  importe: number;
+}
+
 interface CompetitorProfile {
+  por_ccaa?: CompetitorCcaaEntry[];
   contratos_recientes?: CompetitorRecentContract[];
 }
 
@@ -348,13 +355,16 @@ export default function CompetidoresPage() {
     return full;
   }, [data]);
 
-  // Drill-down CCAA breakdown for selected company
+  // Desglose por CCAA de la empresa desde su PERFIL (por_ccaa, por empresa,
+  // completo hasta 20 CCAA), no del heatmap_ccaa global recortado al top-10
+  // empresas — que dejaba el drill-down VACÍO para cualquier empresa fuera de
+  // ese top, prometiendo más de lo que entregaba (ADR-014).
   const drillDownCcaa = useMemo(() => {
-    if (!drillDownCompany || !data?.heatmap_ccaa) return [];
-    return data.heatmap_ccaa
-      .filter((h) => h.empresa === drillDownCompany.nombre)
-      .sort((a, b) => b.count - a.count);
-  }, [drillDownCompany, data]);
+    const rows = drillDownProfile?.por_ccaa ?? [];
+    return [...rows]
+      .filter((r) => r.ccaa)
+      .sort((a, b) => b.contratos - a.contratos);
+  }, [drillDownProfile]);
 
   // Ranking de bajas por empresa (más agresivas primero)
   const bajasSorted = useMemo(() => {
@@ -636,6 +646,9 @@ export default function CompetidoresPage() {
               <TrendingDown className="h-4 w-4" />
               Empresas mas agresivas en precio (baja media)
             </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Ambito: respeta el filtro de CCAA; no aplica rango de fechas, CPV ni importe.
+            </p>
           </CardHeader>
           <CardContent>
             <div className="space-y-1.5">
@@ -872,20 +885,22 @@ export default function CompetidoresPage() {
                 <Separator />
                 <div>
                   <p className="text-sm font-medium mb-2">Actividad por CCAA</p>
-                  {drillDownCcaa.length > 0 ? (
+                  {isLoadingDrillDownProfile ? (
+                    <Skeleton className="h-24 w-full" />
+                  ) : drillDownCcaa.length > 0 ? (
                     <div className="space-y-1">
                       {drillDownCcaa.slice(0, 8).map((h) => {
-                        const maxCount = drillDownCcaa[0]?.count ?? 1;
+                        const maxCount = drillDownCcaa[0]?.contratos ?? 1;
                         return (
                           <div key={h.ccaa} className="flex items-center gap-2 text-sm">
                             <span className="w-32 truncate text-muted-foreground">{h.ccaa}</span>
                             <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-primary rounded-full"
-                                style={{ width: `${(h.count / maxCount) * 100}%` }}
+                                style={{ width: `${(h.contratos / maxCount) * 100}%` }}
                               />
                             </div>
-                            <span className="tabular-nums text-xs w-8 text-right">{h.count}</span>
+                            <span className="tabular-nums text-xs w-8 text-right">{h.contratos}</span>
                           </div>
                         );
                       })}
