@@ -112,8 +112,8 @@ def trends(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    group_by: Literal["month", "week"] = Query(
-        default="month", description="Group by month or week"
+    group_by: Literal["month", "week", "day"] = Query(
+        default="month", description="Group by month, week or day"
     ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> TrendsResult:
