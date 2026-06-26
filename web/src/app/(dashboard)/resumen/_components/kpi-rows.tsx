@@ -12,6 +12,7 @@ import {
   BarChart3,
   Building2,
   MapPin,
+  Map,
   Flame,
   Clock,
   Activity,
@@ -89,7 +90,7 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
         </Stagger.Item>
       </Stagger>
 
-      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Stagger.Item>
           <KpiCard
             title="Total Licitaciones"
@@ -124,6 +125,19 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
             value={isLoading ? undefined : formatNumber(overview?.organos_unicos)}
             icon={Building2}
             trend={overview?.yoy_delta}
+            loading={isLoading}
+          />
+        </Stagger.Item>
+        <Stagger.Item>
+          <KpiCard
+            title="CCAA cubiertas"
+            value={
+              isLoading || overview?.ccaa_cubiertas == null
+                ? undefined
+                : formatNumber(overview.ccaa_cubiertas)
+            }
+            subtitle="CCAA distintas con actividad"
+            icon={Map}
             loading={isLoading}
           />
         </Stagger.Item>

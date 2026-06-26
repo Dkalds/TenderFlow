@@ -817,6 +817,7 @@ export interface AnalyticsOverview {
   lead_time_medio: number | null;
   tasa_anulacion: number;
   concentracion_geo_top3: number;
+  ccaa_cubiertas: number;
   // "Para hoy" counts (extended)
   calientes_hoy: number;
   vencen_48h: number;

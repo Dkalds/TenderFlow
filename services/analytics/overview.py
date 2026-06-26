@@ -86,6 +86,7 @@ class OverviewResult(BaseModel):
     lead_time_medio: float | None = None
     tasa_anulacion: float = 0.0
     concentracion_geo_top3: float = 0.0
+    ccaa_cubiertas: int = 0
     # "Para hoy" counts
     calientes_hoy: int = 0
     vencen_48h: int = 0
@@ -317,6 +318,11 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         top3_imp = float(ccaa_imp.nlargest(3).sum(skipna=True))
         concentracion_geo_top3 = top3_imp / total_imp_geo * 100
 
+    # Distinct CCAA with activity (real coverage, not derived from concentration)
+    ccaa_cubiertas = 0
+    if not df.empty and "ccaa" in df.columns:
+        ccaa_cubiertas = int(df["ccaa"].dropna().nunique())
+
     # "Para hoy" counts
     calientes_hoy = 0
     vencen_48h = 0
@@ -360,6 +366,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         lead_time_medio=_lead_time_medio(adj),
         tasa_anulacion=tasa_anulacion,
         concentracion_geo_top3=concentracion_geo_top3,
+        ccaa_cubiertas=ccaa_cubiertas,
         calientes_hoy=calientes_hoy,
         vencen_48h=vencen_48h,
         nuevas_24h=nuevas_24h,

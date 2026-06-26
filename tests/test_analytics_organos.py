@@ -281,6 +281,8 @@ def test_get_overview_basic():
     assert result.total_licitaciones == 3
     assert result.organos_unicos == 2
     assert result.importe_total == 1_700_000.0
+    # CCAA distintas reales (Madrid, Cataluña) — no derivado de concentración
+    assert result.ccaa_cubiertas == 2
 
 
 def test_get_overview_empty():
@@ -293,3 +295,34 @@ def test_get_overview_empty():
     ):
         result = get_overview(OverviewFilters())
     assert result.total_licitaciones == 0
+    assert result.ccaa_cubiertas == 0
+
+
+def test_get_overview_ccaa_cubiertas_ignores_nulls():
+    """ccaa_cubiertas cuenta CCAA distintas reales; las filas con ccaa nulo no
+    inflan ni rompen el conteo (Patrón 1 meta-RFC: cobertura real, no derivada)."""
+    rows = _lic_rows()  # Madrid, Madrid, Cataluña → 2 distintas
+    rows.append(
+        {
+            "id_externo": "L4",
+            "titulo": "Sin CCAA",
+            "organo_contratacion": "ORG C",
+            "importe": 10_000.0,
+            "estado": "PUB",
+            "fecha_publicacion": "2025-03-01",
+            "ccaa": None,
+            "tipo_contrato": "2",
+            "url": None,
+            "modulos_str": None,
+        }
+    )
+    with (
+        patch("services.analytics.overview.load_stats_dataframe", return_value=rows),
+        patch(
+            "services.analytics.overview.load_adjudicaciones",
+            return_value=pd.DataFrame(),
+        ),
+    ):
+        result = get_overview(OverviewFilters())
+    # La fila con ccaa=None se excluye → siguen siendo 2 (Madrid, Cataluña).
+    assert result.ccaa_cubiertas == 2
