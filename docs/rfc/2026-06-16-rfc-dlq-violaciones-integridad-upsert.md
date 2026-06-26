@@ -4,7 +4,7 @@ title: Enrutar violaciones de integridad del upsert a la DLQ (recuperabilidad)
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 depends-on: RFC observabilidad de pérdida de filas en upsert (2026-06-16)
 ---
 
@@ -134,19 +134,37 @@ observabilidad que ya reestructura el conteo.
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
 
-2026-06-22 — **Implementado.** `db/upsert.py`: `replace_adjudicaciones[_batch]`
-pasan de `INSERT OR IGNORE` ciego a `INSERT` explícito con catch por fila.
-`_classify_integrity_error` clasifica por el **mensaje** (backend-agnóstico
-sqlite3/libsql, como anticipa el RFC): `unique` → dedup benigno (ignora, no cuenta
-como dropped); `check`/`fk`/`notnull`/`other` → cuenta como dropped + va a la DLQ;
-no-constraint → re-lanza. Las violaciones se recolectan y se enrutan con
-`record_failure(scope="adjudicacion", payload_ref="lic:nif:importe")` **fuera** de
-la transacción (vía `_route_violations_to_dlq`), evitando anidar `connect()`.
-Params nuevos `run_id`/`fuente` (keyword-only, opcionales) hilados desde
-`pipeline.py` (×2) y `connectors/base.py` (`run_id=None, fuente=source_id`).
-Tests: 4 nuevos en `test_db_upsert.py` (CHECK→DLQ con payload_ref; UNIQUE dedup→no
-DLQ; batch no aborta; replay idempotente). Verde: 109 tests
-(`test_db_upsert` + consumidores), mypy y ruff limpios. Runbook actualizado con el
-caso `scope="adjudicacion"`. **No** se tocó el path de `licitaciones` (fuera de
-scope). El test de replay vía `dlq_retry` completo queda cubierto conceptualmente
-por la idempotencia verificada.
+2026-06-22T00:00Z agent:claude — Implementado. Estado final:
+
+- ✅ Paso 1: Dependencia con el RFC `obs-perdida-filas-upsert` cumplida (ya
+  cerrado en commit previo; aporta el conteo por `cur.rowcount` y la métrica
+  base).
+- ✅ Paso 2: `db/upsert.py` reemplaza `INSERT OR IGNORE` por `INSERT` +
+  `except sqlite3.IntegrityError`. Helper `_classify_integrity_error(exc)`
+  devuelve `"unique" | "check" | "fk" | "notnull" | "other"` por inspección
+  del mensaje (contrato estable de SQLite). En `replace_adjudicaciones` y
+  `replace_adjudicaciones_batch`:
+  - `unique` → `log.debug("adj_dedup_unique")` y se ignora (dedup intra-XML
+    sobre `UNIQUE(licitacion_id, nif, importe_adjudicado)`).
+  - Resto → `dropped += 1`, métrica `upsert_rows_dropped_total{table}`,
+    `log.warning("upsert_row_dropped", constraint=kind)` y `record_failure(
+    run_id, fuente, exc, scope="adjudicacion",
+    payload_ref="{lic_id}:{nif}:{importe_adjudicado}")`.
+  - `record_failure` se llama **fuera** del `with connect()` para no
+    interferir con el lock del upsert (mismo módulo escribe `failed_extractions`).
+- ✅ Paso 3: `scraper/pipeline.py:347-353,554-558` y
+  `scraper/connectors/base.py:160-167` ahora pasan `run_id`/`fuente` (o
+  `None`/`source_id` en conectores legacy) al upsert.
+- ✅ Paso 4: Tests añadidos a `tests/test_db_upsert.py`:
+  `test_replace_adjudicaciones_check_violation_routes_to_dlq` verifica que
+  una adj con `fecha_adjudicacion` no-ISO entra en `failed_extractions` con
+  `scope="adjudicacion"` y `payload_ref` correcto;
+  `test_replace_adjudicaciones_unique_dedup_does_not_hit_dlq` verifica que
+  un duplicado intra-XML sobre el `UNIQUE` no entra en la DLQ y no se cuenta
+  en `dropped`; `test_replace_adjudicaciones_batch_violation_does_not_abort`
+  verifica que una violación no aborta el resto del batch.
+- ✅ Paso 5: `docs/runbooks/dlq-replay.md` añade sección
+  "Replay específico: `scope="adjudicacion"`" con ejemplos de inspección y
+  `mark_matching_resolved`.
+- ✅ Limpieza: el item P2 transitorio del backlog (apuntando a este RFC) se
+  elimina ahora que el trabajo está hecho.

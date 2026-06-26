@@ -244,6 +244,83 @@ def test_replace_adjudicaciones_batch_separates_persisted_from_dropped(db):
     assert failed == 0
 
 
+def test_replace_adjudicaciones_check_violation_routes_to_dlq(db):
+    """RFC dlq-upsert acceptance criterion: una violación de CHECK
+    (fecha no-ISO) entra en `failed_extractions` con `scope='adjudicacion'`
+    y `payload_ref='{licitacion_id}:{nif}:{importe_adjudicado}'`, con
+    `run_id`/`fuente` propagados desde el caller para replay dirigido.
+    """
+    from db.database import connect
+    from db.upsert import Adjudicacion, replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion()])
+    bad = Adjudicacion(
+        licitacion_id="TEST-001",
+        nombre="Empresa Mala",
+        nif="B99999999",
+        importe_adjudicado=1000.0,
+        fecha_adjudicacion="14/06/2026",  # no-ISO: viola CHECK GLOB
+    )
+    persisted, dropped = replace_adjudicaciones(
+        "TEST-001", [bad], run_id="run-test-1", fuente="placsp"
+    )
+    assert persisted == 0
+    assert dropped == 1
+
+    with connect() as c:
+        rows = c.execute(
+            "SELECT scope, payload_ref, fuente, run_id, error_type "
+            "FROM failed_extractions "
+            "WHERE scope = 'adjudicacion' AND payload_ref LIKE 'TEST-001:%'"
+        ).fetchall()
+    assert len(rows) == 1
+    scope, payload_ref, fuente, run_id, error_type = rows[0]
+    assert scope == "adjudicacion"
+    assert payload_ref == "TEST-001:B99999999:1000.0"
+    assert fuente == "placsp"
+    assert run_id == "run-test-1"
+    # SQLite stdlib lanza sqlite3.IntegrityError; libsql mapea a ValueError.
+    # Aceptamos cualquiera porque el RFC clasifica por mensaje, no por tipo.
+    assert error_type in ("IntegrityError", "ValueError")
+
+
+def test_replace_adjudicaciones_unique_dedup_does_not_hit_dlq(db):
+    """RFC dlq-upsert acceptance criterion: un duplicado intra-XML sobre
+    `UNIQUE(licitacion_id, nif, importe_adjudicado)` se ignora como dedup
+    benigno — ni cuenta en `dropped` ni entra en la DLQ. Es el caso que el
+    `INSERT OR IGNORE` original cubría legítimamente.
+    """
+    from db.database import connect
+    from db.upsert import Adjudicacion, replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion()])
+    adj_a = Adjudicacion(
+        licitacion_id="TEST-001",
+        nombre="Empresa A",
+        nif="B11111111",
+        importe_adjudicado=1000.0,
+    )
+    adj_b_dup = Adjudicacion(
+        licitacion_id="TEST-001",
+        nombre="Empresa A (duplicado intra-XML)",
+        nif="B11111111",
+        importe_adjudicado=1000.0,
+    )
+    persisted, dropped = replace_adjudicaciones(
+        "TEST-001", [adj_a, adj_b_dup], run_id="run-test-2", fuente="placsp"
+    )
+    assert persisted == 1
+    assert dropped == 0
+
+    with connect() as c:
+        n = c.execute(
+            "SELECT COUNT(*) FROM failed_extractions "
+            "WHERE scope = 'adjudicacion' AND payload_ref = ?",
+            ("TEST-001:B11111111:1000.0",),
+        ).fetchone()[0]
+    assert n == 0
+
+
 def test_replace_adjudicaciones_empty_clears(db):
     from db.database import connect
     from db.upsert import Adjudicacion, replace_adjudicaciones, upsert_licitaciones

@@ -3,7 +3,11 @@
     "allow": [
       "Bash(python -c ' *)",
       "mcp__16ce6fa0-eabf-4b39-8ea5-3a29570ccbd7__list_teams",
-      "Bash(ENV=dev ./.venv/Scripts/python.exe -m pytest tests/test_auth_register.py -v --no-cov)"
+      "Bash(ENV=dev ./.venv/Scripts/python.exe -m pytest tests/test_auth_register.py -v --no-cov)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)"
     ]
   }
 }

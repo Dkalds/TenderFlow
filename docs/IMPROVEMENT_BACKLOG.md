@@ -19,7 +19,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-*(sin ítems abiertos)*
+### [P2] Observabilidad de tokens y coste en el cliente LLM
+- **Área:** llm/ (client + providers), observability
+- **Problema:** `/ask` consume LLMs de pago pero `llm/client.py` solo mide latencia, no tokens ni coste. El usage real ya lo exponen ambos SDKs (Anthropic `get_final_message().usage`; OpenAI `stream_options={"include_usage": True}`) y se está descartando. Sin esta métrica no se puede ver el gasto ni alertar sobre picos.
+- **Acceptance criteria:**
+  - `llm_tokens_total{direction,source}` y `llm_cost_usd_total` se incrementan tras cada respuesta.
+  - Fallback de estimación marcado con `source="estimated"`; degrada limpio sin `prometheus_client`.
+  - Firma pública de `stream_llm_response` sin cambios; `/ask` sin tocar.
+- **Files de partida:** [llm/client.py](../llm/client.py), [llm/providers/openai_provider.py](../llm/providers/openai_provider.py), [llm/providers/anthropic_provider.py](../llm/providers/anthropic_provider.py)
+- **RFC:** [2026-06-17-rfc-observabilidad-tokens-coste-llm.md](rfc/2026-06-17-rfc-observabilidad-tokens-coste-llm.md)
+- **Riesgo:** bajo — aditivo; ningún consumidor existente cambia.
 
 ---
 
@@ -31,8 +40,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
-- [2026-06-22] **P2: Observabilidad de tokens y coste en el cliente LLM** — Ya implementado en código (el ítem estaba stale en el backlog). `llm/client.py` tiene `_PRICE_PER_MTOK`, los counters `llm_tokens_total{model,provider,direction,source}` y `llm_cost_usd_total{model,provider}` con lazy-init tolerante a `prometheus_client` ausente, y `_record_usage()` invocado en el `finally` de `stream_llm_response` (firma pública sin cambios). Ambos providers rellenan el `usage_sink`: Anthropic vía `get_final_message().usage` (`source=0` reported / fallback estimado `source=1`); OpenAI vía `stream_options={"include_usage": True}` leyendo `chunk.usage`. Verificado contra los 3 ficheros. RFC `2026-06-17-rfc-observabilidad-tokens-coste-llm.md`.
-- [2026-06-22] **Backend: enrutar violaciones de integridad del upsert a la DLQ** — RFC `2026-06-16-rfc-dlq-violaciones-integridad-upsert`. `db/upsert.py::replace_adjudicaciones[_batch]` pasan de `INSERT OR IGNORE` ciego a `INSERT` con catch por fila y `_classify_integrity_error` (por mensaje, backend-agnóstico sqlite3/libsql): UNIQUE → dedup benigno; CHECK/FK/NOT NULL → DLQ (`record_failure(scope="adjudicacion", payload_ref="lic:nif:importe")`, fuera de la transacción). `run_id`/`fuente` hilados desde pipeline y connectors. 4 tests nuevos. Commit `780f1ba`.
 - [2026-06-10] **P2: Fix `test_expired_key_returns_401` + bug real de expiración en `require_any_auth`** — La causa raíz no era infra de test sino un **bug de producción**: `api/routes/dual_auth.py::require_any_auth` (usado por `/api/v1/licitaciones` y otros endpoints con dual auth sesión/API-key) llamaba a `lookup_active_key` pero **nunca comprobaba `expires_at`**, a diferencia de `api/auth.py::require_api_key`. Una API key expirada seguía siendo válida en estos endpoints. Fix: añadido el mismo check `record.expires_at and now_utc_iso() > record.expires_at` en `dual_auth.py`. Además, `tests/test_api.py::test_expired_key_returns_401` ahora llama a `close_pool()` tras el `UPDATE` para evitar lecturas de conexión thread-local obsoletas. `pytest tests/test_api.py` 24/24 verde.
 - [2026-06-10] **P2: Cobertura de tests del frontend — `useSearchHistory` y `SearchAutocomplete`** — 2 archivos nuevos: `web/src/lib/__tests__/search-history.test.ts` (dedupe, cap de 10, rechazo de términos < 2 chars, trim, persistencia en `localStorage`) y `web/src/components/__tests__/search-autocomplete.test.tsx` (navegación con teclado ArrowUp/Down sin wrap, Enter sobre item activo vs. valor actual, Escape, aria-expanded/aria-activedescendant, selección por click). Suite 245 → **268** tests (15 → 17 archivos). Thresholds de `vitest.config.ts` subidos 30/25→32/27 (statements/lines 32, branches/functions 27).
 - [2026-06-09] **Deps: cerradas las 3 alertas moderate de Dependabot** — `web/package.json`: `overrides` forzando `postcss: ^8.5.10` (resuelto 8.5.15) → `npm audit` 0 vulns, `next build` OK (no había Next estable con el fix). `requirements-dev.txt`: `pytest>=8.0.0,<9` → `>=9.0.3,<10` (CVE-2025-71176; compatible con pytest-cov/benchmark, suite verificada). Nota operacional: el `.venv` local tenía `starlette 0.52.1` stale — el manifest ya pinea `1.2.0` parcheado; basta reinstalar (`pip install -r requirements.txt`). Audit-gate en CI queda en el ítem de CI frontend.
