@@ -119,3 +119,13 @@ tiene **dos defectos de correctitud/visualización** y gaps de interacción:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (parcial, frontend).** (2) Banda de forecast theme-safe:
+la "goma" del relleno pasa de `hsl(0,0%,100%)` (bloque blanco en dark mode) a
+`hsl(var(--card))` → correcta en claro y oscuro. (1) Heatmap Mes×Estado: como sigue
+siendo el producto de marginales (síntesis, no cruce real), se **etiqueta "Estimado"**
+con `CardDescription` explicando la limitación, por el invariante "no presentar
+síntesis como dato real" (paso interino que el propio RFC contempla). Verde:
+`tsc`/`eslint`/`vitest` (19 files, 285 tests). **Diferido (requiere backend):**
+(1) cross-tab real `(mes,estado)` en `services/analytics`, (3) drill-down de barras/
+celdas al listado filtrado, (4) metadata de calidad del forecast (meses, MAPE).

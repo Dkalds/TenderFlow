@@ -140,27 +140,99 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
     return nuevas, actualizadas
 
 
-def replace_adjudicaciones(licitacion_id: str, items: Iterable[Adjudicacion]) -> tuple[int, int]:
+# ── Clasificación de violaciones de integridad (DLQ routing) ────────────────
+# El backend es SQLite/Turso (libsql): clasificamos por el MENSAJE de error
+# (estable y SQLite-compatible en libsql) en vez de por la clase de excepción,
+# que difiere entre sqlite3 y libsql. Ver RFC dlq-violaciones-integridad-upsert.
+_CONSTRAINT_KINDS: tuple[tuple[str, str], ...] = (
+    ("unique constraint failed", "unique"),
+    ("check constraint failed", "check"),
+    ("foreign key constraint failed", "fk"),
+    ("not null constraint failed", "notnull"),
+)
+
+
+def _classify_integrity_error(exc: Exception) -> str | None:
+    """Clasifica una violación de constraint por el mensaje de SQLite.
+
+    Devuelve ``"unique"`` (dedup benigno) | ``"check"`` | ``"fk"`` | ``"notnull"``
+    | ``"other"`` (constraint genérica), o ``None`` si no es una violación de
+    constraint — en ese caso el caller debe re-lanzar (error inesperado, no
+    recuperable por replay).
+    """
+    msg = str(exc).lower()
+    for needle, kind in _CONSTRAINT_KINDS:
+        if needle in msg:
+            return kind
+    if "constraint failed" in msg:
+        return "other"
+    return None
+
+
+def _route_violations_to_dlq(
+    violations: list[tuple[str, Exception]],
+    run_id: str | None,
+    fuente: str,
+) -> None:
+    """Enruta violaciones de integridad a la DLQ, fuera de la transacción del upsert.
+
+    Se hace tras cerrar ``connect()`` para no anidar transacciones
+    (``record_failure`` abre su propia conexión). Best-effort: no lanza.
+    """
+    if not violations:
+        return
+    # Import diferido: evita el ciclo db.upsert ↔ db.dlq (db.dlq → db.database → db.upsert).
+    from db.dlq import record_failure
+
+    for payload_ref, exc in violations:
+        record_failure(run_id, fuente, exc, scope="adjudicacion", payload_ref=payload_ref)
+
+
+def replace_adjudicaciones(
+    licitacion_id: str,
+    items: Iterable[Adjudicacion],
+    *,
+    run_id: str | None = None,
+    fuente: str = "scraper",
+) -> tuple[int, int]:
     """Reemplaza todas las adjudicaciones de una licitación (idempotente).
 
+    Inserta por fila clasificando errores: un duplicado intra-XML (``UNIQUE``) se
+    deduplica en silencio; una violación real de integridad (``CHECK``/``FK``/
+    ``NOT NULL``) cuenta como descartada y se enruta a la DLQ (replayable vía
+    ``dlq_retry``) en vez de perderse. Ver RFC dlq-violaciones-integridad-upsert.
+
     Returns:
-        Tuple of (persisted, dropped) — filas insertadas reales y descartadas.
+        Tuple of (persisted, dropped) — filas insertadas reales y descartadas por
+        violación de integridad (los dedups ``UNIQUE`` benignos no cuentan).
     """
     items_list = list(items)
     persisted = 0
     dropped = 0
+    violations: list[tuple[str, Exception]] = []
     with connect() as c:
         c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = ?", [licitacion_id])
         for adj in items_list:
             data = asdict(adj)
             vals = [data[k] for k in _ADJ_KEYS]
-            cur = c.execute(
-                f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
-                vals,
-            )
-            if cur.rowcount:
+            try:
+                c.execute(
+                    f"INSERT INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
+                    vals,
+                )
                 persisted += 1
-            else:
+            except Exception as exc:
+                kind = _classify_integrity_error(exc)
+                if kind is None:
+                    raise  # error inesperado (no constraint): propagar
+                if kind == "unique":
+                    _log.debug(
+                        "upsert_row_deduped",
+                        table="adjudicaciones",
+                        licitacion_id=licitacion_id,
+                        nif=adj.nif,
+                    )
+                    continue
                 dropped += 1
                 upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
                 _log.warning(
@@ -168,12 +240,18 @@ def replace_adjudicaciones(licitacion_id: str, items: Iterable[Adjudicacion]) ->
                     table="adjudicaciones",
                     licitacion_id=licitacion_id,
                     nif=adj.nif,
+                    violation=kind,
                 )
+                violations.append((f"{licitacion_id}:{adj.nif}:{adj.importe_adjudicado}", exc))
+    _route_violations_to_dlq(violations, run_id, fuente)
     return persisted, dropped
 
 
 def replace_adjudicaciones_batch(
     adj_por_lic: dict[str, list[Adjudicacion]],
+    *,
+    run_id: str | None = None,
+    fuente: str = "scraper",
 ) -> tuple[int, int, int]:
     """Reemplaza adjudicaciones para múltiples licitaciones en una sola transacción.
 
@@ -181,13 +259,19 @@ def replace_adjudicaciones_batch(
     (transacción), reduciendo la contención del lock de SQLite vs. el
     patrón N+1 de llamar ``replace_adjudicaciones`` por cada licitación.
 
+    Como el path single, distingue dedup ``UNIQUE`` (benigno) de violación real
+    (``CHECK``/``FK``/``NOT NULL`` → DLQ, replayable). El catch por fila evita que
+    una violación interrumpa el resto del batch.
+
     Returns:
-        Tuple of (persisted, dropped, failed) — inserciones reales,
-        filas descartadas por constraint, y licitaciones con error.
+        Tuple of (persisted, dropped, failed) — inserciones reales, filas
+        descartadas por violación de integridad (enrutadas a la DLQ), y
+        licitaciones con un error inesperado. Los dedups ``UNIQUE`` no cuentan.
     """
     persisted = 0
     dropped = 0
     failed = 0
+    violations: list[tuple[str, Exception]] = []
     with connect() as c:
         for lic_id, adjs in adj_por_lic.items():
             try:
@@ -198,13 +282,24 @@ def replace_adjudicaciones_batch(
                 for adj in adjs:
                     data = asdict(adj)
                     vals = [data[k] for k in _ADJ_KEYS]
-                    cur = c.execute(
-                        f"INSERT OR IGNORE INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
-                        vals,
-                    )
-                    if cur.rowcount:
+                    try:
+                        c.execute(
+                            f"INSERT INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
+                            vals,
+                        )
                         persisted += 1
-                    else:
+                    except Exception as exc:
+                        kind = _classify_integrity_error(exc)
+                        if kind is None:
+                            raise  # error inesperado (no constraint): propaga al except de la licitación
+                        if kind == "unique":
+                            _log.debug(
+                                "upsert_row_deduped",
+                                table="adjudicaciones",
+                                licitacion_id=lic_id,
+                                nif=adj.nif,
+                            )
+                            continue
                         dropped += 1
                         upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
                         _log.warning(
@@ -212,9 +307,12 @@ def replace_adjudicaciones_batch(
                             table="adjudicaciones",
                             licitacion_id=lic_id,
                             nif=adj.nif,
+                            violation=kind,
                         )
+                        violations.append((f"{lic_id}:{adj.nif}:{adj.importe_adjudicado}", exc))
             except Exception:
                 failed += 1
+    _route_violations_to_dlq(violations, run_id, fuente)
     return persisted, dropped, failed
 
 

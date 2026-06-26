@@ -96,3 +96,15 @@ soft-delete para no cablear un hard-delete.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-24 — **Implementado (frontend).** El backend ya existía
+(`api/routes/admin_users.py`: `GET /api/v1/admin/users` con `list_users`, `PUT
+/{id}/admin` con `set_admin` + `log_event`, soft-delete), pero la página seguía con
+`MOCK_USERS`. Frontend: eliminado `MOCK_USERS`; nueva query a `/api/v1/admin/users`
+(mapea `deactivated_at`→activo, `last_access`→último login), con loading/skeleton y
+mensaje honesto si la sesión no es admin (403). La acción "Toggle admin" se cablea a
+`PUT /{id}/admin` (mutación con invalidación + toast), gateada por el backend
+(`is_admin`) y auditada (`log_event`). Verde: `tsc`/`eslint`/`vitest` (285),
+codespell. `check_frontend_invariants`: `mock-data` 1→**0** (cerrados los dos mocks).
+**Diferido:** acción de desactivar/anonimizar con diálogo de confirmación (el backend
+`POST /{id}/deactivate` ya existe; falta la UI con confirmación).

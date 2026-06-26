@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from db.model_registry import (
     activate_version,
+    active_model_summary,
     feedbacks_since_last_train,
     get_active,
     list_versions,
@@ -79,6 +80,35 @@ def test_feedbacks_since_last_train(tmp_db):
         )
     count = feedbacks_since_last_train("sap_classifier")
     assert count == 2
+
+
+def test_active_model_summary_composes_loop_state(tmp_db):
+    """active_model_summary expone versión activa + histórico + feedbacks (panel AL)."""
+    _db_mod, _ = tmp_db
+    register_version(
+        name="sap_classifier", path="p1", sha256="s1", metrics={"f1": 0.80}, activate=True
+    )
+    register_version(
+        name="sap_classifier", path="p2", sha256="s2", metrics={"f1": 0.88}, activate=True
+    )
+
+    summary = active_model_summary("sap_classifier")
+    assert summary["name"] == "sap_classifier"
+    assert summary["active"] is not None
+    assert summary["active"]["version"] == 2  # la activa es la última
+    assert summary["active"]["metrics"]["f1"] == 0.88
+    # Histórico para la tendencia (DESC, ambas versiones presentes).
+    versions = [h["version"] for h in summary["history"]]
+    assert versions == [2, 1]
+    assert summary["feedbacks_since_train"] == 0
+
+
+def test_active_model_summary_sin_modelo(tmp_db):
+    """Sin versión registrada, el resumen es seguro (active=None, history vacío)."""
+    _db_mod, _ = tmp_db
+    summary = active_model_summary("inexistente")
+    assert summary["active"] is None
+    assert summary["history"] == []
 
 
 def test_get_active_nonexistent(tmp_db):

@@ -24,6 +24,20 @@ def test_mark_resolved_removes_from_unresolved(tmp_db):
     assert dlq.list_unresolved() == []
 
 
+def test_count_unresolved_matches_list(tmp_db):
+    """count_unresolved cuenta exactamente los fallos abiertos (no resueltos)."""
+    from db import dlq
+
+    assert dlq.count_unresolved() == 0
+    dlq.record_failure("run-1", "src", RuntimeError("a"), payload_ref="p1")
+    dlq.record_failure("run-1", "src", RuntimeError("b"), payload_ref="p2")
+    assert dlq.count_unresolved() == 2
+    # Al resolver uno, el conteo baja y sigue casando con list_unresolved.
+    dlq.mark_resolved(dlq.list_unresolved()[0]["id"])
+    assert dlq.count_unresolved() == 1
+    assert dlq.count_unresolved() == len(dlq.list_unresolved())
+
+
 def test_increment_retry(tmp_db):
     from db import dlq
 

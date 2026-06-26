@@ -115,3 +115,6 @@ convencion
 potencial
 purgable
 secuencial
+dominante
+finge
+fingen

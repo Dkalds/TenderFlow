@@ -25,7 +25,7 @@ from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import normalize
 
 from observability.logging import get_logger
-from services.classification import estado_label
+from services.classification import cpv_label, estado_label
 from services.licitaciones import load_stats_dataframe
 
 log = get_logger(__name__)
@@ -86,6 +86,8 @@ class ClusterEntry(BaseModel):
     n: int
     importe_medio: float
     importe_total: float
+    cpv_dominante: str | None = None
+    organo_dominante: str | None = None
     importe_box: ImporteBox | None = None
     items: list[ClusterItem] = Field(default_factory=list)
 
@@ -95,6 +97,9 @@ class ClustersResult(BaseModel):
 
     n_clusters_detectados: int = 0
     total: int = 0
+    # Calidad de la partición: silhouette medio [-1, 1] (mayor = clusters mejor
+    # separados). None si no calculable (k<2 o corpus degenerado).
+    silhouette: float | None = None
     clusters: list[ClusterEntry] = Field(default_factory=list)
 
 
@@ -256,6 +261,18 @@ def _box(importes: pd.Series) -> ImporteBox | None:
     )
 
 
+def _dominant(grp: pd.DataFrame, col: str) -> str | None:
+    """Valor más frecuente (moda) de una columna en el cluster, o None."""
+    if col not in grp.columns:
+        return None
+    vals = grp[col].dropna().astype(str)
+    vals = vals[vals.str.strip() != ""]
+    if vals.empty:
+        return None
+    mode = vals.mode()
+    return str(mode.iloc[0]) if not mode.empty else None
+
+
 def _cluster_items(grp: pd.DataFrame) -> list[ClusterItem]:
     top = grp.sort_values("importe", ascending=False).head(_ITEMS_PER_CLUSTER)
     return [
@@ -311,10 +328,20 @@ def get_clusters(filters: ClustersFilters) -> ClustersResult:
     work = work.assign(cluster_id=labels)
     label_map = _ctfidf_labels(texts, labels)
 
+    # Calidad de la partición (guía para elegir K). Acotado con sample_size.
+    silhouette: float | None
+    try:
+        silhouette = float(
+            silhouette_score(embeddings, labels, sample_size=min(1000, len(work)), random_state=42)
+        )
+    except ValueError:
+        silhouette = None
+
     clusters: list[ClusterEntry] = []
     for cid, grp in work.groupby("cluster_id"):
         cid_int = int(cast("SupportsInt", cid))  # cid es la etiqueta de cluster (numpy int)
         importes = grp["importe"]
+        cpv_code = _dominant(grp, "cpv")
         clusters.append(
             ClusterEntry(
                 cluster_id=cid_int,
@@ -322,15 +349,18 @@ def get_clusters(filters: ClustersFilters) -> ClustersResult:
                 n=len(grp),
                 importe_medio=float(importes.mean(skipna=True) or 0),
                 importe_total=float(importes.sum(skipna=True)),
+                cpv_dominante=cpv_label(cpv_code) if cpv_code else None,
+                organo_dominante=_dominant(grp, "organo_contratacion"),
                 importe_box=_box(importes),
                 items=_cluster_items(grp),
             )
         )
 
     clusters.sort(key=lambda c: c.n, reverse=True)
-    log.info("analytics_clusters_done", k=len(clusters), total=total)
+    log.info("analytics_clusters_done", k=len(clusters), total=total, silhouette=silhouette)
     return ClustersResult(
         n_clusters_detectados=len(clusters),
         total=total,
+        silhouette=silhouette,
         clusters=clusters,
     )

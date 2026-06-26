@@ -158,7 +158,9 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         result.nuevas += len(upsert_result.inserted)
         result.actualizadas += len(upsert_result.modified)
         if adj_por_lic:
-            n_adj, n_dropped, n_failed = replace_adjudicaciones_batch(adj_por_lic)
+            n_adj, n_dropped, n_failed = replace_adjudicaciones_batch(
+                adj_por_lic, run_id=None, fuente=source_id
+            )
             result.adjudicaciones += n_adj
             result.errores += n_failed
             if n_dropped:

@@ -35,10 +35,19 @@ class GeoEntry(BaseModel):
     pct: float
 
 
+class ProvinciaEntry(BaseModel):
+    """Single provincia entry (aggregated over the full filtered dataset)."""
+
+    provincia: str
+    count: int
+    importe: float
+
+
 class GeoResult(BaseModel):
     """Combined geography response."""
 
     by_ccaa: list[GeoEntry] = Field(default_factory=list)
+    by_provincia: list[ProvinciaEntry] = Field(default_factory=list)
     concentracion_top3: float = 0.0
     ccaa_mas_activa: str | None = None
 
@@ -110,8 +119,31 @@ def get_geography(filters: GeoFilters) -> GeoResult:
     top3_pct = sum(e.pct for e in entries[:3])
     most_active = entries[0].ccaa if entries else None
 
+    # Agregación por provincia sobre TODO el dataset filtrado (antes el frontend
+    # sumaba un sample de `licitaciones?limit=500` que ignoraba los filtros).
+    by_provincia: list[ProvinciaEntry] = []
+    if "provincia" in df.columns:
+        pv = df.dropna(subset=["provincia"])
+        pv = pv[pv["provincia"].astype(str).str.strip() != ""]
+        if not pv.empty:
+            pg = (
+                pv.groupby("provincia")
+                .agg(count=("id_externo", "count"), importe=("importe", "sum"))
+                .sort_values("count", ascending=False)
+                .reset_index()
+            )
+            by_provincia = [
+                ProvinciaEntry(
+                    provincia=str(row["provincia"]),
+                    count=int(row["count"]),
+                    importe=float(row["importe"] or 0),
+                )
+                for _, row in pg.iterrows()
+            ]
+
     result = GeoResult(
         by_ccaa=entries,
+        by_provincia=by_provincia,
         concentracion_top3=top3_pct,
         ccaa_mas_activa=most_active,
     )

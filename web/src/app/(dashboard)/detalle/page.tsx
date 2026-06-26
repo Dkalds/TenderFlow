@@ -23,7 +23,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { t } from "@/lib/i18n";
 import { formatCurrency, formatDate, truncate, cn } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
-import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilterParams, useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
 import { DetailPanel, type LicitacionDetail } from "@/components/detail-panel";
@@ -64,7 +63,7 @@ interface ScoringItem {
 }
 
 interface ScoringResponse {
-  items: ScoringItem[];
+  opportunities: ScoringItem[];
 }
 
 /* ── Constants ──────────────────────────────────────────────────────── */
@@ -211,12 +210,31 @@ export default function DetallePage() {
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });
 
-  // Fetch scoring
-  const { data: scoring } = useFilteredQuery<ScoringResponse>(
-    ["analytics", "scoring"],
-    "/api/v1/analytics/scoring?limit=500",
-    { staleTime: 5 * 60_000 },
+  // Scoring alineado a la página: pedimos el score EXACTO de las filas visibles
+  // (sus id_externo), no un top-500 global disjunto del orden/filtro/página. Antes
+  // el score nunca aparecía: el merge leía `.items` pero el backend devuelve
+  // `.opportunities`, y top-500 no solapaba con páginas avanzadas. ADR-014: el
+  // backend es la fuente; el front solo alinea por id.
+  const pageIds = useMemo(
+    () => (data?.items ?? []).map((r) => r.id_externo).filter(Boolean),
+    [data],
   );
+
+  const { data: scoring } = useQuery({
+    queryKey: ["scoring-batch", pageIds],
+    queryFn: async ({ signal }) => {
+      const sp = new URLSearchParams({ ids: pageIds.join(",") });
+      const res = await fetch(`/api/v1/analytics/scoring?${sp}`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`Failed to fetch scoring: ${res.status}`);
+      return res.json() as Promise<ScoringResponse>;
+    },
+    enabled: pageIds.length > 0,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+  });
 
   // Fetch detail for panel
   const { data: detailData } = useQuery({
@@ -232,7 +250,7 @@ export default function DetallePage() {
   // Score map
   const scoreMap = useMemo(() => {
     const map = new Map<string, ScoringItem>();
-    for (const item of scoring?.items ?? []) {
+    for (const item of scoring?.opportunities ?? []) {
       map.set(item.id_externo, item);
     }
     return map;

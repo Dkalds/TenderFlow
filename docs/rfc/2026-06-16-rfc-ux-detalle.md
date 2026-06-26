@@ -105,3 +105,29 @@ arma mal:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-25 — **Implementado (criterio #1: score alineado a la página).** El bug
+era aún peor de lo descrito: el merge leía `scoring.items`, pero el endpoint
+devuelve `ScoringResult.opportunities` → la columna de score **nunca** se
+rellenaba (ni en el top-500), además de estar disjunta del orden/filtro/página.
+Fix con el fallback "por lote de ids" del propio RFC (el scoring es un pipeline
+pandas sobre todo el dataset con normalización global P10/P90, no una columna de
+DB, así que un join inline en `/licitaciones` no encaja): `ScoringFilters` gana
+`ids`; `get_scoring` puntúa EXACTAMENTE esas filas (ignorando min_score/band/
+limit) reusando el P10/P90 global → score idéntico al ranking. El endpoint
+`/api/v1/analytics/scoring` acepta `ids` (CSV) de forma **retrocompatible**: sin
+`ids` mantiene el top-N que usa Tecnologías. Frontend
+(`detalle/page.tsx`): se elimina el fetch `scoring?limit=500` + merge cliente; se
+pide el score de los `id_externo` de la página visible (PAGE_SIZE=25) con
+`useQuery` cacheado por ese conjunto; se corrige `.items` → `.opportunities`. Así
+el score aparece en cualquier página/orden/filtro. Tests: nuevo
+`tests/test_analytics_scoring.py` (5) cubre top-N, ids-mode (exacto, ignora
+min_score/limit), consistencia de normalización, id desconocido y vacío. Verde:
+pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285); el scanner ya no marca
+`large-limit` en Detalle.
+
+**Diferido (criterio #3: consolidar "destacados" en la watchlist server-side).**
+`detalle_watchlist` en `localStorage` sigue siendo el tercer concepto de
+watchlist; migrarlo a persistencia server-side es transversal con `mi-watchlist`
+y se aborda junto al RFC de Pipeline de Alertas / Mi Watchlist (donde vive el
+modelo de reglas y la migración Alembic).

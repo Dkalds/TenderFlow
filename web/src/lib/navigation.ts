@@ -20,7 +20,6 @@ import {
   Link2,
   ListChecks,
   Map,
-  Medal,
   Network,
   Puzzle,
   Search,
@@ -153,13 +152,6 @@ export const SECTIONS: NavSection[] = [
         description:
           "Maestro de empresas canonicas: buscador, perfil competitivo, aliases y vigilancia.",
         icon: Briefcase,
-      },
-      {
-        label: "Licitadores",
-        slug: "licitadores",
-        description:
-          "Ranking de licitadores recurrentes, cuota por organo y analisis de competencia.",
-        icon: Medal,
       },
       {
         label: "UTEs",

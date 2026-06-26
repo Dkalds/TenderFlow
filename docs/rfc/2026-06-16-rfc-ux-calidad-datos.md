@@ -105,3 +105,32 @@ métricas; las cards pueden landear incrementalmente.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-25 — **Implementado (criterios #2 y parte de #1/#4).** Dos puntos ciegos
+del panel, ambos del tipo "dato fabricado" (ADR-014):
+
+1. **`dlq_count` era un stub fijo en 0.** `services/analytics/quality.py::_dlq_count`
+   devolvía literalmente `0`: la card "Dead Letter Queue" mostraba 0 fallos aunque
+   la cola tuviera registros (incluidas las violaciones de integridad de
+   adjudicaciones que ya se enrutan a la DLQ). Ahora consulta la cola real vía
+   nueva `db.dlq.count_unresolved()` (`COUNT(*)` con la misma condición que
+   `list_unresolved`), best-effort (cae a 0 si la tabla no está). Cubre el grueso
+   de #1 (la pérdida en escritura de adjudicaciones ya entra a la DLQ) y la base de
+   #4.
+2. **Sin señal de FORMATO de fecha (#2).** `pct_fecha` mide completitud (no nulos),
+   así que una fecha presente pero `DD/MM/YYYY` legacy contaba como "completa". Se
+   añaden `pct_fecha_iso` y `fechas_no_iso` (sobre `fecha_publicacion` presente,
+   patrón ISO-8601 `^\d{4}-\d{2}-\d{2}`) y una card "Consistencia de formato de
+   fecha" que avisa (ámbar + badge) si hay no-ISO. Detecta el legacy/regresión que
+   la completitud oculta.
+
+Tests: `tests/test_analytics_quality.py` (5: formato vs completitud, dlq real,
+dataset vacío, best-effort ante fallo de DLQ, todo-ISO) y `count_unresolved` en
+`tests/test_dlq.py` (con `tmp_db`). Verde: pytest/mypy/ruff/codespell +
+`tsc`/`eslint`/`vitest` (285); el scanner no añade hallazgos.
+
+**Diferido:** enlace accionable de `dlq_count` a una vista de la DLQ para
+inspeccionar/reintentar (#4, requiere ruta/página nuevas); card de
+`upsert_rows_dropped_total` como tal (#1 métrica Prometheus — hoy la pérdida de
+adjudicaciones ya es visible vía DLQ); tendencia temporal de completitud (#3,
+requiere persistir histórico de métricas); desglose por fuente/conector (#5).

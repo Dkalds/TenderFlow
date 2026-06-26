@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -22,9 +23,11 @@ import {
   Server,
   AlertTriangle,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { getGrafanaUrl } from "@/lib/runtime-config";
 
 interface HealthCheck {
   status?: string;
@@ -44,8 +47,6 @@ interface QualityData {
   dlq_count?: number;
   [key: string]: unknown;
 }
-
-const GRAFANA_URL = "http://localhost:3001";
 
 function StatusDot({ status }: { status: "ok" | "warn" | "error" }) {
   const label = status === "ok" ? "Saludable" : status === "warn" ? "Verificando" : "Error";
@@ -92,7 +93,9 @@ export default function ObservabilidadPage() {
     data: health,
     isLoading,
     isError,
+    isFetching,
     dataUpdatedAt,
+    refetch,
   } = useQuery<HealthResponse>({
     queryKey: ["health"],
     queryFn: async () => {
@@ -145,6 +148,7 @@ export default function ObservabilidadPage() {
   }
 
   const dlqCount = quality?.dlq_count ?? 0;
+  const grafanaUrl = getGrafanaUrl();
 
   const handleRetryDlq = () => {
     toast.info("Funcionalidad en desarrollo: Reintentar DLQ");
@@ -152,11 +156,33 @@ export default function ObservabilidadPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Observabilidad</h1>
-        <p className="text-muted-foreground">
-          Metricas de rendimiento, logs y estado del sistema.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Observabilidad</h1>
+          <p className="text-muted-foreground">
+            Salud de infraestructura y servicios (SRE). Para la integridad del
+            dato (completitud, DLQ, drops de escritura) ve a{" "}
+            <Link
+              href="/calidad-datos"
+              className="font-medium underline underline-offset-2 hover:text-foreground"
+            >
+              Calidad de Datos
+            </Link>
+            .
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          aria-label="Refrescar estado del sistema"
+        >
+          <RefreshCw
+            className={cn("mr-2 h-4 w-4", isFetching && "animate-spin")}
+          />
+          Refrescar
+        </Button>
       </div>
 
       {/* Run KPIs */}
@@ -332,14 +358,22 @@ export default function ObservabilidadPage() {
               </Badge>
             )}
           </div>
-          <Button
-            variant="outline"
-            onClick={handleRetryDlq}
-            disabled={dlqCount === 0}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Reintentar DLQ
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline">
+              <Link href="/calidad-datos">
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Inspeccionar DLQ
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleRetryDlq}
+              disabled={dlqCount === 0}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Reintentar DLQ
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -355,16 +389,22 @@ export default function ObservabilidadPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button asChild>
-            <a
-              href={GRAFANA_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Abrir Grafana
-            </a>
-          </Button>
+          {grafanaUrl ? (
+            <Button asChild>
+              <a href={grafanaUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Abrir Grafana
+              </a>
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              URL de Grafana no configurada. Define{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                NEXT_PUBLIC_GRAFANA_URL
+              </code>{" "}
+              en el entorno del frontend para habilitar el enlace.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -103,3 +103,15 @@ lectura), `api/routes/competitive.py`.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (core frontend).** `web/src/lib/opportunity-score.ts`
+(`opportunityScore = riesgo × importe × urgencia`, `urgency()` normalizada al
+horizonte) + 6 tests. La tabla se **ordena por oportunidad** (no por proximidad) y
+añade columna "Oportunidad" (score relativo 0-100 con tier de color). KPIs
+reorientados: "Importe en alto riesgo" (riesgo ≥60%) y "Oportunidades calientes"
+(alto riesgo + ≤30 días), manteniendo contratos/importe como contexto. Verde:
+`tsc`/`eslint`/`vitest` (19 files, 285 tests). **Diferido (requiere backend):**
+migrar a `useFilteredQuery` (el endpoint `/competitive/renovaciones` debe aceptar
+CCAA/CPV), totales sobre dataset completo (hoy KPIs sobre el `limit=1000`), y
+drill-down interno al listado. Score listo para moverse a backend si se quiere
+consistencia cross-página.

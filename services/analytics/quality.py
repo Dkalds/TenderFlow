@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 import pandas as pd
@@ -11,6 +12,10 @@ from observability.logging import get_logger
 from services.licitaciones import load_stats_dataframe
 
 log = get_logger(__name__)
+
+# Una fecha bien formada empieza por YYYY-MM-DD (ISO-8601). Cualquier otra cosa
+# no-nula (p. ej. DD/MM/YYYY legacy) es un fallo de FORMATO, no de completitud.
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +43,10 @@ class QualityResult(BaseModel):
     completitud_columnas: list[ColumnCompleteness] = Field(default_factory=list)
     cobertura_nif: float = 0.0
     cobertura_modulo_sap: float = 0.0
+    # Consistencia de FORMATO de fecha (no completitud): de las fechas de
+    # publicación presentes, % en ISO-8601 y nº con formato inválido (DD/MM/YYYY…).
+    pct_fecha_iso: float = 0.0
+    fechas_no_iso: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +62,24 @@ def _pct_filled(df: pd.DataFrame, col: str) -> float:
     if filled.dtype == object:
         filled = filled[filled.astype(str).str.strip() != ""]
     return float(len(filled) / len(df) * 100)
+
+
+def _iso_date_stats(df: pd.DataFrame, col: str) -> tuple[float, int]:
+    """(% en ISO-8601, nº no-ISO) sobre los valores NO nulos de ``col``.
+
+    Mide formato, no presencia: una fecha presente pero ``DD/MM/YYYY`` cuenta
+    como completa en :func:`_pct_filled` pero como no-ISO aquí.
+    """
+    if col not in df.columns or df.empty:
+        return 0.0, 0
+    present = df[col].dropna()
+    present = present[present.astype(str).str.strip() != ""]
+    n = len(present)
+    if n == 0:
+        return 0.0, 0
+    iso = present.astype(str).str.match(_ISO_DATE_RE)
+    n_iso = int(iso.sum())
+    return float(n_iso / n * 100), int(n - n_iso)
 
 
 def _last_scrape_hours() -> float | None:
@@ -79,8 +106,18 @@ def _last_scrape_hours() -> float | None:
 
 
 def _dlq_count() -> int:
-    """Get DLQ count if available."""
-    return 0
+    """Número real de fallos abiertos en la DLQ (best-effort).
+
+    Antes era un stub que devolvía 0: el panel mostraba siempre 0 fallos aunque
+    la cola tuviera registros perdidos. Ahora consulta ``failed_extractions``.
+    """
+    try:
+        from db.dlq import count_unresolved
+
+        return count_unresolved()
+    except Exception:
+        log.debug("quality_dlq_count_unavailable")
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -96,14 +133,17 @@ def get_quality() -> QualityResult:
 
     if df.empty:
         log.info("analytics_quality_done", total=0)
-        return QualityResult()
+        return QualityResult(dlq_count=_dlq_count())
 
+    pct_fecha_iso, fechas_no_iso = _iso_date_stats(df, "fecha_publicacion")
     result = QualityResult(
         total_records=len(df),
         pct_cpv=_pct_filled(df, "cpv"),
         pct_importe=_pct_filled(df, "importe"),
         pct_fecha=_pct_filled(df, "fecha_publicacion"),
         pct_titulo=_pct_filled(df, "titulo"),
+        pct_fecha_iso=pct_fecha_iso,
+        fechas_no_iso=fechas_no_iso,
         last_scrape_hours_ago=_last_scrape_hours(),
         dlq_count=_dlq_count(),
         completitud_columnas=[

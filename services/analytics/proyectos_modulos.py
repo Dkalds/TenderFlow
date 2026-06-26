@@ -113,6 +113,10 @@ class ProyectosModulosResult(BaseModel):
     modulos: list[ModuloEntry] = Field(default_factory=list)
     tipos_proyecto: list[ProyectoTipoEntry] = Field(default_factory=list)
     total_clasificados: int = 0
+    # KPIs a nivel licitación (distinct): NO suma de filas de módulo. Una licitación
+    # con módulos A+B cuenta una sola vez → sin doble conteo de importe/ticket.
+    importe_total_sap: float = 0.0
+    ticket_medio_sap: float = 0.0
     top_modulo_yoy: TopModuloYoY | None = None
     tipo_estado: list[TipoEstadoEntry] = Field(default_factory=list)
     cpv: list[CpvEntry] = Field(default_factory=list)
@@ -161,10 +165,14 @@ def _detect_modules(text: str) -> list[str]:
     return found
 
 
-def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int]:
-    """Build module breakdown. Returns (entries, total_classified)."""
+def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int, float]:
+    """Build module breakdown. Returns (entries, total_classified, importe_distinct).
+
+    `importe_distinct` suma el importe de cada licitación clasificada UNA vez
+    (no por módulo), para KPIs a nivel licitación sin doble conteo multi-módulo.
+    """
     if df.empty:
-        return [], 0
+        return [], 0, 0.0
 
     # Check if explicit module column exists
     if "modulo_sap" in df.columns:
@@ -179,7 +187,9 @@ def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int]:
         classified = classified[classified[col].astype(str).str.strip() != ""]
         total_clasificados = len(classified)
         if classified.empty:
-            return [], 0
+            return [], 0, 0.0
+        # Importe a nivel licitación distinct (cada fila = una licitación aquí).
+        importe_distinct = float(classified["importe"].sum(skipna=True) or 0.0)
         g = (
             classified.groupby(col)
             .agg(count=("id_externo", "count"), importe=("importe", "sum"))
@@ -192,7 +202,7 @@ def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int]:
             )
             for _, row in g.iterrows()
         ]
-        return entries, total_clasificados
+        return entries, total_clasificados, importe_distinct
 
     # Fallback: detect modules from titulo + descripcion
     for c in ["titulo", "descripcion"]:
@@ -209,11 +219,12 @@ def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int]:
     elif "descripcion" in df.columns:
         combined = df["descripcion"].fillna("").astype(str)
     else:
-        return [], 0
+        return [], 0, 0.0
 
     # Detect modules per row
     module_counts: dict[str, dict[str, float]] = {}
     classified_ids: set[int] = set()
+    distinct_importe = 0.0
 
     for i, (idx, text) in enumerate(combined.items()):
         modules = _detect_modules(str(text))
@@ -221,6 +232,7 @@ def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int]:
             classified_ids.add(int(str(idx)))
             val = df.iloc[i].get("importe", 0.0)
             imp = float(str(val)) if pd.notna(val) else 0.0
+            distinct_importe += imp  # una vez por licitación, no por módulo
             for mod in modules:
                 if mod not in module_counts:
                     module_counts[mod] = {"count": 0, "importe": 0.0}
@@ -235,7 +247,7 @@ def _build_modulos(df: pd.DataFrame) -> tuple[list[ModuloEntry], int]:
         key=lambda e: e.count,
         reverse=True,
     )
-    return entries, len(classified_ids)
+    return entries, len(classified_ids), distinct_importe
 
 
 def _build_tipos_proyecto(df: pd.DataFrame) -> list[ProyectoTipoEntry]:
@@ -383,13 +395,16 @@ def get_proyectos_modulos(filters: ProyectosModulosFilters) -> ProyectosModulosR
     df = _load_df()
     df = _apply_filters(df, filters)
 
-    modulos, total_clasificados = _build_modulos(df)
+    modulos, total_clasificados, importe_total_sap = _build_modulos(df)
     tipos_proyecto = _build_tipos_proyecto(df)
+    ticket_medio_sap = importe_total_sap / total_clasificados if total_clasificados else 0.0
 
     result = ProyectosModulosResult(
         modulos=modulos,
         tipos_proyecto=tipos_proyecto,
         total_clasificados=total_clasificados,
+        importe_total_sap=round(importe_total_sap, 2),
+        ticket_medio_sap=round(ticket_medio_sap, 2),
         top_modulo_yoy=_top_modulo_yoy(df),
         tipo_estado=_build_tipo_estado(df),
         cpv=_build_cpv(df),

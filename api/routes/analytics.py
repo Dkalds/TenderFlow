@@ -16,6 +16,11 @@ from observability.logging import get_logger
 from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
 from services.analytics.competitors import CompetitorFilters, CompetitorResult, get_competitors
+from services.analytics.ecosistema_partners import (
+    PartnerGraphFilters,
+    PartnershipGraphResult,
+    get_partnership_graph,
+)
 from services.analytics.forecast_svc import (
     ForecastFilters,
     ForecastVolumeResult,
@@ -39,6 +44,11 @@ from services.analytics.proyectos_modulos import (
     get_proyectos_modulos,
 )
 from services.analytics.quality import QualityResult, get_quality
+from services.analytics.red_organo_empresa import (
+    GraphFilters,
+    OrganCompanyGraphResult,
+    get_organ_company_graph,
+)
 from services.analytics.resumen import (
     ResumenHoyFilters,
     ResumenHoyResult,
@@ -102,8 +112,8 @@ def trends(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    group_by: Literal["month", "week"] = Query(
-        default="month", description="Group by month or week"
+    group_by: Literal["month", "week", "day"] = Query(
+        default="month", description="Group by month, week or day"
     ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> TrendsResult:
@@ -166,13 +176,22 @@ def scoring(
     min_score: int = Query(default=0, ge=0, le=100, description="Minimum score threshold"),
     limit: int = Query(default=50, ge=1, le=500, description="Max opportunities to return"),
     band: str | None = Query(default=None, description="Filter by band (alta|media|baja)"),
+    ids: str | None = Query(
+        default=None,
+        description=(
+            "CSV de id_externo: puntúa exactamente esas licitaciones (alineado a la "
+            "página del listado), ignorando min_score/band/limit"
+        ),
+    ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> ScoringResult:
-    """Opportunity scoring — ranked by commercial potential."""
+    """Opportunity scoring — ranked by commercial potential, or page-aligned by ids."""
+    id_list = [i for i in ids.split(",") if i] if ids else None
     filters = ScoringFilters(
         min_score=min_score,
         limit=limit,
         band=band,
+        ids=id_list,
     )
     return get_scoring(filters)
 
@@ -516,3 +535,37 @@ def compare_periods(
         tecnologia=tecnologia,
     )
     return get_compare_periods(filters)
+
+
+@router.get("/organ-company-graph", response_model=OrganCompanyGraphResult)
+def organ_company_graph(
+    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
+    min_contratos: int = Query(default=1, ge=1, le=100, description="Min contratos per edge"),
+    top_organos: int = Query(default=10, ge=1, le=50, description="Top N organos by importe"),
+    top_empresas: int = Query(default=10, ge=1, le=50, description="Top N empresas by importe"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> OrganCompanyGraphResult:
+    """Grafo bipartito órgano↔empresa de adjudicaciones reales (no co-ocurrencia CCAA)."""
+    return get_organ_company_graph(
+        GraphFilters(
+            ccaa=ccaa,
+            min_contratos=min_contratos,
+            top_organos=top_organos,
+            top_empresas=top_empresas,
+        )
+    )
+
+
+@router.get("/partnership-graph", response_model=PartnershipGraphResult)
+def partnership_graph(
+    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
+    min_contratos: int = Query(
+        default=1, ge=1, le=100, description="Min UTEs compartidas per edge"
+    ),
+    top_nodes: int = Query(default=20, ge=1, le=80, description="Top N empresas by importe"),
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> PartnershipGraphResult:
+    """Grafo de co-licitación real (UTE/co-adjudicación), no co-ocurrencia por CCAA."""
+    return get_partnership_graph(
+        PartnerGraphFilters(ccaa=ccaa, min_contratos=min_contratos, top_nodes=top_nodes)
+    )

@@ -138,3 +138,13 @@ contrato es `ccaa_cubiertas` (aditivo).
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (#3, correctitud).** La card "CCAA cubiertas" se
+back-calculaba como `concentracion_geo_top3 / 100 × 17` (concentración ≠ cobertura).
+Eliminada la fabricación `× 17`: la card se **reetiqueta al dato real** que ya
+entrega el backend — "Concentración top-3 CCAA" = `concentracion_geo_top3%`
+(importe en las 3 CCAA principales). Honesto y sin pérdida de información; el conteo
+real de CCAA distintas (`ccaa_cubiertas`) queda como adición backend si se quiere la
+métrica de cobertura. Verde: `tsc`/`eslint`/`vitest` (19 files, 285 tests).
+**Diferido:** (1) delta period-over-period en todos los KPIs, (2) KPIs clicables
+con drill-down, (4) progressive disclosure / bloque "Requiere atención".

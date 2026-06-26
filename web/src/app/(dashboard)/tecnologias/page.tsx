@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 const TecnologiasEvolutionChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasEvolutionChart })), { ssr: false, loading: () => <Skeleton className="h-[340px] w-full rounded-md" /> });
@@ -18,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import {
   Cpu,
   Hash,
@@ -30,6 +31,7 @@ import {
   Star,
   DollarSign,
   Percent,
+  ListChecks,
   Map as MapIcon,
 } from "lucide-react";
 
@@ -64,6 +66,7 @@ interface EvolucionItem {
 interface TecnologiasResponse {
   tecnologias: TecnologiaItem[];
   sin_clasificar: number;
+  total?: number;
   n_tecnologias: number;
   tecnologia_lider: string | null;
   lider_count: number;
@@ -320,6 +323,41 @@ export default function TecnologiasPage() {
           loading={isLoading}
         />
       </div>
+
+      {/* Cobertura del clasificador — sin_clasificar como métrica de calidad accionable */}
+      {(() => {
+        const total = data?.total ?? 0;
+        const sin = data?.sin_clasificar ?? 0;
+        const pctClasificado = total > 0 ? ((total - sin) / total) * 100 : 0;
+        const low = total > 0 && pctClasificado < 70;
+        return (
+          <Card
+            className={cn(
+              low && "border-amber-400 bg-amber-50/40 dark:bg-amber-950/20",
+            )}
+          >
+            <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Cobertura del clasificador
+                </p>
+                <p className="text-2xl font-bold">
+                  {isLoading ? "…" : `${pctClasificado.toFixed(1)}% clasificado`}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {formatNumber(sin)} sin clasificar de {formatNumber(total)} licitaciones
+                </p>
+              </div>
+              <Button asChild variant={low ? "default" : "outline"}>
+                <Link href="/active-learning">
+                  <ListChecks className="mr-2 h-4 w-4" />
+                  Revisar sin clasificar
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Monthly Evolution split by technology */}
       <Card>

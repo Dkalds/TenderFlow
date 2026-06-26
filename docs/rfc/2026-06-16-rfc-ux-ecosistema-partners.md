@@ -99,3 +99,17 @@ grafo inventado que el RFC de Red Órgano-Empresa.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-24 — **Implementado.** Backend: `services/analytics/ecosistema_partners.py`
+(wrapper sobre `build_partnership_graph`, que ya existía sin endpoint) + endpoint
+`GET /api/v1/analytics/partnership-graph` (filtro CCAA + top-N en backend). Las
+aristas empresa↔empresa salen de **co-licitación real** (UTE conjunta, parseada del
+`nombre` vía `parse_ute_members`), peso = nº de UTEs compartidas + importe — no
+co-ocurrencia por CCAA. Frontend: eliminado `buildGraphData` (links "co-occurrence
+in same CCAA"); el grafo de la pestaña "Red de Partners" consume el endpoint real
+(query separada con los sliders como `top_nodes`/`min_contratos`). El resto de la
+página (KPIs, tabla, Ganadores) sigue con datos reales de `competitors`. Tests: 3
+backend (aristas UTE reales, min_contratos, vacío sin UTEs). Verde:
+pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285). `check_frontend_invariants`:
+`synthetic-graph` 1→**0** (cerrados los dos grafos sintéticos). **Diferido:** click
+en nodo/arista → perfil/UTEs (drill-down); unificación con el RFC de UTEs.

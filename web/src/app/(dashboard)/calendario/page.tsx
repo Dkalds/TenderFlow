@@ -57,55 +57,19 @@ export default function CalendarioPage() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
   const { data, isLoading, error } = useFilteredQuery<TrendsResponse>(
-    ["analytics", "trends", "week"],
-    "/api/v1/analytics/trends?group_by=week",
+    ["analytics", "trends", "day"],
+    "/api/v1/analytics/trends?group_by=day",
     { staleTime: 5 * 60 * 1000 },
   );
 
-  // Build daily counts from weekly series
+  // Conteos diarios REALES del backend (group_by=day): period = "YYYY-MM-DD".
+  // Antes se repartía la serie SEMANAL ÷7 con un fudge de día laborable → dato falso
+  // (ADR-014, Patrón 1). Ahora cada día es su conteo real de publicaciones.
   const dailyCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    if (!data?.series) return counts;
-
-    for (const point of data.series) {
-      const date = new Date(point.period);
-      if (!isNaN(date.getTime())) {
-        for (let d = 0; d < 7; d++) {
-          const day = new Date(date);
-          day.setDate(day.getDate() + d);
-          const key = day.toISOString().slice(0, 10);
-          const dailyShare = Math.round(point.count / 7);
-          counts.set(key, (counts.get(key) ?? 0) + (d < 5 ? dailyShare + 1 : dailyShare));
-        }
-      } else {
-        const weekMatch = point.period.match(/^(\d{4})-W(\d{2})$/);
-        if (weekMatch) {
-          const year = parseInt(weekMatch[1]);
-          const week = parseInt(weekMatch[2]);
-          const jan4 = new Date(year, 0, 4);
-          const dayOfWeek = jan4.getDay() || 7;
-          const monday = new Date(jan4);
-          monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
-          for (let d = 0; d < 7; d++) {
-            const day = new Date(monday);
-            day.setDate(monday.getDate() + d);
-            const key = day.toISOString().slice(0, 10);
-            const dailyShare = Math.round(point.count / 7);
-            counts.set(key, (counts.get(key) ?? 0) + dailyShare);
-          }
-        } else {
-          const monthDate = new Date(point.period + "-01");
-          if (!isNaN(monthDate.getTime())) {
-            const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
-            const dailyShare = Math.round(point.count / daysInMonth);
-            for (let d = 0; d < daysInMonth; d++) {
-              const day = new Date(monthDate);
-              day.setDate(day.getDate() + d);
-              const key = day.toISOString().slice(0, 10);
-              counts.set(key, dailyShare);
-            }
-          }
-        }
+    for (const point of data?.series ?? []) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(point.period)) {
+        counts.set(point.period, (counts.get(point.period) ?? 0) + point.count);
       }
     }
     return counts;

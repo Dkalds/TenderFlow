@@ -164,6 +164,55 @@ def test_renovaciones_filtro_por_empresa(db):
     assert items[0]["empresa"] == "Zeta Solutions"
 
 
+def test_perfil_empresa_por_ccaa_es_por_empresa_y_completo(db):
+    """perfil_empresa.por_ccaa cubre TODAS las CCAA de la empresa.
+
+    El drill-down de Competidores consume este desglose por empresa; antes el
+    frontend lo derivaba de un heatmap global recortado al top-10 empresas, así
+    que salía vacío para cualquier empresa fuera de ese top (ADR-014).
+    """
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+
+    # Una empresa (mismo NIF) con adjudicaciones en 3 CCAA distintas.
+    insert_contract(db, "P-1", "Solo SL", nif="B99999999", ccaa="Madrid")
+    insert_contract(db, "P-2", "Solo SL", nif="B99999999", ccaa="Madrid")
+    insert_contract(db, "P-3", "Solo SL", nif="B99999999", ccaa="Cataluña")
+    insert_contract(db, "P-4", "Solo SL", nif="B99999999", ccaa="Galicia")
+    resolve(db)
+
+    with connect_read() as c:
+        empresa_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B99999999'"
+        ).fetchone()[0]
+
+    perfil = perfil_empresa(empresa_id)
+    por_ccaa = {r["ccaa"]: r["contratos"] for r in perfil["por_ccaa"]}
+    assert por_ccaa == {"Madrid": 2, "Cataluña": 1, "Galicia": 1}
+    assert perfil["totales"]["contratos"] == 4
+
+
+def test_perfil_empresa_por_anio_traza_la_trayectoria(db):
+    """perfil_empresa.por_anio da la serie temporal (creciendo/declinando)."""
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+
+    # 1 contrato en 2023, 3 en 2024 → trayectoria al alza.
+    insert_contract(db, "A-1", "Trend SL", nif="B12121212", fecha_adjudicacion="2023-04-01")
+    for i in range(3):
+        insert_contract(db, f"A-2{i}", "Trend SL", nif="B12121212", fecha_adjudicacion="2024-07-01")
+    resolve(db)
+
+    with connect_read() as c:
+        empresa_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12121212'"
+        ).fetchone()[0]
+
+    perfil = perfil_empresa(empresa_id)
+    serie = [(r["anio"], r["contratos"]) for r in perfil["por_anio"]]
+    assert serie == [(2023, 1), (2024, 3)]  # orden cronológico, sin años nulos
+
+
 def test_resumen_renovaciones_agrega_por_empresa(db):
     from services.competitive.renovaciones import resumen_renovaciones
 

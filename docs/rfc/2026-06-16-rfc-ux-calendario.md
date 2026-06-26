@@ -103,3 +103,25 @@ diarios reales.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-25 — **Implementado parcialmente (criterio #1: datos diarios reales).**
+El bug de integridad —el núcleo del RFC— queda resuelto. Backend
+(`services/analytics/trends.py`): `_build_series` y `TrendsFilters.group_by`
+ganan `"day"` (período `"D"`, formato `"%Y-%m-%d"`); el endpoint
+`/api/v1/analytics/trends` acepta `group_by=day`. Frontend
+(`calendario/page.tsx`): la página pide `group_by=day` y construye `dailyCounts`
+leyendo el conteo REAL por fecha; se elimina el reparto sintético
+`dailyShare = Math.round(point.count / 7)` con el fudge de día laborable
+(ADR-014, Patrón 1). El heatmap, las barras mensuales y la distribución por día
+de la semana ahora derivan del dato diario real. Tests: nuevo
+`tests/test_analytics_trends.py` (4) cubre day/month grouping, filtros y vacío.
+Verde: pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285); el scanner de
+invariantes ya no marca la página.
+
+**Diferido (criterios #2-#4: reorientar a vencimientos).** Mostrar plazos de
+presentación (`fecha_limite`/`fecha_fin`) como vista principal, día clicable →
+listado de cierres, resaltar hoy/próximos 7 y KPIs de vencimientos es un rework
+de producto más amplio: requiere exponer el campo de fecha límite en el agregado
+(hoy `load_stats_dataframe` sirve `fecha_publicacion`) y un endpoint/serie de
+vencimientos. Se aborda en un RFC/iteración aparte; la vista de actividad de
+publicación —ahora honesta— se mantiene como base.

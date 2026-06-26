@@ -188,6 +188,20 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
                 (empresa_id,),
             )
         )
+        por_anio = rows_to_dicts(
+            c.execute(
+                f"""
+                SELECT CAST(strftime('%Y', a.fecha_adjudicacion) AS INTEGER) AS anio,
+                       COUNT(*) AS contratos,
+                       COALESCE(SUM(a.importe_adjudicado), 0) AS importe
+                FROM adjudicaciones a
+                WHERE a.empresa_id = ? AND a.fecha_adjudicacion IS NOT NULL
+                  AND {exclude_duplicados_sql("a.licitacion_id")}
+                GROUP BY anio HAVING anio IS NOT NULL ORDER BY anio
+                """,  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
+                (empresa_id,),
+            )
+        )
         contratos_recientes = rows_to_dicts(
             c.execute(
                 f"""
@@ -212,5 +226,6 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
         "por_cpv": por_cpv,
         "por_ccaa": por_ccaa,
         "organos_principales": organos,
+        "por_anio": por_anio,
         "contratos_recientes": contratos_recientes,
     }

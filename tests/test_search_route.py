@@ -129,3 +129,76 @@ class TestSearchResponse:
         with patch("api.routes.search.run_ml", side_effect=RuntimeError("FAISS crashed")):
             resp = search_client.post("/api/v1/search/semantic", json={"q": "SAP"})
         assert resp.status_code == 503
+
+
+class TestSearchFilters:
+    """Los filtros se aplican en backend (allowed_ids), no se fingen en el cliente."""
+
+    @staticmethod
+    def _seed():
+        from db.upsert import Licitacion, upsert_licitaciones
+
+        upsert_licitaciones(
+            [
+                Licitacion(id_externo="L1", titulo="SAP Madrid", ccaa="Madrid", tecnologia="SAP"),
+                Licitacion(
+                    id_externo="L2", titulo="SAP Cataluña", ccaa="Cataluña", tecnologia="SAP"
+                ),
+                Licitacion(id_externo="L3", titulo="SAP Galicia", ccaa="Galicia", tecnologia="SAP"),
+            ]
+        )
+
+    @staticmethod
+    def _patch_engine_returns_all():
+        # FAISS vacío; FTS devuelve los 3 candidatos. _run filtra por allowed_ids.
+        return (
+            patch("services.investigador.search_engine.faiss_search", return_value=[]),
+            patch(
+                "services.investigador.search_engine.fts5_search",
+                return_value=[("L1", 0.9), ("L2", 0.8), ("L3", 0.7)],
+            ),
+        )
+
+    def test_filters_restrict_to_allowed_ids(self, search_client):
+        self._seed()
+        p_faiss, p_fts = self._patch_engine_returns_all()
+        with p_faiss, p_fts:
+            resp = search_client.post(
+                "/api/v1/search/semantic",
+                json={"q": "sap", "ccaa": ["Madrid", "Cataluña"]},
+            )
+        assert resp.status_code == 200
+        ids = {h["id_externo"] for h in resp.json()["hits"]}
+        assert ids == {"L1", "L2"}  # Galicia (L3) excluida por el filtro
+
+    def test_no_filters_returns_all_candidates(self, search_client):
+        self._seed()
+        p_faiss, p_fts = self._patch_engine_returns_all()
+        with p_faiss, p_fts:
+            resp = search_client.post("/api/v1/search/semantic", json={"q": "sap"})
+        assert resp.status_code == 200
+        ids = {h["id_externo"] for h in resp.json()["hits"]}
+        assert ids == {"L1", "L2", "L3"}
+
+    def test_tecnologia_filter_excludes_others(self, search_client):
+        from db.upsert import Licitacion, upsert_licitaciones
+
+        upsert_licitaciones(
+            [
+                Licitacion(id_externo="T1", titulo="x", ccaa="Madrid", tecnologia="SAP"),
+                Licitacion(id_externo="T2", titulo="y", ccaa="Madrid", tecnologia="ORACLE"),
+            ]
+        )
+        with (
+            patch("services.investigador.search_engine.faiss_search", return_value=[]),
+            patch(
+                "services.investigador.search_engine.fts5_search",
+                return_value=[("T1", 0.9), ("T2", 0.8)],
+            ),
+        ):
+            resp = search_client.post(
+                "/api/v1/search/semantic",
+                json={"q": "x", "tecnologia": ["ORACLE"]},
+            )
+        ids = {h["id_externo"] for h in resp.json()["hits"]}
+        assert ids == {"T2"}

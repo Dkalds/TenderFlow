@@ -4,7 +4,8 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { KpiCard } from "@/components/charts/kpi-card";
 const WaterfallChart = dynamic(() => import("@/components/charts/waterfall-chart").then(m => ({ default: m.WaterfallChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -146,7 +147,10 @@ export default function TendenciasPage() {
     return result;
   }, [series]);
 
-  // Heatmap
+  // Heatmap — ESTIMADO (no es un cruce real): producto de marginales
+  // (distribución global de estados × volumen mensual). El cruce real (mes,estado)
+  // debe venir de un cross-tab en backend (ver RFC ux-tendencias). Etiquetado en UI
+  // como "Estimado" mientras tanto, para no presentar síntesis como dato real.
   const heatmapData = useMemo(() => {
     if (!overview) return null;
     const estados = overview.por_estado.map((e) => e.estado);
@@ -325,7 +329,17 @@ export default function TendenciasPage() {
       {/* Heatmap */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Heatmap: Mes x Estado</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">Heatmap: Mes x Estado</CardTitle>
+            <Badge variant="outline" className="text-amber-600 border-amber-400">
+              Estimado
+            </Badge>
+          </div>
+          <CardDescription>
+            Estimación a partir de marginales (distribución global de estados ×
+            volumen mensual), no un cruce real Mes×Estado. Pendiente de exponer el
+            cross-tab real en backend.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -422,7 +436,8 @@ export default function TendenciasPage() {
                 <Tooltip formatter={(value) => [forecastMetric === "sum" ? formatCurrency(value as number) : formatNumber(value as number), ""]} />
                 {/* Confidence band */}
                 <Area type="monotone" dataKey="upper" stroke="none" fill="hsl(221, 83%, 53%)" fillOpacity={0.1} name="Upper" />
-                <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(0, 0%, 100%)" fillOpacity={1} name="Lower" />
+                {/* "Goma" de la banda: el token de fondo de la card (no blanco) para que sea theme-safe en dark mode. */}
+                <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--card))" fillOpacity={1} name="Lower" />
                 {/* Historical line */}
                 <Line type="monotone" dataKey="historico" stroke="hsl(221, 83%, 53%)" strokeWidth={2} dot={{ r: 2 }} name="Historico" />
                 {/* Forecast line */}

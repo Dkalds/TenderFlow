@@ -112,3 +112,21 @@ nicho) que conviene cachear.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-25 — **Implementado (criterio #2: trayectoria temporal).** El perfil
+mostraba `primera`/`ultima_adjudicacion` pero no la evolución: no se veía si la
+empresa crece o decae (señal competitiva clave). Backend
+(`services/competitive/mercado.py::perfil_empresa`): nuevo `por_anio` — serie
+cronológica `(anio, contratos, importe)` por empresa (`GROUP BY` año de
+`fecha_adjudicacion`, `HAVING anio IS NOT NULL`). Como el endpoint
+`/competitive/empresas/{id}/perfil` lo comparten Empresas y Competidores, ambos
+se benefician. Frontend (`empresas/page.tsx`): componente `YearTrend` — barras por
+año en orden cronológico y un badge de tendencia (↑/↓/→ con el delta vs el año
+anterior). Sin librería de charts nueva (barras inline). Test backend
+`test_perfil_empresa_por_anio_traza_la_trayectoria` (2023→2024 al alza, orden y
+sin años nulos). Verde: pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285).
+
+**Diferido:** KPIs de posicionamiento (cuota de mercado y rank por nicho CPV/CCAA,
+#1) — requieren cómputo del universo del nicho en backend; drill-down de los
+desgloses a las adjudicaciones reales (#3); y paginación del maestro más allá de
+50 (#4).

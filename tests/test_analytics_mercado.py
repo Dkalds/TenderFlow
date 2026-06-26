@@ -91,6 +91,9 @@ def test_tecnologias_kpis_and_explode():
     assert labels == {"SAP", "Oracle", "Salesforce"}
     assert res.n_tecnologias == 3
     assert res.sin_clasificar == 2
+    # total = todas las licitaciones en alcance (denominador de cobertura).
+    assert res.total >= res.sin_clasificar
+    assert res.total - res.sin_clasificar > 0  # hay clasificadas
     # SAP = 5 direct + 2 comma rows = 7, and is the leader.
     sap = next(e for e in res.tecnologias if e.tecnologia == "SAP")
     assert sap.count == 7
@@ -197,6 +200,37 @@ def test_proyectos_modulos_yoy_tipo_estado_cpv():
     assert all(c.cpv_desc for c in res.cpv)
 
 
+def test_proyectos_modulos_importe_distinct_sin_doble_conteo():
+    """Una licitación con varios módulos SAP cuenta su importe UNA vez (no por módulo)."""
+    rows = [
+        {
+            "id_externo": "M1",
+            "titulo": "Implantacion SAP FI y CO integrados",  # detecta FI + CO
+            "organo_contratacion": "Org",
+            "ccaa": "Madrid",
+            "cpv": "72000000",
+            "importe": 1_000_000.0,
+            "tecnologia": "SAP",
+            "estado": "ADJ",
+            "tipo_contrato": "2",
+            "fecha_publicacion": _iso(30),
+        },
+    ]
+    with patch.object(pm_mod, "load_stats_dataframe", return_value=rows):
+        res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
+
+    # FI y CO detectados → 2 filas de módulo…
+    mods = {m.modulo for m in res.modulos}
+    assert {"FI", "CO"} <= mods
+    # …pero 1 sola licitación clasificada, con su importe contado UNA vez.
+    assert res.total_clasificados == 1
+    assert res.importe_total_sap == 1_000_000.0
+    assert res.ticket_medio_sap == 1_000_000.0
+    # La suma de filas de módulo SÍ doble-cuenta (FI 1M + CO 1M = 2M): por eso el
+    # KPI debe venir de importe_total_sap distinct, no de sum(modulos.importe).
+    assert sum(m.importe for m in res.modulos) == 2_000_000.0
+
+
 # ---------------------------------------------------------------------------
 # clusters
 # ---------------------------------------------------------------------------
@@ -234,6 +268,9 @@ def test_clusters_shape_and_labels():
     assert res.total == 30
     assert res.n_clusters_detectados == 3
     assert len(res.clusters) == 3
+    # Calidad de la partición expuesta (guía para elegir K).
+    assert res.silhouette is not None
+    assert -1.0 <= res.silhouette <= 1.0
     for c in res.clusters:
         assert c.n > 0
         assert c.label and c.label != ""
@@ -241,6 +278,9 @@ def test_clusters_shape_and_labels():
         b = c.importe_box
         assert b.min <= b.q1 <= b.median <= b.q3 <= b.max
         assert c.items  # bounded drill-down sample present
+        # Descriptores de identidad (interpretabilidad).
+        assert c.organo_dominante in {"Organo 0", "Organo 1", "Organo 2", "Organo 3"}
+        assert c.cpv_dominante  # cpv 72000000 → label legible no vacío
     # sorted by n descending
     sizes = [c.n for c in res.clusters]
     assert sizes == sorted(sizes, reverse=True)

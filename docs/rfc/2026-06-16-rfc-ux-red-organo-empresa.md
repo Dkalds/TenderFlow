@@ -101,3 +101,16 @@ dato sintético que aparece en otras páginas.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-24 — **Implementado.** Backend: `services/analytics/red_organo_empresa.py`
+(wrapper sobre `build_bipartite_graph`, que ya existía pero no estaba expuesto) +
+endpoint `GET /api/v1/analytics/organ-company-graph` (filtro CCAA + top-N en
+backend). Las aristas son **adjudicaciones reales** (órgano → empresa adjudicataria,
+peso = nº contratos + importe + frecuencia anual), no co-localización por CCAA.
+Frontend: eliminado `buildBipartiteData` (aristas "share CCAA") y la matriz por
+co-ocurrencia geográfica; el grafo, la matriz (contratos reales) y la tabla
+consumen las aristas reales del endpoint. KPIs desde totales del backend. Tests: 3
+backend (aristas reales, min_contratos, vacío). Verde: pytest/mypy/ruff/codespell +
+`tsc`/`eslint`/`vitest` (285). `check_frontend_invariants`: `synthetic-graph` 2→1.
+**Diferido:** click en nodo/arista → detalle/listado (drill-down; `ForceGraph` ya
+expone `onNodeClick`, falta destino de navegación con filtro).

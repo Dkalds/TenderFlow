@@ -104,3 +104,12 @@ Cerrar el **bucle de calidad de clasificación** y conectar análisis con acció
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-22 — **Implementado (cobertura + acción).** Backend
+(`services/analytics/tecnologias.py`): `TecnologiasResult` gana `total`
+(licitaciones en alcance = denominador exacto de cobertura). Frontend: nueva card
+"Cobertura del clasificador" — `% clasificado = (total − sin_clasificar) / total`
++ `N sin clasificar`, con alerta ámbar si cae bajo 70% y botón "Revisar sin
+clasificar" → `/active-learning`. Tests: +aserción backend de `total`, 4/4 verde;
+mypy limpio; `tsc`/`eslint`/`vitest` (285) verde. **Diferido:** bridge del detalle
+por tecnología / barras al listado filtrado (drill-down).

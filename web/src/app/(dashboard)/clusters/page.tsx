@@ -22,7 +22,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
 import { getSeriesColor } from "@/lib/chart-colors";
-import { Waypoints, Hash, Layers, RefreshCw, BarChart3 } from "lucide-react";
+import { Waypoints, Hash, Layers, RefreshCw, BarChart3, Gauge } from "lucide-react";
 import type { BoxDatum } from "@/components/charts/clusters-charts";
 
 interface ImporteBox {
@@ -48,6 +48,8 @@ interface ClusterEntry {
   n: number;
   importe_medio: number;
   importe_total: number;
+  cpv_dominante?: string | null;
+  organo_dominante?: string | null;
   importe_box: ImporteBox | null;
   items: ClusterItem[];
 }
@@ -55,6 +57,7 @@ interface ClusterEntry {
 interface ClustersResponse {
   n_clusters_detectados: number;
   total: number;
+  silhouette?: number | null;
   clusters: ClusterEntry[];
 }
 
@@ -163,12 +166,31 @@ export default function ClustersPage() {
       </Card>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           title="Clusters detectados"
           value={isLoading ? undefined : formatNumber(data?.n_clusters_detectados ?? 0)}
           subtitle={autoK ? "auto (silhouette)" : undefined}
           icon={Waypoints}
+          loading={isLoading}
+        />
+        <KpiCard
+          title="Calidad (silhouette)"
+          value={
+            isLoading || data?.silhouette == null
+              ? undefined
+              : data.silhouette.toFixed(2)
+          }
+          subtitle={
+            data?.silhouette == null
+              ? "no disponible"
+              : data.silhouette >= 0.5
+                ? "Buena separación"
+                : data.silhouette >= 0.25
+                  ? "Separación moderada"
+                  : "Separación débil — prueba otro k"
+          }
+          icon={Gauge}
           loading={isLoading}
         />
         <KpiCard
@@ -253,6 +275,8 @@ export default function ClustersPage() {
                   <TableRow className="border-b text-left">
                     <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">ID</TableHead>
                     <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Keywords</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">CPV dominante</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Organo dominante</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Licitaciones</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Importe medio</TableHead>
                     <TableHead className="pb-2 text-right font-medium text-muted-foreground">Importe total</TableHead>
@@ -269,6 +293,12 @@ export default function ClustersPage() {
                       <TableCell className="max-w-md py-2 pr-4">
                         <span className="block truncate" title={c.label}>{c.label}</span>
                       </TableCell>
+                      <TableCell className="max-w-[14rem] truncate py-2 pr-4 text-muted-foreground" title={c.cpv_dominante ?? ""}>
+                        {c.cpv_dominante ?? "-"}
+                      </TableCell>
+                      <TableCell className="max-w-[12rem] truncate py-2 pr-4 text-muted-foreground" title={c.organo_dominante ?? ""}>
+                        {c.organo_dominante ?? "-"}
+                      </TableCell>
                       <TableCell className="py-2 pr-4 text-right tabular-nums">{formatNumber(c.n)}</TableCell>
                       <TableCell className="py-2 pr-4 text-right tabular-nums">{formatCurrency(c.importe_medio)}</TableCell>
                       <TableCell className="py-2 text-right tabular-nums">{formatCurrency(c.importe_total)}</TableCell>
@@ -276,7 +306,7 @@ export default function ClustersPage() {
                   ))}
                   {clusters.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                         Sin clusters
                       </TableCell>
                     </TableRow>

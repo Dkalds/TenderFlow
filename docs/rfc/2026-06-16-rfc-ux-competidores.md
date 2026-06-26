@@ -115,3 +115,31 @@ arreglando primero las dos incoherencias.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+2026-06-25 — **Implementado (criterio #2 completo y #1 como declaración honesta).**
+
+- **#2 Drill-down CCAA completo.** El desglose "Actividad por CCAA" del Sheet se
+  derivaba de `data.heatmap_ccaa`, **recortado al top-10 empresas**, así que para
+  cualquier empresa fuera de ese top salía vacío ("Sin desglose por CCAA") aunque
+  tuviera actividad: prometía más de lo que entregaba (ADR-014). El arreglo es de
+  cableado en frontend: el Sheet **ya** pide
+  `/competitive/empresas/{id}/perfil`, cuyo `perfil_empresa.por_ccaa` es **por
+  empresa y completo** (hasta 20 CCAA, `GROUP BY l.ccaa`). Ahora `drillDownCcaa`
+  consume `drillDownProfile.por_ccaa` (campo `por_ccaa` tipado en
+  `CompetitorProfile`, render con `contratos`), con skeleton mientras carga el
+  perfil. Test de contrato backend `test_perfil_empresa_por_ccaa_es_por_empresa_y_completo`
+  (inserta una empresa en 3 CCAA y verifica el desglose). Sin cambios de backend:
+  el dato ya se servía.
+- **#1 Coherencia del ranking de bajas → declarado en UI.** El endpoint
+  `/competitive/bajas` solo honra `ccaa` (el resto de filtros se ignoraba, antes
+  solo documentado en un comentario de código). Siguiendo la opción del propio RFC
+  ("declararlo explícitamente en la UI"), la card añade el ámbito: "respeta el
+  filtro de CCAA; no aplica rango de fechas, CPV ni importe". Honrar el set
+  completo en el endpoint queda pendiente.
+
+Verde: pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285); el scanner no
+añade hallazgos.
+
+**Diferido:** trayectoria temporal por competidor en el Sheet (#3), señales
+proactivas/"Movimientos" sobre watchlist (#4), y fechas crudas → `formatDate`
+(#5). También honrar de verdad los filtros completos en `/competitive/bajas`.

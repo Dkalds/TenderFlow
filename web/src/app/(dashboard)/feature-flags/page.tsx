@@ -14,6 +14,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth";
+import { formatDate } from "@/lib/utils";
 
 interface FeatureFlag {
   key: string;
@@ -21,6 +22,7 @@ interface FeatureFlag {
   defaultEnabled: boolean;
   enabled?: boolean;
   rollout?: number;
+  updatedAt?: string | null;
 }
 
 interface ApiFlag {
@@ -28,39 +30,13 @@ interface ApiFlag {
   enabled: boolean;
   rollout_pct: number;
   description: string;
+  updated_at?: string | null;
 }
-
-const LOCAL_FLAGS: FeatureFlag[] = [
-  {
-    key: "ml_classifier_v2",
-    description: "Clasificador ML v2 con transformers",
-    defaultEnabled: true,
-  },
-  {
-    key: "semantic_search",
-    description: "Busqueda semantica con RAG",
-    defaultEnabled: true,
-  },
-  {
-    key: "auto_scoring",
-    description: "Scoring automatico de oportunidades",
-    defaultEnabled: false,
-  },
-  {
-    key: "forecast_arima",
-    description: "Prediccion ARIMA de volumen",
-    defaultEnabled: false,
-  },
-  {
-    key: "ute_detection",
-    description: "Deteccion automatica de UTEs",
-    defaultEnabled: false,
-  },
-];
 
 export default function FeatureFlagsPage() {
   const { isAdmin } = useSession();
-  const [flags, setFlags] = useState<FeatureFlag[]>(LOCAL_FLAGS);
+  // La lista la dirige el backend (no un hardcode): se rellena desde la API.
+  const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [apiAvailable, setApiAvailable] = useState(false);
@@ -75,16 +51,19 @@ export default function FeatureFlagsPage() {
         if (!res.ok) return;
         const data: ApiFlag[] = await res.json();
         setApiAvailable(true);
-        setFlags((prev) =>
-          prev.map((f) => {
-            const match = data.find((a) => a.flag === f.key);
-            return match
-              ? { ...f, enabled: match.enabled, rollout: match.rollout_pct, defaultEnabled: match.enabled }
-              : f;
-          }),
+        // Render exactamente lo que devuelve el backend (fuente de verdad).
+        setFlags(
+          data.map((a) => ({
+            key: a.flag,
+            description: a.description,
+            defaultEnabled: a.enabled,
+            enabled: a.enabled,
+            rollout: a.rollout_pct,
+            updatedAt: a.updated_at,
+          })),
         );
       } catch {
-        // API not available, use local state
+        // API no disponible: lista vacía (no hay fallback hardcodeado).
       }
     };
     fetchFlags();
@@ -166,9 +145,17 @@ export default function FeatureFlagsPage() {
           <CardContent className="pt-4 flex items-start gap-2 text-sm">
             <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
             <span>
-              API de feature flags no disponible. Los cambios son locales y se
-              pierden al recargar la pagina.
+              API de feature flags no disponible. No se muestran flags hasta poder
+              conectar con el backend.
             </span>
+          </CardContent>
+        </Card>
+      )}
+
+      {apiAvailable && flags.length === 0 && (
+        <Card>
+          <CardContent className="pt-4 text-sm text-muted-foreground">
+            No hay feature flags definidos en el backend.
           </CardContent>
         </Card>
       )}
@@ -187,6 +174,11 @@ export default function FeatureFlagsPage() {
                       {flag.key}
                     </CardTitle>
                     <CardDescription>{flag.description}</CardDescription>
+                    {flag.updatedAt && (
+                      <p className="text-xs text-muted-foreground">
+                        Último cambio: {formatDate(flag.updatedAt)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge variant={isOn ? "default" : "secondary"}>

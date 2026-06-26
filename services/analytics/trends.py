@@ -26,7 +26,7 @@ class TrendsFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
-    group_by: Literal["month", "week"] = "month"
+    group_by: Literal["month", "week", "day"] = "month"
 
 
 class TrendPoint(BaseModel):
@@ -110,7 +110,7 @@ def _build_series(df: pd.DataFrame, freq: str) -> list[TrendPoint]:
     if df.empty or df["fecha_publicacion"].isna().all():
         return []
     work = df.dropna(subset=["fecha_publicacion"]).copy()
-    period_key = "M" if freq == "month" else "W"
+    period_key = {"month": "M", "week": "W", "day": "D"}.get(freq, "M")
     work["period"] = work["fecha_publicacion"].dt.to_period(period_key).dt.to_timestamp()
     g = (
         work.groupby("period")
@@ -118,7 +118,7 @@ def _build_series(df: pd.DataFrame, freq: str) -> list[TrendPoint]:
         .reset_index()
         .sort_values("period")
     )
-    fmt = "%Y-%m" if freq == "month" else "%Y-W%V"
+    fmt = {"month": "%Y-%m", "week": "%Y-W%V", "day": "%Y-%m-%d"}.get(freq, "%Y-%m")
     return [
         TrendPoint(
             period=row["period"].strftime(fmt),

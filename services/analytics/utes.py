@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
 from services.adjudicaciones import load_raw_adjudicaciones
+from services.partners import build_partnership_graph
 
 log = get_logger(__name__)
 
@@ -55,9 +56,19 @@ class UTEComparacion(BaseModel):
     individual: UTETablaComparativa = Field(default_factory=UTETablaComparativa)
 
 
+class UTESocioPar(BaseModel):
+    """Par de empresas que han co-licitado en UTE (quién se asocia con quién)."""
+
+    empresa_a: str
+    empresa_b: str
+    contratos: int
+    importe: float
+
+
 class UTEResult(BaseModel):
     kpis: UTEKpis = Field(default_factory=UTEKpis)
     top_miembros: list[UTEMiembro] = Field(default_factory=list)
+    socios_frecuentes: list[UTESocioPar] = Field(default_factory=list)
     evolucion: list[UTEEvolucion] = Field(default_factory=list)
     tabla_comparativa: UTEComparacion = Field(default_factory=UTEComparacion)
 
@@ -173,6 +184,24 @@ def get_utes(filters: UTEFilters) -> UTEResult:
                 for _, row in g.iterrows()
             ]
 
+    # Socios frecuentes: pares de empresas que han co-licitado en UTE (real,
+    # parseado del nombre vía build_partnership_graph), ordenados por nº de UTEs.
+    socios_frecuentes: list[UTESocioPar] = []
+    if "es_ute" in df.columns and "nombre" in df.columns:
+        gdf = df.copy()
+        gdf["es_ute"] = gdf["es_ute"].fillna(0).astype(bool)
+        graph = build_partnership_graph(gdf, min_contratos=1, top_nodes=80)
+        top_edges = sorted(graph["edges"], key=lambda e: e["contratos"], reverse=True)[:20]
+        socios_frecuentes = [
+            UTESocioPar(
+                empresa_a=str(e["source"]),
+                empresa_b=str(e["target"]),
+                contratos=int(e["contratos"]),
+                importe=float(e["importe"]),
+            )
+            for e in top_edges
+        ]
+
     # Tabla comparativa
     tabla = UTEComparacion(
         ute=UTETablaComparativa(
@@ -191,6 +220,7 @@ def get_utes(filters: UTEFilters) -> UTEResult:
     return UTEResult(
         kpis=kpis,
         top_miembros=top_miembros,
+        socios_frecuentes=socios_frecuentes,
         evolucion=evolucion,
         tabla_comparativa=tabla,
     )

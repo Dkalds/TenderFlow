@@ -53,9 +53,17 @@ interface TablaComparativa {
   individual: { contratos: number; importe_medio: number; importe_total: number };
 }
 
+interface SocioPar {
+  empresa_a: string;
+  empresa_b: string;
+  contratos: number;
+  importe: number;
+}
+
 interface UTEsData {
   kpis: UTEsKpis;
   top_miembros: TopMiembro[];
+  socios_frecuentes?: SocioPar[];
   evolucion: EvolucionEntry[];
   tabla_comparativa: TablaComparativa;
 }
@@ -243,6 +251,53 @@ export default function UtesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Socios frecuentes — quién se asocia con quién (co-licitación real) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Handshake className="h-4 w-4" />
+            Socios Frecuentes (quién se asocia con quién)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[200px] w-full" />
+          ) : (data?.socios_frecuentes?.length ?? 0) > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="text-left text-muted-foreground">
+                    <TableHead>Empresa</TableHead>
+                    <TableHead>Socio</TableHead>
+                    <TableHead>UTEs juntas</TableHead>
+                    <TableHead>Importe conjunto</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data!.socios_frecuentes!.map((s, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">{truncate(s.empresa_a, 35)}</TableCell>
+                      <TableCell className="font-medium">{truncate(s.empresa_b, 35)}</TableCell>
+                      <TableCell className="tabular-nums">{formatNumber(s.contratos)}</TableCell>
+                      <TableCell className="tabular-nums">{formatCurrency(s.importe)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Separator className="my-3" />
+              <p className="text-xs text-muted-foreground">
+                Pares de empresas que han formado UTE conjunta (co-licitacion real,
+                no co-ocurrencia geografica).
+              </p>
+            </div>
+          ) : (
+            <p className="py-8 text-center text-muted-foreground">
+              Sin pares de co-licitacion detectados
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Charts Row 2: Distribution + Top by importe */}
       <div className="grid gap-6 lg:grid-cols-2">

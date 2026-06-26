@@ -16,6 +16,7 @@ import type { paths } from "@/generated/api";
  * Cookie-based auth (httpOnly) is handled automatically by the browser.
  */
 export const api = createClient<paths>({
+  // fdi-allow:localhost-url — fallback SSR/Node legítimo cuando API_BASE_URL no está set; no es dato renderizado.
   baseUrl: typeof window !== "undefined" ? "" : process.env.API_BASE_URL ?? "http://localhost:8080",
   credentials: "include",
   headers: {

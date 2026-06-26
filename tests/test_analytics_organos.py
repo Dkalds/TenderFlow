@@ -129,6 +129,26 @@ def test_get_organos_ranking_and_pct():
     assert round(result.organos[0].pct) == 67
     # importe agregado de ORG A
     assert result.organos[0].importe == 1_500_000.0
+    # importe_total sobre TODO el dataset (ORG A 1.5M + ORG B 0.2M)
+    assert result.importe_total == 1_700_000.0
+
+
+def test_get_organos_totales_sobre_dataset_completo_no_top_n():
+    """importe_total y concentracion_top10 reflejan TODO el dataset, no el top-N
+    que devuelve `organos` (regresión: antes el frontend los sumaba sobre el top-50)."""
+    with patch(
+        "services.analytics.organos.load_stats_dataframe",
+        return_value=_lic_rows(),
+    ):
+        result = get_organos(OrganosFilters(limit=1))
+
+    # Aunque solo se devuelve 1 órgano (top-1 = ORG A)…
+    assert len(result.organos) == 1
+    assert result.organos[0].importe == 1_500_000.0
+    # …el importe total incluye también a ORG B (fuera del top-1).
+    assert result.importe_total == 1_700_000.0
+    # concentración del top-10 = 100% (solo hay 2 órganos, ambos en el top-10).
+    assert result.concentracion_top10 == 100.0
 
 
 def test_get_organos_empty():
