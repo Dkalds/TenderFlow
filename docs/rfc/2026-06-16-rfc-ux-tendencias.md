@@ -4,7 +4,7 @@ title: "UX/KPIs · Tendencias — heatmap real Mes×Estado, banda de forecast th
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: partially-implemented
 area: web/tendencias
 ---
 

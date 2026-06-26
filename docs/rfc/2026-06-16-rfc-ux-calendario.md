@@ -4,7 +4,7 @@ title: "UX/KPIs · Calendario — datos diarios reales y reorientar a vencimient
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: partially-implemented
 area: web/calendario
 ---
 

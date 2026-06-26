@@ -4,7 +4,7 @@ title: "UX · Administración — usuarios reales (no MOCK_USERS) y gestión fun
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 area: web/administracion
 ---
 

@@ -4,7 +4,7 @@ title: "UX/IA · Licitadores vs Competidores — eliminar redundancia (mismo end
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 area: web/licitadores
 ---
 

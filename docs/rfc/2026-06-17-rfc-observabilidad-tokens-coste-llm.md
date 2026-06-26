@@ -4,7 +4,7 @@ title: Observabilidad de tokens y coste en el cliente LLM
 issue: pendiente — generado por /loop (identificación autónoma de mejoras); sin issue asociado aún
 author: agent:architect
 date: 2026-06-17
-status: draft
+status: implemented
 ---
 
 ## Contexto

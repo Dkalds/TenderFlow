@@ -4,7 +4,7 @@ title: "UX/KPIs · Tendencias CPV — forecast por CPV (no global) y drill-down"
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: partially-implemented
 area: web/tendencias-cpv
 ---
 

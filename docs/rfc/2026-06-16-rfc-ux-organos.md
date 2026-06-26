@@ -4,7 +4,7 @@ title: "UX/KPIs · Órganos — totales reales (no sobre el top-50) y drill-down
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 area: web/organos
 ---
 

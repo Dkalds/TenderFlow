@@ -4,7 +4,7 @@ title: "UX/KPIs · Red Órgano-Empresa — grafo de adjudicaciones reales (no ar
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 area: web/red-organo-empresa
 ---
 

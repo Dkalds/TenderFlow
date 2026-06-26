@@ -4,7 +4,7 @@ title: TTL en el cache de secrets — rotación de vault sin reiniciar el proces
 issue: 84 (Tier 3 · ítem 10)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 ---
 
 ## Contexto

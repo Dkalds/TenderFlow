@@ -4,7 +4,7 @@ title: "UX/KPIs · UTEs — relaciones de co-licitación (quién se asocia con q
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 area: web/utes
 ---
 

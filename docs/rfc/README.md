@@ -19,7 +19,7 @@ title: <título descriptivo>
 issue: <URL del issue de GitHub>
 author: <agent:architect | human:nombre>
 date: YYYY-MM-DD
-status: draft | review | approved | rejected | superseded
+status: draft | review | approved | rejected | superseded | implemented | partially-implemented | obsolete
 supersedes: <RFC anterior si aplica>
 ---
 
@@ -82,3 +82,6 @@ Formato: `YYYY-MM-DDTHH:MMZ agent:reviewer — <comentario>`>
 | `approved` | `agent:rfc-approved` | Listo para que el coder implemente |
 | `rejected` | — | Descartado con justificación |
 | `superseded` | — | Reemplazado por otro RFC (ver campo `supersedes`) |
+| `implemented` | — | Implementado y verificado en código (todos los acceptance criteria cumplidos) |
+| `partially-implemented` | — | Criterio/bug central implementado y verificado; criterios secundarios diferidos (ver notas de review) |
+| `obsolete` | — | Ya no aplica (problema desaparecido o resuelto por otra vía) |

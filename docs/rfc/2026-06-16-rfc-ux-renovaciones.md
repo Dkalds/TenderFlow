@@ -4,7 +4,7 @@ title: "UX/KPIs · Renovaciones — priorizar por riesgo de cambio (modelo de re
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: partially-implemented
 area: web/renovaciones
 ---
 

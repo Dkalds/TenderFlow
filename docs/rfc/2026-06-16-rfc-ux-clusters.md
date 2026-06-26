@@ -4,7 +4,7 @@ title: "UX/KPIs · Clusters — guía de calidad para elegir K e interpretabilid
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 area: web/clusters
 ---
 

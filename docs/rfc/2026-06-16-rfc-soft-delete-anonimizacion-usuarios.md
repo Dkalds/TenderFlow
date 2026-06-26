@@ -4,7 +4,7 @@ title: Soft-delete + anonimización de usuarios (preservar audit trail, GDPR Art
 issue: 84 (Tier 1 · ítem 1)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 ---
 
 ## Contexto
