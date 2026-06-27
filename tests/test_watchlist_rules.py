@@ -10,8 +10,10 @@ import pytest
 
 from services.watchlist_rules import (
     WatchlistRule,
+    count_matches,
     create_rule,
     delete_rule,
+    list_matches,
     list_rules,
     set_active,
     update_rule,
@@ -88,3 +90,85 @@ def test_delete_remueve_solo_la_propia(db):
     assert len(list_rules("user-a")) == 1
     assert delete_rule("user-a", rid) is True
     assert list_rules("user-a") == []
+
+
+# ── matching sobre el dataset ─────────────────────────────────────────────────
+
+
+def _insert_lic(c, lic_id, *, titulo="Lic", descripcion=None, cpv=None, importe=None, ccaa=None):
+    c.execute(
+        "INSERT INTO licitaciones "
+        "(id_externo, titulo, descripcion, cpv, importe, ccaa, fuente, "
+        " fecha_publicacion, fecha_extraccion) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'placsp', '2026-01-01', datetime('now'))",
+        (lic_id, titulo, descripcion, cpv, importe, ccaa),
+    )
+
+
+def _seed_licitaciones():
+    from db.database import connect
+
+    with connect() as c:
+        _insert_lic(
+            c,
+            "L1",
+            titulo="Implantación SAP S/4HANA",
+            cpv="72000000",
+            importe=100_000.0,
+            ccaa="Madrid",
+        )
+        _insert_lic(
+            c,
+            "L2",
+            titulo="Mantenimiento Oracle",
+            cpv="72500000",
+            importe=5_000.0,
+            ccaa="Madrid",
+        )
+        _insert_lic(
+            c,
+            "L3",
+            titulo="Obras varias",
+            descripcion="incluye módulo SAP",
+            cpv="45000000",
+            importe=2_000_000.0,
+            ccaa="Cataluña",
+        )
+
+
+def test_match_keyword_busca_titulo_y_descripcion(db):
+    _seed_licitaciones()
+    # "SAP" está en el título de L1 y en la descripción de L3.
+    assert count_matches(WatchlistRule(keyword="SAP")) == 2
+
+
+def test_match_aplica_cpv(db):
+    _seed_licitaciones()
+    # CPV deja de ser control muerto: prefijo "72" → L1 y L2 (no L3 con 45).
+    assert count_matches(WatchlistRule(cpv="72")) == 2
+    assert count_matches(WatchlistRule(cpv="45")) == 1
+
+
+def test_match_aplica_min_importe(db):
+    _seed_licitaciones()
+    # min_importe no se pierde tras un top-20 cliente: 50k deja fuera a L2 (5k).
+    assert count_matches(WatchlistRule(min_importe=50_000.0)) == 2
+
+
+def test_match_aplica_ccaa(db):
+    _seed_licitaciones()
+    assert count_matches(WatchlistRule(ccaa="Cataluña")) == 1
+
+
+def test_match_combina_todos_los_filtros(db):
+    _seed_licitaciones()
+    # keyword SAP + cpv 72 → solo L1 (L3 tiene SAP pero cpv 45).
+    assert count_matches(WatchlistRule(keyword="SAP", cpv="72")) == 1
+
+
+def test_list_matches_devuelve_campos(db):
+    _seed_licitaciones()
+    rows = list_matches(WatchlistRule(cpv="72"))
+    assert {r["id_externo"] for r in rows} == {"L1", "L2"}
+    assert "titulo" in rows[0]
+    assert "importe" in rows[0]

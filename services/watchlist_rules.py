@@ -13,11 +13,14 @@ frecuencia* (→ ``notifications``) se añaden en increments posteriores.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
+from sqlalchemy import and_, func, or_, select
 
-from db.database import connect
+from db.database import connect, connect_read
+from db.models import compile_query, licitaciones
+from db.repositories.base import rows_to_dicts
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
@@ -124,3 +127,78 @@ def delete_rule(user_key: str, rule_id: int) -> bool:
             (rule_id, user_key),
         )
         return bool(cur.rowcount > 0)
+
+
+# ---------------------------------------------------------------------------
+# Matching sobre el dataset completo
+#
+# RFC ux-mi-watchlist: el matching aplica keyword + CPV + min_importe + ccaa
+# (no solo keyword/ccaa como el frontend), y el conteo se calcula en backend
+# sobre TODO el dataset (no un ``limit=20`` cliente). SQLAlchemy Core →
+# parametrizado (sin SQL string-built, sin S608).
+# ---------------------------------------------------------------------------
+
+_MATCH_COLS = (
+    licitaciones.c.id_externo,
+    licitaciones.c.titulo,
+    licitaciones.c.organo_contratacion,
+    licitaciones.c.importe,
+    licitaciones.c.cpv,
+    licitaciones.c.ccaa,
+    licitaciones.c.estado,
+    licitaciones.c.fecha_publicacion,
+    licitaciones.c.url,
+)
+
+
+def _escape_like(s: str) -> str:
+    """Escapa wildcards LIKE (%, _) del input de usuario."""
+    return s.replace("%", r"\%").replace("_", r"\_")
+
+
+def _rule_clauses(rule: WatchlistRule) -> list[Any]:
+    """Traduce los filtros de la regla a condiciones SQLAlchemy.
+
+    Aplica TODOS los criterios: keyword (título/descripción), cpv (prefijo),
+    min_importe (>=) y ccaa (=). El CPV deja de ser un control muerto.
+    """
+    clauses: list[Any] = []
+    if rule.keyword:
+        like = f"%{_escape_like(rule.keyword)}%"
+        clauses.append(
+            or_(
+                licitaciones.c.titulo.like(like),
+                licitaciones.c.descripcion.like(like),
+            )
+        )
+    if rule.cpv:
+        clauses.append(licitaciones.c.cpv.like(f"{_escape_like(rule.cpv)}%"))
+    if rule.min_importe is not None:
+        clauses.append(licitaciones.c.importe >= rule.min_importe)
+    if rule.ccaa:
+        clauses.append(licitaciones.c.ccaa == rule.ccaa)
+    return clauses
+
+
+def count_matches(rule: WatchlistRule) -> int:
+    """Conteo de matches sobre el dataset COMPLETO (no un ``limit=20`` cliente)."""
+    clauses = _rule_clauses(rule)
+    stmt = select(func.count()).select_from(licitaciones)
+    if clauses:
+        stmt = stmt.where(and_(*clauses))
+    sql, params = compile_query(stmt)
+    with connect_read() as c:
+        row = c.execute(sql, params).fetchone()
+    return int(row[0]) if row else 0
+
+
+def list_matches(rule: WatchlistRule, *, limit: int = 50) -> list[dict[str, Any]]:
+    """Matches de la regla (preview en vivo), más recientes primero."""
+    clauses = _rule_clauses(rule)
+    stmt = select(*_MATCH_COLS).select_from(licitaciones)
+    if clauses:
+        stmt = stmt.where(and_(*clauses))
+    stmt = stmt.order_by(licitaciones.c.fecha_publicacion.desc()).limit(limit)
+    sql, params = compile_query(stmt)
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, params))
