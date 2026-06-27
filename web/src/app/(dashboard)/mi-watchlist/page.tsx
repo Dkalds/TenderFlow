@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -14,7 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Eye,
   Plus,
@@ -28,61 +34,116 @@ import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                              */
+/*  Types — alineados con /api/v1/watchlist/rules                      */
 /* ------------------------------------------------------------------ */
 
-interface WatchlistRule {
-  id: string;
-  keyword: string;
-  cpvFilter: string;
-  minImporte: number | null;
-  ccaa: string;
-  frequency: "inmediata" | "diaria" | "semanal";
+type Frequency = "immediate" | "daily" | "weekly";
+
+interface ApiRule {
+  id: number;
+  nombre: string | null;
+  keyword: string | null;
+  cpv: string | null;
+  min_importe: number | null;
+  ccaa: string | null;
+  frequency: Frequency;
   active: boolean;
-  createdAt: string;
+  match_count: number;
 }
 
-interface LicitacionItem {
+interface RuleBody {
+  nombre: string | null;
+  keyword: string | null;
+  cpv: string | null;
+  min_importe: number | null;
+  ccaa: string | null;
+  frequency: Frequency;
+  active: boolean;
+}
+
+interface MatchItem {
   id_externo?: string;
   titulo?: string;
   organo_contratacion?: string;
-  organo?: string;
   importe?: number;
   estado?: string;
   fecha_publicacion?: string;
-  // Campos extra del backend que no modelamos explícitamente.
   [key: string]: unknown;
 }
 
-interface MatchedItem extends LicitacionItem {
-  _matchedRules: string[]; // rule ids
+/* ------------------------------------------------------------------ */
+/*  Helpers de API (sesión vía cookie, igual que el resto del dash)    */
+/* ------------------------------------------------------------------ */
+
+const RULES_KEY = "/api/v1/watchlist/rules";
+
+async function apiSend(
+  method: string,
+  url: string,
+  body?: unknown,
+): Promise<unknown> {
+  const res = await fetch(url, {
+    method,
+    credentials: "include",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json().catch(() => null);
+}
+
+function ruleToBody(rule: ApiRule, overrides: Partial<RuleBody> = {}): RuleBody {
+  return {
+    nombre: rule.nombre,
+    keyword: rule.keyword,
+    cpv: rule.cpv,
+    min_importe: rule.min_importe,
+    ccaa: rule.ccaa,
+    frequency: rule.frequency,
+    active: rule.active,
+    ...overrides,
+  };
 }
 
 /* ------------------------------------------------------------------ */
-/*  Storage helpers                                                    */
+/*  Migración one-shot del localStorage legacy → servidor             */
 /* ------------------------------------------------------------------ */
 
-const STORAGE_KEY = "watchlist_rules";
+const LEGACY_KEY = "watchlist_rules";
+const MIGRATED_FLAG = "watchlist_rules_migrated";
 
-function loadRules(): WatchlistRule[] {
-  const parsed = getJSON<WatchlistRule[]>(STORAGE_KEY, []);
-  return parsed.map((r) => ({
-    ...r,
-    ccaa: r.ccaa ?? "",
-    frequency: r.frequency ?? "diaria",
+interface LegacyRule {
+  keyword?: string;
+  cpvFilter?: string;
+  minImporte?: number | null;
+  ccaa?: string;
+  frequency?: "inmediata" | "diaria" | "semanal";
+  active?: boolean;
+}
+
+const LEGACY_FREQ: Record<string, Frequency> = {
+  inmediata: "immediate",
+  diaria: "daily",
+  semanal: "weekly",
+};
+
+function legacyToBody(r: LegacyRule): RuleBody {
+  return {
+    nombre: r.keyword?.trim() || null,
+    keyword: r.keyword?.trim() || null,
+    cpv: r.cpvFilter?.trim() || null,
+    min_importe: r.minImporte ?? null,
+    ccaa: r.ccaa || null,
+    frequency: LEGACY_FREQ[r.frequency ?? "diaria"] ?? "daily",
     active: r.active ?? true,
-  }));
-}
-
-function saveRules(rules: WatchlistRule[]) {
-  setJSON(STORAGE_KEY, rules);
+  };
 }
 
 /* ------------------------------------------------------------------ */
-/*  CCAA options (static fallback; ideally fetched from /api/v1/meta)  */
+/*  Opciones de formulario                                             */
 /* ------------------------------------------------------------------ */
 
-const CCAA_OPTIONS = [
+const CCAA_FALLBACK = [
   "__all__",
   "Andalucia",
   "Aragon",
@@ -105,36 +166,71 @@ const CCAA_OPTIONS = [
   "Pais Vasco",
 ];
 
-const FREQ_OPTIONS: { value: WatchlistRule["frequency"]; label: string }[] = [
-  { value: "inmediata", label: "Inmediata" },
-  { value: "diaria", label: "Diaria" },
-  { value: "semanal", label: "Semanal" },
+const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
+  { value: "immediate", label: "Inmediata" },
+  { value: "daily", label: "Diaria" },
+  { value: "weekly", label: "Semanal" },
 ];
 
+const FREQ_LABEL: Record<Frequency, string> = {
+  immediate: "Inmediata",
+  daily: "Diaria",
+  weekly: "Semanal",
+};
+
 /* ------------------------------------------------------------------ */
-/*  Page component                                                     */
+/*  Página                                                             */
 /* ------------------------------------------------------------------ */
 
 export default function MiWatchlistPage() {
-  const [rules, setRules] = useState<WatchlistRule[]>([]);
-  const [mounted, setMounted] = useState(false);
+  const qc = useQueryClient();
 
   // Form state
   const [keyword, setKeyword] = useState("");
-  const [cpvFilter, setCpvFilter] = useState("");
+  const [cpv, setCpv] = useState("");
   const [minImporte, setMinImporte] = useState("");
   const [ccaa, setCcaa] = useState("");
-  const [frequency, setFrequency] =
-    useState<WatchlistRule["frequency"]>("diaria");
+  const [frequency, setFrequency] = useState<Frequency>("daily");
   const [formOpen, setFormOpen] = useState(true);
 
-  // Load persisted state after mount to avoid SSR hydration mismatch
-  useEffect(() => {
-    setRules(loadRules()); // eslint-disable-line react-hooks/set-state-in-effect
-    setMounted(true);
-  }, []);
+  /* ---- Reglas (server-side) ---- */
+  const {
+    data: rules,
+    isLoading: rulesLoading,
+  } = useQuery<ApiRule[]>({
+    queryKey: ["watchlist-rules"],
+    queryFn: async () => {
+      const data = (await apiSend("GET", RULES_KEY)) as { items?: ApiRule[] };
+      return data.items ?? [];
+    },
+  });
 
-  // Try to fetch CCAA options from backend (best-effort)
+  /* ---- Migración one-shot del localStorage ---- */
+  const migratedRef = useRef(false);
+  useEffect(() => {
+    if (migratedRef.current) return;
+    migratedRef.current = true;
+    if (getJSON<boolean>(MIGRATED_FLAG, false)) return;
+    const legacy = getJSON<LegacyRule[]>(LEGACY_KEY, []);
+    if (legacy.length === 0) {
+      setJSON(MIGRATED_FLAG, true);
+      return;
+    }
+    void (async () => {
+      for (const r of legacy) {
+        try {
+          await apiSend("POST", RULES_KEY, legacyToBody(r));
+        } catch {
+          // best-effort: si una regla falla, seguimos con las demás
+        }
+      }
+      setJSON(MIGRATED_FLAG, true);
+      setJSON(LEGACY_KEY, []);
+      qc.invalidateQueries({ queryKey: ["watchlist-rules"] });
+    })();
+  }, [qc]);
+
+  /* ---- CCAA options (best-effort desde meta) ---- */
   const { data: metaCcaas } = useQuery<string[]>({
     queryKey: ["meta-ccaas"],
     queryFn: async () => {
@@ -147,137 +243,81 @@ export default function MiWatchlistPage() {
     },
     staleTime: Infinity,
   });
+  const ccaaList =
+    metaCcaas && metaCcaas.length > 0 ? ["__all__", ...metaCcaas] : CCAA_FALLBACK;
 
-  const ccaaList = metaCcaas && metaCcaas.length > 0 ? ["__all__", ...metaCcaas] : CCAA_OPTIONS;
+  /* ---- Mutations ---- */
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["watchlist-rules"] });
 
-  /* ---- Active rules ---- */
-  const activeRules = useMemo(
-    () => rules.filter((r) => r.active),
-    [rules],
-  );
-
-  /* ---- Fetch matches for ALL active rules in parallel ---- */
-  const { data: allMatches, isLoading: matchesLoading } = useQuery<
-    MatchedItem[]
-  >({
-    queryKey: [
-      "watchlist-matches",
-      activeRules.map((r) => `${r.keyword}|${r.ccaa}`).join(","),
-    ],
-    queryFn: async () => {
-      if (activeRules.length === 0) return [];
-
-      const fetches = activeRules.map(async (rule) => {
-        const params = new URLSearchParams();
-        params.set("q", rule.keyword);
-        if (rule.ccaa) params.set("ccaa", rule.ccaa);
-        params.set("limit", "20");
-
-        const res = await fetch(
-          `/api/v1/licitaciones?${params.toString()}`,
-          { credentials: "include" },
-        );
-        if (!res.ok) return { rule, items: [] as LicitacionItem[] };
-        const data = await res.json();
-        const items: LicitacionItem[] = data.items ?? data.results ?? [];
-        return { rule, items };
-      });
-
-      const results = await Promise.all(fetches);
-
-      // Merge + deduplicate by id_externo, track which rules matched
-      const map = new Map<string, MatchedItem>();
-      for (const { rule, items } of results) {
-        for (const item of items) {
-          // Client-side min importe filter
-          if (
-            rule.minImporte != null &&
-            item.importe != null &&
-            item.importe < rule.minImporte
-          )
-            continue;
-
-          const key = item.id_externo ?? item.titulo ?? JSON.stringify(item);
-          const existing = map.get(key);
-          if (existing) {
-            if (!existing._matchedRules.includes(rule.id)) {
-              existing._matchedRules.push(rule.id);
-            }
-          } else {
-            map.set(key, { ...item, _matchedRules: [rule.id] });
-          }
-        }
-      }
-
-      return Array.from(map.values());
-    },
-    enabled: activeRules.length > 0,
+  const createMut = useMutation({
+    mutationFn: (body: RuleBody) => apiSend("POST", RULES_KEY, body),
+    onSuccess: invalidate,
+  });
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: RuleBody }) =>
+      apiSend("PUT", `${RULES_KEY}/${id}`, body),
+    onSuccess: invalidate,
+  });
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => apiSend("DELETE", `${RULES_KEY}/${id}`),
+    onSuccess: invalidate,
   });
 
-  /* ---- Match counts per rule ---- */
-  const matchCountByRule = useMemo(() => {
-    const counts: Record<string, number> = {};
-    if (allMatches) {
-      for (const m of allMatches) {
-        for (const rid of m._matchedRules) {
-          counts[rid] = (counts[rid] ?? 0) + 1;
-        }
-      }
-    }
-    return counts;
-  }, [allMatches]);
-
-  /* ---- Rule CRUD ---- */
-  const addRule = useCallback(() => {
+  const submit = () => {
     if (!keyword.trim()) return;
-    const newRule: WatchlistRule = {
-      id: crypto.randomUUID(),
+    createMut.mutate({
+      nombre: keyword.trim(),
       keyword: keyword.trim(),
-      cpvFilter: cpvFilter.trim(),
-      minImporte: minImporte ? parseFloat(minImporte) : null,
-      ccaa,
+      cpv: cpv.trim() || null,
+      min_importe: minImporte ? parseFloat(minImporte) : null,
+      ccaa: ccaa || null,
       frequency,
       active: true,
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [...rules, newRule];
-    setRules(updated);
-    saveRules(updated);
+    });
     setKeyword("");
-    setCpvFilter("");
+    setCpv("");
     setMinImporte("");
     setCcaa("");
-    setFrequency("diaria");
-  }, [keyword, cpvFilter, minImporte, ccaa, frequency, rules]);
+    setFrequency("daily");
+  };
 
-  const deleteRule = useCallback(
-    (id: string) => {
-      const updated = rules.filter((r) => r.id !== id);
-      setRules(updated);
-      saveRules(updated);
-    },
+  const activeRules = useMemo(
+    () => (rules ?? []).filter((r) => r.active),
     [rules],
   );
 
-  const toggleRule = useCallback(
-    (id: string) => {
-      const updated = rules.map((r) =>
-        r.id === id ? { ...r, active: !r.active } : r,
+  /* ---- Resultados combinados (matches reales por regla activa) ---- */
+  const { data: combined, isLoading: matchesLoading } = useQuery<MatchItem[]>({
+    queryKey: ["watchlist-combined", activeRules.map((r) => r.id).join(",")],
+    enabled: activeRules.length > 0,
+    queryFn: async () => {
+      const perRule = await Promise.all(
+        activeRules.map(async (rule) => {
+          try {
+            const data = (await apiSend(
+              "GET",
+              `${RULES_KEY}/${rule.id}/matches?limit=20`,
+            )) as { items?: MatchItem[] };
+            return data.items ?? [];
+          } catch {
+            return [];
+          }
+        }),
       );
-      setRules(updated);
-      saveRules(updated);
+      const seen = new Map<string, MatchItem>();
+      for (const items of perRule) {
+        for (const item of items) {
+          const key = item.id_externo ?? item.titulo ?? JSON.stringify(item);
+          if (!seen.has(key)) seen.set(key, item);
+        }
+      }
+      return Array.from(seen.values());
     },
-    [rules],
-  );
+  });
 
-  const ruleNameById = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const r of rules) m[r.id] = r.keyword;
-    return m;
-  }, [rules]);
+  const ruleCount = rules?.length ?? 0;
 
-  /* ---------------------------------------------------------------- */
-  /*  Render                                                           */
   /* ---------------------------------------------------------------- */
 
   return (
@@ -289,18 +329,25 @@ export default function MiWatchlistPage() {
           Mi Watchlist
         </h1>
         <p className="text-muted-foreground">
-          Reglas personalizadas de seguimiento de licitaciones.
+          Reglas de seguimiento guardadas en tu cuenta: el conteo de coincidencias
+          es real (sobre todo el dataset) y las alertas por frecuencia se envían
+          desde el servidor.
         </p>
       </div>
 
-      {/* ---- Add rule form ---- */}
+      {/* Add rule form */}
       <Card>
         <CardHeader
           className="cursor-pointer select-none"
           onClick={() => setFormOpen((o) => !o)}
           tabIndex={0}
           role="button"
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFormOpen((o) => !o); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setFormOpen((o) => !o);
+            }
+          }}
         >
           <CardTitle className="flex items-center gap-2">
             {formOpen ? (
@@ -318,30 +365,33 @@ export default function MiWatchlistPage() {
         {formOpen && (
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {/* Keyword */}
               <div className="space-y-1">
-                <label htmlFor="wl-keyword" className="text-sm font-medium">Palabra clave *</label>
+                <label htmlFor="wl-keyword" className="text-sm font-medium">
+                  Palabra clave *
+                </label>
                 <Input
                   id="wl-keyword"
                   placeholder="Ej: SAP, infraestructura..."
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addRule()}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
                 />
               </div>
-              {/* CPV */}
               <div className="space-y-1">
-                <label htmlFor="wl-cpv" className="text-sm font-medium">Filtro CPV</label>
+                <label htmlFor="wl-cpv" className="text-sm font-medium">
+                  Filtro CPV
+                </label>
                 <Input
                   id="wl-cpv"
                   placeholder="Ej: 72000000"
-                  value={cpvFilter}
-                  onChange={(e) => setCpvFilter(e.target.value)}
+                  value={cpv}
+                  onChange={(e) => setCpv(e.target.value)}
                 />
               </div>
-              {/* Min importe */}
               <div className="space-y-1">
-                <label htmlFor="wl-importe" className="text-sm font-medium">Importe minimo</label>
+                <label htmlFor="wl-importe" className="text-sm font-medium">
+                  Importe minimo
+                </label>
                 <Input
                   id="wl-importe"
                   type="number"
@@ -350,12 +400,14 @@ export default function MiWatchlistPage() {
                   onChange={(e) => setMinImporte(e.target.value)}
                 />
               </div>
-              {/* CCAA */}
               <div className="space-y-1">
                 <label htmlFor="wl-ccaa" className="text-sm font-medium">
                   Comunidad Autonoma
                 </label>
-                <Select value={ccaa || "__all__"} onValueChange={(v) => setCcaa(v === "__all__" ? "" : v)}>
+                <Select
+                  value={ccaa || "__all__"}
+                  onValueChange={(v) => setCcaa(v === "__all__" ? "" : v)}
+                >
                   <SelectTrigger id="wl-ccaa">
                     <SelectValue placeholder="— Todas —" />
                   </SelectTrigger>
@@ -368,12 +420,14 @@ export default function MiWatchlistPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {/* Frequency */}
               <div className="space-y-1">
                 <label htmlFor="wl-frequency" className="text-sm font-medium">
                   Frecuencia de notificacion
                 </label>
-                <Select value={frequency} onValueChange={(v) => setFrequency(v as WatchlistRule["frequency"])}>
+                <Select
+                  value={frequency}
+                  onValueChange={(v) => setFrequency(v as Frequency)}
+                >
                   <SelectTrigger id="wl-frequency">
                     <SelectValue />
                   </SelectTrigger>
@@ -386,11 +440,10 @@ export default function MiWatchlistPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {/* Submit */}
               <div className="flex items-end">
                 <Button
-                  onClick={addRule}
-                  disabled={!keyword.trim()}
+                  onClick={submit}
+                  disabled={!keyword.trim() || createMut.isPending}
                   className="w-full"
                 >
                   <Plus className="mr-2 h-4 w-4" />
@@ -404,14 +457,14 @@ export default function MiWatchlistPage() {
 
       <Separator />
 
-      {/* ---- Rules list ---- */}
+      {/* Rules list */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
           <Eye className="h-5 w-5" />
-          Reglas ({rules.length})
+          Reglas ({ruleCount})
         </h2>
 
-        {!mounted ? (
+        {rulesLoading ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[1, 2].map((i) => (
               <Card key={i}>
@@ -422,7 +475,7 @@ export default function MiWatchlistPage() {
               </Card>
             ))}
           </div>
-        ) : rules.length === 0 ? (
+        ) : ruleCount === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <Eye className="h-12 w-12 text-muted-foreground/50 mb-4" />
@@ -436,26 +489,18 @@ export default function MiWatchlistPage() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {rules.map((rule) => (
-              <Card
-                key={rule.id}
-                className={cn(!rule.active && "opacity-50")}
-              >
+            {(rules ?? []).map((rule) => (
+              <Card key={rule.id} className={cn(!rule.active && "opacity-50")}>
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-base truncate">
-                        {rule.keyword}
+                        {rule.nombre || rule.keyword || "Regla"}
                       </CardTitle>
-                      {matchCountByRule[rule.id] != null && (
-                        <Badge variant="default" className="shrink-0">
-                          {matchCountByRule[rule.id]}
-                        </Badge>
-                      )}
+                      <Badge variant="default" className="shrink-0">
+                        {rule.match_count}
+                      </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Creada: {formatDate(rule.createdAt)}
-                    </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Button
@@ -463,7 +508,12 @@ export default function MiWatchlistPage() {
                       size="icon"
                       className="h-9 w-9"
                       title={rule.active ? "Desactivar" : "Activar"}
-                      onClick={() => toggleRule(rule.id)}
+                      onClick={() =>
+                        updateMut.mutate({
+                          id: rule.id,
+                          body: ruleToBody(rule, { active: !rule.active }),
+                        })
+                      }
                     >
                       <Eye
                         className={cn(
@@ -478,28 +528,33 @@ export default function MiWatchlistPage() {
                       variant="ghost"
                       size="icon"
                       className="h-9 w-9 text-destructive"
-                      onClick={() => deleteRule(rule.id)}
+                      title="Eliminar"
+                      onClick={() => deleteMut.mutate(rule.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {rule.cpvFilter && (
+                  {rule.keyword && (
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">
-                        CPV:
+                        Keyword:
                       </span>
-                      <Badge variant="outline">{rule.cpvFilter}</Badge>
+                      <Badge variant="outline">{rule.keyword}</Badge>
                     </div>
                   )}
-                  {rule.minImporte != null && (
+                  {rule.cpv && (
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        Min:
-                      </span>
+                      <span className="text-sm text-muted-foreground">CPV:</span>
+                      <Badge variant="outline">{rule.cpv}</Badge>
+                    </div>
+                  )}
+                  {rule.min_importe != null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Min:</span>
                       <Badge variant="secondary">
-                        {formatCurrency(rule.minImporte)}
+                        {formatCurrency(rule.min_importe)}
                       </Badge>
                     </div>
                   )}
@@ -515,7 +570,7 @@ export default function MiWatchlistPage() {
                     <span className="text-sm text-muted-foreground">
                       Frecuencia:
                     </span>
-                    <span className="text-sm capitalize">{rule.frequency}</span>
+                    <span className="text-sm">{FREQ_LABEL[rule.frequency]}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -524,7 +579,7 @@ export default function MiWatchlistPage() {
         )}
       </div>
 
-      {/* ---- Match results section ---- */}
+      {/* Combined matches */}
       {activeRules.length > 0 && (
         <>
           <Separator />
@@ -532,9 +587,7 @@ export default function MiWatchlistPage() {
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <Search className="h-5 w-5" />
               Resultados combinados
-              {allMatches && (
-                <Badge variant="secondary">{allMatches.length}</Badge>
-              )}
+              {combined && <Badge variant="secondary">{combined.length}</Badge>}
             </h2>
 
             {matchesLoading ? (
@@ -544,21 +597,20 @@ export default function MiWatchlistPage() {
                     <CardContent className="pt-6 space-y-2">
                       <Skeleton className="h-5 w-3/4" />
                       <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-4 w-1/3" />
                     </CardContent>
                   </Card>
                 ))}
               </div>
-            ) : allMatches && allMatches.length > 0 ? (
+            ) : combined && combined.length > 0 ? (
               <div className="space-y-2">
-                {allMatches.map((item, i) => {
-                  const organo =
-                    item.organo_contratacion ?? item.organo ?? "";
+                {combined.map((item, i) => {
                   const id = item.id_externo ?? String(i);
                   return (
-                    <Card key={id} className="hover:bg-accent/30 transition-colors">
+                    <Card
+                      key={id}
+                      className="hover:bg-accent/30 transition-colors"
+                    >
                       <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                        {/* Title + organo */}
                         <div className="flex-1 min-w-0">
                           <a
                             href={`/detalle?lic=${item.id_externo ?? ""}`}
@@ -566,42 +618,27 @@ export default function MiWatchlistPage() {
                           >
                             {truncate(item.titulo ?? "Sin titulo", 100)}
                           </a>
-                          {organo && (
+                          {item.organo_contratacion && (
                             <p className="text-xs text-muted-foreground truncate">
-                              {organo}
+                              {item.organo_contratacion}
                             </p>
                           )}
                         </div>
-                        {/* Importe */}
                         {item.importe != null && (
                           <Badge variant="secondary" className="shrink-0">
                             {formatCurrency(item.importe)}
                           </Badge>
                         )}
-                        {/* Estado */}
                         {item.estado && (
                           <Badge variant="outline" className="shrink-0">
                             {item.estado}
                           </Badge>
                         )}
-                        {/* Fecha */}
                         {item.fecha_publicacion && (
                           <span className="text-xs text-muted-foreground shrink-0">
                             {formatDate(item.fecha_publicacion)}
                           </span>
                         )}
-                        {/* Matched rules */}
-                        <div className="flex gap-1 shrink-0">
-                          {item._matchedRules.map((rid) => (
-                            <Badge
-                              key={rid}
-                              variant="default"
-                              className="text-xs px-1.5"
-                            >
-                              {ruleNameById[rid] ?? "?"}
-                            </Badge>
-                          ))}
-                        </div>
                       </CardContent>
                     </Card>
                   );
