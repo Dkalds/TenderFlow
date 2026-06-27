@@ -214,6 +214,23 @@ CREATE TABLE IF NOT EXISTS watchlist_empresas (
 );
 CREATE INDEX IF NOT EXISTS idx_wl_emp_user ON watchlist_empresas(user_key);
 
+CREATE TABLE IF NOT EXISTS watchlist_rules (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_key         TEXT NOT NULL,
+    user_id          INTEGER,
+    nombre           TEXT,
+    keyword          TEXT,
+    cpv              TEXT,
+    min_importe      REAL,
+    ccaa             TEXT,
+    frequency        TEXT NOT NULL DEFAULT 'daily',
+    active           INTEGER NOT NULL DEFAULT 1,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    last_notified_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_wl_rules_user ON watchlist_rules(user_key);
+CREATE INDEX IF NOT EXISTS idx_wl_rules_active ON watchlist_rules(active, frequency);
+
 CREATE TABLE IF NOT EXISTS adjudicaciones (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     licitacion_id           TEXT NOT NULL,

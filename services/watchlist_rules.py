@@ -1,0 +1,126 @@
+"""Reglas de watchlist por criterio (keyword/CPV/importe/CCAA) — persistencia
+server-side.
+
+A diferencia de la watchlist de empresas (v36, ``services/watchlist.py``, cuyo eje
+es la empresa), estas reglas vigilan **criterios de búsqueda**. Sustituyen el
+``localStorage`` del frontend de mi-watchlist (RFC ux-mi-watchlist; ADR-014 §2: el
+estado de usuario es server-side, ``localStorage`` solo caché/migración one-shot).
+
+Este módulo cubre el **CRUD**. El *matching* sobre el dataset completo (reusando el
+repositorio de licitaciones con ``_escape_like``) y el *job de alertas por
+frecuencia* (→ ``notifications``) se añaden en increments posteriores.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel
+
+from db.database import connect
+
+Frequency = Literal["immediate", "daily", "weekly"]
+
+
+class WatchlistRule(BaseModel):
+    """Regla de seguimiento por criterio. ``id`` es ``None`` hasta persistir."""
+
+    id: int | None = None
+    nombre: str | None = None
+    keyword: str | None = None
+    cpv: str | None = None
+    min_importe: float | None = None
+    ccaa: str | None = None
+    frequency: Frequency = "daily"
+    active: bool = True
+
+
+def create_rule(user_key: str, rule: WatchlistRule, *, user_id: int | None = None) -> int:
+    """Persiste una regla nueva y devuelve su id."""
+    with connect() as c:
+        cur = c.execute(
+            "INSERT INTO watchlist_rules "
+            "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
+            " frequency, active) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_key,
+                user_id,
+                rule.nombre,
+                rule.keyword,
+                rule.cpv,
+                rule.min_importe,
+                rule.ccaa,
+                rule.frequency,
+                1 if rule.active else 0,
+            ),
+        )
+        rid = cur.lastrowid
+    return int(rid) if rid is not None else 0
+
+
+def list_rules(user_key: str) -> list[WatchlistRule]:
+    """Reglas de un usuario, más recientes primero."""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT id, nombre, keyword, cpv, min_importe, ccaa, frequency, active "
+            "FROM watchlist_rules WHERE user_key = ? "
+            "ORDER BY created_at DESC, id DESC",
+            (user_key,),
+        ).fetchall()
+    return [
+        WatchlistRule(
+            id=row[0],
+            nombre=row[1],
+            keyword=row[2],
+            cpv=row[3],
+            min_importe=row[4],
+            ccaa=row[5],
+            frequency=row[6],
+            active=bool(row[7]),
+        )
+        for row in rows
+    ]
+
+
+def update_rule(user_key: str, rule_id: int, rule: WatchlistRule) -> bool:
+    """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE watchlist_rules SET "
+            "nombre = ?, keyword = ?, cpv = ?, min_importe = ?, ccaa = ?, "
+            "frequency = ?, active = ? "
+            "WHERE id = ? AND user_key = ?",
+            (
+                rule.nombre,
+                rule.keyword,
+                rule.cpv,
+                rule.min_importe,
+                rule.ccaa,
+                rule.frequency,
+                1 if rule.active else 0,
+                rule_id,
+                user_key,
+            ),
+        )
+        return bool(cur.rowcount > 0)
+
+
+def set_active(user_key: str, rule_id: int, active: bool) -> bool:
+    """Activa o pausa una regla propia."""
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE watchlist_rules SET active = ? WHERE id = ? AND user_key = ?",
+            (1 if active else 0, rule_id, user_key),
+        )
+        return bool(cur.rowcount > 0)
+
+
+def delete_rule(user_key: str, rule_id: int) -> bool:
+    """Borra una regla propia. ``False`` si no existe o no es del usuario."""
+    with connect() as c:
+        cur = c.execute(
+            "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ?",
+            (rule_id, user_key),
+        )
+        return bool(cur.rowcount > 0)
