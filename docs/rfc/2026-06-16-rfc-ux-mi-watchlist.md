@@ -4,7 +4,7 @@ title: "UX/KPIs · Mi Watchlist — persistir reglas en servidor y alertas reale
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: implemented
 area: web/mi-watchlist
 ---
 
@@ -116,3 +116,15 @@ respetar `_escape_like` (ya existe) para los keywords.
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+**2026-06-27 — Implementado (backend + frontend), motor por increments:**
+
+- Persistencia server-side (criterio 1): tabla `watchlist_rules` (migración v43),
+  CRUD en `services/watchlist_rules.py`, API `api/routes/watchlist_rules.py`.
+- Alerta real por frecuencia (criterio 2): `scheduler/watchlist_rules_alerts.py::check_rules_and_notify`
+  (immediate/daily/weekly → `notify`), enganchado al pipeline en `_run_watchlist_notify`.
+- CPV aplicado (criterio 3) y conteo sobre el dataset completo, no top-20 (criterio 4):
+  `count_matches`/`list_matches` (SQLAlchemy Core + `_escape_like`).
+- Migración one-shot del `localStorage` (criterio 5): `mi-watchlist/page.tsx` reescrita
+  a la API con React Query; sube las reglas legacy y limpia el storage.
+- Tests: 23 (servicio + API + job). Verificado: ruff/mypy/pytest + tsc/eslint.

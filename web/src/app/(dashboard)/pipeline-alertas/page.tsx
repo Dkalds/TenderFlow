@@ -2,7 +2,7 @@
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ const PipelineQuarterlyChart = dynamic(() => import("@/components/charts/pipelin
 const PipelineUrgencyScatter = dynamic(() => import("@/components/charts/pipeline-charts").then(m => ({ default: m.PipelineUrgencyScatter })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -185,6 +186,29 @@ export default function PipelineAlertasPage() {
 
   const isLoading = loadingPipeline;
   const error = errorPipeline || errorForecast;
+
+  // "Alertarme": crea una regla de watchlist con el umbral de importe actual,
+  // reutilizando el motor de alertas server-side (RFC ux-pipeline-alertas).
+  const createAlert = useMutation({
+    mutationFn: async () => {
+      const min = importeMin ? parseFloat(importeMin) : null;
+      const res = await fetch("/api/v1/watchlist/rules", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: min
+            ? `Pipeline: importe ≥ ${min.toLocaleString("es-ES")} €`
+            : "Pipeline: oportunidades",
+          min_importe: min,
+          frequency: "daily",
+          active: true,
+        }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      return res.json();
+    },
+  });
 
   // Sorted urgent items
   const sortedItems = useMemo(() => {
@@ -575,6 +599,37 @@ export default function PipelineAlertasPage() {
                 className="w-full"
               />
             </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => createAlert.mutate()}
+              disabled={createAlert.isPending}
+            >
+              <Bell className="mr-2 h-4 w-4" />
+              Alertarme de oportunidades asi
+            </Button>
+            {createAlert.isSuccess && (
+              <span className="text-xs text-muted-foreground">
+                ✓ Alerta creada —{" "}
+                <Link
+                  href="/mi-watchlist"
+                  className="text-primary hover:underline"
+                >
+                  gestionala en Mi Watchlist
+                </Link>
+              </span>
+            )}
+            {createAlert.isError && (
+              <span className="text-xs text-destructive">
+                No se pudo crear la alerta.
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">
+              Crea una regla de watchlist (diaria) con el importe minimo de arriba.
+            </span>
           </div>
         </CardContent>
       </Card>
