@@ -202,3 +202,21 @@ def list_matches(rule: WatchlistRule, *, limit: int = 50) -> list[dict[str, Any]
     sql, params = compile_query(stmt)
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))
+
+
+def matches_since(
+    rule: WatchlistRule, since: str | None, *, limit: int = 50
+) -> list[dict[str, Any]]:
+    """Como ``list_matches`` pero solo licitaciones con ``fecha_publicacion``
+    posterior a ``since`` (fecha ISO ``YYYY-MM-DD``). Para el job de alertas:
+    ver únicamente lo nuevo desde la última notificación."""
+    clauses = _rule_clauses(rule)
+    if since:
+        clauses.append(licitaciones.c.fecha_publicacion > since)
+    stmt = select(*_MATCH_COLS).select_from(licitaciones)
+    if clauses:
+        stmt = stmt.where(and_(*clauses))
+    stmt = stmt.order_by(licitaciones.c.fecha_publicacion.desc()).limit(limit)
+    sql, params = compile_query(stmt)
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, params))

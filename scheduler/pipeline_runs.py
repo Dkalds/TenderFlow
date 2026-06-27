@@ -105,6 +105,13 @@ def _run_watchlist_notify() -> None:
         check_competitors()
     except Exception as e:
         log.warning("competitor_alerts_failed", error=str(e))
+    # Alertas de reglas de watchlist por criterio (mi-watchlist, v43)
+    try:
+        from scheduler.watchlist_rules_alerts import check_rules_and_notify
+
+        check_rules_and_notify()
+    except Exception as e:
+        log.warning("watchlist_rules_alerts_failed", error=str(e))
 
 
 def _run_dlq_retry() -> None:
