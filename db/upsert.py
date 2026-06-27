@@ -241,8 +241,8 @@ def replace_adjudicaciones(
                     failures.append((exc, f"{licitacion_id}:{adj.nif}:{adj.importe_adjudicado}"))
     # Persistir failures fuera de la transacción del upsert para no
     # interferir con su lock; record_failure es best-effort.
-    for exc, payload_ref in failures:
-        record_failure(run_id, fuente, exc, scope="adjudicacion", payload_ref=payload_ref)
+    for caught_exc, payload_ref in failures:
+        record_failure(run_id, fuente, caught_exc, scope="adjudicacion", payload_ref=payload_ref)
     return persisted, dropped
 
 
@@ -319,8 +319,8 @@ def replace_adjudicaciones_batch(
             except Exception:
                 failed += 1
     # Persistir failures fuera de la transacción del upsert (best-effort).
-    for exc, payload_ref in failures:
-        record_failure(run_id, fuente, exc, scope="adjudicacion", payload_ref=payload_ref)
+    for caught_exc, payload_ref in failures:
+        record_failure(run_id, fuente, caught_exc, scope="adjudicacion", payload_ref=payload_ref)
     return persisted, dropped, failed
 
 
