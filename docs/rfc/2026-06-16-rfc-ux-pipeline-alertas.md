@@ -4,7 +4,7 @@ title: "UX/KPIs · Pipeline/Alertas — alertas reales suscribibles y clarificar
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: partially-implemented
 area: web/pipeline-alertas
 ---
 
@@ -89,3 +89,19 @@ problemas:
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
+
+**2026-06-27 — Implementado parcialmente (frontend puro, sin migración):**
+
+- **Clarificar IA** (criterio 2) ✅: nuevo componente
+  `web/src/components/pipeline-role-nav.tsx` declara el rol de
+  pipeline-alertas / renovaciones / calendario y las enlaza entre sí; añadido a las
+  tres páginas bajo su título.
+- **Drill-down** (criterio 3) ✅: la lista de urgentes y la tabla de forecast enlazan
+  al detalle (`/detalle?lic=…`); el scatter Urgencia×Valor navega al hacer click en un
+  punto (`PipelineUrgencyScatter` con prop `onPointClick`).
+- Test: `web/src/components/__tests__/pipeline-role-nav.test.tsx`.
+
+**Diferido** (criterio 1 — alertas reales suscribibles): requiere persistir la
+suscripción server-side → **tabla nueva + migración Alembic (gated §6, OK humano)** +
+job del scheduler, compartido con el RFC `ux-mi-watchlist`. No se aborda hasta aprobar
+esa migración. Por eso el status es `partially-implemented`, no `implemented`.

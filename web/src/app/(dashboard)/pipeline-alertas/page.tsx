@@ -4,6 +4,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import { KpiCard } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
@@ -134,6 +137,7 @@ function forecastBadgeColor(estado: string | null | undefined) {
 }
 
 export default function PipelineAlertasPage() {
+  const router = useRouter();
   // Local filter state for forecast
   const [horizonteDias, setHorizonteDias] = useState(90);
   const [importeMin, setImporteMin] = useState<string>("");
@@ -245,6 +249,8 @@ export default function PipelineAlertasPage() {
         </div>
         <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "pipeline-alertas" }} />
       </div>
+
+      <PipelineRoleNav current="pipeline-alertas" />
 
       {/* Pipeline KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -400,7 +406,10 @@ export default function PipelineAlertasPage() {
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : (pipelineData?.urgencia_valor?.length ?? 0) > 0 ? (
-            <PipelineUrgencyScatter data={pipelineData!.urgencia_valor} />
+            <PipelineUrgencyScatter
+              data={pipelineData!.urgencia_valor}
+              onPointClick={(id) => router.push(`/detalle?lic=${id}`)}
+            />
           ) : (
             <EmptyState />
           )}
@@ -432,7 +441,16 @@ export default function PipelineAlertasPage() {
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex-1 min-w-0">
                       <h3 className="text-sm font-medium leading-snug">
-                        {truncate(item.titulo, 100)}
+                        {item.id_externo ? (
+                          <Link
+                            href={`/detalle?lic=${item.id_externo}`}
+                            className="hover:underline"
+                          >
+                            {truncate(item.titulo, 100)}
+                          </Link>
+                        ) : (
+                          truncate(item.titulo, 100)
+                        )}
                       </h3>
                       {item.organo_contratacion && (
                         <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
@@ -656,7 +674,12 @@ export default function PipelineAlertasPage() {
                   {forecastData!.forecast_entries.map((entry) => (
                     <TableRow key={entry.id_externo}>
                       <TableCell className="font-medium max-w-[200px] truncate">
-                        {truncate(entry.titulo ?? entry.id_externo, 45)}
+                        <Link
+                          href={`/detalle?lic=${entry.id_externo}`}
+                          className="hover:underline"
+                        >
+                          {truncate(entry.titulo ?? entry.id_externo, 45)}
+                        </Link>
                       </TableCell>
                       <TableCell className="max-w-[160px] truncate text-muted-foreground">
                         {truncate(entry.organo_contratacion ?? "-", 35)}

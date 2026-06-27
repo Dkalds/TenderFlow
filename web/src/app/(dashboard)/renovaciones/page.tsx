@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import { KpiCard } from "@/components/charts/kpi-card";
+import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -189,6 +190,8 @@ export default function RenovacionesPage() {
           </SelectContent>
         </Select>
       </div>
+
+      <PipelineRoleNav current="renovaciones" />
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

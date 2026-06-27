@@ -119,7 +119,13 @@ export function PipelineQuarterlyChart({ data }: { data: TrimestreCount[] }) {
   );
 }
 
-export function PipelineUrgencyScatter({ data }: { data: UrgenciaValorPoint[] }) {
+export function PipelineUrgencyScatter({
+  data,
+  onPointClick,
+}: {
+  data: UrgenciaValorPoint[];
+  onPointClick?: (id: string) => void;
+}) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={300}>
@@ -140,7 +146,18 @@ export function PipelineUrgencyScatter({ data }: { data: UrgenciaValorPoint[] })
             strokeDasharray="5 5"
             label={{ value: "7d", fill: "#ef4444", fontSize: 11 }}
           />
-          <Scatter data={data} name="Oportunidades">
+          <Scatter
+            data={data}
+            name="Oportunidades"
+            onClick={(node) => {
+              const n = node as unknown as {
+                id_externo?: string;
+                payload?: { id_externo?: string };
+              };
+              const id = n?.id_externo ?? n?.payload?.id_externo;
+              if (onPointClick && id) onPointClick(id);
+            }}
+          >
             {data.map((point, i) => (
               <Cell key={i} fill={point.es_urgente ? "#ef4444" : "#3b82f6"} />
             ))}

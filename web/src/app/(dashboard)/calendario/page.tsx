@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import type { TrendPoint } from "@/generated/api";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 const CalendarioMonthlyChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioMonthlyChart })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
@@ -223,6 +224,8 @@ export default function CalendarioPage() {
           </Button>
         </div>
       </div>
+
+      <PipelineRoleNav current="calendario" />
 
       {/* Heatmap */}
       <Card>
