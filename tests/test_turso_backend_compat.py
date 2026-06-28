@@ -117,6 +117,56 @@ def test_connect_read_does_not_emit_pragmas_on_turso(tmp_db):
     assert any("query_only" in c.lower() for c in calls)
 
 
+def test_init_db_legacy_ml_feedback_without_tecnologia(monkeypatch, tmp_path):
+    """Regresión: ``init_db()`` no debe fallar si ``ml_feedback`` ya existe sin
+    la columna ``tecnologia``.
+
+    Reproduce el crash de arranque ``SQLite input error: no such column:
+    tecnologia (at offset 69)`` en BDs legacy (Turso/Hrana) donde la migración
+    Alembic v44 no corrió por el path de ``init_db()``. El índice
+    ``idx_ml_feedback_tecnologia`` debe crearse tras asegurar la columna.
+    """
+    import db.connection as conn_mod
+    import db.database as db_mod
+
+    monkeypatch.setenv("TURSO_DATABASE_URL", "")
+    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
+
+    db_path = tmp_path / "legacy.db"
+    db_mod.close_pool()
+    db_mod.set_db_path_override(str(db_path))
+    try:
+        # Semillar ml_feedback LEGACY (sin tecnologia/tecnologias_secundarias/model_version)
+        with conn_mod.connect() as c:
+            c.execute(
+                "CREATE TABLE ml_feedback ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "expediente TEXT NOT NULL, "
+                "relevante INTEGER NOT NULL, "
+                "nota TEXT NOT NULL DEFAULT '', "
+                "created_at TEXT NOT NULL)"
+            )
+
+        # init_db() no debe crashear pese a la tabla legacy preexistente.
+        conn_mod._db_initialized = False
+        db_mod.init_db()
+
+        with conn_mod.connect_read() as c:
+            cols = conn_mod.get_table_columns(c, "ml_feedback")
+            idx_names = {
+                r[0]
+                for r in c.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='ml_feedback'"
+                ).fetchall()
+            }
+
+        assert {"tecnologia", "tecnologias_secundarias", "model_version"} <= cols
+        assert "idx_ml_feedback_tecnologia" in idx_names
+    finally:
+        db_mod.close_pool()
+        db_mod.set_db_path_override(None)
+
+
 def test_lookup_active_key_returns_none_when_missing(tmp_db):
     """Smoke test del servicio de auth: key inexistente devuelve None."""
     from services import auth as auth_service

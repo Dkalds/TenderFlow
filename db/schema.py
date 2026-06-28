@@ -281,7 +281,8 @@ CREATE TABLE IF NOT EXISTS ml_feedback (
 );
 CREATE INDEX IF NOT EXISTS idx_ml_feedback_expediente ON ml_feedback(expediente);
 CREATE INDEX IF NOT EXISTS idx_ml_feedback_created_at ON ml_feedback(created_at);
-CREATE INDEX IF NOT EXISTS idx_ml_feedback_tecnologia ON ml_feedback(tecnologia);
+-- NOTA: idx_ml_feedback_tecnologia se crea en _ensure_ml_feedback_columns (no aquí)
+-- para no fallar en BDs legacy donde ml_feedback existe sin la columna tecnologia.
 
 CREATE TABLE IF NOT EXISTS webhooks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -413,6 +414,7 @@ def init_db() -> None:
         apply_pending(c)
         _ensure_licitaciones_columns(c)
         _ensure_adjudicaciones_columns(c)
+        _ensure_ml_feedback_columns(c)
     _conn_module._db_initialized = True
 
 
@@ -479,3 +481,30 @@ def _ensure_adjudicaciones_columns(conn: Any) -> None:
         except Exception:
             log.debug("ensure_column_skip", column="empresa_id")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_adj_empresa ON adjudicaciones(empresa_id)")
+
+
+def _ensure_ml_feedback_columns(conn: Any) -> None:
+    """Asegura las columnas multi-tecnología de ml_feedback (v44 Alembic).
+
+    En BDs legacy (Turso/Hrana) la tabla ``ml_feedback`` puede existir sin las
+    columnas ``tecnologia`` / ``tecnologias_secundarias`` / ``model_version``,
+    porque ``CREATE TABLE IF NOT EXISTS`` en SCHEMA es no-op y la migración
+    Alembic v44 no corre en el path de ``init_db()``. Las añadimos aquí y el
+    índice se crea después, para no fallar en SCHEMA cuando la tabla existe sin
+    la columna ``tecnologia``.
+    """
+    existing = get_table_columns(conn, "ml_feedback")
+    if not existing:
+        return
+    for col, sql_type in (
+        ("tecnologia", "TEXT"),
+        ("tecnologias_secundarias", "TEXT"),
+        ("model_version", "INTEGER"),
+    ):
+        if col not in existing:
+            try:
+                conn.execute(f"ALTER TABLE ml_feedback ADD COLUMN {col} {sql_type}")
+                log.info("ensure_column_added", column=col, sql_type=sql_type)
+            except Exception:
+                log.debug("ensure_column_skip", column=col)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ml_feedback_tecnologia ON ml_feedback(tecnologia)")
