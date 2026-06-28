@@ -381,7 +381,9 @@ class LicitacionRepository:
         """Licitaciones no presentes en ml_feedback para active learning."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT l.id_externo, l.titulo, l.descripcion "
+                "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
+                "l.organo_contratacion, l.ccaa, l.fecha_publicacion, l.url, "
+                "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
                 "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
                 "WHERE f.expediente IS NULL "
@@ -393,7 +395,9 @@ class LicitacionRepository:
     def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
         with connect_read() as c:
             cur = c.execute(
-                "SELECT l.id_externo, l.titulo "
+                "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
+                "l.organo_contratacion, l.ccaa, l.fecha_publicacion, l.url, "
+                "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
                 "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
                 "WHERE f.expediente IS NULL "

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -22,17 +22,34 @@ import {
   Activity,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import { formatNumber, formatPercent, cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/api-client";
 
+interface TechModel {
+  tech_scores: Record<string, number>;
+  tech_predicted: string[];
+  tech_principal: string | null;
+  tech_max_proba: number;
+  tech_thresholds: Record<string, number>;
+}
+
 interface QueueItem {
-  // El backend (/api/v1/feedback/queue) identifica cada item por `id_externo`,
-  // que es el mismo valor que el `expediente` de la tabla ml_feedback al enviar.
   id_externo: string;
   titulo?: string;
+  descripcion?: string;
+  cpv?: string | null;
+  importe?: number | null;
+  organo?: string | null;
+  ccaa?: string | null;
+  fecha_publicacion?: string | null;
+  url_origen?: string | null;
   confidence?: number;
-  tecnologia?: string;
+  uncertainty?: number;
+  tecnologia?: string | null;
+  model?: TechModel | null;
   [key: string]: unknown;
 }
 
@@ -63,7 +80,6 @@ interface ModelInfo {
 
 type Strategy = "uncertainty" | "random";
 
-// Métrica "titular" para el panel de impacto, por orden de preferencia.
 function headlineMetric(metrics: Record<string, number>): { label: string; value: number } | null {
   for (const key of ["pr_auc", "f1", "accuracy", "precision", "recall"]) {
     if (typeof metrics[key] === "number") return { label: key, value: metrics[key] };
@@ -71,12 +87,20 @@ function headlineMetric(metrics: Record<string, number>): { label: string; value
   return null;
 }
 
+function formatCurrency(val: number | null | undefined): string {
+  if (val == null) return "—";
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
+}
+
 export default function ActiveLearningPage() {
   const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  const [expandedDesc, setExpandedDesc] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [strategy, setStrategy] = useState<Strategy>("uncertainty");
+  const [selectedTech, setSelectedTech] = useState<Record<string, string | null>>({});
+  const [secondaryTechs, setSecondaryTechs] = useState<Record<string, Set<string>>>({});
 
   const { data: queue, isLoading: queueLoading, isError: queueError } = useQuery<QueueResponse>({
     queryKey: ["feedback-queue", strategy],
@@ -114,11 +138,21 @@ export default function ActiveLearningPage() {
   });
 
   const submitFeedback = useMutation({
-    mutationFn: (vars: { expediente: string; relevante: boolean; nota?: string }) =>
+    mutationFn: (vars: {
+      expediente: string;
+      relevante: boolean;
+      nota?: string;
+      tecnologia?: string | null;
+      tecnologias_secundarias?: string[];
+    }) =>
       apiMutate("POST", "/api/v1/feedback", {
         expediente: vars.expediente,
         relevante: vars.relevante,
         nota: vars.nota || undefined,
+        tecnologia: vars.tecnologia ?? undefined,
+        tecnologias_secundarias: vars.tecnologias_secundarias?.length
+          ? vars.tecnologias_secundarias
+          : undefined,
       }),
     onSuccess: (_data, vars) => {
       setDismissed((prev) => new Set(prev).add(vars.expediente));
@@ -133,17 +167,15 @@ export default function ActiveLearningPage() {
   const pendingItems = items.filter((it) => !dismissed.has(it.id_externo));
   const queueSize = queue?.total ?? items.length;
 
-  // Group by technology if available
   const techCounts: Record<string, number> = {};
   for (const item of items) {
-    if (item.tecnologia) {
-      techCounts[item.tecnologia] = (techCounts[item.tecnologia] ?? 0) + 1;
+    const principal = item.model?.tech_principal ?? item.tecnologia;
+    if (principal) {
+      techCounts[principal] = (techCounts[principal] ?? 0) + 1;
     }
   }
   const hasTechData = Object.keys(techCounts).length > 0;
 
-  // Impacto del modelo: versión activa, métrica titular y su delta vs la versión
-  // anterior (history viene DESC por versión, [0] = activa, [1] = previa).
   const activeModel = modelInfo?.active ?? null;
   const metric = activeModel ? headlineMetric(activeModel.metrics) : null;
   const prevMetric =
@@ -153,26 +185,87 @@ export default function ActiveLearningPage() {
   const metricTrend =
     metric && typeof prevMetric === "number" ? metric.value - prevMetric : null;
 
-  const handleLabel = (expediente: string, relevante: boolean) => {
-    submitFeedback.mutate({
-      expediente,
-      relevante,
-      nota: notes[expediente],
-    });
-  };
+  const handleConfirmLabel = useCallback(
+    (expediente: string) => {
+      const tech = selectedTech[expediente] ?? null;
+      const secs = secondaryTechs[expediente]
+        ? Array.from(secondaryTechs[expediente]!)
+        : [];
+      submitFeedback.mutate({
+        expediente,
+        relevante: true,
+        nota: notes[expediente],
+        tecnologia: tech,
+        tecnologias_secundarias: secs,
+      });
+    },
+    [selectedTech, secondaryTechs, notes, submitFeedback],
+  );
 
-  const handleSkip = (expediente: string) => {
-    setDismissed((prev) => new Set(prev).add(expediente));
-  };
+  const handleNotRelevant = useCallback(
+    (expediente: string) => {
+      submitFeedback.mutate({
+        expediente,
+        relevante: false,
+        nota: notes[expediente],
+        tecnologia: null,
+        tecnologias_secundarias: [],
+      });
+    },
+    [notes, submitFeedback],
+  );
 
-  const toggleNote = (expediente: string) => {
+  const handleSkip = useCallback(
+    (expediente: string) => {
+      setDismissed((prev) => new Set(prev).add(expediente));
+    },
+    [],
+  );
+
+  const toggleNote = useCallback((expediente: string) => {
     setExpandedNotes((prev) => {
       const next = new Set(prev);
       if (next.has(expediente)) next.delete(expediente);
       else next.add(expediente);
       return next;
     });
-  };
+  }, []);
+
+  const toggleDesc = useCallback((expediente: string) => {
+    setExpandedDesc((prev) => {
+      const next = new Set(prev);
+      if (next.has(expediente)) next.delete(expediente);
+      else next.add(expediente);
+      return next;
+    });
+  }, []);
+
+  const selectTech = useCallback(
+    (expediente: string, tech: string, shiftKey: boolean) => {
+      if (shiftKey) {
+        setSecondaryTechs((prev) => {
+          const current = new Set(prev[expediente] ?? []);
+          if (current.has(tech)) current.delete(tech);
+          else current.add(tech);
+          return { ...prev, [expediente]: current };
+        });
+      } else {
+        setSelectedTech((prev) => {
+          const current = prev[expediente];
+          if (current === tech) {
+            return { ...prev, [expediente]: null };
+          }
+          return { ...prev, [expediente]: tech };
+        });
+        setSecondaryTechs((prev) => {
+          const s = prev[expediente] ?? new Set();
+          s.delete(tech);
+          return { ...prev, [expediente]: s };
+        });
+      }
+    },
+    [],
+  );
 
   return (
     <div className="space-y-6">
@@ -191,7 +284,9 @@ export default function ActiveLearningPage() {
             Etiquetado humano de licitaciones en la zona de incertidumbre del
             modelo ML para mejorar la precision del clasificador. Las
             oportunidades se seleccionan mediante muestreo por incertidumbre
-            (uncertainty sampling).
+            (uncertainty sampling). Selecciona la tecnologia principal haciendo
+            click en el chip; usa shift-click para marcar tecnologias
+            secundarias.
           </span>
         </CardContent>
       </Card>
@@ -274,8 +369,6 @@ export default function ActiveLearningPage() {
             </div>
           </div>
 
-          {/* Impacto real del etiquetado: estado del modelo (registry), no solo
-              el recuento de feedback. Cierra el bucle de active learning. */}
           {activeModel ? (
             <>
               <Separator className="my-4" />
@@ -427,93 +520,326 @@ export default function ActiveLearningPage() {
           {pendingItems.map((item) => {
             const prob = item.confidence ?? null;
             const noteExpanded = expandedNotes.has(item.id_externo);
+            const descExpanded = expandedDesc.has(item.id_externo);
+            const model = item.model;
+            const chosenTech = selectedTech[item.id_externo] ?? null;
+            const chosenSecs = secondaryTechs[item.id_externo] ?? new Set<string>();
+            const hasSelection = chosenTech != null;
+
+            const sortedScores = model
+              ? Object.entries(model.tech_scores).sort(([, a], [, b]) => b - a)
+              : [];
 
             return (
               <Card key={item.id_externo}>
-                <CardContent className="pt-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <p className="font-medium leading-snug">
-                        {item.titulo ?? "Sin titulo"}
+                <CardContent className="pt-4 space-y-3">
+                  {/* Header: titulo + link + badges */}
+                  <div>
+                    <div className="flex items-start gap-2">
+                      <p className="font-medium leading-snug flex-1">
+                        {item.url_origen ? (
+                          <a
+                            href={item.url_origen}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                          >
+                            {item.titulo ?? "Sin titulo"}
+                            <ExternalLink className="inline h-3 w-3 ml-1 text-muted-foreground" />
+                          </a>
+                        ) : (
+                          item.titulo ?? "Sin titulo"
+                        )}
                       </p>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {item.id_externo}
-                      </p>
-                      {prob != null && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            Probabilidad:
-                          </span>
-                          <div className="flex-1 h-2 max-w-[200px] rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full rounded-full transition-all",
-                                prob >= 0.7
-                                  ? "bg-green-500"
-                                  : prob >= 0.4
-                                    ? "bg-yellow-500"
-                                    : "bg-red-500",
-                              )}
-                              style={{
-                                width: `${Math.min(prob * 100, 100)}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="text-xs font-medium">
-                            {(prob * 100).toFixed(1)}%
-                          </span>
-                        </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                      {item.id_externo}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {item.organo && (
+                        <Badge variant="outline" className="text-xs">
+                          {item.organo}
+                        </Badge>
+                      )}
+                      {item.ccaa && (
+                        <Badge variant="outline" className="text-xs">
+                          {item.ccaa}
+                        </Badge>
+                      )}
+                      {item.cpv && (
+                        <Badge variant="secondary" className="text-xs font-mono">
+                          CPV {item.cpv}
+                        </Badge>
+                      )}
+                      {item.importe != null && (
+                        <Badge variant="outline" className="text-xs">
+                          {formatCurrency(item.importe)}
+                        </Badge>
+                      )}
+                      {item.fecha_publicacion && (
+                        <Badge variant="outline" className="text-xs">
+                          {new Date(item.fecha_publicacion).toLocaleDateString("es-ES")}
+                        </Badge>
                       )}
                       {item.tecnologia && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 dark:text-blue-400 dark:border-blue-700">
                           {item.tecnologia}
                         </Badge>
                       )}
                     </div>
-                    <div className="flex flex-col gap-2 shrink-0">
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700"
-                          onClick={() => handleLabel(item.id_externo, true)}
-                          disabled={submitFeedback.isPending}
-                        >
-                          <ThumbsUp className="mr-1 h-4 w-4" />
-                          Relevante
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleLabel(item.id_externo, false)}
-                          disabled={submitFeedback.isPending}
-                        >
-                          <ThumbsDown className="mr-1 h-4 w-4" />
-                          No relevante
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleSkip(item.id_externo)}
-                        >
-                          <SkipForward className="mr-1 h-4 w-4" />
-                          Saltar
-                        </Button>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs"
-                        onClick={() => toggleNote(item.id_externo)}
-                      >
-                        {noteExpanded ? (
-                          <ChevronUp className="mr-1 h-3 w-3" />
-                        ) : (
-                          <ChevronDown className="mr-1 h-3 w-3" />
-                        )}
-                        Nota
-                      </Button>
-                    </div>
                   </div>
+
+                  {/* Descripcion colapsable */}
+                  {item.descripcion && (
+                    <div>
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
+                        onClick={() => toggleDesc(item.id_externo)}
+                      >
+                        {descExpanded ? (
+                          <ChevronUp className="h-3 w-3" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3" />
+                        )}
+                        {descExpanded ? "Ocultar descripcion" : "Ver descripcion"}
+                      </button>
+                      {descExpanded && (
+                        <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
+                          {item.descripcion}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Binary confidence (backward compat) */}
+                  {prob != null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        Confianza SAP (binario):
+                      </span>
+                      <div className="flex-1 h-2 max-w-[200px] rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            prob >= 0.7
+                              ? "bg-green-500"
+                              : prob >= 0.4
+                                ? "bg-yellow-500"
+                                : "bg-red-500",
+                          )}
+                          style={{
+                            width: `${Math.min(prob * 100, 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium">
+                        {(prob * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Tech scores block */}
+                  {model && sortedScores.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Prediccion del modelo
+                        </span>
+                        {activeModel && (
+                          <span
+                            className="text-xs text-muted-foreground/70"
+                            title={`Modelo v${activeModel.version}${
+                              activeModel.trained_at
+                                ? ` — reentrenado ${new Date(activeModel.trained_at).toLocaleDateString("es-ES")}`
+                                : ""
+                            }`}
+                          >
+                            (v{activeModel.version})
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {sortedScores.map(([tech, score]) => {
+                          const threshold = model.tech_thresholds[tech] ?? 0.5;
+                          const isPredicted = model.tech_predicted.includes(tech);
+                          const isPrincipal = model.tech_principal === tech;
+                          const isSelected = chosenTech === tech;
+                          const isSecondary = chosenSecs.has(tech);
+
+                          return (
+                            <button
+                              key={tech}
+                              type="button"
+                              onClick={(e) =>
+                                selectTech(item.id_externo, tech, e.shiftKey)
+                              }
+                              className={cn(
+                                "w-full flex items-center gap-2 px-2 py-1 rounded-md text-sm transition-colors",
+                                "hover:bg-muted/70 focus:outline-none focus:ring-1 focus:ring-ring",
+                                isSelected && "ring-2 ring-primary bg-primary/5",
+                                isSecondary && !isSelected && "ring-1 ring-blue-400 bg-blue-50/50 dark:bg-blue-950/20",
+                              )}
+                              title={`Score: ${(score * 100).toFixed(1)}% — Umbral: ${(threshold * 100).toFixed(0)}%${
+                                isPrincipal ? " (principal)" : ""
+                              }${isSelected ? " [seleccionada]" : ""}${
+                                isSecondary ? " [secundaria]" : ""
+                              }`}
+                            >
+                              <span
+                                className={cn(
+                                  "w-[72px] shrink-0 text-xs font-mono font-medium text-left",
+                                  isPrincipal && "text-green-700 dark:text-green-400",
+                                  isSelected && "text-primary font-bold",
+                                  isSecondary && !isSelected && "text-blue-600 dark:text-blue-400",
+                                )}
+                              >
+                                {tech}
+                              </span>
+                              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className={cn(
+                                    "h-full rounded-full transition-all",
+                                    isSelected
+                                      ? "bg-primary"
+                                      : isSecondary
+                                        ? "bg-blue-400"
+                                        : score >= threshold
+                                          ? "bg-green-500"
+                                          : "bg-muted-foreground/30",
+                                  )}
+                                  style={{
+                                    width: `${Math.min(score * 100, 100)}%`,
+                                  }}
+                                />
+                                {threshold > 0 && threshold < 1 && (
+                                  <div
+                                    className="absolute top-0 h-full w-px bg-red-500/60"
+                                    style={{
+                                      left: `${threshold * 100}%`,
+                                      height: "8px",
+                                      position: "relative",
+                                      marginTop: "-8px",
+                                    }}
+                                    title={`Umbral: ${(threshold * 100).toFixed(0)}%`}
+                                  />
+                                )}
+                              </div>
+                              <span className="text-xs tabular-nums w-[42px] text-right shrink-0">
+                                {(score * 100).toFixed(0)}%
+                              </span>
+                              {isPredicted && !isSelected && !isSecondary && (
+                                <span
+                                  className="text-[10px] text-green-600 dark:text-green-400 shrink-0"
+                                  title="Supera el umbral del modelo"
+                                >
+                                  ✓
+                                </span>
+                              )}
+                              {isSelected && (
+                                <span className="text-[10px] text-primary shrink-0 font-bold">
+                                  ●
+                                </span>
+                              )}
+                              {isSecondary && !isSelected && (
+                                <span className="text-[10px] text-blue-500 shrink-0 font-bold">
+                                  ○
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/60 mt-1">
+                        Click = principal · Shift+click = secundaria · ▎marca = umbral del modelo
+                      </p>
+                    </div>
+                  )}
+
+                  {/* No model available */}
+                  {!model && prob == null && (
+                    <p className="text-xs text-muted-foreground italic">
+                      Sin prediccion del modelo disponible.
+                    </p>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => handleConfirmLabel(item.id_externo)}
+                      disabled={submitFeedback.isPending || !hasSelection}
+                      title={
+                        hasSelection
+                          ? `Confirmar: ${chosenTech}${
+                              chosenSecs.size
+                                ? ` + ${Array.from(chosenSecs).join(", ")}`
+                                : ""
+                            }`
+                          : "Selecciona una tecnologia primero"
+                      }
+                    >
+                      <ThumbsUp className="mr-1 h-4 w-4" />
+                      {hasSelection
+                        ? `Confirmar: ${chosenTech}`
+                        : "Confirmar etiqueta"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleNotRelevant(item.id_externo)}
+                      disabled={submitFeedback.isPending}
+                      title="Ninguna tecnologia / no relevante"
+                    >
+                      <ThumbsDown className="mr-1 h-4 w-4" />
+                      Ninguna / no relevante
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleSkip(item.id_externo)}
+                    >
+                      <SkipForward className="mr-1 h-4 w-4" />
+                      Saltar
+                    </Button>
+                    {chosenTech && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-xs"
+                        onClick={() => {
+                          setSelectedTech((prev) => ({
+                            ...prev,
+                            [item.id_externo]: null,
+                          }));
+                          setSecondaryTechs((prev) => ({
+                            ...prev,
+                            [item.id_externo]: new Set(),
+                          }));
+                        }}
+                        title="Limpiar seleccion"
+                      >
+                        <X className="mr-1 h-3 w-3" />
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Note toggle */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => toggleNote(item.id_externo)}
+                  >
+                    {noteExpanded ? (
+                      <ChevronUp className="mr-1 h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="mr-1 h-3 w-3" />
+                    )}
+                    Nota
+                  </Button>
                   {noteExpanded && (
                     <Textarea
                       className="mt-2 w-full"

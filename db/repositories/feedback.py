@@ -9,14 +9,31 @@ from db.repositories.base import rows_to_dicts
 
 
 class FeedbackRepository:
-    def insert(self, *, expediente: str, relevante: bool, nota: str) -> str:
+    def insert(
+        self,
+        *,
+        expediente: str,
+        relevante: bool,
+        nota: str,
+        tecnologia: str | None = None,
+        tecnologias_secundarias: list[str] | None = None,
+        model_version: int | None = None,
+    ) -> str:
         """Inserta feedback y devuelve el timestamp de creación."""
+        import json
+
         now = now_utc_iso()
+        ts_json = (
+            json.dumps(tecnologias_secundarias, ensure_ascii=False)
+            if tecnologias_secundarias
+            else None
+        )
         with connect() as c:
             c.execute(
-                "INSERT INTO ml_feedback (expediente, relevante, nota, created_at) "
-                "VALUES (?, ?, ?, ?)",
-                (expediente, 1 if relevante else 0, nota, now),
+                "INSERT INTO ml_feedback "
+                "(expediente, relevante, nota, tecnologia, tecnologias_secundarias, model_version, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (expediente, 1 if relevante else 0, nota, tecnologia, ts_json, model_version, now),
             )
         return now
 

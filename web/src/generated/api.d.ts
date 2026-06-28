@@ -1018,6 +1018,9 @@ export interface PipelineResult {
   total_en_plazo: number;
   vencen_7d: number;
   vencen_30d: number;
+  valor_total: number;
+  valor_7d: number;
+  valor_30d: number;
   por_horizonte: HorizonteCount[];
   por_trimestre: TrimestreCount[];
   urgencia_valor: UrgenciaValorPoint[];

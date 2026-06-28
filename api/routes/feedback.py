@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_any_auth
+from config.keywords import TECH_LABELS
 from db.audit import log_event
 from db.repositories.feedback import FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
@@ -20,6 +21,94 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 _repo = FeedbackRepository()
 _lic_repo = LicitacionRepository()
+
+
+def _safe_float(val: Any) -> float:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _build_queue_items(
+    candidates: list[dict[str, Any]],
+    *,
+    include_model: bool = True,
+    tech_classifier: Any = None,
+) -> list[dict[str, Any]]:
+    """Construye el payload de la cola con campos contextuales y, opcionalmente,
+    el bloque ``model`` con los scores del TechnologyClassifier.
+
+    ``candidates`` viene de ``get_unlabelled_candidates`` o
+    ``get_unlabelled_random`` y ya tiene los campos extra (descripcion, cpv,
+    importe, organo_contratacion, ccaa, fecha_publicacion, url, tecnologia,
+    ml_tecnologias, ml_proba_max, ml_tech_principal).
+    """
+
+    if not candidates:
+        return []
+
+    tech_batch_results: list[dict[str, Any]] | None = None
+    if include_model and tech_classifier is not None:
+        try:
+            items_for_batch = [
+                {
+                    "text": f"{c.get('titulo', '')} {c.get('descripcion') or ''}",
+                    "cpv": c.get("cpv"),
+                    "importe": _safe_float(c.get("importe")),
+                }
+                for c in candidates
+            ]
+            tech_batch_results = tech_classifier.predict_batch(items_for_batch)
+        except Exception:
+            log.warning("tech_classifier_batch_failed", exc_info=True)
+            tech_batch_results = None
+
+    results: list[dict[str, Any]] = []
+    for i, c in enumerate(candidates):
+        model_block: dict[str, Any] | None = None
+        if include_model and tech_batch_results and i < len(tech_batch_results):
+            t = tech_batch_results[i]
+            model_block = {
+                "tech_scores": {k: round(v, 3) for k, v in t.get("scores", {}).items()},
+                "tech_predicted": t.get("predicted", []),
+                "tech_principal": t.get("principal"),
+                "tech_max_proba": round(t.get("max_proba", 0.0), 3),
+                "tech_thresholds": {k: round(v, 3) for k, v in t.get("thresholds", {}).items()},
+            }
+
+        results.append(
+            {
+                "id_externo": c["id_externo"],
+                "titulo": c["titulo"],
+                "descripcion": (c.get("descripcion") or "")[:500],
+                "cpv": c.get("cpv"),
+                "importe": _safe_float(c.get("importe")) if c.get("importe") is not None else None,
+                "organo": c.get("organo_contratacion"),
+                "ccaa": c.get("ccaa"),
+                "fecha_publicacion": c.get("fecha_publicacion"),
+                "url_origen": c.get("url"),
+                "confidence": round(
+                    _safe_float(
+                        c.get("confidence")
+                        if c.get("confidence") is not None
+                        else c.get("ml_proba_max")
+                    ),
+                    3,
+                ),
+                "uncertainty": round(
+                    _safe_float(
+                        c.get("uncertainty")
+                        if c.get("uncertainty") is not None
+                        else abs(_safe_float(c.get("ml_proba_max")) - 0.5)
+                    ),
+                    3,
+                ),
+                "tecnologia": c.get("tecnologia"),
+                "model": model_block,
+            }
+        )
+    return results
 
 
 class FeedbackRequest(BaseModel):
@@ -41,11 +130,42 @@ class FeedbackRequest(BaseModel):
         examples=["Encaja con perfil SAP S/4HANA Cloud"],
         description="Nota libre opcional (máx. 500 chars).",
     )
+    tecnologia: str | None = Field(
+        default=None,
+        examples=["SAP"],
+        description="Tecnología principal seleccionada por el etiquetador.",
+    )
+    tecnologias_secundarias: list[str] = Field(
+        default_factory=list,
+        examples=[["MICROSOFT", "INFOR"]],
+        description="Tecnologías secundarias (multi-label).",
+    )
 
     @field_validator("expediente")
     @classmethod
     def sanitize_expediente(cls, v: str) -> str:
         return "".join(ch for ch in v if ch.isprintable()).strip()
+
+    @field_validator("tecnologia")
+    @classmethod
+    def validate_tecnologia(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v_upper = v.upper().strip()
+        if v_upper not in TECH_LABELS:
+            raise ValueError(f"tecnologia debe ser una de {TECH_LABELS}, got '{v}'")
+        return v_upper
+
+    @field_validator("tecnologias_secundarias")
+    @classmethod
+    def validate_secundarias(cls, v: list[str]) -> list[str]:
+        invalid = [t for t in v if t.upper().strip() not in TECH_LABELS]
+        if invalid:
+            raise ValueError(
+                f"tecnologias_secundarias contiene labels inválidas: {invalid}. "
+                f"Permitidas: {TECH_LABELS}"
+            )
+        return [t.upper().strip() for t in v]
 
 
 class FeedbackResponse(BaseModel):
@@ -88,6 +208,8 @@ async def submit_feedback(
             expediente=body.expediente,
             relevante=body.relevante,
             nota=body.nota,
+            tecnologia=body.tecnologia,
+            tecnologias_secundarias=body.tecnologias_secundarias or None,
         )
     except Exception as exc:
         log.error("feedback_store_error", expediente=body.expediente, error=str(exc))
@@ -110,9 +232,18 @@ async def submit_feedback(
         event_type="feedback.submitted",
         user_key=ctx.get("key_hash", ctx.get("email", "session"))[:8],
         resource=f"licitacion:{body.expediente}",
-        detail={"relevante": body.relevante},
+        detail={
+            "relevante": body.relevante,
+            "tecnologia": body.tecnologia,
+            "tecnologias_secundarias": body.tecnologias_secundarias,
+        },
     )
-    log.info("feedback_stored", expediente=body.expediente, relevante=body.relevante)
+    log.info(
+        "feedback_stored",
+        expediente=body.expediente,
+        relevante=body.relevante,
+        tecnologia=body.tecnologia,
+    )
     return response_data
 
 
@@ -162,8 +293,26 @@ async def feedback_queue(
     - ``random``: muestra aleatoria (baseline).
 
     La inferencia ML se ejecuta en threadpool para no bloquear el event loop.
+    Incluye el bloque ``model`` con scores del TechnologyClassifier si está
+    disponible; si no, ``model`` es ``null`` (degradación elegante).
     """
     limit = max(1, min(limit, 200))
+
+    # Intentar cargar TechnologyClassifier (lazy, en threadpool)
+    tech_clf: Any = None
+    try:
+
+        def _load_tech() -> Any:
+            from scraper.tech_classifier import TechnologyClassifier
+
+            if TechnologyClassifier.is_available():
+                return TechnologyClassifier.load()
+            return None
+
+        tech_clf = await run_ml(_load_tech)
+    except Exception as exc:
+        log.warning("tech_classifier_unavailable", error=str(exc))
+        tech_clf = None
 
     if strategy == "uncertainty":
         try:
@@ -184,22 +333,18 @@ async def feedback_queue(
                     uncertainty = abs(p - 0.5)
                     scores.append({"uncertainty": uncertainty, "confidence": p, **row})
                 scores.sort(key=lambda x: x["uncertainty"])
-                return [
-                    {
-                        "id_externo": s["id_externo"],
-                        "titulo": s["titulo"],
-                        "confidence": round(s["confidence"], 3),
-                        "uncertainty": round(s["uncertainty"], 3),
-                    }
-                    for s in scores[:limit]
-                ]
+                return scores[:limit]
 
-            items = await run_ml(_predict)
+            sorted_candidates = await run_ml(_predict)
+            items = _build_queue_items(
+                sorted_candidates, include_model=True, tech_classifier=tech_clf
+            )
             return {"items": items, "strategy": strategy, "model_version": None}
 
         except Exception as exc:
             log.warning("uncertainty_sampling_failed", error=str(exc))
-            # Fallback to random
 
-    items = await run_db(_lic_repo.get_unlabelled_random, limit)
+    # Random / fallback
+    candidates = await run_db(_lic_repo.get_unlabelled_random, limit)
+    items = _build_queue_items(candidates, include_model=True, tech_classifier=tech_clf)
     return {"items": items, "strategy": "random", "model_version": None}

@@ -270,14 +270,18 @@ CREATE TABLE IF NOT EXISTS extracciones (
 CREATE INDEX IF NOT EXISTS idx_extr_fecha ON extracciones(fecha);
 
 CREATE TABLE IF NOT EXISTS ml_feedback (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    expediente  TEXT NOT NULL,
-    relevante   INTEGER NOT NULL,
-    nota        TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    expediente               TEXT NOT NULL,
+    relevante                INTEGER NOT NULL,
+    nota                     TEXT NOT NULL DEFAULT '',
+    tecnologia               TEXT,
+    tecnologias_secundarias  TEXT,
+    model_version            INTEGER,
+    created_at               TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ml_feedback_expediente ON ml_feedback(expediente);
 CREATE INDEX IF NOT EXISTS idx_ml_feedback_created_at ON ml_feedback(created_at);
+CREATE INDEX IF NOT EXISTS idx_ml_feedback_tecnologia ON ml_feedback(tecnologia);
 
 CREATE TABLE IF NOT EXISTS webhooks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
