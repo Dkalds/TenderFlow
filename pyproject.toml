@@ -34,6 +34,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Deps opcionales para el endpoint RAG /api/v1/ask (LLM).
+# Instalar con: pip install tenderflow[llm]
+# El SDK de OpenAI cubre OpenAI y NVIDIA NIM (API compatible, base_url propio).
+# Sin este extra, llm/providers/*.py operan en modo NoOp (log warning + sin respuesta).
+llm = [
+    "openai>=1.30.0,<3",
+    "anthropic>=0.40.0,<1",
+]
 # Deps opcionales para búsqueda semántica y vectorización.
 # Instalar con: pip install tenderflow[ml]
 # NOTA: sentence-transformers arrastra PyTorch (~2 GB). No instalar en entornos sin GPU si no se usa.

@@ -44,6 +44,14 @@ def test_provider_for_anthropic_models():
     assert provider_for("claude-opus-3") == "anthropic"
 
 
+def test_provider_for_nvidia_models():
+    """Modelos con namespace ('/') son NVIDIA NIM."""
+    from llm.client import provider_for
+
+    assert provider_for("deepseek-ai/deepseek-v4-pro") == "nvidia"
+    assert provider_for("meta/llama-3.1-70b-instruct") == "nvidia"
+
+
 def test_provider_for_unknown_model():
     """Modelo desconocido devuelve 'unknown'."""
     from llm.client import provider_for
@@ -172,6 +180,31 @@ def test_stream_llm_response_dispatches_to_anthropic(monkeypatch):
         )
 
     assert result == chunks
+
+
+def test_stream_llm_response_dispatches_to_nvidia(monkeypatch):
+    """Con modelo namespace/modelo, enruta al provider OpenAI con base_url NVIDIA."""
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")  # pragma: allowlist secret
+    chunks = ["Deep", "Seek"]
+    captured: dict[str, object] = {}
+
+    def fake_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
+        captured["api_key"] = api_key
+        captured["base_url"] = kwargs.get("base_url")
+        yield from chunks
+
+    with patch("llm.providers.openai_provider.stream", fake_stream):
+        from llm.client import stream_llm_response
+
+        result = list(
+            stream_llm_response(
+                "pregunta de prueba", [], model="deepseek-ai/deepseek-v4-pro", keywords=[]
+            )
+        )
+
+    assert result == chunks
+    assert captured["api_key"] == "nvapi-test"  # pragma: allowlist secret
+    assert captured["base_url"] == "https://integrate.api.nvidia.com/v1"
 
 
 def test_stream_llm_response_unknown_model_raises_value_error():

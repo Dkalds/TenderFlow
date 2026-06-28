@@ -28,14 +28,24 @@ log = get_logger(__name__)
 _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-")
 _ANTHROPIC_PREFIXES = ("claude-",)
 
+# NVIDIA NIM expone una API compatible con OpenAI. Los modelos llegan con formato
+# "namespace/modelo" (p. ej. "deepseek-ai/deepseek-v4-pro"), por lo que el "/" en
+# el nombre actúa como discriminador frente a los modelos OpenAI/Anthropic.
+# El endpoint es configurable vía NVIDIA_BASE_URL para apuntar a un gateway propio.
+_NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+
 # Modelos mostrados en el selectbox del dashboard y aceptados por el endpoint /ask
 AVAILABLE_MODELS: list[str] = [
+    "deepseek-ai/deepseek-v4-pro",
     "gpt-4o-mini",
     "gpt-4o",
     "gpt-3.5-turbo",
     "claude-sonnet-4-5",
     "claude-haiku-4-5",
 ]
+
+# Modelo por defecto cuando el cliente no especifica uno.
+DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
 
 # Límites de entrada
 _MAX_QUESTION_LEN = 2000
@@ -44,6 +54,8 @@ _MAX_DOCS = 50
 
 # ── Precio por millón de tokens (USD): (input, output) ────────────────────────
 _PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
+    # NVIDIA NIM — precio aproximado, ajustar según el plan contratado.
+    "deepseek-ai/deepseek-v4-pro": (0.27, 1.10),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-3.5-turbo": (0.50, 1.50),
@@ -153,6 +165,9 @@ def provider_for(model: str) -> str:
         return "openai"
     if any(model.startswith(p) for p in _ANTHROPIC_PREFIXES):
         return "anthropic"
+    # Los modelos de NVIDIA NIM usan la convención "namespace/modelo".
+    if "/" in model:
+        return "nvidia"
     return "unknown"
 
 
@@ -242,6 +257,19 @@ def stream_llm_response(
 
             yield from _stream(
                 question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"), usage_sink=usage
+            )
+        elif p == "nvidia":
+            # NVIDIA NIM reutiliza el proveedor OpenAI con su base_url propio.
+            from llm.providers.openai_provider import stream as _stream
+
+            yield from _stream(
+                question,
+                docs,
+                model,
+                keywords,
+                _get_key("NVIDIA_API_KEY"),
+                usage_sink=usage,
+                base_url=_NVIDIA_BASE_URL,
             )
         else:
             raise ValueError(f"Proveedor desconocido para modelo '{model}'")

@@ -1,5 +1,9 @@
 """Proveedor OpenAI para el cliente LLM unificado.
 
+Compatible con cualquier endpoint que hable el protocolo OpenAI Chat Completions.
+Pasando ``base_url`` se reutiliza este mismo proveedor para servicios como
+NVIDIA NIM (``https://integrate.api.nvidia.com/v1``), Together, Groq, etc.
+
 Hardening (B11):
     - Timeout de 30 s en la llamada a la API.
     - Retry automático (3 intentos, backoff exponencial) ante errores transitorios
@@ -82,16 +86,19 @@ def stream(
     keywords: list[str],
     api_key: str,
     usage_sink: MutableMapping[str, int] | None = None,
+    base_url: str | None = None,
 ) -> Iterator[str]:
-    """Streaming OpenAI con retry y timeout.
+    """Streaming OpenAI (o endpoint compatible) con retry y timeout.
 
     Args:
         question: Pregunta del usuario.
         docs: Documentos de contexto.
         model: Nombre del modelo OpenAI.
         keywords: Palabras clave para excerpts.
-        api_key: Clave de API de OpenAI.
+        api_key: Clave de API del proveedor.
         usage_sink: Si se provee, se rellena con input_tokens, output_tokens, source.
+        base_url: URL base de la API. ``None`` usa el endpoint oficial de OpenAI;
+            con un valor (p. ej. NVIDIA NIM) se enruta al endpoint compatible.
 
     Yields:
         Fragmentos de texto del modelo.
@@ -120,7 +127,7 @@ def stream(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT)
+            client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT, base_url=base_url)
             stream_kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],

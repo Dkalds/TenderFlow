@@ -49,7 +49,8 @@ class AskRequest(BaseModel):
         ..., min_length=3, max_length=_MAX_Q_LEN, description="Pregunta en lenguaje natural"
     )
     model: str = Field(
-        default="gpt-4o-mini",
+        # Mantener sincronizado con llm.client.DEFAULT_MODEL.
+        default="deepseek-ai/deepseek-v4-pro",
         description="Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.",
     )
     top_k: int = Field(
@@ -199,6 +200,6 @@ async def list_ask_models(
     _user: dict[str, Any] = Depends(require_any_auth),
 ) -> AskModelInfo:
     """Lista los modelos LLM disponibles para usar en POST /api/v1/ask."""
-    from llm.client import AVAILABLE_MODELS
+    from llm.client import AVAILABLE_MODELS, DEFAULT_MODEL
 
-    return AskModelInfo(models=AVAILABLE_MODELS, default="gpt-4o-mini")
+    return AskModelInfo(models=AVAILABLE_MODELS, default=DEFAULT_MODEL)
