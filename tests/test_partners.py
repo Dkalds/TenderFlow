@@ -111,6 +111,45 @@ class TestBuildPartnershipGraph:
         result = build_partnership_graph(df, min_contratos=2)
         assert result == {"nodes": [], "edges": []}
 
+    def test_nodes_carry_community_field(self):
+        """Cada nodo expone `community` (int o None) — contrato del grafo."""
+        df = _make_df(
+            [
+                _ute_row(1, "UTE ACME / BETA", 100_000),
+                _ute_row(2, "UTE ACME / BETA", 200_000),
+            ]
+        )
+        result = build_partnership_graph(df)
+        assert all("community" in n for n in result["nodes"])
+
+    def test_community_detects_two_clusters(self):
+        """Dos tríadas densas y desconectadas → ≥2 comunidades distintas."""
+        rows = [
+            # Clúster 1: A-B, B-C, A-C (todas co-licitan entre sí, repetidas)
+            _ute_row(1, "UTE A / B", 100_000),
+            _ute_row(2, "UTE A / B", 100_000),
+            _ute_row(3, "UTE B / C", 100_000),
+            _ute_row(4, "UTE B / C", 100_000),
+            _ute_row(5, "UTE A / C", 100_000),
+            _ute_row(6, "UTE A / C", 100_000),
+            # Clúster 2: X-Y, Y-Z, X-Z (desconectado del clúster 1)
+            _ute_row(7, "UTE X / Y", 100_000),
+            _ute_row(8, "UTE X / Y", 100_000),
+            _ute_row(9, "UTE Y / Z", 100_000),
+            _ute_row(10, "UTE Y / Z", 100_000),
+            _ute_row(11, "UTE X / Z", 100_000),
+            _ute_row(12, "UTE X / Z", 100_000),
+        ]
+        result = build_partnership_graph(_make_df(rows))
+        comms = {n["name"]: n["community"] for n in result["nodes"]}
+        # Todos asignados (grafo no trivial) y ≥2 comunidades.
+        assert all(v is not None for v in comms.values())
+        assert len({v for v in comms.values()}) >= 2
+        # A, B, C en la misma comunidad; X, Y, Z en otra.
+        assert comms["A"] == comms["B"] == comms["C"]
+        assert comms["X"] == comms["Y"] == comms["Z"]
+        assert comms["A"] != comms["X"]
+
 
 # ── suggest_partners ─────────────────────────────────────────────────────────
 

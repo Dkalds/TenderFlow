@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { KpiCard } from "@/components/charts/kpi-card";
@@ -107,7 +108,10 @@ interface ReviewItem {
 
 export default function EmpresasPage() {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
+  const searchParams = useSearchParams();
+  // Deep-link desde los grafos (Ecosistema Partners / Red Órgano-Empresa):
+  // `?q=<empresa>` siembra la búsqueda.
+  const [search, setSearch] = useState(() => searchParams?.get("q") ?? "");
   const debouncedSearch = useDebounce(search, 300);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 

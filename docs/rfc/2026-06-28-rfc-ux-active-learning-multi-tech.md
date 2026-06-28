@@ -4,7 +4,7 @@ title: "UX · Active Learning — más contexto por item, etiquetado multi-tecno
 issue: pendiente (crear issue y renumerar)
 author: agent:architect
 date: 2026-06-28
-status: draft
+status: implemented
 area: web/active-learning · api/feedback · scraper/tech_classifier
 supersedes: docs/rfc/2026-06-16-rfc-ux-active-learning.md (partially-implemented; este lo concreta sobre los puntos 2 — multi-clase — y añade el desglose de probabilidades por tecnología)
 ---
@@ -273,3 +273,12 @@ de inferencia de `TechnologyClassifier` por cola — mitigado leyendo
 ## Notas de review
 
 <!-- 2026-06-28T00:00Z agent:architect — borrador inicial -->
+
+**2026-06-28 — Implementado** (commit `fa51c4e` *feat(active-learning): multi-tech
+labeling + context enrichment*). Migración `db/alembic/versions/v44_ml_feedback_tecnologia.py`
+(columnas `tecnologia`, `tecnologias_secundarias`, `model_version` + índice; schema
+actualizado). `api/routes/feedback.py`: `FeedbackRequest` valida `tecnologia` contra
+`TECH_LABELS` (422 si desconocida) y la cola devuelve el sub-objeto `model`
+(`tech_scores`/`tech_predicted`/`tech_principal`/…) vía `TechnologyClassifier.predict_batch`,
+con degradación a `model: null` si no hay modelo. Tests:
+`tests/test_feedback_post_multilabel.py`, `tests/test_feedback_queue_model_block.py`.

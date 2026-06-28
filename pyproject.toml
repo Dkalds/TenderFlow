@@ -221,6 +221,8 @@ module = [
     "cachetools.*",
     "statsmodels",
     "statsmodels.*",
+    "networkx",
+    "networkx.*",
 ]
 ignore_missing_imports = true
 

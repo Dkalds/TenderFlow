@@ -67,14 +67,6 @@ def build_partnership_graph(
     sorted_nodes = sorted(node_importe.items(), key=lambda x: x[1], reverse=True)
     top_node_names = {name for name, _ in sorted_nodes[:top_nodes]}
 
-    nodes = [
-        {
-            "name": name,
-            "contratos": node_contratos[name],
-            "importe": node_importe[name],
-        }
-        for name in top_node_names
-    ]
     edges = [
         {
             "source": a,
@@ -86,7 +78,49 @@ def build_partnership_graph(
         if a in top_node_names and b in top_node_names
     ]
 
+    # Detección de comunidades (modularidad) sobre el subgrafo final. Es la única
+    # señal sintética nueva y se calcula en backend (§3.8): el frontend colorea por
+    # clúster, no lo inventa. `community` es None si el grafo es trivial (≤1 clúster).
+    community_map = _detect_communities(top_node_names, edges)
+
+    nodes = [
+        {
+            "name": name,
+            "contratos": node_contratos[name],
+            "importe": node_importe[name],
+            "community": community_map.get(name),
+        }
+        for name in top_node_names
+    ]
+
     return {"nodes": nodes, "edges": edges}
+
+
+def _detect_communities(node_names: set[str], edges: list[dict[str, Any]]) -> dict[str, int]:
+    """Asigna un id de comunidad a cada nodo por modularidad (Louvain).
+
+    Devuelve ``{nombre: community_id}``. Vacío si el grafo es trivial (sin aristas
+    o una sola comunidad) — en ese caso no hay clustering significativo que mostrar.
+    Determinista (``seed`` fijo) para que el coloreo sea estable entre peticiones.
+    """
+    if not edges or len(node_names) < 3:
+        return {}
+    try:
+        import networkx as nx
+
+        graph = nx.Graph()
+        graph.add_nodes_from(node_names)
+        for e in edges:
+            graph.add_edge(e["source"], e["target"], weight=max(1, int(e["contratos"])))
+        communities = nx.community.louvain_communities(graph, weight="weight", seed=42)
+    except Exception:
+        return {}
+    # Grafo trivial: una sola comunidad → sin clustering útil.
+    if len(communities) <= 1:
+        return {}
+    # Orden estable: comunidades más grandes primero (ids bajos = clústeres grandes).
+    ordered = sorted(communities, key=len, reverse=True)
+    return {node: idx for idx, comm in enumerate(ordered) for node in comm}
 
 
 def suggest_partners(

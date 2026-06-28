@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -110,7 +111,9 @@ const MONTH_LABELS = [
 ];
 
 export default function OrganosPage() {
-  const [filter, setFilter] = useState("");
+  const searchParams = useSearchParams();
+  // Deep-link desde los grafos (Red Órgano-Empresa): `?q=<órgano>` siembra el filtro.
+  const [filter, setFilter] = useState(() => searchParams?.get("q") ?? "");
   const [selectedOrgano, setSelectedOrgano] = useState<string | null>(null);
 
   // Búsqueda server-side (accent-insensitive): sin q el API devuelve solo el

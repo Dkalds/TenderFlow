@@ -2,6 +2,7 @@
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
@@ -66,6 +67,7 @@ interface PartnerNode {
   name: string;
   contratos: number;
   importe: number;
+  community?: number | null;
 }
 
 interface PartnerEdge {
@@ -86,6 +88,7 @@ interface PartnershipGraphResponse {
 /* ------------------------------------------------------------------ */
 
 export default function EcosistemaPartnersPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [ganadoresSearch, setGanadoresSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"red" | "ganadores">("red");
@@ -106,21 +109,38 @@ export default function EcosistemaPartnersPage() {
       { top_nodes: String(maxNodes), min_contratos: String(minWeight) },
     );
 
-  const graph = useMemo(() => {
-    const lowHL = search.toLowerCase();
-    const nodes = (graphData?.nodes ?? []).map((n) => ({
+  const { graphNodes, graphLinks, graphGroupLabels, graphHighlightIds } = useMemo(() => {
+    const lowHL = search.trim().toLowerCase();
+    const gNodes = (graphData?.nodes ?? []).map((n) => ({
       id: n.name,
       label: truncate(n.name, 30),
-      group: "empresa",
+      // Color por comunidad (clúster de co-licitación) si el backend la calculó.
+      group: n.community != null ? `c${n.community}` : "empresa",
       size: Math.max(n.importe, 1),
-      _highlighted: lowHL ? n.name.toLowerCase().includes(lowHL) : false,
+      importe: n.importe,
+      contratos: n.contratos,
     }));
-    const links = (graphData?.edges ?? []).map((e) => ({
+    const gLinks = (graphData?.edges ?? []).map((e) => ({
       source: e.source,
       target: e.target,
-      weight: Math.min(e.contratos, 8),
+      weight: e.contratos,
+      importe: e.importe,
+      contratos: e.contratos,
     }));
-    return { nodes, links };
+    const comms = Array.from(new Set(gNodes.map((n) => n.group))).sort();
+    const labels: Record<string, string> = {};
+    for (const g of comms) {
+      labels[g] = g === "empresa" ? "Empresa" : `Clúster ${Number(g.slice(1)) + 1}`;
+    }
+    const hl = lowHL
+      ? gNodes.filter((n) => n.id.toLowerCase().includes(lowHL)).map((n) => n.id)
+      : [];
+    return {
+      graphNodes: gNodes,
+      graphLinks: gLinks,
+      graphGroupLabels: labels,
+      graphHighlightIds: hl,
+    };
   }, [graphData, search]);
 
   const filteredPartners = useMemo(() => {
@@ -406,13 +426,16 @@ export default function EcosistemaPartnersPage() {
         </CardHeader>
         <CardContent>
           {graphLoading ? (
-            <Skeleton className="h-[420px] w-full" />
-          ) : graph.nodes.length > 0 ? (
+            <Skeleton className="h-[460px] w-full" />
+          ) : graphNodes.length > 0 ? (
             <ForceGraph
-              nodes={graph.nodes}
-              links={graph.links}
-              height={420}
-              className="min-h-[420px]"
+              nodes={graphNodes}
+              links={graphLinks}
+              height={460}
+              layout="force"
+              groupLabels={graphGroupLabels}
+              highlightIds={graphHighlightIds}
+              onNodeClick={(id) => router.push(`/empresas?q=${encodeURIComponent(id)}`)}
             />
           ) : (
             <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted py-16">

@@ -32,6 +32,9 @@ class PartnerNode(BaseModel):
     name: str
     contratos: int
     importe: float
+    # Id de comunidad (modularidad) para colorear clústeres. None si el grafo es
+    # trivial. Calculado en backend (§3.8): el frontend no infiere clústeres.
+    community: int | None = None
 
 
 class PartnerEdge(BaseModel):

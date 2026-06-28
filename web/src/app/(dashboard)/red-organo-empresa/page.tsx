@@ -2,6 +2,7 @@
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
@@ -52,6 +53,7 @@ interface OrganCompanyGraphResponse {
 /* ------------------------------------------------------------------ */
 
 export default function RedOrganoEmpresaPage() {
+  const router = useRouter();
   const [minContratos, setMinContratos] = useState(1);
   const [maxOrganos, setMaxOrganos] = useState(10);
   const [maxEmpresas, setMaxEmpresas] = useState(10);
@@ -76,21 +78,39 @@ export default function RedOrganoEmpresaPage() {
   const nodes = useMemo(() => data?.nodes ?? [], [data]);
   const edges = useMemo(() => data?.edges ?? [], [data]);
 
-  // ForceGraph: nodos/aristas reales (peso = nº de contratos reales).
+  // ForceGraph: nodos/aristas reales (peso = nº de contratos reales). El
+  // componente escala el grosor de la arista; ya no se clampa en cliente.
   const { graphNodes, graphLinks } = useMemo(() => {
     const gNodes = nodes.map((n) => ({
       id: `${n.type}::${n.name}`,
       label: truncate(n.name, 28),
       group: n.type,
       size: Math.max(n.importe_total, 1),
+      importe: n.importe_total,
+      degree: n.degree,
+      column: (n.type === "organo" ? 0 : 1) as 0 | 1,
     }));
     const gLinks = edges.map((e) => ({
       source: `organo::${e.organo}`,
       target: `empresa::${e.empresa}`,
-      weight: Math.min(e.contratos, 8),
+      weight: e.contratos,
+      importe: e.importe_total,
+      contratos: e.contratos,
     }));
     return { graphNodes: gNodes, graphLinks: gLinks };
   }, [nodes, edges]);
+
+  // Drill-down: nodo → ficha de órgano/empresa; arista → empresa adjudicataria.
+  const navFromNodeId = (id: string) => {
+    const sep = id.indexOf("::");
+    const type = id.slice(0, sep);
+    const name = id.slice(sep + 2);
+    router.push(
+      type === "organo"
+        ? `/organos?q=${encodeURIComponent(name)}`
+        : `/empresas?q=${encodeURIComponent(name)}`,
+    );
+  };
 
   // Aristas ordenadas para la tabla.
   const sortedEdges = useMemo(
@@ -204,26 +224,17 @@ export default function RedOrganoEmpresaPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <Skeleton className="h-[420px] w-full" />
+            <Skeleton className="h-[460px] w-full" />
           ) : graphNodes.length > 0 ? (
-            <>
-              <div className="mb-3 flex gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-3 rounded-full bg-[#4e79a7]" />
-                  Organo
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-3 rounded-full bg-[#e15759]" />
-                  Empresa
-                </span>
-              </div>
-              <ForceGraph
-                nodes={graphNodes}
-                links={graphLinks}
-                height={420}
-                className="min-h-[420px]"
-              />
-            </>
+            <ForceGraph
+              nodes={graphNodes}
+              links={graphLinks}
+              height={460}
+              layout="bipartite"
+              groupLabels={{ organo: "Órgano", empresa: "Empresa" }}
+              onNodeClick={navFromNodeId}
+              onLinkClick={(_source, target) => navFromNodeId(target)}
+            />
           ) : (
             <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted py-16">
               <Network className="h-16 w-16 text-muted-foreground/30 mb-4" />
