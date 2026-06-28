@@ -1,25 +1,44 @@
 "use client";
-import { EmptyState } from "@/components/ui/empty-state";
 
 import { useState, useMemo } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import { KpiCard } from "@/components/charts/kpi-card";
-import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
-const GanttChart = dynamic(() => import("@/components/charts/gantt-chart").then(m => ({ default: m.GanttChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
-const PipelineHorizonChart = dynamic(() => import("@/components/charts/pipeline-charts").then(m => ({ default: m.PipelineHorizonChart })), { ssr: false, loading: () => <Skeleton className="h-[260px] w-full rounded-md" /> });
-const PipelineQuarterlyChart = dynamic(() => import("@/components/charts/pipeline-charts").then(m => ({ default: m.PipelineQuarterlyChart })), { ssr: false, loading: () => <Skeleton className="h-[260px] w-full rounded-md" /> });
-const PipelineUrgencyScatter = dynamic(() => import("@/components/charts/pipeline-charts").then(m => ({ default: m.PipelineUrgencyScatter })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   formatCurrency,
   formatNumber,
@@ -27,91 +46,87 @@ import {
   truncate,
   cn,
 } from "@/lib/utils";
-import { Bell,
+import {
+  Bell,
+  BellRing,
   Clock,
   AlertTriangle,
   Calendar,
-  Target,
   Building2,
   Filter,
+  Plus,
+  Trash2,
+  Search,
+  TrendingUp,
+  ArrowRight,
 } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type {
+  PipelineResult,
+  RetenderingResult,
+  ForecastVolumeResult,
+} from "@/generated/api";
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                             */
+/*  Lazy chart imports                                                 */
 /* ------------------------------------------------------------------ */
 
-interface PipelineItem {
-  id_externo?: string;
-  titulo: string;
-  organo_contratacion?: string;
-  importe?: number;
-  fecha_limite?: string;
-  dias_restantes?: number;
-  estado?: string;
-  score?: number;
-}
-
-interface HorizonteCount {
-  horizonte: string;
-  count: number;
-  importe: number;
-}
-
-interface TrimestreCount {
-  trimestre: string;
-  count: number;
-  importe: number;
-}
-
-interface UrgenciaValorPoint {
-  id_externo: string;
-  titulo?: string;
-  dias_restantes: number;
-  importe: number;
-  es_urgente: boolean;
-}
-
-interface PipelineData {
-  total_en_plazo: number;
-  vencen_7d: number;
-  vencen_30d: number;
-  upcoming: PipelineItem[];
-  por_horizonte: HorizonteCount[];
-  por_trimestre: TrimestreCount[];
-  urgencia_valor: UrgenciaValorPoint[];
-}
-
-interface ForecastEntry {
-  id_externo: string;
-  titulo?: string | null;
-  organo_contratacion?: string | null;
-  importe?: number | null;
-  fecha_fin_estimada?: string | null;
-  dias_hasta_fin?: number | null;
-  estado_forecast?: string | null;
-  adjudicatarios?: string | null;
-  baja_pct?: number | null;
-}
-
-interface RetenderingResumen {
-  ya_vencido: number;
-  menos_3m: number;
-  tres_seis_m: number;
-  seis_doce_m: number;
-  mas_doce_m: number;
-}
-
-interface RetenderingData {
-  forecast_entries: ForecastEntry[];
-  resumen: RetenderingResumen;
-}
+const GanttChart = dynamic(
+  () => import("@/components/charts/gantt-chart").then((m) => ({ default: m.GanttChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> },
+);
+const PipelineHorizonChart = dynamic(
+  () => import("@/components/charts/pipeline-charts").then((m) => ({ default: m.PipelineHorizonChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[260px] w-full rounded-md" /> },
+);
+const PipelineQuarterlyChart = dynamic(
+  () => import("@/components/charts/pipeline-charts").then((m) => ({ default: m.PipelineQuarterlyChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[260px] w-full rounded-md" /> },
+);
+const PipelineUrgencyScatter = dynamic(
+  () => import("@/components/charts/pipeline-charts").then((m) => ({ default: m.PipelineUrgencyScatter })),
+  { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> },
+);
+const PipelineForecastChart = dynamic(
+  () => import("@/components/charts/pipeline-charts").then((m) => ({ default: m.PipelineForecastChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> },
+);
 
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                           */
+/*  Types                                                              */
 /* ------------------------------------------------------------------ */
+
+type Frequency = "immediate" | "daily" | "weekly";
+
+interface WatchRule {
+  id: number;
+  nombre: string | null;
+  keyword: string | null;
+  cpv: string | null;
+  min_importe: number | null;
+  ccaa: string | null;
+  frequency: Frequency;
+  active: boolean;
+  match_count: number;
+}
+
+const FREQ_LABEL: Record<Frequency, string> = {
+  immediate: "Inmediata",
+  daily: "Diaria",
+  weekly: "Semanal",
+};
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+/** Importe abreviado para subtítulos de KPI (1,2 M € / 340 k €). */
+function compactEur(v: number | null | undefined): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} M €`;
+  if (abs >= 1_000) return `${Math.round(v / 1_000)} k €`;
+  return formatCurrency(v);
+}
 
 function getDiasBadgeVariant(
   dias: number | undefined,
@@ -137,98 +152,155 @@ function forecastBadgeColor(estado: string | null | undefined) {
   return "outline" as const;
 }
 
+async function apiSend(method: string, url: string, body?: unknown): Promise<unknown> {
+  const res = await fetch(url, {
+    method,
+    credentials: "include",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json().catch(() => null);
+}
+
+/* ================================================================== */
+/*  Page                                                              */
+/* ================================================================== */
+
 export default function PipelineAlertasPage() {
   const router = useRouter();
-  // Local filter state for forecast
+  const qc = useQueryClient();
+
+  /* ---- Forecast (re-licitación) local filters ---- */
   const [horizonteDias, setHorizonteDias] = useState(90);
   const [importeMin, setImporteMin] = useState<string>("");
   const [soloMantenimiento, setSoloMantenimiento] = useState(false);
-  const [scoreMin, setScoreMin] = useState(0);
 
-  // Pipeline (global filters)
+  /* ---- Forecast volume metric ---- */
+  const [volMetric, setVolMetric] = useState<"count" | "sum">("count");
+
+  /* ---- Cola de cierre: filtros de display (cliente) ---- */
+  const [search, setSearch] = useState("");
+  const [colaImporteMin, setColaImporteMin] = useState(0);
+
+  /* ---- Alta rápida de alerta ---- */
+  const [alertKeyword, setAlertKeyword] = useState("");
+  const [alertImporte, setAlertImporte] = useState("");
+  const [alertFreq, setAlertFreq] = useState<Frequency>("daily");
+
+  /* ---------------------------------------------------------------- */
+  /*  Queries                                                         */
+  /* ---------------------------------------------------------------- */
+
   const {
     data: pipelineData,
     isLoading: loadingPipeline,
     error: errorPipeline,
-  } = useFilteredQuery<PipelineData>(
+  } = useFilteredQuery<PipelineResult>(
     ["analytics", "pipeline"],
     "/api/v1/analytics/pipeline",
     { staleTime: 2 * 60 * 1000 },
   );
 
-  // Forecast / retendering (local filters)
+  const { data: volumeData, isLoading: loadingVolume } =
+    useFilteredQuery<ForecastVolumeResult>(
+      ["analytics", "forecast", "volume", volMetric],
+      "/api/v1/analytics/forecast/volume",
+      { staleTime: 5 * 60 * 1000 },
+      { months_ahead: "6", metric: volMetric },
+    );
+
   const forecastParams = useMemo(() => {
-    const p: Record<string, string> = {
-      horizonte_dias: String(horizonteDias),
-    };
+    const p: Record<string, string> = { horizonte_dias: String(horizonteDias) };
     if (importeMin) p.importe_min = importeMin;
     if (soloMantenimiento) p.solo_mantenimiento = "true";
     return p;
   }, [horizonteDias, importeMin, soloMantenimiento]);
 
-  const forecastQs = new URLSearchParams(forecastParams).toString();
   const {
     data: forecastData,
     isLoading: loadingForecast,
-    error: errorForecast,
-  } = useQuery<RetenderingData>({
+  } = useQuery<RetenderingResult>({
     queryKey: ["analytics", "forecast", "retendering", forecastParams],
     queryFn: async () => {
-      const url = forecastQs
-        ? `/api/v1/analytics/forecast/retendering?${forecastQs}`
-        : "/api/v1/analytics/forecast/retendering";
-      const res = await fetch(url, { credentials: "include" });
+      const qs = new URLSearchParams(forecastParams).toString();
+      const res = await fetch(`/api/v1/analytics/forecast/retendering?${qs}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       return res.json();
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  const isLoading = loadingPipeline;
-  const error = errorPipeline || errorForecast;
-
-  // "Alertarme": crea una regla de watchlist con el umbral de importe actual,
-  // reutilizando el motor de alertas server-side (RFC ux-pipeline-alertas).
-  const createAlert = useMutation({
-    mutationFn: async () => {
-      const min = importeMin ? parseFloat(importeMin) : null;
-      const res = await fetch("/api/v1/watchlist/rules", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre: min
-            ? `Pipeline: importe ≥ ${min.toLocaleString("es-ES")} €`
-            : "Pipeline: oportunidades",
-          min_importe: min,
-          frequency: "daily",
-          active: true,
-        }),
-      });
-      if (!res.ok) throw new Error(`API ${res.status}`);
-      return res.json();
+  /* ---- Alertas (reglas de watchlist server-side) ---- */
+  const { data: rules, isLoading: loadingRules } = useQuery<WatchRule[]>({
+    queryKey: ["watchlist-rules"],
+    queryFn: async () => {
+      const data = (await apiSend("GET", "/api/v1/watchlist/rules")) as {
+        items?: WatchRule[];
+      };
+      return data.items ?? [];
     },
+    staleTime: 60 * 1000,
   });
 
-  // Sorted urgent items
-  const sortedItems = useMemo(() => {
-    if (!pipelineData?.upcoming) return [];
-    return [...pipelineData.upcoming].sort(
-      (a, b) => (a.dias_restantes ?? 999) - (b.dias_restantes ?? 999),
-    );
-  }, [pipelineData]);
+  const invalidateRules = () =>
+    qc.invalidateQueries({ queryKey: ["watchlist-rules"] });
 
-  // Score-filtered pipeline score_promedio
-  const scoreProm = useMemo(() => {
-    if (!pipelineData?.upcoming) return 0;
-    const withScore = pipelineData.upcoming.filter(
-      (i) => i.score != null && i.score >= scoreMin,
-    );
-    if (withScore.length === 0) return 0;
-    return withScore.reduce((s, i) => s + (i.score ?? 0), 0) / withScore.length;
-  }, [pipelineData, scoreMin]);
+  const createRule = useMutation({
+    mutationFn: (body: Partial<WatchRule>) =>
+      apiSend("POST", "/api/v1/watchlist/rules", body),
+    onSuccess: invalidateRules,
+  });
+  const deleteRule = useMutation({
+    mutationFn: (id: number) => apiSend("DELETE", `/api/v1/watchlist/rules/${id}`),
+    onSuccess: invalidateRules,
+  });
 
-  // Gantt items from forecast
+  /* ---------------------------------------------------------------- */
+  /*  Derived                                                         */
+  /* ---------------------------------------------------------------- */
+
+  const activeRules = useMemo(
+    () => (rules ?? []).filter((r) => r.active),
+    [rules],
+  );
+  const totalMatches = useMemo(
+    () => activeRules.reduce((s, r) => s + (r.match_count ?? 0), 0),
+    [activeRules],
+  );
+
+  // Cola de cierre — orden por urgencia + filtros de display (cliente).
+  const colaItems = useMemo(() => {
+    const items = pipelineData?.upcoming ?? [];
+    const q = search.trim().toLowerCase();
+    return [...items]
+      .filter((it) => (colaImporteMin > 0 ? (it.importe ?? 0) >= colaImporteMin : true))
+      .filter((it) => {
+        if (!q) return true;
+        return (
+          (it.titulo ?? "").toLowerCase().includes(q) ||
+          (it.organo_contratacion ?? "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (a.dias_restantes ?? 999) - (b.dias_restantes ?? 999));
+  }, [pipelineData, search, colaImporteMin]);
+
+  // Volumen forecast normalizado para el chart.
+  const volumeSeries = useMemo(
+    () =>
+      (volumeData?.series ?? []).map((p) => ({
+        mes: p.mes,
+        valor: p.valor,
+        tipo: p.tipo,
+        lower: p.lower,
+        upper: p.upper,
+      })),
+    [volumeData],
+  );
+
+  // Gantt de re-licitación.
   const ganttItems = useMemo(() => {
     if (!forecastData?.forecast_entries) return [];
     const today = new Date().toISOString().slice(0, 10);
@@ -249,132 +321,235 @@ export default function PipelineAlertasPage() {
       }));
   }, [forecastData]);
 
-  if (error) {
+  const handleCreateAlert = () => {
+    const kw = alertKeyword.trim();
+    const min = alertImporte ? parseFloat(alertImporte) : null;
+    if (!kw && min == null) return;
+    createRule.mutate({
+      nombre: kw || (min ? `Importe ≥ ${compactEur(min)}` : "Alerta de pipeline"),
+      keyword: kw || null,
+      min_importe: min,
+      frequency: alertFreq,
+      active: true,
+    });
+    setAlertKeyword("");
+    setAlertImporte("");
+    setAlertFreq("daily");
+  };
+
+  /* ---------------------------------------------------------------- */
+  /*  Render                                                          */
+  /* ---------------------------------------------------------------- */
+
+  if (errorPipeline) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">Error: {(error as Error).message}</p>
+      <div
+        className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center"
+        role="alert"
+      >
+        <p className="text-destructive">Error: {(errorPipeline as Error).message}</p>
       </div>
     );
   }
 
   const resumen = forecastData?.resumen;
+  const hasVolume = volumeSeries.length > 0;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Pipeline &amp; Alertas
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">Pipeline &amp; Alertas</h1>
           <p className="text-muted-foreground">
-            Alertas de plazos, forecast de re-licitacion y analisis de pipeline.
+            Oportunidades activas que están cerrando, alertas suscribibles y
+            forecast de re-licitación — todo en una vista.
           </p>
         </div>
-        <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "pipeline-alertas" }} />
+        <ExportPopover
+          endpoint="/api/v1/exports/download"
+          extraParams={{ seccion: "pipeline-alertas" }}
+        />
       </div>
 
       <PipelineRoleNav current="pipeline-alertas" />
 
-      {/* Pipeline KPIs */}
+      {/* ============================================================ */}
+      {/*  KPIs (conteo + valor económico)                            */}
+      {/* ============================================================ */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Total en Plazo"
-          value={isLoading ? undefined : formatNumber(pipelineData?.total_en_plazo)}
+          title="En plazo"
+          value={loadingPipeline ? undefined : formatNumber(pipelineData?.total_en_plazo)}
+          subtitle={`${compactEur(pipelineData?.valor_total)} en juego`}
           icon={Clock}
-          loading={isLoading}
+          accent="primary"
+          loading={loadingPipeline}
         />
         <KpiCard
-          title="Vencen en 7 dias"
-          value={isLoading ? undefined : formatNumber(pipelineData?.vencen_7d)}
+          title="Vencen ≤ 7 días"
+          value={loadingPipeline ? undefined : formatNumber(pipelineData?.vencen_7d)}
+          subtitle={`${compactEur(pipelineData?.valor_7d)} urgente`}
           icon={AlertTriangle}
-          loading={isLoading}
+          accent="hot"
+          loading={loadingPipeline}
           className={
-            pipelineData?.vencen_7d && pipelineData.vencen_7d > 0
-              ? "border-red-200 dark:border-red-900"
-              : undefined
+            pipelineData?.vencen_7d ? "border-red-200 dark:border-red-900" : undefined
           }
         />
         <KpiCard
-          title="Vencen en 30 dias"
-          value={isLoading ? undefined : formatNumber(pipelineData?.vencen_30d)}
+          title="Vencen ≤ 30 días"
+          value={loadingPipeline ? undefined : formatNumber(pipelineData?.vencen_30d)}
+          subtitle={`${compactEur(pipelineData?.valor_30d)} en ventana`}
           icon={Calendar}
-          loading={isLoading}
+          accent="warm"
+          loading={loadingPipeline}
           className={
-            pipelineData?.vencen_30d && pipelineData.vencen_30d > 0
-              ? "border-yellow-200 dark:border-yellow-900"
-              : undefined
+            pipelineData?.vencen_30d ? "border-yellow-200 dark:border-yellow-900" : undefined
           }
         />
         <KpiCard
-          title="Score Promedio"
-          value={
-            isLoading
-              ? undefined
-              : scoreProm > 0
-                ? scoreProm.toFixed(1)
-                : "-"
+          title="Alertas activas"
+          value={loadingRules ? undefined : formatNumber(activeRules.length)}
+          subtitle={
+            activeRules.length > 0
+              ? `${formatNumber(totalMatches)} coincidencias seguidas`
+              : "Sin reglas activas"
           }
-          icon={Target}
-          loading={isLoading}
+          icon={BellRing}
+          accent="cold"
+          loading={loadingRules}
         />
       </div>
 
-      {/* Opportunity Funnel */}
+      {/* ============================================================ */}
+      {/*  ALERTAS REALES (reglas de watchlist)                       */}
+      {/* ============================================================ */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Funnel de Oportunidades</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bell className="h-4 w-4" />
+                Alertas suscribibles
+              </CardTitle>
+              <CardDescription>
+                Reglas server-side: el conteo es real (todo el dataset) y las
+                notificaciones se envían según la frecuencia.
+              </CardDescription>
+            </div>
+            <Link
+              href="/mi-watchlist"
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              Gestionar en Mi Watchlist
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
         </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[120px] w-full" />
+        <CardContent className="space-y-4">
+          {/* Alta rápida */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
+              <label htmlFor="al-kw" className="text-xs font-medium">
+                Palabra clave
+              </label>
+              <Input
+                id="al-kw"
+                placeholder="Ej: SAP, S/4HANA…"
+                value={alertKeyword}
+                onChange={(e) => setAlertKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateAlert()}
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="al-imp" className="text-xs font-medium">
+                Importe mínimo
+              </label>
+              <Input
+                id="al-imp"
+                type="number"
+                placeholder="Ej: 100000"
+                value={alertImporte}
+                onChange={(e) => setAlertImporte(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="al-freq" className="text-xs font-medium">
+                Frecuencia
+              </label>
+              <Select value={alertFreq} onValueChange={(v) => setAlertFreq(v as Frequency)}>
+                <SelectTrigger id="al-freq">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="immediate">Inmediata</SelectItem>
+                  <SelectItem value="daily">Diaria</SelectItem>
+                  <SelectItem value="weekly">Semanal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                className="w-full"
+                onClick={handleCreateAlert}
+                disabled={
+                  createRule.isPending || (!alertKeyword.trim() && !alertImporte)
+                }
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Crear alerta
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Reglas existentes */}
+          {loadingRules ? (
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-9 w-40 rounded-full" />
+              ))}
+            </div>
+          ) : (rules?.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No tienes alertas configuradas. Crea una arriba para que el sistema
+              te avise cuando entren licitaciones que cumplan tus criterios.
+            </p>
           ) : (
-            <div className="space-y-3">
-              {[
-                {
-                  label: "Detectadas (en plazo)",
-                  value: pipelineData?.total_en_plazo ?? 0,
-                  pct: 100,
-                  color: "bg-blue-500",
-                },
-                {
-                  label: "En ventana (30d)",
-                  value: pipelineData?.vencen_30d ?? 0,
-                  pct:
-                    pipelineData?.total_en_plazo
-                      ? ((pipelineData.vencen_30d ?? 0) /
-                          pipelineData.total_en_plazo) *
-                        100
-                      : 0,
-                  color: "bg-yellow-500",
-                },
-                {
-                  label: "Urgentes (7d)",
-                  value: pipelineData?.vencen_7d ?? 0,
-                  pct:
-                    pipelineData?.total_en_plazo
-                      ? ((pipelineData.vencen_7d ?? 0) /
-                          pipelineData.total_en_plazo) *
-                        100
-                      : 0,
-                  color: "bg-red-500",
-                },
-              ].map((stage) => (
-                <div key={stage.label} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span>{stage.label}</span>
-                    <span className="tabular-nums font-medium">
-                      {formatNumber(stage.value)}
-                    </span>
-                  </div>
-                  <div className="h-6 w-full rounded bg-muted overflow-hidden">
-                    <div
-                      className={cn("h-full rounded", stage.color)}
-                      style={{
-                        width: `${Math.max(stage.pct, 2)}%`,
-                      }}
-                    />
-                  </div>
+            <div className="flex flex-wrap gap-2">
+              {(rules ?? []).map((rule) => (
+                <div
+                  key={rule.id}
+                  className={cn(
+                    "group flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm",
+                    rule.active ? "bg-muted/40" : "opacity-50",
+                  )}
+                >
+                  <BellRing
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0",
+                      rule.active ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                  <span className="font-medium">
+                    {rule.nombre || rule.keyword || "Regla"}
+                  </span>
+                  <Badge variant="secondary" className="tabular-nums">
+                    {formatNumber(rule.match_count)}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {FREQ_LABEL[rule.frequency]}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Eliminar alerta ${rule.nombre ?? rule.keyword ?? ""}`}
+                    className="text-muted-foreground transition-colors hover:text-destructive"
+                    onClick={() => deleteRule.mutate(rule.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -382,17 +557,16 @@ export default function PipelineAlertasPage() {
         </CardContent>
       </Card>
 
-      {/* Charts Row: Horizon + Quarterly */}
+      {/* ============================================================ */}
+      {/*  ANÁLISIS DEL PIPELINE                                       */}
+      {/* ============================================================ */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Horizon Distribution */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">
-              Distribucion por Horizonte
-            </CardTitle>
+            <CardTitle className="text-base">Distribución por horizonte</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {loadingPipeline ? (
               <Skeleton className="h-[260px] w-full" />
             ) : (pipelineData?.por_horizonte?.length ?? 0) > 0 ? (
               <PipelineHorizonChart data={pipelineData!.por_horizonte} />
@@ -402,13 +576,12 @@ export default function PipelineAlertasPage() {
           </CardContent>
         </Card>
 
-        {/* Quarterly Volume */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Volumen Trimestral</CardTitle>
+            <CardTitle className="text-base">Volumen trimestral</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {loadingPipeline ? (
               <Skeleton className="h-[260px] w-full" />
             ) : (pipelineData?.por_trimestre?.length ?? 0) > 0 ? (
               <PipelineQuarterlyChart data={pipelineData!.por_trimestre} />
@@ -419,15 +592,56 @@ export default function PipelineAlertasPage() {
         </Card>
       </div>
 
-      {/* Urgency x Value Scatter */}
+      {/* Forecast de volumen (próximos 6 meses) */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            Urgencia vs Valor
-          </CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4" />
+              Forecast de volumen (6 meses)
+            </CardTitle>
+            <div className="flex items-center gap-1" role="group" aria-label="Métrica del forecast">
+              <Button
+                size="sm"
+                variant={volMetric === "count" ? "default" : "outline"}
+                onClick={() => setVolMetric("count")}
+              >
+                Nº licitaciones
+              </Button>
+              <Button
+                size="sm"
+                variant={volMetric === "sum" ? "default" : "outline"}
+                onClick={() => setVolMetric("sum")}
+              >
+                Importe
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {loadingVolume ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : hasVolume ? (
+            <>
+              <PipelineForecastChart data={volumeSeries} metric={volMetric} />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Previsión Holt-Winters / regresión con banda de confianza ~1,5σ.
+                Estimación del modelo, no dato observado.
+              </p>
+            </>
+          ) : (
+            <EmptyState />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Urgencia × Valor */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Urgencia vs valor</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingPipeline ? (
             <Skeleton className="h-[300px] w-full" />
           ) : (pipelineData?.urgencia_valor?.length ?? 0) > 0 ? (
             <PipelineUrgencyScatter
@@ -440,44 +654,73 @@ export default function PipelineAlertasPage() {
         </CardContent>
       </Card>
 
-      {/* Urgent Items List */}
+      {/* ============================================================ */}
+      {/*  COLA DE CIERRE (urgentes)                                   */}
+      {/* ============================================================ */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            Licitaciones Activas (por urgencia)
-          </CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Bell className="h-4 w-4" />
+              Cola de cierre (por urgencia)
+            </CardTitle>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="h-9 w-48 pl-8"
+                  placeholder="Buscar título / órgano…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Buscar en la cola"
+                />
+              </div>
+              <div className="flex w-44 items-center gap-2">
+                <span className="whitespace-nowrap text-xs text-muted-foreground">
+                  ≥ {compactEur(colaImporteMin)}
+                </span>
+                <Slider
+                  value={[colaImporteMin]}
+                  onValueChange={([v]) => setColaImporteMin(v)}
+                  min={0}
+                  max={1_000_000}
+                  step={50_000}
+                  aria-label="Importe mínimo"
+                />
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
+          {loadingPipeline ? (
+            <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-24 w-full" />
               ))}
             </div>
-          ) : sortedItems.length > 0 ? (
+          ) : colaItems.length > 0 ? (
             <div className="space-y-3">
-              {sortedItems.map((item, idx) => (
+              {colaItems.map((item, idx) => (
                 <div
                   key={item.id_externo ?? idx}
-                  className="rounded-lg border p-4 hover:bg-muted/50 transition-colors"
+                  className="rounded-lg border p-4 transition-colors hover:bg-muted/50"
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 flex-1">
                       <h3 className="text-sm font-medium leading-snug">
                         {item.id_externo ? (
                           <Link
                             href={`/detalle?lic=${item.id_externo}`}
                             className="hover:underline"
                           >
-                            {truncate(item.titulo, 100)}
+                            {truncate(item.titulo ?? "Sin título", 100)}
                           </Link>
                         ) : (
-                          truncate(item.titulo, 100)
+                          truncate(item.titulo ?? "Sin título", 100)
                         )}
                       </h3>
                       {item.organo_contratacion && (
-                        <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Building2 className="h-3 w-3 shrink-0" />
                           {truncate(item.organo_contratacion, 60)}
                         </div>
@@ -486,24 +729,22 @@ export default function PipelineAlertasPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       {item.score != null && (
                         <Badge variant="outline" className="tabular-nums">
-                          Score: {item.score.toFixed(1)}
+                          Score: {item.score}
                         </Badge>
                       )}
-                      {item.estado && (
-                        <Badge variant="secondary">{item.estado}</Badge>
-                      )}
+                      {item.estado && <Badge variant="secondary">{item.estado}</Badge>}
                     </div>
                   </div>
                   <Separator className="my-2" />
                   <div className="flex flex-wrap items-center gap-4 text-xs">
                     {item.importe != null && (
-                      <span className="tabular-nums font-medium">
+                      <span className="font-medium tabular-nums">
                         {formatCurrency(item.importe)}
                       </span>
                     )}
                     {item.fecha_limite && (
                       <span className="text-muted-foreground">
-                        Limite: {formatDate(item.fecha_limite)}
+                        Límite: {formatDate(item.fecha_limite)}
                       </span>
                     )}
                     {item.dias_restantes != null && (
@@ -522,14 +763,17 @@ export default function PipelineAlertasPage() {
               ))}
               <Separator className="my-2" />
               <p className="text-xs text-muted-foreground">
-                {sortedItems.length} licitaciones activas
+                {colaItems.length} de {pipelineData?.upcoming?.length ?? 0} licitaciones
+                {(search || colaImporteMin > 0) && " (filtradas)"}
               </p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Clock className="h-10 w-10 text-muted-foreground/50 mb-3" />
+              <Clock className="mb-3 h-10 w-10 text-muted-foreground/50" />
               <p className="text-muted-foreground">
-                No hay licitaciones activas en el pipeline
+                {(pipelineData?.upcoming?.length ?? 0) > 0
+                  ? "Ninguna licitación cumple los filtros actuales"
+                  : "No hay licitaciones activas en el pipeline"}
               </p>
             </div>
           )}
@@ -537,26 +781,30 @@ export default function PipelineAlertasPage() {
       </Card>
 
       {/* ============================================================ */}
-      {/*  FORECAST RE-TENDERING SECTION                               */}
+      {/*  FORECAST RE-LICITACIÓN                                      */}
       {/* ============================================================ */}
       <Separator />
-      <h2 className="text-xl font-semibold tracking-tight">
-        Forecast Re-licitacion
-      </h2>
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">Forecast re-licitación</h2>
+        <p className="text-sm text-muted-foreground">
+          Contratos adjudicados que se acercan a su fin de plazo — oportunidades
+          de re-licitación antes de que vuelvan a salir.
+        </p>
+      </div>
 
-      {/* Filter Controls */}
+      {/* Filtros de forecast */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-base">
             <Filter className="h-4 w-4" />
-            Filtros de Forecast
+            Filtros de forecast
           </CardTitle>
         </CardHeader>
         <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
               <label className="text-xs font-medium">
-                Horizonte: {horizonteDias} dias
+                Horizonte: {horizonteDias} días
               </label>
               <Slider
                 value={[horizonteDias]}
@@ -564,11 +812,12 @@ export default function PipelineAlertasPage() {
                 min={30}
                 max={365}
                 step={10}
-                className="w-full"
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="pa-importe-min" className="text-xs font-medium">Importe minimo</label>
+              <label htmlFor="pa-importe-min" className="text-xs font-medium">
+                Importe mínimo
+              </label>
               <Input
                 id="pa-importe-min"
                 type="number"
@@ -578,7 +827,9 @@ export default function PipelineAlertasPage() {
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="pa-solo-mant" className="text-xs font-medium">Solo mantenimiento</label>
+              <label htmlFor="pa-solo-mant" className="text-xs font-medium">
+                Solo mantenimiento
+              </label>
               <div className="pt-1">
                 <Switch
                   id="pa-solo-mant"
@@ -588,103 +839,71 @@ export default function PipelineAlertasPage() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-medium">Score minimo: {scoreMin}</label>
-              <Slider
-                value={[scoreMin]}
-                onValueChange={([v]) => setScoreMin(v)}
-                min={0}
-                max={100}
-                step={5}
-                className="w-full"
-              />
-            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3 border-t pt-4">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => createAlert.mutate()}
-              disabled={createAlert.isPending}
+              onClick={() =>
+                createRule.mutate({
+                  nombre: importeMin
+                    ? `Re-licitación ≥ ${compactEur(parseFloat(importeMin))}`
+                    : "Re-licitación: oportunidades",
+                  min_importe: importeMin ? parseFloat(importeMin) : null,
+                  frequency: "daily",
+                  active: true,
+                })
+              }
+              disabled={createRule.isPending}
             >
               <Bell className="mr-2 h-4 w-4" />
-              Alertarme de oportunidades asi
+              Alertarme de oportunidades así
             </Button>
-            {createAlert.isSuccess && (
+            {createRule.isSuccess && (
               <span className="text-xs text-muted-foreground">
                 ✓ Alerta creada —{" "}
-                <Link
-                  href="/mi-watchlist"
-                  className="text-primary hover:underline"
-                >
-                  gestionala en Mi Watchlist
+                <Link href="/mi-watchlist" className="text-primary hover:underline">
+                  gestiónala en Mi Watchlist
                 </Link>
               </span>
             )}
-            {createAlert.isError && (
+            {createRule.isError && (
               <span className="text-xs text-destructive">
                 No se pudo crear la alerta.
               </span>
             )}
-            <span className="text-xs text-muted-foreground">
-              Crea una regla de watchlist (diaria) con el importe minimo de arriba.
-            </span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Forecast Summary KPIs */}
+      {/* Resumen del forecast */}
       {resumen && (
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {[
-            {
-              label: "Ya vencido",
-              value: resumen.ya_vencido,
-              border: "border-red-300 dark:border-red-800",
-            },
-            {
-              label: "<3 meses",
-              value: resumen.menos_3m,
-              border: "border-orange-300 dark:border-orange-800",
-            },
-            {
-              label: "3-6 meses",
-              value: resumen.tres_seis_m,
-              border: "border-yellow-300 dark:border-yellow-800",
-            },
-            {
-              label: "6-12 meses",
-              value: resumen.seis_doce_m,
-              border: "border-blue-300 dark:border-blue-800",
-            },
-            {
-              label: ">12 meses",
-              value: resumen.mas_doce_m,
-              border: "border-green-300 dark:border-green-800",
-            },
+            { label: "Ya vencido", value: resumen.ya_vencido, border: "border-red-300 dark:border-red-800" },
+            { label: "<3 meses", value: resumen.menos_3m, border: "border-orange-300 dark:border-orange-800" },
+            { label: "3-6 meses", value: resumen.tres_seis_m, border: "border-yellow-300 dark:border-yellow-800" },
+            { label: "6-12 meses", value: resumen.seis_doce_m, border: "border-blue-300 dark:border-blue-800" },
+            { label: ">12 meses", value: resumen.mas_doce_m, border: "border-green-300 dark:border-green-800" },
           ].map((card) => (
             <Card key={card.label} className={card.border}>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold tabular-nums">
-                  {formatNumber(card.value)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {card.label}
-                </p>
+                <p className="text-2xl font-bold tabular-nums">{formatNumber(card.value)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{card.label}</p>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      {/* Gantt Timeline */}
+      {/* Gantt */}
       {ganttItems.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
               <Calendar className="h-4 w-4" />
-              Timeline de Re-licitacion (Top 30)
+              Timeline de re-licitación (Top 30)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -697,12 +916,10 @@ export default function PipelineAlertasPage() {
         </Card>
       )}
 
-      {/* Forecast Table */}
+      {/* Tabla de forecast */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            Contratos Proximos a Re-licitar
-          </CardTitle>
+          <CardTitle className="text-base">Contratos próximos a re-licitar</CardTitle>
         </CardHeader>
         <CardContent>
           {loadingForecast ? (
@@ -716,11 +933,11 @@ export default function PipelineAlertasPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="text-left text-muted-foreground">
-                    <TableHead>Titulo</TableHead>
-                    <TableHead>Organo</TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Órgano</TableHead>
                     <TableHead>Importe</TableHead>
-                    <TableHead>Fin Estimado</TableHead>
-                    <TableHead>Dias</TableHead>
+                    <TableHead>Fin estimado</TableHead>
+                    <TableHead>Días</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Adjudicatarios</TableHead>
                   </TableRow>
@@ -728,11 +945,8 @@ export default function PipelineAlertasPage() {
                 <TableBody>
                   {forecastData!.forecast_entries.map((entry) => (
                     <TableRow key={entry.id_externo}>
-                      <TableCell className="font-medium max-w-[200px] truncate">
-                        <Link
-                          href={`/detalle?lic=${entry.id_externo}`}
-                          className="hover:underline"
-                        >
+                      <TableCell className="max-w-[200px] truncate font-medium">
+                        <Link href={`/detalle?lic=${entry.id_externo}`} className="hover:underline">
                           {truncate(entry.titulo ?? entry.id_externo, 45)}
                         </Link>
                       </TableCell>
@@ -740,29 +954,19 @@ export default function PipelineAlertasPage() {
                         {truncate(entry.organo_contratacion ?? "-", 35)}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {entry.importe != null
-                          ? formatCurrency(entry.importe)
-                          : "-"}
+                        {entry.importe != null ? formatCurrency(entry.importe) : "-"}
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">
-                        {entry.fecha_fin_estimada
-                          ? formatDate(entry.fecha_fin_estimada)
-                          : "-"}
+                        {entry.fecha_fin_estimada ? formatDate(entry.fecha_fin_estimada) : "-"}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        <span
-                          className={getDiasColor(
-                            entry.dias_hasta_fin ?? undefined,
-                          )}
-                        >
+                        <span className={getDiasColor(entry.dias_hasta_fin ?? undefined)}>
                           {entry.dias_hasta_fin ?? "-"}
                         </span>
                       </TableCell>
                       <TableCell>
                         {entry.estado_forecast && (
-                          <Badge
-                            variant={forecastBadgeColor(entry.estado_forecast)}
-                          >
+                          <Badge variant={forecastBadgeColor(entry.estado_forecast)}>
                             {entry.estado_forecast}
                           </Badge>
                         )}

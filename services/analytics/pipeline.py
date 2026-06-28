@@ -69,6 +69,12 @@ class PipelineResult(BaseModel):
     total_en_plazo: int = 0
     vencen_7d: int = 0
     vencen_30d: int = 0
+    # Dimensión económica del pipeline (suma de importe sobre el dataset completo
+    # de la ventana, no solo los `limit` items devueltos). Antes el frontend no
+    # tenía forma de mostrar "cuánto € hay en juego" sin re-derivarlo.
+    valor_total: float = 0.0
+    valor_7d: float = 0.0
+    valor_30d: float = 0.0
     por_horizonte: list[HorizonteCount] = Field(default_factory=list)
     por_trimestre: list[TrimestreCount] = Field(default_factory=list)
     urgencia_valor: list[UrgenciaValorPoint] = Field(default_factory=list)
@@ -128,6 +134,12 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
     total_en_plazo = len(df)
     vencen_7d = int((df["dias_restantes"] <= 7).sum())
     vencen_30d = int((df["dias_restantes"] <= 30).sum())
+
+    # Valor económico (suma de importe) sobre la misma ventana que los conteos.
+    _imp = pd.to_numeric(df["importe"], errors="coerce")
+    valor_total = float(_imp.sum(skipna=True))
+    valor_7d = float(_imp[df["dias_restantes"] <= 7].sum(skipna=True))
+    valor_30d = float(_imp[df["dias_restantes"] <= 30].sum(skipna=True))
 
     # Sort by urgency and limit
     all_df = df.copy()  # keep full for extra computations
@@ -209,6 +221,9 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
         total_en_plazo=total_en_plazo,
         vencen_7d=vencen_7d,
         vencen_30d=vencen_30d,
+        valor_total=valor_total,
+        valor_7d=valor_7d,
+        valor_30d=valor_30d,
         por_horizonte=por_horizonte,
         por_trimestre=por_trimestre,
         urgencia_valor=urgencia_valor,
