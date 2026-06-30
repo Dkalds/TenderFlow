@@ -117,7 +117,12 @@ class SAPClassifier:
         if _has_date:
             df = df.sort_values("fecha_publicacion", na_position="first").reset_index(drop=True)
 
-        texts, labels = _build_dataset(df)
+        pu_learning = bool(getattr(settings, "ML_PU_LEARNING", False))
+        weights_all: list[float] | None = None
+        if pu_learning:
+            texts, labels, weights_all = _build_dataset(df, return_weights=True)
+        else:
+            texts, labels = _build_dataset(df)
         if len(texts) < MIN_TRAIN_SAMPLES:
             log.warning(
                 "ml_classifier.insufficient_data",
@@ -138,19 +143,41 @@ class SAPClassifier:
             return {"error": "single_class", "n_positive": n_pos_total, "n_negative": n_neg_total}
 
         # ── Split ──────────────────────────────────────────────────────────
+        # ``w_train`` lleva los pesos PU alineados con X_train (None si no aplica).
+        w_train: list[float] | None = None
         if _has_date:
             # Split temporal: últimos 20% como test (más realista que random)
             cutoff = max(1, int(len(texts) * 0.80))
             X_train, X_test = texts[:cutoff], texts[cutoff:]
             y_train, y_test = labels[:cutoff], labels[cutoff:]
+            if weights_all is not None:
+                w_train = weights_all[:cutoff]
             # Si el test set tiene una sola clase, caer a random split
             if len(set(y_test)) < 2:
                 _has_date = False
+                w_train = None
 
         if not _has_date:
-            X_train, X_test, y_train, y_test = train_test_split(
-                texts, labels, test_size=0.2, random_state=42, stratify=labels
-            )
+            if weights_all is not None:
+                (
+                    X_train,
+                    X_test,
+                    y_train,
+                    y_test,
+                    w_train,
+                    _w_test,
+                ) = train_test_split(
+                    texts,
+                    labels,
+                    weights_all,
+                    test_size=0.2,
+                    random_state=42,
+                    stratify=labels,
+                )
+            else:
+                X_train, X_test, y_train, y_test = train_test_split(
+                    texts, labels, test_size=0.2, random_state=42, stratify=labels
+                )
 
         # ── CV F1 estimate (pipeline no calibrado, más rápido) ─────────────
         from scraper.ml_pipeline import _make_pipeline as _make_ml_pipeline
@@ -195,7 +222,11 @@ class SAPClassifier:
                 self.pipeline.fit(X_train, y_train)
                 self._trained = True
         else:
-            self.pipeline.fit(X_train, y_train)
+            if w_train is not None:
+                # PU learning: los negativos ambiguos pesan menos en el ajuste.
+                self.pipeline.fit(X_train, y_train, clf__sample_weight=w_train)
+            else:
+                self.pipeline.fit(X_train, y_train)
             self._trained = True
 
         # ── Evaluación en test set ─────────────────────────────────────────

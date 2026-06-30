@@ -9,7 +9,7 @@ Contiene:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -347,7 +347,25 @@ def validate_training_data(
     return df
 
 
-def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
+@overload
+def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]: ...
+
+
+@overload
+def _build_dataset(
+    df: pd.DataFrame, *, return_weights: Literal[False]
+) -> tuple[list[str], list[int]]: ...
+
+
+@overload
+def _build_dataset(
+    df: pd.DataFrame, *, return_weights: Literal[True]
+) -> tuple[list[str], list[int], list[float]]: ...
+
+
+def _build_dataset(
+    df: pd.DataFrame, *, return_weights: bool = False
+) -> tuple[list[str], list[int]] | tuple[list[str], list[int], list[float]]:
     """Construye el dataset de entrenamiento desde el DataFrame.
 
     Fuentes de etiqueta (prioridad descendente):
@@ -357,6 +375,14 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     Aumenta los textos con tokens CPV e importe si las columnas están presentes.
 
     Preserva el orden del df para que el split temporal en train() sea correcto.
+
+    Args:
+        df: DataFrame con las licitaciones.
+        return_weights: Si ``True``, devuelve además una lista de pesos de
+            muestra (PU learning). Los negativos *ambiguos* —CPV TI (48/72)
+            sin keywords, potenciales SAP no detectados— reciben
+            ``ML_PU_UNLABELED_WEIGHT`` en vez de 1.0, reduciendo el sesgo de
+            aprender el filtro de keywords como ground truth.
     """
     import numpy as np
 
@@ -375,6 +401,15 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
         importe = row.get("importe") if has_importe else None
         return _augment_text(text, cpv=cpv or None, importe=float(importe) if importe else None)
 
+    # PU learning: un negativo con CPV TI (48/72) y sin keywords podría ser una
+    # licitación SAP no detectada por el filtro → "unlabeled", no negativo de
+    # confianza plena. Se marca como ambiguo para asignarle menor peso.
+    def _is_ambiguous_neg(row: dict[str, Any]) -> bool:
+        if not has_cpv:
+            return False
+        cpv_val = str(row.get("cpv", "") or "").strip()
+        return cpv_val.startswith(("48", "72"))
+
     # Máscara de positivos
     if has_relevante and not has_keywords:
         mask_pos = df["es_relevante"].astype(bool)
@@ -385,7 +420,7 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     elif has_keywords:
         mask_pos = df["raw_keywords"].notna() & (df["raw_keywords"] != "")
     else:
-        return [], []
+        return ([], [], []) if return_weights else ([], [])
 
     # Máscara de negativos: sin señal positiva.
     # Incluye CPV 48/72 (TI) sin raw_keywords como hard negatives — estas
@@ -396,8 +431,11 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     pos_rows = df[mask_pos]
     neg_rows = df[mask_neg]
 
-    pos_texts = [_text_for_row(r) for r in pos_rows.to_dict("records")]  # type: ignore[arg-type]
-    neg_texts_all = [_text_for_row(r) for r in neg_rows.to_dict("records")]  # type: ignore[arg-type]
+    pos_records = pos_rows.to_dict("records")
+    neg_records = neg_rows.to_dict("records")
+    pos_texts = [_text_for_row(r) for r in pos_records]  # type: ignore[arg-type]
+    neg_texts_all = [_text_for_row(r) for r in neg_records]  # type: ignore[arg-type]
+    neg_ambiguous_all = [_is_ambiguous_neg(r) for r in neg_records]  # type: ignore[arg-type]
 
     # Balancear: máx. 2x positivos en negativos
     max_neg = min(len(neg_texts_all), len(pos_texts) * 2)
@@ -406,12 +444,21 @@ def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
         idx = rng.choice(len(neg_texts_all), max_neg, replace=False)
         idx_sorted = sorted(idx)
         neg_texts = [neg_texts_all[i] for i in idx_sorted]
+        neg_ambiguous = [neg_ambiguous_all[i] for i in idx_sorted]
     else:
         neg_texts = neg_texts_all
+        neg_ambiguous = neg_ambiguous_all
 
     texts = pos_texts + neg_texts
     labels = [1] * len(pos_texts) + [0] * len(neg_texts)
-    return texts, labels
+    if not return_weights:
+        return texts, labels
+
+    from config import settings
+
+    unlabeled_w = float(getattr(settings, "ML_PU_UNLABELED_WEIGHT", 0.5))
+    weights = [1.0] * len(pos_texts) + [(unlabeled_w if amb else 1.0) for amb in neg_ambiguous]
+    return texts, labels, weights
 
 
 def _expected_calibration_error(y_true: Any, y_proba: Any, n_bins: int = 10) -> float:

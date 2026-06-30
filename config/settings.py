@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     # contra labels humanas, independiente del filtro de keywords. Ruta relativa
     # al repo o absoluta. Ver services/ml_eval.py.
     ML_GOLDEN_SET_PATH: str = "tests/fixtures/golden_set.jsonl"
+    # PU learning (Positive-Unlabeled): si True, los negativos "ambiguos" (CPV
+    # TI 48/72 sin keywords — potenciales SAP no detectados) reciben menor peso
+    # de muestra en el entrenamiento, en vez de tratarse como negativos de
+    # confianza plena. Reduce el sesgo de aprender el filtro de keywords como
+    # ground truth. Ver scraper/ml_pipeline._build_dataset.
+    ML_PU_LEARNING: bool = False
+    # Peso de muestra para los negativos ambiguos cuando ML_PU_LEARNING=True.
+    ML_PU_UNLABELED_WEIGHT: float = 0.5
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
     # Si True, el re-entrenamiento mensual activa la versión nueva
