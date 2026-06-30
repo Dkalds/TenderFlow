@@ -83,6 +83,8 @@ markupsafe==3.0.3
     # via
     #   jinja2
     #   mako
+networkx==3.6.1
+    # via -r requirements.in
 numpy==2.4.4
     # via
     #   pandas
