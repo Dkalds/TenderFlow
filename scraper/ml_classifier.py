@@ -723,6 +723,21 @@ class SAPClassifier:
             )
             with urllib.request.urlopen(dl_req, timeout=60) as resp:  # noqa: S310
                 target.write_bytes(resp.read())
+            # Verificar el pin out-of-band si está configurado: no confiar en un
+            # modelo descargado cuyo hash no coincide con ML_MODEL_SHA256.
+            pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()
+            if pinned:
+                import hashlib
+
+                actual = hashlib.sha256(target.read_bytes()).hexdigest().lower()
+                if actual != pinned:
+                    log.error(
+                        "ml_classifier.download_hash_mismatch",
+                        expected=pinned[:16],
+                        got=actual[:16],
+                    )
+                    target.unlink(missing_ok=True)
+                    return False
             log.info("ml_classifier.model_downloaded", path=str(target))
             return True
         except Exception as e:
@@ -760,12 +775,24 @@ class SAPClassifier:
                 log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
 
         target = path or _MODEL_PATH
+        actual_hash = hashlib.sha256(target.read_bytes()).hexdigest()
 
-        # Verificar integridad con SHA256
+        # 1) Pin out-of-band (ML_MODEL_SHA256): defensa contra un GitHub Release
+        # comprometido. El .sha256 co-ubicado viaja junto al .pkl en el mismo
+        # release, así que ambos podrían sustituirse a la vez; un hash fijado
+        # fuera de banda detecta esa manipulación antes de deserializar.
+        pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()
+        if pinned and actual_hash.lower() != pinned:
+            raise RuntimeError(
+                f"Integridad del modelo comprometida: SHA256 no coincide con "
+                f"ML_MODEL_SHA256 fijado. Esperado: {pinned[:16]}..., "
+                f"obtenido: {actual_hash[:16]}... Fichero: {target}"
+            )
+
+        # 2) Checksum co-ubicado (.sha256)
         checksum_path = target.with_suffix(".sha256")
         if checksum_path.exists():
             expected_hash = checksum_path.read_text(encoding="utf-8").strip()
-            actual_hash = hashlib.sha256(target.read_bytes()).hexdigest()
             if actual_hash != expected_hash:
                 raise RuntimeError(
                     f"Integridad del modelo comprometida: SHA256 no coincide. "
@@ -773,18 +800,16 @@ class SAPClassifier:
                     f"Fichero: {target}"
                 )
             log.info("ml_classifier.checksum_verified", path=str(target))
-        else:
-            # En producción, el checksum es obligatorio para prevenir la carga
-            # de modelos comprometidos (joblib.load ejecuta código arbitrario).
-            from config import settings as _s
-
-            if getattr(_s, "ENV", "dev") == "prod":
-                raise RuntimeError(
-                    f"Fichero de checksum no encontrado: {checksum_path}. "
-                    "En producción, el checksum SHA256 es obligatorio para verificar "
-                    "la integridad del modelo antes de deserializarlo. "
-                    "Re-entrena con save() para generar el fichero .sha256."
-                )
+        elif getattr(settings, "ENV", "dev") == "prod" and not pinned:
+            # En producción se exige al menos una verificación de integridad (pin
+            # o checksum co-ubicado): joblib.load ejecuta código arbitrario.
+            raise RuntimeError(
+                f"Sin verificación de integridad para el modelo: no existe "
+                f"{checksum_path} ni ML_MODEL_SHA256 fijado. En producción es "
+                "obligatorio para deserializar con seguridad. Re-entrena con "
+                "save() o define ML_MODEL_SHA256."
+            )
+        elif not pinned:
             log.warning(
                 "ml_classifier.no_checksum_file",
                 path=str(checksum_path),

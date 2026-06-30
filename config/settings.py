@@ -116,6 +116,12 @@ class Settings(BaseSettings):
     # hasta que todos los call sites de predict propaguen el órgano. Ver
     # scraper/ml_pipeline._augment_text.
     ML_USE_ORGANO_FEATURE: bool = False
+    # Hash SHA256 fijado del modelo (out-of-band). Si se define, load() y
+    # ensure_downloaded() verifican el .pkl contra este valor ADEMÁS del checksum
+    # .sha256 co-ubicado. Defensa contra un GitHub Release comprometido (donde
+    # .pkl y .sha256 podrían sustituirse a la vez, y joblib.load ejecuta código
+    # arbitrario). Vacío = sin pin. Ver scraper/ml_classifier.SAPClassifier.load.
+    ML_MODEL_SHA256: str = ""
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
     # Si True, el re-entrenamiento mensual activa la versión nueva
