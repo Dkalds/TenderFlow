@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     # Si True, usa sentence-transformers embeddings como feature adicional en el
     # pipeline ML. Requiere: pip install licitaciones-sap[ml-embeddings]
     ML_USE_EMBEDDINGS: bool = False
+    # Golden set etiquetado a mano (JSONL) para evaluación honesta de recall
+    # contra labels humanas, independiente del filtro de keywords. Ruta relativa
+    # al repo o absoluta. Ver services/ml_eval.py.
+    ML_GOLDEN_SET_PATH: str = "tests/fixtures/golden_set.jsonl"
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
     # Si True, el re-entrenamiento mensual activa la versión nueva
