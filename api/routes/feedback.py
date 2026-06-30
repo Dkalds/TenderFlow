@@ -80,7 +80,7 @@ def _build_queue_items(
         results.append(
             {
                 "id_externo": c["id_externo"],
-                "titulo": c["titulo"],
+                "titulo": c.get("titulo", ""),
                 "descripcion": (c.get("descripcion") or "")[:500],
                 "cpv": c.get("cpv"),
                 "importe": _safe_float(c.get("importe")) if c.get("importe") is not None else None,
