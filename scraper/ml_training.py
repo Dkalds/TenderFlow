@@ -370,12 +370,17 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
     where = "" if force else "WHERE ml_proba IS NULL"
     with connect() as c:
         rows = c.execute(
-            f"SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones {where}"
+            f"SELECT id_externo, titulo, descripcion, cpv, importe, organo_contratacion "
+            f"FROM licitaciones {where}"
         ).fetchall()
 
     if not rows:
         log.info("precompute_ml_proba.nothing_to_update")
         return {"updated": 0, "skipped_no_model": False}
+
+    from config import settings
+
+    use_organo = bool(getattr(settings, "ML_USE_ORGANO_FEATURE", False))
 
     updated = 0
     for i in range(0, len(rows), batch_size):
@@ -385,6 +390,7 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
                 (str(r[1] or "") + " " + str(r[2] or "")).strip(),
                 cpv=str(r[3]) if r[3] else None,
                 importe=float(r[4]) if r[4] else None,
+                organo=str(r[5]) if (use_organo and len(r) > 5 and r[5]) else None,
             )
             for r in batch
         ]

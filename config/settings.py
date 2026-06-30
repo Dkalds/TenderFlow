@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     # capa, sin doble calibración). Si False (default), el pipeline calibra
     # internamente. Ver SAPClassifier.__init__.
     ML_USE_CALIBRATION: bool = False
+    # Si True, _augment_text emite un token estable del órgano de contratación
+    # (hash a bucket), permitiendo al modelo aprender que ciertos órganos compran
+    # SAP de forma recurrente. Off por defecto para evitar training-serving skew
+    # hasta que todos los call sites de predict propaguen el órgano. Ver
+    # scraper/ml_pipeline._augment_text.
+    ML_USE_ORGANO_FEATURE: bool = False
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
     # Si True, el re-entrenamiento mensual activa la versión nueva

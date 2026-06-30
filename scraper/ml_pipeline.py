@@ -211,12 +211,23 @@ def _tune_pipeline(
     return search.best_estimator_, search.best_params_
 
 
-def _augment_text(text: str, *, cpv: str | None = None, importe: float | None = None) -> str:
+def _augment_text(
+    text: str,
+    *,
+    cpv: str | None = None,
+    importe: float | None = None,
+    organo: str | None = None,
+) -> str:
     """Añade tokens estructurales al texto para mejorar la discriminación.
 
     CPV: Los códigos 48xxx/72xxx son señal TI fuerte → token "CPV_TI".
          Cualquier otro CPV → token "CPV_NO_TI".
-    Importe: Se codifica en rangos logarítmicos (k€) como tokens especiales.
+    Importe: Se codifica en rangos logarítmicos (k€) como tokens especiales, más
+         un bucket fino (decil log) para mayor resolución que los 5 rangos.
+    Órgano: Hash estable del órgano de contratación a un bucket → token
+         "ORG_<bucket>". Captura que ciertos órganos compran SAP de forma
+         recurrente. Solo se emite si se pasa ``organo`` (los call sites lo
+         propagan según ``ML_USE_ORGANO_FEATURE`` para evitar skew train/serve).
 
     Estos tokens son reconocidos por el TF-IDF word vectorizer como features
     adicionales sin cambiar la API de predict().
@@ -247,6 +258,21 @@ def _augment_text(text: str, *, cpv: str | None = None, importe: float | None = 
             parts.append("IMPORTE_L")
         else:  # > 10M€
             parts.append("IMPORTE_XL")
+        # Bucket fino: log10*10 redondeado → granularidad de 0.1 en log10
+        # (~25% de importe), más informativo que los 5 rangos gruesos.
+        parts.append(f"IMP_{round(log_imp * 10)}")
+    if organo:
+        import hashlib
+        import unicodedata
+
+        # Normalización robusta: minúsculas, sin acentos, solo alfanumérico.
+        decomposed = unicodedata.normalize("NFKD", organo.lower())
+        stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+        org_norm = " ".join("".join(ch if ch.isalnum() else " " for ch in stripped).split())
+        if org_norm:
+            digest = hashlib.sha256(org_norm.encode("utf-8")).digest()
+            bucket = int.from_bytes(digest[:4], "big") % 4096
+            parts.append(f"ORG_{bucket} ORG_{bucket}")  # duplicado para mayor peso
     return " ".join(parts)
 
 
@@ -402,6 +428,11 @@ def _build_dataset(
     has_importe = "importe" in df.columns
     has_keywords = "raw_keywords" in df.columns
     has_relevante = "es_relevante" in df.columns
+    has_organo = "organo_contratacion" in df.columns
+
+    from config import settings
+
+    use_organo = has_organo and bool(getattr(settings, "ML_USE_ORGANO_FEATURE", False))
 
     validate_training_data(df)
 
@@ -411,7 +442,13 @@ def _build_dataset(
         text = (titulo + " " + desc).strip()
         cpv = str(row.get("cpv", "") or "") if has_cpv else None
         importe = row.get("importe") if has_importe else None
-        return _augment_text(text, cpv=cpv or None, importe=float(importe) if importe else None)
+        organo = str(row.get("organo_contratacion", "") or "") if use_organo else None
+        return _augment_text(
+            text,
+            cpv=cpv or None,
+            importe=float(importe) if importe else None,
+            organo=organo or None,
+        )
 
     # PU learning: un negativo con CPV TI (48/72) y sin keywords podría ser una
     # licitación SAP no detectada por el filtro → "unlabeled", no negativo de
@@ -465,8 +502,6 @@ def _build_dataset(
     labels = [1] * len(pos_texts) + [0] * len(neg_texts)
     if not return_weights:
         return texts, labels
-
-    from config import settings
 
     unlabeled_w = float(getattr(settings, "ML_PU_UNLABELED_WEIGHT", 0.5))
     weights = [1.0] * len(pos_texts) + [(unlabeled_w if amb else 1.0) for amb in neg_ambiguous]

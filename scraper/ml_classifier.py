@@ -395,7 +395,12 @@ class SAPClassifier:
         return metrics
 
     def predict(
-        self, text: str, *, cpv: str | None = None, importe: float | None = None
+        self,
+        text: str,
+        *,
+        cpv: str | None = None,
+        importe: float | None = None,
+        organo: str | None = None,
     ) -> tuple[bool, float]:
         """Predice si un texto corresponde a una licitación SAP.
 
@@ -403,6 +408,8 @@ class SAPClassifier:
             text: Texto combinado (título + descripción).
             cpv: Código CPV opcional — mejora la predicción con token estructural.
             importe: Importe en EUR opcional — añade token de rango de importe.
+            organo: Órgano de contratación opcional — token estable de órgano
+                (solo aprovechado si el modelo se entrenó con ML_USE_ORGANO_FEATURE).
 
         Returns:
             (es_sap, confianza) — confianza en [0, 1].
@@ -414,7 +421,7 @@ class SAPClassifier:
         from observability.runtime_metrics import ml_inference_duration_seconds
 
         t0 = time.perf_counter()
-        augmented = _augment_text(text, cpv=cpv, importe=importe)
+        augmented = _augment_text(text, cpv=cpv, importe=importe, organo=organo)
         proba = self.pipeline.predict_proba([augmented])[0]
         ml_inference_duration_seconds.labels(method="predict").observe(time.perf_counter() - t0)
         confidence = float(proba[1])
@@ -426,6 +433,7 @@ class SAPClassifier:
         *,
         cpvs: list[str | None] | None = None,
         importes: list[float | None] | None = None,
+        organos: list[str | None] | None = None,
     ) -> list[tuple[bool, float]]:
         """Predicción en batch (más eficiente que llamadas individuales).
 
@@ -451,6 +459,7 @@ class SAPClassifier:
                 t,
                 cpv=cpvs[i] if cpvs and i < len(cpvs) else None,
                 importe=importes[i] if importes and i < len(importes) else None,
+                organo=organos[i] if organos and i < len(organos) else None,
             )
             for i, t in enumerate(texts)
         ]
