@@ -7,7 +7,9 @@
       "Bash(git checkout *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(python -m ruff check services/analytics/overview.py)",
+      "Bash(python -m mypy services/analytics/overview.py --no-error-summary)"
     ]
   }
 }

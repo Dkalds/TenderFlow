@@ -13,7 +13,50 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-*(sin ítems abiertos)*
+### [P1] Plan de migración de persistencia pre-cocido con disparador binario
+- **Área:** db/, observability, docs/adr
+- **Problema:** ADR-004 reconoce que la premisa "single writer" de SQLite **ya no se cumple** (scraper + scheduler + API + dashboard escriben concurrentemente, y ADR-009 sumó 3 conectores). Hay tripwires que *detectan* el riesgo pero la *decisión* de migración sigue diferida: cuando salte el tripwire, habrá que diseñar la migración bajo presión de incidente. Falta el plan en frío.
+- **Acceptance criteria:**
+  - Existe ADR-015 con **un** destino de persistencia decidido y justificado (no una disyuntiva abierta).
+  - Spike en branch que levanta el destino, corre `alembic upgrade head` y pasa un test de paridad de búsqueda FTS5↔reemplazo (`pg_trgm`).
+  - Runbook `docs/runbooks/migracion-persistencia.md` con corte, gates de paridad y rollback.
+  - La alerta del tripwire enlaza al runbook; el RFC declara el umbral que escala la **ejecución** a P0.
+- **Files de partida:** [docs/adr/ADR-004-sqlite-turso-vs-postgres.md](../docs/adr/ADR-004-sqlite-turso-vs-postgres.md), [docs/runbooks/persistence-tripwires.md](../docs/runbooks/persistence-tripwires.md), [observability/alert_rules.yml](../observability/alert_rules.yml), [db/connection.py](../db/connection.py)
+- **RFC:** [2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md](rfc/2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md)
+- **Riesgo:** bajo en preparación (docs + spike aislado); de-riesga una ejecución futura de riesgo alto. **La ejecución escala a P0 al dispararse el tripwire** (`sqlite_busy_errors_total` >10/h o `db_concurrent_writers` >3 sostenido).
+
+### [P1] Retrofit del pipeline PLACSP sobre el contrato Connector
+- **Área:** scraper/ (connectors + pipeline), scheduler
+- **Problema:** Hay dos caminos de ingesta coexistiendo: `run_connector` (3 fuentes: ted/pscp/tacrc) y el pipeline legacy `scraper/pipeline.py` (PLACSP, la fuente de producción). ADR-009 marca el retrofit como Pendiente. La bifurcación diverge en silencio (un fix de idempotencia/DLQ/cursor aplicado en un camino y no en el otro) y encarece con cada fuente nueva. Cerrarlo antes de las autonómicas restantes es más barato.
+- **Acceptance criteria:**
+  - Existe `PlacspConnector` implementando el contrato `Connector` y **reutilizando** el parser CODICE/UBL y el `bulk_downloader` actuales (no reescritura).
+  - Test de paridad con **cero diferencias** (salvo documentadas) entre legacy y `run_connector` sobre un fixture fijo; idempotencia verificada.
+  - PLACSP en producción se enruta por `run_connector`; `scraper/pipeline.py` queda DEPRECATED; ADR-009 actualizado.
+- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/pipeline.py](../scraper/pipeline.py), [scraper/bulk_downloader.py](../scraper/bulk_downloader.py), [docs/adr/ADR-009-framework-conectores-multifuente.md](../docs/adr/ADR-009-framework-conectores-multifuente.md)
+- **RFC:** [2026-06-30-rfc-retrofit-pipeline-placsp-connector.md](rfc/2026-06-30-rfc-retrofit-pipeline-placsp-connector.md)
+- **Riesgo:** medio — toca el camino de datos de producción; mitigado por ventana de paridad y reutilización (no reescritura) del parser/downloader.
+
+### [P1] LLM como dependencia gestionada (presupuesto + circuit-breaker + fallback + eval RAG)
+- **Área:** llm/, api/routes/ask.py, observability
+- **Problema:** `/ask` es ahora un camino de producción con proveedor externo de pago (NVIDIA NIM/DeepSeek, commit `d6619f8`). El RFC de tokens (`implemented`) cerró la *medición* y dejó el *enforcement* para "un RFC posterior". Falta: presupuesto/circuit-breaker de gasto, fallback degradado si el proveedor cae, y eval de RAG (sin eval set las regresiones de calidad son invisibles a CI). Este es ese RFC posterior.
+- **Acceptance criteria:**
+  - Con presupuesto superado y `LLM_BUDGET_MODE=enforce`, `/ask` responde 429/503 sin llamar al proveedor; `llm_budget_exceeded_total` sube. Modo `monitor` solo alerta.
+  - Ante fallo del proveedor o breaker abierto, `/ask` degrada a documentos del RAG sin síntesis (`degraded` en el stream); el SSE no rompe y el DTO no cambia (§3.5).
+  - Eval de **recuperación** determinista en CI (sin LLM real) que falla si se rompe el contexto recuperado.
+- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [llm/client.py](../llm/client.py), [config/settings.py](../config/settings.py), [docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md](../docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md)
+- **RFC:** [2026-06-30-rfc-llm-dependencia-gestionada.md](rfc/2026-06-30-rfc-llm-dependencia-gestionada.md)
+- **Riesgo:** medio — toca un endpoint de producción; mitigado por `LLM_BUDGET_MODE=monitor` como default (medir antes de cortar) y contrato API intacto. **Construye sobre** el RFC de observabilidad de tokens (P2, abajo).
+
+### [P1] Validación de precisión del dedupe cross-fuente + linaje de datos
+- **Área:** services/ (dedupe), tests, observability
+- **Problema:** Con multi-fuente, el riesgo se desplaza de "¿extrajimos el campo?" a "¿es correcto el dato fusionado?". El guardrail actual (`test_dedup_guardrail.py`) valida que las queries *filtren* duplicados, **no que el matching acierte**. Un falso positivo del dedupe (clave débil órgano+expediente+CPV-4) **borra una licitación real** del análisis de competencia —el producto— sin detección. La heurística no tiene medición de precision/recall.
+- **Acceptance criteria:**
+  - Golden set `tests/fixtures/dedupe_golden.jsonl` etiquetado a mano con casos borde.
+  - `tests/test_dedupe_quality.py` mide precision/recall y falla en CI si la precision baja del umbral (no puede bajar sin justificación en review).
+  - `services/dedupe.py` registra el criterio de cada match (linaje auditable); `dedupe_match_rate` con alerta de desviación.
+- **Files de partida:** [services/dedupe.py](../services/dedupe.py), [tests/test_dedup_guardrail.py](../tests/test_dedup_guardrail.py), [docs/adr/ADR-009-framework-conectores-multifuente.md](../docs/adr/ADR-009-framework-conectores-multifuente.md)
+- **RFC:** [2026-06-30-rfc-validacion-dedupe-linaje-datos.md](rfc/2026-06-30-rfc-validacion-dedupe-linaje-datos.md)
+- **Riesgo:** bajo — aditivo (tests + métricas + linaje); no cambia el algoritmo de matching (primero mide). El único punto sensible es una eventual migración de schema, gateada por OK humano.
 
 ---
 
@@ -29,6 +72,26 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [llm/client.py](../llm/client.py), [llm/providers/openai_provider.py](../llm/providers/openai_provider.py), [llm/providers/anthropic_provider.py](../llm/providers/anthropic_provider.py)
 - **RFC:** [2026-06-17-rfc-observabilidad-tokens-coste-llm.md](rfc/2026-06-17-rfc-observabilidad-tokens-coste-llm.md)
 - **Riesgo:** bajo — aditivo; ningún consumidor existente cambia.
+
+### [P2] Modo degradado documentado y testeado ante caída de dependencias opcionales
+- **Área:** api/routes/health.py, observability, scheduler, config
+- **Problema:** El sistema acumula mucha superficie operativa (Redis, Turso, FAISS, modelo ML, dramatiq) para un mantenedor solo. No existe un contrato explícito y testeado de qué sigue funcionando cuando una pieza *opcional* cae. Síntoma ya conocido: `/health` devuelve 503 en local cuando `REDIS_URL` está seteado pero Redis no corre, aunque el sistema podría servir datos. Sin un "modo degradado" definido, cada outage de una dependencia se descubre en producción en vez de estar diseñado.
+- **Acceptance criteria:**
+  - Documento (`docs/runbooks/degraded-mode.md`) que enumera cada dependencia opcional (Redis, Turso, FAISS, modelo ML stale, dramatiq) y qué funcionalidad sobrevive / degrada / cae cuando esa pieza no está.
+  - `/health` (o `/ready`) distingue **degradado** (sirve datos, pieza opcional caída) de **no disponible** (core caído), sin devolver 503 cuando solo cayó algo opcional.
+  - Al menos un test por dependencia opcional que verifique que el camino crítico (servir licitaciones por la API) sigue verde con esa pieza simulada caída.
+- **Files de partida:** [api/routes/health.py](../api/routes/health.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [config/settings.py](../config/settings.py), [observability/alert_rules.yml](../observability/alert_rules.yml)
+- **Riesgo:** bajo — mayormente aditivo (docs + tests + ajuste de semántica de health); no cambia el camino de datos.
+
+### [P2] Cobertura de tests del frontend en flujos críticos
+- **Área:** web/ (tests vitest)
+- **Problema:** Asimetría de blindaje: el backend tiene gate de coverage al 70% y ~163 archivos de test; el frontend —la capa que el usuario realmente toca— está en thresholds 32/27 (`vitest.config.ts`). La lógica de negocio está cubierta, pero los flujos por los que el valor llega al usuario (filtros nuqs, watchlist, streaming de `/ask`) no tienen red. Una regresión en esos flujos pasa CI en verde.
+- **Acceptance criteria:**
+  - Tests de integración de UI para los 3 flujos críticos: filtros nuqs (sincronización URL↔estado), watchlist (alta/baja/persistencia), y consumo del stream SSE de `/ask` (incluyendo el camino `degraded` del RFC de LLM gestionado).
+  - Thresholds de `vitest.config.ts` subidos de forma anti-regresión tras añadir cobertura (no pueden bajar sin justificación).
+  - Los tests no dependen de la API real (mock del cliente generado desde OpenAPI).
+- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/filters.ts](../web/src/lib/filters.ts)
+- **Riesgo:** bajo — solo añade tests; no toca runtime. Complementa al ítem P1 de LLM gestionado (el flujo `degraded` de `/ask` se cubre aquí desde el frontend).
 
 ---
 

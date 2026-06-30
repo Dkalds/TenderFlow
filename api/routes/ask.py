@@ -19,8 +19,10 @@ Respuesta: ``text/event-stream`` con fragmentos del modelo + evento ``[DONE]``.
 
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import Iterator
+import os
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -37,6 +39,9 @@ router = APIRouter(tags=["ask"])
 _MAX_Q_LEN = 500
 _DEFAULT_TOP_K = 5
 _MAX_TOP_K = 20
+
+# Timeout para la llamada al LLM (segundos). Configurable vía variable de entorno.
+_LLM_TIMEOUT_SECONDS = float(os.environ.get("ASK_LLM_TIMEOUT_SECONDS", "120"))
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -112,7 +117,7 @@ def _stream_ask(request: AskRequest) -> Any:
 
     if not docs:
         # Respuesta sin contexto
-        def _no_context() -> Iterator[str]:
+        async def _no_context() -> AsyncGenerator[str, None]:
             yield "data: No se encontraron licitaciones relevantes para tu pregunta.\n\n"
             yield "data: [DONE]\n\n"
 
@@ -120,20 +125,60 @@ def _stream_ask(request: AskRequest) -> Any:
 
     keywords = [w for w in request.question.split() if len(w) > 3][:10]
 
-    def _generate() -> Iterator[str]:
+    async def _generate() -> AsyncGenerator[str, None]:
+        """Async generator que envuelve el stream LLM síncrono con timeout.
+
+        Usa ``asyncio.wait_for`` + ``run_in_executor`` para evitar que un LLM
+        colgado bloquee el worker indefinidamente.
+        """
+        loop = asyncio.get_running_loop()
+        # Cola thread-safe para pasar chunks del executor al event loop
+        queue: asyncio.Queue[tuple[str, bool]] = asyncio.Queue()
+
+        def _run_sync() -> None:
+            """Ejecuta el stream LLM en un thread y encola los chunks."""
+            try:
+                for chunk in stream_llm_response(
+                    question=request.question,
+                    docs=docs,
+                    model=request.model,
+                    keywords=keywords,
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, (chunk, False))
+                loop.call_soon_threadsafe(queue.put_nowait, ("", True))
+            except Exception as exc:
+                log.warning("ask.llm_stream_error", error=str(exc))
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    (json.dumps({"error": "Error generando respuesta LLM"}), True),
+                )
+
+        executor_task = asyncio.ensure_future(asyncio.to_thread(_run_sync))
+
         try:
-            for chunk in stream_llm_response(
-                question=request.question,
-                docs=docs,
-                model=request.model,
-                keywords=keywords,
-            ):
-                yield f"data: {json.dumps({'text': chunk})}\n\n"
-            yield "data: [DONE]\n\n"
-        except Exception as exc:
-            log.warning("ask.llm_stream_error", error=str(exc))
-            yield f"data: {json.dumps({'error': 'Error generando respuesta LLM'})}\n\n"
-            yield "data: [DONE]\n\n"
+            done = False
+            while not done:
+                # Esperar el siguiente chunk con timeout global
+                try:
+                    chunk, done = await asyncio.wait_for(queue.get(), timeout=_LLM_TIMEOUT_SECONDS)
+                except TimeoutError:
+                    log.error(
+                        "ask.llm_timeout",
+                        model=request.model,
+                        timeout=_LLM_TIMEOUT_SECONDS,
+                    )
+                    yield f"data: {json.dumps({'error': 'Timeout esperando respuesta del LLM'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    executor_task.cancel()
+                    return
+
+                if done:
+                    yield "data: [DONE]\n\n"
+                else:
+                    yield f"data: {json.dumps({'text': chunk})}\n\n"
+        finally:
+            if not executor_task.done():
+                executor_task.cancel()
 
     return _generate()
 

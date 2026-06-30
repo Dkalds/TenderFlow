@@ -13,6 +13,7 @@ El PDF se genera con ``reportlab`` (ya en dependencies del proyecto).
 from __future__ import annotations
 
 import io
+import threading
 import time
 import uuid
 from datetime import UTC, datetime
@@ -30,19 +31,30 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/exports", tags=["exports"])
 
 # ── Almacén en memoria (proceso) ─────────────────────────────────────────────
+# TTLCache con maxsize para evitar crecimiento ilimitado.
 # Suficiente para un servicio de instancia única. Para multi-instancia,
-# usar Redis/DB. TTL = 15 min para evitar fugas de memoria.
+# usar Redis/DB. TTL = 15 min, max 100 jobs concurrentes.
 
 _TTL_SECONDS = 900
+_MAX_JOBS = 100
 _store: dict[str, dict[str, Any]] = {}
+_store_lock = threading.Lock()
 
 
 def _gc_store() -> None:
-    """Elimina jobs expirados (>TTL)."""
-    now = time.monotonic()
-    expired = [k for k, v in _store.items() if now - v["created_at"] > _TTL_SECONDS]
-    for k in expired:
-        del _store[k]
+    """Elimina jobs expirados (>TTL) y trunca si excede maxsize."""
+    with _store_lock:
+        now = time.monotonic()
+        expired = [k for k, v in _store.items() if now - v["created_at"] > _TTL_SECONDS]
+        for k in expired:
+            del _store[k]
+        # Si aún excede el máximo tras limpiar expirados, eliminar los más antiguos
+        if len(_store) > _MAX_JOBS:
+            sorted_jobs = sorted(_store.items(), key=lambda kv: kv[1]["created_at"])
+            overflow = len(_store) - _MAX_JOBS
+            for k, _ in sorted_jobs[:overflow]:
+                del _store[k]
+                log.warning("export_pdf.store_overflow_evicted", job_id=k)
 
 
 # ── Generador PDF ─────────────────────────────────────────────────────────────
@@ -157,13 +169,14 @@ def create_export(
     """
     _gc_store()
     job_id = str(uuid.uuid4())
-    _store[job_id] = {
-        "status": "pending",
-        "created_at": time.monotonic(),
-        "pdf": None,
-        "error": None,
-        "owner": ctx.key_hash,
-    }
+    with _store_lock:
+        _store[job_id] = {
+            "status": "pending",
+            "created_at": time.monotonic(),
+            "pdf": None,
+            "error": None,
+            "owner": ctx.key_hash,
+        }
     filters = {k: v for k, v in {"ccaa": ccaa, "estado": estado, "q": q}.items() if v}
     background_tasks.add_task(_run_export, job_id, filters)
     log.info("export_pdf.created", job_id=job_id, filters=filters)

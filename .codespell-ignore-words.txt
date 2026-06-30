@@ -118,3 +118,4 @@ secuencial
 dominante
 finge
 fingen
+dobles

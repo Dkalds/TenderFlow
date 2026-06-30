@@ -8,6 +8,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import os
 import shutil
 from datetime import UTC, datetime
 from typing import Any
@@ -22,7 +23,21 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 # Espacio libre mínimo en disco para considerar el servicio ready (bytes).
 # 500 MB cubre WAL de SQLite + buffer de descargas de ZIPs.
-_MIN_FREE_DISK_BYTES = 500 * 1024 * 1024
+# Configurable vía HEALTH_MIN_FREE_DISK_BYTES para entornos con discos pequeños.
+_DEFAULT_MIN_FREE = 500 * 1024 * 1024  # 500 MB
+
+
+def _min_free_disk_bytes() -> int:
+    """Devuelve el umbral de espacio libre configurado o el default."""
+    raw = os.environ.get("HEALTH_MIN_FREE_DISK_BYTES")
+    if raw is not None:
+        try:
+            val = int(raw)
+            if val > 0:
+                return val
+        except ValueError:
+            pass
+    return _DEFAULT_MIN_FREE
 
 
 class HealthResponse(BaseModel):
@@ -63,16 +78,17 @@ def _check_redis() -> str:
 def _check_disk() -> str:
     """Verifica espacio libre en disco.
 
-    Devuelve ``"ok"`` si hay al menos 500 MB libres, ``"low"`` en caso contrario.
+    Devuelve ``"ok"`` si hay al menos el umbral configurado libre, ``"low"`` en caso contrario.
     """
     try:
         from config import settings
 
         check_path = getattr(settings, "DATA_DIR", None) or "."
         usage = shutil.disk_usage(str(check_path))
-        if usage.free >= _MIN_FREE_DISK_BYTES:
+        min_free = _min_free_disk_bytes()
+        if usage.free >= min_free:
             return "ok"
-        return f"low ({usage.free // (1024 * 1024)} MB free)"
+        return f"low ({usage.free // (1024 * 1024)} MB free, min {min_free // (1024 * 1024)} MB)"
     except Exception:
         return "unknown"
 

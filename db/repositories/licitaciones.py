@@ -779,11 +779,23 @@ class LicitacionRepository:
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         """LIKE fallback para /ask endpoint cuando FTS5 no devuelve resultados."""
-        words = [w for w in question.split() if len(w) > 3][:5]
+        from services.investigador.search_engine import extract_keywords
+
+        # Reutiliza la misma extracción de keywords que FTS5 (filtra stopwords
+        # y palabras interrogativas) para no buscar por conectores genéricos
+        # que devuelven documentos irrelevantes.
+        words = extract_keywords(question)[:5]
+        if not words:
+            words = [w for w in question.split() if len(w) > 3][:5]
         if not words:
             return []
-        like_clauses = " OR ".join("titulo LIKE ? ESCAPE '\\'" for _ in words)
-        params: list[Any] = [f"%{_escape_like(w)}%" for w in words]
+        like_clauses = " OR ".join(
+            "titulo LIKE ? ESCAPE '\\' OR descripcion LIKE ? ESCAPE '\\'" for _ in words
+        )
+        params: list[Any] = []
+        for w in words:
+            escaped = f"%{_escape_like(w)}%"
+            params.extend([escaped, escaped])
         conditions = [f"({like_clauses})"]
         if ccaa:
             conditions.append("ccaa = ?")

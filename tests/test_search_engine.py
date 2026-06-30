@@ -26,8 +26,27 @@ _REPO_PATH = "services.investigador.search_engine._repo"
 
 def test_escape_fts5_simple_query() -> None:
     result = escape_fts5("contrato obra pública")
+    # Tokens discriminantes se conservan (entre comillas) y se unen con OR.
     assert '"contrato"' in result
     assert '"obra"' in result
+    assert " OR " in result
+
+
+def test_escape_fts5_uses_or_semantics() -> None:
+    # Regresión: FTS5 trata el espacio como AND implícito, lo que hacía que
+    # preguntas en lenguaje natural no matchearan ningún documento. Los tokens
+    # deben unirse con OR explícito.
+    result = escape_fts5("consultoría SAP Madrid")
+    assert " OR " in result
+    # AND implícito (tokens separados solo por espacio sin OR) no debe ocurrir.
+    assert " OR ".join(part.strip() for part in result.split(" OR ")) == result
+
+
+def test_escape_fts5_filters_stopwords() -> None:
+    # Palabras interrogativas, conectores y términos que definen el corpus
+    # (licitaciones, importe, total) se filtran; solo queda la keyword real.
+    result = escape_fts5("¿Cuántas licitaciones de SAP hay y cuál es el importe total?")
+    assert result == '"sap"'
 
 
 def test_escape_fts5_strips_operators() -> None:
@@ -47,8 +66,9 @@ def test_escape_fts5_whitespace_only() -> None:
 def test_escape_fts5_truncates_at_12_tokens() -> None:
     query = " ".join(f"word{i}" for i in range(20))
     result = escape_fts5(query)
-    tokens = result.split()
-    assert len(tokens) <= 12
+    # El operador OR no cuenta como token de búsqueda; contamos solo las keywords.
+    keyword_tokens = [t for t in result.split() if t != "OR"]
+    assert len(keyword_tokens) <= 12
 
 
 # ---------------------------------------------------------------------------

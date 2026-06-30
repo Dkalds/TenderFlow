@@ -17,13 +17,202 @@ log = get_logger(__name__)
 
 _repo = LicitacionRepository()
 
+# Stopwords en español: palabras interrogativas, conectores, verbos de petición y
+# los pocos términos que *definen* el corpus (y por tanto no discriminan: aparecen
+# en casi todos los documentos). Se filtran antes de construir la query FTS5/LIKE
+# para evitar que saturen el ranking con documentos irrelevantes. Deliberadamente
+# NO incluye sustantivos de dominio discriminantes (contrato, servicio, obra,
+# pública...) — esos sí aportan señal en búsquedas por palabra clave.
+# Compartido con el fallback LIKE del repositorio (search_like_for_ask).
+FTS5_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # Conectores y artículos
+        "de",
+        "la",
+        "el",
+        "y",
+        "o",
+        "u",
+        "a",
+        "en",
+        "es",
+        "que",
+        "qué",
+        "cuál",
+        "cuáles",
+        "cómo",
+        "como",
+        "donde",
+        "dónde",
+        "hay",
+        "ha",
+        "un",
+        "una",
+        "unos",
+        "unas",
+        "los",
+        "las",
+        "del",
+        "por",
+        "para",
+        "con",
+        "sin",
+        "sobre",
+        "entre",
+        "hasta",
+        "si",
+        "no",
+        "le",
+        "lo",
+        "su",
+        "sus",
+        "se",
+        "al",
+        "más",
+        "pero",
+        "este",
+        "esta",
+        "estos",
+        "estas",
+        "ese",
+        "esa",
+        "esos",
+        "esas",
+        "aquel",
+        "aquella",
+        "yo",
+        "tú",
+        "él",
+        "ella",
+        "nosotros",
+        "vosotros",
+        "ellos",
+        "ellas",
+        "mi",
+        "tu",
+        "mis",
+        "tus",
+        "nuestro",
+        "vuestro",
+        "nuestra",
+        "vuestra",
+        "son",
+        "ser",
+        "estar",
+        "están",
+        "fue",
+        "sido",
+        "sería",
+        "tiene",
+        "tienen",
+        "tuvo",
+        "tendrán",
+        "sea",
+        "sean",
+        "todas",
+        "todos",
+        "toda",
+        "todo",
+        "ambos",
+        "cada",
+        "cuánto",
+        "cuánta",
+        "cuántos",
+        "cuántas",
+        # Verbos de petición comunes en preguntas RAG
+        "dame",
+        "dime",
+        "muestra",
+        "muéstrame",
+        "mostrame",
+        "lista",
+        "listar",
+        "busca",
+        "buscar",
+        "encuentra",
+        "información",
+        "info",
+        "quiero",
+        "necesito",
+        "saber",
+        "conocer",
+        # Conectores de tema ("...relacionadas con X", "...sobre Y") que
+        # sobreviven al filtro de longitud pero no aportan señal y, bajo
+        # semántica OR, arrastran documentos irrelevantes.
+        "relacionada",
+        "relacionadas",
+        "relacionado",
+        "relacionados",
+        "relativa",
+        "relativas",
+        "relativo",
+        "relativos",
+        "referente",
+        "referentes",
+        "acerca",
+        "respecto",
+        "vinculada",
+        "vinculadas",
+        "vinculado",
+        "vinculados",
+        # Términos que *definen* el corpus (un buscador de licitaciones: estas
+        # palabras son el equivalente de buscar "email" dentro del buzón —
+        # presentes en casi todo, no discriminan y saturan el OR).
+        "licitación",
+        "licitacion",
+        "licitaciones",
+        "expediente",
+        "expedientes",
+        "importe",
+        "total",
+    }
+)
+
+
+def extract_keywords(query: str) -> list[str]:
+    """Extrae los tokens significativos de una query en lenguaje natural.
+
+    Elimina metacaracteres, pasa a minúsculas, filtra stopwords y tokens de
+    <=2 caracteres, y deduplica conservando los términos más largos (heurística
+    barata de especificidad). Reutilizado por ``escape_fts5`` (FTS5) y por el
+    fallback LIKE del repositorio para que ambos caminos compartan la misma
+    noción de "palabra relevante".
+    """
+    cleaned = re.sub(r'["*+\-():\^/¿¡!?,.;]', " ", query).lower()
+    tokens = [t for t in cleaned.split() if len(t) > 2 and t not in FTS5_STOPWORDS]
+    if not tokens:
+        return []
+    return sorted(set(tokens), key=len, reverse=True)[:12]
+
 
 def escape_fts5(query: str) -> str:
-    """Escapa la query para SQLite FTS5 MATCH, previniendo inyección de operadores."""
-    tokens = re.sub(r'["*+\-():\^/]', " ", query).split()
-    if not tokens:
+    """Escapa y normaliza la query para SQLite FTS5 MATCH (semántica RAG).
+
+    Dos bugs históricos que esta función corrige:
+
+    1. **AND implícito**: FTS5 trata tokens separados por espacio como AND
+       lógico (``sap licitaciones`` exige docs con *ambas* palabras). Para
+       preguntas en lenguaje natural eso devuelve 0 resultados casi siempre,
+       forzando el fallback LIKE con peor relevancia. Unimos los tokens con
+       ``OR`` explícito para semántica "cualquiera de estas palabras", que es
+       lo correcto para recuperación RAG (BM25 ya prioriza términos raros).
+
+    2. **Ruido de stopwords**: palabras interrogativas, conectores y términos
+       que definen el corpus (``cuántas``, ``de``, ``licitaciones``,
+       ``importe``...) inflaban la query y saturaban el ranking con documentos
+       genéricos. Se filtran vía ``extract_keywords`` antes de construir la
+       query.
+
+    Cada token se encierra entre comillas dobles (con las comillas internas
+    escapadas) para neutralizar operadores FTS5 y prevenir inyección; las
+    comillas con ``OR`` entre ellas siguen produciendo disyunción de frases de
+    una sola palabra (``"foo" OR "bar"``), no proximidad.
+    """
+    keywords = extract_keywords(query)
+    if not keywords:
         return '""'
-    return " ".join(f'"{t.replace(chr(34), chr(34) * 2)}"' for t in tokens[:12])
+    quoted = [f'"{t.replace(chr(34), chr(34) * 2)}"' for t in keywords]
+    return " OR ".join(quoted)
 
 
 def faiss_search(question: str, top_k: int, embedding_model: str) -> list[tuple[str, float]]:

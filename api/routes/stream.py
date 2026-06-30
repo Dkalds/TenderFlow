@@ -91,15 +91,20 @@ async def _event_generator(
     yield _sse_event("heartbeat", {"ts": time.time()})
 
     while time.monotonic() < deadline:
-        # Comprobar si el cliente desconectó
+        # Comprobar si el cliente desconectó — debe ir antes de cualquier yield
+        # para no emitir heartbeat/data a un cliente que ya se fue.
         if await request.is_disconnected():
             log.debug("stream.client_disconnected")
             break
 
         now = time.monotonic()
 
-        # Heartbeat
+        # Heartbeat — verificar desconexión justo antes de emitir para no
+        # desperdiciar I/O en un cliente que ya se fue.
         if now - last_heartbeat >= _HEARTBEAT_INTERVAL:
+            if await request.is_disconnected():
+                log.debug("stream.client_disconnected_before_heartbeat")
+                break
             yield _sse_event("heartbeat", {"ts": time.time()})
             last_heartbeat = now
 
