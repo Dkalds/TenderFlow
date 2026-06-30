@@ -62,17 +62,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### [P2] Observabilidad de tokens y coste en el cliente LLM
-- **Área:** llm/ (client + providers), observability
-- **Problema:** `/ask` consume LLMs de pago pero `llm/client.py` solo mide latencia, no tokens ni coste. El usage real ya lo exponen ambos SDKs (Anthropic `get_final_message().usage`; OpenAI `stream_options={"include_usage": True}`) y se está descartando. Sin esta métrica no se puede ver el gasto ni alertar sobre picos.
-- **Acceptance criteria:**
-  - `llm_tokens_total{direction,source}` y `llm_cost_usd_total` se incrementan tras cada respuesta.
-  - Fallback de estimación marcado con `source="estimated"`; degrada limpio sin `prometheus_client`.
-  - Firma pública de `stream_llm_response` sin cambios; `/ask` sin tocar.
-- **Files de partida:** [llm/client.py](../llm/client.py), [llm/providers/openai_provider.py](../llm/providers/openai_provider.py), [llm/providers/anthropic_provider.py](../llm/providers/anthropic_provider.py)
-- **RFC:** [2026-06-17-rfc-observabilidad-tokens-coste-llm.md](rfc/2026-06-17-rfc-observabilidad-tokens-coste-llm.md)
-- **Riesgo:** bajo — aditivo; ningún consumidor existente cambia.
-
 ### [P2] Modo degradado documentado y testeado ante caída de dependencias opcionales
 - **Área:** api/routes/health.py, observability, scheduler, config
 - **Problema:** El sistema acumula mucha superficie operativa (Redis, Turso, FAISS, modelo ML, dramatiq) para un mantenedor solo. No existe un contrato explícito y testeado de qué sigue funcionando cuando una pieza *opcional* cae. Síntoma ya conocido: `/health` devuelve 503 en local cuando `REDIS_URL` está seteado pero Redis no corre, aunque el sistema podría servir datos. Sin un "modo degradado" definido, cada outage de una dependencia se descubre en producción en vez de estar diseñado.
@@ -102,6 +91,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-06-30] **P2: Observabilidad de tokens y coste en el cliente LLM** — `llm/client.py` instrumenta `llm_tokens_total{model,provider,direction,source}` y `llm_cost_usd_total{model,provider}` con lazy-init tolerante a `prometheus_client` ausente, mapa estático `_PRICE_PER_MTOK` (modelo sin precio → solo tokens, coste omitido sin error) y `_record_usage()` centralizado en el `finally` de `stream_llm_response` (firma pública intacta). Ambos providers rellenan un `usage_sink` lateral: Anthropic vía `get_final_message().usage`, OpenAI vía `stream_options={"include_usage":True}`, con fallback de estimación (`source=estimated`) cuando el SDK no reporta. Tests en `tests/test_unit_llm_usage.py` (9): counters reported/estimated, modelo sin precio, dict vacío no-op, sin prometheus, sink poblado en ambos providers, **estimación a nivel provider** y **consumo parcial no contabiliza** (los 2 últimos añadidos para cerrar el RFC). `mypy .` verde (418 files). RFC `2026-06-17` → implemented.
 
 - [2026-06-10] **P2: Fix `test_expired_key_returns_401` + bug real de expiración en `require_any_auth`** — La causa raíz no era infra de test sino un **bug de producción**: `api/routes/dual_auth.py::require_any_auth` (usado por `/api/v1/licitaciones` y otros endpoints con dual auth sesión/API-key) llamaba a `lookup_active_key` pero **nunca comprobaba `expires_at`**, a diferencia de `api/auth.py::require_api_key`. Una API key expirada seguía siendo válida en estos endpoints. Fix: añadido el mismo check `record.expires_at and now_utc_iso() > record.expires_at` en `dual_auth.py`. Además, `tests/test_api.py::test_expired_key_returns_401` ahora llama a `close_pool()` tras el `UPDATE` para evitar lecturas de conexión thread-local obsoletas. `pytest tests/test_api.py` 24/24 verde.
 - [2026-06-10] **P2: Cobertura de tests del frontend — `useSearchHistory` y `SearchAutocomplete`** — 2 archivos nuevos: `web/src/lib/__tests__/search-history.test.ts` (dedupe, cap de 10, rechazo de términos < 2 chars, trim, persistencia en `localStorage`) y `web/src/components/__tests__/search-autocomplete.test.tsx` (navegación con teclado ArrowUp/Down sin wrap, Enter sobre item activo vs. valor actual, Escape, aria-expanded/aria-activedescendant, selección por click). Suite 245 → **268** tests (15 → 17 archivos). Thresholds de `vitest.config.ts` subidos 30/25→32/27 (statements/lines 32, branches/functions 27).

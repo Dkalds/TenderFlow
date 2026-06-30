@@ -197,3 +197,86 @@ def test_openai_usage_sink_populated():
     assert usage["input_tokens"] == 55
     assert usage["output_tokens"] == 12
     assert usage["source"] == 0
+
+
+def test_openai_usage_sink_estimation_fallback():
+    """Sin chunk de usage del SDK, el provider OpenAI estima y marca source=1."""
+    usage: dict[str, int] = {}
+
+    # Único chunk de texto, sin chunk final de usage (proxies/endpoints viejos).
+    chunk1 = MagicMock()
+    chunk1.choices = [MagicMock()]
+    chunk1.choices[0].delta.content = "abcd"  # 4 chars → 1 token estimado de output
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = iter([chunk1])
+
+    mock_openai_mod = MagicMock()
+    mock_openai_mod.OpenAI.return_value = mock_client
+
+    with patch.dict("sys.modules", {"openai": mock_openai_mod}):
+        from llm.providers.openai_provider import stream
+
+        result = list(
+            stream(
+                "test?",
+                [{"id_externo": "X", "titulo": "T"}],
+                "gpt-4o-mini",
+                [],
+                "key123",
+                usage_sink=usage,
+            )
+        )
+
+    assert result == ["abcd"]
+    # Fallback de estimación: marcado como estimated, nunca falla la request.
+    assert usage["source"] == 1
+    assert usage["input_tokens"] > 0  # len(prompt) // 4
+    assert usage["output_tokens"] == 1  # 4 chars // 4
+
+
+def test_partial_consumption_does_not_record_tokens():
+    """Si el consumidor abandona el generador antes de agotarlo, no se contabilizan tokens.
+
+    El provider solo puebla ``usage_sink`` al final de su stream; al cerrarse el
+    generador a mitad (``GeneratorExit``), el sink queda vacío y ``_record_usage``
+    es no-op. Documentado en el RFC como comportamiento aceptable para un contador
+    de observabilidad.
+    """
+    from collections.abc import Iterator
+
+    def fake_stream(
+        question: str,
+        docs: list,
+        model: str,
+        keywords: list,
+        api_key: str,
+        usage_sink: dict | None = None,
+        **kwargs: object,
+    ) -> Iterator[str]:
+        yield "primero"
+        yield "segundo"
+        # Solo se puebla al final — inalcanzable si se abandona antes.
+        if usage_sink is not None:
+            usage_sink["input_tokens"] = 100
+            usage_sink["output_tokens"] = 50
+            usage_sink["source"] = 0
+
+    recorded: list[dict] = []
+
+    def spy_record(model: str, provider: str, usage: dict) -> None:
+        recorded.append(dict(usage))
+
+    with (
+        patch("llm.providers.openai_provider.stream", fake_stream),
+        patch("llm.client._record_usage", spy_record),
+    ):
+        from llm.client import stream_llm_response
+
+        gen = stream_llm_response("pregunta válida", [], model="gpt-4o-mini", keywords=[])
+        first = next(gen)  # consumir solo el primer chunk
+        gen.close()  # abandonar antes de agotar
+
+    assert first == "primero"
+    # _record_usage corre en el finally, pero con usage vacío (no se pobló).
+    assert recorded == [{}]
