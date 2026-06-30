@@ -113,9 +113,14 @@ def _make_pipeline(*, calibrate: bool = True) -> Any:
     )
 
 
-def _make_pipeline_with_embeddings() -> Any:
-    """Construye el pipeline sklearn con FeatureUnion(TF-IDF word + char + embeddings)."""
-    from sklearn.calibration import CalibratedClassifierCV
+def _make_pipeline_with_embeddings(*, calibrate: bool = True) -> Any:
+    """Construye el pipeline sklearn con FeatureUnion(TF-IDF word + char + embeddings).
+
+    Args:
+        calibrate: Si True (default), envuelve LogReg en ``CalibratedClassifierCV``.
+            Poner a False cuando la calibración la aplica una capa externa
+            (evita la doble calibración que degrada las probabilidades).
+    """
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import FeatureUnion, Pipeline
@@ -157,11 +162,18 @@ def _make_pipeline_with_embeddings() -> Any:
         solver="lbfgs",
         random_state=42,
     )
+    clf_step: Any
+    if calibrate:
+        from sklearn.calibration import CalibratedClassifierCV
+
+        clf_step = CalibratedClassifierCV(base_lr, cv=5, method="sigmoid")
+    else:
+        clf_step = base_lr
     return Pipeline(
         [
             ("features", feature_union),
             ("scaler", MaxAbsScaler()),
-            ("clf", CalibratedClassifierCV(base_lr, cv=5, method="sigmoid")),
+            ("clf", clf_step),
         ]
     )
 

@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     # con costos reales, en lugar de solo sobre el test split (labels derivadas
     # de keywords). Ver services/ml_eval.tune_threshold_on_golden.
     ML_TUNE_THRESHOLD_ON_GOLDEN: bool = True
+    # Calibración externa: si True, el pipeline base se construye SIN
+    # CalibratedClassifierCV interno y la calibración + tuning de umbral sensible
+    # a coste la aplica services.threshold_tuning.calibrate_and_tune (una sola
+    # capa, sin doble calibración). Si False (default), el pipeline calibra
+    # internamente. Ver SAPClassifier.__init__.
+    ML_USE_CALIBRATION: bool = False
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
     # Si True, el re-entrenamiento mensual activa la versión nueva

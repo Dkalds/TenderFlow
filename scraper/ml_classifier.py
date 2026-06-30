@@ -70,12 +70,25 @@ class SAPClassifier:
 
     def __init__(self) -> None:
         use_embeddings = getattr(settings, "ML_USE_EMBEDDINGS", False)
+        # Si la calibración la aplica una capa externa (calibrate_and_tune en
+        # train() cuando ML_USE_CALIBRATION=True), el pipeline base NO debe
+        # calibrar internamente: así se evita la doble calibración que degrada
+        # las probabilidades (oversmoothing).
+        calibrate_internally = not bool(getattr(settings, "ML_USE_CALIBRATION", False))
         if use_embeddings:
-            self.pipeline = _make_pipeline_with_embeddings()
-            log.info("ml_classifier.init", pipeline_variant="embeddings")
+            self.pipeline = _make_pipeline_with_embeddings(calibrate=calibrate_internally)
+            log.info(
+                "ml_classifier.init",
+                pipeline_variant="embeddings",
+                calibrate_internally=calibrate_internally,
+            )
         else:
-            self.pipeline = _make_pipeline()
-            log.info("ml_classifier.init", pipeline_variant="tfidf_only")
+            self.pipeline = _make_pipeline(calibrate=calibrate_internally)
+            log.info(
+                "ml_classifier.init",
+                pipeline_variant="tfidf_only",
+                calibrate_internally=calibrate_internally,
+            )
         self._trained = False
         # Umbral óptimo aprendido en train(); fallback al de settings si no entrenado.
         self._threshold: float = settings.ML_CONFIDENCE_THRESHOLD
@@ -305,11 +318,9 @@ class SAPClassifier:
         # búsqueda F-beta sobre malla fina para refinar el umbral y mejorar las
         # probabilidades predichas.
         if getattr(settings, "ML_USE_CALIBRATION", False):
-            log.warning(
-                "double_calibration_risk",
-                detail="Pipeline already uses CalibratedClassifierCV. "
-                "Enabling ML_USE_CALIBRATION may degrade probability estimates.",
-            )
+            # El pipeline base se construyó SIN CalibratedClassifierCV interno
+            # (ver __init__), de modo que calibrate_and_tune aplica una ÚNICA
+            # capa de calibración + tuning de umbral sensible a coste.
             try:
                 from services.threshold_tuning import calibrate_and_tune
 
