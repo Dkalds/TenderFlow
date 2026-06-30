@@ -58,54 +58,32 @@ def read_registry(path: Path | None = None) -> list[dict[str, Any]]:
         return []
 
 
-def seed_negatives(
-    year: int | None = None,
-    month: int | None = None,
-    max_negatives: int = 2000,
-    include_ti: bool = False,
-) -> dict[str, int]:
-    """Descarga el bulk de un mes y persiste licitaciones como negativos.
+def _collect_negatives_from_month(
+    year: int,
+    month: int,
+    limit: int,
+    *,
+    include_ti: bool,
+) -> tuple[list[tuple[Any, ...]], int, int]:
+    """Descarga un mes y devuelve ``(filas_negativas, descargadas, skipped_ti)``.
 
-    Estas licitaciones se guardan con raw_keywords=NULL para que el entrenamiento ML
-    las use como ejemplos negativos.
-
-    Args:
-        year: Año del bulk a descargar (defecto: mes anterior).
-        month: Mes del bulk a descargar (defecto: mes anterior).
-        max_negatives: Máximo de negativos a insertar (para no inflar la BD).
-        include_ti: Si True, incluye licitaciones CPV 48/72 (TI) que no
-            contienen keywords SAP como "negativos difíciles" (hard negatives).
-            Esto mejora la discriminación del modelo entre TI-SAP y TI-no-SAP.
-
-    Returns:
-        {"downloaded": N, "inserted": M, "skipped_ti": K, "already_exists": J}
+    Extraído de :func:`seed_negatives` para poder distribuir los negativos entre
+    varios meses (evita el leakage temporal de concentrarlos en una sola
+    ventana, que el split temporal del entrenamiento podría aprender como atajo).
     """
-    from datetime import UTC, datetime
-
-    from dateutil.relativedelta import relativedelta
-
-    from db.database import init_db
     from scraper.bulk_downloader import download_month, iter_xml_files
     from scraper.codice_parser import _text, parse_entry_unfiltered
 
-    if year is None or month is None:
-        prev = datetime.now(UTC).date() - relativedelta(months=1)
-        year = year or prev.year
-        month = month or prev.month
-
-    log.info("seed_negatives.start", year=year, month=month, max_negatives=max_negatives)
-    init_db()
+    rows: list[tuple[Any, ...]] = []
+    downloaded = 0
+    skipped_ti = 0
 
     zip_path = download_month(year, month, force=False)
     if zip_path is None:
         log.warning("seed_negatives.no_zip", year=year, month=month)
-        return {"downloaded": 0, "inserted": 0, "skipped_ti": 0, "already_exists": 0}
+        return rows, downloaded, skipped_ti
 
     _TI_PREFIXES = ("48", "72")
-
-    downloaded = 0
-    skipped_ti = 0
-    rows_to_insert: list[tuple[Any, ...]] = []
 
     # Si include_ti, necesitamos el filtro SAP para excluir licitaciones que sí
     # mencionan SAP (esas serían falsos negativos, no hard negatives).
@@ -113,7 +91,7 @@ def seed_negatives(
         from scraper.filters import matches_sap
 
     for _filename, content in iter_xml_files(zip_path):
-        if len(rows_to_insert) >= max_negatives:
+        if len(rows) >= limit:
             break
         try:
             from lxml import etree
@@ -123,7 +101,7 @@ def seed_negatives(
             )
             root = etree.fromstring(content, parser=parser)
             for entry in root.iter("{http://www.w3.org/2005/Atom}entry"):
-                if len(rows_to_insert) >= max_negatives:
+                if len(rows) >= limit:
                     break
                 try:
                     cfs = "./cacext:ContractFolderStatus"
@@ -152,7 +130,7 @@ def seed_negatives(
                     if lic is None:
                         continue
                     downloaded += 1
-                    rows_to_insert.append(
+                    rows.append(
                         (
                             lic.id_externo,
                             lic.titulo,
@@ -180,6 +158,79 @@ def seed_negatives(
                     log.debug("seed_negatives.entry_error")
         except Exception:
             log.debug("seed_negatives.file_error")
+
+    return rows, downloaded, skipped_ti
+
+
+def seed_negatives(
+    year: int | None = None,
+    month: int | None = None,
+    max_negatives: int = 2000,
+    include_ti: bool = False,
+    spread_months: int = 1,
+) -> dict[str, int]:
+    """Descarga bulks mensuales y persiste licitaciones como negativos.
+
+    Estas licitaciones se guardan con raw_keywords=NULL para que el entrenamiento ML
+    las use como ejemplos negativos.
+
+    Args:
+        year: Año del bulk base (defecto: mes anterior).
+        month: Mes del bulk base (defecto: mes anterior).
+        max_negatives: Máximo de negativos a insertar (para no inflar la BD).
+        include_ti: Si True, incluye licitaciones CPV 48/72 (TI) que no
+            contienen keywords SAP como "negativos difíciles" (hard negatives).
+            Esto mejora la discriminación del modelo entre TI-SAP y TI-no-SAP.
+        spread_months: Número de meses (hacia atrás desde el base, incluido) entre
+            los que repartir ``max_negatives``. Con ``1`` (default) se comporta
+            como antes (un solo mes). Con ``>1`` distribuye el cupo para que los
+            negativos no se concentren en una sola ventana temporal: si no, el
+            split temporal del entrenamiento podría aprender "fecha vieja →
+            negativo" como atajo en lugar de la señal real.
+
+    Returns:
+        {"downloaded": N, "inserted": M, "skipped_ti": K, "already_exists": J}
+    """
+    from datetime import UTC, datetime
+
+    from dateutil.relativedelta import relativedelta
+
+    from db.database import init_db
+
+    if year is None or month is None:
+        prev = datetime.now(UTC).date() - relativedelta(months=1)
+        year = year or prev.year
+        month = month or prev.month
+
+    spread_months = max(1, spread_months)
+    log.info(
+        "seed_negatives.start",
+        year=year,
+        month=month,
+        max_negatives=max_negatives,
+        spread_months=spread_months,
+    )
+    init_db()
+
+    # Repartir el cupo entre los últimos `spread_months` meses (incluido el base).
+    per_month = max(1, max_negatives // spread_months)
+    base = datetime(year, month, 1, tzinfo=UTC).date()
+
+    downloaded = 0
+    skipped_ti = 0
+    rows_to_insert: list[tuple[Any, ...]] = []
+    for i in range(spread_months):
+        if len(rows_to_insert) >= max_negatives:
+            break
+        m_date = base - relativedelta(months=i)
+        remaining = max_negatives - len(rows_to_insert)
+        month_limit = max_negatives if spread_months == 1 else min(per_month, remaining)
+        month_rows, m_downloaded, m_skipped = _collect_negatives_from_month(
+            m_date.year, m_date.month, month_limit, include_ti=include_ti
+        )
+        rows_to_insert.extend(month_rows)
+        downloaded += m_downloaded
+        skipped_ti += m_skipped
 
     inserted = 0
     already_exists = 0
@@ -249,6 +300,7 @@ def seed_negatives(
         "seed_negatives.done",
         year=year,
         month=month,
+        spread_months=spread_months,
         downloaded=downloaded,
         inserted=inserted,
         skipped_ti=skipped_ti,
