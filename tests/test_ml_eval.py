@@ -7,6 +7,7 @@ from services.ml_eval import (
     evaluate_classifier,
     evaluate_probas,
     load_golden_set,
+    tune_threshold_on_golden,
 )
 
 
@@ -113,3 +114,41 @@ class TestEvaluateClassifier:
         examples = [GoldenExample("a", "SAP", "", 1, keyword_match=True)]
         result = evaluate_classifier(_StubClassifier(), examples, threshold=None)
         assert result.threshold == 0.5
+
+
+class TestTuneThresholdOnGolden:
+    def _examples(self) -> list[GoldenExample]:
+        # 6 SAP (texto con 'sap'/'abap') + 6 no-SAP, separables por el stub.
+        sap = [GoldenExample(f"s{i}", "Soporte SAP", "", 1, keyword_match=True) for i in range(4)]
+        sap += [GoldenExample(f"n{i}", "Desarrollo ABAP", "", 1, keyword_match=False) for i in range(2)]
+        no = [GoldenExample(f"x{i}", "Mobiliario oficina", "", 0, keyword_match=False) for i in range(6)]
+        return sap + no
+
+    def test_returns_threshold_in_clamp_range(self) -> None:
+        out = tune_threshold_on_golden(_StubClassifier(), self._examples(), cost_fp=1.0, cost_fn=3.0)
+        assert out is not None
+        assert 0.30 <= out["threshold"] <= 0.95
+        # El stub separa perfectamente → recall 1.0 alcanzable.
+        assert out["recall"] == 1.0
+        assert out["beta"] > 1.0  # cost_fn > cost_fp favorece recall
+
+    def test_none_when_too_few_examples(self) -> None:
+        out = tune_threshold_on_golden(
+            _StubClassifier(),
+            [GoldenExample("a", "SAP", "", 1)],
+            min_examples=10,
+        )
+        assert out is None
+
+    def test_none_when_single_class(self) -> None:
+        examples = [GoldenExample(f"s{i}", "SAP", "", 1) for i in range(12)]
+        out = tune_threshold_on_golden(_StubClassifier(), examples)
+        assert out is None
+
+    def test_invalid_costs_raise(self) -> None:
+        try:
+            tune_threshold_on_golden(_StubClassifier(), self._examples(), cost_fp=0.0)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("Debía lanzar ValueError con cost_fp<=0")

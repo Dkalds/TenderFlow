@@ -95,6 +95,15 @@ class Settings(BaseSettings):
     ML_PU_LEARNING: bool = False
     # Peso de muestra para los negativos ambiguos cuando ML_PU_LEARNING=True.
     ML_PU_UNLABELED_WEIGHT: float = 0.5
+    # Costos relativos para el tuning de threshold sensible a coste. Un falso
+    # negativo (perder una licitación SAP real) cuesta más que un falso positivo
+    # (revisar una falsa alerta). El golden tuning usa beta = sqrt(FN/FP).
+    ML_COST_FN: float = 3.0
+    ML_COST_FP: float = 1.0
+    # Si True, el threshold final se ajusta sobre el golden set (labels humanas)
+    # con costos reales, en lugar de solo sobre el test split (labels derivadas
+    # de keywords). Ver services/ml_eval.tune_threshold_on_golden.
+    ML_TUNE_THRESHOLD_ON_GOLDEN: bool = True
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
     # Si True, el re-entrenamiento mensual activa la versión nueva

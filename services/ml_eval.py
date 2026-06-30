@@ -294,10 +294,85 @@ def evaluate_classifier(
     return result
 
 
+def tune_threshold_on_golden(
+    clf: _ProbaClassifier,
+    examples: list[GoldenExample] | None = None,
+    *,
+    cost_fp: float = 1.0,
+    cost_fn: float = 1.0,
+    min_examples: int = 10,
+    clamp: tuple[float, float] = (0.30, 0.95),
+    grid_step: float = 0.01,
+) -> dict[str, Any] | None:
+    """Busca el threshold que maximiza F-beta sobre el golden set (labels humanas).
+
+    El threshold por defecto del clasificador se optimiza sobre un test split
+    cuyas etiquetas derivan del filtro de keywords. Este tuning lo recalcula
+    sobre etiquetas **humanas** con costos reales: ``beta = sqrt(cost_fn/cost_fp)``
+    (un FN —perder una licitación SAP— cuesta más que un FP).
+
+    Args:
+        clf: Clasificador con ``predict(text, cpv=, importe=) -> (bool, proba)``.
+        examples: Golden set ya cargado. Si ``None``, se carga desde settings.
+        cost_fp: Coste de un falso positivo (revisar una falsa alerta).
+        cost_fn: Coste de un falso negativo (perder una licitación SAP real).
+        min_examples: Mínimo de ejemplos para fiarse del tuning (si no, ``None``).
+        clamp: Rango ``[lo, hi]`` al que se acota el threshold resultante.
+        grid_step: Resolución del barrido de umbral.
+
+    Returns:
+        Dict con ``threshold`` y métricas del golden set, o ``None`` si no hay
+        datos suficientes (golden set pequeño o de una sola clase).
+    """
+    import numpy as np
+    from sklearn.metrics import fbeta_score
+
+    if cost_fp <= 0 or cost_fn <= 0:
+        raise ValueError("cost_fp y cost_fn deben ser positivos")
+    if examples is None:
+        examples = load_golden_set()
+    if len(examples) < min_examples:
+        log.info("ml_eval.golden_tuning_skipped", n=len(examples), min_required=min_examples)
+        return None
+
+    y_true = [ex.label for ex in examples]
+    if len(set(y_true)) < 2:
+        log.info("ml_eval.golden_tuning_single_class")
+        return None
+
+    beta = float(np.sqrt(cost_fn / cost_fp))
+    probas = [float(clf.predict(ex.text, cpv=ex.cpv, importe=ex.importe)[1]) for ex in examples]
+    kw = [ex.keyword_match for ex in examples]
+    yt = np.asarray(y_true, dtype=int)
+    yp = np.asarray(probas, dtype=float)
+
+    lo, hi = clamp
+    grid = np.arange(lo, hi + 1e-9, grid_step)
+    best_t = lo
+    best_f = -1.0
+    for t in grid:
+        preds = (yp >= t).astype(int)
+        f = float(fbeta_score(yt, preds, beta=beta, zero_division=0))
+        if f > best_f:
+            best_f = f
+            best_t = float(t)
+
+    result = evaluate_probas(y_true, probas, keyword_match=kw, threshold=best_t, beta=beta)
+    out = result.as_dict()
+    out["threshold"] = round(best_t, 4)
+    out["fbeta"] = round(best_f, 4)
+    out["beta"] = round(beta, 4)
+    out["cost_fp"] = cost_fp
+    out["cost_fn"] = cost_fn
+    log.info("ml_eval.golden_threshold_tuned", **out)
+    return out
+
+
 __all__ = [
     "GoldenEvalResult",
     "GoldenExample",
     "evaluate_classifier",
     "evaluate_probas",
     "load_golden_set",
+    "tune_threshold_on_golden",
 ]

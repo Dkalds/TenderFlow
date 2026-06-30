@@ -343,6 +343,38 @@ class SAPClassifier:
                 )
             except Exception as _cal_exc:
                 log.warning("ml_classifier.calibration_failed", error=str(_cal_exc))
+
+        # ── Threshold final sobre el golden set (labels humanas) ──────────────
+        # El threshold anterior se optimizó sobre el test split, cuyas labels
+        # derivan del filtro de keywords. El golden set tiene labels humanas
+        # independientes → base más honesta para fijar el umbral con costos
+        # reales (un FN, perder una licitación SAP, cuesta más que un FP).
+        if getattr(settings, "ML_TUNE_THRESHOLD_ON_GOLDEN", True):
+            try:
+                from services.ml_eval import tune_threshold_on_golden
+
+                golden = tune_threshold_on_golden(
+                    self,
+                    cost_fp=float(getattr(settings, "ML_COST_FP", 1.0)),
+                    cost_fn=float(getattr(settings, "ML_COST_FN", 1.0)),
+                )
+                if golden is not None:
+                    self._threshold = float(golden["threshold"])
+                    metrics["golden_threshold"] = golden["threshold"]
+                    metrics["golden_recall"] = golden["recall"]
+                    metrics["golden_recall_no_keyword"] = golden["recall_no_keyword"]
+                    metrics["golden_precision"] = golden["precision"]
+                    self.metadata.update(
+                        optimal_threshold=golden["threshold"],
+                        golden_threshold=golden["threshold"],
+                        golden_recall=golden["recall"],
+                        golden_recall_no_keyword=golden["recall_no_keyword"],
+                        golden_precision=golden["precision"],
+                    )
+                    log.info("ml_classifier.golden_threshold_applied", **golden)
+            except Exception as _golden_exc:
+                log.warning("ml_classifier.golden_tuning_failed", error=str(_golden_exc))
+
         log.info("ml_classifier.trained", **metrics)
         # Append run a registry JSON para histórico de entrenamientos.
         try:
