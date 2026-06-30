@@ -247,22 +247,22 @@ def stream_llm_response(
 
     try:
         if p == "openai":
-            from llm.providers.openai_provider import stream as _stream
+            from llm.providers.openai_provider import stream as _stream_openai
 
-            yield from _stream(
+            yield from _stream_openai(
                 question, docs, model, keywords, _get_key("OPENAI_API_KEY"), usage_sink=usage
             )
         elif p == "anthropic":
-            from llm.providers.anthropic_provider import stream as _stream
+            from llm.providers.anthropic_provider import stream as _stream_anthropic
 
-            yield from _stream(
+            yield from _stream_anthropic(
                 question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"), usage_sink=usage
             )
         elif p == "nvidia":
             # NVIDIA NIM reutiliza el proveedor OpenAI con su base_url propio.
-            from llm.providers.openai_provider import stream as _stream
+            from llm.providers.openai_provider import stream as _stream_nvidia
 
-            yield from _stream(
+            yield from _stream_nvidia(
                 question,
                 docs,
                 model,

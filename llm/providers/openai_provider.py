@@ -108,7 +108,7 @@ def stream(
         return
 
     try:
-        from openai import OpenAI  # type: ignore[import-not-found]
+        from openai import OpenAI
     except ImportError:
         log.warning("llm_openai.package_not_installed", hint="pip install openai")
         return

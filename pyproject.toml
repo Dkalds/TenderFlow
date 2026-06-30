@@ -232,6 +232,8 @@ module = [
     "statsmodels.*",
     "networkx",
     "networkx.*",
+    "openai",
+    "openai.*",
 ]
 ignore_missing_imports = true
 
