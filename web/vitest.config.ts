@@ -17,6 +17,11 @@ export default defineConfig({
         "src/test/**",
         "src/**/*.test.{ts,tsx}",
         "src/**/*.spec.{ts,tsx}",
+        // Next.js App Router pages/layouts/loading/error are Server Components
+        // exercised via Playwright e2e (web/e2e), not unit tests. Excluding them
+        // keeps the unit-coverage threshold meaningful for lib/hooks/components.
+        "src/app/**",
+        "src/middleware.ts",
       ],
       thresholds: {
         statements: 32,
