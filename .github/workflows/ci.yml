@@ -287,8 +287,8 @@ jobs:
         run: npm run lint
 
       - name: Unit tests + coverage (vitest)
-        # Los umbrales viven en web/vitest.config.ts (statements/lines 32 %,
-        # branches/functions 27 %). Falla el job si la cobertura baja.
+        # Los umbrales viven en web/vitest.config.ts (statements 68 %, lines 70 %,
+        # functions 68 %, branches 63 %). Falla el job si la cobertura baja.
         run: npm run test:coverage
 
       - name: Upload frontend coverage
