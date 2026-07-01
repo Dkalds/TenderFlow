@@ -198,6 +198,64 @@ def run_daily_pipeline() -> dict[str, Any]:
     }
 
 
+_OK_STATUSES = frozenset({"ok", "no_publicado"})
+
+
+def _notify_degraded(label: str, failed: list[dict[str, Any]]) -> None:
+    """Alerta best-effort (nivel WARN) por meses con fallo recuperable."""
+    try:
+        from observability.alerts import AlertLevel, notify
+
+        notify(
+            AlertLevel.WARN,
+            f"{label}: {len(failed)} mes(es) con fallo recuperable",
+            body=(
+                f"Meses fallidos: {failed}. Ya registrados en la DLQ; el paso "
+                "post-ingesta dlq_retry los reintentará automáticamente."
+            ),
+            failed_months=failed,
+        )
+    except Exception:
+        log.debug("degraded_notify_failed", label=label)
+
+
+def _finalize_ingestion(results: list[dict[str, Any]], *, label: str) -> dict[str, Any]:
+    """Cierra una ingesta bulk/backfill tolerando fallos parciales.
+
+    - **Fallo total** (ningún mes ingresó): se lanza ``RuntimeError`` porque no
+      hay nada que post-procesar (típicamente PLACSP caído o formato incompatible).
+    - **Fallo parcial** (algunos meses fallaron): los fallos ya quedaron
+      registrados en la DLQ vía ``record_failure``. Se ejecutan igualmente los
+      pasos post-ingesta —incluido ``dlq_retry``, que reintentará las descargas
+      fallidas— y se devuelve ``status="degraded"`` en lugar de abortar toda la
+      pipeline. Esto da paridad con ``run_daily_pipeline``.
+    """
+    failed = [r for r in results if r.get("status") not in _OK_STATUSES]
+    succeeded = [r for r in results if r.get("status") in _OK_STATUSES]
+
+    # Fallo total: ningún mes ingresó → genuinamente fatal.
+    if results and not succeeded:
+        raise RuntimeError(f"{label} failed for all {len(failed)} month(s): {failed}")
+
+    if failed:
+        log.warning(
+            "pipeline_ingestion_degraded",
+            label=label,
+            failed_months=failed,
+            months_ok=len(succeeded),
+        )
+        _notify_degraded(label, failed)
+
+    step_results = _run_post_ingestion_steps()
+
+    return {
+        "status": "degraded" if failed else "ok",
+        "ingestion_results": results,
+        "failed_months": failed,
+        "steps": step_results,
+    }
+
+
 def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
     """Pipeline canónica para el carril bulk (últimos N meses).
 
@@ -205,55 +263,44 @@ def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
     oficial. Usada tanto por ``run_update.py --months`` como por
     ``scheduler/jobs/recent_bulk.py``.
 
+    Un fallo transitorio en algún mes reciente **no** aborta la pipeline: se
+    registra en la DLQ, se ejecutan los pasos post-ingesta (incluido el
+    reintento de la DLQ) y se devuelve ``status="degraded"``. Solo se lanza
+    ``RuntimeError`` si fallan todos los meses.
+
     Args:
         months: Número de meses recientes a refrescar.
 
     Returns:
-        Dict con ``ingestion_results``, ``steps`` y ``status``.
+        Dict con ``status`` (``ok``/``degraded``), ``ingestion_results``,
+        ``failed_months`` y ``steps``.
 
     Raises:
-        RuntimeError: Si algún mes de la ingesta falla.
+        RuntimeError: Solo si fallan todos los meses de la ingesta.
     """
     from scraper.pipeline import update_recent
 
     results = update_recent(months)
-    failed = [r for r in results if r.get("status") not in ("ok", "no_publicado")]
-    if failed:
-        raise RuntimeError(f"bulk refresh failed for {len(failed)} month(s): {failed}")
-
-    step_results = _run_post_ingestion_steps()
-
-    return {
-        "status": "ok",
-        "ingestion_results": results,
-        "steps": step_results,
-    }
+    return _finalize_ingestion(results, label="bulk refresh")
 
 
 def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
     """Pipeline canónica para backfill histórico (desde año/mes hasta hoy).
+
+    Aplica la misma tolerancia a fallos parciales que ``run_bulk_pipeline``.
 
     Args:
         year: Año de inicio del backfill.
         month: Mes de inicio del backfill.
 
     Returns:
-        Dict con ``ingestion_results``, ``steps`` y ``status``.
+        Dict con ``status`` (``ok``/``degraded``), ``ingestion_results``,
+        ``failed_months`` y ``steps``.
 
     Raises:
-        RuntimeError: Si algún mes de la ingesta falla.
+        RuntimeError: Solo si fallan todos los meses del backfill.
     """
     from scraper.pipeline import backfill
 
     results = backfill(year, month)
-    failed = [r for r in results if r.get("status") not in ("ok", "no_publicado")]
-    if failed:
-        raise RuntimeError(f"backfill failed for {len(failed)} month(s): {failed}")
-
-    step_results = _run_post_ingestion_steps()
-
-    return {
-        "status": "ok",
-        "ingestion_results": results,
-        "steps": step_results,
-    }
+    return _finalize_ingestion(results, label="backfill")

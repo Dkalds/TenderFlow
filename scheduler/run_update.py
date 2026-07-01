@@ -76,7 +76,10 @@ def main() -> int:
         return 1
 
     _log_bulk_summary(pipeline_result, log)
-    return 0
+    # status="degraded" → algunos meses fallaron pero la pipeline completó los
+    # pasos post-ingesta (alerta WARN ya emitida). Exit 1 para que CI/monitoring
+    # lo detecte, sin la semántica de "error fatal".
+    return 0 if pipeline_result.get("status") == "ok" else 1
 
 
 def _log_daily_summary(pipeline_result: dict[str, Any], log: Any) -> None:

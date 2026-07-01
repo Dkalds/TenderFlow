@@ -71,3 +71,70 @@ def test_run_accepts_no_publicado_status():
 
     with patch("scheduler.pipeline_runs.run_bulk_pipeline", return_value=result):
         recent_bulk.run()  # Should not raise
+
+
+def test_partial_failure_runs_post_ingestion_and_reports_degraded():
+    """Un mes fallido no aborta la pipeline: corre post-ingesta y reporta degraded."""
+    from scheduler.pipeline_runs import run_bulk_pipeline
+
+    results = [
+        {"year": 2026, "month": 5, "status": "ok", "nuevas": 3, "actualizadas": 1},
+        {"year": 2026, "month": 6, "status": "error_descarga"},
+    ]
+
+    with (
+        patch("scraper.pipeline.update_recent", return_value=results),
+        patch(
+            "scheduler.pipeline_runs._run_post_ingestion_steps",
+            return_value={"dlq_retry": "ok"},
+        ) as mock_steps,
+        patch("scheduler.pipeline_runs._notify_degraded") as mock_notify,
+    ):
+        out = run_bulk_pipeline(months=2)
+
+    mock_steps.assert_called_once()  # dlq_retry etc. sí corren
+    mock_notify.assert_called_once()
+    assert out["status"] == "degraded"
+    assert out["failed_months"] == [{"year": 2026, "month": 6, "status": "error_descarga"}]
+
+
+def test_total_failure_raises_runtimeerror():
+    """Si fallan todos los meses, se lanza RuntimeError (fatal genuino)."""
+    from scheduler.pipeline_runs import run_bulk_pipeline
+
+    results = [
+        {"year": 2026, "month": 5, "status": "error_descarga"},
+        {"year": 2026, "month": 6, "status": "error_descarga"},
+    ]
+
+    with (
+        patch("scraper.pipeline.update_recent", return_value=results),
+        patch("scheduler.pipeline_runs._run_post_ingestion_steps") as mock_steps,
+    ):
+        with pytest.raises(RuntimeError, match="all 2 month"):
+            run_bulk_pipeline(months=2)
+
+    mock_steps.assert_not_called()  # no hay nada que post-procesar
+
+
+def test_run_update_returns_1_on_degraded():
+    """run_update.main devuelve 1 (no fatal) cuando el bulk queda degradado."""
+    pipeline_result = {
+        "status": "degraded",
+        "ingestion_results": [{"status": "ok", "nuevas": 1, "actualizadas": 0}],
+        "failed_months": [{"year": 2026, "month": 6, "status": "error_descarga"}],
+        "steps": {"dlq_retry": "ok"},
+    }
+
+    with (
+        patch("scheduler.run_update.run_bulk_pipeline", return_value=pipeline_result),
+        patch("scheduler.run_update.count_licitaciones", return_value=200),
+        patch("scheduler.run_update.notify") as mock_notify,
+        patch("sys.argv", ["run_update"]),
+    ):
+        from scheduler import run_update
+
+        code = run_update.main()
+
+    assert code == 1
+    mock_notify.assert_not_called()  # sin alerta CRITICAL "error fatal"
