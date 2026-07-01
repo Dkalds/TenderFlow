@@ -287,9 +287,7 @@ def evaluate_classifier(
         y_proba.append(proba)
         kw.append(ex.keyword_match)
 
-    result = evaluate_probas(
-        y_true, y_proba, keyword_match=kw, threshold=threshold, beta=beta
-    )
+    result = evaluate_probas(y_true, y_proba, keyword_match=kw, threshold=threshold, beta=beta)
     log.info("ml_eval.evaluated", **result.as_dict())
     return result
 

@@ -60,9 +60,7 @@ class TestEvaluateProbas:
         y_true = [1, 1, 0]
         y_proba = [0.8, 0.2, 0.1]
         keyword_match = [False, False, False]
-        result = evaluate_probas(
-            y_true, y_proba, keyword_match=keyword_match, threshold=0.5
-        )
+        result = evaluate_probas(y_true, y_proba, keyword_match=keyword_match, threshold=0.5)
         assert result.n_no_keyword_positive == 2
         assert result.n_no_keyword_caught == 1
         assert result.recall_no_keyword == 0.5
@@ -72,9 +70,7 @@ class TestEvaluateProbas:
         y_true = [1, 1]
         y_proba = [0.9, 0.9]
         keyword_match = [True, False]
-        result = evaluate_probas(
-            y_true, y_proba, keyword_match=keyword_match, threshold=0.5
-        )
+        result = evaluate_probas(y_true, y_proba, keyword_match=keyword_match, threshold=0.5)
         assert result.n_no_keyword_positive == 1
         assert result.recall_no_keyword == 1.0
 
@@ -120,12 +116,19 @@ class TestTuneThresholdOnGolden:
     def _examples(self) -> list[GoldenExample]:
         # 6 SAP (texto con 'sap'/'abap') + 6 no-SAP, separables por el stub.
         sap = [GoldenExample(f"s{i}", "Soporte SAP", "", 1, keyword_match=True) for i in range(4)]
-        sap += [GoldenExample(f"n{i}", "Desarrollo ABAP", "", 1, keyword_match=False) for i in range(2)]
-        no = [GoldenExample(f"x{i}", "Mobiliario oficina", "", 0, keyword_match=False) for i in range(6)]
+        sap += [
+            GoldenExample(f"n{i}", "Desarrollo ABAP", "", 1, keyword_match=False) for i in range(2)
+        ]
+        no = [
+            GoldenExample(f"x{i}", "Mobiliario oficina", "", 0, keyword_match=False)
+            for i in range(6)
+        ]
         return sap + no
 
     def test_returns_threshold_in_clamp_range(self) -> None:
-        out = tune_threshold_on_golden(_StubClassifier(), self._examples(), cost_fp=1.0, cost_fn=3.0)
+        out = tune_threshold_on_golden(
+            _StubClassifier(), self._examples(), cost_fp=1.0, cost_fn=3.0
+        )
         assert out is not None
         assert 0.30 <= out["threshold"] <= 0.95
         # El stub separa perfectamente → recall 1.0 alcanzable.

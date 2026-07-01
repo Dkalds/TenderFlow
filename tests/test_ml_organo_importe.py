@@ -37,13 +37,29 @@ class TestOrganoToken:
         assert {t for t in out2.split() if t.startswith("ORG_")} == set(org_tokens)
 
     def test_normalization_ignores_accents_and_case(self) -> None:
-        a = {t for t in _augment_text("x", organo="Diputación Provincial").split() if t.startswith("ORG_")}
-        b = {t for t in _augment_text("x", organo="diputacion  provincial").split() if t.startswith("ORG_")}
+        a = {
+            t
+            for t in _augment_text("x", organo="Diputación Provincial").split()
+            if t.startswith("ORG_")
+        }
+        b = {
+            t
+            for t in _augment_text("x", organo="diputacion  provincial").split()
+            if t.startswith("ORG_")
+        }
         assert a == b
 
     def test_different_organo_different_bucket(self) -> None:
-        a = {t for t in _augment_text("x", organo="Ayuntamiento de Madrid").split() if t.startswith("ORG_")}
-        b = {t for t in _augment_text("x", organo="Generalitat de Catalunya").split() if t.startswith("ORG_")}
+        a = {
+            t
+            for t in _augment_text("x", organo="Ayuntamiento de Madrid").split()
+            if t.startswith("ORG_")
+        }
+        b = {
+            t
+            for t in _augment_text("x", organo="Generalitat de Catalunya").split()
+            if t.startswith("ORG_")
+        }
         assert a != b
 
     def test_no_organo_no_token(self) -> None:
@@ -59,13 +75,23 @@ class TestOrganoToken:
 
         monkeypatch.setattr(settings, "ML_USE_ORGANO_FEATURE", False)
         rows = [
-            {"titulo": f"SAP {i}", "descripcion": "ERP", "raw_keywords": "SAP",
-             "cpv": "72000000", "organo_contratacion": "Ayuntamiento X"}
+            {
+                "titulo": f"SAP {i}",
+                "descripcion": "ERP",
+                "raw_keywords": "SAP",
+                "cpv": "72000000",
+                "organo_contratacion": "Ayuntamiento X",
+            }
             for i in range(10)
         ]
         rows += [
-            {"titulo": f"Obra {i}", "descripcion": "reforma", "raw_keywords": None,
-             "cpv": "45000000", "organo_contratacion": "Ayuntamiento Y"}
+            {
+                "titulo": f"Obra {i}",
+                "descripcion": "reforma",
+                "raw_keywords": None,
+                "cpv": "45000000",
+                "organo_contratacion": "Ayuntamiento Y",
+            }
             for i in range(10)
         ]
         texts, _labels = _build_dataset(pd.DataFrame(rows))
