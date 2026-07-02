@@ -23,11 +23,14 @@ export default defineConfig({
         "src/app/**",
         "src/middleware.ts",
       ],
+      // Piso de cobertura enforced en CI (job `frontend`). Se fija ~2-3 pts por
+      // debajo del real medido para dejar buffer anti-flapping. Solo subir,
+      // nunca bajar: si añadís tests, subí el piso; si lo bajás, algo se rompió.
       thresholds: {
-        statements: 32,
-        branches: 27,
-        functions: 27,
-        lines: 32,
+        statements: 68,
+        branches: 63,
+        functions: 68,
+        lines: 70,
       },
       reporter: ["text", "text-summary", "lcov"],
     },

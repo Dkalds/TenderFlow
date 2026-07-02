@@ -19,3 +19,23 @@ if (typeof Element !== "undefined" && !Element.prototype.hasPointerCapture) {
 if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// jsdom lacks matchMedia, relied on by Recharts, motion, and next-themes.
+// Default to "no match" (no reduced-motion, light theme); individual tests can
+// override window.matchMedia when they need a specific media state.
+if (typeof window !== "undefined" && !window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
