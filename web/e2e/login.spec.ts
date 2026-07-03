@@ -7,12 +7,12 @@ test.describe("Login Page", () => {
 
   test("should display login form", async ({ page }) => {
     await expect(page.getByLabel(/email|correo/i)).toBeVisible();
-    await expect(page.getByLabel(/password|contraseña/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: /iniciar|login|entrar/i })).toBeVisible();
+    await expect(page.locator("#password")).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Iniciar/i })).toBeVisible();
   });
 
   test("should show validation on empty submit", async ({ page }) => {
-    await page.getByRole("button", { name: /iniciar|login|entrar/i }).click();
+    await page.getByRole("button", { name: /^Iniciar/i }).click();
     // Should show some validation feedback (HTML5 or custom)
     const emailInput = page.getByLabel(/email|correo/i);
     // HTML5 validation should prevent form submission
@@ -30,8 +30,8 @@ test.describe("Login Page", () => {
 
   test("should handle login attempt gracefully", async ({ page }) => {
     await page.getByLabel(/email|correo/i).fill("test@example.com");
-    await page.getByLabel(/password|contraseña/i).fill("testpassword");
-    await page.getByRole("button", { name: /iniciar|login|entrar/i }).click();
+    await page.locator("#password").fill("testpassword");
+    await page.getByRole("button", { name: /^Iniciar/i }).click();
 
     // Should show error (since backend isn't running) or redirect
     // Either way, no crash
@@ -66,7 +66,8 @@ test.describe("Register (Create account) flow", () => {
     await page.getByRole("button", { name: /crear cuenta|sign up|registr/i }).click();
 
     // Client validation runs before any network call → stays on /login with an alert.
-    await expect(page.getByRole("alert")).toContainText(/no coinciden|do not match/i);
+    // Use aria-live="polite" to target our error alert, not the Next.js route announcer.
+    await expect(page.locator("[role='alert'][aria-live='polite']")).toContainText(/no coinciden|do not match/i);
     await expect(page).toHaveURL(/\/login/);
   });
 });
