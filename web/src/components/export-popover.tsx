@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { useFilterParams } from "@/lib/filters";
+import { buildExportUrl, triggerDownload } from "@/lib/export";
 
 interface ExportPopoverProps {
   endpoint?: string;
@@ -25,32 +26,8 @@ export function ExportPopover({
   const filterParams = useFilterParams();
 
   const handleExport = (format: "csv" | "xlsx") => {
-    const params = new URLSearchParams();
-    params.set("format", format);
-
-    // Add filter params
-    if (filterParams) {
-      for (const [key, value] of Object.entries(filterParams)) {
-        if (value != null && value !== "") {
-          params.set(key, String(value));
-        }
-      }
-    }
-
-    // Add extra params
-    if (extraParams) {
-      for (const [key, value] of Object.entries(extraParams)) {
-        params.set(key, value);
-      }
-    }
-
-    const url = `${endpoint}?${params.toString()}`;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const url = buildExportUrl(endpoint, format, filterParams, extraParams);
+    triggerDownload(url);
   };
 
   return (

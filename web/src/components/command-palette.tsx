@@ -16,20 +16,27 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
+import { toast } from "sonner";
 import {
   ArrowRight,
-  LayoutGrid,
   AlignJustify,
+  Bookmark,
+  FileSpreadsheet,
+  FileText,
+  LayoutGrid,
+  Link2,
   Moon,
   Search,
   Sparkles,
+  Star,
   Sun,
 } from "lucide-react";
 import { SECTIONS } from "@/lib/navigation";
 import { useUiStore } from "@/lib/ui-store";
 import { useAdmin } from "@/hooks/use-admin";
 import { useDensity } from "@/lib/density";
-import { useWithFilters } from "@/lib/filters";
+import { useFilterParams, useWithFilters } from "@/lib/filters";
+import { buildExportUrl, triggerDownload } from "@/lib/export";
 
 /** Heuristic: a token with a digit and id-like separators is probably a tender id. */
 function looksLikeLicitacionId(value: string): boolean {
@@ -48,11 +55,13 @@ export function CommandPalette() {
 function CommandPaletteInner() {
   const setOpen = useUiStore((s) => s.setCommandOpen);
   const openCopilot = useUiStore((s) => s.openCopilot);
+  const openSavedViews = useUiStore((s) => s.openSavedViews);
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const { compact, toggleCompact } = useDensity();
   const isAdmin = useAdmin();
   const withFilters = useWithFilters();
+  const filterParams = useFilterParams();
   const [search, setSearch] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -73,6 +82,7 @@ function CommandPaletteInner() {
   const idQuery = search.trim();
   const showJump = looksLikeLicitacionId(idQuery);
   const showSearch = idQuery.length >= 2 && !showJump;
+  const hasActiveFilters = Object.keys(filterParams).length > 0;
 
   return (
     <div
@@ -188,6 +198,77 @@ function CommandPaletteInner() {
               Densidad {compact ? "normal" : "compacta"}
             </Command.Item>
           </Command.Group>
+
+          {hasActiveFilters && (
+            <Command.Group
+              heading="Acciones con filtros"
+              className="px-1 text-[11px] font-medium text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+            >
+              <Command.Item
+                value="guardar vista actual saved view"
+                onSelect={() => run(() => openSavedViews())}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              >
+                <Bookmark className="h-4 w-4 text-primary" />
+                Guardar vista actual
+              </Command.Item>
+              <Command.Item
+                value="crear regla watchlist alerta filtros"
+                onSelect={() =>
+                  run(() =>
+                    router.push(
+                      `/mi-watchlist?prefill=${encodeURIComponent(JSON.stringify(filterParams))}`,
+                    ),
+                  )
+                }
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              >
+                <Star className="h-4 w-4 text-primary" />
+                Crear regla de watchlist con estos filtros
+              </Command.Item>
+              <Command.Item
+                value="exportar csv vista actual"
+                onSelect={() =>
+                  run(() =>
+                    triggerDownload(
+                      buildExportUrl("/api/v1/exports/download", "csv", filterParams),
+                    ),
+                  )
+                }
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              >
+                <FileText className="h-4 w-4 text-primary" />
+                Exportar CSV (vista actual)
+              </Command.Item>
+              <Command.Item
+                value="exportar excel xlsx vista actual"
+                onSelect={() =>
+                  run(() =>
+                    triggerDownload(
+                      buildExportUrl("/api/v1/exports/download", "xlsx", filterParams),
+                    ),
+                  )
+                }
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-primary" />
+                Exportar Excel (vista actual)
+              </Command.Item>
+              <Command.Item
+                value="copiar enlace con filtros link"
+                onSelect={() =>
+                  run(() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    toast.success("Enlace copiado");
+                  })
+                }
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              >
+                <Link2 className="h-4 w-4 text-primary" />
+                Copiar enlace con filtros
+              </Command.Item>
+            </Command.Group>
+          )}
 
           {visibleSections.map((section) => (
             <Command.Group

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useUiStore } from "@/lib/ui-store";
 
 // Only the nuqs-backed useFilters is stubbed (covered by filters-hooks.test);
 // the saved-views query/mutation hooks stay real so they get exercised.
@@ -41,6 +42,7 @@ function renderMenu(opts: { views?: unknown; pendingFetch?: boolean } = {}) {
 afterEach(() => {
   vi.unstubAllGlobals();
   setQ.mockClear();
+  useUiStore.setState({ savedViewsOpen: false });
 });
 
 describe("SavedViewsMenu", () => {
@@ -91,5 +93,25 @@ describe("SavedViewsMenu", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Guardar vista actual/ }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  });
+
+  it("opens when the ui store's savedViewsOpen flag is set externally (e.g. from the command palette)", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderMenu({ views: VIEWS });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    act(() => {
+      useUiStore.getState().openSavedViews();
+    });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("closing via outside click also updates the shared ui store", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderMenu({ views: VIEWS });
+    fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
+    expect(useUiStore.getState().savedViewsOpen).toBe(true);
+    fireEvent.mouseDown(document.body);
+    expect(useUiStore.getState().savedViewsOpen).toBe(false);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });
