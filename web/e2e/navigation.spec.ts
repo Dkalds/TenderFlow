@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { ALL_PAGES } from "../src/lib/navigation";
 
 test.describe("Navigation", () => {
   test("should load the login page", async ({ page }) => {
@@ -33,31 +34,13 @@ test.describe("Navigation", () => {
   });
 
   test.describe("Dashboard pages load without errors", () => {
-    const pages = [
-      "/resumen",
-      "/tendencias",
-      "/tendencias-cpv",
-      "/calendario",
-      "/detalle",
-      "/organos",
-      "/geografia",
-      "/proyectos-modulos",
-      "/tecnologias",
-      "/clusters",
-      "/competidores",
-      "/licitadores",
-      "/utes",
-      "/ecosistema-partners",
-      "/red-organo-empresa",
-      "/pipeline-alertas",
-      "/mi-watchlist",
-      "/investigador",
-      "/observabilidad",
-      "/calidad-datos",
-      "/administracion",
-      "/feature-flags",
-      "/active-learning",
-    ];
+    // Derived from the navigation config so this suite can't drift from the
+    // sidebar/page-tabs groups. `/licitadores` is a redirect route, not a
+    // content page — it's not part of ALL_PAGES, but the filter is kept as a
+    // defensive guard in case that ever changes.
+    const pages = ALL_PAGES.map((p) => `/${p.slug}`).filter(
+      (path) => path !== "/licitadores"
+    );
 
     for (const path of pages) {
       test(`page ${path} loads without console errors`, async ({ page }) => {

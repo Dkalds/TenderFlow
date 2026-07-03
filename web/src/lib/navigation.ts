@@ -1,5 +1,5 @@
 /**
- * Navigation configuration — mirrors dashboard/router.py SECTIONS.
+ * Navigation configuration.
  *
  * Single source of truth for the frontend navigation tree.
  */
@@ -25,6 +25,7 @@ import {
   Search,
   Settings,
   Shield,
+  Sparkles,
   Star,
   Target,
   TrendingUp,
@@ -54,7 +55,7 @@ export interface NavSection {
 
 export const SECTIONS: NavSection[] = [
   {
-    label: "Vista General",
+    label: "Inicio",
     icon: LayoutDashboard,
     pages: [
       {
@@ -64,6 +65,25 @@ export const SECTIONS: NavSection[] = [
           "Top licitaciones, distribucion por estado y salud competitiva del mercado.",
         icon: LayoutDashboard,
       },
+    ],
+  },
+  {
+    label: "Licitaciones",
+    icon: Search,
+    pages: [
+      {
+        label: "Detalle",
+        slug: "detalle",
+        description:
+          "Tabla completa con todos los campos y exportacion a Excel/CSV.",
+        icon: Search,
+      },
+    ],
+  },
+  {
+    label: "Tendencias",
+    icon: TrendingUp,
+    pages: [
       {
         label: "Tendencias",
         slug: "tendencias",
@@ -83,13 +103,6 @@ export const SECTIONS: NavSection[] = [
         slug: "calendario",
         description: "Heatmap de publicaciones por semana/dia del anio.",
         icon: Calendar,
-      },
-      {
-        label: "Detalle",
-        slug: "detalle",
-        description:
-          "Tabla completa con todos los campos y exportacion a Excel/CSV.",
-        icon: Search,
       },
     ],
   },
@@ -112,18 +125,18 @@ export const SECTIONS: NavSection[] = [
         icon: Map,
       },
       {
-        label: "Proyectos & Modulos",
-        slug: "proyectos-modulos",
-        description:
-          "Desglose por tipo de proyecto y modulo SAP detectado.",
-        icon: Puzzle,
-      },
-      {
         label: "Tecnologias",
         slug: "tecnologias",
         description:
           "Distribucion, evolucion y cruces por tecnologia detectada (SAP, Oracle, Salesforce...).",
         icon: Wrench,
+      },
+      {
+        label: "Proyectos & Modulos",
+        slug: "proyectos-modulos",
+        description:
+          "Desglose por tipo de proyecto y modulo SAP detectado.",
+        icon: Puzzle,
       },
       {
         label: "Clusters",
@@ -146,14 +159,6 @@ export const SECTIONS: NavSection[] = [
         icon: Trophy,
       },
       {
-        label: "Renovaciones",
-        slug: "renovaciones",
-        description:
-          "Contratos que vencen proximamente: cartera en juego por empresa y pipeline comercial.",
-        icon: CalendarClock,
-        usesGlobalFilters: false,
-      },
-      {
         label: "Empresas",
         slug: "empresas",
         description:
@@ -168,6 +173,12 @@ export const SECTIONS: NavSection[] = [
           "Analisis de Uniones Temporales de Empresas: alianzas, estructura y contratos ganados.",
         icon: Handshake,
       },
+    ],
+  },
+  {
+    label: "Relaciones",
+    icon: Network,
+    pages: [
       {
         label: "Ecosistema Partners",
         slug: "ecosistema-partners",
@@ -182,6 +193,12 @@ export const SECTIONS: NavSection[] = [
           "Grafo bipartito de relaciones contractuales entre organos contratantes y empresas.",
         icon: Link2,
       },
+    ],
+  },
+  {
+    label: "Mi Pipeline",
+    icon: ListChecks,
+    pages: [
       {
         label: "Pipeline & Alertas",
         slug: "pipeline-alertas",
@@ -189,12 +206,14 @@ export const SECTIONS: NavSection[] = [
           "Licitaciones en plazo, predicciones y alertas de vencimiento.",
         icon: ListChecks,
       },
-    ],
-  },
-  {
-    label: "Personal",
-    icon: Star,
-    pages: [
+      {
+        label: "Renovaciones",
+        slug: "renovaciones",
+        description:
+          "Contratos que vencen proximamente: cartera en juego por empresa y pipeline comercial.",
+        icon: CalendarClock,
+        usesGlobalFilters: false,
+      },
       {
         label: "Mi Watchlist",
         slug: "mi-watchlist",
@@ -203,6 +222,12 @@ export const SECTIONS: NavSection[] = [
         icon: Star,
         usesGlobalFilters: false,
       },
+    ],
+  },
+  {
+    label: "Investigador",
+    icon: Sparkles,
+    pages: [
       {
         label: "Investigador",
         slug: "investigador",

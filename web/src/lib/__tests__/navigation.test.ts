@@ -63,7 +63,7 @@ describe("findSection", () => {
   it("returns the section containing 'resumen'", () => {
     const section = findSection("resumen");
     expect(section).toBeDefined();
-    expect(section?.label).toBe("Vista General");
+    expect(section?.label).toBe("Inicio");
   });
 
   it("returns undefined for a nonexistent slug", () => {
