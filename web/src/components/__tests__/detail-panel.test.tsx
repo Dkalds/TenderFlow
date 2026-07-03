@@ -1,11 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DetailPanel, type LicitacionDetail } from "@/components/detail-panel";
 
 // Child blocks (eventos/prediccion/resoluciones) fetch on mount; keep them inert.
 vi.mock("@/lib/api-client", () => ({
   fetchWithAuth: vi.fn(() => new Promise(() => {})),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 function makeLic(overrides: Partial<LicitacionDetail> = {}): LicitacionDetail {
@@ -81,5 +85,22 @@ describe("DetailPanel", () => {
     renderPanel(makeLic({ titulo: null }));
     // id_externo appears both as title and description.
     expect(screen.getAllByText("EXT-1").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("copies the permalink to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderPanel(makeLic());
+    fireEvent.click(screen.getByRole("button", { name: /Copiar enlace/ }));
+
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("/detalle?lic=EXT-1"),
+      );
+    });
   });
 });

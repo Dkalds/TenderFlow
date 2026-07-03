@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { parseAsString, useQueryState } from "nuqs";
 import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
@@ -124,7 +124,6 @@ interface MergedRow extends LicitacionSummary {
 /* ── Component ──────────────────────────────────────────────────────── */
 
 export default function DetallePage() {
-  const searchParams = useSearchParams();
   const filterParams = useFilterParams();
   const { ccaas, setCcaas, tecnologias, setTecnologias } = useFilters();
   const toggleCcaa = useCallback(
@@ -145,7 +144,12 @@ export default function DetallePage() {
     pageSize: PAGE_SIZE,
   });
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // Permalink del panel de detalle: ?lic=<id_externo>. Abrir hace push (el botón
+  // atrás cierra el panel); URL compartible/bookmarkeable desde cualquier fila.
+  const [detailId, setDetailId] = useQueryState(
+    "lic",
+    parseAsString.withOptions({ history: "push", shallow: true }),
+  );
   const [showComparator, setShowComparator] = useState(false);
   const [compact, setCompact] = useState(getCompactPref);
   const [lastViewed] = useState(getLastViewed);
@@ -154,12 +158,6 @@ export default function DetallePage() {
   useEffect(() => {
     setJSON(LAST_VIEWED_KEY, Date.now());
   }, []);
-
-  // Deep-link: open detail if `lic` param present
-  useEffect(() => {
-    const lic = searchParams.get("lic");
-    if (lic) setDetailId(lic);
-  }, [searchParams]);
 
   // Compact mode persistence
   useEffect(() => {
@@ -714,7 +712,7 @@ export default function DetallePage() {
       {detailId && detailWithScore && (
         <DetailPanel
           licitacion={detailWithScore}
-          onClose={() => setDetailId(null)}
+          onClose={() => setDetailId(null, { history: "replace" })}
         />
       )}
 

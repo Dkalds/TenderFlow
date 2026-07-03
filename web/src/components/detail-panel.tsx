@@ -9,11 +9,13 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Link2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface LicitacionDetail {
   id_externo: string;
@@ -62,6 +64,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelProps) {
+  const handleCopyLink = React.useCallback(async () => {
+    const url = `${window.location.origin}/detalle?lic=${encodeURIComponent(l.id_externo)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Enlace copiado al portapapeles");
+    } catch {
+      toast.error("No se pudo copiar el enlace");
+    }
+  }, [l.id_externo]);
+
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" className={cn("w-full sm:max-w-lg overflow-y-auto", className)}>
@@ -79,6 +91,15 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
           {l.importe != null && (
             <span className="text-lg font-semibold">{formatCurrency(l.importe)}</span>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto gap-1.5"
+            onClick={handleCopyLink}
+          >
+            <Link2 className="h-3.5 w-3.5" />
+            Copiar enlace
+          </Button>
         </div>
 
         {/* Score section */}
