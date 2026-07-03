@@ -21,7 +21,7 @@ from services.dedupe import exclude_duplicados_sql
 # Expresión SQL reutilizable para la fecha de fin efectiva del contrato.
 # substr(x, 1, 10) normaliza timestamps ISO a fecha pura; CAST a INT porque
 # duracion_valor es REAL y el modificador de date() exige entero.
-_FECHA_FIN_SQL = """
+FECHA_FIN_SQL = """
 COALESCE(
     substr(l.fecha_fin, 1, 10),
     CASE l.duracion_unidad
@@ -65,18 +65,18 @@ def proximas_renovaciones(
                a.fecha_adjudicacion,
                l.duracion_valor,
                l.duracion_unidad,
-               {_FECHA_FIN_SQL} AS fecha_fin_efectiva,
-               CAST(julianday({_FECHA_FIN_SQL}) - julianday('now') AS INTEGER) AS dias_restantes,
+               {FECHA_FIN_SQL} AS fecha_fin_efectiva,
+               CAST(julianday({FECHA_FIN_SQL}) - julianday('now') AS INTEGER) AS dias_restantes,
                pr.riesgo_cambio,
                pr.model_version AS retencion_model_version
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
-        WHERE {_FECHA_FIN_SQL} BETWEEN date('now')
+        WHERE {FECHA_FIN_SQL} BETWEEN date('now')
               AND date('now', '+' || ? || ' months')
           AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — _FECHA_FIN_SQL es un fragmento constante; valores con ?
+    """  # noqa: S608 — FECHA_FIN_SQL es un fragmento constante; valores con ?
     params: list[Any] = [months_ahead]
     if empresa_id is not None:
         sql += " AND a.empresa_id = ?"
@@ -106,16 +106,16 @@ def resumen_renovaciones(*, months_ahead: int = 12) -> list[dict[str, Any]]:
                COALESCE(e.nombre_canonico, a.nombre) AS empresa,
                COUNT(*) AS contratos_venciendo,
                COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
-               MIN({_FECHA_FIN_SQL}) AS proximo_vencimiento
+               MIN({FECHA_FIN_SQL}) AS proximo_vencimiento
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {_FECHA_FIN_SQL} BETWEEN date('now')
+        WHERE {FECHA_FIN_SQL} BETWEEN date('now')
               AND date('now', '+' || ? || ' months')
           AND {exclude_duplicados_sql()}
         GROUP BY a.empresa_id, empresa
         ORDER BY importe_en_juego DESC
         LIMIT 100
-    """  # noqa: S608 — _FECHA_FIN_SQL es un fragmento constante; valores con ?
+    """  # noqa: S608 — FECHA_FIN_SQL es un fragmento constante; valores con ?
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, [months_ahead]))

@@ -13,6 +13,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
+from services.sql_fragments import VALID_PAIR
 
 _GROUP_COLUMNS = {
     "empresa": ("a.empresa_id", "COALESCE(e.nombre_canonico, a.nombre)"),
@@ -20,11 +21,6 @@ _GROUP_COLUMNS = {
     "cpv": (None, "substr(l.cpv, 1, 2)"),
     "ccaa": (None, "l.ccaa"),
 }
-
-# Condiciones de validez de un par presupuesto/adjudicado
-_VALID_PAIR = (
-    "l.importe > 0 AND a.importe_adjudicado > 0 AND a.importe_adjudicado <= l.importe * 1.5"
-)
 
 
 def bajas_agregadas(
@@ -49,7 +45,7 @@ def bajas_agregadas(
     group_cols = f"{id_col}, {label_col}" if id_col else label_col
 
     # S608: las columnas interpoladas salen de _GROUP_COLUMNS (whitelist
-    # interna) y _VALID_PAIR es un fragmento constante; los valores van con ?.
+    # interna) y VALID_PAIR es un fragmento constante; los valores van con ?.
     sql = f"""
         SELECT {select_id}
                {label_col} AS grupo,
@@ -62,7 +58,7 @@ def bajas_agregadas(
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {_VALID_PAIR} AND {exclude_duplicados_sql()}
+        WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
     """  # noqa: S608
     params: list[Any] = []
     if cpv_prefix:
@@ -100,8 +96,8 @@ def baja_de_referencia(
                ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {_VALID_PAIR} AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — _VALID_PAIR es un fragmento constante; valores con ?
+        WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
+    """  # noqa: S608 — VALID_PAIR es un fragmento constante; valores con ?
     params: list[Any] = []
     if organo:
         sql += " AND l.organo_contratacion = ?"

@@ -26,8 +26,8 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from services.competitive.bajas import _VALID_PAIR
 from services.dedupe import exclude_duplicados_sql
+from services.sql_fragments import VALID_PAIR
 
 # Bandas de importe con cortes en los umbrales SARA habituales (€, sin IVA).
 _BANDAS_IMPORTE = (15_000.0, 60_000.0, 143_000.0, 221_000.0, 750_000.0, 5_538_000.0)
@@ -199,9 +199,9 @@ def _cargar_pares(hasta: str | None = None) -> list[dict[str, Any]]:
                a.importe_adjudicado, a.n_ofertas_recibidas, a.empresa_id, a.nombre
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {_VALID_PAIR} AND a.fecha_adjudicacion IS NOT NULL
+        WHERE {VALID_PAIR} AND a.fecha_adjudicacion IS NOT NULL
           AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — fragmentos constantes (_VALID_PAIR, dedupe); valores con ?
+    """  # noqa: S608 — fragmentos constantes (VALID_PAIR, dedupe); valores con ?
     params: list[Any] = []
     if hasta:
         sql += " AND a.fecha_adjudicacion <= ?"

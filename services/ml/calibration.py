@@ -21,8 +21,8 @@ from typing import Any
 
 from db.database import connect_read
 from observability.logging import get_logger
-from services.competitive.bajas import _VALID_PAIR
 from services.dedupe import exclude_duplicados_sql
+from services.sql_fragments import VALID_PAIR
 
 log = get_logger(__name__)
 
@@ -43,7 +43,7 @@ def comprobar_calibracion_baja() -> dict[str, Any]:
     Fail-open: cualquier error se loguea y no propaga.
     """
     try:
-        # S608: _VALID_PAIR y exclude_duplicados_sql son fragmentos constantes;
+        # S608: VALID_PAIR y exclude_duplicados_sql son fragmentos constantes;
         # no hay input de usuario en esta query.
         sql = f"""
             WITH evaluadas AS (
@@ -52,7 +52,7 @@ def comprobar_calibracion_baja() -> dict[str, Any]:
                 FROM predicciones_baja pb
                 JOIN licitaciones l ON l.id_externo = pb.licitacion_id
                 JOIN adjudicaciones a ON a.licitacion_id = l.id_externo
-                WHERE {_VALID_PAIR} AND {exclude_duplicados_sql()}
+                WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
             )
             SELECT
                 COUNT(*) AS n,
