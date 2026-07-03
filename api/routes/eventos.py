@@ -41,7 +41,7 @@ def _licitacion_existe(licitacion_id: str) -> bool:
 
 
 @router.get(
-    "/licitaciones/{licitacion_id}/eventos",
+    "/licitaciones/{licitacion_id:path}/eventos",
     summary="Línea de tiempo de un contrato",
     responses={404: {"description": "Licitación no encontrada"}},
 )

@@ -53,6 +53,7 @@ from api.routes.exports import router as exports_router
 from api.routes.feature_flags import router as feature_flags_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
+from api.routes.licitaciones import get_licitacion as _get_licitacion_handler
 from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
@@ -452,6 +453,22 @@ async def _root() -> dict[str, str]:
         "docs": "/api/docs",
         "health": "/api/v1/health",
     }
+
+
+# ---------------------------------------------------------------------------
+# Fallback detalle — ids con '/' (p.ej. "PA-S 2026/000058")
+# ---------------------------------------------------------------------------
+# La ruta /api/v1/licitaciones/{id_externo} usa el conversor por defecto
+# ([^/]+), que no admite barras. Como algunos id_externo contienen '/',
+# registramos un catch-all con el conversor ``:path`` que reutiliza el mismo
+# handler. Va al final (último globalmente) para no ensombrecer las sub-rutas
+# específicas (/explain, /tech-scores, /eventos, /prediccion-baja).
+app.add_api_route(
+    "/api/v1/licitaciones/{id_externo:path}",
+    _get_licitacion_handler,
+    methods=["GET"],
+    include_in_schema=False,
+)
 
 
 # ---------------------------------------------------------------------------

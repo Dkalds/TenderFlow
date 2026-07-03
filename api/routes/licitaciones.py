@@ -435,7 +435,7 @@ async def get_licitacion(
 
 
 @router.get(
-    "/licitaciones/{id_externo}/explain",
+    "/licitaciones/{id_externo:path}/explain",
     summary="Explicabilidad de la clasificación SAP/no-SAP",
     responses={
         401: {"description": "API key inválida"},
@@ -489,7 +489,7 @@ async def explain_licitacion(
 
 
 @router.get(
-    "/licitaciones/{id_externo}/tech-scores",
+    "/licitaciones/{id_externo:path}/tech-scores",
     summary="Scores multi-tecnología del clasificador (ML_TECH)",
     responses={
         401: {"description": "API key inválida"},
