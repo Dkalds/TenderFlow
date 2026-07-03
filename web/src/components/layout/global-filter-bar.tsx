@@ -188,6 +188,7 @@ export function GlobalFilterBar() {
     <div className="tf-glass sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2">
       <SearchAutocomplete
         className="min-w-56 flex-1 sm:max-w-80"
+        data-search-input
         aria-label="Buscar licitaciones"
         inputClassName="h-9 rounded-md bg-background/70 pl-9 text-xs"
         placeholder="Buscar licitaciones, organos, empresas..."

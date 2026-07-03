@@ -1,10 +1,10 @@
 /**
  * Command palette (⌘K) — power-user launcher.
  *
- * Built on the cmdk primitive inside a self-managed overlay (the project's Sheet
- * is hand-rolled, so we avoid pulling in @radix-ui/react-dialog). Provides:
+ * Built on the cmdk primitive inside a self-managed overlay. Provides:
  *  - navigation to every dashboard route (admin routes gated by role),
  *  - "jump to licitación by id" when the query looks like an id,
+ *  - free-text search handoff to /detalle when it doesn't look like an id,
  *  - quick actions: open copilot, toggle theme, toggle density.
  *
  * Visibility is driven by the shared UI store so keyboard shortcuts, the hero
@@ -21,6 +21,7 @@ import {
   LayoutGrid,
   AlignJustify,
   Moon,
+  Search,
   Sparkles,
   Sun,
 } from "lucide-react";
@@ -71,6 +72,7 @@ function CommandPaletteInner() {
   const visibleSections = SECTIONS.filter((s) => !s.adminOnly || isAdmin);
   const idQuery = search.trim();
   const showJump = looksLikeLicitacionId(idQuery);
+  const showSearch = idQuery.length >= 2 && !showJump;
 
   return (
     <div
@@ -115,21 +117,35 @@ function CommandPaletteInner() {
             Sin resultados.
           </Command.Empty>
 
-          {showJump && (
+          {(showJump || showSearch) && (
             <Command.Group
               heading="Saltar a"
               className="px-1 text-[11px] font-medium text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
             >
-              <Command.Item
-                value={`licitacion ${idQuery}`}
-                onSelect={() =>
-                  run(() => router.push(`/detalle?lic=${encodeURIComponent(idQuery)}`))
-                }
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
-              >
-                <ArrowRight className="h-4 w-4 text-primary" />
-                Ir a licitación <span className="font-mono text-xs">{idQuery}</span>
-              </Command.Item>
+              {showJump && (
+                <Command.Item
+                  value={`licitacion ${idQuery}`}
+                  onSelect={() =>
+                    run(() => router.push(`/detalle?lic=${encodeURIComponent(idQuery)}`))
+                  }
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                >
+                  <ArrowRight className="h-4 w-4 text-primary" />
+                  Ir a licitación <span className="font-mono text-xs">{idQuery}</span>
+                </Command.Item>
+              )}
+              {showSearch && (
+                <Command.Item
+                  value={`buscar ${idQuery}`}
+                  onSelect={() =>
+                    run(() => router.push(`/detalle?q=${encodeURIComponent(idQuery)}`))
+                  }
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                >
+                  <Search className="h-4 w-4 text-primary" />
+                  Buscar <span className="font-mono text-xs">&quot;{idQuery}&quot;</span> en licitaciones
+                </Command.Item>
+              )}
             </Command.Group>
           )}
 

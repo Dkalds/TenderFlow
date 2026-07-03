@@ -22,13 +22,12 @@ import { SECTIONS } from "@/lib/navigation";
 import { t, useLocale, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { NotificationBell } from "@/components/notification-bell";
 import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
-import { useFilters, useWithFilters } from "@/lib/filters";
-import { useSearchHistory } from "@/lib/search-history";
+import { useWithFilters } from "@/lib/filters";
+import { useUiStore } from "@/lib/ui-store";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
 
@@ -51,9 +50,8 @@ export function TopNav() {
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const { locale, setLocale: setLocaleStore } = useLocale();
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
-  const { q, setQ } = useFilters();
   const withFilters = useWithFilters();
-  const { history, addToHistory } = useSearchHistory();
+  const setCommandOpen = useUiStore((s) => s.setCommandOpen);
 
   const handleLogout = async () => {
     try {
@@ -130,23 +128,21 @@ export function TopNav() {
             <TenderFlowLogo boxSize={32} />
           </Link>
 
-          <SearchAutocomplete
-            className="hidden min-w-72 max-w-xl flex-1 md:block"
-            data-search-input
-            aria-label="Busqueda global"
-            inputClassName="h-9 rounded-lg border-border/70 bg-card/80 pl-9 pr-12 text-sm"
-            placeholder="Buscar licitaciones, organos, empresas..."
-            value={q}
-            onChange={setQ}
-            onSubmit={addToHistory}
-            recentSearches={history}
-            leftIcon={<Search className="h-4 w-4" />}
-            rightElement={
-              <span className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                Ctrl K
-              </span>
-            }
-          />
+          {/* La busqueda unica vive en la barra de filtros (por pagina) y en
+              la command palette; este boton solo abre la paleta — evita dos
+              buscadores ligados al mismo `q` visibles a la vez. */}
+          <button
+            type="button"
+            onClick={() => setCommandOpen(true)}
+            aria-label="Abrir busqueda y comandos"
+            className="hidden min-w-72 max-w-xl flex-1 items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-3 h-9 text-sm text-muted-foreground transition-colors hover:border-border hover:text-foreground md:flex"
+          >
+            <Search className="h-4 w-4 shrink-0" />
+            <span className="flex-1 text-left truncate">Buscar licitaciones, organos, empresas...</span>
+            <span className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              Ctrl K
+            </span>
+          </button>
 
           {/* Right side actions */}
           <div className="ml-auto flex items-center gap-1">

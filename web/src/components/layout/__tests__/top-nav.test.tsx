@@ -5,29 +5,28 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 // dependencies so TopNav's own markup and handlers run deterministically;
 // those dependencies are covered by their own tests.
 const setTheme = vi.fn();
+const setCommandOpen = vi.fn();
 vi.mock("next/navigation", () => ({ usePathname: () => "/resumen" }));
 vi.mock("next-themes", () => ({ useTheme: () => ({ theme: "light", setTheme }) }));
 vi.mock("@/hooks/use-admin", () => ({ useAdmin: () => true }));
 vi.mock("@/lib/filters", () => ({
-  useFilters: () => ({ q: "", setQ: vi.fn() }),
   useWithFilters: () => (path: string) => path,
 }));
-vi.mock("@/lib/search-history", () => ({
-  useSearchHistory: () => ({ history: [], addToHistory: vi.fn() }),
+vi.mock("@/lib/ui-store", () => ({
+  useUiStore: (selector: (s: { setCommandOpen: typeof setCommandOpen }) => unknown) =>
+    selector({ setCommandOpen }),
 }));
 const apiMutate = vi.fn().mockResolvedValue({});
 vi.mock("@/lib/api-client", () => ({ apiMutate: (...a: unknown[]) => apiMutate(...a) }));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => <div data-testid="bell" /> }));
 vi.mock("@/components/export-popover", () => ({ ExportPopover: () => <div data-testid="export" /> }));
-vi.mock("@/components/ui/search-autocomplete", () => ({
-  SearchAutocomplete: () => <input aria-label="search-stub" />,
-}));
 
 import { TopNav } from "@/components/layout/top-nav";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   setTheme.mockClear();
+  setCommandOpen.mockClear();
   apiMutate.mockClear();
 });
 
@@ -56,6 +55,12 @@ describe("TopNav", () => {
     expect(setTheme).toHaveBeenCalledWith("dark");
   });
 
+  it("opens the command palette from the search button (single search entry point)", () => {
+    renderNav();
+    fireEvent.click(screen.getByRole("button", { name: /Abrir busqueda y comandos/ }));
+    expect(setCommandOpen).toHaveBeenCalledWith(true);
+  });
+
   it("opens the mobile navigation drawer", () => {
     renderNav();
     fireEvent.click(screen.getByRole("button", { name: "Menu" }));
@@ -65,8 +70,8 @@ describe("TopNav", () => {
   it("auto-expands the section containing the active page", () => {
     renderNav();
     fireEvent.click(screen.getByRole("button", { name: "Menu" }));
-    // pathname is stubbed to "/resumen", which lives in "Vista General".
-    const sectionToggle = screen.getByRole("button", { name: /Vista General/ });
+    // pathname is stubbed to "/resumen", which lives in "Inicio".
+    const sectionToggle = screen.getByRole("button", { name: /Inicio/ });
     expect(sectionToggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("link", { name: /Resumen/ })).toBeInTheDocument();
   });

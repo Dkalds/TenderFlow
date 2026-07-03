@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { parseAsString, useQueryState } from "nuqs";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { t } from "@/lib/i18n";
 import { formatCurrency, formatDate, truncate, cn } from "@/lib/utils";
@@ -37,7 +36,6 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Search,
   Download,
   X,
   Rows3,
@@ -125,7 +123,7 @@ interface MergedRow extends LicitacionSummary {
 
 export default function DetallePage() {
   const filterParams = useFilterParams();
-  const { ccaas, setCcaas, tecnologias, setTecnologias } = useFilters();
+  const { q, ccaas, setCcaas, tecnologias, setTecnologias } = useFilters();
   const toggleCcaa = useCallback(
     (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas)),
     [ccaas, setCcaas],
@@ -136,8 +134,6 @@ export default function DetallePage() {
   );
 
   // State
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -164,16 +160,13 @@ export default function DetallePage() {
     setJSON(COMPACT_KEY, compact);
   }, [compact]);
 
-  // Debounce search
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(value);
-      setPagination((p) => ({ ...p, pageIndex: 0 }));
-    }, 400);
-  }, []);
+  // La tabla consume solo el `q` global (barra de filtros); un buscador
+  // local aquí duplicaba el de la barra y podía pisar silenciosamente su
+  // valor. Volver a la primera página cuando cambia la búsqueda global,
+  // igual que antes hacía el buscador local.
+  useEffect(() => {
+    setPagination((p) => (p.pageIndex === 0 ? p : { ...p, pageIndex: 0 }));
+  }, [q]);
 
   // Build query params
   const queryParams = useMemo(() => {
@@ -182,13 +175,12 @@ export default function DetallePage() {
       limit: String(pagination.pageSize),
       offset: String(pagination.pageIndex * pagination.pageSize),
     };
-    if (debouncedSearch) params.q = debouncedSearch;
     if (sorting.length > 0) {
       params.sort_by = sorting[0].id;
       params.sort_order = sorting[0].desc ? "desc" : "asc";
     }
     return params;
-  }, [pagination, debouncedSearch, sorting, filterParams]);
+  }, [pagination, sorting, filterParams]);
 
   // Fetch licitaciones
   const { data, isLoading, error, isFetching } = useQuery({
@@ -507,46 +499,10 @@ export default function DetallePage() {
         </Button>
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar — la búsqueda vive en la barra de filtros global (arriba) */}
       <Card>
-        <CardContent className="pt-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("common.search") + "..."}
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-8"
-              />
-              {search && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setSearch(""); setDebouncedSearch(""); }}
-                  className="absolute right-1.5 top-1.5 h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <ExportPopover />
-            </div>
-          </div>
-
-          {debouncedSearch && (
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <span className="text-xs text-muted-foreground">Filtros:</span>
-              <Badge variant="secondary" className="text-xs">
-                Busqueda: &quot;{debouncedSearch}&quot;
-                <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDebouncedSearch(""); }} className="ml-1 h-auto p-0">
-                  <X className="h-3 w-3" />
-                </Button>
-              </Badge>
-            </div>
-          )}
+        <CardContent className="flex items-center justify-end pt-4">
+          <ExportPopover />
         </CardContent>
       </Card>
 
