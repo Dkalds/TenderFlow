@@ -238,7 +238,9 @@ export default function DetallePage() {
   const { data: detailData } = useQuery({
     queryKey: ["licitacion", detailId],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/licitaciones/${detailId}`, { credentials: "include" });
+      const res = await fetch(`/api/v1/licitaciones/${encodeURIComponent(detailId)}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to fetch detail");
       return res.json() as Promise<LicitacionDetail>;
     },
