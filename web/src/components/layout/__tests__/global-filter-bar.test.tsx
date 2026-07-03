@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const setters = {
@@ -74,12 +74,42 @@ describe("GlobalFilterBar", () => {
     expect(setters.setCcaas).toHaveBeenCalledWith(["MD", "CT"]);
   });
 
-  it("updates the date range and minimum amount", () => {
+  it("adds an estado through the select control", () => {
+    renderBar();
+    fireEvent.change(screen.getByLabelText("Filtrar por estado"), { target: { value: "ADJ" } });
+    expect(setters.setEstados).toHaveBeenCalledWith(["PUB", "ADJ"]);
+  });
+
+  it("updates the date range directly", () => {
     renderBar();
     fireEvent.change(screen.getByLabelText("Fecha desde"), { target: { value: "2024-01-01" } });
     expect(setters.setRango).toHaveBeenCalledWith({ desde: "2024-01-01", hasta: null });
+  });
+
+  it("applies a date preset via the quick-range menu", () => {
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: /Rangos de fecha rapidos/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Todo" }));
+    expect(setters.setRango).toHaveBeenCalledWith({ desde: null, hasta: null });
+  });
+
+  it("debounces the minimum amount input before calling setImporteMin", async () => {
+    renderBar();
     fireEvent.change(screen.getByLabelText("Importe minimo"), { target: { value: "50000" } });
+    expect(setters.setImporteMin).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+
     expect(setters.setImporteMin).toHaveBeenCalledWith(50000);
+  });
+
+  it("applies an amount preset instantly via the preset menu", () => {
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: /Presets de importe minimo/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "> 500K" }));
+    expect(setters.setImporteMin).toHaveBeenCalledWith(500_000);
   });
 
   it("clears all filters via the reset button", () => {
