@@ -27,6 +27,13 @@ class MockEventSource {
 
 import { NotificationBell } from "@/components/notification-bell";
 
+// Radix's DropdownMenu trigger opens on pointer down (not on a synthetic
+// `click`) and only mounts its content in the DOM while open.
+function openMenu(trigger: HTMLElement) {
+  fireEvent.pointerDown(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
+  fireEvent.pointerUp(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
+}
+
 function renderBell(data?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   if (data !== undefined) qc.setQueryData(["notifications"], data);
@@ -49,6 +56,7 @@ afterEach(() => {
 describe("NotificationBell", () => {
   it("shows an empty state and 'no live connection' before SSE opens", () => {
     renderBell({ items: [], unread_count: 0, hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 } });
+    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
     expect(screen.getByText("Sin notificaciones")).toBeInTheDocument();
     expect(screen.getByText("Sin conexión en vivo")).toBeInTheDocument();
   });
@@ -62,10 +70,11 @@ describe("NotificationBell", () => {
       unread_count: 3,
       hoy: { calientes: 2, vencen_48h: 1, nuevas_24h: 4, total_activas: 10 },
     });
+    // Unread badge in the trigger aria-label (present even before opening).
+    const trigger = screen.getByRole("button", { name: /3 sin leer/ });
+    openMenu(trigger);
     expect(screen.getByText("Licitación caliente")).toBeInTheDocument();
     expect(screen.getByText("Nuevas 24h")).toBeInTheDocument();
-    // Unread badge in the trigger aria-label.
-    expect(screen.getByRole("button", { name: /3 sin leer/ })).toBeInTheDocument();
   });
 
   it("marks all as read when the bell is clicked", async () => {
@@ -87,6 +96,7 @@ describe("NotificationBell", () => {
     act(() =>
       es.listeners["licitaciones_nuevas"]?.({ data: JSON.stringify({ message: "5 nuevas licitaciones" }) }),
     );
+    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
     expect(screen.getByText("5 nuevas licitaciones")).toBeInTheDocument();
     expect(screen.queryByText("Sin conexión en vivo")).not.toBeInTheDocument();
   });
