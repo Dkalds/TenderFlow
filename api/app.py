@@ -65,6 +65,7 @@ from api.routes.search import router as search_router
 from api.routes.security import router as security_router
 from api.routes.stream import router as stream_router
 from api.routes.watchlist_feed import router as watchlist_feed_router
+from api.routes.watchlist_items import router as watchlist_items_router
 from api.routes.watchlist_rules import router as watchlist_rules_router
 from api.routes.webhooks import router as webhooks_router
 from config import settings
@@ -423,6 +424,7 @@ app.include_router(search_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
 app.include_router(watchlist_feed_router, prefix="/api/v1")
 app.include_router(watchlist_rules_router, prefix="/api/v1")
+app.include_router(watchlist_items_router, prefix="/api/v1")
 app.include_router(exports_router, prefix="/api/v1")
 app.include_router(saved_filters_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")

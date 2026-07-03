@@ -31,6 +31,7 @@ from services.gdpr import (
     export_audit_log,
     export_feedback,
     export_watchlist,
+    export_watchlist_items,
     get_key_name_and_scopes,
     get_user_id_from_key_id,
     list_user_keys,
@@ -69,6 +70,11 @@ def export_my_data(ctx: AuthContext = Depends(require_api_key)) -> StreamingResp
 
         watchlist = export_watchlist(ctx.key_hash)
         zf.writestr("watchlist.json", json.dumps(watchlist, ensure_ascii=False, indent=2))
+
+        watchlist_items = export_watchlist_items(ctx.key_hash)
+        zf.writestr(
+            "watchlist_items.json", json.dumps(watchlist_items, ensure_ascii=False, indent=2)
+        )
 
         feedback = export_feedback()
         zf.writestr("feedback.json", json.dumps(feedback, ensure_ascii=False, indent=2))
