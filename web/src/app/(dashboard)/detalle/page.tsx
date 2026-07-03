@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { t } from "@/lib/i18n";
 import { formatCurrency, formatDate, truncate, cn } from "@/lib/utils";
 import { getJSON, setJSON, remove as removeStored } from "@/lib/storage";
+import { useDensity } from "@/lib/density";
 import { useFilterParams, useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
 import {
@@ -43,8 +44,6 @@ import {
   ArrowDown,
   Download,
   X,
-  Rows3,
-  Rows2,
   Star,
   GitCompareArrows,
 } from "lucide-react";
@@ -75,17 +74,12 @@ const PAGE_SIZE = 25;
 
 
 const LAST_VIEWED_KEY = "detalle_last_viewed";
-const COMPACT_KEY = "detalle_compact";
 const WATCHLIST_KEY = "detalle_watchlist";
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
 function getLastViewed(): number {
   return getJSON<number>(LAST_VIEWED_KEY, 0);
-}
-
-function getCompactPref(): boolean {
-  return getJSON<boolean>(COMPACT_KEY, false);
 }
 
 function getWatchlist(): string[] {
@@ -176,7 +170,7 @@ export default function DetallePage() {
     parseAsString.withOptions({ history: "push", shallow: true }),
   );
   const [showComparator, setShowComparator] = useState(false);
-  const [compact, setCompact] = useState(getCompactPref);
+  const { compact } = useDensity();
   const [lastViewed] = useState(getLastViewed);
   const addWatchlistItem = useAddWatchlistItem();
 
@@ -194,11 +188,6 @@ export default function DetallePage() {
     removeStored(WATCHLIST_KEY);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- migración única al montar
   }, []);
-
-  // Compact mode persistence
-  useEffect(() => {
-    setJSON(COMPACT_KEY, compact);
-  }, [compact]);
 
   // La tabla consume solo el `q` global (barra de filtros); un buscador
   // local aquí duplicaba el de la barra y podía pisar silenciosamente su
@@ -533,14 +522,6 @@ export default function DetallePage() {
             Tabla completa con todos los campos y exportacion.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCompact((c) => !c)}
-          title={compact ? "Vista normal" : "Vista compacta"}
-        >
-          {compact ? <Rows3 className="h-4 w-4" /> : <Rows2 className="h-4 w-4" />}
-        </Button>
       </div>
 
       {/* Toolbar — la búsqueda vive en la barra de filtros global (arriba) */}

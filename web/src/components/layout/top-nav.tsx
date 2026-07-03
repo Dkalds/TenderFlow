@@ -8,7 +8,6 @@ import {
   Menu,
   Moon,
   Sun,
-  Globe,
   User,
   LogOut,
   AlignJustify,
@@ -19,7 +18,7 @@ import {
 } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { SECTIONS } from "@/lib/navigation";
-import { t, useLocale, type Locale } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
@@ -48,7 +47,6 @@ export function TopNav() {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [expandedSection, setExpandedSection] = React.useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
-  const { locale, setLocale: setLocaleStore } = useLocale();
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
   const withFilters = useWithFilters();
   const setCommandOpen = useUiStore((s) => s.setCommandOpen);
@@ -98,11 +96,6 @@ export function TopNav() {
     );
     setExpandedSection(activeSection?.label ?? null);
     setMobileOpen(true);
-  };
-
-  const toggleLocale = () => {
-    const next: Locale = locale === "es" ? "en" : "es";
-    setLocaleStore(next);
   };
 
   return (
@@ -180,18 +173,6 @@ export function TopNav() {
               <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
               <span className="sr-only">Toggle theme</span>
-            </Button>
-
-            {/* Locale toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleLocale}
-              className="gap-1 text-xs"
-              aria-label="Cambiar idioma"
-            >
-              <Globe className="h-4 w-4" />
-              {locale.toUpperCase()}
             </Button>
 
             {/* User menu */}

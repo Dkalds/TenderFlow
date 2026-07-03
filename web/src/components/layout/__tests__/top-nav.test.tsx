@@ -42,11 +42,11 @@ function renderNav() {
 }
 
 describe("TopNav", () => {
-  it("renders the header with theme, locale and density controls", () => {
+  it("renders the header with theme and density controls", () => {
     renderNav();
     expect(screen.getByRole("banner")).toBeInTheDocument();
     expect(screen.getByTestId("bell")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Cambiar idioma/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Toggle density/ })).toBeInTheDocument();
   });
 
   it("toggles the theme when the theme button is clicked", () => {

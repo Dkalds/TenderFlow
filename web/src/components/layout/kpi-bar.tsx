@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useScrolledPast } from "@/hooks/use-scrolled-past";
 import { useFilterParams } from "@/lib/filters";
 import { pathUsesGlobalFilters } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,8 @@ interface KpiBarProps {
   loading?: boolean;
   /** Muestra el badge "Filtrado" cuando los KPI respetan filtros activos. */
   filtered?: boolean;
+  /** Colapsa visualmente la barra (scroll hacia abajo) sin desmontarla. */
+  collapsed?: boolean;
 }
 
 function formatCurrency(n: number): string {
@@ -63,6 +66,9 @@ export function KpiBarConnected() {
     "/api/v1/analytics/overview",
     { staleTime: 60_000, retry: 1, enabled: filtersApply },
   );
+  // Colapso adicional al hacer scroll (no reemplaza el ocultado por
+  // `!filtersApply`, que tiene prioridad y desmonta el componente entero).
+  const scrolled = useScrolledPast(8);
 
   const kpis: KpiItem[] = data
     ? [
@@ -98,13 +104,21 @@ export function KpiBarConnected() {
       kpis={kpis}
       loading={isLoading}
       filtered={Object.keys(filterParams).length > 0}
+      collapsed={scrolled}
     />
   );
 }
 
-export function KpiBar({ kpis = [], loading = false, filtered = false }: KpiBarProps) {
+export function KpiBar({ kpis = [], loading = false, filtered = false, collapsed = false }: KpiBarProps) {
   return (
-    <div role="region" aria-label="Indicadores clave de rendimiento" className="flex min-h-11 items-center gap-3 overflow-x-auto border-b border-border/70 bg-card/80 px-4 backdrop-blur">
+    <div
+      role="region"
+      aria-label="Indicadores clave de rendimiento"
+      className={cn(
+        "flex items-center gap-3 overflow-x-auto border-b border-border/70 bg-card/80 px-4 backdrop-blur transition-all duration-200",
+        collapsed ? "max-h-0 min-h-0 opacity-0 overflow-hidden py-0 border-b-0" : "max-h-20 min-h-11 opacity-100",
+      )}
+    >
       {filtered && (
         <span className="flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
           <SlidersHorizontal className="h-3 w-3" />
