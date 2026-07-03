@@ -1,0 +1,131 @@
+"""Tests unitarios para services/exports (CSV/Excel/filename).
+
+Funciones puras de transformación records → bytes; sin BD ni mocks.
+"""
+
+from __future__ import annotations
+
+import io
+from datetime import datetime
+
+import openpyxl
+import pandas as pd
+
+from services.exports import generate_csv, generate_excel, get_export_filename
+
+
+def _records() -> list[dict]:
+    return [
+        {
+            "id_externo": "L1",
+            "titulo": "Servicio SAP cloud",
+            "organo_contratacion": "ORG A",
+            "importe": 1_000_000.0,
+            "estado": "ADJ",
+            "fecha_publicacion": "2025-01-01",
+            "ccaa": "Madrid",
+            "cpv": "72000000",
+            "tecnologia": "SAP",
+        },
+        {
+            "id_externo": "L2",
+            "titulo": "Mantenimiento; ERP",  # `;` en el dato → debe quedar quoted
+            "organo_contratacion": "ORG B",
+            "importe": 200_000.0,
+            "estado": "PUB",
+            "fecha_publicacion": "2025-02-01",
+            "ccaa": "Cataluña",
+            "cpv": "48000000",
+            "tecnologia": "SAP",
+        },
+    ]
+
+
+# ── generate_csv ────────────────────────────────────────────────────────────
+
+
+def test_generate_csv_bom_y_delimitador():
+    data = generate_csv(_records())
+    assert data.startswith(b"\xef\xbb\xbf")  # BOM UTF-8 para Excel
+    text = data.decode("utf-8-sig")
+    header = text.splitlines()[0]
+    assert header.split(";")[0] == "id_externo"
+    assert "L1" in text
+    # El `;` dentro del dato queda escapado (quoted), no rompe columnas
+    assert '"Mantenimiento; ERP"' in text
+
+
+def test_generate_csv_respeta_orden_de_columns():
+    data = generate_csv(_records(), columns=["titulo", "id_externo"])
+    header = data.decode("utf-8-sig").splitlines()[0]
+    assert header == "titulo;id_externo"
+
+
+def test_generate_csv_ignora_columns_inexistentes():
+    data = generate_csv(_records(), columns=["titulo", "no_existe"])
+    header = data.decode("utf-8-sig").splitlines()[0]
+    assert header == "titulo"
+
+
+def test_generate_csv_records_vacios():
+    data = generate_csv([])
+    assert isinstance(data, bytes)
+    assert data.startswith(b"\xef\xbb\xbf")
+
+
+def test_generate_csv_utf8_caracteres_espanoles():
+    data = generate_csv(_records())
+    assert "Cataluña" in data.decode("utf-8-sig")
+
+
+# ── generate_excel ──────────────────────────────────────────────────────────
+
+
+def test_generate_excel_workbook_valido():
+    data = generate_excel(_records())
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    ws = wb["Licitaciones"]
+    # Cabecera + valores
+    assert ws.cell(row=1, column=1).value == "id_externo"
+    assert ws.cell(row=2, column=1).value == "L1"
+    assert ws.cell(row=3, column=1).value == "L2"
+
+
+def test_generate_excel_sheet_name_custom():
+    data = generate_excel(_records(), sheet_name="Resultados")
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    assert "Resultados" in wb.sheetnames
+
+
+def test_generate_excel_strip_timezone():
+    """openpyxl no soporta datetimes tz-aware; el export los normaliza a naive."""
+    records = [
+        {"id_externo": "L1", "fecha": pd.Timestamp("2025-01-01 10:00", tz="UTC")},
+    ]
+    data = generate_excel(records, columns=["id_externo", "fecha"])
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    ws = wb.active
+    valor = ws.cell(row=2, column=2).value
+    assert isinstance(valor, datetime)
+    assert valor.tzinfo is None
+
+
+def test_generate_excel_records_vacios():
+    data = generate_excel([])
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    assert wb.active is not None
+
+
+# ── get_export_filename ─────────────────────────────────────────────────────
+
+
+def test_get_export_filename_csv():
+    name = get_export_filename("csv")
+    fecha = datetime.now().strftime("%Y%m%d")
+    assert name == f"licitaciones_{fecha}.csv"
+
+
+def test_get_export_filename_excel_y_prefix():
+    name = get_export_filename("excel", prefix="informe")
+    fecha = datetime.now().strftime("%Y%m%d")
+    assert name == f"informe_{fecha}.xlsx"
