@@ -106,6 +106,47 @@ jobs:
           name: diff-cover-report
           path: diff-cover.html
 
+  # ── Cola con dramatiq real ──────────────────────────────────────────
+  # dramatiq es extra opcional ([queue] en pyproject); ni requirements.txt
+  # ni requirements-dev.txt lo instalan, así que el job `test` solo ejercita
+  # los stubs de fallback de scheduler/queue.py. Este job instala el extra
+  # para ejercitar el camino real (decoradores @actor + StubBroker sin
+  # Redis), que es el que corre en el scheduler de producción.
+  test-queue-dramatiq:
+    name: Tests (queue con dramatiq real)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dev dependencies + extra queue
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e ".[queue]"
+
+      - name: Smoke — el camino de actores dramatiq está activo
+        env:
+          ENV: dev
+        run: |
+          python -c "
+          from scheduler import queue
+          assert queue._dramatiq is not None, 'expected real dramatiq path, got fallback'
+          assert hasattr(queue.enqueue_bulk_download, 'send'), 'actor not registered'
+          assert hasattr(queue.enqueue_rebuild_embeddings, 'send'), 'actor not registered'
+          print('dramatiq actor path OK')
+          "
+
+      - name: Run queue tests con dramatiq instalado
+        env:
+          ENV: dev
+        run: pytest tests/test_unit_coverage_batch1b.py -v --no-cov
+
   # ── Schema: merged dry-run + rollback tests ────────────────────────
   schema-migrations:
     name: Schema migrations (dry-run + rollback)
