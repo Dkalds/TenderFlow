@@ -432,6 +432,28 @@ app.include_router(admin_users_router, prefix="/api/v1")
 app.include_router(feature_flags_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 
+
+# ---------------------------------------------------------------------------
+# Root endpoint — evita 404 en health probes de plataforma (HEAD/GET /)
+# ---------------------------------------------------------------------------
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def _root() -> dict[str, str]:
+    """Endpoint raíz para probes de plataforma que golpean ``/``.
+
+    Cubre tanto ``GET /`` como ``HEAD /`` (health checks que solo verifican el
+    código de estado). La API vive bajo ``/api/v1``; aquí solo devolvemos
+    metadatos de descubrimiento.
+    """
+    return {
+        "service": "licitaciones-sap-api",
+        "status": "ok",
+        "docs": "/api/docs",
+        "health": "/api/v1/health",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Prometheus /metrics — protegido por IP allowlist o scope metrics:read
 # ---------------------------------------------------------------------------
