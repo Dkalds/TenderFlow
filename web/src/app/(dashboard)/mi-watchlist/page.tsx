@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -271,13 +272,28 @@ function FavoritosPanel() {
 
 export default function MiWatchlistPage() {
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<"reglas" | "favoritos">("reglas");
 
+  // Prefill desde la command palette: "Crear regla de watchlist con estos
+  // filtros" navega aquí con ?prefill=<filterParams JSON-encoded>. Se lee
+  // una sola vez como estado inicial (no en un efecto) — el usuario puede
+  // seguir editando el formulario libremente después.
+  const prefill = useMemo(() => {
+    const raw = searchParams.get("prefill");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Record<string, string>;
+    } catch {
+      return null;
+    }
+  }, [searchParams]);
+
   // Form state
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useState(() => prefill?.q ?? "");
   const [cpv, setCpv] = useState("");
-  const [minImporte, setMinImporte] = useState("");
-  const [ccaa, setCcaa] = useState("");
+  const [minImporte, setMinImporte] = useState(() => prefill?.importe_min ?? "");
+  const [ccaa, setCcaa] = useState(() => prefill?.ccaa?.split(",")[0] ?? "");
   const [frequency, setFrequency] = useState<Frequency>("daily");
   const [formOpen, setFormOpen] = useState(true);
 
