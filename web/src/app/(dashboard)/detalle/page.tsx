@@ -21,9 +21,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { t } from "@/lib/i18n";
 import { formatCurrency, formatDate, truncate, cn } from "@/lib/utils";
-import { getJSON, setJSON } from "@/lib/storage";
+import { getJSON, setJSON, remove as removeStored } from "@/lib/storage";
 import { useFilterParams, useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
+import {
+  useAddWatchlistItem,
+  useIsWatchlisted,
+  useRemoveWatchlistItem,
+} from "@/hooks/use-watchlist-items";
 import { DetailPanel, type LicitacionDetail } from "@/components/detail-panel";
 import { Comparator } from "@/components/comparator";
 import { ExportPopover } from "@/components/export-popover";
@@ -110,6 +115,30 @@ function downloadCsv(rows: LicitacionSummary[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/* ── Favorito (watchlist server-side) ──────────────────────────────── */
+
+function FavoriteStar({ idExterno }: { idExterno: string }) {
+  const isWatchlisted = useIsWatchlisted(idExterno);
+  const addItem = useAddWatchlistItem();
+  const removeItem = useRemoveWatchlistItem();
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (isWatchlisted) removeItem.mutate(idExterno);
+        else addItem.mutate(idExterno);
+      }}
+      aria-label={isWatchlisted ? "Quitar de favoritos" : "Añadir a favoritos"}
+      aria-pressed={isWatchlisted}
+      className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      <Star className={cn("h-4 w-4", isWatchlisted && "fill-primary text-primary")} />
+    </button>
+  );
+}
+
 /* ── Merged row type ────────────────────────────────────────────────── */
 
 interface MergedRow extends LicitacionSummary {
@@ -149,10 +178,21 @@ export default function DetallePage() {
   const [showComparator, setShowComparator] = useState(false);
   const [compact, setCompact] = useState(getCompactPref);
   const [lastViewed] = useState(getLastViewed);
+  const addWatchlistItem = useAddWatchlistItem();
 
   // Mark last viewed on mount
   useEffect(() => {
     setJSON(LAST_VIEWED_KEY, Date.now());
+  }, []);
+
+  // Migración one-shot: favoritos que vivían solo en localStorage pasan al
+  // servidor (ADR-014 §2); la key se borra tras migrar para no repetir.
+  useEffect(() => {
+    const legacy = getWatchlist();
+    if (legacy.length === 0) return;
+    legacy.forEach((id) => addWatchlistItem.mutate(id));
+    removeStored(WATCHLIST_KEY);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- migración única al montar
   }, []);
 
   // Compact mode persistence
@@ -297,6 +337,12 @@ export default function DetallePage() {
           row.original.isNew ? (
             <span className="inline-block h-2 w-2 rounded-full bg-blue-500" title="Nuevo" />
           ) : null,
+      },
+      {
+        id: "favorito",
+        size: 36,
+        header: "",
+        cell: ({ row }) => <FavoriteStar idExterno={row.original.id_externo} />,
       },
       {
         accessorKey: "id_externo",
@@ -453,9 +499,7 @@ export default function DetallePage() {
   };
 
   const handleFollow = () => {
-    const current = getWatchlist();
-    const newIds = selectedIds.filter((id) => !current.includes(id));
-    setJSON(WATCHLIST_KEY, [...current, ...newIds]);
+    selectedIds.forEach((id) => addWatchlistItem.mutate(id));
     setRowSelection({});
   };
 
