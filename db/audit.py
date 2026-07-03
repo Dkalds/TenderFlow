@@ -178,7 +178,7 @@ def list_recent(
     with connect() as c:
         cur = c.execute(
             "SELECT id, user_key, session_hash, action, detail, created_at "
-            "FROM audit_log " + where + " ORDER BY created_at DESC LIMIT ?",
+            "FROM audit_log " + where + " ORDER BY created_at DESC, id DESC LIMIT ?",
             params,
         )
         cols = [d[0] for d in cur.description]
