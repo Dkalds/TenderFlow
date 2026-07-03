@@ -62,6 +62,38 @@ describe("TopNav", () => {
     expect(screen.getByRole("dialog", { name: /Menú de navegación/ })).toBeInTheDocument();
   });
 
+  it("auto-expands the section containing the active page", () => {
+    renderNav();
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    // pathname is stubbed to "/resumen", which lives in "Vista General".
+    const sectionToggle = screen.getByRole("button", { name: /Vista General/ });
+    expect(sectionToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: /Resumen/ })).toBeInTheDocument();
+  });
+
+  it("expands and collapses a non-active section without navigating", () => {
+    renderNav();
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    const mercadoToggle = screen.getByRole("button", { name: /Mercado/ });
+    expect(mercadoToggle).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(mercadoToggle);
+    expect(mercadoToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: /Organos/ })).toBeInTheDocument();
+    // The drawer must stay open after expanding a section.
+    expect(screen.getByRole("dialog", { name: /Menú de navegación/ })).toBeInTheDocument();
+
+    fireEvent.click(mercadoToggle);
+    expect(mercadoToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the mobile drawer when a child page link is clicked", () => {
+    renderNav();
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    fireEvent.click(screen.getByRole("link", { name: /Resumen/ }));
+    expect(screen.queryByRole("dialog", { name: /Menú de navegación/ })).not.toBeInTheDocument();
+  });
+
   it("opens the user menu and logs out", async () => {
     renderNav();
     fireEvent.click(screen.getByRole("button", { name: /Menú de usuario/ }));

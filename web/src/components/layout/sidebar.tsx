@@ -78,7 +78,20 @@ export function Sidebar() {
       <nav className="flex-1 space-y-3 overflow-y-auto px-2 py-3" aria-label="Secciones">
         {visibleSections.map((section) => (
           <div key={section.label} className="space-y-1">
-            <div className={cn("px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground", collapsed && "px-0 text-center text-[8px]")}>{collapsed ? section.label.slice(0, 3) : section.label}</div>
+            {collapsed ? (
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                title={section.label}
+                className="mx-3 my-2 border-t border-border/70"
+              >
+                <span className="sr-only">{section.label}</span>
+              </div>
+            ) : (
+              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {section.label}
+              </div>
+            )}
             {section.pages.map((page) => {
               const Icon = page.icon;
               const active = pathname === `/${page.slug}`;

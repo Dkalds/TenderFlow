@@ -14,6 +14,8 @@ import {
   AlignJustify,
   LayoutGrid,
   Search,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { SECTIONS } from "@/lib/navigation";
@@ -45,6 +47,7 @@ export function TopNav() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [expandedSection, setExpandedSection] = React.useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const { locale, setLocale: setLocaleStore } = useLocale();
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
@@ -89,6 +92,16 @@ export function TopNav() {
     (s) => !s.adminOnly || isAdmin,
   );
 
+  // Auto-expand the section containing the active page whenever the mobile
+  // drawer is opened, so the user isn't forced to reopen it to find it.
+  const openMobileNav = () => {
+    const activeSection = visibleSections.find((section) =>
+      section.pages.some((p) => pathname === `/${p.slug}`),
+    );
+    setExpandedSection(activeSection?.label ?? null);
+    setMobileOpen(true);
+  };
+
   const toggleLocale = () => {
     const next: Locale = locale === "es" ? "en" : "es";
     setLocaleStore(next);
@@ -103,7 +116,7 @@ export function TopNav() {
             variant="ghost"
             size="icon"
             className="md:hidden"
-            onClick={() => setMobileOpen(!mobileOpen)}
+            onClick={() => (mobileOpen ? setMobileOpen(false) : openMobileNav())}
           >
             <Menu className="h-5 w-5" />
             <span className="sr-only">Menu</span>
@@ -247,23 +260,34 @@ export function TopNav() {
             {visibleSections.map((section) => {
               const Icon = section.icon;
               const active = section.pages.some((p) => pathname === `/${p.slug}`);
+              const expanded = expandedSection === section.label;
+              const sectionPanelId = `mobile-nav-section-${section.label.replace(/\s+/g, "-").toLowerCase()}`;
               return (
                 <div key={section.label}>
-                  <Link
-                    href={withFilters(`/${section.pages[0].slug}`)}
-                    onClick={() => setMobileOpen(false)}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedSection(expanded ? null : section.label)
+                    }
+                    aria-expanded={expanded}
+                    aria-controls={sectionPanelId}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                      "flex w-full items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                       active
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-accent"
                     )}
                   >
                     <Icon className="h-4 w-4" />
-                    {section.label}
-                  </Link>
-                  {active && (
-                    <div className="ml-4 mt-1 space-y-0.5">
+                    <span className="flex-1 text-left">{section.label}</span>
+                    {expanded ? (
+                      <ChevronDown className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                    )}
+                  </button>
+                  {expanded && (
+                    <div id={sectionPanelId} className="ml-4 mt-1 space-y-0.5">
                       {section.pages.map((page) => {
                         const PageIcon = page.icon;
                         const pageActive = pathname === `/${page.slug}`;
@@ -272,6 +296,7 @@ export function TopNav() {
                             key={page.slug}
                             href={withFilters(`/${page.slug}`)}
                             onClick={() => setMobileOpen(false)}
+                            aria-current={pageActive ? "page" : undefined}
                             className={cn(
                               "flex items-center gap-2 px-3 py-2.5 rounded-md text-sm transition-colors",
                               pageActive
