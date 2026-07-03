@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Cpu, Map, RotateCcw, Search, X } from "lucide-react";
+import { Calendar, Cpu, Info, Map, RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
-import { useFilters } from "@/lib/filters";
+import { useFilterParams, useFilters } from "@/lib/filters";
+import { pathUsesGlobalFilters } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 
@@ -23,7 +25,11 @@ function addUnique(value: string, current: string[], setValue: (value: string[])
 }
 
 export function GlobalFilterBar() {
+  const pathname = usePathname();
+  const filtersApply = pathUsesGlobalFilters(pathname);
   const filters = useFilters();
+  const filterParams = useFilterParams();
+  const activeCount = Object.keys(filterParams).length;
   const { history, addToHistory } = useSearchHistory();
   const { data: meta } = useQuery<MetaFilters>({
     queryKey: ["meta-filters"],
@@ -33,6 +39,7 @@ export function GlobalFilterBar() {
       return res.json() as Promise<MetaFilters>;
     },
     staleTime: 5 * 60 * 1000,
+    enabled: filtersApply,
   });
 
   const chips = [
@@ -46,6 +53,30 @@ export function GlobalFilterBar() {
     if (kind === "ccaa") filters.setCcaas(filters.ccaas.filter((item) => item !== value));
     if (kind === "tecnologia") filters.setTecnologias(filters.tecnologias.filter((item) => item !== value));
   };
+
+  // Contrato de filtros por página: donde no aplican, la barra no se muestra.
+  // Si además hay filtros activos, lo decimos en vez de fingir que filtran.
+  if (!filtersApply) {
+    if (activeCount === 0) return null;
+    return (
+      <div className="tf-glass sticky top-[60px] z-30 flex items-center gap-2 border-b border-border/70 px-4 py-1.5 text-xs text-muted-foreground">
+        <Info className="h-3.5 w-3.5 shrink-0 text-primary" />
+        <span>
+          Los filtros globales no aplican en esta página ({activeCount}{" "}
+          {activeCount === 1 ? "activo" : "activos"}).
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={filters.resetFilters}
+        >
+          <RotateCcw className="h-3 w-3" />
+          Limpiar
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="tf-glass sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2">

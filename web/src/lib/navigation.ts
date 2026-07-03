@@ -37,6 +37,12 @@ export interface NavPage {
   slug: string;
   description: string;
   icon: LucideIcon;
+  /**
+   * Contrato de filtros globales: si es `false`, la página NO consume el
+   * estado de filtros (GlobalFilterBar y KPI bar se ocultan para no mentir).
+   * Ausente equivale a `true`.
+   */
+  usesGlobalFilters?: boolean;
 }
 
 export interface NavSection {
@@ -145,6 +151,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Contratos que vencen proximamente: cartera en juego por empresa y pipeline comercial.",
         icon: CalendarClock,
+        usesGlobalFilters: false,
       },
       {
         label: "Empresas",
@@ -152,6 +159,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Maestro de empresas canonicas: buscador, perfil competitivo, aliases y vigilancia.",
         icon: Briefcase,
+        usesGlobalFilters: false,
       },
       {
         label: "UTEs",
@@ -193,6 +201,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Reglas de seguimiento personalizadas por CPV, keyword e importe.",
         icon: Star,
+        usesGlobalFilters: false,
       },
       {
         label: "Investigador",
@@ -213,6 +222,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Metricas de rendimiento, logs de scraping y estado del pipeline.",
         icon: BarChart3,
+        usesGlobalFilters: false,
       },
       {
         label: "Calidad de Datos",
@@ -220,6 +230,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Completitud del dataset, frescura del scraping, tasa de errores y DLQ.",
         icon: Shield,
+        usesGlobalFilters: false,
       },
     ],
   },
@@ -234,6 +245,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Gestion de DLQ, usuarios y API Keys. Solo accesible para administradores.",
         icon: Settings,
+        usesGlobalFilters: false,
       },
       {
         label: "Feature Flags",
@@ -241,6 +253,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Activar/desactivar funcionalidades en tiempo real con rollout gradual.",
         icon: Flag,
+        usesGlobalFilters: false,
       },
       {
         label: "Active Learning",
@@ -248,6 +261,7 @@ export const SECTIONS: NavSection[] = [
         description:
           "Etiquetado humano de licitaciones en zona de incertidumbre del modelo ML.",
         icon: GraduationCap,
+        usesGlobalFilters: false,
       },
     ],
   },
@@ -272,4 +286,14 @@ export function findPage(slug: string) {
  */
 export function findSection(slug: string) {
   return SECTIONS.find((s) => s.pages.some((p) => p.slug === slug));
+}
+
+/**
+ * Whether the page at `pathname` consumes the global filter state.
+ * Rutas desconocidas devuelven `true` (comportamiento histórico).
+ */
+export function pathUsesGlobalFilters(pathname: string): boolean {
+  const slug = pathname.replace(/^\//, "").split("/")[0];
+  const page = findPage(slug);
+  return page ? page.usesGlobalFilters !== false : true;
 }

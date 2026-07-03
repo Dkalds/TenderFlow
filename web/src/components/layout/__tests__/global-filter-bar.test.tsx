@@ -20,7 +20,14 @@ const filtersStub = {
   importeMin: null as number | null,
   ...setters,
 };
-vi.mock("@/lib/filters", () => ({ useFilters: () => filtersStub }));
+// pathname y filter params controlables por test (contrato de filtros por página).
+const pathnameRef = { current: "/detalle" };
+const paramsRef = { current: { estado: "PUB", ccaa: "MD", tecnologia: "IA" } as Record<string, string> };
+vi.mock("next/navigation", () => ({ usePathname: () => pathnameRef.current }));
+vi.mock("@/lib/filters", () => ({
+  useFilters: () => filtersStub,
+  useFilterParams: () => paramsRef.current,
+}));
 
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
 
@@ -42,6 +49,8 @@ function renderBar() {
 
 afterEach(() => {
   Object.values(setters).forEach((fn) => fn.mockClear());
+  pathnameRef.current = "/detalle";
+  paramsRef.current = { estado: "PUB", ccaa: "MD", tecnologia: "IA" };
 });
 
 describe("GlobalFilterBar", () => {
@@ -75,6 +84,26 @@ describe("GlobalFilterBar", () => {
 
   it("clears all filters via the reset button", () => {
     renderBar();
+    fireEvent.click(screen.getByRole("button", { name: /Limpiar/ }));
+    expect(setters.resetFilters).toHaveBeenCalled();
+  });
+
+  it("renders nothing on non-filter pages when no filters are active", () => {
+    pathnameRef.current = "/administracion";
+    paramsRef.current = {};
+    const { container } = renderBar();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows an explicit notice on non-filter pages with active filters", () => {
+    pathnameRef.current = "/administracion";
+    paramsRef.current = { estado: "PUB", ccaa: "MD" };
+    renderBar();
+    expect(
+      screen.getByText(/Los filtros globales no aplican en esta página \(2 activos\)/),
+    ).toBeInTheDocument();
+    // La barra completa no se renderiza (no hay buscador de licitaciones).
+    expect(screen.queryByLabelText("Buscar licitaciones")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Limpiar/ }));
     expect(setters.resetFilters).toHaveBeenCalled();
   });

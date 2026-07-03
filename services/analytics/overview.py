@@ -31,6 +31,8 @@ class OverviewFilters(BaseModel):
     ccaa: str | None = None
     tecnologia: str | None = None
     estado: str | None = None
+    q: str | None = None
+    importe_min: float | None = None
 
 
 class EstadoCount(BaseModel):
@@ -128,6 +130,21 @@ def _apply_filters(df: pd.DataFrame, filters: OverviewFilters) -> pd.DataFrame:
         df = df[df["tecnologia"] == filters.tecnologia]
     if filters.estado:
         df = df[df["estado"] == filters.estado]
+    if filters.q:
+        # Paridad con la búsqueda del listado (titulo/órgano/id, substring
+        # case-insensitive). El listado usa FTS5 cuando está disponible; aquí
+        # el dataset ya está en memoria y contains es suficiente para KPIs.
+        needle = filters.q.strip().lower()
+        if needle:
+            mask = (
+                df["titulo"].fillna("").str.lower().str.contains(needle, regex=False)
+                | df["organo_contratacion"].fillna("").str.lower().str.contains(needle, regex=False)
+                | df["id_externo"].fillna("").str.lower().str.contains(needle, regex=False)
+            )
+            df = df[mask]
+    if filters.importe_min is not None:
+        # Igual que ``importe >= ?`` en SQL: NaN queda excluido.
+        df = df[df["importe"] >= filters.importe_min]
     return df
 
 

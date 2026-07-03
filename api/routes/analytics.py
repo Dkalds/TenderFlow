@@ -92,6 +92,8 @@ def overview(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> OverviewResult:
     """Return aggregated KPIs, breakdowns, and funnel data."""
@@ -101,6 +103,8 @@ def overview(
         ccaa=ccaa,
         tecnologia=tecnologia,
         estado=estado,
+        q=q,
+        importe_min=importe_min,
     )
     return get_overview(filters)
 

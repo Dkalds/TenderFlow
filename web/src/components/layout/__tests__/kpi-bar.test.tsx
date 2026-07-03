@@ -1,6 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// KpiBarConnected lee pathname (contrato de filtros por página) y los filter
+// params (badge "Filtrado" + queryKey de useFilteredQuery); ambos se controlan
+// vía refs mutables para no montar el runtime de Next/nuqs en jsdom.
+const pathnameRef = { current: "/resumen" };
+const paramsRef = { current: {} as Record<string, string> };
+vi.mock("next/navigation", () => ({ usePathname: () => pathnameRef.current }));
+vi.mock("@/lib/filters", () => ({ useFilterParams: () => paramsRef.current }));
+
 import { KpiBar, KpiBarConnected } from "@/components/layout/kpi-bar";
 
 describe("KpiBar (presentational)", () => {
@@ -30,12 +39,27 @@ describe("KpiBar (presentational)", () => {
     render(<KpiBar />);
     expect(screen.getByRole("region", { name: /Indicadores/ })).toBeInTheDocument();
   });
+
+  it("shows the Filtrado badge only when filtered", () => {
+    const { rerender } = render(<KpiBar kpis={[{ label: "Total", value: "1" }]} filtered />);
+    expect(screen.getByText("Filtrado")).toBeInTheDocument();
+    rerender(<KpiBar kpis={[{ label: "Total", value: "1" }]} filtered={false} />);
+    expect(screen.queryByText("Filtrado")).not.toBeInTheDocument();
+  });
 });
 
 describe("KpiBarConnected", () => {
+  beforeEach(() => {
+    pathnameRef.current = "/resumen";
+    paramsRef.current = {};
+  });
+
   function renderConnected(overview: unknown) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    if (overview !== undefined) qc.setQueryData(["analytics", "overview"], overview);
+    // useFilteredQuery añade los filter params a la queryKey.
+    if (overview !== undefined) {
+      qc.setQueryData(["analytics", "overview", paramsRef.current], overview);
+    }
     return render(
       <QueryClientProvider client={qc}>
         <KpiBarConnected />
@@ -63,5 +87,25 @@ describe("KpiBarConnected", () => {
       yoy_delta: -1.5,
     });
     expect(screen.getByText("5K €")).toBeInTheDocument();
+  });
+
+  it("hides entirely on pages that do not use global filters", () => {
+    pathnameRef.current = "/administracion";
+    const { container } = renderConnected({
+      total_licitaciones: 10,
+      importe_total: 5000,
+      licitaciones_30d: 2,
+    });
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows the Filtrado badge when filter params are active", () => {
+    paramsRef.current = { ccaa: "Madrid" };
+    renderConnected({
+      total_licitaciones: 10,
+      importe_total: 5000,
+      licitaciones_30d: 2,
+    });
+    expect(screen.getByText("Filtrado")).toBeInTheDocument();
   });
 });
