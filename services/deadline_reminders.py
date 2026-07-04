@@ -99,8 +99,7 @@ def check_deadlines_and_notify(user_key: str) -> int:
                 label = "presentacion" if field == "fecha_limite" else "fin de contrato"
                 title = f"Plazo de {label} en {days_left} dia(s): {titulo[:80]}"
                 body = (
-                    f"La licitacion '{titulo}' vence el "
-                    f"{dt.date().isoformat()} ({days_left} dias)."
+                    f"La licitacion '{titulo}' vence el {dt.date().isoformat()} ({days_left} dias)."
                 )
                 with connect() as c:
                     cur = c.execute(

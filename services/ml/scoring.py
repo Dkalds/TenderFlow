@@ -160,7 +160,14 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
                 "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
                 " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
                 [
-                    (f.licitacion_id, f.empresa_id, round(p, 5), round(1 - p, 5), version_int, computed_at)
+                    (
+                        f.licitacion_id,
+                        f.empresa_id,
+                        round(p, 5),
+                        round(1 - p, 5),
+                        version_int,
+                        computed_at,
+                    )
                     for f, p in zip(filas, probas, strict=True)
                 ],
             )
@@ -181,7 +188,14 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
             tasa = tasas.get((organo, cpv4), media_global) if cpv4 and organo else media_global
             prob = min(max(tasa, 0.0), 1.0)
             rows_to_insert.append(
-                (f.licitacion_id, f.empresa_id, round(prob, 5), round(1 - prob, 5), None, computed_at)
+                (
+                    f.licitacion_id,
+                    f.empresa_id,
+                    round(prob, 5),
+                    round(1 - prob, 5),
+                    None,
+                    computed_at,
+                )
             )
         with connect() as c:
             c.executemany(

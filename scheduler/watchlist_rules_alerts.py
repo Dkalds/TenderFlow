@@ -155,7 +155,7 @@ def _write_user_notifications(
                 lic_id = str(lic.get("id_externo") or "")
                 if not lic_id:
                     continue
-                body = f"{lic.get('titulo','?')} | {lic.get('organo_contratacion','?')}"
+                body = f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}"
                 cur = c.execute(
                     "INSERT OR IGNORE INTO user_notifications "
                     "(user_key, created_at, type, title, body, licitacion_id, rule_id) "
@@ -227,8 +227,13 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
         # 2. Email via pending_digests (solo si hay email configurado)
         if email:
             _enqueue_pending_digest(
-                user_key, email, rule_id, new_matches,
-                row.get("frequency") or "daily", rule, now_ts,
+                user_key,
+                email,
+                rule_id,
+                new_matches,
+                row.get("frequency") or "daily",
+                rule,
+                now_ts,
             )
 
         log.info(

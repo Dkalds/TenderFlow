@@ -28,8 +28,16 @@ def get_user_profile(user_key: str) -> dict[str, Any] | None:
         ).fetchone()
     if row is None:
         return None
-    cols = ["user_key", "weights_json", "afinidad_keywords_json",
-            "cpvs_json", "ccaa_json", "importe_min", "importe_max", "updated_at"]
+    cols = [
+        "user_key",
+        "weights_json",
+        "afinidad_keywords_json",
+        "cpvs_json",
+        "ccaa_json",
+        "importe_min",
+        "importe_max",
+        "updated_at",
+    ]
     raw = dict(zip(cols, row, strict=False))
     # Deserializar JSON columns
     result: dict[str, Any] = {"user_key": raw["user_key"], "updated_at": raw["updated_at"]}
@@ -86,7 +94,5 @@ def upsert_user_profile(user_key: str, profile: dict[str, Any]) -> None:
 def delete_user_profile(user_key: str) -> bool:
     """Elimina el perfil del usuario. Devuelve True si existia."""
     with connect() as c:
-        cur = c.execute(
-            "DELETE FROM user_profiles WHERE user_key = ?", (user_key,)
-        )
-        return cur.rowcount > 0
+        cur = c.execute("DELETE FROM user_profiles WHERE user_key = ?", (user_key,))
+        return bool(cur.rowcount > 0)

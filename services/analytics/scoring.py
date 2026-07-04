@@ -343,8 +343,11 @@ def get_scoring(
     Si ``user_key`` se pasa, carga el perfil del usuario y aplica sus pesos/keywords.
     Sin perfil, usa los settings globales (comportamiento anterior).
     """
-    log.info("analytics_scoring_start", filters=filters.model_dump(exclude_none=True),
-             personalized=user_key is not None)
+    log.info(
+        "analytics_scoring_start",
+        filters=filters.model_dump(exclude_none=True),
+        personalized=user_key is not None,
+    )
     rows = load_stats_dataframe()
     df = pd.DataFrame(rows)
 

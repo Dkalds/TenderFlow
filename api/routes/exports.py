@@ -377,7 +377,9 @@ async def calendario_ics(
             "WHERE wi.user_key = ? AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
             (user_key,),
         )
-        rows = [dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()]
+        rows = [
+            dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()
+        ]
 
     events: list[dict[str, Any]] = []
     for row in rows:

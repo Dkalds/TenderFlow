@@ -219,4 +219,3 @@ async def preview_matches(
 ) -> dict[str, int]:
     total = await run_db(count_matches, body.to_rule())
     return {"total": total}
-
