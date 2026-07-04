@@ -266,6 +266,24 @@ class Settings(BaseSettings):
     # Versión lógica del índice FAISS — si cambia, se regenera el índice
     EMBEDDING_VERSION: str = "v1"
 
+    # ── Scoring de oportunidades ─────────────────────────────────────────
+    # Pesos por dimensión (enteros, deben sumar 100 cuando afinidad está activa).
+    # Overridable via ENV como JSON:
+    #   SCORING_WEIGHTS='{"importe":25,"plazo":15,"competencia":25,"margen":20,"afinidad":15}'
+    SCORING_WEIGHTS: dict[str, int] = {
+        "importe": 25,
+        "plazo": 15,
+        "competencia": 25,
+        "margen": 20,
+        "afinidad": 15,
+    }
+    # Keywords de afinidad configurables por el usuario (casefold-substring sobre título).
+    # Si está vacía, la dimensión afinidad se omite del desglose y su peso se
+    # redistribuye proporcionalmente entre las demás dimensiones.
+    # Overridable via ENV como JSON:
+    #   SCORING_AFINIDAD_KEYWORDS='["consultoría","mantenimiento"]'
+    SCORING_AFINIDAD_KEYWORDS: list[str] = []
+
     # ── API REST ─────────────────────────────────────────────────────────
     # IPs (o rangos) que pueden acceder a /metrics sin API key (separadas por coma).
     # Por defecto solo loopback. En producción añadir la IP del servidor Prometheus.
@@ -294,6 +312,31 @@ class Settings(BaseSettings):
     QUEUE_MODE: str = "auto"
 
     # ── Validators ───────────────────────────────────────────────────────
+
+    @model_validator(mode="after")
+    def _validate_scoring_weights(self) -> Settings:
+        weights = self.SCORING_WEIGHTS
+        allowed_keys = {"importe", "plazo", "competencia", "margen", "afinidad"}
+        for key, val in weights.items():
+            if key not in allowed_keys:
+                raise ValueError(
+                    f"SCORING_WEIGHTS contiene clave desconocida: {key!r}. "
+                    f"Claves permitidas: {sorted(allowed_keys)}"
+                )
+            if val < 0:
+                raise ValueError(
+                    f"SCORING_WEIGHTS[{key!r}] = {val} es negativo. Todos los pesos deben ser >= 0."
+                )
+        total = sum(weights.values())
+        if total != 100:
+            raise ValueError(
+                f"SCORING_WEIGHTS suma {total}, debe ser exactamente 100. "
+                f"Valores actuales: {weights}"
+            )
+        afinidad = weights.get("afinidad", 0)
+        if afinidad >= 100:
+            raise ValueError(f"SCORING_WEIGHTS['afinidad'] = {afinidad} debe ser < 100.")
+        return self
 
     @field_validator("ML_CONFIDENCE_THRESHOLD", mode="before")
     @classmethod

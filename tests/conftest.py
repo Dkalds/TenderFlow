@@ -66,13 +66,16 @@ def _clear_service_data_caches():
     cada test.
     """
     from services.adjudicaciones import clear_raw_adj_cache
+    from services.analytics.scoring_signals import clear_scoring_signals_cache
     from services.licitaciones import clear_stats_cache
 
     clear_stats_cache()
     clear_raw_adj_cache()
+    clear_scoring_signals_cache()
     yield
     clear_stats_cache()
     clear_raw_adj_cache()
+    clear_scoring_signals_cache()
 
 
 @pytest.fixture()

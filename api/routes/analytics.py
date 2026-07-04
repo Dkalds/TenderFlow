@@ -179,7 +179,9 @@ def competitors(
 def scoring(
     min_score: int = Query(default=0, ge=0, le=100, description="Minimum score threshold"),
     limit: int = Query(default=50, ge=1, le=500, description="Max opportunities to return"),
-    band: str | None = Query(default=None, description="Filter by band (alta|media|baja)"),
+    band: str | None = Query(
+        default=None, description="Filter by band (Caliente|Atractiva|Tibia|Descarte)"
+    ),
     ids: str | None = Query(
         default=None,
         description=(

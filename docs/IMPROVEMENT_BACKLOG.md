@@ -198,6 +198,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-29] **Fase 4: Scheduler refactor** — Job registry pattern (`scheduler/jobs/` package); persistent `ProcessPoolExecutor`; `shutdown(cancel_futures=True)` reemplaza `executor._processes` hack; 20 tests en `test_loop.py`.
 - [2026-05-29] **Fase 5.1: Batch upsert** — `replace_adjudicaciones_batch()` en `db/upsert.py` (una transacción para N licitaciones); pipeline bulk y daily actualizados.
 - [2026-05-29] **Fase 6: Full strict typing** — Eliminados 3 bloques de override mypy (52 módulos promovidos a strict); 149 errores corregidos en 40 archivos (unused-ignore, type-arg, no-any-return, pandas narrowing, arg-type, misc); `shared/py.typed` creado. 375 archivos pasan `mypy --strict`.
+- [2026-07-04] **Scoring genérico sin SAP** — Eliminadas constantes hardcodeadas `_SAP_MODULES`/`_SAP_SERVICES_PORTFOLIO`/`_S4HANA_KEYWORDS`. Dimensiones nuevas: `competencia` (media ofertas CPV-4, 24 meses), `margen` (`predicciones_baja.p50` + fallback histórico), `afinidad` (keywords configurables via `SCORING_AFINIDAD_KEYWORDS`, vacío=omitida con redistribución de peso). Política dato-faltante=neutral sin penalización de cobertura. `settings.SCORING_WEIGHTS` con validación de suma. RFC `2026-07-04-rfc-scoring-generico.md`.
 
 ---
 

@@ -45,6 +45,18 @@ interface DetailPanelProps {
   className?: string;
 }
 
+/** Labels presentacionales para las keys del desglose de scoring.
+ *  Cualquier key no mapeada muestra la key raw (no rompe si el backend añade dimensiones).
+ */
+const DESGLOSE_LABELS: Record<string, string> = {
+  importe: "Importe",
+  plazo: "Plazo",
+  competencia: "Competencia",
+  margen: "Margen esperado",
+  afinidad: "Afinidad",
+  riesgo: "Riesgo",
+};
+
 const ESTADO_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   "Adjudicada": "default",
   "Resuelta": "default",
@@ -126,7 +138,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
               <div className="space-y-1 pl-1">
                 {Object.entries(l.score_desglose).map(([dim, val]) => (
                   <div key={dim} className="flex items-center gap-2 text-xs">
-                    <span className="w-28 truncate text-muted-foreground">{dim}</span>
+                    <span className="w-28 truncate text-muted-foreground">{DESGLOSE_LABELS[dim] ?? dim}</span>
                     <div
                       role="progressbar"
                       aria-valuenow={Math.min(100, val)}
