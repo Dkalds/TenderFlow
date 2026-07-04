@@ -269,7 +269,11 @@ omit = [
 #                        contract tests DTOs, tests de api/middleware y scraper/resilience
 # 60 → 65 (2026-05-23): Bloque 4 Fase 2 — tests de services/watchlist, services/analytics_engine
 # 65 → 70 (2026-05-23): B12 — tests para api/routes/ask.py, stream.py, search.py (22 tests nuevos)
-fail_under = 70
+# 70 → 78 (2026-07-04): wrappers de services (users/dlq/audit/saved_filters), rutas
+#                        webhooks/auth/eventos/empresas/competitive/predicciones,
+#                        analytics resumen+pipeline, adjudicaciones, repo licitaciones,
+#                        faiss con modulo fake — 144 tests nuevos, 80.30% medido local
+fail_under = 78
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

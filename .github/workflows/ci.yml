@@ -74,7 +74,7 @@ jobs:
       - name: Run tests with coverage
         env:
           ENV: dev
-        run: pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+        run: pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=78
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@v4
