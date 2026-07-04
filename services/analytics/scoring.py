@@ -9,16 +9,16 @@ Dimensiones (pesos configurables en ``settings.SCORING_WEIGHTS``, suman 100):
 - **margen** (20): 1 - min(baja_esperada/0.40, 1). Fuente: predicciones_baja.p50
   → fallback baja histórica CPV-4 → media global → neutral.
 - **afinidad** (15, opcional): min(hits/3, 1) sobre keywords configuradas en
-  ``settings.SCORING_AFINIDAD_KEYWORDS``. Si la lista está vacía la key se omite
-  del desglose y su peso se redistribuye proporcionalmente.
+  ``settings.SCORING_AFINIDAD_KEYWORDS`` o en el perfil del usuario.
+  Si la lista está vacía la key se omite del desglose y su peso se redistribuye.
 - **riesgo** (penalización pura, fuera de la suma): sin_importe -5, sin_titulo -3,
-  sin_plazo -2. Los flags de cobertura de datos (sin_prediccion,
-  sin_historico_competencia) NO penalizan.
+  sin_plazo -2. fuera_de_rango -15 (importe fuera del rango del perfil de usuario).
+
+Feature B: ``get_scoring`` acepta ``user_key`` opcional → carga el perfil del
+usuario y usa sus pesos/keywords/rango. Sin perfil → settings globales.
 
 Total = suma dimensiones + riesgo, clamp [0, 100].
 Bandas: ≥75 Caliente / ≥50 Atractiva / ≥25 Tibia / Descarte.
-
-Sin ninguna keyword de tecnología hardcodeada en este módulo.
 """
 
 from __future__ import annotations
@@ -85,6 +85,19 @@ class ScoringResult(BaseModel):
 
 
 @dataclass(frozen=True)
+class ScoringProfile:
+    """Perfil de usuario para scoring personalizado (Feature B).
+
+    Cuando es None, se usan los settings globales.
+    """
+
+    weights: dict[str, int] | None = None
+    afinidad_keywords: list[str] | None = None
+    importe_min: float | None = None
+    importe_max: float | None = None
+
+
+@dataclass(frozen=True)
 class _ScoringContext:
     """Parámetros globales del request de scoring."""
 
@@ -95,6 +108,9 @@ class _ScoringContext:
     keywords: list[str]
     competencia_stats: CompetenciaStats
     margen_stats: MargenStats
+    # Rango de importe del perfil de usuario (None = sin restricción)
+    importe_min: float | None = None
+    importe_max: float | None = None
     now: pd.Timestamp = field(default_factory=lambda: pd.Timestamp.now("UTC"))
 
 
@@ -148,14 +164,21 @@ def _cpv4(cpv: Any) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _build_context(df: pd.DataFrame) -> _ScoringContext:
-    """Lee settings y carga señales para construir un _ScoringContext inmutable.
+def _build_context(df: pd.DataFrame, profile: ScoringProfile | None = None) -> _ScoringContext:
+    """Lee settings (o perfil de usuario) y carga señales para construir un contexto.
 
-    Importa los loaders por nombre de módulo para que los tests puedan hacer
-    ``patch.object`` sobre el módulo scoring_signals directamente.
+    Si se pasa un ``profile``, sus pesos y keywords tienen prioridad sobre settings.
     """
-    weights_raw = dict(settings.SCORING_WEIGHTS)
-    keywords = list(settings.SCORING_AFINIDAD_KEYWORDS)
+    if profile is not None and profile.weights:
+        weights_raw = dict(profile.weights)
+    else:
+        weights_raw = dict(settings.SCORING_WEIGHTS)
+
+    if profile is not None and profile.afinidad_keywords is not None:
+        keywords = list(profile.afinidad_keywords)
+    else:
+        keywords = list(settings.SCORING_AFINIDAD_KEYWORDS)
+
     eff_weights = _effective_weights(weights_raw, keywords)
 
     comp_stats = load_competencia_stats()
@@ -172,6 +195,8 @@ def _build_context(df: pd.DataFrame) -> _ScoringContext:
         keywords=keywords,
         competencia_stats=comp_stats,
         margen_stats=margen_stats,
+        importe_min=profile.importe_min if profile else None,
+        importe_max=profile.importe_max if profile else None,
     )
 
 
@@ -273,6 +298,18 @@ def _score_row(
         flags.append("sin_titulo")
     if "sin_plazo" in flags:
         d_riesgo -= 2.0
+
+    # Penalización por importe fuera del rango del perfil de usuario (Feature B)
+    importe_val = row.get("importe")
+    if pd.notna(importe_val) and (ctx.importe_min is not None or ctx.importe_max is not None):
+        imp_float = float(importe_val)
+        fuera_de_rango = (ctx.importe_min is not None and imp_float < ctx.importe_min) or (
+            ctx.importe_max is not None and imp_float > ctx.importe_max
+        )
+        if fuera_de_rango:
+            d_riesgo -= 15.0
+            flags.append("fuera_de_rango")
+
     desglose["riesgo"] = round(d_riesgo, 2)
 
     # Total: suma de dimensiones (excepto riesgo) + riesgo
@@ -297,9 +334,17 @@ def _score_row(
 # ---------------------------------------------------------------------------
 
 
-def get_scoring(filters: ScoringFilters) -> ScoringResult:
-    """Puntúa licitaciones y devuelve resultados filtrados/ordenados."""
-    log.info("analytics_scoring_start", filters=filters.model_dump(exclude_none=True))
+def get_scoring(
+    filters: ScoringFilters,
+    user_key: str | None = None,
+) -> ScoringResult:
+    """Puntúa licitaciones y devuelve resultados filtrados/ordenados.
+
+    Si ``user_key`` se pasa, carga el perfil del usuario y aplica sus pesos/keywords.
+    Sin perfil, usa los settings globales (comportamiento anterior).
+    """
+    log.info("analytics_scoring_start", filters=filters.model_dump(exclude_none=True),
+             personalized=user_key is not None)
     rows = load_stats_dataframe()
     df = pd.DataFrame(rows)
 
@@ -319,8 +364,25 @@ def get_scoring(filters: ScoringFilters) -> ScoringResult:
     if "fecha_limite" in df.columns:
         df["fecha_limite_dt"] = pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True)
 
-    # Construir contexto inmutable (P10/P90 globales + señales + settings)
-    ctx = _build_context(df)
+    # Cargar perfil del usuario si se proporciona
+    profile: ScoringProfile | None = None
+    if user_key is not None:
+        try:
+            from db.repositories.user_profiles import get_user_profile
+
+            raw_profile = get_user_profile(user_key)
+            if raw_profile is not None:
+                profile = ScoringProfile(
+                    weights=raw_profile.get("weights"),
+                    afinidad_keywords=raw_profile.get("afinidad_keywords"),
+                    importe_min=raw_profile.get("importe_min"),
+                    importe_max=raw_profile.get("importe_max"),
+                )
+        except Exception as exc:
+            log.warning("scoring_profile_load_error", error=str(exc))
+
+    # Construir contexto inmutable (P10/P90 globales + señales + settings/perfil)
+    ctx = _build_context(df, profile=profile)
 
     # Page-aligned mode: restringir a los ids pedidos antes de iterar.
     # min_score/band/limit no aplican en este modo.

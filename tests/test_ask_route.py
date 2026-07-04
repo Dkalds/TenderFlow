@@ -204,8 +204,8 @@ class TestAskStreaming:
         """El filtro ccaa se pasa correctamente a _retrieve_docs."""
         received: list[dict] = []
 
-        def _capture_retrieve(question, top_k, ccaa, tecnologia):
-            received.append({"ccaa": ccaa, "tecnologia": tecnologia})
+        def _capture_retrieve(question, top_k, ccaa, tecnologia, id_externo=None):
+            received.append({"ccaa": ccaa, "tecnologia": tecnologia, "id_externo": id_externo})
             return []
 
         with patch("api.routes.ask._retrieve_docs", _capture_retrieve):
@@ -221,7 +221,7 @@ class TestAskStreaming:
         """El filtro tecnologia se pasa correctamente a _retrieve_docs."""
         received: list[dict] = []
 
-        def _capture_retrieve(question, top_k, ccaa, tecnologia):
+        def _capture_retrieve(question, top_k, ccaa, tecnologia, id_externo=None):
             received.append({"ccaa": ccaa, "tecnologia": tecnologia})
             return []
 

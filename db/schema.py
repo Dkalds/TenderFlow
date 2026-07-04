@@ -411,6 +411,31 @@ CREATE TABLE IF NOT EXISTS ops_events (
     detail     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ops_events_type_ts ON ops_events(event_type, ts);
+
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_key      TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now','utc')),
+    type          TEXT NOT NULL,
+    title         TEXT,
+    body          TEXT,
+    licitacion_id TEXT,
+    rule_id       INTEGER,
+    read_at       TEXT,
+    UNIQUE(user_key, licitacion_id, type)
+);
+CREATE INDEX IF NOT EXISTS idx_user_notif_user_read ON user_notifications(user_key, read_at);
+
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_key               TEXT PRIMARY KEY,
+    weights_json           TEXT,
+    afinidad_keywords_json TEXT,
+    cpvs_json              TEXT,
+    ccaa_json              TEXT,
+    importe_min            REAL,
+    importe_max            REAL,
+    updated_at             TEXT NOT NULL DEFAULT (datetime('now','utc'))
+);
 """
 
 

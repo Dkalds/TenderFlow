@@ -39,7 +39,15 @@ _GUARD_CALL = "exclude_duplicados_sql"
 
 # Excepciones legítimas: "modulo.funcion" -> motivo.
 # Mantener vacío salvo justificación explícita y revisada.
-_ALLOWLIST: dict[str, str] = {}
+_ALLOWLIST: dict[str, str] = {
+    "scoring._tasa_retencion_baseline": (
+        "Calcula tasa de re-adjudicacion historica por (organo, CPV-4). Necesita "
+        "contar TODAS las adjudicaciones por segmento para calcular la probabilidad "
+        "de retener al adjudicatario — excluir duplicados subestimaria el denominador. "
+        "No usa el resultado para metricas de cuota/HHI ni entrenamiento ML. "
+        "(Feature D, 2026-07-05)"
+    ),
+}
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 

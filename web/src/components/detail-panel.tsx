@@ -10,11 +10,12 @@ import {
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopilotPanel } from "@/components/copilot-panel";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { ExternalLink, Link2 } from "lucide-react";
+import { ExternalLink, Link2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 interface LicitacionDetail {
@@ -76,6 +77,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelProps) {
+  const [copilotOpen, setCopilotOpen] = React.useState(false);
+  const [copilotSeedKey, setCopilotSeedKey] = React.useState(0);
+  const copilotSeedQuestion = l.titulo
+    ? `Analiza esta licitación: ${l.titulo}`
+    : "Analiza esta licitación";
+
   const handleCopyLink = React.useCallback(async () => {
     const url = `${window.location.origin}/detalle?lic=${encodeURIComponent(l.id_externo)}`;
     try {
@@ -106,13 +113,33 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
           <Button
             variant="outline"
             size="sm"
-            className="ml-auto gap-1.5"
+            className="gap-1.5"
             onClick={handleCopyLink}
           >
             <Link2 className="h-3.5 w-3.5" />
             Copiar enlace
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              setCopilotSeedKey((k) => k + 1);
+              setCopilotOpen(true);
+            }}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Preguntar al copilot
+          </Button>
         </div>
+
+        {/* Copilot panel contextualizado en esta licitacion */}
+        <CopilotPanel
+          open={copilotOpen}
+          onOpenChange={setCopilotOpen}
+          seedQuestion={copilotSeedQuestion}
+          seedKey={copilotSeedKey}
+        />
 
         {/* Score section */}
         {l.score != null && (

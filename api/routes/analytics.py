@@ -185,13 +185,21 @@ def scoring(
     ids: str | None = Query(
         default=None,
         description=(
-            "CSV de id_externo: puntúa exactamente esas licitaciones (alineado a la "
-            "página del listado), ignorando min_score/band/limit"
+            "CSV de id_externo: puntua exactamente esas licitaciones (alineado a la "
+            "pagina del listado), ignorando min_score/band/limit"
         ),
     ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> ScoringResult:
-    """Opportunity scoring — ranked by commercial potential, or page-aligned by ids."""
+    """Opportunity scoring — ranked by commercial potential, or page-aligned by ids.
+
+    Cuando el usuario tiene un perfil (Feature B), aplica sus pesos y keywords
+    personalizados. Sin perfil, usa los settings globales.
+    """
+    import hashlib
+
+    seed = str(_user.get("email") or _user.get("key_hash") or "")
+    user_key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16] if seed else None
     id_list = [i for i in ids.split(",") if i] if ids else None
     filters = ScoringFilters(
         min_score=min_score,
@@ -199,7 +207,7 @@ def scoring(
         band=band,
         ids=id_list,
     )
-    return get_scoring(filters)
+    return get_scoring(filters, user_key=user_key)
 
 
 @router.get("/quality", response_model=QualityResult)

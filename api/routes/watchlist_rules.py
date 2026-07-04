@@ -4,6 +4,9 @@ CRUD de reglas (keyword/CPV/importe/CCAA + frecuencia) persistidas server-side y
 preview de matches sobre el dataset completo. Sustituye el ``localStorage`` del
 frontend de mi-watchlist (RFC ux-mi-watchlist; ADR-014 §2). El job de alertas por
 frecuencia es un componente aparte (scheduler).
+
+Feature A: el email de entrega de la regla se toma del ctx de sesion OAuth al
+crear/editar. Contextos API-key sin email quedan con email=NULL (solo in-app).
 """
 
 from __future__ import annotations
@@ -34,13 +37,19 @@ router = APIRouter(prefix="/watchlist/rules", tags=["watchlist"])
 
 
 def _user_key(ctx: dict[str, Any]) -> str:
-    """Clave opaca y estable por usuario (email de sesión o hash de API key)."""
+    """Clave opaca y estable por usuario (email de sesion o hash de API key)."""
     seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
+def _ctx_email(ctx: dict[str, Any]) -> str | None:
+    """Email del usuario de sesion OAuth; None para API-key (sin email recuperable)."""
+    email = ctx.get("email")
+    return str(email) if email else None
+
+
 class WatchlistRuleBody(BaseModel):
-    """Cuerpo de creación/edición de una regla (sin id, con límites de tamaño)."""
+    """Cuerpo de creacion/edicion de una regla (sin id, con limites de tamano)."""
 
     nombre: str | None = Field(default=None, max_length=120)
     keyword: str | None = Field(default=None, max_length=200)
@@ -58,14 +67,58 @@ class WatchlistRuleOut(WatchlistRule):
     """Regla devuelta al cliente, enriquecida con el conteo real de matches."""
 
     match_count: int = 0
+    email: str | None = None  # email de entrega, si lo tiene
 
 
 def _rules_with_counts(user_key: str) -> list[WatchlistRuleOut]:
-    """Lista las reglas del usuario con su conteo real de matches (no top-20)."""
-    return [
-        WatchlistRuleOut(**rule.model_dump(), match_count=count_matches(rule))
-        for rule in list_rules(user_key)
-    ]
+    """Lista las reglas del usuario con su conteo real de matches y email de entrega."""
+    from db.database import connect_read
+
+    # Intentar obtener las reglas con la columna email (v47).
+    # Si la columna no existe todavia (BD legacy / tests sin migrate), fallback
+    # a la query sin email (tolerancia a schema viejo).
+    try:
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
+                "frequency, active, last_notified_at, email "
+                "FROM watchlist_rules WHERE user_key = ? ORDER BY id",
+                (user_key,),
+            )
+            cols = [d[0] for d in cur.description]
+            rows_raw = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    except Exception:
+        # Fallback: columna email no disponible (BD sin migrar)
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
+                "frequency, active, last_notified_at "
+                "FROM watchlist_rules WHERE user_key = ? ORDER BY id",
+                (user_key,),
+            )
+            cols = [d[0] for d in cur.description]
+            rows_raw = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+    result: list[WatchlistRuleOut] = []
+    for r in rows_raw:
+        rule = WatchlistRule(
+            id=r.get("id"),
+            nombre=r.get("nombre"),
+            keyword=r.get("keyword"),
+            cpv=r.get("cpv"),
+            min_importe=r.get("min_importe"),
+            ccaa=r.get("ccaa"),
+            frequency=r.get("frequency") or "daily",
+            active=bool(r.get("active", 1)),
+        )
+        result.append(
+            WatchlistRuleOut(
+                **rule.model_dump(),
+                match_count=count_matches(rule),
+                email=r.get("email"),
+            )
+        )
+    return result
 
 
 def _matches_for(rule: WatchlistRule, limit: int) -> list[dict[str, Any]]:
@@ -85,8 +138,24 @@ async def post_rule(
     body: WatchlistRuleBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, int]:
-    rule_id = await run_db(create_rule, _user_key(ctx), body.to_rule())
-    log.info("watchlist_rule_created", rule_id=rule_id)
+    from db.database import connect
+
+    user_key = _user_key(ctx)
+    email = _ctx_email(ctx)
+    rule = body.to_rule()
+
+    def _create() -> int:
+        rule_id = create_rule(user_key, rule)
+        if email is not None:
+            with connect() as c:
+                c.execute(
+                    "UPDATE watchlist_rules SET email = ? WHERE id = ?",
+                    (email, rule_id),
+                )
+        return rule_id
+
+    rule_id = await run_db(_create)
+    log.info("watchlist_rule_created", rule_id=rule_id, has_email=email is not None)
     return {"id": rule_id}
 
 
@@ -96,7 +165,22 @@ async def put_rule(
     body: WatchlistRuleBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, str]:
-    ok = await run_db(update_rule, _user_key(ctx), rule_id, body.to_rule())
+    from db.database import connect
+
+    user_key = _user_key(ctx)
+    email = _ctx_email(ctx)
+
+    def _update() -> bool:
+        ok = update_rule(user_key, rule_id, body.to_rule())
+        if ok and email is not None:
+            with connect() as c:
+                c.execute(
+                    "UPDATE watchlist_rules SET email = ? WHERE id = ? AND user_key = ?",
+                    (email, rule_id, user_key),
+                )
+        return ok
+
+    ok = await run_db(_update)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
     return {"status": "ok"}
@@ -135,3 +219,4 @@ async def preview_matches(
 ) -> dict[str, int]:
     total = await run_db(count_matches, body.to_rule())
     return {"total": total}
+
