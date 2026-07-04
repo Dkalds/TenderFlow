@@ -161,7 +161,7 @@ opcionalmente, exponer `degree` ya presente.
 |---|---|---|
 | §3.1 Typing strict | `PartnerNode.community` nuevo; props de `NetworkGraph` tipadas | Tipar; regenerar `@/generated/api` |
 | §3.5 Pydantic v2 DTOs | **Aditivo**: `community: int \| None` en `PartnerNode` | Campo opcional, backward-compatible |
-| §3.8 Frontend vía API / ADR-014 | **Refuerza**: comunidades y color-map salen del backend/escala, no del front; se elimina el color hardcodeado de la leyenda | `check_frontend_invariants.py` (synthetic-graph sigue 0) |
+| §3.8 Frontend vía API / [[ADR-014-integridad-analitica-frontend|ADR-014]] | **Refuerza**: comunidades y color-map salen del backend/escala, no del front; se elimina el color hardcodeado de la leyenda | `check_frontend_invariants.py` (synthetic-graph sigue 0) |
 | §3.3 Migraciones | Ninguno (no hay esquema nuevo; se calcula al vuelo) | — |
 | §3.2 / §3.4 / §3.6 | Ninguno | — |
 

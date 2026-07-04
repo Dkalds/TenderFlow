@@ -1,3 +1,10 @@
+---
+id: ADR-005
+title: "Clustering: MiniBatchKMeans + c-TF-IDF + stopwords externas"
+status: accepted
+tags: [adr]
+---
+
 # ADR-005 — Clustering: MiniBatchKMeans + c-TF-IDF + stopwords externas
 
 * **Estado:** Aceptado

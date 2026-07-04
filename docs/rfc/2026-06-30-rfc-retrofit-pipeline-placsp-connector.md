@@ -9,7 +9,7 @@ status: draft
 
 ## Contexto
 
-ADR-009 introdujo el contrato `Connector` (`scraper/connectors/base.py`) y el
+[[ADR-009-framework-conectores-multifuente|ADR-009]] introdujo el contrato `Connector` (`scraper/connectors/base.py`) y el
 runner genérico `run_connector` (`scraper/connectors/base.py:138`) que concentra
 la lógica probada del pipeline: cursor incremental (`ingestion_cursors`), upsert
 idempotente con historial, persistencia de adjudicaciones, DLQ por aviso fallido,
@@ -18,7 +18,7 @@ resolución de empresas e invalidación de caché.
 Hoy hay **3 conectores** sobre ese contrato —`ted.py`, `pscp.py`, `tacrc.py`—
 pero el **PLACSP** (la fuente de producción, el grueso del volumen) sigue corriendo
 por el camino legacy `scraper/pipeline.py` (descarga ZIP/ATOM → parseo CODICE/UBL →
-filtro → upsert). ADR-009 lo marca explícitamente como **Pendiente**:
+filtro → upsert). [[ADR-009-framework-conectores-multifuente|ADR-009]] lo marca explícitamente como **Pendiente**:
 
 > *"Retrofit del pipeline PLACSP (bulk + ATOM) sobre el contrato Connector. El
 > pipeline actual sigue siendo el camino de producción para PLACSP; el retrofit
@@ -32,7 +32,7 @@ mantener la paridad crece con cada fuente nueva sobre `run_connector` mientras
 PLACSP quede afuera, y la deriva no se detecta hasta que produce un bug de datos.
 
 **Por qué ahora**: cerrar el retrofit *antes* de sumar las fuentes autonómicas
-restantes (ADR-009 Fase 5) es estrictamente más barato — cada fuente nueva sobre
+restantes ([[ADR-009-framework-conectores-multifuente|ADR-009]] Fase 5) es estrictamente más barato — cada fuente nueva sobre
 el camino viejo aleja la convergencia. Es deuda que se capitaliza.
 
 ## Decisión
@@ -45,13 +45,13 @@ backlog 2026-05-23 P2-5). El pipeline legacy `scraper/pipeline.py` se mantiene
 como camino paralelo durante una **ventana de validación de paridad**, y se
 deprecia solo cuando la paridad esté demostrada.
 
-Estrategia de corte segura (los tests de PLACSP son la red, como pide ADR-009):
+Estrategia de corte segura (los tests de PLACSP son la red, como pide [[ADR-009-framework-conectores-multifuente|ADR-009]]):
 
 1. **Adaptar, no reescribir**: `PlacspConnector.fetch()` envuelve la descarga
    ZIP/ATOM actual; `parse()` envuelve el parser CODICE/UBL actual produciendo
    `ParsedTender`. La lógica de extracción no se toca — solo se la expone bajo el
    contrato. Esto contiene el riesgo: el código probado sigue siendo el mismo.
-2. **Identidad**: las filas PLACSP **no** se prefijan (ADR-009 fue explícito: las
+2. **Identidad**: las filas PLACSP **no** se prefijan ([[ADR-009-framework-conectores-multifuente|ADR-009]] fue explícito: las
    PKs existentes no se migran; conservan el expediente crudo). El connector
    respeta esto — `source_id="placsp"` alimenta la columna `fuente`, no el `id_externo`.
 3. **Validación de paridad**: correr ambos caminos sobre el mismo input bulk/ATOM
@@ -65,12 +65,12 @@ Estrategia de corte segura (los tests de PLACSP son la red, como pide ADR-009):
 **Qué NO se hace:**
 
 - **No** se reescribe el parser CODICE/UBL ni el `bulk_downloader` — se reutilizan.
-- **No** se migran las PKs PLACSP a `placsp:...` (ADR-009 lo descartó por tocar
+- **No** se migran las PKs PLACSP a `placsp:...` ([[ADR-009-framework-conectores-multifuente|ADR-009]] lo descartó por tocar
   todas las FKs/URLs).
 - **No** se borra `scraper/pipeline.py` en este RFC — se deprecia tras paridad.
 - **No** se cambia el contrato `Connector` para acomodar PLACSP; si PLACSP no
   encaja, eso es señal de un gap del contrato y se trata aparte (pero el diseño
-  de ADR-009 se hizo justamente para que encaje).
+  de [[ADR-009-framework-conectores-multifuente|ADR-009]] se hizo justamente para que encaje).
 
 ## Alternativas consideradas
 
@@ -102,13 +102,13 @@ Estrategia de corte segura (los tests de PLACSP son la red, como pide ADR-009):
 3. Enrutado: `scheduler/pipeline_runs.py` / `run_update` apuntan PLACSP a
    `run_connector` tras paridad verde.
 4. `scraper/pipeline.py` — marcar DEPRECATED (docstring + no borrar todavía).
-5. `docs/adr/ADR-009-framework-conectores-multifuente.md` — actualizar
+5. `docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md` — actualizar
    "Pendiente: retrofit PLACSP" → resuelto, con referencia a este RFC.
 
 **Archivos de partida**: `scraper/connectors/base.py`,
 `scraper/connectors/ted.py` (referencia de patrón fetch/parse),
 `scraper/pipeline.py`, `scraper/bulk_downloader.py`,
-`scheduler/pipeline_runs.py`, `docs/adr/ADR-009-framework-conectores-multifuente.md`.
+`scheduler/pipeline_runs.py`, `docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md`.
 **Riesgo estimado**: medio — toca el camino de datos de producción, mitigado por
 la ventana de paridad y la reutilización (no reescritura) del parser/downloader.
 **Tiempo estimado**: 2–4 días (mayoría en el harness de paridad).
@@ -122,7 +122,7 @@ la ventana de paridad y la reutilización (no reescritura) del parser/downloader
 - [ ] PLACSP en producción se enruta por `run_connector`; `scraper/pipeline.py`
       queda marcado DEPRECATED.
 - [ ] Re-ejecutar el connector no duplica filas (idempotencia verificada, §3.2).
-- [ ] ADR-009 actualizado: "Pendiente retrofit PLACSP" → resuelto.
+- [ ] [[ADR-009-framework-conectores-multifuente|ADR-009]] actualizado: "Pendiente retrofit PLACSP" → resuelto.
 - [ ] `make lint && make typecheck && make test-unit` (+ tests de scraper) en verde.
 
 ## Notas de review

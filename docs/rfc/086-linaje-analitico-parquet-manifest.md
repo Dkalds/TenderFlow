@@ -36,7 +36,7 @@ Problemas detectados:
 
 Escala actual: cientos de licitaciones en BD (backfill 2026-04: "Total en BD: 311").
 Esto descarta particionado/incremental y justifica mantener SQLite-directo como
-ruta primaria de cálculo. Relacionado: ADR-004 (SQLite/Turso), ADR-0011 (no-CDC).
+ruta primaria de cálculo. Relacionado: [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso), [[0011-cdc-debezium|ADR-0011]] (no-CDC).
 
 ## Decisión
 

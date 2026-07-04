@@ -121,7 +121,7 @@ arreglando primero las dos incoherencias.
 - **#2 Drill-down CCAA completo.** El desglose "Actividad por CCAA" del Sheet se
   derivaba de `data.heatmap_ccaa`, **recortado al top-10 empresas**, así que para
   cualquier empresa fuera de ese top salía vacío ("Sin desglose por CCAA") aunque
-  tuviera actividad: prometía más de lo que entregaba (ADR-014). El arreglo es de
+  tuviera actividad: prometía más de lo que entregaba ([[ADR-014-integridad-analitica-frontend|ADR-014]]). El arreglo es de
   cableado en frontend: el Sheet **ya** pide
   `/competitive/empresas/{id}/perfil`, cuyo `perfil_empresa.por_ccaa` es **por
   empresa y completo** (hasta 20 CCAA, `GROUP BY l.ccaa`). Ahora `drillDownCcaa`

@@ -1,11 +1,24 @@
+---
+id: ADR-014
+title: "Integridad analítica del frontend"
+status: accepted
+date: 2026-06-22
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-007-services-domain-layer]]"
+  - "[[ADR-013-jerarquia-materializaciones-analiticas]]"
+  - "[[2026-06-16-rfc-meta-integridad-analitica-frontend]]"
+tags: [adr]
+---
+
 # ADR-014 — Integridad analítica del frontend
 
 * **Estado:** Aceptado
 * **Fecha:** 2026-06-22
 * **Deciders:** Daniel Kalitovics
-* **Relacionados:** ADR-007 (capa de servicios de dominio), ADR-013 (jerarquía de
+* **Relacionados:** [[ADR-007-services-domain-layer|ADR-007]] (capa de servicios de dominio), [[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]] (jerarquía de
   materializaciones analíticas), AGENTS.md §3.8 (frontend siempre vía API)
-* **RFC origen:** [docs/rfc/2026-06-16-rfc-meta-integridad-analitica-frontend.md](../rfc/2026-06-16-rfc-meta-integridad-analitica-frontend.md)
+* **RFC origen:** [[2026-06-16-rfc-meta-integridad-analitica-frontend|docs/rfc/2026-06-16-rfc-meta-integridad-analitica-frontend.md]]
 
 ## Contexto
 

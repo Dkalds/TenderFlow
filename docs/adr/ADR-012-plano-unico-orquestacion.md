@@ -1,10 +1,23 @@
+---
+id: ADR-012
+title: "Plano único de orquestación por entorno + convergencia de entrypoints"
+status: accepted
+date: 2026-06-10
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-004-sqlite-turso-vs-postgres]]"
+  - "[[ADR-007-services-domain-layer]]"
+  - "[[086-linaje-analitico-parquet-manifest]]"
+tags: [adr]
+---
+
 # ADR-012 — Plano único de orquestación por entorno + convergencia de entrypoints
 
 * **Estado:** Aceptado
 * **Fecha:** 2026-06-10
 * **Deciders:** Daniel Kalitovics
-* **Relacionados:** ADR-004 (SQLite/Turso, supuesto single-writer), ADR-007
-  (capa `services/`), RFC-086 (linaje analítico — flaggeó el drift de `run_update.py`)
+* **Relacionados:** [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso, supuesto single-writer), [[ADR-007-services-domain-layer|ADR-007]]
+  (capa `services/`), [[086-linaje-analitico-parquet-manifest|RFC-086]] (linaje analítico — flaggeó el drift de `run_update.py`)
 
 ## Contexto
 

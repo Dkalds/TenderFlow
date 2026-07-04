@@ -1,3 +1,12 @@
+---
+id: ADR-009
+title: "Framework de conectores multi-fuente y namespacing de id_externo"
+status: accepted
+date: 2026-06-11
+deciders: "Daniel Kalitovics"
+tags: [adr]
+---
+
 # ADR-009: Framework de conectores multi-fuente y namespacing de id_externo
 
 **Status:** Accepted

@@ -24,9 +24,9 @@ en detalle qué reexporta cada submódulo, lo que dificulta la navegación y
 onboarding.
 
 ADRs relacionados:
-- **ADR-001** (SQL crudo vs ORM) — establece el uso de SQL directo con
+- **[[ADR-001-sql-crudo-vs-orm|ADR-001]]** (SQL crudo vs ORM) — establece el uso de SQL directo con
   repositorios finos. La fachada es consecuencia directa de ese diseño.
-- **ADR-004** (SQLite/Turso) — define los dos backends soportados
+- **[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]** (SQLite/Turso) — define los dos backends soportados
   (SQLite local y Turso/libSQL cloud).
 
 ## Decisión
@@ -48,7 +48,7 @@ ADRs relacionados:
 | Alternativa | Pros | Contras | Motivo de descarte |
 |---|---|---|---|
 | Añadir solo el docstring, sin sección en playbook | Cambio mínimo | El patrón no queda documentado para agentes futuros | No cumple acceptance criteria del backlog |
-| Crear ADR nuevo para el patrón de fachada | Visibilidad alta | Un ADR es para *decisiones*, no para describir estado actual ya aceptado | ADR-001 ya cubre la decisión de SQL crudo; la fachada es consecuencia operativa |
+| Crear ADR nuevo para el patrón de fachada | Visibilidad alta | Un ADR es para *decisiones*, no para describir estado actual ya aceptado | [[ADR-001-sql-crudo-vs-orm|ADR-001]] ya cubre la decisión de SQL crudo; la fachada es consecuencia operativa |
 | Auto-generar docs con sphinx/mkdocs | Completo | Añade dependencia y complejidad de build | Fuera del scope del ítem P2 (riesgo bajo) |
 
 ## Impacto en invariantes (AGENTS.md §3)

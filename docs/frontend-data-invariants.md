@@ -2,7 +2,7 @@
 
 > El frontend **no fabrica datos**. El backend es la **única fuente de verdad
 > analítica**. Esta es la extensión operativa del invariante **AGENTS.md §3.8**
-> (frontend siempre vía API) y queda registrada en **ADR-014**.
+> (frontend siempre vía API) y queda registrada en **[[ADR-014-integridad-analitica-frontend|ADR-014]]**.
 
 §3.8 dice "consumí la API"; este documento añade: **"y no fabriques la analítica
 que la API no te dio"**. Verificado en CI por

@@ -1,8 +1,8 @@
-# Runbook: Tripwires de persistencia (ADR-004)
+# Runbook: Tripwires de persistencia ([[ADR-004-sqlite-turso-vs-postgres|ADR-004]])
 
 **Propósito**: Qué hacer cuando dispara una alerta de los tripwires de
 persistencia SQLite/Turso. Estos tripwires señalan que el supuesto
-"single writer" de [ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) ya no
+"single writer" de [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] ya no
 se sostiene y hay que decidir si migrar a PostgreSQL.
 
 **Responsable**: Equipo de Operaciones
@@ -24,7 +24,7 @@ se sostiene y hay que decidir si migrar a PostgreSQL.
 1. **Confirmar el alcance** en Grafana: ¿es un pico puntual (backfill, migración
    manual) o sostenido? Los tripwires usan `for: 15m` para filtrar ruido, pero
    un backfill largo puede dispararlos legítimamente.
-2. **Identificar los writers activos** (ADR-004 §Tripwires): scraper pipeline,
+2. **Identificar los writers activos** ([[ADR-004-sqlite-turso-vs-postgres|ADR-004]] §Tripwires): scraper pipeline,
    scheduler (KPI/aggregates/drift), API (webhooks, exports, API keys,
    watchlist, auth), dashboard (sesiones/auth).
 3. **Correlacionar** con `scheduler_job_duration_seconds` y la ventana de
@@ -42,9 +42,9 @@ se sostiene y hay que decidir si migrar a PostgreSQL.
 3. **Confirmar WAL + busy_timeout (barato)**: `PRAGMA journal_mode=WAL` y un
    `busy_timeout` razonable absorben contención breve sin error.
 4. **Evaluar migración a PostgreSQL (caro)**: solo si lo anterior no baja el
-   tripwire de forma sostenida. ADR-004 documenta el camino: el SQL es
+   tripwire de forma sostenida. [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] documenta el camino: el SQL es
    estándar; FTS5 → `pg_trgm` o motor de búsqueda dedicado. **Abrir un ADR de
-   superación de ADR-004 antes de migrar** — no es una decisión de incidente.
+   superación de [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] antes de migrar** — no es una decisión de incidente.
 
 ## Criterio de decisión (cuándo migrar)
 

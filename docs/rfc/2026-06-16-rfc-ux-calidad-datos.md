@@ -107,7 +107,7 @@ métricas; las cards pueden landear incrementalmente.
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
 
 2026-06-25 — **Implementado (criterios #2 y parte de #1/#4).** Dos puntos ciegos
-del panel, ambos del tipo "dato fabricado" (ADR-014):
+del panel, ambos del tipo "dato fabricado" ([[ADR-014-integridad-analitica-frontend|ADR-014]]):
 
 1. **`dlq_count` era un stub fijo en 0.** `services/analytics/quality.py::_dlq_count`
    devolvía literalmente `0`: la card "Dead Letter Queue" mostraba 0 fallos aunque

@@ -1,9 +1,21 @@
+---
+id: ADR-013
+title: "Jerarquía de materializaciones analíticas"
+status: accepted
+date: 2026-06-10
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-004-sqlite-turso-vs-postgres]]"
+  - "[[ADR-012-plano-unico-orquestacion]]"
+tags: [adr]
+---
+
 # ADR-013 — Jerarquía de materializaciones analíticas
 
 * **Estado:** Aceptado
 * **Fecha:** 2026-06-10
 * **Deciders:** Daniel Kalitovics
-* **Relacionados:** ADR-004 (SQLite/Turso), ADR-012 (pipeline canónica)
+* **Relacionados:** [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso), [[ADR-012-plano-unico-orquestacion|ADR-012]] (pipeline canónica)
 
 ## Contexto
 
@@ -11,7 +23,7 @@ Coexisten tres mecanismos de materialización analítica sin jerarquía definida
 
 | Materialización | Motor | Refresh | Consumidores |
 |---|---|---|---|
-| KPI snapshots (`kpi_snapshots`) | SQLite directo | Pipeline canónica (ADR-012) | `dashboard/kpi_bar.py` |
+| KPI snapshots (`kpi_snapshots`) | SQLite directo | Pipeline canónica ([[ADR-012-plano-unico-orquestacion|ADR-012]]) | `dashboard/kpi_bar.py` |
 | Aggregates (`mat_clusters`, `mat_top_empresas_ccaa`) | SQLite directo | Pipeline canónica | `dashboard/clustering.py`, `dashboard/data_loader.py` |
 | DuckDB analytics export | DuckDB ATTACH + Parquet | Opcional (`--export-parquet`) | Análisis offline |
 
@@ -25,7 +37,7 @@ el riesgo de "el dashboard dice X y el export dice Y".
 ```
 SQLite (OLTP) ──[pipeline canónica]──> KPI snapshots (SQLite, caché con refresh)
                                     ──> mat_clusters / mat_top_empresas_ccaa (SQLite)
-                                    ──> Parquet + manifest (RFC-086, snapshot offline)
+                                    ──> Parquet + manifest ([[086-linaje-analitico-parquet-manifest|RFC-086]], snapshot offline)
 ```
 
 1. **SQLite = fuente OLTP + cache analítica ligera.** `kpi_snapshots` y
@@ -35,7 +47,7 @@ SQLite (OLTP) ──[pipeline canónica]──> KPI snapshots (SQLite, caché co
 
 2. **Parquet = snapshot offline canónico.** Producido por `run_analytics_export()`
    en la pipeline canónica. Es la única salida para análisis fuera del sistema
-   (notebooks, BI tools). El manifest de linaje (RFC-086) documenta qué datos
+   (notebooks, BI tools). El manifest de linaje ([[086-linaje-analitico-parquet-manifest|RFC-086]]) documenta qué datos
    contiene y cuándo se generó.
 
 3. **DuckDB = motor opcional para exports Parquet pesados.** No es un read path
@@ -47,7 +59,7 @@ SQLite (OLTP) ──[pipeline canónica]──> KPI snapshots (SQLite, caché co
 - El dashboard **nunca** lee DuckDB ni Parquet directamente. Lee de
   `kpi_snapshots` y `mat_*` (via `services/` per §3.8).
 - Un consumidor externo lee de Parquet. Nunca de `kpi_snapshots` SQLite.
-- El único job que materializa es la pipeline canónica (ADR-012). No hay
+- El único job que materializa es la pipeline canónica ([[ADR-012-plano-unico-orquestacion|ADR-012]]). No hay
   materialización fuera de `_run_post_ingestion_steps()`.
 
 ## Consecuencias

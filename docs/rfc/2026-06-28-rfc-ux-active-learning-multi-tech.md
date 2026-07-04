@@ -45,7 +45,7 @@ Marco aplicable:
 - **§3.5 (Pydantic v2 DTOs)** y **§3.8 (frontend vía API)** — la solución
   es aditiva sobre `/api/v1/feedback/*` y el registry existente; el frontend
   no fabrica scores (los pide).
-- ADR-014 / `docs/frontend-data-invariants.md`: ningún score viene del
+- [[ADR-014-integridad-analitica-frontend|ADR-014]] / `docs/frontend-data-invariants.md`: ningún score viene del
   frontend; el desglose por tecnología lo calcula el backend con el
   `TechnologyClassifier` ya entrenado y cacheado en `ml_proba_max` /
   `ml_tecnologias`.
@@ -173,7 +173,7 @@ listas hardcodeadas.
 | §3.5 Pydantic v2 DTOs | `FeedbackRequest` y nuevo `QueueItem`/`QueueModelBlock` | Pydantic v2 + `field_validator` sobre `tecnologia` (whitelist) |
 | §3.6 HMAC/argon2 auth | Ninguno (se reusa `require_any_auth`) | — |
 | §3.8 Frontend vía API | Reforzado: scores vienen sólo del backend; frontend no calcula nada | Marcar el sub-objeto `model` como "estimado por modelo vN" |
-| ADR-014 / `docs/frontend-data-invariants.md` | El frontend etiqueta visualmente "Predicción del modelo (vN)" para no confundir con dato observado | Badge en la card; tooltip con `model_version` y `trained_at` |
+| [[ADR-014-integridad-analitica-frontend|ADR-014]] / `docs/frontend-data-invariants.md` | El frontend etiqueta visualmente "Predicción del modelo (vN)" para no confundir con dato observado | Badge en la card; tooltip con `model_version` y `trained_at` |
 
 ## Plan de implementación
 
