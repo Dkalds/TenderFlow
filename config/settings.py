@@ -279,6 +279,10 @@ class Settings(BaseSettings):
     # Contraseña de Redis. En producción debe coincidir con --requirepass del servidor.
     # Genera una con: python -c "import secrets; print(secrets.token_hex(32))"
     REDIS_PASSWORD: SecretStr = SecretStr("")
+    # Token para la REST API de Upstash (GET https://host/PING, puerto 443).
+    # Necesario cuando el puerto TCP 6380 está bloqueado (redes domésticas/corporativas).
+    # Cópialo desde Upstash Console → tu base de datos → "Connect" → REST API Token.
+    REDIS_REST_TOKEN: str = ""
 
     # ── Cola de tareas (Dramatiq, opcional) ──────────────────────────────
     # Si se deja vacío se usa StubBroker (ejecución síncrona, para dev/tests).

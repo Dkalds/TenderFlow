@@ -57,6 +57,10 @@ def _check_redis() -> str:
 
     Devuelve ``"ok"``, ``"degraded"`` (no responde) o ``"unconfigured"`` si
     no hay ``REDIS_URL`` en settings.
+
+    Para bases de datos Upstash (host contiene ``.upstash.io``) usa la REST
+    API sobre HTTPS (puerto 443) en vez del protocolo TCP nativo (puerto 6380),
+    que suele estar bloqueado en redes corporativas y domésticas.
     """
     try:
         from config import settings
@@ -65,6 +69,32 @@ def _check_redis() -> str:
         if not redis_url:
             return "unconfigured"
 
+        import urllib.parse
+        import urllib.request
+
+        parsed = urllib.parse.urlparse(redis_url)
+        host = parsed.hostname or ""
+
+        if host.endswith(".upstash.io"):
+            # Upstash REST API — funciona por HTTPS (puerto 443, siempre abierto).
+            # Prioridad: variable REDIS_REST_TOKEN; si no, la contraseña de la URL.
+            token = getattr(settings, "REDIS_REST_TOKEN", "") or parsed.password or ""
+            rest_url = f"https://{host}/PING"
+            # Garantizamos esquema https:// antes de abrir la URL (S310).
+            if not rest_url.startswith("https://"):
+                return "degraded"
+            req = urllib.request.Request(  # noqa: S310
+                rest_url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+                body = resp.read().decode()
+                # La REST API devuelve {"result":"PONG"}
+                if "PONG" in body:
+                    return "ok"
+            return "degraded"
+
+        # Redis estándar — protocolo TCP nativo
         import redis as _redis
 
         from_url: Any = _redis.from_url
