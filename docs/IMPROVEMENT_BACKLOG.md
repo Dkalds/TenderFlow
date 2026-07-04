@@ -64,23 +64,23 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ### [P2] Modo degradado documentado y testeado ante caída de dependencias opcionales
 - **Área:** api/routes/health.py, observability, scheduler, config
-- **Problema:** El sistema acumula mucha superficie operativa (Redis, Turso, FAISS, modelo ML, dramatiq) para un mantenedor solo. No existe un contrato explícito y testeado de qué sigue funcionando cuando una pieza *opcional* cae. Síntoma ya conocido: `/health` devuelve 503 en local cuando `REDIS_URL` está seteado pero Redis no corre, aunque el sistema podría servir datos. Sin un "modo degradado" definido, cada outage de una dependencia se descubre en producción en vez de estar diseñado.
+- **Problema:** Se ha reducido la superficie operativa (FAISS eliminado en Fase 3, dramatiq en Fase 4, Redis desacoplado en Fase 5), pero aún falta un contrato explícito y testeado de qué sigue funcionando cuando cae Turso, el modelo ML o Redis en producción. Síntoma ya conocido: `/health` devuelve 503 en local cuando `REDIS_URL` está seteado pero Redis no corre.
 - **Acceptance criteria:**
-  - Documento (`docs/runbooks/degraded-mode.md`) que enumera cada dependencia opcional (Redis, Turso, FAISS, modelo ML stale, dramatiq) y qué funcionalidad sobrevive / degrada / cae cuando esa pieza no está.
-  - `/health` (o `/ready`) distingue **degradado** (sirve datos, pieza opcional caída) de **no disponible** (core caído), sin devolver 503 cuando solo cayó algo opcional.
-  - Al menos un test por dependencia opcional que verifique que el camino crítico (servir licitaciones por la API) sigue verde con esa pieza simulada caída.
-- **Files de partida:** [api/routes/health.py](../api/routes/health.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [config/settings.py](../config/settings.py), [observability/alert_rules.yml](../observability/alert_rules.yml)
-- **Riesgo:** bajo — mayormente aditivo (docs + tests + ajuste de semántica de health); no cambia el camino de datos.
+  - Documento (`docs/runbooks/degraded-mode.md`) que enumera cada dependencia opcional (Redis/Upstash, Turso réplica, modelo ML stale) y qué funcionalidad sobrevive / degrada / cae.
+  - `/health` (o `/ready`) distingue **degradado** de **no disponible** sin devolver 503 cuando solo cayó algo opcional.
+  - Al menos un test por dependencia opcional que verifique que el camino crítico sigue verde.
+- **Files de partida:** [api/routes/health.py](../api/routes/health.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py)
+- **Riesgo:** bajo — mayormente aditivo.
 
 ### [P2] Cobertura de tests del frontend en flujos críticos
 - **Área:** web/ (tests vitest)
-- **Problema:** Asimetría de blindaje: el backend tiene gate de coverage al 70% y ~163 archivos de test; el frontend —la capa que el usuario realmente toca— está en thresholds 32/27 (`vitest.config.ts`). La lógica de negocio está cubierta, pero los flujos por los que el valor llega al usuario (filtros nuqs, watchlist, streaming de `/ask`) no tienen red. Una regresión en esos flujos pasa CI en verde.
+- **Problema:** El frontend tiene thresholds reales 68/63/68/70 (vitest.config.ts) con 82 test files. Los flujos críticos de valor (filtros nuqs URL↔estado, watchlist, streaming `/ask`) no tienen cobertura. Una regresión en esos flujos pasa CI en verde.
 - **Acceptance criteria:**
-  - Tests de integración de UI para los 3 flujos críticos: filtros nuqs (sincronización URL↔estado), watchlist (alta/baja/persistencia), y consumo del stream SSE de `/ask` (incluyendo el camino `degraded` del RFC de LLM gestionado).
-  - Thresholds de `vitest.config.ts` subidos de forma anti-regresión tras añadir cobertura (no pueden bajar sin justificación).
-  - Los tests no dependen de la API real (mock del cliente generado desde OpenAPI).
-- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/filters.ts](../web/src/lib/filters.ts)
-- **Riesgo:** bajo — solo añade tests; no toca runtime. Complementa al ítem P1 de LLM gestionado (el flujo `degraded` de `/ask` se cubre aquí desde el frontend).
+  - Tests para los 3 flujos: filtros nuqs (`web/src/lib/filters.ts`), watchlist (`use-watchlist-items`), streaming SSE de `/ask` (`ask-stream.ts` / `use-ask.ts`). `use-ask` cubierto al 100% en commit 52ad203; resta `ask-stream.ts`.
+  - Thresholds de `vitest.config.ts` subidos anti-regresión (actualmente 68/63/68/70 tras subida de Fase 9 de cobertura 2026-07-04).
+  - Tests no dependen de la API real (mock del cliente OpenAPI generado).
+- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/filters.ts](../web/src/lib/filters.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
+- **Riesgo:** bajo — solo añade tests.
 
 ---
 
@@ -199,6 +199,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-29] **Fase 5.1: Batch upsert** — `replace_adjudicaciones_batch()` en `db/upsert.py` (una transacción para N licitaciones); pipeline bulk y daily actualizados.
 - [2026-05-29] **Fase 6: Full strict typing** — Eliminados 3 bloques de override mypy (52 módulos promovidos a strict); 149 errores corregidos en 40 archivos (unused-ignore, type-arg, no-any-return, pandas narrowing, arg-type, misc); `shared/py.typed` creado. 375 archivos pasan `mypy --strict`.
 - [2026-07-04] **Scoring genérico sin SAP** — Eliminadas constantes hardcodeadas `_SAP_MODULES`/`_SAP_SERVICES_PORTFOLIO`/`_S4HANA_KEYWORDS`. Dimensiones nuevas: `competencia` (media ofertas CPV-4, 24 meses), `margen` (`predicciones_baja.p50` + fallback histórico), `afinidad` (keywords configurables via `SCORING_AFINIDAD_KEYWORDS`, vacío=omitida con redistribución de peso). Política dato-faltante=neutral sin penalización de cobertura. `settings.SCORING_WEIGHTS` con validación de suma. RFC `2026-07-04-rfc-scoring-generico.md`.
+- [2026-07-04] **Reduccion de superficie operativa (F1-F8)** — Tripwires de persistencia reconectados via `ops_events` + healthcheck (tabla BD, reemplaza contadores Prometheus por-proceso). FAISS eliminado (F3): `/search` usa FTS5/BM25+LIKE, `faiss-cpu` quitado de extras. Dramatiq eliminado (F4): `scheduler/queue.py` borrado, extra `[queue]` y job CI quitados. Redis desacoplado de docker-compose local (F5): profile `redis` opt-in. Staging borrado (F7): `deploy-staging.yml` + `docker-compose.staging.yml`; secrets `STAGING_*` a borrar manualmente en GitHub Settings. Rename a Tenderflow (F8): USER_AGENT, OTEL_SERVICE_NAME, ADR-015. `vercel_app.py` + `tenderflow/__init__.py` borrados (F2).
 
 ---
 

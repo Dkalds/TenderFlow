@@ -1,11 +1,19 @@
 # Reglas de alerta de Prometheus.
 #
-# Los tripwires de persistencia provienen de ADR-004 (SQLite/Turso vs Postgres):
-# señalan cuándo el supuesto "single writer" deja de sostenerse y hay que
-# evaluar la migración. Antes vivían solo como texto en el ADR; aquí se
-# despliegan de verdad. Runbook de decisión: docs/runbooks/persistence-tripwires.md
+# NOTA: estas reglas NO se evaluan en produccion porque no hay Prometheus
+# scrapeando el endpoint /metrics del API de Render, y los counters son
+# por-proceso (el writer principal, scheduler.run_update en GH Actions,
+# muere al terminar cada run).
 #
-# Para que Prometheus las cargue, prometheus.yml las referencia en `rule_files`.
+# Los umbrales de estas reglas se espejan en scheduler/healthcheck.py
+# (check "ops_events_*"), que lee la tabla ops_events de la BD -- la unica
+# fuente de verdad comun entre planos efimeros. El healthcheck SI corre en
+# prod (GH Actions healthcheck.yml cada 6h) y envia alertas por email.
+#
+# Para usar Prometheus localmente con monitoring activo:
+#   docker compose --profile monitoring up
+# Runbook: docs/runbooks/persistence-tripwires.md
+#
 
 groups:
   - name: persistence_tripwires

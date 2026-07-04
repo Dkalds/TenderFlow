@@ -141,26 +141,17 @@ async def semantic_search(
 
     def _run() -> tuple[list[dict[str, Any]], str]:
         from services.investigador.search_engine import (
-            faiss_search,
             fetch_docs,
             fts5_search,
-            hybrid_rerank,
             like_search,
         )
 
         # Con filtros activos ampliamos el pool de candidatos y filtramos ANTES de
         # recortar a top_k, para no quedarnos cortos de resultados tras el filtro.
         pool = min(body.top_k * (10 if allowed_ids is not None else 2), 200)
-        faiss_hits = faiss_search(body.q, pool, body.embedding_model)
         fts_hits = fts5_search(body.q, pool)
 
-        if faiss_hits and fts_hits:
-            ranked = hybrid_rerank(faiss_hits, fts_hits, alpha=body.alpha, top_k=pool)
-            source = "FAISS+FTS5"
-        elif faiss_hits:
-            ranked = sorted(faiss_hits, key=lambda x: x[1], reverse=True)[:pool]
-            source = "FAISS"
-        elif fts_hits:
+        if fts_hits:
             ranked = sorted(fts_hits, key=lambda x: x[1], reverse=True)[:pool]
             source = "FTS5"
         else:

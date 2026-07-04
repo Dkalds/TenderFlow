@@ -46,9 +46,10 @@ llm = [
 # Deps opcionales para búsqueda semántica y vectorización.
 # Instalar con: pip install tenderflow[ml]
 # NOTA: sentence-transformers arrastra PyTorch (~2 GB). No instalar en entornos sin GPU si no se usa.
+# faiss-cpu eliminado en Fase 3 (2026-07-04): /search usa FTS5/BM25+LIKE; sentence-transformers
+# se mantiene porque lo usan ml_classifier, clustering_engine y embeddings.
 ml = [
-    "faiss-cpu>=1.7.4,<2",
-    "sentence-transformers>=2.2.0,<3",
+    "sentence-transformers>=2.2.0,<4",
 ]
 # Validación de DataFrames con pandera.
 # Instalar con: pip install licitaciones-sap[schemas]
@@ -68,12 +69,6 @@ tracing = [
     "opentelemetry-sdk>=1.20.0,<3",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
     "opentelemetry-instrumentation-fastapi>=0.45b0,<2",
-]
-# Cola de tareas asíncrona (Dramatiq + Redis). Scheduler en producción.
-# Instalar con: pip install tenderflow[queue]
-# Sin este extra, scheduler/queue.py opera en modo inline síncrono.
-queue = [
-    "dramatiq[redis]>=1.14.0,<2",
 ]
 # Motor DuckDB para exports Parquet analíticos pesados.
 # Instalar con: pip install tenderflow[analytics]

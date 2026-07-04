@@ -73,19 +73,6 @@ try:
         "Número de veces que el pool de conexiones DB agotó el timeout de adquisición",
     )
 
-    # ── FAISS rebuild ─────────────────────────────────────────────────────────
-    faiss_rebuild_total = Counter(
-        "faiss_rebuild_total",
-        "Número de reconstrucciones del índice FAISS",
-        ["status"],  # status: success | error
-    )
-
-    faiss_rebuild_duration_seconds = Histogram(
-        "faiss_rebuild_duration_seconds",
-        "Duración de reconstrucción del índice FAISS",
-        buckets=(5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0),
-    )
-
     # ── SQLite write health (ADR-004 tripwires) ───────────────────────────
     sqlite_busy_errors_total = Counter(
         "sqlite_busy_errors_total",
@@ -143,8 +130,6 @@ except ImportError:  # pragma: no cover
     scheduler_job_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_pool_size = _NoopMetric()  # type: ignore[assignment]
     db_pool_acquire_timeout_total = _NoopMetric()  # type: ignore[assignment]
-    faiss_rebuild_total = _NoopMetric()  # type: ignore[assignment]
-    faiss_rebuild_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     sqlite_busy_errors_total = _NoopMetric()  # type: ignore[assignment]
     db_write_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_concurrent_writers = _NoopMetric()  # type: ignore[assignment]

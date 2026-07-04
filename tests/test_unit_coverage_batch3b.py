@@ -1140,27 +1140,6 @@ class TestRunWalCheckpoint:
         assert result == {}
 
 
-class TestRebuildFaissIfStale:
-    @patch("scheduler.queue.enqueue_rebuild_embeddings")
-    @patch("services.faiss_index._is_index_stale", return_value=True)
-    @patch("services.faiss_index._INDEX_PATH")
-    def test_triggers_rebuild(
-        self, mock_path: MagicMock, mock_stale: MagicMock, mock_enqueue: MagicMock
-    ) -> None:
-        mock_path.exists.return_value = True
-        from scheduler.jobs.faiss_rebuild import run
-
-        run()
-        mock_enqueue.assert_called_once()
-
-    def test_handles_import_error(self) -> None:
-        """If faiss imports fail, should log warning not crash."""
-        from scheduler.jobs.faiss_rebuild import run
-
-        with patch.dict("sys.modules", {"services.faiss_index": None}):
-            run()  # Should not raise
-
-
 class TestMainLoop:
     @patch("scheduler.loop._stop_event")
     @patch("scheduler.loop.configure_tracing")

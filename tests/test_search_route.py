@@ -42,7 +42,7 @@ def _patch_one_hit():
     """Parchea el motor con un único resultado."""
     hit = {
         "id_externo": "LIC-001",
-        "titulo": "SAP S/4HANA implantación",
+        "titulo": "SAP S/4HANA implantacion",
         "organo_contratacion": "AEAT",
         "importe": 120000.0,
         "descripcion": "Proyecto SAP.",
@@ -52,7 +52,7 @@ def _patch_one_hit():
         "estado": "PUB",
         "score": 0.95,
     }
-    return patch("api.routes.search.run_ml", return_value=([hit], "FAISS+FTS5"))
+    return patch("api.routes.search.run_ml", return_value=([hit], "FTS5"))
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -150,9 +150,8 @@ class TestSearchFilters:
 
     @staticmethod
     def _patch_engine_returns_all():
-        # FAISS vacío; FTS devuelve los 3 candidatos. _run filtra por allowed_ids.
+        # FTS devuelve los 3 candidatos; _run filtra por allowed_ids.
         return (
-            patch("services.investigador.search_engine.faiss_search", return_value=[]),
             patch(
                 "services.investigador.search_engine.fts5_search",
                 return_value=[("L1", 0.9), ("L2", 0.8), ("L3", 0.7)],
@@ -161,8 +160,8 @@ class TestSearchFilters:
 
     def test_filters_restrict_to_allowed_ids(self, search_client):
         self._seed()
-        p_faiss, p_fts = self._patch_engine_returns_all()
-        with p_faiss, p_fts:
+        (p_fts,) = self._patch_engine_returns_all()
+        with p_fts:
             resp = search_client.post(
                 "/api/v1/search/semantic",
                 json={"q": "sap", "ccaa": ["Madrid", "Cataluña"]},
@@ -173,8 +172,8 @@ class TestSearchFilters:
 
     def test_no_filters_returns_all_candidates(self, search_client):
         self._seed()
-        p_faiss, p_fts = self._patch_engine_returns_all()
-        with p_faiss, p_fts:
+        (p_fts,) = self._patch_engine_returns_all()
+        with p_fts:
             resp = search_client.post("/api/v1/search/semantic", json={"q": "sap"})
         assert resp.status_code == 200
         ids = {h["id_externo"] for h in resp.json()["hits"]}
@@ -189,12 +188,9 @@ class TestSearchFilters:
                 Licitacion(id_externo="T2", titulo="y", ccaa="Madrid", tecnologia="ORACLE"),
             ]
         )
-        with (
-            patch("services.investigador.search_engine.faiss_search", return_value=[]),
-            patch(
-                "services.investigador.search_engine.fts5_search",
-                return_value=[("T1", 0.9), ("T2", 0.8)],
-            ),
+        with patch(
+            "services.investigador.search_engine.fts5_search",
+            return_value=[("T1", 0.9), ("T2", 0.8)],
         ):
             resp = search_client.post(
                 "/api/v1/search/semantic",

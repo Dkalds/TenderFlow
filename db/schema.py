@@ -400,6 +400,17 @@ CREATE TABLE IF NOT EXISTS job_locks (
     expires_at   TEXT NOT NULL,
     holder       TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS ops_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         TEXT NOT NULL DEFAULT (datetime('now','utc')),
+    event_type TEXT NOT NULL,
+    value      REAL,
+    plane      TEXT,
+    pid        INTEGER,
+    detail     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ops_events_type_ts ON ops_events(event_type, ts);
 """
 
 

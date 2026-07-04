@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     # ── OpenTelemetry ─────────────────────────────────────────────────────
     # Si está vacío, el tracing opera en modo NoOp (sin overhead)
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
-    OTEL_SERVICE_NAME: str = "licitaciones-sap"
+    OTEL_SERVICE_NAME: str = "tenderflow"
     # Fracción de trazas a muestrear [0.0-1.0]. Las trazas con error se
     # muestrean siempre independientemente de este valor.
     # Default 0.1 (10%) — suficiente para debugging en un sistema de scraping
@@ -301,15 +301,6 @@ class Settings(BaseSettings):
     # Necesario cuando el puerto TCP 6380 está bloqueado (redes domésticas/corporativas).
     # Cópialo desde Upstash Console → tu base de datos → "Connect" → REST API Token.
     REDIS_REST_TOKEN: str = ""
-
-    # ── Cola de tareas (Dramatiq, opcional) ──────────────────────────────
-    # Si se deja vacío se usa StubBroker (ejecución síncrona, para dev/tests).
-    DRAMATIQ_BROKER_URL: str = ""
-
-    # Modo de cola explícito: "auto" (default) detecta dramatiq/redis automáticamente.
-    # En producción, se recomienda setear "dramatiq" para fail-fast si falta Redis.
-    # Valores: "auto" | "dramatiq" | "inline"
-    QUEUE_MODE: str = "auto"
 
     # ── Validators ───────────────────────────────────────────────────────
 

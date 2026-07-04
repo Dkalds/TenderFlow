@@ -321,9 +321,18 @@ def connect() -> Iterator[Any]:
     """Context manager de escritura. Hace commit al salir, rollback en error.
 
     Instrumenta latencia de commit y errores SQLITE_BUSY (tripwires ADR-004).
+    Los eventos se persisten en ops_events via buffer en memoria + flush
+    best-effort (ver observability/ops_events.py).
     """
     import time as _time
 
+    from observability.ops_events import (
+        _piggyback_flush,
+        dec_writers,
+        inc_writers,
+        record_event,
+        record_writers_high_if_needed,
+    )
     from observability.runtime_metrics import (
         db_concurrent_writers,
         db_write_duration_seconds,
@@ -332,19 +341,28 @@ def connect() -> Iterator[Any]:
 
     conn = _get_conn()
     db_concurrent_writers.inc()
+    n_writers = inc_writers()
+    record_writers_high_if_needed(n_writers)
     try:
         yield conn
         t0 = _time.monotonic()
         conn.commit()
-        db_write_duration_seconds.observe(_time.monotonic() - t0)
+        dur = _time.monotonic() - t0
+        db_write_duration_seconds.observe(dur)
+        if dur > 0.5:
+            record_event("write_slow", value=round(dur, 3))
+        # Flush best-effort del buffer de ops_events piggyback al commit exitoso
+        _piggyback_flush()
     except Exception as exc:
         _exc_str = str(exc).lower()
         if "busy" in _exc_str or "locked" in _exc_str:
             sqlite_busy_errors_total.inc()
+            record_event("sqlite_busy", detail=str(exc)[:200])
         conn.rollback()
         raise
     finally:
         db_concurrent_writers.inc(-1)
+        dec_writers()
         _return_conn(conn)
 
 
