@@ -52,7 +52,7 @@ actual, backup automático y stack conocido (Postgres 16).
   - GH Actions es IPv4-only → Supavisor siempre accesible.
 - **Pool:** `psycopg_pool.ConnectionPool` (reemplaza el pool casero de `db/connection.py`).
 - **DATABASE_URL:** variable de entorno con precedencia sobre `TURSO_*` y SQLite local.
-  Formato: `postgresql://user:pass@host:5432/db?sslmode=require`
+  Formato: `postgresql://user:pass@host:5432/db?sslmode=require` <!-- pragma: allowlist secret -->
 
 ## Estrategia de FTS
 

@@ -29,7 +29,11 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies:
-          - pandas-stubs
+          - pandas-stubs>=2.0.0,<3
+          # numpy fijado: pandas-stubs no acota su rango transitivo de numpy y una
+          # resolucion "latest" puede traer stubs con sintaxis solo-3.12 (`type X = ...`)
+          # que rompe mypy con python_version=3.11 (pyproject.toml) -- ver CI 2026-07-05.
+          - numpy<2.5
           - types-requests
           - types-python-dateutil
           - types-cachetools

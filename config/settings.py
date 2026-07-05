@@ -189,7 +189,7 @@ class Settings(BaseSettings):
 
     # ── Postgres / Supabase (ADR-016, F3) ────────────────────────────────
     # Cuando DATABASE_URL está definida tiene precedencia sobre TURSO_* y SQLite.
-    # Formato: postgresql://user:pass@host:5432/db?sslmode=require
+    # Formato: postgresql://user:pass@host:5432/db?sslmode=require  # pragma: allowlist secret
     # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
     # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
     DATABASE_URL: str = ""
