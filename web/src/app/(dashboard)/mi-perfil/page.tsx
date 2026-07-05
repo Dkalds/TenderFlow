@@ -130,7 +130,7 @@ export default function MiPerfilPage() {
   // Rellenar formulario cuando llegan datos del servidor
   useEffect(() => {
     if (!data) return;
-    setWeights(data.weights ?? DEFAULT_WEIGHTS);
+    setWeights(data.weights ?? DEFAULT_WEIGHTS); // eslint-disable-line react-hooks/set-state-in-effect
     setKeywords(data.afinidad_keywords ?? []);
     setImporteMin(data.importe_min != null ? String(data.importe_min) : "");
     setImporteMax(data.importe_max != null ? String(data.importe_max) : "");
@@ -327,8 +327,11 @@ export default function MiPerfilPage() {
         <CardContent>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Mínimo (€)</label>
+              <label htmlFor="mp-importe-min" className="text-sm font-medium">
+                Mínimo (€)
+              </label>
               <Input
+                id="mp-importe-min"
                 type="number"
                 min={0}
                 placeholder="Sin mínimo"
@@ -343,8 +346,11 @@ export default function MiPerfilPage() {
               )}
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Máximo (€)</label>
+              <label htmlFor="mp-importe-max" className="text-sm font-medium">
+                Máximo (€)
+              </label>
               <Input
+                id="mp-importe-max"
                 type="number"
                 min={0}
                 placeholder="Sin máximo"

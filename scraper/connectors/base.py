@@ -64,7 +64,10 @@ class ParsedTender:
 class Connector(Protocol):
     """Contrato mínimo de una fuente de ingesta."""
 
-    source_id: str
+    @property
+    def source_id(self) -> str:
+        """Identificador de la fuente. Solo lectura -- nunca se reasigna."""
+        ...
 
     def fetch(self, cursor: dict[str, Any] | None) -> Iterator[RawNotice]:
         """Emite avisos crudos nuevos/modificados desde el estado del cursor."""

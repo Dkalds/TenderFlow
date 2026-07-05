@@ -1061,6 +1061,11 @@ class TestRunDailyAtom:
         self, mock_update: MagicMock, mock_settings: MagicMock, *mocks: MagicMock
     ) -> None:
         mock_settings.ML_TECH_ENABLED = False
+        # PLACSP_CONNECTOR_ENABLED (F2): un MagicMock sin este atributo seteado
+        # es truthy por defecto, lo que desvía run_daily_pipeline() al path del
+        # connector real (run_connector) en vez del legacy update_daily() mockeado
+        # arriba -- este test verifica el path legacy explícitamente.
+        mock_settings.PLACSP_CONNECTOR_ENABLED = False
         from scheduler.jobs.daily_atom import run
 
         run()
