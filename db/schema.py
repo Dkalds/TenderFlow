@@ -445,9 +445,22 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
 
 def init_db() -> None:
-    """Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init)."""
+    """Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init).
+
+    Con backend Postgres (ADR-016): el schema ya está aplicado via alembic.
+    init_db() es un no-op en Postgres — solo marca _db_initialized = True.
+    """
     if _conn_module._db_initialized:
         return
+
+    from db.connection import is_postgres_backend
+
+    if is_postgres_backend():
+        # Schema ya existe en Postgres (alembic upgrade head lo creó).
+        # No ejecutar SCHEMA SQLite ni migrations caseras.
+        _conn_module._db_initialized = True
+        return
+
     from config import ensure_data_dirs
     from db.migrations import apply_pending
 

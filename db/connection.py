@@ -62,7 +62,14 @@ def _database_url() -> str:
 
 
 def is_postgres_backend() -> bool:
-    """True si DATABASE_URL está configurada y apunta a Postgres/Supabase."""
+    """True si DATABASE_URL está configurada y apunta a Postgres/Supabase.
+
+    Excepción: si hay un ``_DB_PATH_OVERRIDE`` activo (tests con tmp_db),
+    siempre devuelve False para que los tests usen SQLite local.
+    """
+    # Acceder via globals() para evitar forward-reference (definida más abajo)
+    if globals().get("_DB_PATH_OVERRIDE") is not None:
+        return False  # tests siempre usan SQLite
     url = _database_url()
     return bool(url and url.startswith(("postgresql://", "postgres://")))
 
