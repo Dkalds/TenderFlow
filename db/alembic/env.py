@@ -1,7 +1,9 @@
 """Alembic environment — configurado para TenderFlow.
 
-Este entorno utiliza la URL de la BD definida en config.settings.DB_PATH,
-con fallback al alembic.ini.
+Este entorno lee DATABASE_URL si está disponible (Postgres/Supabase, ADR-016);
+en caso contrario usa settings.DB_PATH (SQLite legacy).
+
+Precedencia: DATABASE_URL > settings.DB_PATH > alembic.ini.
 
 NOTA: El sistema de migraciones casero (db/migrations.py) gestiona las
 versiones 1-13. Alembic se usa para migraciones nuevas (v14+).
@@ -10,6 +12,7 @@ todas sus migraciones (`db.migrations.apply_pending`).
 """
 
 import logging
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -19,12 +22,18 @@ from db.models import metadata
 
 config = context.config
 
-# Sobreescribir la URL con la de config.settings si está disponible
+# Precedencia: DATABASE_URL > settings.DB_PATH > alembic.ini
 try:
     from config import settings
 
-    db_url = f"sqlite:///{settings.DB_PATH}"
-    config.set_main_option("sqlalchemy.url", db_url)
+    database_url = os.environ.get("DATABASE_URL", "") or getattr(settings, "DATABASE_URL", "") or ""
+    if database_url and database_url.startswith(("postgresql://", "postgres://")):
+        # Postgres: pasar la URL tal cual (psycopg2 / psycopg driver)
+        config.set_main_option("sqlalchemy.url", database_url)
+    else:
+        # SQLite legacy
+        db_url = f"sqlite:///{settings.DB_PATH}"
+        config.set_main_option("sqlalchemy.url", db_url)
 except Exception:
     logging.getLogger(__name__).warning(
         "Could not import config.settings; falling back to alembic.ini URL",

@@ -187,6 +187,13 @@ class Settings(BaseSettings):
     # Genera una con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
 
+    # ── Postgres / Supabase (ADR-016, F3) ────────────────────────────────
+    # Cuando DATABASE_URL está definida tiene precedencia sobre TURSO_* y SQLite.
+    # Formato: postgresql://user:pass@host:5432/db?sslmode=require
+    # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
+    # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
+    DATABASE_URL: str = ""
+
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
     TURSO_AUTH_TOKEN: SecretStr = SecretStr("")

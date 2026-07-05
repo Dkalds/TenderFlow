@@ -1,8 +1,20 @@
-"""Gestión del pool de conexiones SQLite / Turso (libSQL).
+"""Gestión del pool de conexiones SQLite / Turso (libSQL) y Postgres (psycopg3).
 
 Este módulo centraliza toda la lógica de conexión: creación, pooling thread-safe,
 context managers ``connect()`` / ``connect_read()``, y helpers de diagnóstico.
 No contiene lógica de dominio ni DDL; esos residen en ``db.schema`` y ``db.upsert``.
+
+Backends soportados (ADR-016):
+- **SQLite local** (default dev): sin configuración adicional.
+- **Turso/libSQL** (producción legacy): via ``TURSO_DATABASE_URL`` + ``TURSO_AUTH_TOKEN``.
+- **Postgres / Supabase** (destino F3): via ``DATABASE_URL`` (postgresql://...).
+  Precedencia: DATABASE_URL > TURSO_* > SQLite local.
+
+Shim de paramstyle (F3a → F5):
+  El código existente usa ``?`` (qmark). psycopg3 usa ``%s``. El shim
+  ``_translate_qmarks(sql)`` reescribe ``?``→``%s`` respetando literales y
+  comentarios. Se activa automáticamente cuando el backend es Postgres.
+  F5 (refactor de repositories) convertirá los sitios a ``%s`` nativo.
 """
 
 from __future__ import annotations
@@ -40,7 +52,181 @@ def now_utc_iso() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Estado global del pool
+# Detección de backend (ADR-016)
+# ---------------------------------------------------------------------------
+
+
+def _database_url() -> str:
+    """Devuelve DATABASE_URL del entorno o cadena vacía."""
+    return os.environ.get("DATABASE_URL", "") or getattr(settings, "DATABASE_URL", "") or ""
+
+
+def is_postgres_backend() -> bool:
+    """True si DATABASE_URL está configurada y apunta a Postgres/Supabase."""
+    url = _database_url()
+    return bool(url and url.startswith(("postgresql://", "postgres://")))
+
+
+# ---------------------------------------------------------------------------
+# Shim qmark → %s (activo solo con Postgres, F3a → F5)
+# ---------------------------------------------------------------------------
+
+# Patrón para tokenizar SQL y detectar ? fuera de literales/comentarios.
+# Captura: strings simples, strings dobles, comentarios de línea, bloque, y ?
+_SQL_TOKEN_RE = re.compile(
+    r"('(?:[^'\\]|\\.)*')"  # string comillas simples
+    r'|("(?:[^"\\]|\\.)*")'  # string comillas dobles
+    r"|(--[^\n]*)"  # comentario de línea
+    r"|(/\*.*?\*/)"  # comentario de bloque (non-greedy)
+    r"|(\?)",  # placeholder qmark
+    re.DOTALL,
+)
+
+
+def _translate_qmarks(sql: str) -> str:
+    """Reescribe ``?`` → ``%s`` en SQL respetando literales y comentarios.
+
+    Solo activo cuando el backend es Postgres. No-op en SQLite/Turso.
+    """
+    if not is_postgres_backend():
+        return sql
+
+    def _replace(m: re.Match[str]) -> str:
+        # Grupos 1-4: strings/comentarios — preservar tal cual
+        if m.group(5) is None:
+            return m.group(0)
+        return "%s"
+
+    return _SQL_TOKEN_RE.sub(_replace, sql)
+
+
+# ---------------------------------------------------------------------------
+# Adaptador psycopg3 que aplica el shim automáticamente
+# ---------------------------------------------------------------------------
+
+
+class _PgConnAdapter:
+    """Envuelve una conexión psycopg3 y traduce qmark→%s en execute/executemany.
+
+    Expone la misma interfaz mínima que las conexiones libsql para que los
+    call-sites existentes funcionen sin cambios:
+      - execute(sql, params) → cursor con fetchone/fetchall/description
+      - executemany(sql, seq)
+      - commit() / rollback()
+      - close()
+
+    El shim se aplica en execute/executemany. description es un alias de
+    cursor.description de la última query.
+    """
+
+    def __init__(self, pg_conn: Any) -> None:
+        self._conn = pg_conn
+        self._cur: Any = None
+
+    def execute(self, sql: str, params: Any = None) -> _PgConnAdapter:
+        translated = _translate_qmarks(sql)
+        self._cur = self._conn.cursor()
+        if params is None:
+            self._cur.execute(translated)
+        else:
+            self._cur.execute(translated, params)
+        return self
+
+    def executemany(self, sql: str, seq: Any) -> None:
+        translated = _translate_qmarks(sql)
+        with self._conn.cursor() as cur:
+            cur.executemany(translated, seq)
+
+    def fetchone(self) -> Any:
+        if self._cur is None:
+            return None
+        return self._cur.fetchone()
+
+    def fetchall(self) -> list[Any]:
+        if self._cur is None:
+            return []
+        return self._cur.fetchall()
+
+    @property
+    def description(self) -> Any:
+        return self._cur.description if self._cur else None
+
+    @property
+    def lastrowid(self) -> Any:
+        if self._cur is None:
+            return None
+        return self._cur.rownumber  # psycopg3 no expone lastrowid directamente
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        if self._cur:
+            try:
+                self._cur.close()
+            except Exception:
+                pass
+        self._conn.close()
+
+    def __enter__(self) -> _PgConnAdapter:
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Pool Postgres (psycopg_pool.ConnectionPool)
+# ---------------------------------------------------------------------------
+
+_pg_pool: Any = None  # psycopg_pool.ConnectionPool | None
+_pg_pool_lock = threading.Lock()
+
+
+def _get_pg_pool() -> Any:
+    """Devuelve (creando si es necesario) el pool de conexiones Postgres."""
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+    with _pg_pool_lock:
+        if _pg_pool is not None:
+            return _pg_pool
+        try:
+            from psycopg_pool import ConnectionPool  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise RuntimeError(
+                "psycopg-pool no instalado. Ejecuta: pip install psycopg-pool>=3.2,<4"
+            ) from exc
+
+        pool_size = getattr(settings, "DB_POOL_SIZE", 5)
+        _pg_pool = ConnectionPool(
+            conninfo=_database_url(),
+            min_size=1,
+            max_size=max(pool_size, 2),
+            open=True,
+        )
+        log.info("pg_pool_created", min=1, max=max(pool_size, 2))
+    return _pg_pool
+
+
+def _close_pg_pool() -> None:
+    """Cierra el pool Postgres si está abierto."""
+    global _pg_pool
+    with _pg_pool_lock:
+        pool = _pg_pool
+        _pg_pool = None
+    if pool is not None:
+        try:
+            pool.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Estado global del pool SQLite/Turso
 # ---------------------------------------------------------------------------
 
 _local = threading.local()
@@ -68,7 +254,7 @@ def set_db_path_override(path: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Heurísticas de backend
+# Heurísticas de backend SQLite/Turso
 # ---------------------------------------------------------------------------
 
 
@@ -82,6 +268,8 @@ def is_turso_backend() -> bool:
     Importante: el protocolo Hrana no soporta sentencias ``PRAGMA``; usar
     esta función para decidir si emitirlas o no.
     """
+    if is_postgres_backend():
+        return False  # Postgres tiene precedencia
     return bool(
         not _DB_PATH_OVERRIDE
         and settings.TURSO_DATABASE_URL
@@ -92,10 +280,10 @@ def is_turso_backend() -> bool:
 def safe_pragma(conn: Any, stmt: str) -> None:
     """Ejecuta un ``PRAGMA`` solo si el backend lo soporta (SQLite local).
 
-    No-op en Turso/Hrana. Cualquier excepción se silencia (defensive): los
-    PRAGMAs son optimizaciones, no deben romper la operación principal.
+    No-op en Turso/Hrana y en Postgres. Cualquier excepción se silencia
+    (defensive): los PRAGMAs son optimizaciones, no deben romper la operación.
     """
-    if is_turso_backend():
+    if is_turso_backend() or is_postgres_backend():
         return
     try:
         conn.execute(stmt)
@@ -117,14 +305,35 @@ def _validate_identifier(name: str) -> str:
 def get_table_columns(conn: Any, table: str) -> set[str]:
     """Devuelve el conjunto de nombres de columna de ``table``.
 
-    Funciona tanto en SQLite local (``PRAGMA table_info``) como en
-    Turso/Hrana (fallback a ``SELECT * … LIMIT 0`` + ``cursor.description``).
+    Funciona en SQLite local (``PRAGMA table_info``), Turso/Hrana (fallback a
+    ``SELECT * … LIMIT 0`` + ``cursor.description``) y Postgres (mismo fallback).
     Devuelve conjunto vacío si la tabla no existe o no se puede inspeccionar.
 
     Raises:
         ValueError: si ``table`` contiene caracteres no válidos.
     """
     _validate_identifier(table)
+
+    if is_postgres_backend():
+        # En Postgres usamos information_schema (más fiable que PRAGMA)
+        try:
+            cur = conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+                (table,),
+            )
+            rows = cur.fetchall()
+            if rows:
+                return {r[0] for r in rows}
+        except Exception:
+            pass
+        # Fallback: SELECT * LIMIT 0
+        try:
+            cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")
+            if cur.description:
+                return {d[0] for d in cur.description}
+        except Exception:
+            pass
+        return set()
 
     # Intento 1: PRAGMA table_info (rápido en SQLite local)
     try:
@@ -150,8 +359,28 @@ def get_table_columns(conn: Any, table: str) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def _create_connection() -> Any:
-    """Crea una nueva conexión a la BD según la configuración actual."""
+def _create_pg_connection() -> _PgConnAdapter:
+    """Crea una nueva conexión Postgres via psycopg_pool."""
+    pool = _get_pg_pool()
+    raw_conn = pool.getconn()
+    return _PgConnAdapter(raw_conn)
+
+
+def _return_pg_connection(adapter: _PgConnAdapter) -> None:
+    """Devuelve la conexión subyacente al pool Postgres."""
+    pool = _pg_pool
+    if pool is not None:
+        try:
+            pool.putconn(adapter._conn)
+        except Exception:
+            try:
+                adapter._conn.close()
+            except Exception:
+                pass
+
+
+def _create_sqlite_connection() -> Any:
+    """Crea una nueva conexión a la BD SQLite/Turso según la configuración actual."""
     if is_turso_backend():
         return libsql.connect(
             settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN.get_secret_value()
@@ -161,9 +390,10 @@ def _create_connection() -> Any:
         not _DB_PATH_OVERRIDE
         and os.environ.get("CI", "").lower() in ("1", "true", "yes")
         and not os.environ.get("PYTEST_CURRENT_TEST")
+        and not is_postgres_backend()
     ):
         raise RuntimeError(
-            "Faltan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN en el entorno CI. "
+            "Faltan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN / DATABASE_URL en el entorno CI. "
             "Configura los secrets del repositorio antes de ejecutar el pipeline."
         )
     db_path = _DB_PATH_OVERRIDE or str(settings.DB_PATH)
@@ -173,6 +403,10 @@ def _create_connection() -> Any:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.commit()
     return conn
+
+
+# Alias para compatibilidad con el código existente
+_create_connection = _create_sqlite_connection
 
 
 def _health_check(conn: Any) -> bool:
@@ -187,12 +421,17 @@ def _health_check(conn: Any) -> bool:
 def _get_conn() -> Any:
     """Devuelve una conexión reutilizada por hilo.
 
-    Para Turso cloud usa un pool con health-check. Para SQLite local usa
-    thread-local (1 conexión por hilo, WAL permite lecturas concurrentes).
+    Para Postgres: usa psycopg_pool (pool gestionado).
+    Para Turso cloud: pool interno con health-check.
+    Para SQLite local: thread-local (1 conexión por hilo, WAL permite lecturas concurrentes).
     """
     global _pool, _pool_active
 
-    # Para Turso con pool_size > 1, usar el pool compartido
+    # ── Postgres (precedencia máxima) ─────────────────────────────────────
+    if is_postgres_backend():
+        return _create_pg_connection()
+
+    # ── Turso con pool_size > 1 ───────────────────────────────────────────
     if is_turso_backend() and settings.DB_POOL_SIZE > 1:
         if _pool is None:
             with _pool_lock:
@@ -222,7 +461,7 @@ def _get_conn() -> Any:
                 create_new = False
 
         if create_new:
-            return _create_connection()
+            return _create_sqlite_connection()
 
         # 3. Pool lleno — esperar a que alguien devuelva una conexión
         acquire_timeout = getattr(settings, "DB_POOL_TIMEOUT", 10.0)
@@ -234,7 +473,7 @@ def _get_conn() -> Any:
                 conn.close()
             except Exception:
                 pass
-            return _create_connection()
+            return _create_sqlite_connection()
         except _queue_mod.Empty:
             log.warning(
                 "db_pool_acquire_timeout",
@@ -249,18 +488,24 @@ def _get_conn() -> Any:
                 "El pool está saturado. Considera aumentar DB_POOL_SIZE."
             ) from None
 
-    # SQLite local / tests: thread-local (una conexión por hilo)
+    # ── SQLite local / tests: thread-local ────────────────────────────────
     conn = getattr(_local, "conn", None)
     if conn is not None:
         return conn
-    conn = _create_connection()
+    conn = _create_sqlite_connection()
     _local.conn = conn
     return conn
 
 
 def _return_conn(conn: Any) -> None:
-    """Devuelve una conexión al pool (Turso) o la mantiene en thread-local."""
+    """Devuelve una conexión al pool (Turso/Postgres) o la mantiene en thread-local."""
     global _pool_active
+
+    # Postgres: devolver al psycopg_pool
+    if isinstance(conn, _PgConnAdapter):
+        _return_pg_connection(conn)
+        return
+
     if not (is_turso_backend() and settings.DB_POOL_SIZE > 1):
         return
     with _pool_lock:
@@ -286,6 +531,10 @@ def _return_conn(conn: Any) -> None:
 def close_pool() -> None:
     """Cierra la conexión del hilo actual y vacía el pool compartido."""
     global _pool, _pool_active
+
+    # Postgres: cerrar el pool de psycopg_pool
+    _close_pg_pool()
+
     conn = getattr(_local, "conn", None)
     if conn is not None:
         try:
@@ -323,6 +572,9 @@ def connect() -> Iterator[Any]:
     Instrumenta latencia de commit y errores SQLITE_BUSY (tripwires ADR-004).
     Los eventos se persisten en ops_events via buffer en memoria + flush
     best-effort (ver observability/ops_events.py).
+
+    Con backend Postgres (ADR-016): usa psycopg_pool; el shim qmark→%s se
+    aplica automáticamente en cada execute().
     """
     import time as _time
 
@@ -370,10 +622,19 @@ def connect() -> Iterator[Any]:
 def connect_read() -> Iterator[Any]:
     """Context manager de SOLO LECTURA.
 
-    Si ``TURSO_REPLICA_URL`` está configurado, conecta a la réplica Turso
-    (conexión efímera, sin pool). En caso contrario, delega en ``connect()``
-    normal (misma BD, modo read-only via PRAGMA).
+    Con Postgres: mismo pool + ``SET LOCAL default_transaction_read_only = on``.
+    Con Turso replica: conexión efímera a la réplica.
+    Con SQLite local: delega en ``connect()`` con PRAGMA query_only.
     """
+    if is_postgres_backend():
+        conn = _get_conn()
+        try:
+            conn.execute("SET LOCAL default_transaction_read_only = on")
+            yield conn
+        finally:
+            _return_conn(conn)
+        return
+
     replica_url = settings.TURSO_REPLICA_URL
     if replica_url:
         try:
