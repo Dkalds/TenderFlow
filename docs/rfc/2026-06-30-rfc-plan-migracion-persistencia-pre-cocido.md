@@ -4,7 +4,13 @@ title: Plan de migración de persistencia pre-cocido con disparador binario (SQL
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
 date: 2026-06-30
-status: draft
+status: superseded
+superseded_by: docs/adr/ADR-016-destino-persistencia-supabase.md
+superseded_on: 2026-07-05
+superseded_reason: >
+  Decisión de migración tomada sin esperar tripwires (2026-07-05). El destino
+  es Supabase + psycopg3. La ejecución está documentada en ADR-016 y el
+  plan de fases en AGENTS.md §0. Este RFC escala a ejecución directa.
 ---
 
 ## Contexto

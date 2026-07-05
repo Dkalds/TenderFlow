@@ -120,3 +120,5 @@ finge
 fingen
 dobles
 mata
+smove
+envrionment

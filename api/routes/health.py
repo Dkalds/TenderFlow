@@ -124,12 +124,17 @@ def _check_disk() -> str:
 
 
 def _overall_status(db: str, redis: str, disk: str) -> str:
-    """ok si DB está bien; degraded si Redis falla o disco bajo pero DB ok."""
+    """ok si DB está bien y Redis/disco ok; degraded si Redis/disco fallan pero DB ok."""
     if db != "ok":
         return "degraded"
     if redis == "degraded" or disk.startswith("low"):
         return "degraded"
     return "ok"
+
+
+def _http_status_for_readiness(db: str) -> int:
+    """503 solo si la BD no está disponible. Redis/disco degradado → 200 con payload degraded."""
+    return 503 if db != "ok" else 200
 
 
 @router.get("", response_model=HealthResponse, summary="Health check (alias de /ready)")
@@ -161,12 +166,17 @@ async def liveness() -> dict[str, Any]:
     "/ready", response_model=HealthResponse, summary="Readiness probe — dependencias listas"
 )
 async def readiness() -> JSONResponse:
-    """Kubernetes readiness probe. Verifica DB, Redis y disco; devuelve 503 si degradado."""
+    """Kubernetes readiness probe.
+
+    - ``503`` solo si la base de datos no responde (el proceso no puede servir tráfico).
+    - ``200`` con ``status:"degraded"`` si Redis o disco están degradados pero la BD funciona
+      (el proceso puede servir tráfico, con funcionalidad reducida).
+    """
     db_status = _check_db()
     redis_status = _check_redis()
     disk_status = _check_disk()
     overall = _overall_status(db_status, redis_status, disk_status)
-    http_status = 200 if overall == "ok" else 503
+    http_status = _http_status_for_readiness(db_status)
     body = HealthResponse(
         status=overall,
         db=db_status,

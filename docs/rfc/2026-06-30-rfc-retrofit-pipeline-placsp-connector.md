@@ -4,7 +4,12 @@ title: Retrofit del pipeline PLACSP sobre el contrato Connector (cerrar la bifur
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
 date: 2026-06-30
-status: draft
+status: accepted
+accepted_on: 2026-07-05
+accepted_reason: >
+  Blueprint aprobado como Fase 2 del plan de deuda arquitectónica (2026-07-05).
+  La implementación de PlacspAtomConnector + PlacspBulkConnector arranca en semana 1-2.
+  Ver AGENTS.md §0 para el orden de fases y las decisiones de diseño canónicas.
 ---
 
 ## Contexto

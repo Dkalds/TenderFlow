@@ -31,3 +31,20 @@ data/*.log
 
 # Git internals
 .git/
+
+# Obsidian companion vault (18k+ archivos regenerables)
+docs/codegraph/
+docs/.obsidian/
+
+# graphify output (graph.json/GRAPH_REPORT.md/graph.html se commitean; el resto no)
+graphify-out/
+
+# Agent/skill directories (no son código del proyecto)
+.agents/
+.claude/
+
+# Frontend dependencies and build artifacts
+node_modules/
+web/node_modules/
+web/.next/
+web/out/

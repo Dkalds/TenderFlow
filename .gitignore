@@ -90,8 +90,8 @@ graphify-out/graphify_cluster_*.txt
 # (one file per node, ~18k files - not meant for git history)
 docs/codegraph/
 
-# Obsidian vault local state (plugins/workspace are machine-specific)
-docs/.obsidian/
+# Obsidian stubs and canvas files (regenerables desde Obsidian)
+docs/Sin título*
 
 # ── Frontend dependencies ─────────────────────────────────────────
 node_modules/
