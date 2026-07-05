@@ -1,5 +1,5 @@
 # Requirements para el API FastAPI (Vercel / producción).
-# Regenerar con: uv pip compile pyproject.toml -o requirements.txt
+# Regenerar con: uv pip compile requirements.in -o requirements.txt
 alembic==1.18.4
     # via -r requirements.in
 annotated-doc==0.0.4
@@ -104,6 +104,12 @@ prometheus-client==0.25.0
     #   prometheus-fastapi-instrumentator
 prometheus-fastapi-instrumentator==8.0.0
     # via -r requirements.in
+psycopg==3.3.4
+    # via -r requirements.in
+psycopg-binary==3.3.4
+    # via psycopg
+psycopg-pool==3.3.1
+    # via -r requirements.in
 pybreaker==1.4.1
     # via -r requirements.in
 pycparser==3.0
@@ -162,6 +168,7 @@ typing-extensions==4.15.0
     # via
     #   alembic
     #   fastapi
+    #   psycopg-pool
     #   pydantic
     #   pydantic-core
     #   sqlalchemy
@@ -171,7 +178,9 @@ typing-inspection==0.4.2
     #   pydantic
     #   pydantic-settings
 tzdata==2026.2
-    # via pandas
+    # via
+    #   pandas
+    #   psycopg
 urllib3==2.7.0
     # via requests
 uvicorn==0.46.0
