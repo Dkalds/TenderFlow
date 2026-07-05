@@ -14,12 +14,22 @@
 #   docker compose --profile monitoring up
 # Runbook: docs/runbooks/persistence-tripwires.md
 #
+# F3d (post-cutover ADR-016): los tripwires de SQLite se mantienen para el
+# periodo de rollback (>=14 dias); tras confirmar estabilidad en Postgres,
+# retirar el grupo persistence_tripwires y activar postgres_pool_alerts.
+#
 
 groups:
   - name: persistence_tripwires
+    # Tripwires SQLite/Turso (ADR-004).
+    # POST-CUTOVER: estas alertas dejaran de dispararse cuando DATABASE_URL apunte
+    # a Postgres (sqlite_busy_errors_total quedara en 0). Retirar este grupo en F3d
+    # tras 2 semanas estables en Postgres.
     rules:
       - alert: SQLiteBusyErrorsHigh
         # ADR-004: >10 BUSY/h sostenido → evaluar migración a Postgres.
+        # POST-CUTOVER ADR-016: si esta alerta salta tras el flip, hay un
+        # call-site que no usa DATABASE_URL. Investigar db/connection.py logs.
         expr: rate(sqlite_busy_errors_total[1h]) * 3600 > 10
         for: 15m
         labels:
@@ -57,3 +67,50 @@ groups:
           description: >
             db_concurrent_writers supera 3 sostenido. El supuesto single-writer
             de ADR-004 ya no se sostiene; revisar arquitectura de persistencia.
+
+  - name: postgres_pool_alerts
+    # Alertas de pool Postgres (ADR-016, activas post-cutover F3d).
+    # Activar cuando DATABASE_URL esté configurada en producción.
+    rules:
+      - alert: PgPoolAcquireTimeoutHigh
+        # El pool psycopg_pool está saturado: las conexiones tardan en obtenerse.
+        expr: rate(db_pool_acquire_timeout_total[5m]) * 300 > 3
+        for: 5m
+        labels:
+          severity: warning
+          adr: "016"
+        annotations:
+          summary: "Pool Postgres: timeouts de adquisición de conexión (>3 en 5m)"
+          description: >
+            db_pool_acquire_timeout_total sube >3 en 5 minutos. El pool está
+            saturado. Considera aumentar DB_POOL_SIZE o revisar conexiones lentas.
+            Runbook: docs/runbooks/migracion-persistencia.md
+
+      - alert: PgWriteLatencyHigh
+        # p99 de escritura en Postgres >1s (threshold más permisivo que SQLite
+        # porque pg_dump y queries complejas pueden ser más lentas).
+        expr: histogram_quantile(0.99, rate(db_write_duration_seconds_bucket[10m])) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          adr: "016"
+        annotations:
+          summary: "Latencia p99 de escritura Postgres > 1s"
+          description: >
+            El p99 de db_write_duration_seconds supera 1s durante 10m con backend
+            Postgres. Investigar queries lentas en Supabase Dashboard →
+            Query Performance.
+
+      - alert: PgPoolHealthCheckFailed
+        # La API no puede conectar al pool de Postgres.
+        # Se emite cuando el health endpoint devuelve db!=ok.
+        expr: up{job="tenderflow_api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          adr: "016"
+        annotations:
+          summary: "API Tenderflow no disponible (posible fallo de pool Postgres)"
+          description: >
+            El scrape de Prometheus a tenderflow_api devuelve 0 durante 2 minutos.
+            Verificar DATABASE_URL, pool psycopg y Supabase status.

@@ -22,9 +22,9 @@ permissions:
 
 jobs:
   backup:
-    name: Backup SQLite → S3/R2
+    name: Backup DB → S3/R2
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -39,10 +39,42 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt boto3
 
+      # ── Rama Postgres (post-cutover F3d) ─────────────────────────────
+      - name: Backup Postgres with pg_dump (when DATABASE_URL is set)
+        if: ${{ env.DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+        run: |
+          mkdir -p data/backups
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          BACKUP_FILE="data/backups/tenderflow_pg_${TIMESTAMP}.dump"
+          echo "Backup Postgres → $BACKUP_FILE"
+          pg_dump --format=custom --no-owner --no-acl \
+            "$DATABASE_URL" \
+            --file="$BACKUP_FILE"
+          echo "Backup completado: $(du -sh $BACKUP_FILE | cut -f1)"
+          # Subir a S3/R2 si está configurado
+          if [ -n "$AWS_ACCESS_KEY_ID" ]; then
+            python -c "
+          import boto3, os, pathlib
+          s3 = boto3.client('s3', endpoint_url=os.environ.get('AWS_ENDPOINT_URL'))
+          bucket = os.environ['BACKUP_S3_BUCKET']
+          prefix = os.environ.get('BACKUP_S3_PREFIX', 'backups/')
+          f = pathlib.Path('$BACKUP_FILE')
+          key = prefix + f.name
+          s3.upload_file(str(f), bucket, key)
+          print(f'Uploaded to s3://{bucket}/{key}')
+          "
+          fi
+
+      # ── Rama SQLite legacy (pre-cutover) ──────────────────────────────
       - name: Download latest SQLite DB
-        # En el runner no hay DB persistente — descargar desde Turso si está configurado.
-        # Si no hay Turso, el backup será vacío (skip) y se indica en el log.
-        # En producción, montar el volumen de datos o restaurar desde el backup anterior.
+        if: ${{ env.DATABASE_URL == '' }}
         run: |
           mkdir -p data
           if [ -n "$TURSO_DATABASE_URL" ]; then
@@ -52,8 +84,10 @@ jobs:
           fi
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || '' }}
 
-      - name: Run backup
+      - name: Run SQLite backup
+        if: ${{ env.DATABASE_URL == '' }}
         env:
           ENV: dev
           KEEP_S3_INPUT: ${{ inputs.keep_s3 || '30' }}
@@ -64,8 +98,8 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
-          # DATA_DIR y DATABASE_PATH se resolverán desde config/settings.py
           DATABASE_PATH: ${{ secrets.DATABASE_PATH || '' }}
+          DATABASE_URL: ""
         run: |
           EXTRA=""
           if [ "$INCLUDE_TURSO" = "true" ]; then
@@ -80,6 +114,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ github.run_id }}
-          path: data/backups/*.db.gz
+          path: |
+            data/backups/*.db.gz
+            data/backups/*.dump
           retention-days: 90
           if-no-files-found: warn
