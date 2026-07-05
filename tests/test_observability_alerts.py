@@ -2,35 +2,46 @@
 
 from __future__ import annotations
 
-import importlib
 from datetime import UTC
 from unittest.mock import MagicMock, patch
+
+from pydantic import SecretStr
 
 from observability.alerts import AlertLevel, _build_html, notify
 
 
-def _reload_config():
-    """Recarga config para que las variables de entorno actualizadas surtan efecto."""
-    import sys
+def _patch_settings(monkeypatch, **kwargs):
+    """Parchea atributos del singleton ``config.settings`` directamente.
 
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
-    import config as cfg
+    Reemplaza el patrón previo (``monkeypatch.setenv`` + ``importlib.reload``
+    de ``config``/``config.settings``): recargar esos módulos reemplaza su
+    instancia de ``Settings`` por una nueva, pero cualquier módulo que ya
+    hizo ``from config import settings`` antes del reload (p. ej.
+    ``db/connection.py``) sigue apuntando al objeto viejo -- desincronización
+    detectada en la auditoría de migración F3b (2026-07-05): un test de este
+    archivo dejaba ``db.connection`` con un ``settings`` obsoleto que
+    contenía el ``DATABASE_URL`` real leído de ``.env``, contaminando tests
+    posteriores en la misma sesión de pytest. ``observability/alerts.py`` lee
+    ``settings`` con ``from config import settings`` dentro de cada función
+    (no al nivel de módulo), así que mutar el atributo del singleton ya
+    compartido -- sin reload, mismo patrón que ``tmp_db``/``monkeypatch`` --
+    alcanza y no desincroniza nada.
+    """
+    from config import settings
 
-    importlib.reload(cfg)
+    for key, value in kwargs.items():
+        monkeypatch.setattr(settings, key, value)
 
 
 def test_notify_below_min_level_is_noop(monkeypatch):
-    monkeypatch.setenv("ALERT_MIN_LEVEL", "error")
-    _reload_config()
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="error")
     with patch("observability.alerts._send_smtp") as smtp:
         notify(AlertLevel.WARN, "t", "b")
     smtp.assert_not_called()
 
 
 def test_notify_above_min_level_calls_smtp(monkeypatch):
-    monkeypatch.setenv("ALERT_MIN_LEVEL", "warn")
-    _reload_config()
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
     with patch("observability.alerts._send_smtp") as smtp:
         notify(AlertLevel.WARN, "título", "cuerpo", count=3)
     smtp.assert_called_once()
@@ -40,24 +51,21 @@ def test_notify_above_min_level_calls_smtp(monkeypatch):
 
 
 def test_notify_critical_always_dispatched(monkeypatch):
-    monkeypatch.setenv("ALERT_MIN_LEVEL", "warn")
-    _reload_config()
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
     with patch("observability.alerts._send_smtp") as smtp:
         notify(AlertLevel.CRITICAL, "alerta crítica")
     smtp.assert_called_once()
 
 
 def test_notify_accepts_string_level(monkeypatch):
-    monkeypatch.setenv("ALERT_MIN_LEVEL", "warn")
-    _reload_config()
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
     with patch("observability.alerts._send_smtp") as smtp:
         notify("error", "title", "body", foo="bar")
     smtp.assert_called_once()
 
 
 def test_notify_unknown_string_level_defaults_to_warn(monkeypatch):
-    monkeypatch.setenv("ALERT_MIN_LEVEL", "info")
-    _reload_config()
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="info")
     with patch("observability.alerts._send_smtp") as smtp:
         notify("unknown_level", "title")
     smtp.assert_called_once()
@@ -69,10 +77,12 @@ def test_alert_level_ordering():
 
 def test_send_smtp_skips_when_not_configured(monkeypatch):
     """Sin variables de entorno SMTP no intenta conectar."""
-    monkeypatch.setenv("ALERT_EMAIL_TO", "")
-    monkeypatch.setenv("ALERT_SMTP_USER", "")
-    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "")
-    _reload_config()
+    _patch_settings(
+        monkeypatch,
+        ALERT_EMAIL_TO="",
+        ALERT_SMTP_USER="",
+        ALERT_SMTP_PASSWORD=SecretStr(""),
+    )
     with patch("smtplib.SMTP") as mock_smtp:
         from observability.alerts import _send_smtp
 
@@ -82,12 +92,14 @@ def test_send_smtp_skips_when_not_configured(monkeypatch):
 
 def test_send_smtp_connects_and_sends(monkeypatch):
     """Con credenciales configuradas se conecta al servidor SMTP."""
-    monkeypatch.setenv("ALERT_EMAIL_TO", "dest@example.com")
-    monkeypatch.setenv("ALERT_SMTP_USER", "sender@gmail.com")
-    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "app-password-16ch")
-    monkeypatch.setenv("ALERT_SMTP_HOST", "smtp.gmail.com")
-    monkeypatch.setenv("ALERT_SMTP_PORT", "587")
-    _reload_config()
+    _patch_settings(
+        monkeypatch,
+        ALERT_EMAIL_TO="dest@example.com",
+        ALERT_SMTP_USER="sender@gmail.com",
+        ALERT_SMTP_PASSWORD=SecretStr("app-password-16ch"),
+        ALERT_SMTP_HOST="smtp.gmail.com",
+        ALERT_SMTP_PORT=587,
+    )
 
     mock_server = MagicMock()
     mock_server.__enter__ = lambda s: s
@@ -125,12 +137,14 @@ def test_send_smtp_logs_on_smtp_exception(monkeypatch):
     """SMTPException debe loguear warning y no relanzar."""
     import smtplib
 
-    monkeypatch.setenv("ALERT_EMAIL_TO", "dest@example.com")
-    monkeypatch.setenv("ALERT_SMTP_USER", "sender@gmail.com")
-    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "app-password-16ch")
-    monkeypatch.setenv("ALERT_SMTP_HOST", "smtp.gmail.com")
-    monkeypatch.setenv("ALERT_SMTP_PORT", "587")
-    _reload_config()
+    _patch_settings(
+        monkeypatch,
+        ALERT_EMAIL_TO="dest@example.com",
+        ALERT_SMTP_USER="sender@gmail.com",
+        ALERT_SMTP_PASSWORD=SecretStr("app-password-16ch"),
+        ALERT_SMTP_HOST="smtp.gmail.com",
+        ALERT_SMTP_PORT=587,
+    )
 
     mock_server = MagicMock()
     mock_server.__enter__ = lambda s: s
@@ -146,12 +160,14 @@ def test_send_smtp_logs_on_smtp_exception(monkeypatch):
 
 def test_send_smtp_logs_on_os_error(monkeypatch):
     """OSError (fallo de red) debe loguear warning y no relanzar."""
-    monkeypatch.setenv("ALERT_EMAIL_TO", "dest@example.com")
-    monkeypatch.setenv("ALERT_SMTP_USER", "sender@gmail.com")
-    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "pass")
-    monkeypatch.setenv("ALERT_SMTP_HOST", "badhost")
-    monkeypatch.setenv("ALERT_SMTP_PORT", "587")
-    _reload_config()
+    _patch_settings(
+        monkeypatch,
+        ALERT_EMAIL_TO="dest@example.com",
+        ALERT_SMTP_USER="sender@gmail.com",
+        ALERT_SMTP_PASSWORD=SecretStr("pass"),
+        ALERT_SMTP_HOST="badhost",
+        ALERT_SMTP_PORT=587,
+    )
 
     with patch("smtplib.SMTP", side_effect=OSError("connection refused")):
         from observability.alerts import _send_smtp

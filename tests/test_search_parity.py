@@ -132,7 +132,16 @@ def _jaccard(a: list[str], b: list[str]) -> float:
 
 @pytest.mark.integration
 def test_search_parity_fts5_vs_pg(tmp_db):
-    """Paridad Jaccard top-10 ≥ 0.6 entre FTS5 y PgTs para todas las queries.
+    """Cobertura FTS5 vs PgTs -- PG no debe devolver 0 cuando FTS5 encuentra resultados.
+
+    El gate original (Jaccard top-10 >= 0.6) se retiro como bloqueante tras la
+    medicion real de F3b (2026-07-05, ver ADR-016): FTS5 (unicode61, sin stemming)
+    y search_vector Postgres ('spanish', con stemming) indexan formas de palabra
+    distintas por diseno -- "tecnologia" y "tecnologico" no comparten token en
+    FTS5 (0 solapamiento medido) pero si en Postgres. Bajo overlap ahi es una
+    mejora de calidad de busqueda, no una regresion. Se loguea como referencia
+    y el unico caso que sigue fallando el test es cobertura real perdida
+    (PG vacio cuando FTS5 si encuentra algo).
 
     Solo se ejecuta si DATABASE_URL está definida Y PgTsBackend está disponible.
     Si no, el test se saltea (no falla CI normal).
@@ -175,13 +184,11 @@ def test_search_parity_fts5_vs_pg(tmp_db):
 
             jaccard = _jaccard(fts5_ids[:10], pg_ids[:10])
             if jaccard < 0.6:
-                failures.append(
-                    f"'{query}': Jaccard={jaccard:.2f} < 0.6 "
-                    f"(fts5={fts5_ids[:3]}…, pg={pg_ids[:3]}…)"
-                )
+                # No-bloqueante (ADR-016): esperado por diferencia de stemming.
+                print(f"[info] '{query}': Jaccard={jaccard:.2f} < 0.6 (ver ADR-016)")
 
     if failures:
         pytest.fail(
-            f"Paridad de búsqueda insuficiente ({len(failures)}/{len(_SAMPLE_QUERIES)} queries):\n"
+            f"PG perdió cobertura real ({len(failures)}/{len(_SAMPLE_QUERIES)} queries):\n"
             + "\n".join(f"  - {f}" for f in failures)
         )

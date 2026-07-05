@@ -187,13 +187,7 @@ def test_persist_snapshots_clears_previous(tmp_db):
 
 def test_run_kpi_precompute_returns_summary(tmp_db):
     """run_kpi_precompute devuelve dict con n_metricas y elapsed_ms."""
-    import importlib
-    import sys
-
     _db_mod, _ = tmp_db
-
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
 
     from scheduler.kpi_precompute import run_kpi_precompute
 
@@ -222,13 +216,7 @@ def test_get_latest_snapshot_returns_none_when_empty(tmp_db):
 
 def test_get_latest_snapshot_returns_value_after_precompute(tmp_db):
     """Tras run_kpi_precompute, get_latest_snapshot devuelve datos."""
-    import importlib
-    import sys
-
     _, _ = tmp_db
-
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
 
     from scheduler.kpi_precompute import get_latest_snapshot, run_kpi_precompute
 
@@ -257,13 +245,7 @@ def test_get_all_latest_empty_db_returns_empty_dict(tmp_db):
 
 def test_get_all_latest_after_precompute_has_computed_at(tmp_db):
     """Tras precompute, get_all_latest incluye _computed_at y métricas."""
-    import importlib
-    import sys
-
     _, _ = tmp_db
-
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
 
     from scheduler.kpi_precompute import get_all_latest, run_kpi_precompute
 
@@ -276,13 +258,7 @@ def test_get_all_latest_after_precompute_has_computed_at(tmp_db):
 
 def test_get_all_latest_licitaciones_por_ccaa_is_list(tmp_db):
     """licitaciones_por_ccaa se deserializa como lista."""
-    import importlib
-    import sys
-
     _, _ = tmp_db
-
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
 
     from scheduler.kpi_precompute import get_all_latest, run_kpi_precompute
 
