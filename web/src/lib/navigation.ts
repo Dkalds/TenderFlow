@@ -222,6 +222,14 @@ export const SECTIONS: NavSection[] = [
         icon: Star,
         usesGlobalFilters: false,
       },
+      {
+        label: "Mi Perfil de Scoring",
+        slug: "mi-perfil",
+        description:
+          "Personaliza los pesos de scoring, keywords de afinidad y rango de importe.",
+        icon: Settings,
+        usesGlobalFilters: false,
+      },
     ],
   },
   {
