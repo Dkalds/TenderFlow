@@ -60,10 +60,12 @@ class TableSpec:
 TABLE_SPECS: list[TableSpec] = [
     TableSpec("users", "incremental_id"),
     TableSpec("grupos_empresariales", "truncate_reload"),
-    TableSpec("empresas", "incremental_id"),
+    TableSpec("empresas", "incremental_id", id_col="empresa_id"),
     TableSpec("empresa_aliases", "incremental_id"),
     TableSpec("licitaciones", "incremental_ts", ts_col="fecha_extraccion"),
-    TableSpec("licitacion_tecnologia_score", "incremental_id"),
+    # PK compuesta (licitacion_id, tecnologia) -- sin columna id autoincremental,
+    # no aplica estrategia incremental_id.
+    TableSpec("licitacion_tecnologia_score", "truncate_reload"),
     TableSpec(
         "adjudicaciones", "incremental_ts", ts_col="fecha_extraccion", order_col="fecha_extraccion"
     ),
@@ -238,9 +240,10 @@ def _migrate_table(
         f"VALUES ({placeholders}) ON CONFLICT DO NOTHING"
     )
     batch_size = 500
-    for i in range(0, n, batch_size):
-        batch = [tuple(r) for r in rows[i : i + batch_size]]
-        pg.executemany(insert_sql, batch)
+    with pg.cursor() as cur:
+        for i in range(0, n, batch_size):
+            batch = [tuple(r) for r in rows[i : i + batch_size]]
+            cur.executemany(insert_sql, batch)
 
     pg.commit()
     result["elapsed_s"] = round(time.monotonic() - t0, 2)

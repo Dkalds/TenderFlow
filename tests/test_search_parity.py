@@ -45,10 +45,11 @@ class TestSearchBackendProtocol:
     def test_get_search_backend_returns_fts5_without_pg(self, monkeypatch):
         """Sin DATABASE_URL, get_search_backend devuelve Fts5Backend."""
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        # Limpiar override de settings si existe
-        import os
+        # _database_url() cae a settings.DATABASE_URL si .env la define (ADR-016) --
+        # limpiar solo os.environ no alcanza cuando hay un .env real con la variable.
+        from config import settings
 
-        os.environ.pop("DATABASE_URL", None)
+        monkeypatch.setattr(settings, "DATABASE_URL", "", raising=False)
 
         from db.search_backend import Fts5Backend, get_search_backend
 
@@ -91,9 +92,9 @@ class TestSearchBackendProtocol:
     def test_pg_backend_not_available_without_database_url(self, monkeypatch):
         """PgTsBackend.available() devuelve False sin DATABASE_URL."""
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        import os
+        from config import settings
 
-        os.environ.pop("DATABASE_URL", None)
+        monkeypatch.setattr(settings, "DATABASE_URL", "", raising=False)
 
         from db.search_backend import PgTsBackend
 
