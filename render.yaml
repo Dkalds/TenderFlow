@@ -9,6 +9,11 @@ services:
     envVars:
       - key: ENV
         value: prod
+      # Postgres/Supabase (ADR-016, F3) — tiene precedencia sobre TURSO_* y SQLite.
+      # Usar Supavisor session pooler (puerto 5432) con ?sslmode=require.
+      - key: DATABASE_URL
+        sync: false
+      # Turso/libSQL (legacy) — se ignora si DATABASE_URL está definida.
       - key: TURSO_DATABASE_URL
         sync: false
       - key: TURSO_AUTH_TOKEN

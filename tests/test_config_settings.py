@@ -233,6 +233,10 @@ def test_prod_valid_config():
         warnings.simplefilter("ignore")
         s = Settings(
             ENV="prod",
+            # Explícito para no heredar un DATABASE_URL real de .env local
+            # (ver _isolate_database_url en conftest.py: solo cubre el singleton
+            # `settings`, no instancias de Settings() construidas directamente).
+            DATABASE_URL="",
             GF_SECURITY_ADMIN_PASSWORD="",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,
@@ -240,6 +244,60 @@ def test_prod_valid_config():
             REDIS_PASSWORD="prod-redis-password",
         )
     assert s.ENV == "prod"
+
+
+# ---------------------------------------------------------------------------
+# DATABASE_URL (Postgres/Supabase) — esquema + sslmode
+# ---------------------------------------------------------------------------
+
+
+def test_database_url_invalid_scheme_raises():
+    from config.settings import Settings
+
+    with pytest.raises(ValueError, match="esquema no permitido"):
+        Settings(DATABASE_URL="mysql://user:pass@host/db")  # pragma: allowlist secret
+
+
+def test_database_url_without_sslmode_warns_in_dev():
+    from config.settings import Settings
+
+    url = "postgresql://user:pass@host:5432/db"  # pragma: allowlist secret
+    with pytest.warns(UserWarning, match="sslmode"):
+        s = Settings(ENV="dev", DATABASE_URL=url)
+    assert s.DATABASE_URL.get_secret_value().startswith("postgresql://")
+
+
+def test_database_url_without_sslmode_raises_in_prod():
+    from config.settings import Settings
+
+    with pytest.raises(ValueError, match="sslmode"):
+        Settings(
+            ENV="prod",
+            DATABASE_URL="postgresql://user:pass@host:5432/db",  # pragma: allowlist secret
+            SIGNING_KEY="x" * 32,
+            API_HMAC_SECRET="y" * 32,
+            REDIS_URL="redis://localhost:6379/0",
+            REDIS_PASSWORD="prod-redis-password",
+            GF_SECURITY_ADMIN_PASSWORD="",
+        )
+
+
+def test_database_url_with_sslmode_ok_in_prod():
+    """No lanza excepción (aunque otros validators de prod puedan avisar)."""
+    from config.settings import Settings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(
+            ENV="prod",
+            DATABASE_URL="postgresql://user:pass@host:5432/db?sslmode=require",  # pragma: allowlist secret
+            SIGNING_KEY="x" * 32,
+            API_HMAC_SECRET="y" * 32,
+            REDIS_URL="redis://localhost:6379/0",
+            REDIS_PASSWORD="prod-redis-password",
+            GF_SECURITY_ADMIN_PASSWORD="",
+        )
+    assert "sslmode=require" in s.DATABASE_URL.get_secret_value()
 
 
 # ---------------------------------------------------------------------------

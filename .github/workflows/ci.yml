@@ -44,6 +44,12 @@ jobs:
       - name: Type check (mypy)
         run: mypy scraper/ db/ scheduler/ observability/ config/ api/ shared/
 
+      # Previene el patrón que causó el incidente de psycopg-pool: alguien
+      # agrega una dependencia a requirements.in y olvida recompilar
+      # requirements.txt, que es lo que instala docker/Dockerfile.api.
+      - name: Verify requirements.txt is in sync with requirements.in
+        run: python scripts/check_requirements_sync.py
+
       - uses: pre-commit/action@v3.0.1
 
   # ── Tests: multiplataforma, independiente ──────────────────────────

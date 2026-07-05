@@ -566,8 +566,9 @@ class Settings(BaseSettings):
 
         Solo se permiten ``postgresql://`` y ``postgres://``. Un valor vacío
         indica que no se usa Postgres (fallback a Turso/SQLite), lo cual es
-        válido. Avisa (sin bloquear) si falta ``sslmode=require`` en la
-        query string, ya que sin él psycopg puede negociar sin TLS.
+        válido. El chequeo de ``sslmode`` vive en ``_validate_prod_database_ssl``
+        (model_validator) porque depende de ``self.ENV``, no disponible aún
+        en un field_validator per-campo.
         """
         value = v.get_secret_value() if isinstance(v, SecretStr) else v
         if not isinstance(value, str) or not value:
@@ -578,13 +579,30 @@ class Settings(BaseSettings):
                 f"DATABASE_URL tiene un esquema no permitido. "
                 f"Se esperaba uno de {allowed}, se recibió un valor que no matchea."
             )
-        if "sslmode=" not in value:
+        return v
+
+    @model_validator(mode="after")
+    def _validate_prod_database_ssl(self) -> Settings:
+        """En producción/staging, exigir sslmode=require en DATABASE_URL (Postgres/Supabase).
+
+        Sin este parámetro psycopg puede negociar una conexión sin TLS si el
+        servidor lo permitiera. En dev solo se avisa (warning).
+        """
+        url = self.DATABASE_URL.get_secret_value()
+        if not url:
+            return self
+        if "sslmode=" not in url:
+            if self.ENV in ("prod", "staging"):
+                raise ValueError(
+                    "DATABASE_URL no especifica sslmode en ENV=prod/staging. Añade "
+                    "'?sslmode=require' para exigir TLS en la conexión a Postgres/Supabase."
+                )
             warnings.warn(
                 "DATABASE_URL no especifica sslmode. Añade '?sslmode=require' "
                 "para exigir TLS en la conexión a Postgres/Supabase.",
                 stacklevel=2,
             )
-        return v
+        return self
 
     @field_validator("TURSO_DATABASE_URL", mode="before")
     @classmethod
