@@ -62,16 +62,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### [P2] Modo degradado documentado y testeado ante caída de dependencias opcionales
-- **Área:** api/routes/health.py, observability, scheduler, config
-- **Problema:** Se ha reducido la superficie operativa (FAISS eliminado en Fase 3, dramatiq en Fase 4, Redis desacoplado en Fase 5), pero aún falta un contrato explícito y testeado de qué sigue funcionando cuando cae Turso, el modelo ML o Redis en producción. Síntoma ya conocido: `/health` devuelve 503 en local cuando `REDIS_URL` está seteado pero Redis no corre.
-- **Acceptance criteria:**
-  - Documento (`docs/runbooks/degraded-mode.md`) que enumera cada dependencia opcional (Redis/Upstash, Turso réplica, modelo ML stale) y qué funcionalidad sobrevive / degrada / cae.
-  - `/health` (o `/ready`) distingue **degradado** de **no disponible** sin devolver 503 cuando solo cayó algo opcional.
-  - Al menos un test por dependencia opcional que verifique que el camino crítico sigue verde.
-- **Files de partida:** [api/routes/health.py](../api/routes/health.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py)
-- **Riesgo:** bajo — mayormente aditivo.
-
 ### [P2] Cobertura de tests del frontend en flujos críticos
 - **Área:** web/ (tests vitest)
 - **Problema:** El frontend tiene thresholds reales 68/63/68/70 (vitest.config.ts) con 82 test files. Los flujos críticos de valor (filtros nuqs URL↔estado, watchlist, streaming `/ask`) no tienen cobertura. Una regresión en esos flujos pasa CI en verde.
@@ -86,11 +76,32 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P3 — Nice to have
 
-*(sin ítems abiertos)*
+### [P3] F5: Refactor de repositories por olas (TID251 whitelist decreciente)
+- **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
+- **Problema:** El ratchet TID251 tiene 41 archivos en whitelist (excluyendo db/** y tests/**). La whitelist solo puede decrecer. Cada ola mueve SQL verbatim a `db/repositories/*`, convierte paramstyle a `%s` nativo (elimina presión del shim qmark de F3a) y quita el archivo de la whitelist.
+- **Baseline (2026-07-05):** services/ 23 · scheduler/ 11 · scraper/ 3 · api/routes/ 4 · scripts/ 7 = **41 archivos**
+- **Orden de olas:** services/ → api/routes/ → scheduler/ → scripts/ (por densidad de violaciones)
+- **Acceptance criteria por ola:**
+  - `make check` verde tras cada ola.
+  - `ruff check --select TID251 --statistics .` monotónamente decreciente (anotar conteo en cada PR).
+  - Tests de caracterización donde falten.
+  - Estado final: whitelist = `db/**` + `tests/**`; shim qmark eliminable.
+- **Files de partida:** `pyproject.toml` (whitelist TID251), `db/repositories/`
+- **Riesgo:** medio — toca caminos de datos; mitigado por ratchet como gate y tests de caracterización previos a cada movimiento.
 
 ---
 
 ## Cerrados
+
+- [2026-07-05] **P2: Modo degradado (F4a)** — `api/routes/health.py`: `/ready` devuelve 503 **solo si `db != "ok"`**; Redis/disco degradado → HTTP 200 con `status:"degraded"` en payload. Extrae `_http_status_for_readiness(db)`. 5 tests `TestHealthEndpoints` pasan. Cierra el síntoma de 503 en local con Redis caído.
+
+- [2026-07-05] **P1: Plan de migración de persistencia (F3a-F3d)** — ADR-016 aceptado (Supabase + psycopg3 + Supavisor session pooler). Fundaciones: `db/connection.py` con is_postgres_backend + shim qmark→%s + `_PgConnAdapter` + psycopg_pool; `db/search_backend.py` (SearchBackend protocol + Fts5Backend + PgTsBackend); `db/alembic/env.py` con precedencia DATABASE_URL; migración `v50_pg_search_infra` (search_vector STORED + GIN + trgm, dialect-guarded). ETL: `scripts/migrate_sqlite_to_pg.py` + `scripts/verify_pg_parity.py`. Runbook: `docs/runbooks/migracion-persistencia.md`. Backup: `backup.yml` con rama pg_dump. Alertas pool Postgres en `observability/alert_rules.yml`. **Pendiente ejecutar**: GATES secrets/deps/alembic/workflows para F3c (cutover).
+
+- [2026-07-05] **P1: Retrofit PLACSP → Connector (F2)** — `scraper/connectors/placsp.py`: PlacspAtomConnector + PlacspBulkConnector + _PlacspParseCore. Flag `PLACSP_CONNECTOR_ENABLED=False` en settings. Switch en `scheduler/pipeline_runs.py`. 16 tests de paridad. RFC retrofit → accepted.
+
+- [2026-07-05] **P1: Ratchet TID251 (F1)** — `pyproject.toml`: TID en select + banned-api (4 keys) + whitelist congelada 41 archivos. `ruff check --select TID251 .` → 0 errores; prueba negativa funciona.
+
+- [2026-07-05] **P0: Dev/prod parity (F4b/c/d/e)** — `web/scripts/codegen-best-effort.mjs` (Node ESM puro, sin 2>/dev/null, Windows-safe). `scripts/seed_dev.py` (15 licitaciones + adj + usuario demo + API key + predicciones_baja). `docker-compose.override.yml`: postgres:17-alpine con pg_isready. `scripts/doctor.py`: 5 nuevos checks (DATABASE_URL, alembic head, predicciones_baja, Redis, api.d.ts).
 
 - [2026-06-30] **P2: Observabilidad de tokens y coste en el cliente LLM** — `llm/client.py` instrumenta `llm_tokens_total{model,provider,direction,source}` y `llm_cost_usd_total{model,provider}` con lazy-init tolerante a `prometheus_client` ausente, mapa estático `_PRICE_PER_MTOK` (modelo sin precio → solo tokens, coste omitido sin error) y `_record_usage()` centralizado en el `finally` de `stream_llm_response` (firma pública intacta). Ambos providers rellenan un `usage_sink` lateral: Anthropic vía `get_final_message().usage`, OpenAI vía `stream_options={"include_usage":True}`, con fallback de estimación (`source=estimated`) cuando el SDK no reporta. Tests en `tests/test_unit_llm_usage.py` (9): counters reported/estimated, modelo sin precio, dict vacío no-op, sin prometheus, sink poblado en ambos providers, **estimación a nivel provider** y **consumo parcial no contabiliza** (los 2 últimos añadidos para cerrar el RFC). `mypy .` verde (418 files). RFC `2026-06-17` → implemented.
 
