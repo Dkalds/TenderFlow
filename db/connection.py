@@ -80,9 +80,18 @@ def is_postgres_backend() -> bool:
 
 # Patrón para tokenizar SQL y detectar ? fuera de literales/comentarios.
 # Captura: strings simples, strings dobles, comentarios de línea, bloque, y ?
+#
+# IMPORTANTE: los literales SQL estándar (Postgres con standard_conforming_strings=on,
+# el default) NO usan backslash como escape -- una comilla literal dentro de un string
+# se escribe doblada (''), no con \'. Un patrón tipo (?:[^'\\]|\\.)* trata \' como
+# "comilla escapada" y NO cierra el string ahi, tragándose el resto de la query
+# (incluyendo placeholders ? reales) como si siguiera dentro del literal. Esto rompe
+# de forma silenciosa cualquier SQL con ESCAPE '\' seguido de más '?' (patrón usado en
+# los fallbacks LIKE de db/repositories/licitaciones.py). Por eso aquí NO se trata
+# el backslash como escape: solo '' (comilla doblada) cierra/reabre un string.
 _SQL_TOKEN_RE = re.compile(
-    r"('(?:[^'\\]|\\.)*')"  # string comillas simples
-    r'|("(?:[^"\\]|\\.)*")'  # string comillas dobles
+    r"('(?:[^']|'')*')"  # string comillas simples (SQL estándar: '' escapa, no \')
+    r'|("(?:[^"]|"")*")'  # identificador comillas dobles (mismo criterio)
     r"|(--[^\n]*)"  # comentario de línea
     r"|(/\*.*?\*/)"  # comentario de bloque (non-greedy)
     r"|(\?)",  # placeholder qmark
@@ -152,7 +161,7 @@ class _PgConnAdapter:
     def fetchall(self) -> list[Any]:
         if self._cur is None:
             return []
-        return self._cur.fetchall()
+        return list(self._cur.fetchall())
 
     @property
     def description(self) -> Any:
@@ -202,7 +211,7 @@ def _get_pg_pool() -> Any:
         if _pg_pool is not None:
             return _pg_pool
         try:
-            from psycopg_pool import ConnectionPool  # type: ignore[import-not-found]
+            from psycopg_pool import ConnectionPool
         except ImportError as exc:
             raise RuntimeError(
                 "psycopg-pool no instalado. Ejecuta: pip install psycopg-pool>=3.2,<4"

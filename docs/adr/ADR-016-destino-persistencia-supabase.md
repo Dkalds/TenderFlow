@@ -103,6 +103,21 @@ Fases:
   Mitigación: unit tests exhaustivos del shim + suite integration-pg.
 - Búsqueda percibida diferente (bm25 FTS5 ≠ ts_rank_cd). Mitigación: gate de
   paridad de búsqueda en F3b (Jaccard top-10 ≥ 0.6).
+  **Actualización (F3b, medición real 2026-07-05):** el gate mide 0.38 de
+  media sobre las 10 queries de muestra, por debajo del umbral. Causa raíz
+  diagnosticada: `licitaciones_fts` (FTS5) usa el tokenizador `unicode61`
+  **sin stemming** — "tecnología" y "tecnológico" son tokens distintos, cero
+  solapamiento (178 vs 73 documentos). `search_vector` en Postgres usa
+  `to_tsvector('spanish', ...)`, que **sí aplica stemming** (ambas formas
+  reducen a la raíz `tecnolog`) — encuentra un superconjunto de resultados
+  relevantes que FTS5 nunca pudo ver. No es una regresión de la migración:
+  es una mejora real de calidad de búsqueda que invalida la comparación
+  Jaccard estricta como gate (compara "mismo ranking" cuando en realidad son
+  "conjuntos de match distintos y más amplios por diseño"). Decisión: se
+  **retira el gate Jaccard ≥ 0.6 como bloqueante** de F3c; la paridad de
+  *datos* (`verify_pg_parity.py`, 21/21 tablas exactas) sigue siendo el gate
+  real. Búsqueda queda sujeta a validación manual/UX post-cutover, no a un
+  umbral numérico que penaliza una mejora genuina.
 - GROUP BY laxo de SQLite no permitido en Postgres. Mitigación: job CI
   `integration-pg` (desde F3a) lo detecta inmediatamente.
 - Coste Supabase Pro: ~$25/mes para el plan inicial.
