@@ -146,6 +146,7 @@ ignore = [
 "scripts/fix_dates_adjudicaciones.py" = ["TID251"]
 "scripts/retrain.py" = ["TID251"]
 "scripts/rotate_api_keys.py" = ["TID251"]
+"scripts/seed_dev.py" = ["TID251"]
 "services/analytics/scoring_signals.py" = ["TID251"]
 "services/competitive/bajas.py" = ["TID251"]
 "services/competitive/mercado.py" = ["TID251"]
