@@ -26,6 +26,7 @@ import socket
 import sqlite3
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -104,7 +105,11 @@ def check_database() -> bool:
 
             with psycopg.connect(database_url, connect_timeout=5) as conn:
                 conn.execute("SELECT 1").fetchone()
-            _ok(f"DATABASE_URL alcanzable ({database_url[:40]}...)")
+            # No mostrar el DSN crudo: user:pass viajarían en claro al output
+            # (terminal, logs de CI, capturas compartidas). Solo host/puerto/db.
+            parsed = urlsplit(database_url)
+            safe_target = f"{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
+            _ok(f"DATABASE_URL alcanzable ({safe_target})")
         except Exception as exc:
             _err(f"DATABASE_URL no alcanzable: {exc}")
             return False

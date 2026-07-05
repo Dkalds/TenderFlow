@@ -192,7 +192,7 @@ class Settings(BaseSettings):
     # Formato: postgresql://user:pass@host:5432/db?sslmode=require  # pragma: allowlist secret
     # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
     # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
-    DATABASE_URL: str = ""
+    DATABASE_URL: SecretStr = SecretStr("")
 
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
@@ -558,6 +558,33 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
         return self
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _validate_database_url_scheme(cls, v: object) -> object:
+        """Rechaza esquemas peligrosos en DATABASE_URL.
+
+        Solo se permiten ``postgresql://`` y ``postgres://``. Un valor vacío
+        indica que no se usa Postgres (fallback a Turso/SQLite), lo cual es
+        válido. Avisa (sin bloquear) si falta ``sslmode=require`` en la
+        query string, ya que sin él psycopg puede negociar sin TLS.
+        """
+        value = v.get_secret_value() if isinstance(v, SecretStr) else v
+        if not isinstance(value, str) or not value:
+            return v
+        allowed = ("postgresql://", "postgres://")
+        if not value.startswith(allowed):
+            raise ValueError(
+                f"DATABASE_URL tiene un esquema no permitido. "
+                f"Se esperaba uno de {allowed}, se recibió un valor que no matchea."
+            )
+        if "sslmode=" not in value:
+            warnings.warn(
+                "DATABASE_URL no especifica sslmode. Añade '?sslmode=require' "
+                "para exigir TLS en la conexión a Postgres/Supabase.",
+                stacklevel=2,
+            )
+        return v
 
     @field_validator("TURSO_DATABASE_URL", mode="before")
     @classmethod

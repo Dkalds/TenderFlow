@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import libsql
+from pydantic import SecretStr
 
 from config import settings
 from observability.logging import get_logger
@@ -57,8 +58,19 @@ def now_utc_iso() -> str:
 
 
 def _database_url() -> str:
-    """Devuelve DATABASE_URL del entorno o cadena vacía."""
-    return os.environ.get("DATABASE_URL", "") or getattr(settings, "DATABASE_URL", "") or ""
+    """Devuelve DATABASE_URL del entorno o cadena vacía.
+
+    ``settings.DATABASE_URL`` es un ``SecretStr`` en el caso normal, pero los
+    tests hacen ``monkeypatch.setattr(settings, "DATABASE_URL", "")`` con un
+    ``str`` plano — se soportan ambas formas.
+    """
+    env_val = os.environ.get("DATABASE_URL", "")
+    if env_val:
+        return env_val
+    attr_val = getattr(settings, "DATABASE_URL", "")
+    if isinstance(attr_val, SecretStr):
+        return attr_val.get_secret_value()
+    return attr_val or ""
 
 
 def is_postgres_backend() -> bool:
