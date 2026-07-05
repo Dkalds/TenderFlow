@@ -240,6 +240,12 @@ class Settings(BaseSettings):
     PSCP_DATASET_ID: str = "ybgg-dgi6"
     # App token Socrata opcional (solo necesario si aparece rate limiting).
     PSCP_APP_TOKEN: SecretStr = SecretStr("")
+    # ── F2: Retrofit PLACSP → Connector (ADR-009) ────────────────────────
+    # Cuando True, run_daily_pipeline y run_bulk_pipeline usan PlacspAtomConnector
+    # / PlacspBulkConnector en lugar del pipeline legacy (scraper/pipeline.py).
+    # Mantener False hasta que el test de paridad de datos esté verde.
+    # Flip → True para validar en dev; retire el flag tras 1 ciclo estable.
+    PLACSP_CONNECTOR_ENABLED: bool = False
     # Índice de resoluciones TACRC (Ministerio de Hacienda).
     #
     # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):

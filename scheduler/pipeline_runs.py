@@ -167,6 +167,9 @@ def run_daily_pipeline() -> dict[str, Any]:
     oficial. Usada tanto por ``run_update.py --daily`` como por
     ``scheduler/jobs/daily_atom.py``.
 
+    Cuando ``PLACSP_CONNECTOR_ENABLED=True`` (F2), usa ``PlacspAtomConnector``
+    a través de ``run_connector``; si es False, usa el pipeline legacy.
+
     Returns:
         Dict con ``ingestion_result``, ``steps`` y ``status``.
 
@@ -176,9 +179,14 @@ def run_daily_pipeline() -> dict[str, Any]:
             ``error_persistencia``) no relanzarán excepción para evitar
             doble-alerta — las notificaciones ya se enviaron dentro del pipeline.
     """
+    from config import settings as _settings
+
+    if getattr(_settings, "PLACSP_CONNECTOR_ENABLED", False):
+        return _run_daily_pipeline_connector()
+
+    # ── Legacy path ──────────────────────────────────────────────────────────
     from scraper.pipeline import update_daily
 
-    # Estos estados ya producen alertas dentro de process_daily; no re-lanzar.
     _HANDLED_STATUSES = frozenset({"error_fetch", "error_persistencia"})
 
     result = update_daily()
@@ -187,13 +195,40 @@ def run_daily_pipeline() -> dict[str, Any]:
     if status != "ok" and status not in _HANDLED_STATUSES:
         raise RuntimeError(f"daily ingestion failed: {status}")
 
-    # Los pasos post-ingesta operan sobre la BD existente y deben correr
-    # incluso si el fetch falló (evita dejar KPIs y ML desactualizados).
     step_results = _run_post_ingestion_steps()
 
     return {
         "status": status,
         "ingestion_result": result,
+        "steps": step_results,
+    }
+
+
+def _run_daily_pipeline_connector() -> dict[str, Any]:
+    """Implementación del carril diario usando PlacspAtomConnector (F2)."""
+    from scraper.connectors.base import run_connector
+    from scraper.connectors.placsp import PlacspAtomConnector
+
+    connector = PlacspAtomConnector()
+    run_result = run_connector(connector)
+
+    status = "ok" if run_result.errores == 0 else "degraded"
+    ingestion = run_result.as_dict()
+
+    step_results = _run_post_ingestion_steps()
+
+    return {
+        "status": status,
+        "ingestion_result": {
+            "status": status,
+            "source": run_result.source_id,
+            "tech_matches": run_result.parsed,
+            "inserted": run_result.nuevas,
+            "modified": run_result.actualizadas,
+            "unchanged": 0,
+            "entries_error": run_result.errores,
+        },
+        "connector_result": ingestion,
         "steps": step_results,
     }
 
@@ -259,9 +294,8 @@ def _finalize_ingestion(results: list[dict[str, Any]], *, label: str) -> dict[st
 def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
     """Pipeline canónica para el carril bulk (últimos N meses).
 
-    Ejecuta la ingesta bulk y todos los pasos post-ingesta en la secuencia
-    oficial. Usada tanto por ``run_update.py --months`` como por
-    ``scheduler/jobs/recent_bulk.py``.
+    Cuando ``PLACSP_CONNECTOR_ENABLED=True`` (F2), usa ``PlacspBulkConnector``
+    a través de ``run_connector``; si es False, usa el pipeline legacy.
 
     Un fallo transitorio en algún mes reciente **no** aborta la pipeline: se
     registra en la DLQ, se ejecutan los pasos post-ingesta (incluido el
@@ -278,6 +312,11 @@ def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
     Raises:
         RuntimeError: Solo si fallan todos los meses de la ingesta.
     """
+    from config import settings as _settings
+
+    if getattr(_settings, "PLACSP_CONNECTOR_ENABLED", False):
+        return _run_bulk_pipeline_connector(months)
+
     from scraper.pipeline import update_recent
 
     results = update_recent(months)
@@ -304,3 +343,49 @@ def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
 
     results = backfill(year, month)
     return _finalize_ingestion(results, label="backfill")
+
+
+def _run_bulk_pipeline_connector(months: int) -> dict[str, Any]:
+    """Implementación del carril bulk usando PlacspBulkConnector (F2)."""
+    from datetime import UTC, datetime
+
+    from dateutil.relativedelta import relativedelta
+
+    from scraper.connectors.base import run_connector
+    from scraper.connectors.placsp import PlacspBulkConnector
+
+    today = datetime.now(UTC).date()
+    month_results: list[dict[str, Any]] = []
+
+    for i in range(months):
+        target = today - relativedelta(months=i)
+        connector = PlacspBulkConnector(target.year, target.month)
+        try:
+            r = run_connector(connector)
+            month_results.append(
+                {
+                    "year": target.year,
+                    "month": target.month,
+                    "status": "ok" if r.errores == 0 else "error",
+                    "nuevas": r.nuevas,
+                    "actualizadas": r.actualizadas,
+                    "adjudicaciones": r.adjudicaciones,
+                    "entries_error": r.errores,
+                }
+            )
+        except Exception as exc:
+            log.exception(
+                "bulk_connector_month_failed",
+                year=target.year,
+                month=target.month,
+                error=str(exc),
+            )
+            month_results.append(
+                {
+                    "year": target.year,
+                    "month": target.month,
+                    "status": "error",
+                }
+            )
+
+    return _finalize_ingestion(month_results, label="bulk refresh (connector)")
