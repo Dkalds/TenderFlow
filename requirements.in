@@ -49,7 +49,7 @@ starlette>=1.0.1,<2
 # perdido de este archivo en algún momento y sobrevivía solo porque requirements.txt
 # no se había vuelto a compilar desde entonces (mismo patrón que el incidente de
 # psycopg-pool — ver scripts/check_requirements_sync.py).
-uvicorn>=0.30.0,<1
+uvicorn>=0.50.0,<1
 # Backend de rate limiting distribuido (services/rate_limit_redis.py, RATE_LIMIT_BACKEND=redis).
 # Mismo motivo que uvicorn: presente en pyproject.toml pero faltaba aquí.
 redis>=5.0,<6
