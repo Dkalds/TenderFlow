@@ -125,6 +125,19 @@ def test_short_env_secret_not_redacted(capsys, monkeypatch):
     assert data["note"] == "this is ab safe"
 
 
+def test_redact_value_exact_match_short_circuits(capsys, monkeypatch):
+    """Si el valor de un campo coincide EXACTO con un secreto cacheado, se
+    redacta directo (rama distinta del reemplazo de subcadena incrustada)."""
+    secret = "exact-match-secret-value"  # pragma: allowlist secret
+    monkeypatch.setenv("API_HMAC_SECRET", secret)
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.redact")
+    log.info("event_exact", raw_value=secret)
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "event_exact")
+    assert data["raw_value"] == "***REDACTED***"
+
+
 # ── Redacción de DSN Postgres/Supabase ───────────────────────────────────
 
 

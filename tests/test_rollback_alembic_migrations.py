@@ -237,3 +237,38 @@ class TestAlembicMigrationsRollback:
         assert "ml_feedback" in tables
         assert "model_versions" in tables
         assert "mat_clusters" in tables
+
+
+# ── run_migrations_online: redacción de DSN en error de conexión ────────────
+
+
+def test_run_migrations_online_redacts_dsn_on_connect_failure(tmp_path: Path) -> None:
+    """Si la conexión falla en modo online, el error no debe filtrar el DSN crudo.
+
+    Regresión: db/alembic/env.py envuelve el ``connectable.connect()`` inicial
+    para no propagar el DSN (con password) tal cual en el traceback. Se fuerza
+    el fallo apuntando ``sqlalchemy.url`` a un directorio (no un archivo) --
+    SQLite no puede abrirlo, fallando de forma determinística en connect(),
+    ejercitando la misma ruta de error que un DSN de Postgres inalcanzable.
+    """
+    import unittest.mock as _mock
+
+    import pytest
+    from alembic import command as alembic_cmd
+    from alembic.config import Config
+
+    _project_root = Path(__file__).parent.parent
+    cfg = Config(str(_project_root / "alembic.ini"))
+    cfg.attributes["configure_logger"] = False
+
+    # env.py sobreescribe sqlalchemy.url con settings.DB_PATH cuando no hay
+    # DATABASE_URL Postgres (ver db/alembic/env.py) -- hay que mockear
+    # config.settings, no solo el Config de alembic (mismo patrón que
+    # _run_alembic más arriba en este archivo).
+    with _mock.patch("config.settings") as mock_settings:
+        # tmp_path es un directorio existente: sqlite3 no puede open() un
+        # directorio como archivo -> falla en connect(), no más adelante en
+        # una query real.
+        mock_settings.DB_PATH = str(tmp_path)
+        with pytest.raises(Exception, match="Alembic no pudo conectar a la BD"):
+            alembic_cmd.upgrade(cfg, "head")
