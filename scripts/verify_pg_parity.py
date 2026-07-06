@@ -66,7 +66,16 @@ def _connect_pg() -> Any:
     if not url:
         print("[verify] ERROR: DATABASE_URL no definida", file=sys.stderr)
         sys.exit(1)
-    return psycopg.connect(url)
+    try:
+        return psycopg.connect(url)
+    except Exception as exc:
+        from observability.logging import redact_dsn
+
+        print(
+            f"[verify] ERROR: no se pudo conectar a Postgres: {redact_dsn(str(exc))}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def _count(conn: Any, table: str, *, is_pg: bool) -> int:

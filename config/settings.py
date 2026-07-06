@@ -11,6 +11,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parent.parent
 
+
+def _extract_sslmode(url: str) -> str | None:
+    """Devuelve el valor de ``sslmode`` de una DATABASE_URL, o None si no está.
+
+    Robusto frente a passwords con caracteres especiales: solo parsea la query
+    string (tras ``?``). Devuelve el valor en minúsculas.
+    """
+    from urllib.parse import parse_qs, urlsplit
+
+    values = parse_qs(urlsplit(url).query).get("sslmode")
+    if not values:
+        return None
+    return values[-1].strip().lower()
+
 # En entornos donde el paquete se instala en site-packages (e.g. despliegues gestionados),
 # _ROOT apuntaría a un directorio sin permisos de escritura.  Usamos un
 # directorio escribible como fallback.
@@ -193,6 +207,20 @@ class Settings(BaseSettings):
     # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
     # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
     DATABASE_URL: SecretStr = SecretStr("")
+
+    # Ruta al certificado CA raíz de Supabase (Dashboard → Database → SSL).
+    # Necesario para usar ``sslmode=verify-full`` (verifica cadena + hostname del
+    # servidor, previene MITM). No es un secreto (cert público). Si está vacío y
+    # el DSN pide verify-full, psycopg buscará la CA del sistema.
+    DATABASE_SSL_ROOT_CERT: str = ""
+
+    # Timeouts server-side aplicados a cada conexión del pool Postgres. Protegen
+    # contra queries descontroladas o transacciones idle que clavan una conexión
+    # y saturan el pool (pequeño). En milisegundos; 0 = sin límite (no recomendado).
+    DB_STATEMENT_TIMEOUT_MS: int = 30_000
+    DB_IDLE_TX_TIMEOUT_MS: int = 60_000
+    # Timeout (segundos) para establecer la conexión TCP/TLS al pooler.
+    DB_CONNECT_TIMEOUT: int = 10
 
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
@@ -583,23 +611,62 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_database_ssl(self) -> Settings:
-        """En producción/staging, exigir sslmode=require en DATABASE_URL (Postgres/Supabase).
+        """En producción/staging, exigir TLS verificado en DATABASE_URL (Postgres/Supabase).
 
-        Sin este parámetro psycopg puede negociar una conexión sin TLS si el
-        servidor lo permitiera. En dev solo se avisa (warning).
+        ``sslmode=require`` cifra pero NO valida el certificado ni el hostname del
+        servidor: un atacante capaz de interponerse (MITM) puede presentar su
+        propio certificado y capturar credenciales + datos. ``verify-full`` valida
+        cadena + hostname (necesita ``DATABASE_SSL_ROOT_CERT`` = CA de Supabase).
+
+        Política (prod/staging):
+          - ``sslmode`` ausente → error (psycopg podría negociar sin TLS).
+          - ``disable``/``allow``/``prefer`` → error (no garantizan TLS; cierran el
+            downgrade silencioso que el chequeo por substring anterior permitía).
+          - ``require``/``verify-ca`` → permitido con warning (se recomienda verify-full).
+          - ``verify-full`` → OK.
+        En dev solo se avisa.
         """
         url = self.DATABASE_URL.get_secret_value()
         if not url:
             return self
-        if "sslmode=" not in url:
-            if self.ENV in ("prod", "staging"):
+
+        is_prod = self.ENV in ("prod", "staging")
+        sslmode = _extract_sslmode(url)
+
+        if sslmode is None:
+            if is_prod:
                 raise ValueError(
                     "DATABASE_URL no especifica sslmode en ENV=prod/staging. Añade "
-                    "'?sslmode=require' para exigir TLS en la conexión a Postgres/Supabase."
+                    "'?sslmode=verify-full' (con DATABASE_SSL_ROOT_CERT) para exigir "
+                    "TLS verificado en la conexión a Postgres/Supabase."
                 )
             warnings.warn(
-                "DATABASE_URL no especifica sslmode. Añade '?sslmode=require' "
-                "para exigir TLS en la conexión a Postgres/Supabase.",
+                "DATABASE_URL no especifica sslmode. Añade '?sslmode=verify-full' "
+                "para exigir TLS verificado en la conexión a Postgres/Supabase.",
+                stacklevel=2,
+            )
+            return self
+
+        insecure = {"disable", "allow", "prefer"}
+        if sslmode in insecure:
+            if is_prod:
+                raise ValueError(
+                    f"DATABASE_URL usa sslmode={sslmode!r}, que no garantiza TLS, en "
+                    "ENV=prod/staging. Usa 'verify-full' (recomendado) o al menos 'require'."
+                )
+            warnings.warn(
+                f"DATABASE_URL usa sslmode={sslmode!r}, que puede conectar sin TLS. "
+                "Usa 'verify-full' para exigir TLS verificado.",
+                stacklevel=2,
+            )
+            return self
+
+        if is_prod and sslmode in ("require", "verify-ca"):
+            warnings.warn(
+                f"DATABASE_URL usa sslmode={sslmode!r}: cifra pero no valida "
+                "completamente el certificado del servidor. Se recomienda "
+                "'verify-full' con DATABASE_SSL_ROOT_CERT (CA de Supabase) para "
+                "prevenir ataques MITM.",
                 stacklevel=2,
             )
         return self

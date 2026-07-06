@@ -142,6 +142,56 @@ Durante las primeras 2 horas:
 - Prometheus: `db_write_duration_seconds` (latencias), `db_concurrent_writers`.
 - Supabase Dashboard: Connection graph, Query performance.
 
+## Paso 9 — Hardening post-cutover (seguridad)
+
+Una vez estable el nuevo backend, cerrar la superficie de seguridad:
+
+1. **Rotar la password del rol** — la credencial viajó por `.env`, laptops, ETL y
+   secrets durante la migración. Supabase Dashboard → Database → *Reset database
+   password*; reconstruir `DATABASE_URL` con `?sslmode=verify-full` y actualizarla
+   en Render + GitHub Secrets + `.env`. Ver `docs/SECURITY.md`.
+2. **Verificar TLS verificado** — `DATABASE_URL` con `sslmode=verify-full` y
+   `DATABASE_SSL_ROOT_CERT` apuntando a la CA de Supabase (descargable en Dashboard
+   → Database → SSL). `sslmode=disable/allow/prefer` se rechazan en prod.
+3. **Desactivar la Data API/PostgREST** — Supabase Dashboard → Settings → API.
+   Confirmar además que la migración `v52_rls_lockdown` está aplicada (RLS + REVOKE
+   a `anon`/`authenticated` como defensa en profundidad):
+   ```bash
+   psql "$DATABASE_URL" -c "SELECT relname FROM pg_class WHERE relrowsecurity AND relkind='r' LIMIT 5"
+   psql "$DATABASE_URL" -c "SELECT has_table_privilege('anon','users','SELECT')"  # debe ser false
+   ```
+4. **Backups cifrados** — configurar `BACKUP_ENCRYPTION_KEY` (GitHub Secret) para que
+   `backup.yml` cifre el dump antes de subirlo (ver ese workflow).
+
+## Roadmap F3d+ — Rol de privilegios mínimos (pendiente)
+
+Hoy la app, el scheduler, el scraper, alembic y el backup comparten una única
+`DATABASE_URL` con un rol de altos privilegios (dueño del schema). Objetivo:
+separar responsabilidades.
+
+- Crear un rol `tenderflow_app` con **solo DML** sobre las tablas necesarias (sin
+  DDL/superuser) para la app/scheduler/scraper, y usar un `DATABASE_ADMIN_URL`
+  aparte (rol dueño) solo para migraciones alembic.
+- Fijar timeouts por rol: `ALTER ROLE tenderflow_app SET statement_timeout='30s'`,
+  `idle_in_transaction_session_timeout='60s'`.
+- ⚠️ **Dependencia con RLS (v52):** `tenderflow_app` NO sería dueño de las tablas,
+  así que la RLS activa (sin políticas) lo dejaría **deny-all**. Antes de cutover a
+  este rol hay que añadir políticas RLS explícitas (o `GRANT` por tabla) para
+  `tenderflow_app`. Es un cambio coordinado (panel Supabase + regenerar
+  `DATABASE_URL` + mini-cutover), fuera del alcance del hardening de repo.
+
+Boceto (`scripts/setup_pg_roles.sql`, a crear en esa fase):
+
+```sql
+CREATE ROLE tenderflow_app LOGIN PASSWORD '<generada>';  -- pragma: allowlist secret
+GRANT USAGE ON SCHEMA public TO tenderflow_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO tenderflow_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO tenderflow_app;
+ALTER ROLE tenderflow_app SET statement_timeout = '30s';
+ALTER ROLE tenderflow_app SET idle_in_transaction_session_timeout = '60s';
+-- + políticas RLS por tabla o GRANT selectivos (por la migración v52).
+```
+
 ## Rollback
 
 Si algo falla en el Paso 5 o posterior:
