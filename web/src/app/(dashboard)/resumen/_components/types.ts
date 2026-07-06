@@ -11,12 +11,6 @@ export interface TimelineItem {
   ccaa: string | null;
 }
 
-export interface CompareResponse {
-  period_a: Record<string, number>;
-  period_b: Record<string, number>;
-  deltas: Record<string, number>;
-}
-
 export type ExtendedOverview = AnalyticsOverview;
 
 export const ITEMS_PER_PAGE = 10;

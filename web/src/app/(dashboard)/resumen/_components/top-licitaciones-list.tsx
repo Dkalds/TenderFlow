@@ -16,7 +16,7 @@ export function TopLicitacionesList({ data, isLoading }: TopLicitacionesListProp
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Top 10 Licitaciones</CardTitle>
+        <CardTitle className="text-base">Top oportunidades</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (

@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { TrendingUp, TrendingDown, AlertTriangle, type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { TrendingUp, TrendingDown, AlertTriangle, ArrowUpRight, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -37,6 +38,12 @@ export interface KpiCardProps {
   accent?: KpiAccent;
   /** Optional target/threshold shown next to the trend (e.g. "meta 1.000"). */
   target?: string;
+  /**
+   * Optional drill-down destination. When set, the whole card becomes an
+   * accessible link (keyboard-focusable, with a hover affordance) that
+   * navigates to the filtered listing backing the metric.
+   */
+  href?: string;
   loading?: boolean;
   className?: string;
 }
@@ -52,11 +59,18 @@ export const KpiCard = React.memo(function KpiCard({
   anomaly = false,
   accent,
   target,
+  href,
   loading = false,
   className,
 }: KpiCardProps) {
-  return (
-    <Card className={cn("group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg", className)}>
+  const card = (
+    <Card
+      className={cn(
+        "group relative h-full min-h-[7.75rem] overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg",
+        href && "cursor-pointer",
+        className,
+      )}
+    >
       {accent && (
         <span
           aria-hidden="true"
@@ -127,6 +141,26 @@ export const KpiCard = React.memo(function KpiCard({
           <div className="mt-3 h-12 w-full">{sparkline}</div>
         )}
       </CardContent>
+      {href && (
+        <ArrowUpRight
+          aria-hidden="true"
+          className="absolute bottom-3 right-3 h-4 w-4 text-muted-foreground/50 transition-colors group-hover:text-primary"
+        />
+      )}
     </Card>
   );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        aria-label={`${title}: ver detalle`}
+        className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        {card}
+      </Link>
+    );
+  }
+
+  return card;
 });
