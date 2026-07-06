@@ -25,6 +25,7 @@ def _extract_sslmode(url: str) -> str | None:
         return None
     return values[-1].strip().lower()
 
+
 # En entornos donde el paquete se instala en site-packages (e.g. despliegues gestionados),
 # _ROOT apuntaría a un directorio sin permisos de escritura.  Usamos un
 # directorio escribible como fallback.

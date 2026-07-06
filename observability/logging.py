@@ -57,6 +57,7 @@ def redact_dsn(text: str) -> str:
     """
     return _DSN_PASSWORD_RE.sub(r"\1***\2", text)
 
+
 # Claves de event_dict cuyo valor SIEMPRE se redacta (independiente del contenido).
 _SENSITIVE_KEYS = frozenset(
     {

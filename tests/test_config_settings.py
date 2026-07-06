@@ -331,13 +331,17 @@ def test_database_url_insecure_sslmode_raises_in_prod(mode):
 
     # y en dev solo avisa (no lanza)
     with pytest.warns(UserWarning, match="sin TLS"):
-        Settings(ENV="dev", DATABASE_URL=f"postgresql://user:pass@h:5432/d?sslmode={mode}")  # pragma: allowlist secret
+        Settings(
+            ENV="dev", DATABASE_URL=f"postgresql://user:pass@h:5432/d?sslmode={mode}"
+        )  # pragma: allowlist secret
 
 
 def test_database_url_require_warns_recommend_verify_full_in_prod():
     """sslmode=require se permite pero avisa que se recomienda verify-full."""
     with pytest.warns(UserWarning, match="verify-full"):
-        _prod_db_settings("postgresql://user:pass@host:5432/db?sslmode=require")  # pragma: allowlist secret
+        _prod_db_settings(
+            "postgresql://user:pass@host:5432/db?sslmode=require"
+        )  # pragma: allowlist secret
 
 
 def test_database_url_verify_full_ok_in_prod():
