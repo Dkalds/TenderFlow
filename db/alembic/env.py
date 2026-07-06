@@ -72,7 +72,18 @@ def run_migrations_online() -> None:
             poolclass=pool.NullPool,
         )
 
-    with connectable.connect() as connection:
+    try:
+        connection_ctx = connectable.connect()
+    except Exception as exc:  # solo el establecimiento de conexión puede filtrar el DSN
+        try:
+            from observability.logging import redact_dsn
+
+            msg = redact_dsn(str(exc))
+        except Exception:
+            msg = "(redacted)"
+        raise RuntimeError(f"Alembic no pudo conectar a la BD: {msg}") from None
+
+    with connection_ctx as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():

@@ -300,6 +300,58 @@ def test_database_url_with_sslmode_ok_in_prod():
     assert "sslmode=require" in s.DATABASE_URL.get_secret_value()
 
 
+def _prod_db_settings(url: str):
+    """Construye Settings prod con los secrets mínimos, variando DATABASE_URL."""
+    from config.settings import Settings
+
+    return Settings(
+        ENV="prod",
+        DATABASE_URL=url,
+        SIGNING_KEY="x" * 32,
+        API_HMAC_SECRET="y" * 32,
+        REDIS_URL="redis://localhost:6379/0",
+        REDIS_PASSWORD="prod-redis-password",
+        GF_SECURITY_ADMIN_PASSWORD="",
+    )
+
+
+@pytest.mark.parametrize("mode", ["disable", "allow", "prefer"])
+def test_database_url_insecure_sslmode_raises_in_prod(mode):
+    """sslmode=disable/allow/prefer NO garantizan TLS → rechazados en prod.
+
+    Regresión: el chequeo por substring anterior ('sslmode=' in url) los dejaba
+    pasar, deshabilitando TLS en silencio.
+    """
+    from config.settings import Settings
+
+    with pytest.raises(ValueError, match="no garantiza TLS"):
+        _prod_db_settings(
+            f"postgresql://user:pass@host:5432/db?sslmode={mode}"  # pragma: allowlist secret
+        )
+
+    # y en dev solo avisa (no lanza)
+    dev_url = f"postgresql://user:pass@h:5432/d?sslmode={mode}"  # pragma: allowlist secret
+    with pytest.warns(UserWarning, match="sin TLS"):
+        Settings(ENV="dev", DATABASE_URL=dev_url)
+
+
+def test_database_url_require_warns_recommend_verify_full_in_prod():
+    """sslmode=require se permite pero avisa que se recomienda verify-full."""
+    url = "postgresql://user:pass@host:5432/db?sslmode=require"  # pragma: allowlist secret
+    with pytest.warns(UserWarning, match="verify-full"):
+        _prod_db_settings(url)
+
+
+def test_database_url_verify_full_ok_in_prod():
+    """verify-full es el modo recomendado: no lanza ni exige nada más."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = _prod_db_settings(
+            "postgresql://user:pass@host:5432/db?sslmode=verify-full"  # pragma: allowlist secret
+        )
+    assert "verify-full" in s.DATABASE_URL.get_secret_value()
+
+
 # ---------------------------------------------------------------------------
 # Turso URL scheme validator
 # ---------------------------------------------------------------------------

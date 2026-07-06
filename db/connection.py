@@ -214,6 +214,34 @@ _pg_pool: Any = None  # psycopg_pool.ConnectionPool | None
 _pg_pool_lock = threading.Lock()
 
 
+def _pg_connect_kwargs() -> dict[str, Any]:
+    """Parámetros libpq extra aplicados a cada conexión del pool Postgres.
+
+    - ``options``: ``statement_timeout`` + ``idle_in_transaction_session_timeout``
+      server-side. Evitan que una query descontrolada u hostil, o una transacción
+      idle, claven una conexión del (pequeño) pool y lo saturen (DoS barato).
+    - ``connect_timeout``: no colgar indefinidamente si el pooler no responde.
+    - ``sslrootcert``: CA raíz para ``sslmode=verify-full`` (si está configurada).
+    """
+    kwargs: dict[str, Any] = {}
+    stmt_ms = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
+    idle_ms = int(getattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000))
+    opts: list[str] = []
+    if stmt_ms > 0:
+        opts.append(f"-c statement_timeout={stmt_ms}")
+    if idle_ms > 0:
+        opts.append(f"-c idle_in_transaction_session_timeout={idle_ms}")
+    if opts:
+        kwargs["options"] = " ".join(opts)
+    connect_timeout = int(getattr(settings, "DB_CONNECT_TIMEOUT", 10))
+    if connect_timeout > 0:
+        kwargs["connect_timeout"] = connect_timeout
+    ca = getattr(settings, "DATABASE_SSL_ROOT_CERT", "") or ""
+    if isinstance(ca, str) and ca.strip():
+        kwargs["sslrootcert"] = ca.strip()
+    return kwargs
+
+
 def _get_pg_pool() -> Any:
     """Devuelve (creando si es necesario) el pool de conexiones Postgres."""
     global _pg_pool
@@ -230,13 +258,29 @@ def _get_pg_pool() -> Any:
             ) from exc
 
         pool_size = getattr(settings, "DB_POOL_SIZE", 5)
-        _pg_pool = ConnectionPool(
-            conninfo=_database_url(),
-            min_size=1,
-            max_size=max(pool_size, 2),
-            open=True,
+        conn_kwargs = _pg_connect_kwargs()
+        try:
+            _pg_pool = ConnectionPool(
+                conninfo=_database_url(),
+                min_size=1,
+                max_size=max(pool_size, 2),
+                kwargs=conn_kwargs,
+                open=True,
+            )
+        except Exception as exc:
+            # No filtrar el DSN (con password) en el mensaje de error propagado.
+            from observability.logging import redact_dsn
+
+            raise RuntimeError(
+                f"No se pudo crear el pool Postgres: {redact_dsn(str(exc))}"
+            ) from None
+        log.info(
+            "pg_pool_created",
+            min=1,
+            max=max(pool_size, 2),
+            timeouts=conn_kwargs.get("options", "none"),
+            ssl_ca=bool(conn_kwargs.get("sslrootcert")),
         )
-        log.info("pg_pool_created", min=1, max=max(pool_size, 2))
     return _pg_pool
 
 
