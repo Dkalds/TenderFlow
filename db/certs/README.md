@@ -7,16 +7,22 @@ cierra ese vector, pero necesita la **CA raíz de Supabase**.
 
 ## Cómo obtenerla
 
-No se versiona aquí un certificado fabricado. Descargá el real:
+Ya está commiteado en este directorio: `prod-ca-2021.crt` (descargado desde
+Supabase Dashboard → tu proyecto → **Database → SSL Configuration** → *Download
+certificate*, verificado con `openssl x509 -noout -subject -issuer -dates`:
+subject/issuer = `Supabase Root 2021 CA`, válido hasta 2031-04-26).
 
-1. Supabase Dashboard → tu proyecto → **Database → SSL Configuration** →
-   *Download certificate* (fichero tipo `prod-ca-2021.crt`).
-2. Colocalo en este directorio: `db/certs/prod-ca-2021.crt`.
-3. Apuntá la variable de entorno:
-   ```
-   DATABASE_SSL_ROOT_CERT=db/certs/prod-ca-2021.crt
-   DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
-   ```
+Si tu proyecto de Supabase usa otra CA (proyectos más nuevos, o rotación de CA),
+repetí la descarga y reemplazá el fichero.
+
+Variables de entorno (Render u otro despliegue):
+```
+DATABASE_SSL_ROOT_CERT=/app/db/certs/prod-ca-2021.crt
+DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
+```
+
+`/app` es el `WORKDIR` de la imagen Docker (`docker/Dockerfile.api`) — ajustá la
+ruta si el despliegue usa otro directorio de trabajo.
 
 El certificado de la CA es **público** (no es un secreto); podés commitearlo o
 montarlo como fichero en el despliegue. `db/connection.py` lo pasa como
