@@ -8,7 +8,12 @@ Guía completa de navegación, workflows y patrones: [docs/AGENT_PLAYBOOK.md](do
 
 ## 1. Cómo navegar el código (graphify-first)
 
-Hay un knowledge graph en `graphify-out/` con god nodes, comunidades y relaciones cross-file. Úsalo **antes** que grep cuando exista `graphify-out/graph.json`.
+Hay un knowledge graph en `graphify-out/` con god nodes, comunidades y relaciones cross-file. Úsalo **antes** que grep para entender arquitectura y relaciones cross-file.
+
+**Orden de navegación (prioridad):**
+1. Si `which graphify` resuelve → usá el CLI (tabla de comandos abajo). `graphify` es una herramienta local del mantenedor — **no está en PyPI ni npm, no intentes instalarla**.
+2. Si no, pero `graphify-out/graph.json` existe → leé los artefactos commiteados directamente (`graphify-out/graph.json`, `graphify-out/wiki/` o `GRAPH_REPORT.md`) en vez de invocar el CLI. Típico en CI o sesiones remotas de Claude Code.
+3. Si no → navegá con grep + [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) y el mapa de áreas de abajo. No es un error: seguí con la tarea.
 
 | Necesidad | Comando |
 |---|---|
@@ -17,14 +22,11 @@ Hay un knowledge graph en `graphify-out/` con god nodes, comunidades y relacione
 | Entender un concepto/módulo concreto | `graphify explain "<concepto>"` |
 | Navegación broad | `graphify-out/wiki/index.md` si existe, si no `GRAPH_REPORT.md` (146K, solo si los anteriores no bastan) |
 
-Dirty graphify-out/ tras hooks o updates incrementales es **normal** — no es razón para saltarse graphify. Solo saltátelo si la tarea es sobre stale graph output o el usuario lo dice explícito.
+Dirty graphify-out/ tras hooks o updates incrementales es **normal** — no es razón para saltarse graphify; usalo igual. Solo saltátelo si la tarea es específicamente sobre regenerar el graph stale o el usuario lo dice explícito.
 
-**Fallback sin CLI**: `graphify` es una herramienta local del mantenedor — **no está en PyPI ni npm, no intentes instalarla**. En entornos donde el CLI no existe (CI, sesiones remotas de Claude Code):
-- Leé los artefactos commiteados directamente: `graphify-out/graph.json`, `graphify-out/wiki/` o `GRAPH_REPORT.md`, en vez de invocar el CLI.
-- Si `graphify-out/` faltara por completo → navegá con grep + [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) y el mapa de áreas de abajo. No es un error: seguí con la tarea.
-- El post-flight `graphify update .` solo aplica si `which graphify` resuelve; si no, omitilo (el hook ya deja `graphify-out/.graph_stale` para regenerar local).
+El post-flight `graphify update .` solo aplica si `which graphify` resuelve; si no, omitilo (el hook ya deja `graphify-out/.graph_stale` para regenerar local).
 
-Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) el graph no tiene el detalle necesario, (c) el graph está ausente o stale.
+Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) el graph no tiene el detalle necesario, (c) el graph está ausente.
 
 ---
 
@@ -50,7 +52,7 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 
 ## 3. Invariantes que nunca romper
 
-1. **Typing strict en core**: `db.database` y `db.users` pasan mypy strict. `config/*` y `shared/*` están en proceso de migración a strict (ver bloque de overrides en `pyproject.toml`). Si tocás estos módulos, **no empeores** el estado de typing — no añadas `# type: ignore` ni `Any` sin justificar, y priorizá cerrar overrides existentes sobre abrir nuevos.
+1. **Typing strict en core**: `db.database` y `db.users` pasan mypy strict. `config/*` y `shared/*` están en proceso de migración a strict (ver bloque de overrides en `pyproject.toml`). Si tocás estos módulos, **no empeores** el estado de typing — no añadas `# type: ignore` ni `Any` sin un comentario inline que explique el motivo (e.g., `# type: ignore[assignment]  # third-party lib lacks stubs`), y priorizá cerrar overrides existentes sobre abrir nuevos.
 2. **Upsert idempotente**: cualquier escritura desde scraper debe poder re-ejecutarse sin duplicar (ver `db/upsert.py`).
 3. **Migraciones append-only**: nunca modificar migraciones alembic ya commiteadas. Siempre nueva revisión.
 4. **Auto-marking de tests**: `tests/conftest.py` aplica markers (unit/integration/e2e/property/load) por nombre de archivo. **No marcar a mano** — renombrar el test si necesitás otro marker.
@@ -89,7 +91,7 @@ Slash-commands de Claude Code (en `.claude/commands/`):
 ## 5. Workflow estándar
 
 **Pre-flight (siempre):**
-1. Si `graphify-out/graph.json` existe → `graphify query "<intent>"` antes que grep (o leé el JSON/wiki directo si el CLI no está instalado — ver fallback en §1).
+1. Si `graphify-out/graph.json` existe → `graphify query "<intent>"` antes que grep (ver lógica de fallback en §1).
 2. Lee [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) si vas a tocar un área que no conocés.
 3. Revisa [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) si te pidieron "encuentra una mejora".
 
@@ -100,7 +102,7 @@ Slash-commands de Claude Code (en `.claude/commands/`):
 **Post-flight (siempre tras editar `.py`):**
 1. Corre `/check` (o `make lint && make typecheck && make test-unit`).
 2. Si el CLI está disponible (`which graphify`), corre `graphify update .` (AST-only, gratis, sin API). Si hubo cambios estructurales (nuevos módulos, renames), considerá `graphify update . --force`. Si el CLI no está (CI/remoto), omití este paso.
-3. Si el cambio rompe convenciones documentadas, abrí un ADR en `docs/adr/` antes de mergear.
+3. Si el cambio contradice una decisión registrada en `docs/adr/` o un invariante de la sección 3, abrí una nueva revisión ADR en `docs/adr/` antes de mergear.
 4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), movélo a **Cerrados** (o anotá progreso parcial) en ese mismo momento. No dejarlo para después.
 
 ---
@@ -116,6 +118,8 @@ Estas acciones requieren **OK explícito** antes de ejecutar:
 - Borrar tests existentes o relajar markers strict en `pyproject.toml`.
 - `git push`, `git reset --hard`, force-push, ramas borradas.
 - Crear/cerrar PRs e issues en GitHub.
+
+Si durante la ejecución de una tarea descubrís que completarla requiere una acción de esta lista, detené la tarea, describí qué acción necesitás y por qué, y esperá confirmación explícita antes de continuar.
 
 Para todo lo demás (editar código de feature, añadir tests, refactor local), procedé sin pedir confirmación a menos que el cambio sea irreversible.
 
