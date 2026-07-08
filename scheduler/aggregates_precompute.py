@@ -20,9 +20,9 @@ diaria y de recarga bulk.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from db.database import connect
+from db.database import connect, connect_read
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -109,8 +109,9 @@ def _persist_top_empresas(conn: Any, rows: list[dict[str, Any]]) -> None:
 # ── Clusters semánticos ───────────────────────────────────────────────────────
 
 
-def _compute_clusters(rows: list[tuple[str, str, str]]) -> list[dict[str, Any]]:
+def _compute_clusters(source: Any) -> list[dict[str, Any]]:
     """Calcula la asignación de clusters para las licitaciones dadas."""
+    rows = _load_clustering_data(source) if hasattr(source, "execute") else source
 
     if not rows:
         return []
@@ -162,16 +163,19 @@ def _load_clustering_data(conn: Any) -> list[tuple[str, str, str]]:
     # Cargar licitaciones de los últimos 12 meses o un máximo de 50,000 para evitar cómputos excesivos.
     # Asume que 'fecha_publicacion' es el campo adecuado para el filtrado.
     # Si no, se podría usar 'id' o 'rowid' con un LIMIT fijo.
-    return conn.execute(
-        """
+    return cast(
+        "list[tuple[str, str, str]]",
+        conn.execute(
+            """
         SELECT id_externo, titulo, SUBSTR(descripcion, 1, 500)
         FROM licitaciones
         WHERE titulo IS NOT NULL
-          AND fecha_publicacion >= date('now', '-12 months')
+          AND (fecha_publicacion IS NULL OR fecha_publicacion >= date('now', '-12 months'))
         ORDER BY fecha_publicacion DESC
         LIMIT 50000
         """
-    ).fetchall()
+        ).fetchall(),
+    )
 
 
 def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
@@ -206,95 +210,12 @@ def run_aggregates_precompute() -> dict[str, Any]:
         # Cómputo de clusters fuera de la transacción principal
         with connect_read() as read_conn:
             clustering_data = _load_clustering_data(read_conn)
-        
+
         clusters = _compute_clusters(clustering_data)
 
         # Persistencia de clusters en una transacción separada
         with connect() as write_conn:
             _persist_clusters(write_conn, clusters)
-            log.info(
-                "aggregates_precompute.clusters_done",
-                n=len(clusters),
-            )
-
-        return {
-            "status": "ok",
-            "n_empresas": len(empresas),
-            "n_clusters": len(clusters),
-        }
-    except Exception as exc:
-
-    if not rows:
-        return []
-
-    ids = [r[0] for r in rows]
-    texts = [f"{r[1] or ''} {r[2] or ''}".strip() for r in rows]
-
-    try:
-        from sklearn.cluster import KMeans
-        from sklearn.feature_extraction.text import TfidfVectorizer
-
-        n_clusters = min(_N_CLUSTERS, len(ids))
-        vectorizer = TfidfVectorizer(max_features=5000, sublinear_tf=True)
-        X = vectorizer.fit_transform(texts)
-        km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-        labels = km.fit_predict(X)
-
-        # Construir etiquetas: top-3 términos TF-IDF del centroide de cada cluster
-        feature_names = vectorizer.get_feature_names_out()
-        cluster_labels: dict[int, str] = {}
-        order_centroids = km.cluster_centers_.argsort()[:, ::-1]
-        for k in range(n_clusters):
-            top_terms = [feature_names[i] for i in order_centroids[k, :3]]
-            cluster_labels[k] = " · ".join(top_terms)
-
-        now = datetime.now(UTC).isoformat()
-        return [
-            {
-                "id_externo": id_ext,
-                "cluster_id": int(lbl),
-                "cluster_label": cluster_labels[int(lbl)],
-                "updated_at": now,
-            }
-            for id_ext, lbl in zip(ids, labels, strict=False)
-        ]
-
-    except Exception as exc:
-        log.warning("aggregates_precompute.cluster_failed", error=str(exc))
-        return []
-
-
-def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
-    """Reemplaza atómicamente la tabla mat_clusters."""
-    conn.execute("DELETE FROM mat_clusters")
-    if rows:
-        conn.executemany(
-            "INSERT INTO mat_clusters (id_externo, cluster_id, cluster_label, updated_at) "
-            "VALUES (?, ?, ?, ?)",
-            [(r["id_externo"], r["cluster_id"], r["cluster_label"], r["updated_at"]) for r in rows],
-        )
-
-
-# ── Punto de entrada ──────────────────────────────────────────────────────────
-
-
-def run_aggregates_precompute() -> dict[str, Any]:
-    """Ejecuta ambos cálculos y persiste los resultados.
-
-    Returns:
-        Dict con ``n_empresas``, ``n_clusters``, ``status``.
-    """
-    try:
-        with connect() as conn:
-            empresas = _compute_top_empresas(conn)
-            _persist_top_empresas(conn, empresas)
-            log.info(
-                "aggregates_precompute.top_empresas_done",
-                n=len(empresas),
-            )
-
-            clusters = _compute_clusters(conn)
-            _persist_clusters(conn, clusters)
             log.info(
                 "aggregates_precompute.clusters_done",
                 n=len(clusters),
