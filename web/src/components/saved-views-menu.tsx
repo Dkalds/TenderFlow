@@ -12,6 +12,7 @@ import { Bookmark, Check, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFilters } from "@/lib/filters";
+import { useUiStore } from "@/lib/ui-store";
 import {
   applySnapshot,
   snapshotFilters,
@@ -22,7 +23,8 @@ import {
 
 export function SavedViewsMenu() {
   const filters = useFilters();
-  const [open, setOpen] = React.useState(false);
+  const open = useUiStore((s) => s.savedViewsOpen);
+  const setOpen = useUiStore((s) => s.setSavedViewsOpen);
   const [name, setName] = React.useState("");
   const rootRef = React.useRef<HTMLDivElement>(null);
 
@@ -37,7 +39,7 @@ export function SavedViewsMenu() {
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
+  }, [open, setOpen]);
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +57,7 @@ export function SavedViewsMenu() {
         variant="ghost"
         size="sm"
         className="h-8 gap-1.5 px-2 text-xs"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-haspopup="menu"
       >

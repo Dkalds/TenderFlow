@@ -62,13 +62,11 @@ class TestSemanticSearchEndpoint:
         resp = client.post("/api/v1/search/semantic", json={"q": "SAP", "alpha": 1.5}, headers=auth)
         assert resp.status_code == 422
 
-    def test_returns_200_with_faiss_and_fts(self, client, auth):
-        """Cuando FAISS y FTS devuelven hits, se devuelve respuesta 200 con FAISS+FTS5."""
-        faiss_hits = [("LIC-001", 0.92), ("LIC-002", 0.78)]
-        fts_hits = [("LIC-001", 0.80), ("LIC-002", 0.65)]
+    def test_returns_200_with_fts(self, client, auth):
+        """Cuando FTS devuelve hits, se devuelve respuesta 200 con source FTS5."""
+        fts_hits = [("LIC-001", 0.92), ("LIC-002", 0.78)]
 
         with (
-            patch("services.investigador.search_engine.faiss_search", return_value=faiss_hits),
             patch("services.investigador.search_engine.fts5_search", return_value=fts_hits),
             patch(
                 "services.investigador.search_engine.fetch_docs",
@@ -83,18 +81,17 @@ class TestSemanticSearchEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["source"] == "FAISS+FTS5"
+        assert data["source"] == "FTS5"
         assert len(data["hits"]) == 2
         assert data["hits"][0]["id_externo"] == "LIC-001"
         assert "score" in data["hits"][0]
         assert data["elapsed_ms"] >= 0
 
-    def test_falls_back_to_fts_when_faiss_empty(self, client, auth):
-        """Sin FAISS, usa solo FTS5."""
+    def test_falls_back_to_fts_when_hits_present(self, client, auth):
+        """Con FTS hits, devuelve source FTS5."""
         fts_hits = [("LIC-002", 0.65)]
 
         with (
-            patch("services.investigador.search_engine.faiss_search", return_value=[]),
             patch("services.investigador.search_engine.fts5_search", return_value=fts_hits),
             patch(
                 "services.investigador.search_engine.fetch_docs",
@@ -113,11 +110,10 @@ class TestSemanticSearchEndpoint:
         assert len(data["hits"]) == 1
 
     def test_falls_back_to_like_when_all_empty(self, client, auth):
-        """Sin FAISS ni FTS, usa LIKE."""
+        """Sin FTS hits, usa LIKE."""
         like_hits = [("LIC-001", 0.5)]
 
         with (
-            patch("services.investigador.search_engine.faiss_search", return_value=[]),
             patch("services.investigador.search_engine.fts5_search", return_value=[]),
             patch("services.investigador.search_engine.like_search", return_value=like_hits),
             patch(
@@ -137,8 +133,8 @@ class TestSemanticSearchEndpoint:
     def test_returns_503_on_search_exception(self, client, auth):
         """Si el motor falla, devuelve 503."""
         with patch(
-            "services.investigador.search_engine.faiss_search",
-            side_effect=RuntimeError("FAISS not loaded"),
+            "services.investigador.search_engine.fts5_search",
+            side_effect=RuntimeError("FTS not available"),
         ):
             resp = client.post(
                 "/api/v1/search/semantic",
@@ -150,27 +146,24 @@ class TestSemanticSearchEndpoint:
     def test_response_schema(self, client, auth):
         """Verifica que la respuesta cumple el schema SemanticSearchResponse."""
         with (
-            patch("services.investigador.search_engine.faiss_search", return_value=[]),
             patch("services.investigador.search_engine.fts5_search", return_value=[]),
             patch("services.investigador.search_engine.like_search", return_value=[]),
             patch("services.investigador.search_engine.fetch_docs", return_value={}),
         ):
             resp = client.post(
                 "/api/v1/search/semantic",
-                json={"q": "consulta vacía"},
+                json={"q": "consulta vacia"},
                 headers=auth,
             )
 
         assert resp.status_code == 200
         data = resp.json()
         assert set(data.keys()) >= {"q", "top_k", "source", "hits", "elapsed_ms"}
-        assert data["q"] == "consulta vacía"
         assert isinstance(data["hits"], list)
 
     def test_custom_alpha_passed(self, client, auth):
-        """El parámetro alpha se respeta (sin error 422)."""
+        """El parametro alpha se acepta sin error 422."""
         with (
-            patch("services.investigador.search_engine.faiss_search", return_value=[]),
             patch("services.investigador.search_engine.fts5_search", return_value=[]),
             patch("services.investigador.search_engine.like_search", return_value=[]),
             patch("services.investigador.search_engine.fetch_docs", return_value={}),

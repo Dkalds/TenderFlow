@@ -70,7 +70,7 @@ def get_features_bulk(
     placeholders = ",".join("?" for _ in entity_ids)
     with connect() as c:
         rows = c.execute(
-            f"SELECT entity_id, value_json FROM feature_store "  # noqa: S608 — {placeholders} is programmatic ? list, not user data
+            f"SELECT entity_id, value_json FROM feature_store "
             f"WHERE entity_type=? AND feature_name=? AND version=? "
             f"AND entity_id IN ({placeholders})",
             [entity_type, feature_name, version, *entity_ids],

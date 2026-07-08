@@ -11,4 +11,8 @@ paths = [
     '''docs/rfc/.*\.md''',
     # Test files use dummy/fixture passwords for validation testing
     '''tests/test_unit_settings_security\.py''',
+    # Agent/skill documentation files contain placeholder tokens and example credentials
+    # (e.g. "your-password", base64-encoded demo tokens in Upstash SDK docs)
+    '''.agents/skills/.*''',
+    '''.claude/skills/.*''',
 ]

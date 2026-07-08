@@ -13,14 +13,6 @@ from unittest.mock import patch
 
 def test_user_key_uses_password(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "test_secret")
-    import importlib
-    import sys
-
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
-    import config
-
-    importlib.reload(config)
 
     from scheduler.watchlist_alerts import _user_key
 
@@ -32,14 +24,6 @@ def test_user_key_uses_password(monkeypatch):
 def test_user_key_fallback_to_computername(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "")
     monkeypatch.setenv("COMPUTERNAME", "MYHOST")
-    import importlib
-    import sys
-
-    importlib.import_module("config.settings")
-    importlib.reload(sys.modules["config.settings"])
-    import config
-
-    importlib.reload(config)
 
     from scheduler.watchlist_alerts import _user_key
 

@@ -9,7 +9,8 @@
       "Bash(git commit *)",
       "Bash(git stash *)",
       "Bash(python -m ruff check services/analytics/overview.py)",
-      "Bash(python -m mypy services/analytics/overview.py --no-error-summary)"
+      "Bash(python -m mypy services/analytics/overview.py --no-error-summary)",
+      "Bash(grep -rn -E \"def [a-zA-Z_][a-zA-Z0-9_]*\\\\\\(.*\\\\\\):\\\\s*$\" services api/routes db/repositories --include=\"*.py\")"
     ]
   }
 }

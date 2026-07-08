@@ -8,25 +8,25 @@ import {
   Menu,
   Moon,
   Sun,
-  Globe,
   User,
   LogOut,
   AlignJustify,
   LayoutGrid,
   Search,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { SECTIONS } from "@/lib/navigation";
-import { t, useLocale, type Locale } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { NotificationBell } from "@/components/notification-bell";
 import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
-import { useFilters, useWithFilters } from "@/lib/filters";
-import { useSearchHistory } from "@/lib/search-history";
+import { useWithFilters } from "@/lib/filters";
+import { useUiStore } from "@/lib/ui-store";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
 
@@ -45,12 +45,11 @@ export function TopNav() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [expandedSection, setExpandedSection] = React.useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
-  const { locale, setLocale: setLocaleStore } = useLocale();
   const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
-  const { q, setQ } = useFilters();
   const withFilters = useWithFilters();
-  const { history, addToHistory } = useSearchHistory();
+  const setCommandOpen = useUiStore((s) => s.setCommandOpen);
 
   const handleLogout = async () => {
     try {
@@ -89,9 +88,14 @@ export function TopNav() {
     (s) => !s.adminOnly || isAdmin,
   );
 
-  const toggleLocale = () => {
-    const next: Locale = locale === "es" ? "en" : "es";
-    setLocaleStore(next);
+  // Auto-expand the section containing the active page whenever the mobile
+  // drawer is opened, so the user isn't forced to reopen it to find it.
+  const openMobileNav = () => {
+    const activeSection = visibleSections.find((section) =>
+      section.pages.some((p) => pathname === `/${p.slug}`),
+    );
+    setExpandedSection(activeSection?.label ?? null);
+    setMobileOpen(true);
   };
 
   return (
@@ -103,7 +107,7 @@ export function TopNav() {
             variant="ghost"
             size="icon"
             className="md:hidden"
-            onClick={() => setMobileOpen(!mobileOpen)}
+            onClick={() => (mobileOpen ? setMobileOpen(false) : openMobileNav())}
           >
             <Menu className="h-5 w-5" />
             <span className="sr-only">Menu</span>
@@ -117,23 +121,21 @@ export function TopNav() {
             <TenderFlowLogo boxSize={32} />
           </Link>
 
-          <SearchAutocomplete
-            className="hidden min-w-72 max-w-xl flex-1 md:block"
-            data-search-input
-            aria-label="Busqueda global"
-            inputClassName="h-9 rounded-lg border-border/70 bg-card/80 pl-9 pr-12 text-sm"
-            placeholder="Buscar licitaciones, organos, empresas..."
-            value={q}
-            onChange={setQ}
-            onSubmit={addToHistory}
-            recentSearches={history}
-            leftIcon={<Search className="h-4 w-4" />}
-            rightElement={
-              <span className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                Ctrl K
-              </span>
-            }
-          />
+          {/* La busqueda unica vive en la barra de filtros (por pagina) y en
+              la command palette; este boton solo abre la paleta — evita dos
+              buscadores ligados al mismo `q` visibles a la vez. */}
+          <button
+            type="button"
+            onClick={() => setCommandOpen(true)}
+            aria-label="Abrir busqueda y comandos"
+            className="hidden min-w-72 max-w-xl flex-1 items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-3 h-9 text-sm text-muted-foreground transition-colors hover:border-border hover:text-foreground md:flex"
+          >
+            <Search className="h-4 w-4 shrink-0" />
+            <span className="flex-1 text-left truncate">Buscar licitaciones, organos, empresas...</span>
+            <span className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              Ctrl K
+            </span>
+          </button>
 
           {/* Right side actions */}
           <div className="ml-auto flex items-center gap-1">
@@ -171,18 +173,6 @@ export function TopNav() {
               <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
               <span className="sr-only">Toggle theme</span>
-            </Button>
-
-            {/* Locale toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleLocale}
-              className="gap-1 text-xs"
-              aria-label="Cambiar idioma"
-            >
-              <Globe className="h-4 w-4" />
-              {locale.toUpperCase()}
             </Button>
 
             {/* User menu */}
@@ -247,23 +237,34 @@ export function TopNav() {
             {visibleSections.map((section) => {
               const Icon = section.icon;
               const active = section.pages.some((p) => pathname === `/${p.slug}`);
+              const expanded = expandedSection === section.label;
+              const sectionPanelId = `mobile-nav-section-${section.label.replace(/\s+/g, "-").toLowerCase()}`;
               return (
                 <div key={section.label}>
-                  <Link
-                    href={withFilters(`/${section.pages[0].slug}`)}
-                    onClick={() => setMobileOpen(false)}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedSection(expanded ? null : section.label)
+                    }
+                    aria-expanded={expanded}
+                    aria-controls={sectionPanelId}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                      "flex w-full items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                       active
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-accent"
                     )}
                   >
                     <Icon className="h-4 w-4" />
-                    {section.label}
-                  </Link>
-                  {active && (
-                    <div className="ml-4 mt-1 space-y-0.5">
+                    <span className="flex-1 text-left">{section.label}</span>
+                    {expanded ? (
+                      <ChevronDown className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                    )}
+                  </button>
+                  {expanded && (
+                    <div id={sectionPanelId} className="ml-4 mt-1 space-y-0.5">
                       {section.pages.map((page) => {
                         const PageIcon = page.icon;
                         const pageActive = pathname === `/${page.slug}`;
@@ -272,6 +273,7 @@ export function TopNav() {
                             key={page.slug}
                             href={withFilters(`/${page.slug}`)}
                             onClick={() => setMobileOpen(false)}
+                            aria-current={pageActive ? "page" : undefined}
                             className={cn(
                               "flex items-center gap-2 px-3 py-2.5 rounded-md text-sm transition-colors",
                               pageActive

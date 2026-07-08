@@ -32,7 +32,7 @@ Sin un RFC unificado hay riesgo de ejecucion parcial, deuda tecnica residual, y 
 ## No objetivos
 
 - No introducir un cambio de arquitectura mayor fuera de los 7 puntos definidos.
-- No migrar a otro motor de base de datos (se mantiene ADR-004: SQLite/Turso).
+- No migrar a otro motor de base de datos (se mantiene [[ADR-004-sqlite-turso-vs-postgres|ADR-004]]: SQLite/Turso).
 - No reemplazar el stack de CI/CD ni observabilidad actual; se endurece el existente.
 - No reescribir migraciones historicas ya commiteadas (append-only).
 
@@ -44,7 +44,7 @@ En alcance:
 - Tests y naming/markers para separar unit/integration/e2e en CI.
 - Ajustes de pipeline CI para estrategia de gates por tipo de test.
 - Runbooks/documentacion para DX Windows y graphify operativo.
-- Guardrails de migracion Alembic segun ADR-008.
+- Guardrails de migracion Alembic segun [[ADR-008-consolidacion-migraciones-alembic|ADR-008]].
 
 Fuera de alcance:
 
@@ -60,9 +60,9 @@ Fuera de alcance:
 
 ## Referencias y compatibilidad con ADRs
 
-- ADR-008 (Accepted): consolidacion hacia Alembic canonico. Este RFC extiende operativamente esa direccion, sin conflicto.
-- ADR-004 (Accepted): SQLite + Turso. Este RFC no altera esa decision; la usa para reproducibilidad local.
-- ADR-007 (Accepted): capa services como dominio compartido. Typing por oleadas debe priorizar servicios/core sin reintroducir acoplamiento UI-dominio.
+- [[ADR-008-consolidacion-migraciones-alembic|ADR-008]] (Accepted): consolidacion hacia Alembic canonico. Este RFC extiende operativamente esa direccion, sin conflicto.
+- [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (Accepted): SQLite + Turso. Este RFC no altera esa decision; la usa para reproducibilidad local.
+- [[ADR-007-services-domain-layer|ADR-007]] (Accepted): capa services como dominio compartido. Typing por oleadas debe priorizar servicios/core sin reintroducir acoplamiento UI-dominio.
 
 ## Conflictos con ADRs vigentes
 
@@ -204,7 +204,7 @@ Comandos de validacion:
 Rollback/migracion:
 
 - Rollback estandar Alembic: `alembic downgrade -1` (cuando aplique).
-- Para legacy, usar procedimiento ADR-008; no editar migraciones historicas.
+- Para legacy, usar procedimiento [[ADR-008-consolidacion-migraciones-alembic|ADR-008]]; no editar migraciones historicas.
 
 ### Fase 4 - Observabilidad y error budgets
 
@@ -365,7 +365,7 @@ Operativa:
 
 - Principio: rollback por fase, no big-bang.
 - Fase 1/2/4/5/6: revertir PR de fase si rompe gate principal.
-- Fase 3 (migraciones): usar downgrade controlado de Alembic cuando sea reversible; para legacy seguir ADR-008 y nunca mutar historico.
+- Fase 3 (migraciones): usar downgrade controlado de Alembic cuando sea reversible; para legacy seguir [[ADR-008-consolidacion-migraciones-alembic|ADR-008]] y nunca mutar historico.
 - Mantener feature flags/config toggles cuando aplique para desactivar comportamientos nuevos sin rollback total.
 
 ## Plan de delegacion sugerido

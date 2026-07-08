@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useMemo, useState, useCallback, useEffect } from "react";
+import { parseAsString, useQueryState } from "nuqs";
 import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
@@ -18,13 +18,18 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { t } from "@/lib/i18n";
 import { formatCurrency, formatDate, truncate, cn } from "@/lib/utils";
-import { getJSON, setJSON } from "@/lib/storage";
+import { getJSON, setJSON, remove as removeStored } from "@/lib/storage";
+import { useDensity } from "@/lib/density";
 import { useFilterParams, useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
+import {
+  useAddWatchlistItem,
+  useIsWatchlisted,
+  useRemoveWatchlistItem,
+} from "@/hooks/use-watchlist-items";
 import { DetailPanel, type LicitacionDetail } from "@/components/detail-panel";
 import { Comparator } from "@/components/comparator";
 import { ExportPopover } from "@/components/export-popover";
@@ -37,11 +42,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Search,
   Download,
   X,
-  Rows3,
-  Rows2,
   Star,
   GitCompareArrows,
 } from "lucide-react";
@@ -72,17 +74,12 @@ const PAGE_SIZE = 25;
 
 
 const LAST_VIEWED_KEY = "detalle_last_viewed";
-const COMPACT_KEY = "detalle_compact";
 const WATCHLIST_KEY = "detalle_watchlist";
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
 function getLastViewed(): number {
   return getJSON<number>(LAST_VIEWED_KEY, 0);
-}
-
-function getCompactPref(): boolean {
-  return getJSON<boolean>(COMPACT_KEY, false);
 }
 
 function getWatchlist(): string[] {
@@ -112,6 +109,30 @@ function downloadCsv(rows: LicitacionSummary[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/* ── Favorito (watchlist server-side) ──────────────────────────────── */
+
+function FavoriteStar({ idExterno }: { idExterno: string }) {
+  const isWatchlisted = useIsWatchlisted(idExterno);
+  const addItem = useAddWatchlistItem();
+  const removeItem = useRemoveWatchlistItem();
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (isWatchlisted) removeItem.mutate(idExterno);
+        else addItem.mutate(idExterno);
+      }}
+      aria-label={isWatchlisted ? "Quitar de favoritos" : "Añadir a favoritos"}
+      aria-pressed={isWatchlisted}
+      className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      <Star className={cn("h-4 w-4", isWatchlisted && "fill-primary text-primary")} />
+    </button>
+  );
+}
+
 /* ── Merged row type ────────────────────────────────────────────────── */
 
 interface MergedRow extends LicitacionSummary {
@@ -124,9 +145,8 @@ interface MergedRow extends LicitacionSummary {
 /* ── Component ──────────────────────────────────────────────────────── */
 
 export default function DetallePage() {
-  const searchParams = useSearchParams();
   const filterParams = useFilterParams();
-  const { ccaas, setCcaas, tecnologias, setTecnologias } = useFilters();
+  const { q, ccaas, setCcaas, tecnologias, setTecnologias } = useFilters();
   const toggleCcaa = useCallback(
     (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas)),
     [ccaas, setCcaas],
@@ -137,45 +157,45 @@ export default function DetallePage() {
   );
 
   // State
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: PAGE_SIZE,
   });
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // Permalink del panel de detalle: ?lic=<id_externo>. Abrir hace push (el botón
+  // atrás cierra el panel); URL compartible/bookmarkeable desde cualquier fila.
+  const [detailId, setDetailId] = useQueryState(
+    "lic",
+    parseAsString.withOptions({ history: "push", shallow: true }),
+  );
   const [showComparator, setShowComparator] = useState(false);
-  const [compact, setCompact] = useState(getCompactPref);
+  const { compact } = useDensity();
   const [lastViewed] = useState(getLastViewed);
+  const addWatchlistItem = useAddWatchlistItem();
 
   // Mark last viewed on mount
   useEffect(() => {
     setJSON(LAST_VIEWED_KEY, Date.now());
   }, []);
 
-  // Deep-link: open detail if `lic` param present
+  // Migración one-shot: favoritos que vivían solo en localStorage pasan al
+  // servidor (ADR-014 §2); la key se borra tras migrar para no repetir.
   useEffect(() => {
-    const lic = searchParams.get("lic");
-    if (lic) setDetailId(lic);
-  }, [searchParams]);
-
-  // Compact mode persistence
-  useEffect(() => {
-    setJSON(COMPACT_KEY, compact);
-  }, [compact]);
-
-  // Debounce search
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(value);
-      setPagination((p) => ({ ...p, pageIndex: 0 }));
-    }, 400);
+    const legacy = getWatchlist();
+    if (legacy.length === 0) return;
+    legacy.forEach((id) => addWatchlistItem.mutate(id));
+    removeStored(WATCHLIST_KEY);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- migración única al montar
   }, []);
+
+  // La tabla consume solo el `q` global (barra de filtros); un buscador
+  // local aquí duplicaba el de la barra y podía pisar silenciosamente su
+  // valor. Volver a la primera página cuando cambia la búsqueda global,
+  // igual que antes hacía el buscador local.
+  useEffect(() => {
+    setPagination((p) => (p.pageIndex === 0 ? p : { ...p, pageIndex: 0 }));
+  }, [q]);
 
   // Build query params
   const queryParams = useMemo(() => {
@@ -184,13 +204,12 @@ export default function DetallePage() {
       limit: String(pagination.pageSize),
       offset: String(pagination.pageIndex * pagination.pageSize),
     };
-    if (debouncedSearch) params.q = debouncedSearch;
     if (sorting.length > 0) {
       params.sort_by = sorting[0].id;
       params.sort_order = sorting[0].desc ? "desc" : "asc";
     }
     return params;
-  }, [pagination, debouncedSearch, sorting, filterParams]);
+  }, [pagination, sorting, filterParams]);
 
   // Fetch licitaciones
   const { data, isLoading, error, isFetching } = useQuery({
@@ -240,7 +259,9 @@ export default function DetallePage() {
   const { data: detailData } = useQuery({
     queryKey: ["licitacion", detailId],
     queryFn: async () => {
-      const res = await fetch(`/api/v1/licitaciones/${detailId}`, { credentials: "include" });
+      const res = await fetch(`/api/v1/licitaciones/${encodeURIComponent(detailId!)}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to fetch detail");
       return res.json() as Promise<LicitacionDetail>;
     },
@@ -305,6 +326,12 @@ export default function DetallePage() {
           row.original.isNew ? (
             <span className="inline-block h-2 w-2 rounded-full bg-blue-500" title="Nuevo" />
           ) : null,
+      },
+      {
+        id: "favorito",
+        size: 36,
+        header: "",
+        cell: ({ row }) => <FavoriteStar idExterno={row.original.id_externo} />,
       },
       {
         accessorKey: "id_externo",
@@ -461,9 +488,7 @@ export default function DetallePage() {
   };
 
   const handleFollow = () => {
-    const current = getWatchlist();
-    const newIds = selectedIds.filter((id) => !current.includes(id));
-    setJSON(WATCHLIST_KEY, [...current, ...newIds]);
+    selectedIds.forEach((id) => addWatchlistItem.mutate(id));
     setRowSelection({});
   };
 
@@ -497,56 +522,12 @@ export default function DetallePage() {
             Tabla completa con todos los campos y exportacion.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCompact((c) => !c)}
-          title={compact ? "Vista normal" : "Vista compacta"}
-        >
-          {compact ? <Rows3 className="h-4 w-4" /> : <Rows2 className="h-4 w-4" />}
-        </Button>
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar — la búsqueda vive en la barra de filtros global (arriba) */}
       <Card>
-        <CardContent className="pt-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("common.search") + "..."}
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-8"
-              />
-              {search && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setSearch(""); setDebouncedSearch(""); }}
-                  className="absolute right-1.5 top-1.5 h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <ExportPopover />
-            </div>
-          </div>
-
-          {debouncedSearch && (
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <span className="text-xs text-muted-foreground">Filtros:</span>
-              <Badge variant="secondary" className="text-xs">
-                Busqueda: &quot;{debouncedSearch}&quot;
-                <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDebouncedSearch(""); }} className="ml-1 h-auto p-0">
-                  <X className="h-3 w-3" />
-                </Button>
-              </Badge>
-            </div>
-          )}
+        <CardContent className="flex items-center justify-end pt-4">
+          <ExportPopover />
         </CardContent>
       </Card>
 
@@ -714,7 +695,7 @@ export default function DetallePage() {
       {detailId && detailWithScore && (
         <DetailPanel
           licitacion={detailWithScore}
-          onClose={() => setDetailId(null)}
+          onClose={() => setDetailId(null, { history: "replace" })}
         />
       )}
 

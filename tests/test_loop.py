@@ -115,7 +115,7 @@ class TestJobRegistry:
         assert "daily_atom" in names
         assert "recent_bulk" in names
         assert "retention_cleanup" in names
-        assert "faiss_rebuild" in names
+        assert "faiss_rebuild" not in names
         assert "dlq_retry" in names
         assert "digest_daily" in names
         assert "anomaly_checks" in names
@@ -123,7 +123,7 @@ class TestJobRegistry:
         assert "wal_checkpoint" in names
         assert "ml_scoring_baja" in names
         assert "ml_retrain_baja" in names
-        assert len(registry) == 11
+        assert len(registry) == 10
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry
@@ -134,7 +134,6 @@ class TestJobRegistry:
             "daily_atom",
             "recent_bulk",
             "retention_cleanup",
-            "faiss_rebuild",
             "ml_scoring_baja",
             "ml_retrain_baja",
         }

@@ -20,11 +20,6 @@ class TestMatchesCcaaCaseInsensitive:
 class TestUserKey:
     def test_returns_stable_hash(self, monkeypatch):
         monkeypatch.setenv("DASHBOARD_PASSWORD", "test_password_123")
-        import importlib
-
-        import config as cfg
-
-        importlib.reload(cfg)
 
         from shared.user_key import user_key
 
@@ -34,18 +29,12 @@ class TestUserKey:
         assert len(k1) == 16
 
     def test_different_password_different_key(self, monkeypatch):
-        import importlib
-
-        import config as cfg
-
-        monkeypatch.setenv("DASHBOARD_PASSWORD", "alpha")
-        importlib.reload(cfg)
         from shared.user_key import user_key
 
+        monkeypatch.setenv("DASHBOARD_PASSWORD", "alpha")
         k1 = user_key()
 
         monkeypatch.setenv("DASHBOARD_PASSWORD", "beta")
-        importlib.reload(cfg)
         k2 = user_key()
         assert k1 != k2
 

@@ -92,6 +92,8 @@ def overview(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> OverviewResult:
     """Return aggregated KPIs, breakdowns, and funnel data."""
@@ -101,6 +103,8 @@ def overview(
         ccaa=ccaa,
         tecnologia=tecnologia,
         estado=estado,
+        q=q,
+        importe_min=importe_min,
     )
     return get_overview(filters)
 
@@ -175,17 +179,27 @@ def competitors(
 def scoring(
     min_score: int = Query(default=0, ge=0, le=100, description="Minimum score threshold"),
     limit: int = Query(default=50, ge=1, le=500, description="Max opportunities to return"),
-    band: str | None = Query(default=None, description="Filter by band (alta|media|baja)"),
+    band: str | None = Query(
+        default=None, description="Filter by band (Caliente|Atractiva|Tibia|Descarte)"
+    ),
     ids: str | None = Query(
         default=None,
         description=(
-            "CSV de id_externo: puntúa exactamente esas licitaciones (alineado a la "
-            "página del listado), ignorando min_score/band/limit"
+            "CSV de id_externo: puntua exactamente esas licitaciones (alineado a la "
+            "pagina del listado), ignorando min_score/band/limit"
         ),
     ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> ScoringResult:
-    """Opportunity scoring — ranked by commercial potential, or page-aligned by ids."""
+    """Opportunity scoring — ranked by commercial potential, or page-aligned by ids.
+
+    Cuando el usuario tiene un perfil (Feature B), aplica sus pesos y keywords
+    personalizados. Sin perfil, usa los settings globales.
+    """
+    import hashlib
+
+    seed = str(_user.get("email") or _user.get("key_hash") or "")
+    user_key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16] if seed else None
     id_list = [i for i in ids.split(",") if i] if ids else None
     filters = ScoringFilters(
         min_score=min_score,
@@ -193,7 +207,7 @@ def scoring(
         band=band,
         ids=id_list,
     )
-    return get_scoring(filters)
+    return get_scoring(filters, user_key=user_key)
 
 
 @router.get("/quality", response_model=QualityResult)

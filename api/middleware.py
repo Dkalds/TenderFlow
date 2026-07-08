@@ -187,6 +187,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         max_calls: int = 120,
         window_seconds: float = 60.0,
         exclude_paths: tuple[str, ...] = (
+            "/",
             "/api/v1/health",
             "/api/docs",
             "/api/redoc",

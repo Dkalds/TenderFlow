@@ -30,7 +30,6 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.dlq_retry import retry_failed_extractions
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
-    from scheduler.jobs.faiss_rebuild import run as run_faiss_rebuild
     from scheduler.jobs.ml_predicciones import run_retrain as run_ml_retrain
     from scheduler.jobs.ml_predicciones import run_scoring as run_ml_scoring
     from scheduler.jobs.recent_bulk import run as run_recent_bulk
@@ -62,14 +61,6 @@ def build_default_registry() -> list[ScheduledJob]:
             interval_env="SCHEDULER_RETENTION_INTERVAL_HOURS",
             default_interval_minutes=1440,  # 24h
             initial_offset_minutes=180,  # 3h after start
-            heavy=True,
-        ),
-        ScheduledJob(
-            name="faiss_rebuild",
-            fn=run_faiss_rebuild,
-            interval_env="SCHEDULER_FAISS_REBUILD_INTERVAL_MINUTES",
-            default_interval_minutes=60,
-            initial_offset_minutes=5,
             heavy=True,
         ),
         ScheduledJob(

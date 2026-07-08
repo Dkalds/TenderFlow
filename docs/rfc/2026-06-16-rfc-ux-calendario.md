@@ -112,7 +112,7 @@ ganan `"day"` (período `"D"`, formato `"%Y-%m-%d"`); el endpoint
 (`calendario/page.tsx`): la página pide `group_by=day` y construye `dailyCounts`
 leyendo el conteo REAL por fecha; se elimina el reparto sintético
 `dailyShare = Math.round(point.count / 7)` con el fudge de día laborable
-(ADR-014, Patrón 1). El heatmap, las barras mensuales y la distribución por día
+([[ADR-014-integridad-analitica-frontend|ADR-014]], Patrón 1). El heatmap, las barras mensuales y la distribución por día
 de la semana ahora derivan del dato diario real. Tests: nuevo
 `tests/test_analytics_trends.py` (4) cubre day/month grouping, filtros y vacío.
 Verde: pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (285); el scanner de

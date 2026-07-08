@@ -53,6 +53,7 @@ from api.routes.exports import router as exports_router
 from api.routes.feature_flags import router as feature_flags_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
+from api.routes.licitaciones import get_licitacion as _get_licitacion_handler
 from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
@@ -65,6 +66,7 @@ from api.routes.search import router as search_router
 from api.routes.security import router as security_router
 from api.routes.stream import router as stream_router
 from api.routes.watchlist_feed import router as watchlist_feed_router
+from api.routes.watchlist_items import router as watchlist_items_router
 from api.routes.watchlist_rules import router as watchlist_rules_router
 from api.routes.webhooks import router as webhooks_router
 from config import settings
@@ -423,12 +425,51 @@ app.include_router(search_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
 app.include_router(watchlist_feed_router, prefix="/api/v1")
 app.include_router(watchlist_rules_router, prefix="/api/v1")
+app.include_router(watchlist_items_router, prefix="/api/v1")
 app.include_router(exports_router, prefix="/api/v1")
 app.include_router(saved_filters_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(admin_users_router, prefix="/api/v1")
 app.include_router(feature_flags_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
+
+
+# ---------------------------------------------------------------------------
+# Root endpoint — evita 404 en health probes de plataforma (HEAD/GET /)
+# ---------------------------------------------------------------------------
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def _root() -> dict[str, str]:
+    """Endpoint raíz para probes de plataforma que golpean ``/``.
+
+    Cubre tanto ``GET /`` como ``HEAD /`` (health checks que solo verifican el
+    código de estado). La API vive bajo ``/api/v1``; aquí solo devolvemos
+    metadatos de descubrimiento.
+    """
+    return {
+        "service": "licitaciones-sap-api",
+        "status": "ok",
+        "docs": "/api/docs",
+        "health": "/api/v1/health",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fallback detalle — ids con '/' (p.ej. "PA-S 2026/000058")
+# ---------------------------------------------------------------------------
+# La ruta /api/v1/licitaciones/{id_externo} usa el conversor por defecto
+# ([^/]+), que no admite barras. Como algunos id_externo contienen '/',
+# registramos un catch-all con el conversor ``:path`` que reutiliza el mismo
+# handler. Va al final (último globalmente) para no ensombrecer las sub-rutas
+# específicas (/explain, /tech-scores, /eventos, /prediccion-baja).
+app.add_api_route(
+    "/api/v1/licitaciones/{id_externo:path}",
+    _get_licitacion_handler,
+    methods=["GET"],
+    include_in_schema=False,
+)
+
 
 # ---------------------------------------------------------------------------
 # Prometheus /metrics — protegido por IP allowlist o scope metrics:read

@@ -207,3 +207,201 @@ def test_unit_return_conn_closes_orphan_when_pool_none(tmp_db):
         mock_conn.close.assert_called_once()
     finally:
         conn_mod._pool = original_pool
+
+
+# ── _translate_qmarks (shim qmark -> %s, ADR-016) ────────────────────────────
+#
+# Riesgo identificado en la auditoria de migracion F3b (2026-07-05): ADR-016
+# declaraba "unit tests exhaustivos del shim" como mitigacion, pero no existia
+# ninguno. Un bug real de este shim (regex de string literal con semantica de
+# escape \\ estilo C/Python en vez de SQL estandar) corrompio en silencio el
+# conteo de placeholders en queries con ESCAPE '\' seguido de mas '?' (patron
+# usado en los fallbacks LIKE de db/repositories/licitaciones.py), detectado
+# recien al ejecutar contra Postgres real.
+
+
+def test_translate_qmarks_noop_when_not_postgres(monkeypatch):
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: False)
+    sql = "SELECT * FROM t WHERE a = ? AND b = ?"
+    assert conn_mod._translate_qmarks(sql) == sql
+
+
+def test_translate_qmarks_basic_replacement(monkeypatch):
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+    sql = "SELECT * FROM t WHERE a = ? AND b = ?"
+    assert conn_mod._translate_qmarks(sql) == "SELECT * FROM t WHERE a = %s AND b = %s"
+
+
+def test_translate_qmarks_ignores_placeholder_inside_single_quoted_string(monkeypatch):
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+    sql = "SELECT * FROM t WHERE a = ? AND b = 'literal ? not a placeholder'"
+    result = conn_mod._translate_qmarks(sql)
+    assert result == "SELECT * FROM t WHERE a = %s AND b = 'literal ? not a placeholder'"
+
+
+def test_translate_qmarks_handles_doubled_quote_escape(monkeypatch):
+    """SQL estándar escapa una comilla dentro de un string doblándola (''), no con \\'."""
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+    sql = "SELECT * FROM t WHERE name = 'it''s a ? test' AND id = ?"
+    result = conn_mod._translate_qmarks(sql)
+    assert result == "SELECT * FROM t WHERE name = 'it''s a ? test' AND id = %s"
+
+
+def test_translate_qmarks_escape_backslash_clause_does_not_swallow_later_placeholders(
+    monkeypatch,
+):
+    """Regresión: ESCAPE '\\' no es un string sin cerrar en SQL estándar.
+
+    Bug real encontrado en F3b: el regex previo trataba \\' dentro de comillas
+    simples como una comilla escapada (semántica C/Python), tragándose el resto
+    de la query -- incluidos placeholders reales -- hasta la siguiente comilla.
+    Esto rompía silenciosamente like_fallback_search/fetch_for_pdf/
+    search_like_for_ask (todos usan ``LIKE ? ESCAPE '\\'``).
+    """
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+    sql = (
+        "SELECT id_externo FROM licitaciones "
+        "WHERE titulo ILIKE ? ESCAPE '\\' OR descripcion ILIKE ? ESCAPE '\\' "
+        "LIMIT ?"
+    )
+    result = conn_mod._translate_qmarks(sql)
+    assert result.count("%s") == 3
+    assert "?" not in result
+
+
+def test_translate_qmarks_ignores_line_comment(monkeypatch):
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+    sql = "SELECT * FROM t WHERE a = ? -- this is a ? in a comment\n"
+    result = conn_mod._translate_qmarks(sql)
+    # El placeholder real se traduce; el "?" dentro del comentario queda intacto.
+    assert result == "SELECT * FROM t WHERE a = %s -- this is a ? in a comment\n"
+
+
+def test_translate_qmarks_ignores_block_comment(monkeypatch):
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+    sql = "SELECT * FROM t /* a ? in a block comment */ WHERE a = ?"
+    result = conn_mod._translate_qmarks(sql)
+    assert result.count("%s") == 1
+    assert "/* a ? in a block comment */" in result
+
+
+# ── _pg_connect_kwargs (timeouts + sslrootcert, hardening seguridad) ─────────
+
+
+def test_pg_connect_kwargs_defaults(monkeypatch):
+    from config import settings
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000)
+    monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000)
+    monkeypatch.setattr(settings, "DB_CONNECT_TIMEOUT", 10)
+    monkeypatch.setattr(settings, "DATABASE_SSL_ROOT_CERT", "")
+
+    kwargs = conn_mod._pg_connect_kwargs()
+    assert kwargs["options"] == (
+        "-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000"
+    )
+    assert kwargs["connect_timeout"] == 10
+    assert "sslrootcert" not in kwargs
+
+
+def test_pg_connect_kwargs_zero_disables_timeouts(monkeypatch):
+    """0 = sin límite: la opción correspondiente no debe incluirse."""
+    from config import settings
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 0)
+    monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 0)
+    monkeypatch.setattr(settings, "DB_CONNECT_TIMEOUT", 0)
+    monkeypatch.setattr(settings, "DATABASE_SSL_ROOT_CERT", "")
+
+    kwargs = conn_mod._pg_connect_kwargs()
+    assert "options" not in kwargs
+    assert "connect_timeout" not in kwargs
+
+
+def test_pg_connect_kwargs_includes_sslrootcert_when_set(monkeypatch):
+    from config import settings
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000)
+    monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000)
+    monkeypatch.setattr(settings, "DB_CONNECT_TIMEOUT", 10)
+    monkeypatch.setattr(settings, "DATABASE_SSL_ROOT_CERT", "  db/certs/prod-ca-2021.crt  ")
+
+    kwargs = conn_mod._pg_connect_kwargs()
+    assert kwargs["sslrootcert"] == "db/certs/prod-ca-2021.crt"
+
+
+# ── _get_pg_pool (pool Postgres: kwargs aplicados + redacción de DSN) ────────
+
+
+def test_get_pg_pool_creates_pool_with_kwargs_and_logs(monkeypatch):
+    """Camino feliz: el pool se crea con conn_kwargs y se loguea sin error."""
+    from config import settings
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "_pg_pool", None)
+    monkeypatch.setattr(conn_mod, "_database_url", lambda: "postgresql://u:p@h:5432/d")
+    monkeypatch.setattr(settings, "DB_POOL_SIZE", 5)
+    monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000)
+    monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000)
+    monkeypatch.setattr(settings, "DB_CONNECT_TIMEOUT", 10)
+    monkeypatch.setattr(settings, "DATABASE_SSL_ROOT_CERT", "")
+
+    created_kwargs: dict = {}
+
+    class _FakePool:
+        def __init__(self, **kwargs):
+            created_kwargs.update(kwargs)
+
+    import psycopg_pool
+
+    monkeypatch.setattr(psycopg_pool, "ConnectionPool", _FakePool)
+
+    pool = conn_mod._get_pg_pool()
+    assert isinstance(pool, _FakePool)
+    assert created_kwargs["max_size"] == 5
+    assert "statement_timeout=30000" in created_kwargs["kwargs"]["options"]
+
+    monkeypatch.setattr(conn_mod, "_pg_pool", None)
+
+
+def test_get_pg_pool_wraps_connection_error_without_leaking_dsn(monkeypatch):
+    """Si ConnectionPool() falla, el error no debe filtrar la password del DSN."""
+    from db import connection as conn_mod
+
+    fake_dsn = "postgresql://u:s3cr3tpw@h:5432/d"  # pragma: allowlist secret
+    monkeypatch.setattr(conn_mod, "_pg_pool", None)
+    monkeypatch.setattr(conn_mod, "_database_url", lambda: fake_dsn)
+
+    class _FakePool:
+        def __init__(self, **kwargs):
+            raise RuntimeError(f"connect failed: {fake_dsn}")
+
+    import psycopg_pool
+
+    monkeypatch.setattr(psycopg_pool, "ConnectionPool", _FakePool)
+
+    import pytest
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conn_mod._get_pg_pool()
+
+    msg = str(exc_info.value)
+    assert "s3cr3tpw" not in msg
+    assert "No se pudo crear el pool Postgres" in msg

@@ -11,6 +11,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parent.parent
 
+
+def _extract_sslmode(url: str) -> str | None:
+    """Devuelve el valor de ``sslmode`` de una DATABASE_URL, o None si no está.
+
+    Robusto frente a passwords con caracteres especiales: solo parsea la query
+    string (tras ``?``). Devuelve el valor en minúsculas.
+    """
+    from urllib.parse import parse_qs, urlsplit
+
+    values = parse_qs(urlsplit(url).query).get("sslmode")
+    if not values:
+        return None
+    return values[-1].strip().lower()
+
+
 # En entornos donde el paquete se instala en site-packages (e.g. despliegues gestionados),
 # _ROOT apuntaría a un directorio sin permisos de escritura.  Usamos un
 # directorio escribible como fallback.
@@ -149,7 +164,7 @@ class Settings(BaseSettings):
     # ── OpenTelemetry ─────────────────────────────────────────────────────
     # Si está vacío, el tracing opera en modo NoOp (sin overhead)
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
-    OTEL_SERVICE_NAME: str = "licitaciones-sap"
+    OTEL_SERVICE_NAME: str = "tenderflow"
     # Fracción de trazas a muestrear [0.0-1.0]. Las trazas con error se
     # muestrean siempre independientemente de este valor.
     # Default 0.1 (10%) — suficiente para debugging en un sistema de scraping
@@ -186,6 +201,27 @@ class Settings(BaseSettings):
     # Clave Fernet para cifrar secretos TOTP at-rest. Obligatoria en prod.
     # Genera una con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
+
+    # ── Postgres / Supabase (ADR-016, F3) ────────────────────────────────
+    # Cuando DATABASE_URL está definida tiene precedencia sobre TURSO_* y SQLite.
+    # Formato: postgresql://user:pass@host:5432/db?sslmode=require  # pragma: allowlist secret
+    # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
+    # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
+    DATABASE_URL: SecretStr = SecretStr("")
+
+    # Ruta al certificado CA raíz de Supabase (Dashboard → Database → SSL).
+    # Necesario para usar ``sslmode=verify-full`` (verifica cadena + hostname del
+    # servidor, previene MITM). No es un secreto (cert público). Si está vacío y
+    # el DSN pide verify-full, psycopg buscará la CA del sistema.
+    DATABASE_SSL_ROOT_CERT: str = ""
+
+    # Timeouts server-side aplicados a cada conexión del pool Postgres. Protegen
+    # contra queries descontroladas o transacciones idle que clavan una conexión
+    # y saturan el pool (pequeño). En milisegundos; 0 = sin límite (no recomendado).
+    DB_STATEMENT_TIMEOUT_MS: int = 30_000
+    DB_IDLE_TX_TIMEOUT_MS: int = 60_000
+    # Timeout (segundos) para establecer la conexión TCP/TLS al pooler.
+    DB_CONNECT_TIMEOUT: int = 10
 
     # ── Turso ────────────────────────────────────────────────────────────
     TURSO_DATABASE_URL: str = ""
@@ -240,6 +276,12 @@ class Settings(BaseSettings):
     PSCP_DATASET_ID: str = "ybgg-dgi6"
     # App token Socrata opcional (solo necesario si aparece rate limiting).
     PSCP_APP_TOKEN: SecretStr = SecretStr("")
+    # ── F2: Retrofit PLACSP → Connector (ADR-009) ────────────────────────
+    # Cuando True, run_daily_pipeline y run_bulk_pipeline usan PlacspAtomConnector
+    # / PlacspBulkConnector en lugar del pipeline legacy (scraper/pipeline.py).
+    # Mantener False hasta que el test de paridad de datos esté verde.
+    # Flip → True para validar en dev; retire el flag tras 1 ciclo estable.
+    PLACSP_CONNECTOR_ENABLED: bool = False
     # Índice de resoluciones TACRC (Ministerio de Hacienda).
     #
     # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):
@@ -266,6 +308,24 @@ class Settings(BaseSettings):
     # Versión lógica del índice FAISS — si cambia, se regenera el índice
     EMBEDDING_VERSION: str = "v1"
 
+    # ── Scoring de oportunidades ─────────────────────────────────────────
+    # Pesos por dimensión (enteros, deben sumar 100 cuando afinidad está activa).
+    # Overridable via ENV como JSON:
+    #   SCORING_WEIGHTS='{"importe":25,"plazo":15,"competencia":25,"margen":20,"afinidad":15}'
+    SCORING_WEIGHTS: dict[str, int] = {
+        "importe": 25,
+        "plazo": 15,
+        "competencia": 25,
+        "margen": 20,
+        "afinidad": 15,
+    }
+    # Keywords de afinidad configurables por el usuario (casefold-substring sobre título).
+    # Si está vacía, la dimensión afinidad se omite del desglose y su peso se
+    # redistribuye proporcionalmente entre las demás dimensiones.
+    # Overridable via ENV como JSON:
+    #   SCORING_AFINIDAD_KEYWORDS='["consultoría","mantenimiento"]'
+    SCORING_AFINIDAD_KEYWORDS: list[str] = []
+
     # ── API REST ─────────────────────────────────────────────────────────
     # IPs (o rangos) que pueden acceder a /metrics sin API key (separadas por coma).
     # Por defecto solo loopback. En producción añadir la IP del servidor Prometheus.
@@ -279,17 +339,37 @@ class Settings(BaseSettings):
     # Contraseña de Redis. En producción debe coincidir con --requirepass del servidor.
     # Genera una con: python -c "import secrets; print(secrets.token_hex(32))"
     REDIS_PASSWORD: SecretStr = SecretStr("")
-
-    # ── Cola de tareas (Dramatiq, opcional) ──────────────────────────────
-    # Si se deja vacío se usa StubBroker (ejecución síncrona, para dev/tests).
-    DRAMATIQ_BROKER_URL: str = ""
-
-    # Modo de cola explícito: "auto" (default) detecta dramatiq/redis automáticamente.
-    # En producción, se recomienda setear "dramatiq" para fail-fast si falta Redis.
-    # Valores: "auto" | "dramatiq" | "inline"
-    QUEUE_MODE: str = "auto"
+    # Token para la REST API de Upstash (GET https://host/PING, puerto 443).
+    # Necesario cuando el puerto TCP 6380 está bloqueado (redes domésticas/corporativas).
+    # Cópialo desde Upstash Console → tu base de datos → "Connect" → REST API Token.
+    REDIS_REST_TOKEN: str = ""
 
     # ── Validators ───────────────────────────────────────────────────────
+
+    @model_validator(mode="after")
+    def _validate_scoring_weights(self) -> Settings:
+        weights = self.SCORING_WEIGHTS
+        allowed_keys = {"importe", "plazo", "competencia", "margen", "afinidad"}
+        for key, val in weights.items():
+            if key not in allowed_keys:
+                raise ValueError(
+                    f"SCORING_WEIGHTS contiene clave desconocida: {key!r}. "
+                    f"Claves permitidas: {sorted(allowed_keys)}"
+                )
+            if val < 0:
+                raise ValueError(
+                    f"SCORING_WEIGHTS[{key!r}] = {val} es negativo. Todos los pesos deben ser >= 0."
+                )
+        total = sum(weights.values())
+        if total != 100:
+            raise ValueError(
+                f"SCORING_WEIGHTS suma {total}, debe ser exactamente 100. "
+                f"Valores actuales: {weights}"
+            )
+        afinidad = weights.get("afinidad", 0)
+        if afinidad >= 100:
+            raise ValueError(f"SCORING_WEIGHTS['afinidad'] = {afinidad} debe ser < 100.")
+        return self
 
     @field_validator("ML_CONFIDENCE_THRESHOLD", mode="before")
     @classmethod
@@ -504,6 +584,90 @@ class Settings(BaseSettings):
                 "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
                 "OAuth habilitado en ENV=prod. Cualquier cuenta Google podrá acceder. "
                 "Configura al menos uno de ellos para restringir el acceso.",
+                stacklevel=2,
+            )
+        return self
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _validate_database_url_scheme(cls, v: object) -> object:
+        """Rechaza esquemas peligrosos en DATABASE_URL.
+
+        Solo se permiten ``postgresql://`` y ``postgres://``. Un valor vacío
+        indica que no se usa Postgres (fallback a Turso/SQLite), lo cual es
+        válido. El chequeo de ``sslmode`` vive en ``_validate_prod_database_ssl``
+        (model_validator) porque depende de ``self.ENV``, no disponible aún
+        en un field_validator per-campo.
+        """
+        value = v.get_secret_value() if isinstance(v, SecretStr) else v
+        if not isinstance(value, str) or not value:
+            return v
+        allowed = ("postgresql://", "postgres://")
+        if not value.startswith(allowed):
+            raise ValueError(
+                f"DATABASE_URL tiene un esquema no permitido. "
+                f"Se esperaba uno de {allowed}, se recibió un valor que no matchea."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _validate_prod_database_ssl(self) -> Settings:
+        """En producción/staging, exigir TLS verificado en DATABASE_URL (Postgres/Supabase).
+
+        ``sslmode=require`` cifra pero NO valida el certificado ni el hostname del
+        servidor: un atacante capaz de interponerse (MITM) puede presentar su
+        propio certificado y capturar credenciales + datos. ``verify-full`` valida
+        cadena + hostname (necesita ``DATABASE_SSL_ROOT_CERT`` = CA de Supabase).
+
+        Política (prod/staging):
+          - ``sslmode`` ausente → error (psycopg podría negociar sin TLS).
+          - ``disable``/``allow``/``prefer`` → error (no garantizan TLS; cierran el
+            downgrade silencioso que el chequeo por substring anterior permitía).
+          - ``require``/``verify-ca`` → permitido con warning (se recomienda verify-full).
+          - ``verify-full`` → OK.
+        En dev solo se avisa.
+        """
+        url = self.DATABASE_URL.get_secret_value()
+        if not url:
+            return self
+
+        is_prod = self.ENV in ("prod", "staging")
+        sslmode = _extract_sslmode(url)
+
+        if sslmode is None:
+            if is_prod:
+                raise ValueError(
+                    "DATABASE_URL no especifica sslmode en ENV=prod/staging. Añade "
+                    "'?sslmode=verify-full' (con DATABASE_SSL_ROOT_CERT) para exigir "
+                    "TLS verificado en la conexión a Postgres/Supabase."
+                )
+            warnings.warn(
+                "DATABASE_URL no especifica sslmode. Añade '?sslmode=verify-full' "
+                "para exigir TLS verificado en la conexión a Postgres/Supabase.",
+                stacklevel=2,
+            )
+            return self
+
+        insecure = {"disable", "allow", "prefer"}
+        if sslmode in insecure:
+            if is_prod:
+                raise ValueError(
+                    f"DATABASE_URL usa sslmode={sslmode!r}, que no garantiza TLS, en "
+                    "ENV=prod/staging. Usa 'verify-full' (recomendado) o al menos 'require'."
+                )
+            warnings.warn(
+                f"DATABASE_URL usa sslmode={sslmode!r}, que puede conectar sin TLS. "
+                "Usa 'verify-full' para exigir TLS verificado.",
+                stacklevel=2,
+            )
+            return self
+
+        if is_prod and sslmode in ("require", "verify-ca"):
+            warnings.warn(
+                f"DATABASE_URL usa sslmode={sslmode!r}: cifra pero no valida "
+                "completamente el certificado del servidor. Se recomienda "
+                "'verify-full' con DATABASE_SSL_ROOT_CERT (CA de Supabase) para "
+                "prevenir ataques MITM.",
                 stacklevel=2,
             )
         return self

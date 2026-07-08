@@ -10,7 +10,7 @@ supersedes:
 
 ## Contexto
 
-ADR-009 estableció el framework de conectores multi-fuente (`scraper/connectors/base.py`:
+[[ADR-009-framework-conectores-multifuente|ADR-009]] estableció el framework de conectores multi-fuente (`scraper/connectors/base.py`:
 contrato `Connector` + `run_connector` con cursores, upsert idempotente, DLQ,
 resolución de empresas e invalidación de caché) y lo validó con TED
 (`scraper/connectors/ted.py`, ~69 avisos en la primera pasada, 38/39 enlazados
@@ -27,7 +27,7 @@ al maestro). Quedaron dos huecos de cobertura:
    retroacciones. Hoy somos ciegos a ellas; un contrato "adjudicado" puede
    estar recurrido y la Fase 4 (`contrato_eventos`) no lo refleja.
 
-Además, ADR-009 dejó **pendiente el dedupe cross-fuente**. Con TED el solape
+Además, [[ADR-009-framework-conectores-multifuente|ADR-009]] dejó **pendiente el dedupe cross-fuente**. Con TED el solape
 era marginal; con PSCP es estructural: los órganos catalanes publican en PSCP
 y una parte también llega a PLACSP. Sin dedupe, las métricas competitivas
 (cuota, HHI, renovaciones) contarían el mismo contrato dos veces. Este RFC lo
@@ -38,7 +38,7 @@ convierte en bloqueante de la fase.
 ### 5.1 Conector PSCP Catalunya (`scraper/connectors/pscp.py`)
 
 - Implementa el contrato `Connector` con `source_id = "pscp"`; ids
-  namespaced `pscp:<id_natural>` y `fuente='pscp'` (patrón ADR-009).
+  namespaced `pscp:<id_natural>` y `fuente='pscp'` (patrón [[ADR-009-framework-conectores-multifuente|ADR-009]]).
 - **Transporte**: API Socrata del portal de transparencia de la Generalitat
   (`analisi.transparenciacatalunya.cat`), dataset de publicaciones de la PSCP.
   Paginación SoQL (`$limit`/`$offset` u `$order` + cursor por fecha de
@@ -54,7 +54,7 @@ convierte en bloqueante de la fase.
   resolución de empresas estándar.
 - Job incremental diario añadido a `scrape-daily.yml` tras el de TED.
 
-### 5.2 Dedupe cross-fuente (desbloquea el pendiente de ADR-009)
+### 5.2 Dedupe cross-fuente (desbloquea el pendiente de [[ADR-009-framework-conectores-multifuente|ADR-009]])
 
 - Nueva tabla `licitaciones_duplicados (licitacion_id TEXT PK, canonical_id
   TEXT NOT NULL, clave_match TEXT, confianza REAL, detectado_en TEXT)` —
@@ -105,7 +105,7 @@ convierte en bloqueante de la fase.
 ### Qué NO se hace en esta fase
 
 - No se retrofitea el pipeline PLACSP al contrato `Connector` (sigue pendiente
-  de ADR-009, con sus tests como red de seguridad).
+  de [[ADR-009-framework-conectores-multifuente|ADR-009]], con sus tests como red de seguridad).
 - No se añaden Euskadi ni otras autonómicas: PSCP valida el patrón; las demás
   son copias mecánicas que se priorizarán por volumen real una vez medido el
   solape PSCP↔PLACSP.

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from services.investigador.search_engine import (
     escape_fts5,
-    faiss_search,
     fetch_docs,
     fts5_search,
-    hybrid_rerank,
     like_search,
     rag_query,
 )
@@ -73,29 +71,6 @@ def test_escape_fts5_truncates_at_12_tokens() -> None:
 
 # ---------------------------------------------------------------------------
 # faiss_search
-# ---------------------------------------------------------------------------
-
-
-def test_faiss_search_returns_hits_when_index_available() -> None:
-    mock_index = MagicMock()
-    mock_index.search.return_value = [("lic-001", 0.9), ("lic-002", 0.7)]
-
-    faiss_module = MagicMock()
-    faiss_module.FaissIndex.load.return_value = mock_index
-    with patch.dict("sys.modules", {"services.faiss_index": faiss_module}):
-        hits = faiss_search("consultoría", top_k=5, embedding_model="")
-
-    assert hits == [("lic-001", 0.9), ("lic-002", 0.7)]
-
-
-def test_faiss_search_returns_empty_on_exception() -> None:
-    with patch.dict("sys.modules", {"services.faiss_index": None}):  # type: ignore[dict-item]
-        hits = faiss_search("test", top_k=5, embedding_model="")
-    assert hits == []
-
-
-# ---------------------------------------------------------------------------
-# fts5_search — delegates to _repo.fts5_bm25_search
 # ---------------------------------------------------------------------------
 
 
@@ -170,44 +145,6 @@ def test_like_search_returns_empty_on_exception() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_hybrid_rerank_combines_scores() -> None:
-    faiss_hits = [("lic-A", 0.9), ("lic-B", 0.5)]
-    fts_hits = [("lic-A", 0.8), ("lic-C", 0.6)]
-
-    ranked = hybrid_rerank(faiss_hits, fts_hits, alpha=0.70, top_k=3)
-
-    ids = [r[0] for r in ranked]
-    # lic-A should be ranked first (high in both)
-    assert ids[0] == "lic-A"
-    assert "lic-B" in ids
-    assert "lic-C" in ids
-
-
-def test_hybrid_rerank_respects_top_k() -> None:
-    faiss_hits = [(f"lic-{i}", float(i) / 10) for i in range(10)]
-    fts_hits = [(f"lic-{i}", float(i) / 10) for i in range(10)]
-
-    ranked = hybrid_rerank(faiss_hits, fts_hits, alpha=0.70, top_k=5)
-    assert len(ranked) == 5
-
-
-def test_hybrid_rerank_faiss_only() -> None:
-    faiss_hits = [("lic-X", 0.9)]
-    ranked = hybrid_rerank(faiss_hits, [], alpha=0.70, top_k=5)
-    assert ranked[0][0] == "lic-X"
-
-
-def test_hybrid_rerank_fts_only() -> None:
-    fts_hits = [("lic-Y", 0.8)]
-    ranked = hybrid_rerank([], fts_hits, alpha=0.70, top_k=5)
-    assert ranked[0][0] == "lic-Y"
-
-
-# ---------------------------------------------------------------------------
-# fetch_docs — delegates to _repo.fetch_metadata_by_ids
-# ---------------------------------------------------------------------------
-
-
 def test_fetch_docs_returns_dict() -> None:
     doc = {
         "id_externo": "lic-001",
@@ -258,37 +195,6 @@ def test_fetch_docs_returns_empty_on_exception() -> None:
 # ---------------------------------------------------------------------------
 # rag_query (integration)
 # ---------------------------------------------------------------------------
-
-
-def test_rag_query_with_both_sources() -> None:
-    faiss_hits = [("lic-001", 0.9)]
-    doc = {
-        "id_externo": "lic-001",
-        "titulo": "T1",
-        "organo_contratacion": "O1",
-        "importe": 100.0,
-        "descripcion": "D1",
-        "url": "http://u",
-        "fecha_publicacion": "2025-01-01",
-        "ccaa": "MAD",
-        "estado": "VIG",
-    }
-
-    faiss_module = MagicMock()
-    faiss_index = MagicMock()
-    faiss_index.search.return_value = faiss_hits
-    faiss_module.FaissIndex.load.return_value = faiss_index
-
-    with (
-        patch.dict("sys.modules", {"services.faiss_index": faiss_module}),
-        patch(_REPO_PATH) as mock_repo,
-    ):
-        mock_repo.fts5_bm25_search.return_value = [("lic-001", 1.0), ("lic-002", 0.5)]
-        mock_repo.fetch_metadata_by_ids.return_value = {"lic-001": doc}
-        docs, source = rag_query("consultoría", top_k=5)
-
-    assert "FAISS" in source
-    assert isinstance(docs, list)
 
 
 def test_rag_query_falls_back_to_fts_only() -> None:

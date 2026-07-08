@@ -3,12 +3,16 @@
 # Este fichero se aplica automáticamente sobre docker-compose.yml cuando se
 # ejecuta `docker compose up` sin especificar fichero.
 #
-# Diferencias con el entorno de producción:
+# Diferencias con producción:
 # - Volúmenes de código montados (hot-reload sin rebuild de imagen)
-# - Variables de entorno de desarrollo (ENV=dev, LOG_FORMAT=console)
+# - ENV=dev, LOG_FORMAT=console
 # - Sin límites de memoria restrictivos
-# - Sin Prometheus ni Grafana (se activan con --profile monitoring)
-# - REDIS_PASSWORD simplificada para dev local
+# - Redis desactivado por defecto; activar con: docker compose --profile redis up
+#   (Upstash en producción; fallbacks de memoria en dev local)
+# - Prometheus/Grafana opcionales: docker compose --profile monitoring up
+# - Postgres local (F4d): postgres:17-alpine con healthcheck pg_isready
+#   Activo por defecto en dev; la API lee DATABASE_URL del entorno si está
+#   definida, si no usa SQLite local (comportamiento legacy).
 
 services:
   api:
@@ -17,7 +21,7 @@ services:
       dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
-      - licitaciones_data:/data
+      - tenderflow_data:/data
       - ./api:/app/api:ro
       - ./shared:/app/shared:ro
       - ./config:/app/config:ro
@@ -28,8 +32,9 @@ services:
     environment:
       ENV: dev
       LOG_FORMAT: console
-      REDIS_URL: redis://:dev-password@redis:6379/0
-      REDIS_PASSWORD: dev-password
+      # Apuntar a postgres local cuando F3 esté completo.
+      # Descomentar tras ejecutar F3a (fundaciones Postgres):
+      # DATABASE_URL: "postgresql://tenderflow:tenderflow@postgres:5432/tenderflow"
     mem_limit: "0"
 
   scheduler:
@@ -38,7 +43,7 @@ services:
       dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
-      - licitaciones_data:/data
+      - tenderflow_data:/data
       - ./scheduler:/app/scheduler:ro
       - ./scraper:/app/scraper:ro
       - ./shared:/app/shared:ro
@@ -49,14 +54,42 @@ services:
     environment:
       ENV: dev
       LOG_FORMAT: console
-      REDIS_URL: redis://:dev-password@redis:6379/0
-      REDIS_PASSWORD: dev-password
     mem_limit: "0"
 
+  # Override Redis cuando se activa el profile redis en dev
   redis:
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass dev-password
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-dev-password}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "dev-password", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-dev-password}", "ping"]
     mem_limit: "0"
     ports:
       - "127.0.0.1:6379:6379"  # exponer Redis en dev para debugging
+
+  # ── Postgres local para desarrollo (F4d) ──────────────────────────────────
+  # Motor destino de F3 (migración Supabase). En dev usamos postgres:17-alpine
+  # directamente — NO el stack completo de Supabase local (demasiado pesado).
+  #
+  # Arrancar solo postgres: docker compose up postgres
+  # Detener y borrar datos: docker compose down -v
+  postgres:
+    image: postgres:17-alpine
+    container_name: tenderflow-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tenderflow
+      POSTGRES_PASSWORD: tenderflow  # pragma: allowlist secret -- dev-only placeholder, no produccion
+      POSTGRES_DB: tenderflow
+    volumes:
+      - tenderflow_pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenderflow -d tenderflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    mem_limit: "0"
+
+volumes:
+  tenderflow_pg_data:

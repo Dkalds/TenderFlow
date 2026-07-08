@@ -1,26 +1,83 @@
-"""Service layer for notifications (ADR-013 / §3.8).
+"""Servicio de notificaciones -- wrapper sobre db.notifications + user_notifications.
 
-Thin wrapper over ``db.notifications`` so that dashboard modules never
-import ``db.*`` directly.
+ADR-013 / seccion 3.8: los modulos de servicios nunca importan db.* directamente.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import Any
+
+from db.database import connect, connect_read
 from db.notifications import get_unread_ids as _get_unread_ids
 from db.notifications import mark_all_read as _mark_all_read
 from db.notifications import mark_read as _mark_read
 
 
 def mark_read(user_key: str, notification_id: str) -> None:
-    """Mark a single notification as read."""
+    """Marca una notificacion de novedad como leida."""
     _mark_read(user_key, notification_id)
 
 
 def mark_all_read(user_key: str, notification_ids: list[str]) -> None:
-    """Mark a batch of notifications as read."""
+    """Marca un batch de notificaciones de novedad como leidas."""
     _mark_all_read(user_key, notification_ids)
 
 
 def get_unread_ids(user_key: str, candidate_ids: list[str]) -> list[str]:
-    """Return IDs from candidate_ids that the user has NOT read."""
+    """Devuelve IDs de novedades que el usuario NO ha leido."""
     return _get_unread_ids(user_key, candidate_ids)
+
+
+# ---------------------------------------------------------------------------
+# Alertas in-app (user_notifications -- Feature A)
+# ---------------------------------------------------------------------------
+
+
+def get_user_alerts(user_key: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Devuelve alertas de reglas/deadlines pendientes (unread primero)."""
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
+            "FROM user_notifications "
+            "WHERE user_key = ? "
+            "ORDER BY read_at IS NOT NULL, created_at DESC "
+            "LIMIT ?",
+            (user_key, limit),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
+def get_alerts_unread_count(user_key: str) -> int:
+    """Numero de alertas no leidas para el usuario."""
+    with connect_read() as c:
+        row = c.execute(
+            "SELECT COUNT(*) FROM user_notifications WHERE user_key = ? AND read_at IS NULL",
+            (user_key,),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def mark_alerts_read(user_key: str, alert_ids: list[int]) -> None:
+    """Marca alertas especificas como leidas."""
+    if not alert_ids:
+        return
+    now_ts = datetime.now(UTC).isoformat()
+    placeholders = ",".join("?" * len(alert_ids))
+    with connect() as c:
+        c.execute(
+            f"UPDATE user_notifications SET read_at = ? "  # noqa: S608
+            f"WHERE user_key = ? AND id IN ({placeholders}) AND read_at IS NULL",
+            [now_ts, user_key, *alert_ids],
+        )
+
+
+def mark_all_alerts_read(user_key: str) -> None:
+    """Marca todas las alertas del usuario como leidas."""
+    now_ts = datetime.now(UTC).isoformat()
+    with connect() as c:
+        c.execute(
+            "UPDATE user_notifications SET read_at = ? WHERE user_key = ? AND read_at IS NULL",
+            (now_ts, user_key),
+        )

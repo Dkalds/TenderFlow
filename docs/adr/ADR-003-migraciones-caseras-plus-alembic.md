@@ -1,3 +1,12 @@
+---
+id: ADR-003
+title: "Sistema de migraciones casero + plan Alembic"
+status: accepted
+date: 2024-01-01
+deciders: "Daniel Kalitovics"
+tags: [adr]
+---
+
 # ADR-003: Sistema de migraciones casero + plan Alembic
 
 **Status:** Accepted  

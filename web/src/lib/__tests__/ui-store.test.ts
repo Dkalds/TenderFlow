@@ -6,6 +6,7 @@ const initialState = {
   commandOpen: false,
   copilotOpen: false,
   copilotSeed: { q: "", key: 0 },
+  savedViewsOpen: false,
 };
 
 beforeEach(() => {
@@ -81,6 +82,34 @@ describe("copilot panel", () => {
   it("openCopilot closes the command palette", () => {
     useUiStore.setState({ commandOpen: true });
     useUiStore.getState().openCopilot("test");
+    expect(useUiStore.getState().commandOpen).toBe(false);
+  });
+});
+
+describe("saved views popover", () => {
+  it("starts closed", () => {
+    expect(useUiStore.getState().savedViewsOpen).toBe(false);
+  });
+
+  it("setSavedViewsOpen(true) opens the popover", () => {
+    useUiStore.getState().setSavedViewsOpen(true);
+    expect(useUiStore.getState().savedViewsOpen).toBe(true);
+  });
+
+  it("setSavedViewsOpen(false) closes the popover", () => {
+    useUiStore.setState({ savedViewsOpen: true });
+    useUiStore.getState().setSavedViewsOpen(false);
+    expect(useUiStore.getState().savedViewsOpen).toBe(false);
+  });
+
+  it("openSavedViews() opens the popover", () => {
+    useUiStore.getState().openSavedViews();
+    expect(useUiStore.getState().savedViewsOpen).toBe(true);
+  });
+
+  it("openSavedViews() closes the command palette", () => {
+    useUiStore.setState({ commandOpen: true });
+    useUiStore.getState().openSavedViews();
     expect(useUiStore.getState().commandOpen).toBe(false);
   });
 });

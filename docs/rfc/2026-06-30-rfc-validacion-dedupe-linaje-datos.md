@@ -9,13 +9,13 @@ status: draft
 
 ## Contexto
 
-Con multi-fuente activo (ADR-009: PLACSP + `ted` + `pscp` + `tacrc`), el riesgo de
+Con multi-fuente activo ([[ADR-009-framework-conectores-multifuente|ADR-009]]: PLACSP + `ted` + `pscp` + `tacrc`), el riesgo de
 calidad de datos se **desplaza**. Antes era *"¿extrajimos el campo?"* —cubierto por
 los SLO de cobertura (importe ≥80%) y las métricas de NULL del parser
 (`parser_field_null_total`, backlog 2026-06-10). Ahora el riesgo dominante es
 *"¿es correcto el dato fusionado entre fuentes?"*.
 
-ADR-009 Fase 5.2 introdujo dedupe cross-fuente: un contrato que aparece en PLACSP
+[[ADR-009-framework-conectores-multifuente|ADR-009]] Fase 5.2 introdujo dedupe cross-fuente: un contrato que aparece en PLACSP
 *y* TED se marca en `licitaciones_duplicados` (`services/dedupe.py`) con clave débil
 **órgano normalizado + expediente nacional + CPV-4**, y las consultas analíticas lo
 excluyen vía `exclude_duplicados_sql()`. Hay un guardrail —`tests/test_dedup_guardrail.py`—
@@ -55,7 +55,7 @@ contrato testeable, con tres componentes:
    los thresholds de coverage).
 
 3. **Linaje explícito y reversibilidad auditable**:
-   - El marcado en `licitaciones_duplicados` ya es reversible (ADR-009). Añadir
+   - El marcado en `licitaciones_duplicados` ya es reversible ([[ADR-009-framework-conectores-multifuente|ADR-009]]). Añadir
      que registre **por qué** se marcó (la clave que hizo match) para auditoría —
      trazabilidad de "esta fila se ocultó por este criterio".
    - Métrica `dedupe_marked_total{source_pair}` y `dedupe_match_rate` para alertar
@@ -89,7 +89,7 @@ contrato testeable, con tres componentes:
 | Invariante | Impacto | Mitigación |
 |---|---|---|
 | §3.1 Typing strict | `services/` strict; test/código nuevo nace strict | — |
-| §3.2 Upsert idempotente | Ninguno — el dedupe marca, no reescribe filas fuente | El marcado sigue siendo reversible (ADR-009) |
+| §3.2 Upsert idempotente | Ninguno — el dedupe marca, no reescribe filas fuente | El marcado sigue siendo reversible ([[ADR-009-framework-conectores-multifuente|ADR-009]]) |
 | §3.3 Migraciones append-only | Posible: columna de "criterio de match" en `licitaciones_duplicados` → nueva revisión Alembic | OK humano antes de tocar `db/alembic/**` (§6) |
 | §3.4 Auto-marking tests | Ninguno — `test_dedupe_quality.py` sigue naming | — |
 | §3.5 Pydantic v2 DTOs | Ninguno | — |
@@ -107,11 +107,11 @@ contrato testeable, con tres componentes:
    bruscamente de su baseline.
 5. (Si aplica) migración Alembic para la columna de criterio en
    `licitaciones_duplicados` — **requiere OK humano**.
-6. `docs/adr/ADR-009-framework-conectores-multifuente.md` — nota: la calidad del
+6. `docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md` — nota: la calidad del
    dedupe ahora tiene contrato de test (referencia a este RFC).
 
 **Archivos de partida**: `services/dedupe.py`, `tests/test_dedup_guardrail.py`,
-`docs/adr/ADR-009-framework-conectores-multifuente.md`,
+`docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md`,
 `observability/alert_rules.yml`, `observability/runtime_metrics.py`.
 **Riesgo estimado**: bajo — aditivo (tests + métricas + linaje); no cambia el
 algoritmo de matching ni el camino de datos. El único punto sensible es la

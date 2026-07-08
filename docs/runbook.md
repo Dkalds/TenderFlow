@@ -83,9 +83,9 @@ docker compose exec scheduler python -c \
 * F5: i18n en `shared/i18n.py` + `shared/i18n_es.json` / `shared/i18n_en.json`.
 * F5: Sentry opt-in en `observability/sentry.py`.
 * F5: dashboard Grafana RED en `observability/grafana/dashboards/api_red.json`.
-* F6: diagramas C4 en `docs/c4-architecture.md`. ADR-005 documenta el
+* F6: diagramas C4 en `docs/c4-architecture.md`. [[ADR-005-clustering-ctfidf-minibatch|ADR-005]] documenta el
   refactor de clustering.
-* F7: capa `services/` como dominio compartido (ver ADR-007).
+* F7: capa `services/` como dominio compartido (ver [[ADR-007-services-domain-layer|ADR-007]]).
   `services/normalization.py` y `services/classification.py` concentran
   la lógica reutilizable consumida por API y frontend web.
 * F7: `scripts/verify_audit_chain.py` valida la cadena de hashes del

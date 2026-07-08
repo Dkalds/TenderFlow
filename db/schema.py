@@ -231,6 +231,16 @@ CREATE TABLE IF NOT EXISTS watchlist_rules (
 CREATE INDEX IF NOT EXISTS idx_wl_rules_user ON watchlist_rules(user_key);
 CREATE INDEX IF NOT EXISTS idx_wl_rules_active ON watchlist_rules(active, frequency);
 
+CREATE TABLE IF NOT EXISTS watchlist_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_key    TEXT NOT NULL,
+    user_id     INTEGER,
+    id_externo  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_key, id_externo)
+);
+CREATE INDEX IF NOT EXISTS idx_wl_items_user ON watchlist_items(user_key);
+
 CREATE TABLE IF NOT EXISTS adjudicaciones (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     licitacion_id           TEXT NOT NULL,
@@ -390,6 +400,42 @@ CREATE TABLE IF NOT EXISTS job_locks (
     expires_at   TEXT NOT NULL,
     holder       TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS ops_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         TEXT NOT NULL DEFAULT (datetime('now','utc')),
+    event_type TEXT NOT NULL,
+    value      REAL,
+    plane      TEXT,
+    pid        INTEGER,
+    detail     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ops_events_type_ts ON ops_events(event_type, ts);
+
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_key      TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now','utc')),
+    type          TEXT NOT NULL,
+    title         TEXT,
+    body          TEXT,
+    licitacion_id TEXT,
+    rule_id       INTEGER,
+    read_at       TEXT,
+    UNIQUE(user_key, licitacion_id, type)
+);
+CREATE INDEX IF NOT EXISTS idx_user_notif_user_read ON user_notifications(user_key, read_at);
+
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_key               TEXT PRIMARY KEY,
+    weights_json           TEXT,
+    afinidad_keywords_json TEXT,
+    cpvs_json              TEXT,
+    ccaa_json              TEXT,
+    importe_min            REAL,
+    importe_max            REAL,
+    updated_at             TEXT NOT NULL DEFAULT (datetime('now','utc'))
+);
 """
 
 
@@ -399,9 +445,22 @@ CREATE TABLE IF NOT EXISTS job_locks (
 
 
 def init_db() -> None:
-    """Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init)."""
+    """Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init).
+
+    Con backend Postgres (ADR-016): el schema ya está aplicado via alembic.
+    init_db() es un no-op en Postgres — solo marca _db_initialized = True.
+    """
     if _conn_module._db_initialized:
         return
+
+    from db.connection import is_postgres_backend
+
+    if is_postgres_backend():
+        # Schema ya existe en Postgres (alembic upgrade head lo creó).
+        # No ejecutar SCHEMA SQLite ni migrations caseras.
+        _conn_module._db_initialized = True
+        return
+
     from config import ensure_data_dirs
     from db.migrations import apply_pending
 

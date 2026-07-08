@@ -75,34 +75,30 @@ export function Sidebar() {
         </Button>
       </div>
 
-      <nav className="flex-1 space-y-3 overflow-y-auto px-2 py-3" aria-label="Secciones">
-        {visibleSections.map((section) => (
-          <div key={section.label} className="space-y-1">
-            <div className={cn("px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground", collapsed && "px-0 text-center text-[8px]")}>{collapsed ? section.label.slice(0, 3) : section.label}</div>
-            {section.pages.map((page) => {
-              const Icon = page.icon;
-              const active = pathname === `/${page.slug}`;
-              return (
-                <Link
-                  key={page.slug}
-                  href={withFilters(`/${page.slug}`)}
-                  title={collapsed ? page.label : undefined}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "relative flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-colors",
-                    active
-                      ? "bg-primary/10 text-foreground before:absolute before:-left-2 before:top-1/2 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-r before:bg-primary"
-                      : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
-                    collapsed && "justify-center px-0"
-                  )}
-                >
-                  <Icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
-                  {!collapsed && <span className="truncate">{page.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3" aria-label="Secciones">
+        {visibleSections.map((section) => {
+          const Icon = section.icon;
+          const active = section.pages.some((page) => pathname === `/${page.slug}`);
+          const firstSlug = section.pages[0].slug;
+          return (
+            <Link
+              key={section.label}
+              href={withFilters(`/${firstSlug}`)}
+              title={collapsed ? section.label : undefined}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "relative flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-colors",
+                active
+                  ? "bg-primary/10 text-foreground before:absolute before:-left-2 before:top-1/2 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-r before:bg-primary"
+                  : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
+                collapsed && "justify-center px-0"
+              )}
+            >
+              <Icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+              {!collapsed && <span className="truncate">{section.label}</span>}
+            </Link>
+          );
+        })}
       </nav>
 
       {!collapsed && <div className="border-t border-border/70 p-3 text-xs text-muted-foreground">Datos en vivo · actualizado {freshnessLabel}</div>}

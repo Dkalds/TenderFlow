@@ -148,3 +148,22 @@ real de CCAA distintas (`ccaa_cubiertas`) queda como adición backend si se quie
 métrica de cobertura. Verde: `tsc`/`eslint`/`vitest` (19 files, 285 tests).
 **Diferido:** (1) delta period-over-period en todos los KPIs, (2) KPIs clicables
 con drill-down, (4) progressive disclosure / bloque "Requiere atención".
+
+2026-07-06 — **Implementado (#1, #2, #4) + rework de altitud.** Rework del Resumen a
+**cockpit de acción**. (#1) Los KPIs de contexto muestran delta MoM derivado de
+`por_mes` (`Total Licitaciones`/`Importe Total`/`Importe Medio`) y `yoy_delta`
+(`Organos Unicos`) — sustituye los sparklines de altura variable, que causaban
+tarjetas de distinto tamaño. (#2) `KpiCard` acepta `href`: las 4 cards de urgencia
+son clicables — `Nuevas 24h` → `/detalle?fecha_desde=<ayer>`, `Total activas` →
+`/detalle?estado=PUB,EV`, `Vencen 48h`/`Calientes` → `/pipeline-alertas` (no se
+fabrica un filtro por `fecha_limite`/band que el listado no soporta). (#4) Jerarquía:
+bloque "Requiere atención" (novedades + urgencias) sobre el fold, "Contexto de
+mercado", "Top oportunidades" y `TimelineSection` intacto. **Amplía el alcance** que
+este RFC declaraba fuera (§"Qué NO se hace"): se **quitan** del Resumen los charts que
+duplican página dedicada (Sankey, Estado/Tipos, Actividad/Evolución mensual,
+Tecnologías, Top Órganos, Funnel, Market Indicators, Comparar Periodos) y se
+sustituyen por `AtajosAnalisis` → `/tendencias`, `/organos`, `/tecnologias`,
+`/proyectos-modulos`. Queries de 9→5. Verde: `tsc`/`eslint`/`vitest` (85 files, 775
+tests); `check_frontend_invariants` sin hallazgos nuevos. **Pendiente de decisión:**
+abrir RFC/entrada nueva que documente la reubicación de charts (esa parte excede el
+alcance original de este RFC).

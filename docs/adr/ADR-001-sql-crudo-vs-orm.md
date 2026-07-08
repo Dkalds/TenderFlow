@@ -1,3 +1,12 @@
+---
+id: ADR-001
+title: "SQL crudo vs ORM"
+status: accepted
+date: 2024-01-01
+deciders: "Daniel Kalitovics"
+tags: [adr]
+---
+
 # ADR-001: SQL crudo vs ORM
 
 **Status:** Accepted  

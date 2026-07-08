@@ -45,6 +45,14 @@ fastapi>=0.110.0,<1
 # Starlette pinned explicitly — fastapi 0.136 ships with 0.52.x but >=1.0.1
 # is needed for bugfixes; without this pin the Dockerfile had a force-reinstall hack.
 starlette>=1.0.1,<2
+# Servidor ASGI que ejecuta la API (ver docker/docker-entrypoint-api.sh). Se había
+# perdido de este archivo en algún momento y sobrevivía solo porque requirements.txt
+# no se había vuelto a compilar desde entonces (mismo patrón que el incidente de
+# psycopg-pool — ver scripts/check_requirements_sync.py).
+uvicorn>=0.30.0,<1
+# Backend de rate limiting distribuido (services/rate_limit_redis.py, RATE_LIMIT_BACKEND=redis).
+# Mismo motivo que uvicorn: presente en pyproject.toml pero faltaba aquí.
+redis>=5.0,<6
 # Forecasting — suavizado exponencial (ExponentialSmoothing) para tendencias
 statsmodels>=0.14.0,<1
 # Análisis de redes de proveedores (partners.py)
@@ -53,3 +61,6 @@ networkx>=3.0,<4
 cachetools>=5.3.0,<8
 # Compresión Brotli para respuestas API (~20% mejor que GZip)
 brotli-asgi>=1.4.0,<2
+# F3: Postgres/Supabase (ADR-016) — activo cuando DATABASE_URL apunta a postgres
+psycopg[binary]>=3.2,<4
+psycopg-pool>=3.2,<4

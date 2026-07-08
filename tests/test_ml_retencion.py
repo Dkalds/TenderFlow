@@ -215,8 +215,9 @@ def test_entrenar_y_puntuar_retencion(db, monkeypatch, tmp_path):
     for clave in ("pr_auc", "prevalencia", "brier", "ece"):
         assert clave in resumen
 
-    # Sin modelo activo el scoring se salta (no hay baseline honesto)
-    assert score_predicciones_retencion()["status"] == "sin_modelo"
+    # Sin modelo activo el scoring usa baseline heuristico (Feature D)
+    result = score_predicciones_retencion()
+    assert result["status"] in ("baseline", "sin_vencimientos")
 
     activate_version(MODEL_NAME, list_versions(MODEL_NAME)[0]["version"])
     stats = score_predicciones_retencion()

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -32,6 +33,10 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
+import {
+  useRemoveWatchlistItem,
+  useWatchlistItems,
+} from "@/hooks/use-watchlist-items";
 
 /* ------------------------------------------------------------------ */
 /*  Types — alineados con /api/v1/watchlist/rules                      */
@@ -179,17 +184,116 @@ const FREQ_LABEL: Record<Frequency, string> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Favoritos (licitaciones individuales, server-side)                 */
+/* ------------------------------------------------------------------ */
+
+function FavoritosPanel() {
+  const { data: items, isLoading } = useWatchlistItems();
+  const removeItem = useRemoveWatchlistItem();
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <Card key={i}>
+            <CardContent className="pt-6 space-y-2">
+              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+          <Star className="h-12 w-12 text-muted-foreground/50 mb-4" />
+          <p className="text-lg font-medium text-muted-foreground">
+            No tienes licitaciones marcadas como favoritas
+          </p>
+          <p className="text-sm text-muted-foreground/70 mt-1">
+            Marca licitaciones con la estrella desde la tabla de Detalle.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <Card key={item.id_externo} className="hover:bg-accent/30 transition-colors">
+          <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <div className="flex-1 min-w-0">
+              <a
+                href={`/detalle?lic=${item.id_externo}`}
+                className="text-sm font-medium hover:underline line-clamp-1"
+              >
+                {truncate(item.titulo ?? item.id_externo, 100)}
+              </a>
+            </div>
+            {item.importe != null && (
+              <Badge variant="secondary" className="shrink-0">
+                {formatCurrency(item.importe)}
+              </Badge>
+            )}
+            {item.estado && (
+              <Badge variant="outline" className="shrink-0">
+                {item.estado}
+              </Badge>
+            )}
+            {item.fecha_publicacion && (
+              <span className="text-xs text-muted-foreground shrink-0">
+                {formatDate(item.fecha_publicacion)}
+              </span>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-destructive"
+              title="Quitar de favoritos"
+              onClick={() => removeItem.mutate(item.id_externo)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Página                                                             */
 /* ------------------------------------------------------------------ */
 
 export default function MiWatchlistPage() {
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<"reglas" | "favoritos">("reglas");
+
+  // Prefill desde la command palette: "Crear regla de watchlist con estos
+  // filtros" navega aquí con ?prefill=<filterParams JSON-encoded>. Se lee
+  // una sola vez como estado inicial (no en un efecto) — el usuario puede
+  // seguir editando el formulario libremente después.
+  const prefill = useMemo(() => {
+    const raw = searchParams.get("prefill");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Record<string, string>;
+    } catch {
+      return null;
+    }
+  }, [searchParams]);
 
   // Form state
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useState(() => prefill?.q ?? "");
   const [cpv, setCpv] = useState("");
-  const [minImporte, setMinImporte] = useState("");
-  const [ccaa, setCcaa] = useState("");
+  const [minImporte, setMinImporte] = useState(() => prefill?.importe_min ?? "");
+  const [ccaa, setCcaa] = useState(() => prefill?.ccaa?.split(",")[0] ?? "");
   const [frequency, setFrequency] = useState<Frequency>("daily");
   const [formOpen, setFormOpen] = useState(true);
 
@@ -335,6 +439,42 @@ export default function MiWatchlistPage() {
         </p>
       </div>
 
+      {/* Tabs: reglas de criterio vs. licitaciones individuales marcadas */}
+      <div className="inline-flex rounded-lg border border-border/70 p-1" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "reglas"}
+          onClick={() => setTab("reglas")}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            tab === "reglas"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Reglas
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "favoritos"}
+          onClick={() => setTab("favoritos")}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            tab === "favoritos"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Favoritos
+        </button>
+      </div>
+
+      {tab === "favoritos" ? (
+        <FavoritosPanel />
+      ) : (
+        <>
       {/* Add rule form */}
       <Card>
         <CardHeader
@@ -653,6 +793,8 @@ export default function MiWatchlistPage() {
               </Card>
             )}
           </div>
+        </>
+      )}
         </>
       )}
     </div>

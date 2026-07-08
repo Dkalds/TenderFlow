@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { TopNav } from "@/components/layout/top-nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
+import { PageTabs } from "@/components/layout/page-tabs";
 import { KpiBarConnected } from "@/components/layout/kpi-bar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
  * - Left sidebar (collapsible)
  * - KPI bar (contextual)
  * - Breadcrumb
+ * - Page tabs (sibling pages within the current sidebar group, if any)
  * - Main content area
  */
 export default function DashboardLayout({
@@ -43,6 +45,7 @@ export default function DashboardLayout({
         <DashboardShell>
           <div className="mx-auto w-full max-w-[1640px] px-4 py-5 sm:px-6 lg:px-8">
             <Breadcrumb />
+            <PageTabs />
             <div id="main" className="mt-4"><Suspense fallback={null}><PageTransition>{children}</PageTransition></Suspense></div>
           </div>
         </DashboardShell>

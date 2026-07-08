@@ -1,4 +1,4 @@
-.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -143,6 +143,16 @@ migrate-history:  ## Muestra el historial de migraciones Alembic
 # ── Doctor: verifica entorno antes de despliegue ─────────────────────────
 doctor:  ## Verifica entorno antes de despliegue
 	python scripts/doctor.py
+
+# ── Seed: datos de desarrollo ────────────────────────────────────────────
+seed:  ## Inserta datos de ejemplo en la BD local (licitaciones + usuario demo)
+	python scripts/seed_dev.py
+
+seed-full:  ## Seed completo con predicciones demo (mata el 404 en /predicciones)
+	python scripts/seed_dev.py --with-predicciones
+
+seed-reset:  ## Seed desde cero (borra seed previo y reinicia)
+	python scripts/seed_dev.py --reset --with-predicciones
 
 # ── Limpieza ─────────────────────────────────────────────────────────────
 clean:  ## Limpia artefactos de build y caché

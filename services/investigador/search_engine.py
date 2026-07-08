@@ -1,7 +1,8 @@
-"""Motor de búsqueda híbrido — extrae la lógica RAG de investigador.py.
+"""Motor de búsqueda híbrido — FTS5/BM25 + LIKE fallback.
 
-Encapsula búsqueda FAISS (semántica) + FTS5/BM25 (léxica) + LIKE fallback
-con reranking híbrido. Función pura y reutilizable.
+Encapsula búsqueda FTS5/BM25 (léxica) y LIKE fallback con lógica de
+reranking. FAISS se eliminó en Fase 3 del plan de reducción de superficie
+(2026-07-04): /ask no lo usaba; /search ya degrada a FTS5+BM25 solo.
 """
 
 from __future__ import annotations
@@ -215,18 +216,6 @@ def escape_fts5(query: str) -> str:
     return " OR ".join(quoted)
 
 
-def faiss_search(question: str, top_k: int, embedding_model: str) -> list[tuple[str, float]]:
-    """Búsqueda semántica FAISS. Devuelve (id_externo, score ∈ [0,1])."""
-    try:
-        from services.faiss_index import FaissIndex
-
-        idx = FaissIndex.load()
-        return idx.search(question, k=top_k, threshold=0.25)
-    except Exception as exc:
-        log.warning("search_engine.faiss_failed", error=str(exc))
-        return []
-
-
 def fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
     """Búsqueda léxica FTS5/BM25. Devuelve (id_externo, score ∈ [0,1]) normalizado."""
     return _repo.fts5_bm25_search(question, top_k)
@@ -235,23 +224,6 @@ def fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
 def like_search(question: str, top_k: int) -> list[tuple[str, float]]:
     """LIKE fallback para cuando FTS5 no está disponible."""
     return _repo.like_fallback_search(question, top_k)
-
-
-def hybrid_rerank(
-    faiss_hits: list[tuple[str, float]],
-    fts_hits: list[tuple[str, float]],
-    alpha: float = 0.70,
-    top_k: int = 10,
-) -> list[tuple[str, float]]:
-    """Reranking híbrido: alpha·FAISS + (1-alpha)·FTS5."""
-    faiss_map = dict(faiss_hits)
-    fts_map = dict(fts_hits)
-    all_ids = set(faiss_map) | set(fts_map)
-    combined = {
-        id_: alpha * faiss_map.get(id_, 0.0) + (1 - alpha) * fts_map.get(id_, 0.0)
-        for id_ in all_ids
-    }
-    return sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]
 
 
 def fetch_docs(ids: list[str], allowed_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
@@ -266,27 +238,25 @@ def rag_query(
     allowed_ids: set[str] | None = None,
     embedding_model: str = "",
 ) -> tuple[list[dict[str, Any]], str]:
-    """Búsqueda híbrida FAISS+FTS5 con reranking.
+    """Búsqueda FTS5/BM25 con fallback LIKE.
 
     Returns:
-        (docs, source_badge) donde source_badge indica el motor usado.
+        (docs, source_badge) donde source_badge indica el motor usado
+        ("FTS5" o "LIKE").
     """
     t0 = time.perf_counter()
-    faiss_hits = faiss_search(question, top_k * 2, embedding_model)
     fts_hits = fts5_search(question, top_k * 2)
 
-    if faiss_hits and fts_hits:
-        ranked = hybrid_rerank(faiss_hits, fts_hits, alpha=0.70, top_k=top_k)
-        source = "🟣 FAISS+FTS5"
-    elif faiss_hits:
-        ranked = sorted(faiss_hits, key=lambda x: x[1], reverse=True)[:top_k]
-        source = "🟣 FAISS"
-    elif fts_hits:
+    if fts_hits:
         ranked = sorted(fts_hits, key=lambda x: x[1], reverse=True)[:top_k]
-        source = "🔵 FTS5"
+        source = "FTS5"
     else:
         ranked = like_search(question, top_k)
-        source = "⚪ LIKE"
+        source = "LIKE"
+
+    if allowed_ids is not None:
+        ranked = [(id_, sc) for id_, sc in ranked if id_ in allowed_ids]
+    ranked = ranked[:top_k]
 
     ids = [id_ for id_, _ in ranked]
     docs_map = fetch_docs(ids, allowed_ids)

@@ -46,6 +46,24 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_database_url(monkeypatch):
+    """Evita que un ``DATABASE_URL`` real en ``.env`` contamine tests unitarios.
+
+    pydantic-settings carga ``.env`` al construir ``settings`` sin importar el
+    entorno del proceso -- limpiar solo ``os.environ`` (vía ``monkeypatch.delenv``)
+    no alcanza porque ``_database_url()`` cae a ``settings.DATABASE_URL`` como
+    fallback (ADR-016). Detectado en F3b (2026-07-05) al configurar Supabase:
+    varios tests de is_turso_backend/search_backend empezaron a fallar porque
+    ``.env`` ya trae un DATABASE_URL real. Blanquear solo el atributo de
+    ``settings`` (no ``os.environ``) preserva el opt-in real de correr el test
+    de paridad Postgres exportando la variable en el shell antes de pytest.
+    """
+    from config import settings
+
+    monkeypatch.setattr(settings, "DATABASE_URL", "", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _disable_rate_limiter(monkeypatch):
     """Disable rate limiting in tests to avoid 429s from shared state."""
 
@@ -66,13 +84,16 @@ def _clear_service_data_caches():
     cada test.
     """
     from services.adjudicaciones import clear_raw_adj_cache
+    from services.analytics.scoring_signals import clear_scoring_signals_cache
     from services.licitaciones import clear_stats_cache
 
     clear_stats_cache()
     clear_raw_adj_cache()
+    clear_scoring_signals_cache()
     yield
     clear_stats_cache()
     clear_raw_adj_cache()
+    clear_scoring_signals_cache()
 
 
 @pytest.fixture()

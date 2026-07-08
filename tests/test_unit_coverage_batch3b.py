@@ -1061,6 +1061,11 @@ class TestRunDailyAtom:
         self, mock_update: MagicMock, mock_settings: MagicMock, *mocks: MagicMock
     ) -> None:
         mock_settings.ML_TECH_ENABLED = False
+        # PLACSP_CONNECTOR_ENABLED (F2): un MagicMock sin este atributo seteado
+        # es truthy por defecto, lo que desvía run_daily_pipeline() al path del
+        # connector real (run_connector) en vez del legacy update_daily() mockeado
+        # arriba -- este test verifica el path legacy explícitamente.
+        mock_settings.PLACSP_CONNECTOR_ENABLED = False
         from scheduler.jobs.daily_atom import run
 
         run()
@@ -1138,27 +1143,6 @@ class TestRunWalCheckpoint:
 
         result = run()
         assert result == {}
-
-
-class TestRebuildFaissIfStale:
-    @patch("scheduler.queue.enqueue_rebuild_embeddings")
-    @patch("services.faiss_index._is_index_stale", return_value=True)
-    @patch("services.faiss_index._INDEX_PATH")
-    def test_triggers_rebuild(
-        self, mock_path: MagicMock, mock_stale: MagicMock, mock_enqueue: MagicMock
-    ) -> None:
-        mock_path.exists.return_value = True
-        from scheduler.jobs.faiss_rebuild import run
-
-        run()
-        mock_enqueue.assert_called_once()
-
-    def test_handles_import_error(self) -> None:
-        """If faiss imports fail, should log warning not crash."""
-        from scheduler.jobs.faiss_rebuild import run
-
-        with patch.dict("sys.modules", {"services.faiss_index": None}):
-            run()  # Should not raise
 
 
 class TestMainLoop:

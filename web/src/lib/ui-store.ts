@@ -22,6 +22,12 @@ interface UiState {
   setCopilotOpen: (open: boolean) => void;
   /** Open the copilot, optionally seeding (and running) a question. */
   openCopilot: (question?: string) => void;
+
+  /** Saved views popover, drivable from outside its own trigger button. */
+  savedViewsOpen: boolean;
+  setSavedViewsOpen: (open: boolean) => void;
+  /** Open the saved views popover (and close the command palette). */
+  openSavedViews: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -40,4 +46,8 @@ export const useUiStore = create<UiState>((set) => ({
         ? { q: question, key: s.copilotSeed.key + 1 }
         : s.copilotSeed,
     })),
+
+  savedViewsOpen: false,
+  setSavedViewsOpen: (open) => set({ savedViewsOpen: open }),
+  openSavedViews: () => set({ savedViewsOpen: true, commandOpen: false }),
 }));

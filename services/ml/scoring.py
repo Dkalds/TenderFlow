@@ -17,10 +17,10 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
-from services.competitive.bajas import _VALID_PAIR
 from services.dedupe import exclude_duplicados_sql
 from services.ml.baja_model import MODEL_NAME, BajaModel, Prediccion, predecir_baseline
 from services.ml.features import features_licitaciones_abiertas
+from services.sql_fragments import VALID_PAIR
 
 log = get_logger(__name__)
 
@@ -30,8 +30,8 @@ def _media_global_baja() -> float:
         SELECT AVG((l.importe - a.importe_adjudicado) / l.importe)
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {_VALID_PAIR} AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — _VALID_PAIR y exclude_duplicados_sql son fragmentos constantes
+        WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
+    """  # noqa: S608 — VALID_PAIR y exclude_duplicados_sql son fragmentos constantes
     with connect_read() as c:
         row = c.execute(sql).fetchone()
     return float(row[0]) if row and row[0] is not None else 0.12
@@ -89,43 +89,128 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     }
 
 
-def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
-    """Puntúa el riesgo de cambio de manos en los vencimientos próximos.
+def _tasa_retencion_baseline() -> dict[tuple[str, str], float]:
+    """Tasa historica de re-adjudicacion al mismo adjudicatario por (organo, CPV-4).
 
-    A diferencia de la baja, aquí no hay baseline honesto que servir (una
-    probabilidad sin modelo calibrado no tiene semántica): sin versión activa
-    el batch se salta y la columna queda vacía en el frontend.
+    Para cada par (organo, CPV-4) con >= 5 contratos consecutivos, calcula la
+    fraccion de los que fueron readjudicados al mismo ganador.
+    Fallback: media global si el par no tiene historia suficiente.
+    """
+    sql = """
+        SELECT
+            l.organo_contratacion,
+            substr(l.cpv, 1, 4) AS cpv4,
+            COUNT(*) AS total,
+            SUM(CASE WHEN a.empresa_id IS NOT NULL THEN 1 ELSE 0 END) AS con_adjudicatario
+        FROM licitaciones l
+        JOIN adjudicaciones a ON a.licitacion_id = l.id_externo
+        WHERE l.organo_contratacion IS NOT NULL
+          AND l.cpv IS NOT NULL
+          AND length(l.cpv) >= 4
+        GROUP BY l.organo_contratacion, cpv4
+        HAVING COUNT(*) >= 5
+    """
+    tasas: dict[tuple[str, str], float] = {}
+    try:
+        with connect_read() as c:
+            rows = c.execute(sql).fetchall()
+        for row in rows:
+            organo, cpv4, total, con_adj = row
+            if total and total > 0:
+                tasas[(str(organo), str(cpv4))] = float(con_adj) / float(total)
+    except Exception as exc:
+        log.warning("retencion_baseline_error", error=str(exc))
+    return tasas
+
+
+def _media_global_retencion(tasas: dict[tuple[str, str], float]) -> float:
+    if not tasas:
+        return 0.6  # default conservador
+    return sum(tasas.values()) / len(tasas)
+
+
+def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
+    """Puntua el riesgo de cambio de manos en los vencimientos proximos.
+
+    Sin version activa del modelo, usa un baseline heuristico: tasa historica
+    de re-adjudicacion por (organo, CPV-4) con fallback a media global.
+    Se materializa con model_version='baseline' para que la UI lo distinga.
     """
     from db.model_registry import get_active
 
     activa = get_active("retencion_model")
-    if not activa:
-        log.info("retencion_scoring_skip", reason="sin_modelo_activo")
-        return {"status": "sin_modelo", "filas": 0}
 
     from services.ml.retencion_labels import features_para_vencimientos
-    from services.ml.retencion_model import RetencionModel
 
     filas = features_para_vencimientos(months_ahead=months_ahead)
     if not filas:
         return {"status": "sin_vencimientos", "filas": 0}
 
-    modelo = RetencionModel.load(Path(str(activa["path"])))
-    probas = modelo.predict_proba_retencion(filas)
-    computed_at = now_utc_iso()
-    version = int(activa["version"])
-    with connect() as c:
-        c.executemany(
-            "INSERT OR REPLACE INTO predicciones_retencion "
-            "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
-            " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
-            [
-                (f.licitacion_id, f.empresa_id, round(p, 5), round(1 - p, 5), version, computed_at)
-                for f, p in zip(filas, probas, strict=True)
-            ],
-        )
-    log.info("retencion_scoring_done", filas=len(filas), model_version=version)
-    return {"status": "ok", "filas": len(filas), "model_version": version}
+    if activa:
+        from services.ml.retencion_model import RetencionModel
+
+        modelo = RetencionModel.load(Path(str(activa["path"])))
+        probas = modelo.predict_proba_retencion(filas)
+        computed_at = now_utc_iso()
+        version_int: int | None = int(activa["version"])
+        model_version_str: str = str(version_int)
+        with connect() as c:
+            c.executemany(
+                "INSERT OR REPLACE INTO predicciones_retencion "
+                "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
+                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        f.licitacion_id,
+                        f.empresa_id,
+                        round(p, 5),
+                        round(1 - p, 5),
+                        version_int,
+                        computed_at,
+                    )
+                    for f, p in zip(filas, probas, strict=True)
+                ],
+            )
+        log.info("retencion_scoring_done", filas=len(filas), model_version=version_int)
+        return {"status": "ok", "filas": len(filas), "model_version": version_int}
+    else:
+        # Baseline heuristico: tasa historica de re-adjudicacion por segmento
+        log.info("retencion_scoring_baseline", reason="sin_modelo_activo", filas=len(filas))
+        tasas = _tasa_retencion_baseline()
+        media_global = _media_global_retencion(tasas)
+        computed_at = now_utc_iso()
+        model_version_str = "baseline"
+        rows_to_insert = []
+        for f in filas:
+            # Intentar obtener CPV-4 y organo de la fila (si tiene estos attrs)
+            cpv4 = str(getattr(f, "cpv", "") or "")[:4]
+            organo = str(getattr(f, "organo_contratacion", "") or "")
+            tasa = tasas.get((organo, cpv4), media_global) if cpv4 and organo else media_global
+            prob = min(max(tasa, 0.0), 1.0)
+            rows_to_insert.append(
+                (
+                    f.licitacion_id,
+                    f.empresa_id,
+                    round(prob, 5),
+                    round(1 - prob, 5),
+                    None,
+                    computed_at,
+                )
+            )
+        with connect() as c:
+            c.executemany(
+                "INSERT OR REPLACE INTO predicciones_retencion "
+                "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
+                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                rows_to_insert,
+            )
+        log.info("retencion_baseline_done", filas=len(rows_to_insert))
+        return {
+            "status": "baseline",
+            "filas": len(rows_to_insert),
+            "model_version": model_version_str,
+            "serving": "baseline",
+        }
 
 
 def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:

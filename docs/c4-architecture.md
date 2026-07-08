@@ -107,7 +107,7 @@ scheduler/  ──► services/      (dominio)    (persistencia + utilidades)
 
 * `services/` contiene lógica de dominio pura (normalización,
   clasificación, threshold tuning, rate-limit). Sin dependencias UI.
-  Ver ADR-007.
+  Ver [[ADR-007-services-domain-layer|ADR-007]].
 * `shared/` aloja helpers transversales (auth core, signing, i18n,
   geo, schemas Pandera).
 * `web/` consume la API REST y no accede a `services/` o `db/` directamente.

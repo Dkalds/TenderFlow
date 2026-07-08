@@ -1,3 +1,11 @@
+---
+id: ADR-007
+title: "Capa `services/` como dominio compartido"
+status: accepted
+date: 2026-05-19
+tags: [adr]
+---
+
 # ADR-007 — Capa `services/` como dominio compartido
 
 * **Estado:** Aceptado
@@ -80,5 +88,5 @@ python -c "from services.classification import cpv_label, SAP_MODULES; print('OK
 
 ## Referencias
 
-* ADR-002 — Streamlit vs FastAPI + React.
+* [[ADR-002-streamlit-vs-fastapi-react|ADR-002]] — Streamlit vs FastAPI + React.
 * `scripts/check_coverage_per_module.py` — umbrales por capa.

@@ -44,7 +44,7 @@ descartando:
 Encaja con la cultura de observabilidad ya establecida: el proyecto tiene
 contadores Prometheus por todos lados (`ml_inference_duration_seconds`,
 `parser_field_null_total`, `scheduler_job_total`, métricas de SQLite BUSY de
-ADR-004). Falta cerrar el LLM. Relacionado: ADR-006 (rate-limit Redis para
+[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]). Falta cerrar el LLM. Relacionado: [[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]] (rate-limit Redis para
 endpoints pesados), backlog 2026-06-09 "B11" (hardening del cliente LLM).
 
 ## Decisión

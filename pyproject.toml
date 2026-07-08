@@ -32,6 +32,10 @@ dependencies = [
     "redis>=5.0,<6",
     "cachetools>=5.3.0,<8",
     "brotli-asgi>=1.4.0,<2",
+    # F3: Postgres/Supabase (ADR-016). Optional: solo se activa cuando DATABASE_URL
+    # apunta a postgres. Sin este extra, db/connection.py opera sobre SQLite/Turso.
+    "psycopg[binary]>=3.2,<4",
+    "psycopg-pool>=3.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -46,9 +50,10 @@ llm = [
 # Deps opcionales para búsqueda semántica y vectorización.
 # Instalar con: pip install tenderflow[ml]
 # NOTA: sentence-transformers arrastra PyTorch (~2 GB). No instalar en entornos sin GPU si no se usa.
+# faiss-cpu eliminado en Fase 3 (2026-07-04): /search usa FTS5/BM25+LIKE; sentence-transformers
+# se mantiene porque lo usan ml_classifier, clustering_engine y embeddings.
 ml = [
-    "faiss-cpu>=1.7.4,<2",
-    "sentence-transformers>=2.2.0,<3",
+    "sentence-transformers>=2.2.0,<4",
 ]
 # Validación de DataFrames con pandera.
 # Instalar con: pip install licitaciones-sap[schemas]
@@ -68,12 +73,6 @@ tracing = [
     "opentelemetry-sdk>=1.20.0,<3",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<3",
     "opentelemetry-instrumentation-fastapi>=0.45b0,<2",
-]
-# Cola de tareas asíncrona (Dramatiq + Redis). Scheduler en producción.
-# Instalar con: pip install tenderflow[queue]
-# Sin este extra, scheduler/queue.py opera en modo inline síncrono.
-queue = [
-    "dramatiq[redis]>=1.14.0,<2",
 ]
 # Motor DuckDB para exports Parquet analíticos pesados.
 # Instalar con: pip install tenderflow[analytics]
@@ -113,6 +112,7 @@ select = [
     "PERF",# perflint
     "PIE", # flake8-pie
     "LOG", # flake8-logging
+    "TID", # flake8-tidy-imports (ratchet de acceso directo a BD)
 ]
 ignore = [
     "S101",    # assert allowed in tests
@@ -125,7 +125,52 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002", "SIM117", "F841", "E402"]
+# ── RATCHET TID251 — whitelist congelada: solo se QUITAN líneas, nunca se añaden ──
+# Infraestructura de BD (legítima por diseño — no tocar)
+"db/**" = ["TID251", "S608"]
+"tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002", "SIM117", "F841", "E402", "TID251"]
+# Archivos con acceso directo legacy (eliminar TID251 al pasar por F5)
+"api/routes/empresas.py" = ["TID251"]
+"api/routes/eventos.py" = ["TID251"]
+"api/routes/exports.py" = ["TID251"]
+"api/routes/watchlist_rules.py" = ["TID251"]
+"scheduler/aggregates_precompute.py" = ["TID251"]
+"scheduler/anomaly_alerts.py" = ["TID251"]
+"scheduler/competitor_alerts.py" = ["TID251"]
+"scheduler/concept_drift.py" = ["TID251"]
+"scheduler/drift_report.py" = ["TID251"]
+"scheduler/healthcheck.py" = ["TID251"]
+"scheduler/jobs/wal_checkpoint.py" = ["TID251"]
+"scheduler/kpi_precompute.py" = ["TID251"]
+"scheduler/retention.py" = ["TID251"]
+"scheduler/watchlist_rules_alerts.py" = ["TID251"]
+"scraper/ml_training.py" = ["TID251", "S608"]  # SQL built from internal schema strings
+"scraper/tech_classifier.py" = ["TID251"]
+"scripts/dedupe_licitaciones.py" = ["TID251"]
+"scripts/fix_dates_adjudicaciones.py" = ["TID251"]
+"scripts/retrain.py" = ["TID251"]
+"scripts/rotate_api_keys.py" = ["TID251"]
+"scripts/seed_dev.py" = ["TID251"]
+"services/analytics/scoring_signals.py" = ["TID251"]
+"services/competitive/bajas.py" = ["TID251"]
+"services/competitive/mercado.py" = ["TID251"]
+"services/competitive/renovaciones.py" = ["TID251"]
+"services/contract_events.py" = ["TID251"]
+"services/deadline_reminders.py" = ["TID251"]
+"services/dedupe.py" = ["TID251"]
+"services/entity_resolution.py" = ["TID251"]
+"services/health.py" = ["TID251"]
+"services/job_locks.py" = ["TID251"]
+"services/licitaciones.py" = ["TID251", "S608"]
+"services/ml/calibration.py" = ["TID251"]
+"services/ml/features.py" = ["TID251"]
+"services/ml/retencion_labels.py" = ["TID251"]
+"services/ml/scoring.py" = ["TID251"]
+"services/notifications.py" = ["TID251"]
+"services/resoluciones.py" = ["TID251"]
+"services/watchlist_rules.py" = ["TID251"]
+# ── fin RATCHET TID251 ──
+# Archivos no-TID con permisos especiales
 "db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
 "scraper/ml_classifier.py" = ["E402"]  # E402 re-exports at module bottom
 "api/routes/licitaciones.py" = ["E402"]  # TypeVar declared before imports for Python 3.11 compatibility
@@ -145,13 +190,11 @@ ignore = [
 "db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
 "db/repositories/watchlist.py" = ["S608"]
 "db/repositories/webhooks.py" = ["S608"]
-"scraper/ml_training.py" = ["S608"]  # SQL built from internal schema strings
 "api/routes/ask.py" = ["S608"]  # FTS5 query with validated user input via parameterized queries
 "services/investigador/*" = ["S608"]
 "services/auth.py" = ["S608"]
 "services/extraction_runs.py" = ["S608"]
 "services/gdpr.py" = ["S608"]
-"services/licitaciones.py" = ["S608"]
 "services/watchlist.py" = ["S608"]
 # S608 removed from these files — handled inline with # noqa: S608 + justification:
 #   db/events.py, db/feature_store.py, db/repositories/base.py, scheduler/retention.py
@@ -159,6 +202,14 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# RATCHET TID251: acceso directo a BD solo vía db/repositories/* (AGENTS.md §3.10).
+# Para añadir un nuevo archivo al ratchet: PROHIBIDO. Solo se quitan líneas de la whitelist.
+"db.connection.connect".msg = "Acceso a BD solo vía db/repositories/* (AGENTS.md §3.10)."
+"db.connection.connect_read".msg = "Lectura solo vía db/repositories/* (AGENTS.md §3.10)."
+"db.database.connect".msg = "Facade: mismo ban que db.connection.connect."
+"db.database.connect_read".msg = "Facade: mismo ban que db.connection.connect_read."
 
 [tool.mypy]
 python_version = "3.11"
@@ -269,7 +320,11 @@ omit = [
 #                        contract tests DTOs, tests de api/middleware y scraper/resilience
 # 60 → 65 (2026-05-23): Bloque 4 Fase 2 — tests de services/watchlist, services/analytics_engine
 # 65 → 70 (2026-05-23): B12 — tests para api/routes/ask.py, stream.py, search.py (22 tests nuevos)
-fail_under = 70
+# 70 → 78 (2026-07-04): wrappers de services (users/dlq/audit/saved_filters), rutas
+#                        webhooks/auth/eventos/empresas/competitive/predicciones,
+#                        analytics resumen+pipeline, adjudicaciones, repo licitaciones,
+#                        faiss con modulo fake — 144 tests nuevos, 80.30% medido local
+fail_under = 78
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

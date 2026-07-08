@@ -298,6 +298,56 @@ def test_get_overview_empty():
     assert result.ccaa_cubiertas == 0
 
 
+def test_get_overview_q_filters_titulo_organo_id():
+    """El filtro q hace substring case-insensitive sobre titulo/órgano/id,
+    en paridad con la búsqueda del listado (KPI bar honesto con q activo)."""
+    with (
+        patch(
+            "services.analytics.overview.load_stats_dataframe",
+            return_value=_lic_rows(),
+        ),
+        patch(
+            "services.analytics.overview.load_adjudicaciones",
+            return_value=pd.DataFrame(),
+        ),
+    ):
+        por_titulo = get_overview(OverviewFilters(q="sap"))
+        por_organo = get_overview(OverviewFilters(q="org b"))
+        sin_match = get_overview(OverviewFilters(q="nomatch-xyz"))
+    assert por_titulo.total_licitaciones == 1  # "Servicio SAP cloud"
+    assert por_organo.total_licitaciones == 1  # L3 (ORG B)
+    assert sin_match.total_licitaciones == 0
+
+
+def test_get_overview_importe_min_excludes_below_and_nan():
+    """importe_min filtra como ``importe >= ?`` en SQL (NaN excluido)."""
+    rows = _lic_rows()
+    rows.append(
+        {
+            "id_externo": "L5",
+            "titulo": "Sin importe",
+            "organo_contratacion": "ORG C",
+            "importe": None,
+            "estado": "PUB",
+            "fecha_publicacion": "2025-03-01",
+            "ccaa": "Madrid",
+            "tipo_contrato": "2",
+            "url": None,
+            "modulos_str": None,
+        }
+    )
+    with (
+        patch("services.analytics.overview.load_stats_dataframe", return_value=rows),
+        patch(
+            "services.analytics.overview.load_adjudicaciones",
+            return_value=pd.DataFrame(),
+        ),
+    ):
+        result = get_overview(OverviewFilters(importe_min=500_000.0))
+    # Solo L1 (1M) y L2 (500K); L3 (200K) y L5 (None) quedan fuera.
+    assert result.total_licitaciones == 2
+
+
 def test_get_overview_ccaa_cubiertas_ignores_nulls():
     """ccaa_cubiertas cuenta CCAA distintas reales; las filas con ccaa nulo no
     inflan ni rompen el conteo (Patrón 1 meta-RFC: cobertura real, no derivada)."""

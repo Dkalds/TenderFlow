@@ -127,17 +127,56 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
         except Exception:
             info["active_locks"] = []
 
-        # ── Modo de cola de tareas (Punto 5) ──────────────────────────
+        # ── Tripwires de persistencia (ops_events, ADR-004) ───────────
+        # Los counters Prometheus mueren con el proceso efimero del scheduler
+        # (GH Actions). ops_events persiste en BD para que este healthcheck,
+        # que SI corre en prod cada 6h, pueda leerlos.
+        # Umbrales espejo de observability/alert_rules.yml.
         try:
-            from scheduler.queue import _dramatiq
+            cutoff = (datetime.now(UTC) - timedelta(hours=6)).isoformat()
+            rows = c.execute(
+                "SELECT event_type, COUNT(*) FROM ops_events WHERE ts > ? GROUP BY event_type",
+                (cutoff,),
+            ).fetchall()
+            ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows}
+            info["ops_events_6h"] = ops_counts
 
-            if _dramatiq is not None:
-                broker_url = os.environ.get("DRAMATIQ_BROKER_URL", "")
-                info["queue_mode"] = "dramatiq" if broker_url else "stub"
+            # sqlite_busy: >=10 warn, >=60 error
+            n_busy = ops_counts.get("sqlite_busy", 0)
+            if n_busy >= 60:
+                errors.append(f"sqlite_busy_critical:{n_busy}")
+            elif n_busy >= 10:
+                warnings.append(f"sqlite_busy_high:{n_busy}")
+            checks.append({"name": "ops_events_busy", "ok": n_busy < 10})
+
+            # write_slow: >=20 warn
+            n_slow = ops_counts.get("write_slow", 0)
+            if n_slow >= 20:
+                warnings.append(f"write_slow_high:{n_slow}")
+            checks.append({"name": "ops_events_write_slow", "ok": n_slow < 20})
+
+            # writers_high: >=1 warn
+            n_wh = ops_counts.get("writers_high", 0)
+            if n_wh >= 1:
+                warnings.append(f"writers_high:{n_wh}")
+            checks.append({"name": "ops_events_writers_high", "ok": n_wh == 0})
+
+            # Retención best-effort: eliminar eventos > 30 días
+            try:
+                retention_cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+                c.execute("DELETE FROM ops_events WHERE ts < ?", (retention_cutoff,))
+            except Exception:
+                pass
+
+        except Exception as exc:
+            exc_msg = str(exc).lower()
+            if "no such table" in exc_msg or "no existe" in exc_msg:
+                info["ops_events_missing"] = True
+                checks.append({"name": "ops_events_busy", "ok": True})
+                checks.append({"name": "ops_events_write_slow", "ok": True})
+                checks.append({"name": "ops_events_writers_high", "ok": True})
             else:
-                info["queue_mode"] = "inline"
-        except Exception:
-            info["queue_mode"] = "unknown"
+                info["ops_events_error"] = str(exc)[:200]
 
     if errors:
         status = "critical"

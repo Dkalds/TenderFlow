@@ -15,6 +15,7 @@ Cuando ``json_logs=False`` (interactivo), imprime en color para lectura humana.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import uuid
 from collections.abc import MutableMapping
@@ -30,6 +31,7 @@ from structlog.contextvars import (
 # ── Redacción de secretos ────────────────────────────────────────────────
 _SENSITIVE_ENV_VARS = (
     "TURSO_AUTH_TOKEN",
+    "DATABASE_URL",  # DSN Postgres/Supabase con user:pass embebidos (ADR-016)
     "DASHBOARD_PASSWORD",
     "DASHBOARD_PASSWORD_HASH",
     "ALERT_SMTP_PASSWORD",
@@ -39,6 +41,22 @@ _SENSITIVE_ENV_VARS = (
     "REDIS_PASSWORD",
     "GF_SECURITY_ADMIN_PASSWORD",
 )
+
+# Password embebida en un DSN Postgres/Supabase (el tramo entre el ':' del usuario
+# y el '@' del host). Se redacta aunque el DSN no coincida con el valor cacheado en
+# env (p.ej. reformateado por psycopg/SQLAlchemy dentro de un mensaje de error).
+_DSN_PASSWORD_RE = re.compile(r"(postgres(?:ql)?://[^:/?#@\s]+:)[^@/?#\s]+(@)")
+
+
+def redact_dsn(text: str) -> str:
+    """Redacta la password embebida en DSNs Postgres/Supabase.
+
+    Reemplaza por ``***`` la password (el tramo entre el ':' del usuario y el '@'
+    del host). Conserva user/host/db (no secretos) para preservar utilidad de
+    debug. Seguro sobre texto sin DSN (no-op).
+    """
+    return _DSN_PASSWORD_RE.sub(r"\1***\2", text)
+
 
 # Claves de event_dict cuyo valor SIEMPRE se redacta (independiente del contenido).
 _SENSITIVE_KEYS = frozenset(
@@ -91,16 +109,20 @@ def _redact_secrets(
         if key.lower() in _SENSITIVE_KEYS:
             event_dict[key] = _REDACTED
             continue
-        if isinstance(value, str) and value in sensitive_values:
+        if not isinstance(value, str):
+            continue
+        if value in sensitive_values:
             event_dict[key] = _REDACTED
-        elif isinstance(value, str) and sensitive_values:
-            # Sustituir cualquier ocurrencia incrustada (e.g. URLs con token)
-            redacted = value
-            for sv in sensitive_values:
-                if sv in redacted:
-                    redacted = redacted.replace(sv, _REDACTED)
-            if redacted != value:
-                event_dict[key] = redacted
+            continue
+        # Sustituir cualquier ocurrencia incrustada de un valor sensible (e.g. URLs con token)
+        redacted = value
+        for sv in sensitive_values:
+            if sv in redacted:
+                redacted = redacted.replace(sv, _REDACTED)
+        # Redacta passwords en DSNs Postgres aunque no coincidan con un valor cacheado.
+        redacted = redact_dsn(redacted)
+        if redacted != value:
+            event_dict[key] = redacted
     return event_dict
 
 

@@ -1,9 +1,20 @@
+---
+id: ADR-0011
+title: "CDC con Debezium — Decisión y Alternativas"
+status: proposed
+date: 2026-05-16
+deciders: "Equipo de Plataforma"
+related:
+  - "[[ADR-004-sqlite-turso-vs-postgres]]"
+tags: [adr]
+---
+
 # ADR-0011: CDC con Debezium — Decisión y Alternativas
 
 **Estado**: Registrado — NO implementado por defecto  
 **Fecha**: 2026-05-16  
 **Autores**: Equipo de Plataforma  
-**Relacionados**: ADR-004 (SQLite/Turso), K2 (event sourcing)
+**Relacionados**: [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso), K2 (event sourcing)
 
 ---
 
@@ -35,7 +46,7 @@ proyecto. En su lugar, se usa el event store propio (`db/events.py`, tabla
 | **SQLite no soportado nativamente** | Debezium soporta MySQL, Postgres, SQL Server, MongoDB y Oracle. Para SQLite existe un conector experimental no oficial (`debezium-connector-sqlite`) con fiabilidad no probada en producción. |
 | **Complejidad operativa** | Requiere Kafka + Zookeeper + Debezium Connect + esquemas Avro/Protobuf. El stack actual es un solo proceso Python + SQLite. |
 | **Alternativa implementada** | `db/events.py` proporciona event sourcing ligero con append-only log en `domain_events`. Cubre: watchlist, feedback, y puede extenderse a cualquier agregado. |
-| **Migración gradual posible** | Si en el futuro se migra a Postgres (ver ADR-004), Debezium puede añadirse incrementalmente apuntando al conector `debezium-connector-postgresql`. |
+| **Migración gradual posible** | Si en el futuro se migra a Postgres (ver [[ADR-004-sqlite-turso-vs-postgres|ADR-004]]), Debezium puede añadirse incrementalmente apuntando al conector `debezium-connector-postgresql`. |
 
 ---
 
@@ -127,5 +138,5 @@ history = get_events("licitacion", "PRO/2024/12345")
 
 - [Debezium SQLite connector (experimental)](https://github.com/memiiso/debezium-server-jdbc)
 - [Debezium PostgreSQL connector docs](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)
-- ADR-004: SQLite/Turso vs. Postgres
+- [[ADR-004-sqlite-turso-vs-postgres|ADR-004]]: SQLite/Turso vs. Postgres
 - `db/events.py` — implementación actual de event sourcing

@@ -1,0 +1,76 @@
+name: ML scoring predicciones
+
+on:
+  schedule:
+    # Diario a las 07:30 UTC — tras el scrape de las 06:00 (timeout 30 min),
+    # replica el orden del scheduler local (ml_scoring_baja corre tras la ingesta).
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ml-scoring
+  cancel-in-progress: false
+
+jobs:
+  scoring:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scoring batch
+        env:
+          # ENV=dev omite los validators de prod que requieren secrets de la
+          # aplicación (mismo criterio que scrape.yml). La BD de producción
+          # se controla con TURSO_DATABASE_URL / TURSO_AUTH_TOKEN.
+          ENV: dev
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          LOG_FORMAT: json
+        run: |
+          python -c "
+          import json
+          from db.database import init_db
+          from scheduler.jobs.ml_predicciones import run_scoring
+
+          init_db()
+          resumen = run_scoring()
+          print(json.dumps(resumen, default=str, indent=2))
+          baja = resumen['baja']
+          if baja.get('status') not in ('ok', 'sin_abiertas'):
+              raise SystemExit(f'Scoring baja falló: {baja}')
+          "
+
+      - name: Verify predicciones materialized
+        env:
+          ENV: dev
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          python -c "
+          from db.database import connect_read
+
+          with connect_read() as c:
+              n, ultimo = c.execute(
+                  'SELECT COUNT(*), MAX(computed_at) FROM predicciones_baja'
+              ).fetchone()
+          print(f'predicciones_baja: {n} filas · computed_at max: {ultimo}')
+          if not n:
+              raise SystemExit('predicciones_baja sigue vacía tras el scoring')
+          "

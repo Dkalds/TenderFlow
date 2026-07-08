@@ -1,13 +1,25 @@
+---
+id: ADR-008
+title: "Consolidación hacia Alembic como sistema canónico de migraciones"
+status: accepted
+date: 2026-05-23
+deciders: "Daniel Kalitovics"
+supersedes: "[[ADR-003-migraciones-caseras-plus-alembic]]"
+related:
+  - "[[ADR-003-migraciones-caseras-plus-alembic]]"
+tags: [adr]
+---
+
 # ADR-008: Consolidación hacia Alembic como sistema canónico de migraciones
 
 **Status:** Accepted  
 **Date:** 2026-05-23  
 **Deciders:** Daniel Kalitovics  
-**Supersedes:** ADR-003 (parcialmente — actualiza la decisión de coexistencia)
+**Supersedes:** [[ADR-003-migraciones-caseras-plus-alembic|ADR-003]] (parcialmente — actualiza la decisión de coexistencia)
 
 ## Context
 
-ADR-003 estableció un sistema dual: migraciones custom (`db/migrations.py`) para
+[[ADR-003-migraciones-caseras-plus-alembic|ADR-003]] estableció un sistema dual: migraciones custom (`db/migrations.py`) para
 v1-v13 y Alembic para v14+. En la práctica, el sistema custom continuó creciendo
 hasta v32, creando un solapamiento con las migraciones Alembic (v14-v21 existen en
 ambos sistemas con contenido similar pero no idéntico).

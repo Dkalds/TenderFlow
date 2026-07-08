@@ -8,11 +8,11 @@ Guía operativa completa para agentes trabajando en `licitaciones-sap`. Compleme
 
 | Paquete | Propósito | Entry / fachada | Typing strict | Docs relacionados |
 |---|---|---|---|---|
-| `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | Sí | [ADR-004](adr/ADR-004-sqlite-turso-vs-postgres.md) |
+| `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | Sí | [ADR-004](adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md) |
 | `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, schemas (pandera), signing (JWKS), types | `shared/dto.py`, `shared/schemas.py` | Sí | [SECURITY.md](SECURITY.md) |
-| `services/` | Lógica de dominio pura: licitaciones, normalization, classification, clusters, analytics_engine (DuckDB), rate_limiting, investigador (FTS5) | `services/licitaciones.py` | Sí (core) | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
-| `db/` | SQLite/Turso, upsert idempotente, alembic migraciones, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | Solo `db.database`, `db.users` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-003](adr/ADR-003-migraciones-caseras-plus-alembic.md) |
-| `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; rutas en `api/routes/{health,licitaciones,search,exports,me,meta,feedback,webhooks,...}.py` | No (overrides activos) | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md) |
+| `services/` | Lógica de dominio pura: licitaciones, normalization, classification, clusters, analytics_engine (DuckDB), rate_limiting, investigador (FTS5) | `services/licitaciones.py` | Sí (core) | [ADR-007](adr/[[ADR-007-services-domain-layer|ADR-007]]-services-domain-layer.md), [ADR-005](adr/[[ADR-005-clustering-ctfidf-minibatch|ADR-005]]-clustering-ctfidf-minibatch.md) |
+| `db/` | SQLite/Turso, upsert idempotente, alembic migraciones, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | Solo `db.database`, `db.users` | [database-schema.md](database-schema.md), [ADR-001](adr/[[ADR-001-sql-crudo-vs-orm|ADR-001]]-sql-crudo-vs-orm.md), [ADR-003](adr/[[ADR-003-migraciones-caseras-plus-alembic|ADR-003]]-migraciones-caseras-plus-alembic.md) |
+| `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; rutas en `api/routes/{health,licitaciones,search,exports,me,meta,feedback,webhooks,...}.py` | No (overrides activos) | [ADR-006](adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md) |
 | `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | — | — |
 | `scraper/` | Pipeline PLACSP: descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py` (SQL manual, S608 suppressed) | Selectivo | — |
 | `scheduler/` | Jobs cron: `run_update` (scraper), `kpi_precompute`, `loop` | `scheduler/loop.py`, `scheduler/run_update.py` | Sí | — |
@@ -75,7 +75,7 @@ Guía operativa completa para agentes trabajando en `licitaciones-sap`. Compleme
 
 | Decisión | Regla |
 |---|---|
-| ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md)). En `scraper/ml_*` se permite SQL manual (S608 ya suppressed). |
+| ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/[[ADR-001-sql-crudo-vs-orm|ADR-001]]-sql-crudo-vs-orm.md)). En `scraper/ml_*` se permite SQL manual (S608 ya suppressed). |
 | ¿Cómo importar desde `db/`? | **Siempre** `from db.database import X` (fachada única). Nunca `from db.connection import ...` ni `from db.upsert import ...` directamente desde código fuera de `db/`. Así los importadores quedan aislados de la organización interna. Ver docstring de `db/database.py` para el catálogo completo de símbolos por submódulo. |
 | ¿Servicio vs repositorio directo en la ruta? | Siempre vía servicio. La ruta solo orquesta auth, validación, serialización. |
 | ¿Cache en frontend? | Invalidación cross-process vía `shared/cache_signal.py` para refrescar datos server-side tras cada scraping. |
@@ -104,7 +104,7 @@ Guía operativa completa para agentes trabajando en `licitaciones-sap`. Compleme
 | **FAISS** | Índice vectorial para similitud semántica entre licitaciones (sentence-transformers + faiss-cpu, opcional). |
 | **FTS5** | Full-text search de SQLite, usado por `services/investigador/`. |
 | **Concept drift** | Detección de cambios en distribución de keywords/labels — `scheduler/concept_drift.py`. |
-| **ETag** | Header HTTP para cache de exports PDF (ver [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md)). |
+| **ETag** | Header HTTP para cache de exports PDF (ver [ADR-006](adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md)). |
 
 ---
 

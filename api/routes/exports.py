@@ -274,3 +274,138 @@ async def download_export(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Export calendario ICS (Feature D)
+# ---------------------------------------------------------------------------
+
+
+def _ics_escape(value: str) -> str:
+    """Escapa caracteres especiales segun RFC 5545 para valores de texto."""
+    value = value.replace("\\", "\\\\")
+    value = value.replace(";", "\\;")
+    value = value.replace(",", "\\,")
+    value = value.replace("\n", "\\n")
+    value = value.replace("\r", "")
+    return value
+
+
+def _ics_fold(line: str) -> str:
+    """Aplica el folding de lineas RFC 5545 (max 75 octetos por linea)."""
+    encoded = line.encode("utf-8")
+    if len(encoded) <= 75:
+        return line
+    result = []
+    offset = 0
+    while offset < len(encoded):
+        chunk = encoded[offset : offset + 75]
+        result.append(chunk.decode("utf-8", errors="replace"))
+        offset += 75
+    return "\r\n ".join(result)
+
+
+def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> str:
+    """Genera contenido ICS (iCalendar) para una lista de eventos.
+
+    Cada item debe tener: uid, dtstart (str ISO), summary, description, url.
+    """
+    now = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    lines: list[str] = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Tenderflow//ES",
+        f"X-WR-CALNAME:{_ics_escape(cal_name)}",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+    for item in items:
+        uid = _ics_escape(str(item.get("uid", "")))
+        dtstart = str(item.get("dtstart", "")).replace("-", "").replace(":", "")[:8]
+        summary = _ics_escape(str(item.get("summary", "")))
+        description = _ics_escape(str(item.get("description", "")))
+        url = str(item.get("url", ""))
+
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"DTSTAMP:{now}",
+            f"DTSTART;VALUE=DATE:{dtstart}" if dtstart else "DTSTART;VALUE=DATE:20000101",
+            f"SUMMARY:{summary}",
+        ]
+        if description:
+            lines.append(f"DESCRIPTION:{description}")
+        if url:
+            lines.append(f"URL:{url}")
+        lines.append("END:VEVENT")
+
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(_ics_fold(ln) for ln in lines) + "\r\n"
+
+
+@router.get(
+    "/calendario.ics",
+    summary="Calendario ICS con deadlines y vencimientos de favoritos",
+    responses={
+        200: {"content": {"text/calendar": {}}, "description": "Archivo iCalendar (.ics)"},
+        401: {"description": "Token invalido o ausente"},
+    },
+    include_in_schema=True,
+)
+async def calendario_ics(
+    ctx: AuthContext = Depends(require_api_key),
+) -> Response:
+    """Exporta un archivo .ics con los deadlines (fecha_limite) y fines de
+    contrato (fecha_fin) de las licitaciones favoritas del usuario.
+
+    Autenticacion via API key (header X-API-Key o query param ?token=<key>).
+    Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
+      ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
+    """
+    import hashlib
+
+    seed = str(ctx.key_hash or "anon")
+    user_key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+    from db.database import connect_read
+
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
+            "FROM watchlist_items wi "
+            "JOIN licitaciones l ON l.id_externo = wi.id_externo "
+            "WHERE wi.user_key = ? AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
+            (user_key,),
+        )
+        rows = [
+            dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()
+        ]
+
+    events: list[dict[str, Any]] = []
+    for row in rows:
+        id_ext = str(row.get("id_externo", ""))
+        titulo = str(row.get("titulo") or id_ext)[:200]
+        url = str(row.get("url") or "")
+
+        for field, label in (("fecha_limite", "Plazo"), ("fecha_fin", "Fin contrato")):
+            raw = row.get(field)
+            if not raw:
+                continue
+            date_str = str(raw)[:10]
+            events.append(
+                {
+                    "uid": f"{id_ext}-{field}@tenderflow",
+                    "dtstart": date_str,
+                    "summary": f"{label}: {titulo}",
+                    "description": f"Licitacion: {id_ext}",
+                    "url": url,
+                }
+            )
+
+    ics_content = _generate_ics(events, cal_name="Tenderflow - Favoritos")
+    log.info("calendario_ics_export", user_key=user_key[:8], events=len(events))
+    return Response(
+        content=ics_content.encode("utf-8"),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="tenderflow.ics"'},
+    )

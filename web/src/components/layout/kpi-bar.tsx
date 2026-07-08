@@ -9,8 +9,13 @@ import {
   DollarSign,
   CalendarDays,
   BarChart3,
+  SlidersHorizontal,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
+import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useScrolledPast } from "@/hooks/use-scrolled-past";
+import { useFilterParams } from "@/lib/filters";
+import { pathUsesGlobalFilters } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -24,6 +29,10 @@ export interface KpiItem {
 interface KpiBarProps {
   kpis?: KpiItem[];
   loading?: boolean;
+  /** Muestra el badge "Filtrado" cuando los KPI respetan filtros activos. */
+  filtered?: boolean;
+  /** Colapsa visualmente la barra (scroll hacia abajo) sin desmontarla. */
+  collapsed?: boolean;
 }
 
 function formatCurrency(n: number): string {
@@ -46,18 +55,20 @@ interface OverviewData {
 }
 
 export function KpiBarConnected() {
-  const { data, isLoading } = useQuery<OverviewData>({
-    queryKey: ["analytics", "overview"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/analytics/overview", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      return res.json();
-    },
-    staleTime: 60_000,
-    retry: 1,
-  });
+  const pathname = usePathname();
+  const filtersApply = pathUsesGlobalFilters(pathname);
+  const filterParams = useFilterParams();
+  // Los KPI respetan los filtros globales activos (mismo dataset que los
+  // charts de la página); antes mostraban totales globales encima de vistas
+  // filtradas.
+  const { data, isLoading } = useFilteredQuery<OverviewData>(
+    ["analytics", "overview"],
+    "/api/v1/analytics/overview",
+    { staleTime: 60_000, retry: 1, enabled: filtersApply },
+  );
+  // Colapso adicional al hacer scroll (no reemplaza el ocultado por
+  // `!filtersApply`, que tiene prioridad y desmonta el componente entero).
+  const scrolled = useScrolledPast(8);
 
   const kpis: KpiItem[] = data
     ? [
@@ -86,12 +97,34 @@ export function KpiBarConnected() {
       ]
     : [];
 
-  return <KpiBar kpis={kpis} loading={isLoading} />;
+  if (!filtersApply) return null;
+
+  return (
+    <KpiBar
+      kpis={kpis}
+      loading={isLoading}
+      filtered={Object.keys(filterParams).length > 0}
+      collapsed={scrolled}
+    />
+  );
 }
 
-export function KpiBar({ kpis = [], loading = false }: KpiBarProps) {
+export function KpiBar({ kpis = [], loading = false, filtered = false, collapsed = false }: KpiBarProps) {
   return (
-    <div role="region" aria-label="Indicadores clave de rendimiento" className="flex min-h-11 items-center gap-3 overflow-x-auto border-b border-border/70 bg-card/80 px-4 backdrop-blur">
+    <div
+      role="region"
+      aria-label="Indicadores clave de rendimiento"
+      className={cn(
+        "flex items-center gap-3 overflow-x-auto border-b border-border/70 bg-card/80 px-4 backdrop-blur transition-all duration-200",
+        collapsed ? "max-h-0 min-h-0 opacity-0 overflow-hidden py-0 border-b-0" : "max-h-20 min-h-11 opacity-100",
+      )}
+    >
+      {filtered && (
+        <span className="flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+          <SlidersHorizontal className="h-3 w-3" />
+          Filtrado
+        </span>
+      )}
       {loading
         ? Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="flex shrink-0 items-center gap-2 rounded-md border border-border/70 bg-background/50 px-3 py-2">

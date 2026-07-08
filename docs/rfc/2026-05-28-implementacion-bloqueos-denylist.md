@@ -1,3 +1,11 @@
+---
+title: "RFC de handoff humano: bloqueos por denylist"
+author: "agent:architect"
+date: 2026-05-28
+status: partially-implemented
+tags: [rfc]
+---
+
 # RFC de handoff humano: bloqueos por denylist (2026-05-28)
 
 ## Contexto breve

@@ -15,24 +15,24 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ### [P1] Plan de migración de persistencia pre-cocido con disparador binario
 - **Área:** db/, observability, docs/adr
-- **Problema:** ADR-004 reconoce que la premisa "single writer" de SQLite **ya no se cumple** (scraper + scheduler + API + dashboard escriben concurrentemente, y ADR-009 sumó 3 conectores). Hay tripwires que *detectan* el riesgo pero la *decisión* de migración sigue diferida: cuando salte el tripwire, habrá que diseñar la migración bajo presión de incidente. Falta el plan en frío.
+- **Problema:** [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] reconoce que la premisa "single writer" de SQLite **ya no se cumple** (scraper + scheduler + API + dashboard escriben concurrentemente, y [[ADR-009-framework-conectores-multifuente|ADR-009]] sumó 3 conectores). Hay tripwires que *detectan* el riesgo pero la *decisión* de migración sigue diferida: cuando salte el tripwire, habrá que diseñar la migración bajo presión de incidente. Falta el plan en frío.
 - **Acceptance criteria:**
   - Existe ADR-015 con **un** destino de persistencia decidido y justificado (no una disyuntiva abierta).
   - Spike en branch que levanta el destino, corre `alembic upgrade head` y pasa un test de paridad de búsqueda FTS5↔reemplazo (`pg_trgm`).
   - Runbook `docs/runbooks/migracion-persistencia.md` con corte, gates de paridad y rollback.
   - La alerta del tripwire enlaza al runbook; el RFC declara el umbral que escala la **ejecución** a P0.
-- **Files de partida:** [docs/adr/ADR-004-sqlite-turso-vs-postgres.md](../docs/adr/ADR-004-sqlite-turso-vs-postgres.md), [docs/runbooks/persistence-tripwires.md](../docs/runbooks/persistence-tripwires.md), [observability/alert_rules.yml](../observability/alert_rules.yml), [db/connection.py](../db/connection.py)
+- **Files de partida:** [docs/adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md](../docs/adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md), [docs/runbooks/persistence-tripwires.md](../docs/runbooks/persistence-tripwires.md), [observability/alert_rules.yml](../observability/alert_rules.yml), [db/connection.py](../db/connection.py)
 - **RFC:** [2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md](rfc/2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md)
 - **Riesgo:** bajo en preparación (docs + spike aislado); de-riesga una ejecución futura de riesgo alto. **La ejecución escala a P0 al dispararse el tripwire** (`sqlite_busy_errors_total` >10/h o `db_concurrent_writers` >3 sostenido).
 
 ### [P1] Retrofit del pipeline PLACSP sobre el contrato Connector
 - **Área:** scraper/ (connectors + pipeline), scheduler
-- **Problema:** Hay dos caminos de ingesta coexistiendo: `run_connector` (3 fuentes: ted/pscp/tacrc) y el pipeline legacy `scraper/pipeline.py` (PLACSP, la fuente de producción). ADR-009 marca el retrofit como Pendiente. La bifurcación diverge en silencio (un fix de idempotencia/DLQ/cursor aplicado en un camino y no en el otro) y encarece con cada fuente nueva. Cerrarlo antes de las autonómicas restantes es más barato.
+- **Problema:** Hay dos caminos de ingesta coexistiendo: `run_connector` (3 fuentes: ted/pscp/tacrc) y el pipeline legacy `scraper/pipeline.py` (PLACSP, la fuente de producción). [[ADR-009-framework-conectores-multifuente|ADR-009]] marca el retrofit como Pendiente. La bifurcación diverge en silencio (un fix de idempotencia/DLQ/cursor aplicado en un camino y no en el otro) y encarece con cada fuente nueva. Cerrarlo antes de las autonómicas restantes es más barato.
 - **Acceptance criteria:**
   - Existe `PlacspConnector` implementando el contrato `Connector` y **reutilizando** el parser CODICE/UBL y el `bulk_downloader` actuales (no reescritura).
   - Test de paridad con **cero diferencias** (salvo documentadas) entre legacy y `run_connector` sobre un fixture fijo; idempotencia verificada.
-  - PLACSP en producción se enruta por `run_connector`; `scraper/pipeline.py` queda DEPRECATED; ADR-009 actualizado.
-- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/pipeline.py](../scraper/pipeline.py), [scraper/bulk_downloader.py](../scraper/bulk_downloader.py), [docs/adr/ADR-009-framework-conectores-multifuente.md](../docs/adr/ADR-009-framework-conectores-multifuente.md)
+  - PLACSP en producción se enruta por `run_connector`; `scraper/pipeline.py` queda DEPRECATED; [[ADR-009-framework-conectores-multifuente|ADR-009]] actualizado.
+- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/pipeline.py](../scraper/pipeline.py), [scraper/bulk_downloader.py](../scraper/bulk_downloader.py), [docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md](../docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md)
 - **RFC:** [2026-06-30-rfc-retrofit-pipeline-placsp-connector.md](rfc/2026-06-30-rfc-retrofit-pipeline-placsp-connector.md)
 - **Riesgo:** medio — toca el camino de datos de producción; mitigado por ventana de paridad y reutilización (no reescritura) del parser/downloader.
 
@@ -43,7 +43,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Con presupuesto superado y `LLM_BUDGET_MODE=enforce`, `/ask` responde 429/503 sin llamar al proveedor; `llm_budget_exceeded_total` sube. Modo `monitor` solo alerta.
   - Ante fallo del proveedor o breaker abierto, `/ask` degrada a documentos del RAG sin síntesis (`degraded` en el stream); el SSE no rompe y el DTO no cambia (§3.5).
   - Eval de **recuperación** determinista en CI (sin LLM real) que falla si se rompe el contexto recuperado.
-- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [llm/client.py](../llm/client.py), [config/settings.py](../config/settings.py), [docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md](../docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md)
+- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [llm/client.py](../llm/client.py), [config/settings.py](../config/settings.py), [docs/adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md](../docs/adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md)
 - **RFC:** [2026-06-30-rfc-llm-dependencia-gestionada.md](rfc/2026-06-30-rfc-llm-dependencia-gestionada.md)
 - **Riesgo:** medio — toca un endpoint de producción; mitigado por `LLM_BUDGET_MODE=monitor` como default (medir antes de cortar) y contrato API intacto. **Construye sobre** el RFC de observabilidad de tokens (P2, abajo).
 
@@ -54,7 +54,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Golden set `tests/fixtures/dedupe_golden.jsonl` etiquetado a mano con casos borde.
   - `tests/test_dedupe_quality.py` mide precision/recall y falla en CI si la precision baja del umbral (no puede bajar sin justificación en review).
   - `services/dedupe.py` registra el criterio de cada match (linaje auditable); `dedupe_match_rate` con alerta de desviación.
-- **Files de partida:** [services/dedupe.py](../services/dedupe.py), [tests/test_dedup_guardrail.py](../tests/test_dedup_guardrail.py), [docs/adr/ADR-009-framework-conectores-multifuente.md](../docs/adr/ADR-009-framework-conectores-multifuente.md)
+- **Files de partida:** [services/dedupe.py](../services/dedupe.py), [tests/test_dedup_guardrail.py](../tests/test_dedup_guardrail.py), [docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md](../docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md)
 - **RFC:** [2026-06-30-rfc-validacion-dedupe-linaje-datos.md](rfc/2026-06-30-rfc-validacion-dedupe-linaje-datos.md)
 - **Riesgo:** bajo — aditivo (tests + métricas + linaje); no cambia el algoritmo de matching (primero mide). El único punto sensible es una eventual migración de schema, gateada por OK humano.
 
@@ -62,35 +62,46 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### [P2] Modo degradado documentado y testeado ante caída de dependencias opcionales
-- **Área:** api/routes/health.py, observability, scheduler, config
-- **Problema:** El sistema acumula mucha superficie operativa (Redis, Turso, FAISS, modelo ML, dramatiq) para un mantenedor solo. No existe un contrato explícito y testeado de qué sigue funcionando cuando una pieza *opcional* cae. Síntoma ya conocido: `/health` devuelve 503 en local cuando `REDIS_URL` está seteado pero Redis no corre, aunque el sistema podría servir datos. Sin un "modo degradado" definido, cada outage de una dependencia se descubre en producción en vez de estar diseñado.
-- **Acceptance criteria:**
-  - Documento (`docs/runbooks/degraded-mode.md`) que enumera cada dependencia opcional (Redis, Turso, FAISS, modelo ML stale, dramatiq) y qué funcionalidad sobrevive / degrada / cae cuando esa pieza no está.
-  - `/health` (o `/ready`) distingue **degradado** (sirve datos, pieza opcional caída) de **no disponible** (core caído), sin devolver 503 cuando solo cayó algo opcional.
-  - Al menos un test por dependencia opcional que verifique que el camino crítico (servir licitaciones por la API) sigue verde con esa pieza simulada caída.
-- **Files de partida:** [api/routes/health.py](../api/routes/health.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [config/settings.py](../config/settings.py), [observability/alert_rules.yml](../observability/alert_rules.yml)
-- **Riesgo:** bajo — mayormente aditivo (docs + tests + ajuste de semántica de health); no cambia el camino de datos.
-
 ### [P2] Cobertura de tests del frontend en flujos críticos
 - **Área:** web/ (tests vitest)
-- **Problema:** Asimetría de blindaje: el backend tiene gate de coverage al 70% y ~163 archivos de test; el frontend —la capa que el usuario realmente toca— está en thresholds 32/27 (`vitest.config.ts`). La lógica de negocio está cubierta, pero los flujos por los que el valor llega al usuario (filtros nuqs, watchlist, streaming de `/ask`) no tienen red. Una regresión en esos flujos pasa CI en verde.
+- **Problema:** El frontend tiene thresholds reales 68/63/68/70 (vitest.config.ts) con 82 test files. Los flujos críticos de valor (filtros nuqs URL↔estado, watchlist, streaming `/ask`) no tienen cobertura. Una regresión en esos flujos pasa CI en verde.
 - **Acceptance criteria:**
-  - Tests de integración de UI para los 3 flujos críticos: filtros nuqs (sincronización URL↔estado), watchlist (alta/baja/persistencia), y consumo del stream SSE de `/ask` (incluyendo el camino `degraded` del RFC de LLM gestionado).
-  - Thresholds de `vitest.config.ts` subidos de forma anti-regresión tras añadir cobertura (no pueden bajar sin justificación).
-  - Los tests no dependen de la API real (mock del cliente generado desde OpenAPI).
-- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/filters.ts](../web/src/lib/filters.ts)
-- **Riesgo:** bajo — solo añade tests; no toca runtime. Complementa al ítem P1 de LLM gestionado (el flujo `degraded` de `/ask` se cubre aquí desde el frontend).
+  - Tests para los 3 flujos: filtros nuqs (`web/src/lib/filters.ts`), watchlist (`use-watchlist-items`), streaming SSE de `/ask` (`ask-stream.ts` / `use-ask.ts`). `use-ask` cubierto al 100% en commit 52ad203; resta `ask-stream.ts`.
+  - Thresholds de `vitest.config.ts` subidos anti-regresión (actualmente 68/63/68/70 tras subida de Fase 9 de cobertura 2026-07-04).
+  - Tests no dependen de la API real (mock del cliente OpenAPI generado).
+- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/filters.ts](../web/src/lib/filters.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
+- **Riesgo:** bajo — solo añade tests.
 
 ---
 
 ## P3 — Nice to have
 
-*(sin ítems abiertos)*
+### [P3] F5: Refactor de repositories por olas (TID251 whitelist decreciente)
+- **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
+- **Problema:** El ratchet TID251 tiene 41 archivos en whitelist (excluyendo db/** y tests/**). La whitelist solo puede decrecer. Cada ola mueve SQL verbatim a `db/repositories/*`, convierte paramstyle a `%s` nativo (elimina presión del shim qmark de F3a) y quita el archivo de la whitelist.
+- **Baseline (2026-07-05):** services/ 23 · scheduler/ 11 · scraper/ 3 · api/routes/ 4 · scripts/ 7 = **41 archivos**
+- **Orden de olas:** services/ → api/routes/ → scheduler/ → scripts/ (por densidad de violaciones)
+- **Acceptance criteria por ola:**
+  - `make check` verde tras cada ola.
+  - `ruff check --select TID251 --statistics .` monotónamente decreciente (anotar conteo en cada PR).
+  - Tests de caracterización donde falten.
+  - Estado final: whitelist = `db/**` + `tests/**`; shim qmark eliminable.
+- **Files de partida:** `pyproject.toml` (whitelist TID251), `db/repositories/`
+- **Riesgo:** medio — toca caminos de datos; mitigado por ratchet como gate y tests de caracterización previos a cada movimiento.
 
 ---
 
 ## Cerrados
+
+- [2026-07-05] **P2: Modo degradado (F4a)** — `api/routes/health.py`: `/ready` devuelve 503 **solo si `db != "ok"`**; Redis/disco degradado → HTTP 200 con `status:"degraded"` en payload. Extrae `_http_status_for_readiness(db)`. 5 tests `TestHealthEndpoints` pasan. Cierra el síntoma de 503 en local con Redis caído.
+
+- [2026-07-05] **P1: Plan de migración de persistencia (F3a-F3d)** — ADR-016 aceptado (Supabase + psycopg3 + Supavisor session pooler). Fundaciones: `db/connection.py` con is_postgres_backend + shim qmark→%s + `_PgConnAdapter` + psycopg_pool; `db/search_backend.py` (SearchBackend protocol + Fts5Backend + PgTsBackend); `db/alembic/env.py` con precedencia DATABASE_URL; migración `v50_pg_search_infra` (search_vector STORED + GIN + trgm, dialect-guarded). ETL: `scripts/migrate_sqlite_to_pg.py` + `scripts/verify_pg_parity.py`. Runbook: `docs/runbooks/migracion-persistencia.md`. Backup: `backup.yml` con rama pg_dump. Alertas pool Postgres en `observability/alert_rules.yml`. **Pendiente ejecutar**: GATES secrets/deps/alembic/workflows para F3c (cutover).
+
+- [2026-07-05] **P1: Retrofit PLACSP → Connector (F2)** — `scraper/connectors/placsp.py`: PlacspAtomConnector + PlacspBulkConnector + _PlacspParseCore. Flag `PLACSP_CONNECTOR_ENABLED=False` en settings. Switch en `scheduler/pipeline_runs.py`. 16 tests de paridad. RFC retrofit → accepted.
+
+- [2026-07-05] **P1: Ratchet TID251 (F1)** — `pyproject.toml`: TID en select + banned-api (4 keys) + whitelist congelada 41 archivos. `ruff check --select TID251 .` → 0 errores; prueba negativa funciona.
+
+- [2026-07-05] **P0: Dev/prod parity (F4b/c/d/e)** — `web/scripts/codegen-best-effort.mjs` (Node ESM puro, sin 2>/dev/null, Windows-safe). `scripts/seed_dev.py` (15 licitaciones + adj + usuario demo + API key + predicciones_baja). `docker-compose.override.yml`: postgres:17-alpine con pg_isready. `scripts/doctor.py`: 5 nuevos checks (DATABASE_URL, alembic head, predicciones_baja, Redis, api.d.ts).
 
 - [2026-06-30] **P2: Observabilidad de tokens y coste en el cliente LLM** — `llm/client.py` instrumenta `llm_tokens_total{model,provider,direction,source}` y `llm_cost_usd_total{model,provider}` con lazy-init tolerante a `prometheus_client` ausente, mapa estático `_PRICE_PER_MTOK` (modelo sin precio → solo tokens, coste omitido sin error) y `_record_usage()` centralizado en el `finally` de `stream_llm_response` (firma pública intacta). Ambos providers rellenan un `usage_sink` lateral: Anthropic vía `get_final_message().usage`, OpenAI vía `stream_options={"include_usage":True}`, con fallback de estimación (`source=estimated`) cuando el SDK no reporta. Tests en `tests/test_unit_llm_usage.py` (9): counters reported/estimated, modelo sin precio, dict vacío no-op, sin prometheus, sink poblado en ambos providers, **estimación a nivel provider** y **consumo parcial no contabiliza** (los 2 últimos añadidos para cerrar el RFC). `mypy .` verde (418 files). RFC `2026-06-17` → implemented.
 
@@ -161,7 +172,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-23] **Bloque 1: OAuth Nonces + Redis Auth** — `_NonceStore` Protocol + `_TTLCacheNonceStore` / `_RedisNonceStore`. `REDIS_PASSWORD` en settings. Redis requirepass en docker-compose.
 - [2026-05-23] **Bloque 7: Eliminar globals pipeline** — `_ClassifierHolder` frozen dataclass + `_load_classifiers()` con `@functools.lru_cache(maxsize=1)`.
 - [2026-05-23] **Bloque 3: FK enforcement + date CHECK constraints** — `PRAGMA foreign_keys=ON`, CHECK constraints en fechas, migración `v22_fk_cascade_date_checks.py`.
-- [2026-05-23] **Bloque 2: Consolidar migraciones** — `db/migrations.py` deprecado, `Makefile` targets, ADR-008.
+- [2026-05-23] **Bloque 2: Consolidar migraciones** — `db/migrations.py` deprecado, `Makefile` targets, [[ADR-008-consolidacion-migraciones-alembic|ADR-008]].
 - [2026-05-23] **Bloque 5: FAISS incremental** — método `update()`, lógica incremental vs full rebuild en `load_or_build()`.
 - [2026-05-23] **Bloque 4 Fase 1** — `fail_under` subido a 60, `tests/test_contract_dto.py`.
 - [2026-05-24] **P1: Pickle removal** — `dashboard/faiss_index.py`: eliminada carga pickle legacy; `load()` sólo acepta `.npz`; `_load_cached` lanza `ValueError` descriptivo si recibe `.pkl`.
@@ -169,10 +180,10 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-24] **P3: SecretStr para 3 secrets** — `GOOGLE_CLIENT_SECRET`, `API_HMAC_SECRET`, `TURSO_AUTH_TOKEN` migrados a `SecretStr`; 10 call sites actualizados con `.get_secret_value()`.  <!-- pragma: allowlist secret -->
 - [2026-05-24] **P4: MaxBodyMiddleware fail-loud** — `api/app.py`: `except Exception: pass` → `log.warning("max_body_middleware_unavailable", exc_info=True)`.
 - [2026-05-24] **P5: ProcessPoolExecutor para 4 jobs pesados** — `daily_atom`, `recent_bulk`, `retention_cleanup`, `faiss_rebuild` ejecutados en proceso separado con `ProcessPoolExecutor(max_workers=1)` + `proc.kill()` en timeout.
-- [2026-06-10] **P2: Deprecar o realinear `scheduler/run_update.py`** — Resuelto por ADR-012: `run_update.py` ahora delega íntegramente en `scheduler/pipeline_runs.py` (`run_daily_pipeline`, `run_bulk_pipeline`, `run_backfill_pipeline`), que ejecutan la misma secuencia canónica que `daily_atom` y `recent_bulk`. 31 tests de paridad lo verifican. Commits `9e816d6`, `6bf0b5b`.
-- [2026-06-10] **P1→Cerrado: Dashboard solo vía services/ (ADR-013 / §3.8)** — Los 11 módulos de `dashboard/` que importaban `db.*` directamente fueron migrados a `services/`. 6 nuevos service wrappers (`audit`, `users`, `notifications`, `saved_filters`, `feature_flags`, `dlq`) + extensión de `watchlist` y `licitaciones`. Test lint `test_dashboard_db_imports.py` con 0 violaciones conocidas. `import sqlite3` eliminado de `detalle.py`. Commit `1f6bf10`.
-- [2026-06-10] **P2: Métricas SQLite BUSY + tripwires ADR-004** — 3 métricas Prometheus nuevas (`sqlite_busy_errors_total`, `db_write_duration_seconds`, `db_concurrent_writers`) instrumentadas en `db/connection.py::connect()`. Tripwires cuantitativos añadidos a ADR-004 (>10 BUSY/h → evaluar Postgres, p99 write >500ms → investigar, >3 concurrent writers → review). Commit `6bf0b5b`.
-- [2026-06-10] **P2: ADR-013 jerarquía materializaciones analíticas** — ADR define camino canónico: SQLite = caché OLTP, Parquet = snapshot offline, DuckDB = motor opcional. Materialización solo en pipeline canónica (ADR-012). Commit `6bf0b5b`.
+- [2026-06-10] **P2: Deprecar o realinear `scheduler/run_update.py`** — Resuelto por [[ADR-012-plano-unico-orquestacion|ADR-012]]: `run_update.py` ahora delega íntegramente en `scheduler/pipeline_runs.py` (`run_daily_pipeline`, `run_bulk_pipeline`, `run_backfill_pipeline`), que ejecutan la misma secuencia canónica que `daily_atom` y `recent_bulk`. 31 tests de paridad lo verifican. Commits `9e816d6`, `6bf0b5b`.
+- [2026-06-10] **P1→Cerrado: Dashboard solo vía services/ ([[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]] / §3.8)** — Los 11 módulos de `dashboard/` que importaban `db.*` directamente fueron migrados a `services/`. 6 nuevos service wrappers (`audit`, `users`, `notifications`, `saved_filters`, `feature_flags`, `dlq`) + extensión de `watchlist` y `licitaciones`. Test lint `test_dashboard_db_imports.py` con 0 violaciones conocidas. `import sqlite3` eliminado de `detalle.py`. Commit `1f6bf10`.
+- [2026-06-10] **P2: Métricas SQLite BUSY + tripwires [[ADR-004-sqlite-turso-vs-postgres|ADR-004]]** — 3 métricas Prometheus nuevas (`sqlite_busy_errors_total`, `db_write_duration_seconds`, `db_concurrent_writers`) instrumentadas en `db/connection.py::connect()`. Tripwires cuantitativos añadidos a [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (>10 BUSY/h → evaluar Postgres, p99 write >500ms → investigar, >3 concurrent writers → review). Commit `6bf0b5b`.
+- [2026-06-10] **P2: [[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]] jerarquía materializaciones analíticas** — ADR define camino canónico: SQLite = caché OLTP, Parquet = snapshot offline, DuckDB = motor opcional. Materialización solo en pipeline canónica ([[ADR-012-plano-unico-orquestacion|ADR-012]]). Commit `6bf0b5b`.
 - [2026-06-10] **P3: Healthcheck reporta queue_mode** — `scheduler/healthcheck.py` ahora reporta `"queue_mode": "dramatiq" | "stub" | "inline"`. Commit `6bf0b5b`.
 - [2026-06-10] **P3: Extras pyproject por rol** — `[queue]` (dramatiq+redis), `[analytics]` (duckdb), `[crypto]` (cryptography) añadidos a `pyproject.toml`. Commit `6bf0b5b`.
 - [2026-06-10] **P1: DNS rebinding (TOCTOU) en webhooks** — `_resolve_and_validate()` resuelve DNS al momento del delivery (no al registrar), valida IP contra `_PRIVATE_NETWORKS`, y construye URL con IP pinneada para que `requests.post` no re-resuelva. Cierra la ventana TOCTOU. Ping ahora incluye retry con backoff exponencial (3 intentos, 0.5s/1s). Header `Host:` preservado para TLS SNI.
@@ -184,7 +195,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-06-10] **P3: Consolidar tests de rollback** — Renombrados `test_migration_rollbacks.py` → `test_rollback_legacy_migrations.py` y `test_migrations_rollback.py` → `test_rollback_alembic_migrations.py` para claridad. No son duplicados: cubren sistemas distintos (legacy vs Alembic).
 - [2026-06-10] **P3: Hook graph stale tras edits .py** — Ya implementado en `.claude/settings.json` como tercer bloque PreToolUse (matcher `Edit|Write|MultiEdit`). Crea `graphify-out/.graph_stale` al editar `.py`; `/graph-refresh` lo borra tras update exitoso. Funcional con el mismo efecto que PostToolUse.
 - [2026-06-10] **P3: Dynamic recharts en 10 páginas frontend** — Extraídos 32 chart blocks de 10 páginas a 10 chart subcomponents (`components/charts/*-charts.tsx`). Cada página ahora importa sus charts con `next/dynamic({ ssr: false })` + Skeleton fallback, eliminando recharts del bundle inicial. 0 imports estáticos de recharts en páginas (solo en subcomponentes). `tsc --noEmit` 0 errores.
-- [2026-06-10] **P3: Split archivos God** — `dashboard/stats/_base.py` (1070→794 LOC): `risk_flags` + `score_oportunidad` extraídos a `_scoring.py` (273 LOC). Frontend: charts extraídos a subcomponentes (cubierto por el ítem dynamic recharts). `db/migrations.py`: evaluado, no purgable (lo usa `init_db` en runtime), congelado per ADR-008. `ml_classifier.py` (880): evaluado, cohesivo (ya delega a `ml_pipeline.py`), no merece split forzado.
+- [2026-06-10] **P3: Split archivos God** — `dashboard/stats/_base.py` (1070→794 LOC): `risk_flags` + `score_oportunidad` extraídos a `_scoring.py` (273 LOC). Frontend: charts extraídos a subcomponentes (cubierto por el ítem dynamic recharts). `db/migrations.py`: evaluado, no purgable (lo usa `init_db` en runtime), congelado per [[ADR-008-consolidacion-migraciones-alembic|ADR-008]]. `ml_classifier.py` (880): evaluado, cohesivo (ya delega a `ml_pipeline.py`), no merece split forzado.
 - [2026-05-24] **P6: sys.path hack eliminado** — `scheduler/retention.py` creado con lógica completa; `scripts/retention_cleanup.py` reescrito como thin CLI wrapper.
 - [2026-05-24] **P7: DB pool timeout** — `_pool.get(timeout=acquire_timeout)` con default 10s desde `DB_POOL_TIMEOUT`; `queue.Empty` → `RuntimeError` descriptivo.
 - [2026-05-24] **P8: Mypy overrides cerrados para 5 módulos** — `config.settings`, `shared.auth_core`, `api.auth`, `db.audit`, `db.totp` removidos de `ignore_errors`; errores de tipo corregidos en los 5 módulos.
@@ -198,6 +209,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - [2026-05-29] **Fase 4: Scheduler refactor** — Job registry pattern (`scheduler/jobs/` package); persistent `ProcessPoolExecutor`; `shutdown(cancel_futures=True)` reemplaza `executor._processes` hack; 20 tests en `test_loop.py`.
 - [2026-05-29] **Fase 5.1: Batch upsert** — `replace_adjudicaciones_batch()` en `db/upsert.py` (una transacción para N licitaciones); pipeline bulk y daily actualizados.
 - [2026-05-29] **Fase 6: Full strict typing** — Eliminados 3 bloques de override mypy (52 módulos promovidos a strict); 149 errores corregidos en 40 archivos (unused-ignore, type-arg, no-any-return, pandas narrowing, arg-type, misc); `shared/py.typed` creado. 375 archivos pasan `mypy --strict`.
+- [2026-07-04] **Scoring genérico sin SAP** — Eliminadas constantes hardcodeadas `_SAP_MODULES`/`_SAP_SERVICES_PORTFOLIO`/`_S4HANA_KEYWORDS`. Dimensiones nuevas: `competencia` (media ofertas CPV-4, 24 meses), `margen` (`predicciones_baja.p50` + fallback histórico), `afinidad` (keywords configurables via `SCORING_AFINIDAD_KEYWORDS`, vacío=omitida con redistribución de peso). Política dato-faltante=neutral sin penalización de cobertura. `settings.SCORING_WEIGHTS` con validación de suma. RFC `2026-07-04-rfc-scoring-generico.md`.
+- [2026-07-04] **Reduccion de superficie operativa (F1-F8)** — Tripwires de persistencia reconectados via `ops_events` + healthcheck (tabla BD, reemplaza contadores Prometheus por-proceso). FAISS eliminado (F3): `/search` usa FTS5/BM25+LIKE, `faiss-cpu` quitado de extras. Dramatiq eliminado (F4): `scheduler/queue.py` borrado, extra `[queue]` y job CI quitados. Redis desacoplado de docker-compose local (F5): profile `redis` opt-in. Staging borrado (F7): `deploy-staging.yml` + `docker-compose.staging.yml`; secrets `STAGING_*` a borrar manualmente en GitHub Settings. Rename a Tenderflow (F8): USER_AGENT, OTEL_SERVICE_NAME, ADR-015. `vercel_app.py` + `tenderflow/__init__.py` borrados (F2).
 
 ---
 

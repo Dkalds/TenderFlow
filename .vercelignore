@@ -35,8 +35,8 @@ Dockerfile*
 docker-compose*
 docker-entrypoint*
 
-# Scripts not needed at runtime
-scripts/
+# Scripts not needed at runtime (root-level only; web/scripts/ has build-time codegen)
+/scripts/
 .claude/
 .agents/
 .opencode/

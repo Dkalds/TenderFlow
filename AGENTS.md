@@ -6,6 +6,24 @@ Guía completa de navegación, workflows y patrones: [docs/AGENT_PLAYBOOK.md](do
 
 ---
 
+## 0. FREEZE de features (2026-07)
+
+**Features nuevas congeladas** hasta completar las fases F2 (Retrofit PLACSP) y F4 (Dev/prod parity).
+
+Permitido durante el freeze:
+- Bugfixes y parches de seguridad.
+- Las fases F0–F5 del plan de deuda arquitectónica (este fichero).
+- Tests de caracterización y documentación.
+
+No permitido:
+- Nuevos endpoints, páginas o flujos de UI.
+- Nuevos conectores de fuente de datos.
+- Cambios de schema no relacionados con la migración a Postgres (F3).
+
+Revisión del freeze: cuando F2 y F4a/4b estén merged y `make check` verde.
+
+---
+
 ## 1. Cómo navegar el código (graphify-first)
 
 Hay un knowledge graph en `graphify-out/` con god nodes, comunidades y relaciones cross-file. Úsalo **antes** que grep para entender arquitectura y relaciones cross-file.
@@ -61,6 +79,7 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 7. **Pre-commit obligatorio**: ruff + mypy + bandit + gitleaks + detect-secrets corren en cada commit. No bypassear con `--no-verify`.
 8. **Frontend siempre vía API**: `web/` no accede a `db.*` ni a la capa Python de servicios de forma directa; consume `api/` mediante HTTP/OpenAPI y contratos tipados. Código nuevo **debe** respetar este invariante.
 9. **Un solo plano de orquestación por entorno**: los planos GitHub Actions y APScheduler nunca corren activos contra la misma BD (ADR-012). Variable `SCHEDULER_PLANE` declara el dueño.
+10. **Acceso a BD solo vía `db/repositories/*`** (TID251, whitelist decreciente): el acceso directo a `db.connection.connect` / `db.connection.connect_read` / `db.database.connect` / `db.database.connect_read` está baneado por ruff fuera de la whitelist declarada en `pyproject.toml`. La whitelist se congela en el estado actual y **solo se puede encoger** — nunca añadir archivos nuevos.
 
 ---
 
@@ -104,6 +123,16 @@ Slash-commands de Claude Code (en `.claude/commands/`):
 2. Si el CLI está disponible (`which graphify`), corre `graphify update .` (AST-only, gratis, sin API). Si hubo cambios estructurales (nuevos módulos, renames), considerá `graphify update . --force`. Si el CLI no está (CI/remoto), omití este paso.
 3. Si el cambio contradice una decisión registrada en `docs/adr/` o un invariante de la sección 3, abrí una nueva revisión ADR en `docs/adr/` antes de mergear.
 4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), movélo a **Cerrados** (o anotá progreso parcial) en ese mismo momento. No dejarlo para después.
+
+### Política de RFCs (reducida desde 2026-07)
+
+Un RFC formal (`docs/rfc/`) se requiere **solo** para:
+- Cambios de schema/persistencia irreversibles (ej. migración de motor de BD).
+- Cambios breaking al contrato API público (campos eliminados, semantica cambiada).
+- Decisiones de seguridad/auth (nuevos mecanismos, rotación de secretos masiva).
+- Borrado irreversible de datos de producción.
+
+Para todo lo demás: backlog en [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) + PR directo. Los 67 RFCs de UX/features existentes **no generan nuevos RFCs** — se implementan directamente cuando el freeze lo permita.
 
 ---
 

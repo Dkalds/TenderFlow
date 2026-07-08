@@ -74,7 +74,7 @@ def get_events(
     params.append(limit)
     with connect() as c:
         cur = c.execute(
-            f"SELECT id, event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at "  # noqa: S608 — {extra} is internal (empty or column ref with ? placeholder)
+            f"SELECT id, event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at "
             f"FROM domain_events "
             f"WHERE aggregate_type=? AND aggregate_id=?{extra} "
             f"ORDER BY created_at, id LIMIT ?",
@@ -105,7 +105,7 @@ def get_events_by_type(
     params.append(limit)
     with connect() as c:
         cur = c.execute(
-            f"SELECT id, event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at "  # noqa: S608 — {extra} is internal (empty or column ref with ? placeholder)
+            f"SELECT id, event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at "
             f"FROM domain_events "
             f"WHERE event_type=?{extra} "
             f"ORDER BY created_at, id LIMIT ?",

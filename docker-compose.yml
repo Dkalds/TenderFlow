@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
-    image: licitaciones-sap-web:latest
-    container_name: licitaciones-web
+    image: tenderflow-web:latest
+    container_name: tenderflow-web
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -34,19 +34,19 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
-    image: licitaciones-sap-api:latest
-    container_name: licitaciones-api
+    image: tenderflow-api:latest
+    container_name: tenderflow-api
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - licitaciones_data:/data
+      - tenderflow_data:/data
     env_file:
       - .env
     environment:
-      DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      RATE_LIMIT_BACKEND: redis
+      DB_PATH: /data/tenderflow.db
+      # Redis es opt-in: configura REDIS_URL en .env para activar cache compartido.
+      # Sin Redis, el API opera con fallbacks (rate limit sqlite, cache memoria).
     mem_limit: 256m
     security_opt:
       - no-new-privileges:true
@@ -62,26 +62,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    depends_on:
-      redis:
-        condition: service_healthy
 
   scheduler:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
-    image: licitaciones-sap-api:latest
-    container_name: licitaciones-scheduler
+    image: tenderflow-api:latest
+    container_name: tenderflow-scheduler
     restart: unless-stopped
     # El scheduler no expone puerto — solo escribe en la BD compartida
     volumes:
-      - licitaciones_data:/data
+      - tenderflow_data:/data
     env_file:
       - .env
     environment:
-      DB_PATH: /data/licitaciones.db
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      RATE_LIMIT_BACKEND: redis
+      DB_PATH: /data/tenderflow.db
       SCHEDULER_DAILY_INTERVAL_MINUTES: ${SCHEDULER_DAILY_INTERVAL_MINUTES:-240}
       SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
       SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}
@@ -102,19 +97,23 @@ services:
       retries: 3
       start_period: 30s
     depends_on:
-      redis:
+      api:
         condition: service_healthy
 
-  # ── Redis (cache compartido + rate limiting) ──────────────────────────
+  # ── Redis (cache compartido, opt-in) ─────────────────────────────────────
+  # Para desarrollo local con Redis: añadir --profile redis
+  #   docker compose --profile redis up
+  # En producción se usa Upstash (configurar REDIS_URL en .env).
   redis:
     image: redis:7-alpine
-    container_name: licitaciones-redis
+    container_name: tenderflow-redis
+    profiles: ["redis"]
     restart: unless-stopped
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-dev-password}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-dev-password}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -125,9 +124,11 @@ services:
       - ALL
 
   # ── Monitoring (opcional): activar con `docker compose --profile monitoring up` ─
+  # Prometheus/Grafana son la definición de referencia de los umbrales; alerting
+  # de producción se realiza via scheduler/healthcheck.py + ops_events en BD.
   prometheus:
     image: prom/prometheus:v2.53.0
-    container_name: licitaciones-prometheus
+    container_name: tenderflow-prometheus
     profiles: ["monitoring"]
     restart: unless-stopped
     security_opt:
@@ -147,13 +148,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    depends_on:
-      scheduler:
-        condition: service_healthy
 
   grafana:
     image: grafana/grafana-oss:11.1.0
-    container_name: licitaciones-grafana
+    container_name: tenderflow-grafana
     profiles: ["monitoring"]
     restart: unless-stopped
     security_opt:
@@ -161,7 +159,7 @@ services:
     cap_drop:
       - ALL
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -180,7 +178,7 @@ services:
         condition: service_healthy
 
 volumes:
-  licitaciones_data:
+  tenderflow_data:
     driver: local
   redis_data:
     driver: local

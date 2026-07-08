@@ -36,7 +36,7 @@ una dependencia de pago, externa y en el camino crítico **no tenga guardrails**
    **invisibles** — no las cubre ningún test. Un cambio que empeora las respuestas
    pasa CI en verde.
 
-ADR-006 ya estableció rate-limit Redis para endpoints pesados (`/ask` incluido),
+[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]] ya estableció rate-limit Redis para endpoints pesados (`/ask` incluido),
 que protege *frecuencia* pero no *gasto acumulado* ni *calidad*.
 
 ## Decisión
@@ -50,7 +50,7 @@ sin cambiar el contrato público de `stream_llm_response` ni el DTO de `/ask`:
      `llm_cost_usd_total` que ya existe.
    - Al superar el umbral: el cliente **rechaza con un error tipado**
      (`LLMBudgetExceeded`) que `/ask` traduce a `429`/`503` con mensaje claro, en
-     vez de seguir gastando. Estado del breaker en Redis (consistente con ADR-006),
+     vez de seguir gastando. Estado del breaker en Redis (consistente con [[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]),
      con fallback in-memory si Redis ausente.
    - Métrica `llm_budget_exceeded_total` para alertar.
 
@@ -85,7 +85,7 @@ sin cambiar el contrato público de `stream_llm_response` ni el DTO de `/ask`:
 
 | Alternativa | Pros | Contras | Motivo de descarte |
 |---|---|---|---|
-| Solo rate-limit (ADR-006), sin budget | Ya existe | Limita frecuencia, no gasto acumulado ni picos de un solo prompt caro | Insuficiente para una dependencia de pago |
+| Solo rate-limit ([[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]), sin budget | Ya existe | Limita frecuencia, no gasto acumulado ni picos de un solo prompt caro | Insuficiente para una dependencia de pago |
 | Budget enforcement en el reverse-proxy/API gateway | Desacopla del código | No tiene la señal de coste por token (vive en el cliente LLM); difícil de degradar elegante | El cliente es donde está el dato y el punto de degradación |
 | Fallback a otro proveedor LLM | Resiliencia total | Multiplica credenciales/coste/complejidad; otro proveedor también puede caer | Sobredimensionado; degradar a búsqueda cubre el valor mínimo |
 | Eval de generación con LLM-judge en CI | Mide calidad real | No determinista, costoso por run, flaky | Va al runner opcional, no al gate |
@@ -120,7 +120,7 @@ sin cambiar el contrato público de `stream_llm_response` ni el DTO de `/ask`:
 
 **Archivos de partida**: `api/routes/ask.py`, `llm/client.py`,
 `llm/providers/openai_provider.py`, `llm/providers/anthropic_provider.py`,
-`config/settings.py`, `docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md`.
+`config/settings.py`, `docs/adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md`.
 **Riesgo estimado**: medio — toca un endpoint de producción, mitigado por
 `LLM_BUDGET_MODE=monitor` como default (medir antes de cortar) y por mantener el
 contrato API intacto.

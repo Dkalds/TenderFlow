@@ -1,24 +1,15 @@
 """Tests del job de alertas de reglas de watchlist (scheduler/watchlist_rules_alerts).
 
-Cubre: due/no-due por frecuencia, reglas inactivas, sin matches (mueve ventana) y
-que solo se notifican licitaciones posteriores a last_notified_at.
+Cubre: due/no-due por frecuencia, reglas inactivas, sin matches (mueve ventana),
+solo licitaciones posteriores a last_notified_at, y escritura en user_notifications.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
-
-import pytest
 
 from scheduler import watchlist_rules_alerts
 from services.watchlist_rules import WatchlistRule, create_rule
-
-
-@pytest.fixture()
-def db(tmp_db):
-    db_mod, _ = tmp_db
-    return db_mod
 
 
 def _recent(days_ago: int) -> str:
@@ -38,83 +29,92 @@ def _set_last_notified(c, rule_id, iso_ts):
     c.execute("UPDATE watchlist_rules SET last_notified_at = ? WHERE id = ?", (iso_ts, rule_id))
 
 
-def test_sin_reglas_devuelve_cero(db):
-    with patch("scheduler.watchlist_rules_alerts.notify") as mock_notify:
-        assert watchlist_rules_alerts.check_rules_and_notify() == 0
-    mock_notify.assert_not_called()
+def test_sin_reglas_devuelve_cero(tmp_db):
+    _, _ = tmp_db
+    assert watchlist_rules_alerts.check_rules_and_notify() == 0
 
 
-def test_regla_due_con_matches_nuevos_notifica(db):
+def test_regla_due_con_matches_nuevos_notifica(tmp_db):
     from db.database import connect
 
+    _, _ = tmp_db
     rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
-        _insert_lic(c, "L1", titulo="Implantación SAP", fecha=_recent(3))
+        _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
 
-    with patch("scheduler.watchlist_rules_alerts.notify") as mock_notify:
-        n = watchlist_rules_alerts.check_rules_and_notify()
-
+    n = watchlist_rules_alerts.check_rules_and_notify()
     assert n == 1
-    mock_notify.assert_called_once()
-    assert mock_notify.call_args.kwargs["total"] == 1
+
+    # Verifica que se actualizo last_notified_at
     with connect() as c:
         last = c.execute(
             "SELECT last_notified_at FROM watchlist_rules WHERE id = ?", (rid,)
         ).fetchone()[0]
     assert last is not None
 
+    # Verifica que se escribio en user_notifications
+    with connect() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM user_notifications WHERE user_key LIKE '%' AND type = 'rule_match'"
+        ).fetchone()[0]
+    assert count >= 1
 
-def test_regla_inactiva_se_ignora(db):
+
+def test_regla_inactiva_se_ignora(tmp_db):
     from db.database import connect
 
+    _, _ = tmp_db
     rid = create_rule("user-a", WatchlistRule(keyword="SAP"))
     with connect() as c:
         c.execute("UPDATE watchlist_rules SET active = 0 WHERE id = ?", (rid,))
         _insert_lic(c, "L1", titulo="SAP", fecha=_recent(3))
 
-    with patch("scheduler.watchlist_rules_alerts.notify") as mock_notify:
-        assert watchlist_rules_alerts.check_rules_and_notify() == 0
-    mock_notify.assert_not_called()
+    assert watchlist_rules_alerts.check_rules_and_notify() == 0
 
 
-def test_regla_no_due_se_salta(db):
+def test_regla_no_due_se_salta(tmp_db):
     from db.database import connect
 
+    _, _ = tmp_db
     rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
-        _set_last_notified(c, rid, datetime.now(UTC).isoformat())  # recién notificada
+        _set_last_notified(c, rid, datetime.now(UTC).isoformat())  # recien notificada
         _insert_lic(c, "L1", titulo="SAP", fecha=_recent(1))
 
-    with patch("scheduler.watchlist_rules_alerts.notify") as mock_notify:
-        assert watchlist_rules_alerts.check_rules_and_notify() == 0
-    mock_notify.assert_not_called()
+    assert watchlist_rules_alerts.check_rules_and_notify() == 0
 
 
-def test_sin_matches_no_notifica_pero_mueve_ventana(db):
+def test_sin_matches_no_notifica_pero_mueve_ventana(tmp_db):
     from db.database import connect
 
+    _, _ = tmp_db
     rid = create_rule("user-a", WatchlistRule(keyword="NOEXISTE"))
-    with patch("scheduler.watchlist_rules_alerts.notify") as mock_notify:
-        assert watchlist_rules_alerts.check_rules_and_notify() == 0
-    mock_notify.assert_not_called()
+    assert watchlist_rules_alerts.check_rules_and_notify() == 0
     with connect() as c:
         last = c.execute(
             "SELECT last_notified_at FROM watchlist_rules WHERE id = ?", (rid,)
         ).fetchone()[0]
-    assert last is not None  # la ventana se movió aunque no haya matches
+    assert last is not None  # la ventana se movio aunque no haya matches
 
 
-def test_solo_matches_posteriores_a_last_notified(db):
+def test_solo_matches_posteriores_a_last_notified(tmp_db):
     from db.database import connect
 
+    _, _ = tmp_db
     rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _set_last_notified(c, rid, (datetime.now(UTC) - timedelta(days=2)).isoformat())
         _insert_lic(c, "OLD", titulo="SAP viejo", fecha=_recent(5))  # antes del corte
-        _insert_lic(c, "NEW", titulo="SAP nuevo", fecha=_recent(1))  # después del corte
+        _insert_lic(c, "NEW", titulo="SAP nuevo", fecha=_recent(1))  # despues del corte
 
-    with patch("scheduler.watchlist_rules_alerts.notify") as mock_notify:
-        n = watchlist_rules_alerts.check_rules_and_notify()
-
+    n = watchlist_rules_alerts.check_rules_and_notify()
     assert n == 1
-    assert mock_notify.call_args.kwargs["total"] == 1  # solo NEW
+
+    # Verifica que solo el match nuevo llego a user_notifications
+    with connect() as c:
+        notifs = c.execute(
+            "SELECT licitacion_id FROM user_notifications WHERE type = 'rule_match'"
+        ).fetchall()
+    lic_ids = {r[0] for r in notifs}
+    assert "NEW" in lic_ids
+    assert "OLD" not in lic_ids

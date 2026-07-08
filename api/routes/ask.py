@@ -66,6 +66,11 @@ class AskRequest(BaseModel):
     )
     ccaa: str | None = Field(default=None, description="Filtrar licitaciones por CCAA")
     tecnologia: str | None = Field(default=None, description="Filtrar licitaciones por tecnología")
+    # Feature C: contexto especifico de una licitacion (backwards-compatible: opcional)
+    id_externo: str | None = Field(
+        default=None,
+        description="ID de una licitación específica para añadirla como primer documento de contexto",
+    )
 
 
 class AskModelInfo(BaseModel):
@@ -83,16 +88,47 @@ def _retrieve_docs(
     top_k: int,
     ccaa: str | None,
     tecnologia: str | None,
+    id_externo: str | None = None,
 ) -> list[dict[str, Any]]:
     """Recupera documentos relevantes usando FTS5 con LIKE fallback.
+
+    Si ``id_externo`` se proporciona (Feature C), antepone el registro completo
+    de esa licitación como primer documento de contexto.
 
     Delega en ``services.licitaciones.search_for_ask`` que orquesta
     FTS5 + LIKE fallback a través del repository.
     """
     try:
-        from services.licitaciones import search_for_ask
+        from services.licitaciones import get_licitacion_detail, search_for_ask
 
-        return search_for_ask(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
+        docs = search_for_ask(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
+
+        # Feature C: anteponer el detalle de la licitacion especifica si se proporciona
+        if id_externo:
+            try:
+                detail = get_licitacion_detail(id_externo)
+                if detail is not None:
+                    # Construir un doc de contexto con los campos mas relevantes
+                    primary_doc: dict[str, Any] = {
+                        "id_externo": id_externo,
+                        "titulo": detail.get("titulo"),
+                        "descripcion": str(detail.get("descripcion") or "")[:1000],
+                        "organo_contratacion": detail.get("organo_contratacion"),
+                        "importe": detail.get("importe"),
+                        "fecha_publicacion": detail.get("fecha_publicacion"),
+                        "fecha_limite": detail.get("fecha_limite"),
+                        "cpv": detail.get("cpv"),
+                        "ccaa": detail.get("ccaa"),
+                        "estado": detail.get("estado"),
+                        "url": detail.get("url"),
+                        "_score": 2.0,  # prioridad maxima
+                    }
+                    # Insertar al principio, evitar duplicado si ya aparece en FTS
+                    docs = [primary_doc] + [d for d in docs if d.get("id_externo") != id_externo]
+            except Exception as exc:
+                log.debug("ask.primary_doc_failed", id_externo=id_externo, error=str(exc))
+
+        return docs
     except Exception as exc:
         log.warning("ask.retrieve_docs_failed", error=str(exc))
         return []
@@ -113,6 +149,7 @@ def _stream_ask(request: AskRequest) -> Any:
         top_k=request.top_k,
         ccaa=request.ccaa,
         tecnologia=request.tecnologia,
+        id_externo=request.id_externo,
     )
 
     if not docs:

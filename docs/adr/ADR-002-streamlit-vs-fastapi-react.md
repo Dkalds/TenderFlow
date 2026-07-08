@@ -1,3 +1,12 @@
+---
+id: ADR-002
+title: "Streamlit vs FastAPI + React"
+status: accepted
+date: 2024-01-01
+deciders: "Daniel Kalitovics"
+tags: [adr]
+---
+
 # ADR-002: Streamlit vs FastAPI + React
 
 **Status:** Accepted  

@@ -19,7 +19,7 @@ PLACE_SYNDICATION_BASE = f"{PLACE_BASE_URL}/sindicacion"
 PLACE_SEARCH_URL = f"{PLACE_BASE_URL}/wps/portal/plataforma/buscadores/busqueda/"
 
 # User agent identificable (buena práctica scraping ético)
-USER_AGENT = "LicitacionesSAP-Bot/1.0"
+USER_AGENT = "TenderflowBot/1.0"
 
 # Feed ATOM en vivo — sindicación paginada de PLACE
 PLACE_LIVE_ATOM_URL = (

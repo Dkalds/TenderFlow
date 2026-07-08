@@ -84,4 +84,16 @@ describe("KpiCard", () => {
     render(<KpiCard title="Total" value="100" trend={2} trendLabel="vs mes anterior" />);
     expect(screen.getByText("vs mes anterior")).toBeInTheDocument();
   });
+
+  it("renders a keyboard-focusable link with aria-label when href is provided", () => {
+    render(<KpiCard title="Vencen 48h" value="3" href="/pipeline-alertas" />);
+    const link = screen.getByRole("link", { name: "Vencen 48h: ver detalle" });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/pipeline-alertas");
+  });
+
+  it("does not render a link when href is absent", () => {
+    render(<KpiCard title="Total" value="100" />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
 });

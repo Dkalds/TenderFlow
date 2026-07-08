@@ -1,3 +1,11 @@
+---
+id: ADR-006
+title: "ETag middleware + async PDF export endpoint"
+status: accepted
+date: 2026-05-19
+tags: [adr]
+---
+
 # ADR-006: ETag middleware + async PDF export endpoint
 
 **Status:** Accepted  

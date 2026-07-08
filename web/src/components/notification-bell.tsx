@@ -24,6 +24,17 @@ interface NotificationItem {
   read: boolean;
 }
 
+interface AlertItem {
+  id: number;
+  created_at: string | null;
+  type: string;
+  title: string | null;
+  body: string | null;
+  licitacion_id: string | null;
+  rule_id: number | null;
+  read: boolean;
+}
+
 interface HoyCounters {
   calientes: number;
   vencen_48h: number;
@@ -34,6 +45,8 @@ interface HoyCounters {
 interface NotificationsResult {
   items: NotificationItem[];
   unread_count: number;
+  alerts: AlertItem[];
+  alerts_unread_count: number;
   hoy: HoyCounters;
 }
 
@@ -118,16 +131,22 @@ export function NotificationBell({ className: _className }: NotificationBellProp
   }, [queryClient]);
 
   const items = data?.items ?? [];
+  const alerts = data?.alerts ?? [];
   const hoy = data?.hoy;
-  const unreadCount = (data?.unread_count ?? 0) + liveUnread;
+  const unreadCount = (data?.unread_count ?? 0) + (data?.alerts_unread_count ?? 0) + liveUnread;
 
-  /** Mark unread novedades as read and clear the live badge. */
+  /** Mark unread novedades + alerts as read and clear the live badge. */
   const markAllRead = async () => {
     setLiveUnread(0);
     const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
-    if (unreadIds.length === 0) return;
+    const unreadAlertIds = alerts.filter((a) => !a.read).map((a) => a.id);
     try {
-      await apiMutate("POST", "/api/v1/notifications/read", { ids: unreadIds });
+      if (unreadIds.length > 0) {
+        await apiMutate("POST", "/api/v1/notifications/read", { ids: unreadIds });
+      }
+      if (unreadAlertIds.length > 0) {
+        await apiMutate("POST", "/api/v1/notifications/alerts/read", { ids: unreadAlertIds });
+      }
       queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
     } catch (err) {
       reportError("NotificationBell.markRead", err);
@@ -172,33 +191,68 @@ export function NotificationBell({ className: _className }: NotificationBellProp
           </ul>
         )}
 
-        {items.length === 0 && liveItems.length === 0 ? (
+        {items.length === 0 && liveItems.length === 0 && alerts.length === 0 ? (
           <p className="px-2 py-4 text-center text-sm text-muted-foreground">
             Sin notificaciones
           </p>
         ) : (
-          <ul className="space-y-0.5">
-            {items.map((n) => (
-              <li key={n.id}>
-                <Link
-                  href={`/detalle?lic=${encodeURIComponent(n.id)}`}
-                  className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
-                >
-                  <span className="flex items-center gap-2">
-                    {!n.read && (
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                    )}
-                    <span className="truncate">{n.titulo ?? n.id}</span>
-                  </span>
-                  {n.organo_contratacion && (
-                    <span className="block truncate pl-3.5 text-xs text-muted-foreground">
-                      {n.organo_contratacion}
+          <>
+            {alerts.length > 0 && (
+              <>
+                <h5 className="mb-1 mt-2 px-2 text-xs font-semibold text-muted-foreground">Alertas</h5>
+                <ul className="mb-2 space-y-0.5">
+                  {alerts.slice(0, 5).map((a) => (
+                    <li key={a.id}>
+                      {a.licitacion_id ? (
+                        <Link
+                          href={`/detalle?lic=${encodeURIComponent(a.licitacion_id)}`}
+                          className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            {!a.read && (
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                            )}
+                            <span className="truncate">{a.title ?? a.type}</span>
+                          </span>
+                        </Link>
+                      ) : (
+                        <div className="rounded-sm px-2 py-1.5 text-sm">
+                          <span className="flex items-center gap-2">
+                            {!a.read && (
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                            )}
+                            <span className="truncate">{a.title ?? a.type}</span>
+                          </span>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <ul className="space-y-0.5">
+              {items.map((n) => (
+                <li key={n.id}>
+                  <Link
+                    href={`/detalle?lic=${encodeURIComponent(n.id)}`}
+                    className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      {!n.read && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                      )}
+                      <span className="truncate">{n.titulo ?? n.id}</span>
                     </span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
+                    {n.organo_contratacion && (
+                      <span className="block truncate pl-3.5 text-xs text-muted-foreground">
+                        {n.organo_contratacion}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
 
         {!connected && (

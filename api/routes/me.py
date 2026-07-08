@@ -17,6 +17,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from api.auth import AuthContext, create_api_key, require_api_key
 from api.routes.dual_auth import require_any_auth
@@ -31,6 +32,7 @@ from services.gdpr import (
     export_audit_log,
     export_feedback,
     export_watchlist,
+    export_watchlist_items,
     get_key_name_and_scopes,
     get_user_id_from_key_id,
     list_user_keys,
@@ -69,6 +71,11 @@ def export_my_data(ctx: AuthContext = Depends(require_api_key)) -> StreamingResp
 
         watchlist = export_watchlist(ctx.key_hash)
         zf.writestr("watchlist.json", json.dumps(watchlist, ensure_ascii=False, indent=2))
+
+        watchlist_items = export_watchlist_items(ctx.key_hash)
+        zf.writestr(
+            "watchlist_items.json", json.dumps(watchlist_items, ensure_ascii=False, indent=2)
+        )
 
         feedback = export_feedback()
         zf.writestr("feedback.json", json.dumps(feedback, ensure_ascii=False, indent=2))
@@ -213,3 +220,107 @@ def rotate_my_key(
         ),
         "old_key_expires_at": grace_expires,
     }
+
+
+# ---------------------------------------------------------------------------
+# Perfil de scoring personalizado (Feature B)
+# ---------------------------------------------------------------------------
+
+
+class UserProfileBody(BaseModel):
+    """Cuerpo para crear/actualizar el perfil de scoring."""
+
+    weights: dict[str, int] | None = None
+    afinidad_keywords: list[str] | None = None
+    importe_min: float | None = None
+    importe_max: float | None = None
+
+    def validate_weights(self) -> None:
+        if self.weights is not None:
+            total = sum(self.weights.values())
+            if total != 100:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Los pesos deben sumar 100, suman {total}.",
+                )
+
+
+class UserProfileOut(BaseModel):
+    """Perfil devuelto al cliente."""
+
+    user_key: str | None = None
+    weights: dict[str, int] | None = None
+    afinidad_keywords: list[str] | None = None
+    importe_min: float | None = None
+    importe_max: float | None = None
+    updated_at: str | None = None
+
+
+def _get_user_key_for_profile(ctx: dict[str, Any]) -> str:
+    import hashlib
+
+    seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+@router.get("/me/profile", summary="Obtener el perfil de scoring del usuario")
+async def get_profile(
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> UserProfileOut:
+    """Devuelve el perfil de scoring personalizado del usuario.
+
+    Si no tiene perfil configurado, devuelve un objeto vacio.
+    """
+    from db.repositories.user_profiles import get_user_profile
+
+    user_key = _get_user_key_for_profile(ctx)
+    raw = get_user_profile(user_key)
+    if raw is None:
+        return UserProfileOut()
+    return UserProfileOut(
+        weights=raw.get("weights"),
+        afinidad_keywords=raw.get("afinidad_keywords"),
+        importe_min=raw.get("importe_min"),
+        importe_max=raw.get("importe_max"),
+        updated_at=raw.get("updated_at"),
+    )
+
+
+@router.put("/me/profile", summary="Crear o actualizar el perfil de scoring")
+async def put_profile(
+    body: UserProfileBody,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, str]:
+    """Crea o actualiza el perfil de scoring personalizado.
+
+    Los pesos deben sumar 100 cuando se proporcionan.
+    Pasar `null` en un campo lo mantiene sin cambios (no sobrescribe).
+    """
+    from db.repositories.user_profiles import upsert_user_profile
+
+    body.validate_weights()
+    user_key = _get_user_key_for_profile(ctx)
+    upsert_user_profile(
+        user_key,
+        {
+            "weights": body.weights,
+            "afinidad_keywords": body.afinidad_keywords,
+            "importe_min": body.importe_min,
+            "importe_max": body.importe_max,
+        },
+    )
+    return {"status": "ok"}
+
+
+@router.delete("/me/profile", summary="Eliminar el perfil de scoring")
+async def delete_profile(
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, str]:
+    """Elimina el perfil de scoring. El scoring vuelve a los settings globales."""
+    from db.repositories.user_profiles import delete_user_profile
+
+    user_key = _get_user_key_for_profile(ctx)
+    delete_user_profile(user_key)
+    return {"status": "ok"}

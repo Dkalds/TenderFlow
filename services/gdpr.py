@@ -48,6 +48,11 @@ def export_watchlist(key_hash: str) -> list[dict[str, Any]]:
     return _watchlist_repo.export_by_user_key(key_hash)
 
 
+def export_watchlist_items(key_hash: str) -> list[dict[str, Any]]:
+    """Exporta los favoritos de licitaciones (watchlist_items) del usuario."""
+    return _watchlist_repo.export_items_by_user_key(key_hash)
+
+
 def export_feedback() -> list[dict[str, Any]]:
     """Exporta todo el ML feedback (anónimo, sin FK a usuario)."""
     return _feedback_repo.export_all()
@@ -61,6 +66,7 @@ def export_audit_log(key_hash: str) -> list[dict[str, Any]]:
 def anonymize_user_data(key_hash: str, key_id: int) -> None:
     """Anonimiza watchlist y revoca la API key del usuario."""
     _watchlist_repo.anonymize_by_user_key(key_hash)
+    _watchlist_repo.anonymize_items_by_user_key(key_hash)
     _api_key_repo.deactivate_by_id(key_id)
 
 

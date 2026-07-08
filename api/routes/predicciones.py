@@ -20,7 +20,7 @@ router = APIRouter(tags=["predicciones"])
 
 
 @router.get(
-    "/licitaciones/{licitacion_id}/prediccion-baja",
+    "/licitaciones/{licitacion_id:path}/prediccion-baja",
     summary="Intervalo de baja esperada (p10/p50/p90)",
     responses={404: {"description": "Sin predicción para esa licitación"}},
 )
