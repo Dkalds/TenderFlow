@@ -101,6 +101,14 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
         result = process_month(year, month, run_id=run_id)
         return result.get("status") in ("ok", "no_publicado")
 
+    if fuente == "placsp":
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.placsp import PlacspAtomConnector
+
+        connector = PlacspAtomConnector()
+        run_result = run_connector(connector)
+        return run_result.errores == 0
+
     from scraper.pipeline import _DAILY_SOURCE, process_daily
 
     if fuente == _DAILY_SOURCE or fuente.startswith("atom"):
