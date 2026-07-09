@@ -37,9 +37,12 @@ jobs:
         env:
           # ENV=dev omite los validators de prod que requieren secrets de la
           # aplicación (SIGNING_KEY, API_HMAC_SECRET, REDIS_URL). El scraper no
-          # usa ninguno de esos componentes; la conexión
-          # a la BD de producción la controlan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN.
+          # usa ninguno de esos componentes. La BD de producción es Supabase
+          # (ADR-016): DATABASE_URL tiene precedencia sobre TURSO_* en
+          # db/connection.py. TURSO_* queda como fallback legacy.
           ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
@@ -58,6 +61,8 @@ jobs:
         continue-on-error: true
         env:
           ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
@@ -70,6 +75,8 @@ jobs:
         continue-on-error: true
         env:
           ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           TACRC_INDEX_URL: ${{ vars.TACRC_INDEX_URL }}

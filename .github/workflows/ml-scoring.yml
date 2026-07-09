@@ -38,8 +38,11 @@ jobs:
         env:
           # ENV=dev omite los validators de prod que requieren secrets de la
           # aplicación (mismo criterio que scrape.yml). La BD de producción
-          # se controla con TURSO_DATABASE_URL / TURSO_AUTH_TOKEN.
+          # es Supabase (ADR-016): DATABASE_URL tiene precedencia sobre
+          # TURSO_* en db/connection.py.
           ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           LOG_FORMAT: json
@@ -60,6 +63,8 @@ jobs:
       - name: Verify predicciones materialized
         env:
           ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |

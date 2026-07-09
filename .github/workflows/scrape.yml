@@ -41,9 +41,12 @@ jobs:
       - name: Run scraper
         env:
           # ENV=dev omite los validators de prod que requieren secrets de la
-          # aplicación. El scraper no los necesita; la BD de producción
-          # se controla con TURSO_DATABASE_URL / TURSO_AUTH_TOKEN.
+          # aplicación. El scraper no los necesita. La BD de producción es
+          # Supabase (ADR-016): DATABASE_URL tiene precedencia sobre TURSO_*
+          # en db/connection.py. TURSO_* queda como fallback legacy.
           ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
@@ -72,6 +75,8 @@ jobs:
         if: always()
         env:
           ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
