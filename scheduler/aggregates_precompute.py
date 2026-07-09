@@ -84,14 +84,36 @@ def _compute_top_empresas(conn: Any) -> list[dict[str, Any]]:
     return result
 
 
+_INSERT_CHUNK = 150  # filas por sentencia -- acota round-trips contra Turso remoto
+# 150 filas x 6 columnas (la tabla más ancha) = 900 params, bajo el límite
+# conservador de SQLITE_MAX_VARIABLE_NUMBER (999 en builds antiguos).
+
+
+def _insert_batched(conn: Any, sql_prefix: str, columns: int, rows: list[tuple[Any, ...]]) -> None:
+    """Inserta ``rows`` en bloques de ``_INSERT_CHUNK`` con VALUES multi-fila.
+
+    ``executemany`` emite una sentencia (y por tanto un round-trip de red) por
+    fila contra el backend Turso remoto -- a ~270ms/fila, miles de filas se
+    traducen en minutos de latencia acumulada aunque el cómputo en sí sea
+    instantáneo. Agrupar en un único INSERT multi-fila por bloque reduce esos
+    round-trips de N a N/``_INSERT_CHUNK``.
+    """
+    for i in range(0, len(rows), _INSERT_CHUNK):
+        chunk = rows[i : i + _INSERT_CHUNK]
+        placeholders = ", ".join(f"({', '.join('?' * columns)})" for _ in chunk)
+        values = [v for row in chunk for v in row]
+        conn.execute(f"{sql_prefix} VALUES {placeholders}", values)
+
+
 def _persist_top_empresas(conn: Any, rows: list[dict[str, Any]]) -> None:
     """Reemplaza atómicamente la tabla mat_top_empresas_ccaa."""
     conn.execute("DELETE FROM mat_top_empresas_ccaa")
     if rows:
-        conn.executemany(
+        _insert_batched(
+            conn,
             "INSERT INTO mat_top_empresas_ccaa "
-            "(ccaa, rank, nombre_canon, n_adj, importe_total, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(ccaa, rank, nombre_canon, n_adj, importe_total, updated_at)",
+            6,
             [
                 (
                     r["ccaa"],
@@ -182,9 +204,10 @@ def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
     """Reemplaza atómicamente la tabla mat_clusters."""
     conn.execute("DELETE FROM mat_clusters")
     if rows:
-        conn.executemany(
-            "INSERT INTO mat_clusters (id_externo, cluster_id, cluster_label, updated_at) "
-            "VALUES (?, ?, ?, ?)",
+        _insert_batched(
+            conn,
+            "INSERT INTO mat_clusters (id_externo, cluster_id, cluster_label, updated_at)",
+            4,
             [(r["id_externo"], r["cluster_id"], r["cluster_label"], r["updated_at"]) for r in rows],
         )
 

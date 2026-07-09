@@ -298,6 +298,37 @@ def test_persist_clusters_inserts_rows(tmp_db):
     assert count == 1
 
 
+def test_persist_clusters_batches_across_chunk_boundary(tmp_db):
+    """Persiste correctamente un volumen que cruza el borde de _INSERT_CHUNK."""
+    db_mod, _ = tmp_db
+    from scheduler.aggregates_precompute import _INSERT_CHUNK, _persist_clusters
+
+    n = _INSERT_CHUNK * 2 + 7  # cruza dos bordes de chunk
+    rows = [
+        {
+            "id_externo": f"EXP-{i:04d}",
+            "cluster_id": i % 8,
+            "cluster_label": f"label-{i % 8}",
+            "updated_at": "2026-01-01T00:00:00+00:00",
+        }
+        for i in range(n)
+    ]
+
+    with db_mod.connect() as conn:
+        _persist_clusters(conn, rows)
+        count = conn.execute("SELECT COUNT(*) FROM mat_clusters").fetchone()[0]
+        first = conn.execute(
+            "SELECT cluster_label FROM mat_clusters WHERE id_externo = 'EXP-0000'"
+        ).fetchone()[0]
+        last = conn.execute(
+            "SELECT cluster_label FROM mat_clusters WHERE id_externo = ?", [f"EXP-{n - 1:04d}"]
+        ).fetchone()[0]
+
+    assert count == n
+    assert first == "label-0"
+    assert last == f"label-{(n - 1) % 8}"
+
+
 def test_persist_clusters_replaces_atomically(tmp_db):
     """Segunda llamada reemplaza datos previos."""
     db_mod, _ = tmp_db
