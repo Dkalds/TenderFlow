@@ -94,11 +94,15 @@ def _parse_feed_links(root: etree._Element) -> str | None:
     return None
 
 
-_ALLOWED_HOST = "contrataciondelsectorpublico.gob.es"
+# PLACE sirve el feed ATOM bajo el dominio .gob.es pero los links de
+# paginación rel="next" pueden apuntar al dominio histórico
+# contrataciondelestado.es (mismo usado como PLACE_BASE_URL en
+# config/constants.py) — ambos son dominios oficiales de la plataforma.
+_ALLOWED_HOSTS = ("contrataciondelsectorpublico.gob.es", "contrataciondelestado.es")
 
 
 def _is_allowed_url(url: str) -> bool:
-    """Valida que la URL pertenezca al dominio oficial de PLACE."""
+    """Valida que la URL pertenezca a un dominio oficial de PLACE."""
     from urllib.parse import urlparse
 
     try:
@@ -108,7 +112,7 @@ def _is_allowed_url(url: str) -> bool:
     if parsed.scheme not in ("https", "http"):
         return False
     host = (parsed.hostname or "").lower()
-    return host == _ALLOWED_HOST or host.endswith(f".{_ALLOWED_HOST}")
+    return any(host == allowed or host.endswith(f".{allowed}") for allowed in _ALLOWED_HOSTS)
 
 
 def _entry_updated(entry: etree._Element) -> str | None:

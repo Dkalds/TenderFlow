@@ -72,6 +72,21 @@ class TestParseLinks:
         root = etree.fromstring(_ATOM_PAGE_2)
         assert _parse_feed_links(root) is None
 
+    def test_accepts_contrataciondelestado_domain(self):
+        """PLACE también sirve paginación bajo el dominio histórico."""
+        from lxml import etree
+
+        xml = b"""\
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <link rel="next" href="https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_20260708_203728.atom"/>
+</feed>"""
+        root = etree.fromstring(xml)
+        assert _parse_feed_links(root) == (
+            "https://contrataciondelestado.es/sindicacion/sindicacion_643/"
+            "licitacionesPerfilesContratanteCompleto3_20260708_203728.atom"
+        )
+
     def test_rejects_external_domain(self):
         """SSRF protection: rechaza URLs de dominios externos."""
         from lxml import etree
