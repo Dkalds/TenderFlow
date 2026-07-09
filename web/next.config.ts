@@ -13,7 +13,7 @@ const CSP_REPORT_ONLY = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://lh3.googleusercontent.com",
+  "img-src 'self' data: https://lh3.googleusercontent.com https://vercel.live https://vercel.com",
   "font-src 'self' data:",
   "connect-src 'self' https://vercel.live https://*.launchdarkly.com",
   "frame-src 'self' https://vercel.live",
