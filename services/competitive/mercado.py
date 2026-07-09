@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect_read
+from db.database import connect_read, is_postgres_backend
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
 
@@ -188,10 +188,15 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
                 (empresa_id,),
             )
         )
+        anio_expr = (
+            "EXTRACT(YEAR FROM a.fecha_adjudicacion::date)::integer"
+            if is_postgres_backend()
+            else "CAST(strftime('%Y', a.fecha_adjudicacion) AS INTEGER)"
+        )
         por_anio = rows_to_dicts(
             c.execute(
                 f"""
-                SELECT CAST(strftime('%Y', a.fecha_adjudicacion) AS INTEGER) AS anio,
+                SELECT {anio_expr} AS anio,
                        COUNT(*) AS contratos,
                        COALESCE(SUM(a.importe_adjudicado), 0) AS importe
                 FROM adjudicaciones a

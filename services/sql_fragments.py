@@ -12,6 +12,8 @@ composición del proyecto:
 - Cada query que interpola lleva ``# noqa: S608`` inline con justificación.
 """
 
+from db.database import is_postgres_backend
+
 # Condiciones de validez de un par presupuesto/adjudicado. Descarta filas
 # sin importes positivos y outliers donde el adjudicado supera el
 # presupuesto en más de un 50% (errores de fuente o modificados mal
@@ -27,6 +29,13 @@ VALID_PAIR = (
 # substr(x, 1, 10) normaliza timestamps ISO a fecha pura; CAST a INT porque
 # duracion_valor es REAL y el modificador de date() exige entero. Asume
 # alias ``l`` (licitaciones) y ``a`` (adjudicaciones).
+#
+# Backend-dependiente (ADR-016): SQLite/Turso usa date(); Postgres no tiene
+# esa función, así que la rama Postgres usa aritmética de INTERVAL y
+# to_char() para devolver el mismo formato TEXT 'YYYY-MM-DD' en ambos casos
+# (necesario para que las comparaciones lexicográficas con date('now') /
+# CURRENT_DATE sean equivalentes). Usar fecha_fin_sql(), no la constante,
+# en código nuevo — la constante se mantiene por compatibilidad (asume SQLite).
 FECHA_FIN_SQL = """
 COALESCE(
     substr(l.fecha_fin, 1, 10),
@@ -40,3 +49,22 @@ COALESCE(
     END
 )
 """
+
+_FECHA_FIN_SQL_POSTGRES = """
+COALESCE(
+    substr(l.fecha_fin, 1, 10),
+    CASE l.duracion_unidad
+        WHEN 'ANN' THEN to_char(substr(COALESCE(l.fecha_inicio, a.fecha_adjudicacion), 1, 10)::date
+                             + (CAST(l.duracion_valor AS INTEGER) * INTERVAL '1 year'), 'YYYY-MM-DD')
+        WHEN 'MON' THEN to_char(substr(COALESCE(l.fecha_inicio, a.fecha_adjudicacion), 1, 10)::date
+                             + (CAST(l.duracion_valor AS INTEGER) * INTERVAL '1 month'), 'YYYY-MM-DD')
+        WHEN 'DAY' THEN to_char(substr(COALESCE(l.fecha_inicio, a.fecha_adjudicacion), 1, 10)::date
+                             + (CAST(l.duracion_valor AS INTEGER) * INTERVAL '1 day'), 'YYYY-MM-DD')
+    END
+)
+"""
+
+
+def fecha_fin_sql() -> str:
+    """Fragmento SQL de fecha de fin efectiva, correcto para el backend activo."""
+    return _FECHA_FIN_SQL_POSTGRES if is_postgres_backend() else FECHA_FIN_SQL

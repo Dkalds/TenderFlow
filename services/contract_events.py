@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from db.database import connect, connect_read, get_cursor, set_cursor
+from db.database import connect, connect_read, get_cursor, is_postgres_backend, set_cursor
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
 
@@ -227,12 +227,16 @@ def eventos_recientes(
     *, tipos: tuple[str, ...] | None = None, dias: int = 30, limit: int = 100
 ) -> list[dict[str, Any]]:
     """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard."""
+    if is_postgres_backend():
+        cutoff_expr = "to_char(CURRENT_DATE - (? * INTERVAL '1 day'), 'YYYY-MM-DD')"
+    else:
+        cutoff_expr = "date('now', '-' || ? || ' days')"
     sql = (
-        "SELECT ev.licitacion_id, ev.tipo, ev.fecha, ev.detalle, ev.importe_delta, "
+        "SELECT ev.licitacion_id, ev.tipo, ev.fecha, ev.detalle, ev.importe_delta, "  # noqa: S608
         "       l.titulo, l.organo_contratacion, l.fuente "
         "FROM contrato_eventos ev "
         "JOIN licitaciones l ON l.id_externo = ev.licitacion_id "
-        "WHERE ev.fecha >= date('now', '-' || ? || ' days')"
+        f"WHERE ev.fecha >= {cutoff_expr}"  # cutoff_expr es un fragmento constante; valores con ?
     )
     params: list[Any] = [max(1, int(dias))]
     if tipos:

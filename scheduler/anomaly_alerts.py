@@ -15,7 +15,7 @@ import math
 from typing import Any
 
 from config import settings
-from db.database import connect
+from db.database import connect, is_postgres_backend
 from observability import AlertLevel, get_logger, notify
 
 log = get_logger(__name__)
@@ -27,13 +27,22 @@ log = get_logger(__name__)
 def _query_historico_organo(organo: str, months: int = 12) -> tuple[float, float]:
     """Devuelve (media, desv_std) del importe para el órgano en los últimos N meses."""
     with connect() as c:
-        cur = c.execute(
-            "SELECT importe FROM licitaciones "
-            "WHERE organo_contratacion = ? "
-            "  AND fecha_publicacion >= date('now', ? || ' months') "
-            "  AND importe IS NOT NULL",
-            (organo, f"-{months}"),
-        )
+        if is_postgres_backend():
+            cur = c.execute(
+                "SELECT importe FROM licitaciones "
+                "WHERE organo_contratacion = ? "
+                "  AND fecha_publicacion >= to_char(CURRENT_DATE - (? * INTERVAL '1 month'), 'YYYY-MM-DD') "
+                "  AND importe IS NOT NULL",
+                (organo, months),
+            )
+        else:
+            cur = c.execute(
+                "SELECT importe FROM licitaciones "
+                "WHERE organo_contratacion = ? "
+                "  AND fecha_publicacion >= date('now', ? || ' months') "
+                "  AND importe IS NOT NULL",
+                (organo, f"-{months}"),
+            )
         importes = [row[0] for row in cur.fetchall() if row[0] is not None]
     if len(importes) < 5:  # sin suficientes muestras, no alertar
         return 0.0, 0.0
@@ -47,12 +56,20 @@ def _query_historico_organo(organo: str, months: int = 12) -> tuple[float, float
 def _query_licitaciones_nuevas_hoy() -> list[dict[str, Any]]:
     """Licitaciones publicadas en las últimas 24 horas."""
     with connect() as c:
-        cur = c.execute(
-            "SELECT id_externo, titulo, organo_contratacion, importe, cpv, url "
-            "FROM licitaciones "
-            "WHERE fecha_publicacion >= datetime('now', '-1 day') "
-            "ORDER BY fecha_publicacion DESC",
-        )
+        if is_postgres_backend():
+            cur = c.execute(
+                "SELECT id_externo, titulo, organo_contratacion, importe, cpv, url "
+                "FROM licitaciones "
+                "WHERE fecha_publicacion >= to_char(NOW() - INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') "
+                "ORDER BY fecha_publicacion DESC",
+            )
+        else:
+            cur = c.execute(
+                "SELECT id_externo, titulo, organo_contratacion, importe, cpv, url "
+                "FROM licitaciones "
+                "WHERE fecha_publicacion >= datetime('now', '-1 day') "
+                "ORDER BY fecha_publicacion DESC",
+            )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
@@ -60,15 +77,26 @@ def _query_licitaciones_nuevas_hoy() -> list[dict[str, Any]]:
 def _query_adjudicaciones_recientes() -> list[dict[str, Any]]:
     """Adjudicaciones registradas en las últimas 24 horas con datos de baja."""
     with connect() as c:
-        cur = c.execute(
-            "SELECT a.id, a.licitacion_id, a.nombre, a.importe_adjudicado, "
-            "       l.importe AS importe_licitacion, l.titulo, l.organo_contratacion "
-            "FROM adjudicaciones a "
-            "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-            "WHERE a.fecha_adjudicacion >= date('now', '-1 day') "
-            "  AND a.importe_adjudicado IS NOT NULL "
-            "  AND l.importe IS NOT NULL AND l.importe > 0",
-        )
+        if is_postgres_backend():
+            cur = c.execute(
+                "SELECT a.id, a.licitacion_id, a.nombre, a.importe_adjudicado, "
+                "       l.importe AS importe_licitacion, l.titulo, l.organo_contratacion "
+                "FROM adjudicaciones a "
+                "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+                "WHERE a.fecha_adjudicacion >= to_char(CURRENT_DATE - INTERVAL '1 day', 'YYYY-MM-DD') "
+                "  AND a.importe_adjudicado IS NOT NULL "
+                "  AND l.importe IS NOT NULL AND l.importe > 0",
+            )
+        else:
+            cur = c.execute(
+                "SELECT a.id, a.licitacion_id, a.nombre, a.importe_adjudicado, "
+                "       l.importe AS importe_licitacion, l.titulo, l.organo_contratacion "
+                "FROM adjudicaciones a "
+                "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+                "WHERE a.fecha_adjudicacion >= date('now', '-1 day') "
+                "  AND a.importe_adjudicado IS NOT NULL "
+                "  AND l.importe IS NOT NULL AND l.importe > 0",
+            )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
@@ -76,18 +104,30 @@ def _query_adjudicaciones_recientes() -> list[dict[str, Any]]:
 def _query_volumen_diario_30d() -> float:
     """Media diaria de nuevas licitaciones en los últimos 30 días."""
     with connect() as c:
-        cur = c.execute(
-            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-30 days')",
-        )
+        if is_postgres_backend():
+            cur = c.execute(
+                "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= "
+                "to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')",
+            )
+        else:
+            cur = c.execute(
+                "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-30 days')",
+            )
         total = cur.fetchone()[0] or 0
     return float(total) / 30.0
 
 
 def _query_volumen_hoy() -> int:
     with connect() as c:
-        cur = c.execute(
-            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-1 day')",
-        )
+        if is_postgres_backend():
+            cur = c.execute(
+                "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= "
+                "to_char(CURRENT_DATE - INTERVAL '1 day', 'YYYY-MM-DD')",
+            )
+        else:
+            cur = c.execute(
+                "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-1 day')",
+            )
         return int(cur.fetchone()[0] or 0)
 
 

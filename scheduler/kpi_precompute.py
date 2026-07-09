@@ -19,6 +19,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from db.database import is_postgres_backend
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -63,17 +64,30 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     snapshots.append({"metrica": "n_ccaa", "dimension": "global", "valor": row[0]})
 
     # Licitaciones últimos 30 días
-    row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-30 days')"
-    ).fetchone()
+    if is_postgres_backend():
+        row = conn.execute(
+            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= "
+            "to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')"
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= date('now', '-30 days')"
+        ).fetchone()
     snapshots.append({"metrica": "licitaciones_30d", "dimension": "global", "valor": row[0]})
 
     # Licitaciones 30d anteriores (para delta)
-    row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones "
-        "WHERE fecha_publicacion >= date('now', '-60 days') "
-        "  AND fecha_publicacion < date('now', '-30 days')"
-    ).fetchone()
+    if is_postgres_backend():
+        row = conn.execute(
+            "SELECT COUNT(*) FROM licitaciones "
+            "WHERE fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '60 days', 'YYYY-MM-DD') "
+            "  AND fecha_publicacion < to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')"
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM licitaciones "
+            "WHERE fecha_publicacion >= date('now', '-60 days') "
+            "  AND fecha_publicacion < date('now', '-30 days')"
+        ).fetchone()
     snapshots.append({"metrica": "licitaciones_30d_prev", "dimension": "global", "valor": row[0]})
 
     # ── Por CCAA ──────────────────────────────────────────────────────────
@@ -135,13 +149,22 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
 
     # ── Serie mensual últimos 24 meses ────────────────────────────────────
 
-    rows = conn.execute(
-        "SELECT strftime('%Y-%m', fecha_publicacion) as mes, "
-        "       COUNT(*) as n, SUM(importe) as total "
-        "FROM licitaciones "
-        "WHERE fecha_publicacion >= date('now', '-24 months') "
-        "GROUP BY mes ORDER BY mes"
-    ).fetchall()
+    if is_postgres_backend():
+        rows = conn.execute(
+            "SELECT to_char(fecha_publicacion::date, 'YYYY-MM') as mes, "
+            "       COUNT(*) as n, SUM(importe) as total "
+            "FROM licitaciones "
+            "WHERE fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '24 months', 'YYYY-MM-DD') "
+            "GROUP BY mes ORDER BY mes"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT strftime('%Y-%m', fecha_publicacion) as mes, "
+            "       COUNT(*) as n, SUM(importe) as total "
+            "FROM licitaciones "
+            "WHERE fecha_publicacion >= date('now', '-24 months') "
+            "GROUP BY mes ORDER BY mes"
+        ).fetchall()
     serie = [{"mes": r[0], "n": r[1], "importe": r[2]} for r in rows]
     snapshots.append(
         {
