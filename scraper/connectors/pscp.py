@@ -216,7 +216,10 @@ class PscpConnector:
                     # del dataset es una publicación de fase con SU campo de
                     # fecha (anunci/adjudicació/formalització…); :updated_at
                     # es el único común a todas y nunca nulo.
-                    "$select": f"{_CURSOR_FIELD}, *",
+                    # El wildcard debe ir primero: SoQL rechaza con 400 la
+                    # combinación "<campo_sistema>, *" (orden invertido) —
+                    # sintaxis documentada: https://dev.socrata.com/docs/queries/select.html
+                    "$select": f"*, {_CURSOR_FIELD}",
                     "$where": f"{_CURSOR_FIELD} >= '{since}'",
                     "$order": f"{_CURSOR_FIELD} ASC",
                     "$limit": str(_PAGE_SIZE),

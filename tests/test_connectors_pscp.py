@@ -149,3 +149,6 @@ def test_pscp_fetch_pagina_y_avanza_cursor():
     assert connector.new_cursor() == {"last_seen_updated": "2026-05-22"}
     where = session.calls[0]["$where"]
     assert ":updated_at >= '2026-05-20'" in where  # solape de 1 día
+    # Socrata rechaza con 400 "$select=:updated_at, *" (campo de sistema antes
+    # del wildcard) — el wildcard debe ir primero.
+    assert session.calls[0]["$select"] == "*, :updated_at"

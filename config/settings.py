@@ -260,7 +260,7 @@ class Settings(BaseSettings):
     # ── Scraper ──────────────────────────────────────────────────────────
     REQUEST_TIMEOUT: int = 30
     REQUEST_DELAY_SECONDS: float = 1.5
-    MAX_DOWNLOAD_SIZE_BYTES: int = 200 * 1024 * 1024
+    MAX_DOWNLOAD_SIZE_BYTES: int = 400 * 1024 * 1024
     MAX_XML_SIZE_BYTES: int = 150 * 1024 * 1024
     DAILY_MAX_PAGES: int = 50
     BACKFILL_MAX_WORKERS: int = 3
