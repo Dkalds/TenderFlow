@@ -26,6 +26,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        # datetime('now') no es válido en Postgres. La tabla la crea
+        # v55_pg_v27_v49_tables_backfill (DDL portable, más adelante).
+        return
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS licitaciones_duplicados (

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 revision: str = "v15_webhooks"
 down_revision: str | Sequence[str] | None = "v14_ml_feedback"
@@ -35,12 +35,19 @@ def upgrade() -> None:
     )
     op.create_index("idx_webhooks_active", "webhooks", ["active"])
 
-    # Añadir expires_at a api_keys (B6) — solo si la columna no existe
-    # SQLite no soporta IF NOT EXISTS para ADD COLUMN, manejarlo con try/except
-    try:
+    # Añadir expires_at a api_keys (B6) — solo si la columna no existe.
+    # No usar try/except: en Postgres un statement fallido dentro de la misma
+    # transacción la deja abortada (InFailedSqlTransaction) para el resto de
+    # la migración, a diferencia de SQLite que tolera el reintento silencioso.
+    # En modo offline (--sql) no hay conexión real que introspeccionar.
+    if context.is_offline_mode():
         op.add_column("api_keys", sa.Column("expires_at", sa.Text, nullable=True))
-    except Exception:
-        pass  # Column already exists
+        return
+    insp = sa.inspect(op.get_bind())
+    if "api_keys" in insp.get_table_names() and "expires_at" not in {
+        c["name"] for c in insp.get_columns("api_keys")
+    }:
+        op.add_column("api_keys", sa.Column("expires_at", sa.Text, nullable=True))
 
 
 def downgrade() -> None:

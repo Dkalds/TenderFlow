@@ -146,6 +146,12 @@ def upgrade() -> None:
         op.create_index("idx_users_oauth", "users", ["oauth_provider", "oauth_sub"])
 
     # ── api_keys (db/migrations.py #19; prerequisito de v15/v25/v28) ────────
+    # OJO: `expires_at` NO va acá -- v15_webhooks es la dueña original de esa
+    # columna (op.add_column con try/except). Duplicarla acá haría que el
+    # ADD COLUMN de v15 falle por "ya existe", y ese try/except deja la
+    # transacción de Postgres abortada (InFailedSqlTransaction) para el resto
+    # de la migración -- a diferencia de SQLite, Postgres no perdona statements
+    # fallidos dentro de la misma transacción sin un ROLLBACK/SAVEPOINT.
     if "api_keys" not in existing:
         op.create_table(
             "api_keys",
@@ -155,7 +161,6 @@ def upgrade() -> None:
             sa.Column("created_at", sa.Text, nullable=False, server_default=_NOW),
             sa.Column("last_used", sa.Text, nullable=True),
             sa.Column("is_active", sa.Integer, nullable=False, server_default="1"),
-            sa.Column("expires_at", sa.Text, nullable=True),
         )
         op.execute(
             "CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE is_active = 1"

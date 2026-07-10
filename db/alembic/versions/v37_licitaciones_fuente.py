@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import context, op
 
 revision: str = "v37_licitaciones_fuente"
@@ -34,13 +35,12 @@ def upgrade() -> None:
         op.execute("CREATE INDEX IF NOT EXISTS idx_lic_fuente ON licitaciones(fuente)")
         return
 
-    bind = op.get_bind()
-    table_exists = bind.exec_driver_sql(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones'"
-    ).fetchone()
-    if not table_exists:
+    # No usar sqlite_master/PRAGMA (no existen en Postgres): usar el
+    # inspector de SQLAlchemy, portable entre dialectos.
+    insp = sa.inspect(op.get_bind())
+    if "licitaciones" not in insp.get_table_names():
         return
-    cols = {row[1] for row in bind.exec_driver_sql("PRAGMA table_info(licitaciones)").fetchall()}
+    cols = {c["name"] for c in insp.get_columns("licitaciones")}
     if "fuente" not in cols:
         op.execute("ALTER TABLE licitaciones ADD COLUMN fuente TEXT NOT NULL DEFAULT 'placsp'")
     op.execute("UPDATE licitaciones SET fuente = 'placsp' WHERE fuente IS NULL OR fuente = ''")

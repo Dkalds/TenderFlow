@@ -27,6 +27,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        # AUTOINCREMENT/datetime('now') no son válidos en Postgres. La tabla
+        # (incluida la columna email de v47) la crea
+        # v55_pg_v27_v49_tables_backfill (DDL portable, más adelante).
+        return
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS watchlist_rules (

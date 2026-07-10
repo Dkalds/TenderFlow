@@ -51,6 +51,12 @@ CREATE TABLE contrato_eventos_new (
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        # AUTOINCREMENT no es válido en Postgres, y la introspección de
+        # sqlite_master usada más abajo tampoco existe ahí. resoluciones_recurso
+        # y el CHECK ampliado de contrato_eventos (con 'recurso') los crea
+        # v55_pg_v27_v49_tables_backfill (DDL portable, más adelante).
+        return
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS resoluciones_recurso (

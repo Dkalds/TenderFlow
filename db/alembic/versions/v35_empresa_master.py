@@ -88,6 +88,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_empresa_review_pending
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        # AUTOINCREMENT/datetime('now') no son válidos en Postgres, y la
+        # introspección de sqlite_master usada más abajo tampoco existe ahí.
+        # Estas tablas (y adjudicaciones.empresa_id) las crea
+        # v55_pg_v27_v49_tables_backfill / baseline002_pg_core_genesis
+        # (DDL portable).
+        return
     for stmt in _DDL.split(";"):
         if stmt.strip():
             op.execute(stmt)

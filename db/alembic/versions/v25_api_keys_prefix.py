@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 revision: str = "v25_api_keys_prefix"
 down_revision: str | Sequence[str] | None = "v24_cursor_composite_index"
@@ -26,11 +26,17 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # SQLite no soporta IF NOT EXISTS en ADD COLUMN. Usar try/except.
-    try:
+    # No usar try/except: en Postgres un ADD COLUMN fallido deja la
+    # transacción abortada para el resto de la migración. En modo offline
+    # (--sql) no hay conexión real que introspeccionar.
+    if context.is_offline_mode():
         op.add_column("api_keys", sa.Column("prefix", sa.Text(), nullable=True))
-    except Exception:
-        pass  # Column already exists
+        return
+    insp = sa.inspect(op.get_bind())
+    if "api_keys" in insp.get_table_names() and "prefix" not in {
+        c["name"] for c in insp.get_columns("api_keys")
+    }:
+        op.add_column("api_keys", sa.Column("prefix", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:

@@ -29,6 +29,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        # AUTOINCREMENT no es válido en Postgres. La tabla la crea
+        # v51_pg_legacy_tables_backfill (DDL portable, más adelante).
+        return
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS csp_violations (
