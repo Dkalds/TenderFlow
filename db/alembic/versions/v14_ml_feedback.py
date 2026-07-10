@@ -4,7 +4,7 @@ Crea la tabla ``ml_feedback`` para almacenar las señales de relevancia
 enviadas por los usuarios desde el dashboard o la API.
 
 Revision ID: v14_ml_feedback
-Revises: baseline001
+Revises: baseline002_pg_core_genesis
 Create Date: 2026-05-10
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "v14_ml_feedback"
-down_revision: str | Sequence[str] | None = "baseline001"
+down_revision: str | Sequence[str] | None = "baseline002_pg_core_genesis"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

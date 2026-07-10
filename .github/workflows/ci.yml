@@ -192,11 +192,9 @@ jobs:
         run: alembic upgrade head
 
       - name: Downgrade to base (verifica reversibilidad)
-        # No bloqueante todavia: la cadena v14-v50 nunca se ejercito en
-        # downgrade contra Postgres real: puede haber problemas de orden de
-        # FKs preexistentes sin relacion con v53/v54/v55. continue-on-error
-        # para no bloquear merges mientras se investiga; el paso de arriba
-        # (upgrade head) sigue siendo bloqueante.
+        # No bloqueante todavia: la cadena v14-v50 nunca se ejercitó en
+        # downgrade contra Postgres real; puede haber problemas de orden de
+        # FKs preexistentes sin relación con baseline002/v53/v54/v55.
         continue-on-error: true
         env:
           ENV: dev

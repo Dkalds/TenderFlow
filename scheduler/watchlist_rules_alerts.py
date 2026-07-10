@@ -106,7 +106,7 @@ def _update_last_notified(rule_id: int, ts: str) -> None:
 
 def _build_title(rule: WatchlistRule, n: int) -> str:
     """Titulo corto para la notificacion in-app."""
-    nombre = rule.nombre or rule.keyword or f"CPV {rule.cpv}" or "tu regla"
+    nombre = rule.nombre or rule.keyword or (f"CPV {rule.cpv}" if rule.cpv else None) or "tu regla"
     return f"{n} licitacion(es) nueva(s) para «{nombre}»"
 
 
