@@ -157,9 +157,10 @@ def _write_user_notifications(
                     continue
                 body = f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}"
                 cur = c.execute(
-                    "INSERT OR IGNORE INTO user_notifications "
+                    "INSERT INTO user_notifications "
                     "(user_key, created_at, type, title, body, licitacion_id, rule_id) "
-                    "VALUES (?, ?, 'rule_match', ?, ?, ?, ?)",
+                    "VALUES (?, ?, 'rule_match', ?, ?, ?, ?) "
+                    "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
                     (user_key, now_ts, title, body, lic_id, rule_id),
                 )
                 inserted += cur.rowcount

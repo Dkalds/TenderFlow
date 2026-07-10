@@ -235,8 +235,9 @@ def seed_negatives(
     inserted = 0
     already_exists = 0
     if rows_to_insert:
-        from db.database import connect, get_table_columns
+        from db.database import connect, get_table_columns, is_postgres_backend
 
+        now_sql = "NOW()" if is_postgres_backend() else "datetime('now')"
         try:
             with connect() as _conn:
                 existing_cols = set(get_table_columns(_conn, "licitaciones"))
@@ -260,14 +261,15 @@ def seed_negatives(
                 extra_vals += ", NULL"
             with connect() as c:
                 cur = c.execute(
-                    f"""INSERT OR IGNORE INTO licitaciones
+                    f"""INSERT INTO licitaciones
                        (id_externo, titulo, descripcion, organo_contratacion,
                         importe, moneda, cpv, tipo_contrato, estado,
                         fecha_publicacion, fecha_extraccion, url, raw_keywords,
                         provincia, nuts_code, ccaa,
                         duracion_valor, duracion_unidad, fecha_inicio,
                         fecha_fin, prorroga_descripcion{extra_cols})
-                       VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'),?,NULL,?,?,?,?,?,?,?,?{extra_vals})""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,{now_sql},?,NULL,?,?,?,?,?,?,?,?{extra_vals})
+                       ON CONFLICT(id_externo) DO NOTHING""",
                     (
                         row[0],
                         row[1],
@@ -438,8 +440,9 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         log.error("precompute_ml_tecnologias.load_failed", error=str(exc))
         return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
 
-    from db.database import connect
+    from db.database import connect, is_postgres_backend
 
+    now_sql = "NOW()" if is_postgres_backend() else "datetime('now')"
     where = "" if force else "WHERE ml_proba_max IS NULL"
     with connect() as c:
         rows = c.execute(
@@ -509,10 +512,14 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
                 update_params,
             )
             c.executemany(
-                "INSERT OR REPLACE INTO licitacion_tecnologia_score "
+                "INSERT INTO licitacion_tecnologia_score "
                 "(licitacion_id, tecnologia, probabilidad, "
                 " threshold_aplicado, computed_at) "
-                "VALUES (?, ?, ?, ?, datetime('now'))",
+                f"VALUES (?, ?, ?, ?, {now_sql}) "
+                "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
+                "probabilidad=excluded.probabilidad, "
+                "threshold_aplicado=excluded.threshold_aplicado, "
+                "computed_at=excluded.computed_at",
                 score_params,
             )
             c.commit()

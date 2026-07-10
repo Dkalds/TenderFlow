@@ -197,7 +197,7 @@ class WebhookRepository:
             response = {}
         with connect() as c:
             c.execute(
-                "INSERT OR IGNORE INTO idempotency_keys (idem_key, endpoint, response_json, created_at) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO idempotency_keys (idem_key, endpoint, response_json, created_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(idem_key, endpoint) DO NOTHING",
                 (key, endpoint, json.dumps(response, ensure_ascii=False), now_utc_iso()),
             )

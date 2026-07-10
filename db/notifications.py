@@ -18,8 +18,9 @@ def mark_read(user_key: str, notification_id: str) -> None:
     with connect() as c:
         c.execute(
             """
-            INSERT OR IGNORE INTO notification_reads (user_key, notification_id, read_at)
+            INSERT INTO notification_reads (user_key, notification_id, read_at)
             VALUES (?, ?, ?)
+            ON CONFLICT(user_key, notification_id) DO NOTHING
             """,
             (user_key, notification_id, now_utc_iso()),
         )
@@ -32,8 +33,8 @@ def mark_all_read(user_key: str, notification_ids: list[str]) -> None:
     ts = now_utc_iso()
     with connect() as c:
         c.executemany(
-            "INSERT OR IGNORE INTO notification_reads (user_key, notification_id, read_at) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO notification_reads (user_key, notification_id, read_at) "
+            "VALUES (?, ?, ?) ON CONFLICT(user_key, notification_id) DO NOTHING",
             [(user_key, nid, ts) for nid in notification_ids],
         )
 

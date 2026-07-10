@@ -76,9 +76,10 @@ def add_alias(
 ) -> None:
     """Registra una variante vista en fuente. Idempotente (índice único)."""
     conn.execute(
-        "INSERT OR IGNORE INTO empresa_aliases "
+        "INSERT INTO empresa_aliases "
         "(empresa_id, alias_normalizado, nif_variante, fuente, confianza, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT (empresa_id, alias_normalizado, COALESCE(nif_variante, '')) DO NOTHING",
         (empresa_id, alias_normalizado, nif_variante, fuente, confianza, now_utc_iso()),
     )
 
@@ -100,7 +101,8 @@ def set_nif_canonico_if_null(conn: Any, empresa_id: int, nif: str) -> bool:
 
 def add_ute_member(conn: Any, ute_empresa_id: int, miembro_empresa_id: int) -> None:
     conn.execute(
-        "INSERT OR IGNORE INTO ute_miembros (ute_empresa_id, miembro_empresa_id) VALUES (?, ?)",
+        "INSERT INTO ute_miembros (ute_empresa_id, miembro_empresa_id) VALUES (?, ?) "
+        "ON CONFLICT(ute_empresa_id, miembro_empresa_id) DO NOTHING",
         (ute_empresa_id, miembro_empresa_id),
     )
 
@@ -139,9 +141,11 @@ def enqueue_review(
 ) -> None:
     """Encola un match dudoso para revisión humana. Idempotente para pendientes."""
     conn.execute(
-        "INSERT OR IGNORE INTO empresa_review_queue "
+        "INSERT INTO empresa_review_queue "
         "(nombre_original, alias_normalizado, nif, candidato_empresa_id, score, status, created_at) "
-        "VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+        "VALUES (?, ?, ?, ?, ?, 'pending', ?) "
+        "ON CONFLICT (alias_normalizado, COALESCE(nif, ''), candidato_empresa_id) "
+        "WHERE status = 'pending' DO NOTHING",
         (nombre_original, alias_normalizado, nif, candidato_empresa_id, score, now_utc_iso()),
     )
 

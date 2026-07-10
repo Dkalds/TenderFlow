@@ -82,9 +82,10 @@ class FeedbackRepository:
 
         with connect() as c:
             c.execute(
-                "INSERT OR IGNORE INTO idempotency_keys "
+                "INSERT INTO idempotency_keys "
                 "(idem_key, endpoint, response_json, created_at) "
-                "VALUES (?, 'feedback', ?, ?)",
+                "VALUES (?, 'feedback', ?, ?) "
+                "ON CONFLICT(idem_key, endpoint) DO NOTHING",
                 (key, json.dumps(response, ensure_ascii=False), now_utc_iso()),
             )
 

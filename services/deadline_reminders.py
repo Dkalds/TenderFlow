@@ -59,7 +59,7 @@ def _deadline_type(days_left: int, field: str) -> str:
 def check_deadlines_and_notify(user_key: str) -> int:
     """Genera notificaciones de deadline para los favoritos del usuario.
 
-    Idempotente: INSERT OR IGNORE en user_notifications (UNIQUE por user_key, licitacion_id, type).
+    Idempotente: upsert (ON CONFLICT DO NOTHING) en user_notifications (UNIQUE por user_key, licitacion_id, type).
 
     Returns:
         Numero de notificaciones nuevas escritas.
@@ -103,9 +103,10 @@ def check_deadlines_and_notify(user_key: str) -> int:
                 )
                 with connect() as c:
                     cur = c.execute(
-                        "INSERT OR IGNORE INTO user_notifications "
+                        "INSERT INTO user_notifications "
                         "(user_key, created_at, type, title, body, licitacion_id) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        "VALUES (?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
                         (user_key, now_ts, notif_type, title, body, lic_id),
                     )
                     written += cur.rowcount

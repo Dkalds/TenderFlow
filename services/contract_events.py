@@ -146,10 +146,12 @@ def derive_new_events(batch_size: int = 1000) -> int:
                     continue
                 tipo, delta, detalle = evento
                 c.execute(
-                    "INSERT OR IGNORE INTO contrato_eventos "
+                    "INSERT INTO contrato_eventos "
                     "(licitacion_id, tipo, fecha, campo, valor_antes, valor_despues, "
                     " importe_delta, detalle, history_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT (history_id, tipo, COALESCE(campo, '')) "
+                    "WHERE history_id IS NOT NULL DO NOTHING",
                     (
                         row["id_externo"],
                         tipo,

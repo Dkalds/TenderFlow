@@ -76,9 +76,10 @@ class WatchlistRepository:
         try:
             with connect() as c:
                 c.execute(
-                    "INSERT OR IGNORE INTO pending_digests "
+                    "INSERT INTO pending_digests "
                     "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(entry_id, licitacion_id) DO NOTHING",
                     (user_key, recipient, entry_id, licitacion_id, frequency, matched_at),
                 )
             return True
@@ -173,8 +174,8 @@ class WatchlistRepository:
         """
         with connect() as c:
             c.execute(
-                "INSERT OR IGNORE INTO watchlist_items (user_key, user_id, id_externo) "
-                "VALUES (?, ?, ?)",
+                "INSERT INTO watchlist_items (user_key, user_id, id_externo) "
+                "VALUES (?, ?, ?) ON CONFLICT(user_key, id_externo) DO NOTHING",
                 (user_key, user_id, id_externo),
             )
             cur = c.execute(

@@ -184,9 +184,10 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
     if marcas:
         with connect() as c:
             c.executemany(
-                "INSERT OR IGNORE INTO licitaciones_duplicados "
+                "INSERT INTO licitaciones_duplicados "
                 "(licitacion_id, canonical_id, clave_match, confianza, status) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(licitacion_id) DO NOTHING",
                 marcas,
             )
     if max_extraccion and max_extraccion != watermark:
