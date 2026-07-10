@@ -225,18 +225,63 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
         }
 
 
+def _baja_real(c: Any, licitacion_id: str) -> tuple[float, float] | None:
+    """Baja real ``(baja_pct, importe_adjudicado)`` si la licitación fue adjudicada.
+
+    Suma ``importe_adjudicado`` de todos los lotes de la licitación (una
+    licitación puede tener varias filas en ``adjudicaciones``) y lo compara
+    contra el presupuesto (``licitaciones.importe``).
+    """
+    sql = f"""
+        SELECT l.importe, SUM(a.importe_adjudicado) AS total_adjudicado
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        WHERE a.licitacion_id = ? AND {exclude_duplicados_sql()}
+          AND l.importe > 0 AND a.importe_adjudicado > 0
+        GROUP BY l.importe
+    """  # noqa: S608 — exclude_duplicados_sql() es un fragmento constante
+    row = c.execute(sql, (licitacion_id,)).fetchone()
+    if row is None or row[0] is None or row[1] is None:
+        return None
+    importe, total_adjudicado = row
+    return (importe - total_adjudicado) / importe, total_adjudicado
+
+
 def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:
-    """Lectura de la predicción materializada para una licitación."""
+    """Lectura de la predicción materializada y/o la baja real de una licitación.
+
+    - Publicada/abierta: solo estimación del batch (p10/p50/p90).
+    - Adjudicada con estimación previa (scoreada antes de adjudicarse): ambas,
+      para comparar lo estimado contra lo real.
+    - Adjudicada sin estimación previa (adjudicada antes de que corriera el
+      batch): solo la baja real.
+    - Ninguna de las dos → ``None`` (404).
+    """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT licitacion_id, p10, p50, p90, model_version, computed_at "
+            "SELECT p10, p50, p90, model_version, computed_at "
             "FROM predicciones_baja WHERE licitacion_id = ?",
             (licitacion_id,),
         )
-        row = cur.fetchone()
-        if row is None:
-            return None
-        cols = [d[0] for d in cur.description]
-    data = dict(zip(cols, row, strict=False))
-    data["serving"] = "modelo" if data.get("model_version") else "baseline"
+        pred_row = cur.fetchone()
+        real = _baja_real(c, licitacion_id)
+
+    if pred_row is None and real is None:
+        return None
+
+    data: dict[str, Any] = {"licitacion_id": licitacion_id}
+    if pred_row is not None:
+        p10, p50, p90, model_version, computed_at = pred_row
+        data.update(
+            p10=p10,
+            p50=p50,
+            p90=p90,
+            model_version=model_version,
+            computed_at=computed_at,
+            serving="modelo" if model_version else "baseline",
+        )
+    if real is not None:
+        baja_real, importe_adjudicado = real
+        data["baja_real"] = baja_real
+        data["importe_adjudicado"] = importe_adjudicado
     return data

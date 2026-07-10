@@ -3,7 +3,9 @@
 - ``GET /licitaciones/{id}/prediccion-baja`` — intervalo p10/p50/p90 de la
   baja esperada, materializado por el batch nocturno. Toda predicción expone
   ``model_version`` y ``computed_at`` (trazabilidad anti-"número mágico");
-  ``model_version`` NULL = baseline histórico, no modelo.
+  ``model_version`` NULL = baseline histórico, no modelo. Si la licitación
+  ya está adjudicada, además incluye ``baja_real``/``importe_adjudicado``
+  para comparar la estimación (si la hubo) contra el resultado real.
 """
 
 from __future__ import annotations
@@ -32,6 +34,6 @@ async def get_prediccion_baja(
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Sin predicción para esa licitación (¿batch aún no ejecutado o ya adjudicada?).",
+            detail="Sin predicción ni adjudicación registrada para esa licitación.",
         )
     return data

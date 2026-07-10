@@ -47,4 +47,31 @@ describe("PrediccionBajaBlock", () => {
     });
     expect(screen.getByText("estimación histórica")).toBeInTheDocument();
   });
+
+  it("compares estimated vs real baja for an awarded tender with prior estimate", () => {
+    renderWithData("L3", {
+      licitacion_id: "L3",
+      p10: 0.05,
+      p50: 0.12,
+      p90: 0.2,
+      model_version: 3,
+      computed_at: "2025-01-15T10:00:00Z",
+      serving: "modelo",
+      baja_real: 0.18,
+      importe_adjudicado: 82000,
+    });
+    expect(screen.getByText("Baja estimada vs. real")).toBeInTheDocument();
+    expect(screen.getByText("12.0%")).toBeInTheDocument();
+    expect(screen.getByText("18.0%")).toBeInTheDocument();
+    expect(screen.getByText("+6.0% vs. estimado")).toBeInTheDocument();
+  });
+
+  it("renders only the real baja for an awarded tender with no prior estimate", () => {
+    renderWithData("L4", { licitacion_id: "L4", baja_real: 0.2, importe_adjudicado: 40000 });
+    expect(screen.getByText("Baja real")).toBeInTheDocument();
+    expect(screen.getByText("20.0%")).toBeInTheDocument();
+    expect(
+      screen.getByText("Sin estimación del modelo previa a la adjudicación."),
+    ).toBeInTheDocument();
+  });
 });
