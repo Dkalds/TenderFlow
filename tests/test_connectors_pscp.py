@@ -150,5 +150,66 @@ def test_pscp_fetch_pagina_y_avanza_cursor():
     where = session.calls[0]["$where"]
     assert ":updated_at >= '2026-05-20'" in where  # solape de 1 día
     # Socrata rechaza con 400 "$select=:updated_at, *" (campo de sistema antes
-    # del wildcard) — el wildcard debe ir primero.
-    assert session.calls[0]["$select"] == "*, :updated_at"
+    # del wildcard) — el wildcard debe ir primero. :id es el desempate estable
+    # de la paginación por cursor (evita $offset, que degrada ~O(offset)).
+    assert session.calls[0]["$select"] == "*, :updated_at, :id"
+
+
+def test_pscp_fetch_pagina_multiple_usa_cursor_no_offset(monkeypatch):
+    """La página 2+ no usa $offset -- pagina por (:updated_at, :id).
+
+    Medido en vivo contra el dataset real: $offset=1000 tarda ~5 minutos
+    (Socrata recorre y descarta todas las filas anteriores) contra ~2s con
+    cursor. Ver comentario en PscpConnector.fetch.
+    """
+    monkeypatch.setattr("scraper.connectors.pscp._PAGE_SIZE", 2)
+    monkeypatch.setattr("scraper.connectors.pscp._PAGE_PAUSE_S", 0)
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class FakeSession:
+        def __init__(self, pages):
+            self.pages = pages
+            self.calls = []
+
+        def get(self, url, *, params, headers, timeout):
+            self.calls.append(params)
+            page = self.pages[len(self.calls) - 1]
+            return FakeResponse(page)
+
+    # Página 1: 2 filas (= _PAGE_SIZE) -> dispara página 2. Página 2: 1 fila
+    # (< _PAGE_SIZE) -> corta el loop.
+    rec1 = dict(_pscp_record(), **{":updated_at": "2026-05-21T08:00:00.000Z", ":id": "row-a"})
+    rec2 = dict(
+        _pscp_record(),
+        codi_expedient="X-2",
+        **{":updated_at": "2026-05-21T08:00:00.000Z", ":id": "row-b"},
+    )
+    rec3 = dict(
+        _pscp_record(),
+        codi_expedient="X-3",
+        **{":updated_at": "2026-05-22T09:00:00.000Z", ":id": "row-c"},
+    )
+    session = FakeSession(pages=[[rec1, rec2], [rec3]])
+    connector = PscpConnector(dataset_id="abcd-1234", session=session)
+
+    notices = list(connector.fetch({"last_seen_updated": "2026-05-21"}))
+
+    assert [n.natural_id for n in notices] == ["CTTI-2026-00123", "X-2", "X-3"]
+    assert len(session.calls) == 2
+    for call in session.calls:
+        assert "$offset" not in call
+    where_page2 = session.calls[1]["$where"]
+    # Desempate: misma marca de tiempo que rec1/rec2, id > 'row-b' (el
+    # último visto en la página 1) -- sin esto, filas con timestamp idéntico
+    # (frecuente tras una republicación completa del dataset) se perderían.
+    assert ":updated_at = '2026-05-21T08:00:00.000Z'" in where_page2
+    assert ":id > 'row-b'" in where_page2

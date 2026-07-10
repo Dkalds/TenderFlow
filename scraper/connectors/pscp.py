@@ -117,6 +117,11 @@ def _field(record: dict[str, Any], concept: str) -> Any:
     return None
 
 
+def _soql_escape(value: str) -> str:
+    """Escapa comillas simples para interpolar en un literal SoQL."""
+    return value.replace("'", "''")
+
+
 def _text(record: dict[str, Any], concept: str) -> str | None:
     value = _field(record, concept)
     if value is None:
@@ -206,27 +211,44 @@ class PscpConnector:
             )
         since = self._since(cursor)
         headers = {"X-App-Token": self.app_token} if self.app_token else {}
-        offset = 0
         page_num = 0
         total_seen = 0
+        # Paginación por cursor (:updated_at, :id), NO por $offset: medido en
+        # vivo contra el dataset real (2026-07-10), la página 1 (offset=0)
+        # tarda ~2s pero la página 2 (offset=1000) tarda ~5 MINUTOS -- $offset
+        # en Socrata degrada ~O(offset), porque el backend recorre y descarta
+        # todas las filas anteriores en vez de saltar directo. Con cursor por
+        # clave (arbitro estable :id, que Socrata expone para toda fila y
+        # nunca cambia) cada página cuesta ~1-2s sin importar cuán avanzado
+        # esté el recorrido -- imprescindible para un dataset de ~1.86M filas
+        # (republicación completa detectada el mismo día).
+        last_updated = since
+        last_id = ""
         log.info("pscp_fetch_start", dataset=self.dataset_id, since=since)
         while True:
             page_num += 1
+            if last_id:
+                where = (
+                    f"{_CURSOR_FIELD} > '{last_updated}' OR "
+                    f"({_CURSOR_FIELD} = '{last_updated}' AND :id > '{_soql_escape(last_id)}')"
+                )
+            else:
+                where = f"{_CURSOR_FIELD} >= '{last_updated}'"
             resp = self._session.get(
                 self._resource_url,
                 params={
                     # Incremental sobre el campo de sistema Socrata: cada fila
                     # del dataset es una publicación de fase con SU campo de
                     # fecha (anunci/adjudicació/formalització…); :updated_at
-                    # es el único común a todas y nunca nulo.
+                    # es el único común a todas y nunca nulo. :id es el
+                    # desempate estable para la paginación por cursor.
                     # El wildcard debe ir primero: SoQL rechaza con 400 la
                     # combinación "<campo_sistema>, *" (orden invertido) —
                     # sintaxis documentada: https://dev.socrata.com/docs/queries/select.html
-                    "$select": f"*, {_CURSOR_FIELD}",
-                    "$where": f"{_CURSOR_FIELD} >= '{since}'",
-                    "$order": f"{_CURSOR_FIELD} ASC",
+                    "$select": f"*, {_CURSOR_FIELD}, :id",
+                    "$where": where,
+                    "$order": f"{_CURSOR_FIELD} ASC, :id ASC",
                     "$limit": str(_PAGE_SIZE),
-                    "$offset": str(offset),
                 },
                 headers=headers,
                 timeout=_TIMEOUT,
@@ -236,7 +258,6 @@ class PscpConnector:
             log.info(
                 "pscp_fetch_page",
                 page=page_num,
-                offset=offset,
                 records=len(records) if isinstance(records, list) else 0,
                 total_seen=total_seen,
             )
@@ -255,9 +276,11 @@ class PscpConnector:
                 if marca and (self._max_pub_date is None or marca > self._max_pub_date):
                     self._max_pub_date = marca
                 yield RawNotice(natural_id=natural_id, payload=record)
+            last_record = records[-1]
+            last_updated = str(last_record.get(_CURSOR_FIELD) or last_updated)
+            last_id = str(last_record.get(":id") or "")
             if len(records) < _PAGE_SIZE:
                 break
-            offset += _PAGE_SIZE
             time.sleep(_PAGE_PAUSE_S)
 
     # ── parse ────────────────────────────────────────────────────────────
