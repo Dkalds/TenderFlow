@@ -169,7 +169,7 @@ def upgrade() -> None:
     with op.batch_alter_table(
         "adjudicaciones",
         copy_from=_adj_pre,
-        recreate="always",
+        recreate="auto",
     ) as batch_op:
         batch_op.drop_constraint("adjudicaciones_licitacion_id_fkey", type_="foreignkey")
         batch_op.create_foreign_key(
@@ -194,7 +194,7 @@ def upgrade() -> None:
     with op.batch_alter_table(
         "licitaciones",
         copy_from=_lic_pre,
-        recreate="always",
+        recreate="auto",
     ) as batch_op:
         for col in _LIC_DATE_COLS:
             batch_op.alter_column(
@@ -210,7 +210,7 @@ def downgrade() -> None:
     with op.batch_alter_table(
         "adjudicaciones",
         copy_from=_adj_post,
-        recreate="always",
+        recreate="auto",
     ) as batch_op:
         batch_op.drop_constraint("fk_adj_licitacion_cascade", type_="foreignkey")
         batch_op.create_foreign_key(
