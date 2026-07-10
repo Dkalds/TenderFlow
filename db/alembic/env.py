@@ -63,8 +63,16 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     if _is_postgres:
-        # Crear engine directamente con la URL (evita ConfigParser que interpola %)
-        connectable = create_engine(_database_url, poolclass=pool.NullPool)
+        # Crear engine directamente con la URL (evita ConfigParser que interpola %).
+        # SQLAlchemy resuelve el esquema "postgresql://" al driver psycopg2 por
+        # defecto; el proyecto solo declara psycopg (v3) como dependencia
+        # (requirements.txt), así que forzamos el dialecto "+psycopg" explícito.
+        engine_url = _database_url
+        if engine_url.startswith("postgresql://"):
+            engine_url = "postgresql+psycopg://" + engine_url[len("postgresql://") :]
+        elif engine_url.startswith("postgres://"):
+            engine_url = "postgresql+psycopg://" + engine_url[len("postgres://") :]
+        connectable = create_engine(engine_url, poolclass=pool.NullPool)
     else:
         connectable = engine_from_config(
             config.get_section(config.config_ini_section, {}),

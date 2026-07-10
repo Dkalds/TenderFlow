@@ -18,7 +18,7 @@ una columna respaldada por secuencia (serial/identity) y la resincroniza a
 minimo necesario para evitar colisiones, sin importar su estado actual.
 
 Revision ID: v54_resync_pg_sequences
-Revises: v53_watchlist_cpv_missing_columns
+Revises: v53_watchlist_cpv_missing_cols
 Create Date: 2026-07-10
 """
 
@@ -27,7 +27,7 @@ from __future__ import annotations
 from alembic import op
 
 revision: str = "v54_resync_pg_sequences"
-down_revision: str | None = "v53_watchlist_cpv_missing_columns"
+down_revision: str | None = "v53_watchlist_cpv_missing_cols"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | tuple[str, ...] | None = None
 

@@ -16,7 +16,7 @@ columnas anadidas despues por el sistema casero via ALTER TABLE:
 para que la migracion sea segura de re-ejecutar aunque alguna columna ya
 exista por un backfill manual previo.
 
-Revision ID: v53_watchlist_cpv_missing_columns
+Revision ID: v53_watchlist_cpv_missing_cols
 Revises: v52_rls_lockdown
 Create Date: 2026-07-10
 """
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from alembic import op
 
-revision: str = "v53_watchlist_cpv_missing_columns"
+revision: str = "v53_watchlist_cpv_missing_cols"
 down_revision: str | None = "v52_rls_lockdown"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | tuple[str, ...] | None = None
