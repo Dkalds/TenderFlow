@@ -174,6 +174,7 @@ class TedConnector:
             if total is None:
                 total = int(data.get("totalNoticeCount") or 0)
                 log.info("ted_fetch_start", query=query, total=total)
+            log.info("ted_fetch_page", page=page, records=len(notices), seen=seen)
             for notice in notices:
                 pub_number = notice.get("publication-number")
                 if not pub_number:

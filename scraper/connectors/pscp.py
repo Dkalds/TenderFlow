@@ -207,8 +207,11 @@ class PscpConnector:
         since = self._since(cursor)
         headers = {"X-App-Token": self.app_token} if self.app_token else {}
         offset = 0
+        page_num = 0
+        total_seen = 0
         log.info("pscp_fetch_start", dataset=self.dataset_id, since=since)
         while True:
+            page_num += 1
             resp = self._session.get(
                 self._resource_url,
                 params={
@@ -230,8 +233,16 @@ class PscpConnector:
             )
             resp.raise_for_status()
             records = resp.json()
+            log.info(
+                "pscp_fetch_page",
+                page=page_num,
+                offset=offset,
+                records=len(records) if isinstance(records, list) else 0,
+                total_seen=total_seen,
+            )
             if not isinstance(records, list) or not records:
                 break
+            total_seen += len(records)
             for record in records:
                 if not isinstance(record, dict):
                     continue

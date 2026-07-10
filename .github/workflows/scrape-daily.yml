@@ -59,6 +59,10 @@ jobs:
       - name: Run PSCP Catalunya connector
         if: vars.PSCP_DATASET_ID != ''
         continue-on-error: true
+        # Presupuesto propio: si la API pública de Catalunya se cuelga o
+        # pagina muchísimo, no debe consumir todo el timeout del job (30 min)
+        # y dejar sin correr al step de TACRC que viene después.
+        timeout-minutes: 10
         env:
           ENV: dev
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -73,6 +77,7 @@ jobs:
       - name: Run TACRC resoluciones connector
         if: vars.TACRC_INDEX_URL != ''
         continue-on-error: true
+        timeout-minutes: 10
         env:
           ENV: dev
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
