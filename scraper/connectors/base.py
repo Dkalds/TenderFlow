@@ -15,8 +15,11 @@ señal de invalidación de caché.
 Invariantes que el conector debe respetar:
 - ``id_externo`` namespaceado: ``f"{source_id}:{id_natural}"``.
 - ``Licitacion.fuente = source_id``.
-- ``fetch`` debe ser incremental respecto al cursor que recibe; el runner
-  persiste ``new_cursor`` solo si la ejecución termina sin error fatal.
+- ``fetch`` debe ser incremental respecto al cursor que recibe; ``new_cursor()``
+  debe reflejar el progreso visto hasta el momento en que se lo llama (el
+  runner lo consulta después de cada lote persistido, no solo al final) --
+  para que una ejecución cortada a mitad de camino (timeout externo del job)
+  no pierda todo el avance y la próxima corrida pueda retomar desde ahí.
 """
 
 from __future__ import annotations
@@ -142,9 +145,12 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     """Ejecuta un ciclo completo de ingesta para una fuente.
 
     Procesa en lotes de ``batch_size`` para acotar transacciones. Un aviso
-    que falla al parsear va a la DLQ y no interrumpe el resto; un fallo en
-    ``fetch`` corta la ejecución sin avanzar el cursor (el reintento de la
-    próxima ejecución retoma desde el mismo punto).
+    que falla al parsear va a la DLQ y no interrumpe el resto. El cursor
+    avanza después de cada lote persistido con éxito (no solo al final):
+    un fallo en ``fetch`` -- o una interrupción externa por timeout del job,
+    que no es una excepción Python y corta el proceso a mitad de camino --
+    conserva el progreso hasta el último lote; la próxima ejecución retoma
+    desde ahí en vez de reiniciar siempre desde el mismo punto.
     """
     source_id = connector.source_id
     result = ConnectorRunResult(source_id=source_id)
@@ -170,6 +176,16 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
                 log.warning("adj_rows_dropped", dropped=n_dropped, persisted=n_adj)
         lics.clear()
         adj_por_lic.clear()
+        # Avanzar el cursor por cada lote persistido, no solo al final del
+        # fetch completo. Si la ejecución se corta a mitad de camino (timeout
+        # externo del job, no una excepción Python), el progreso hasta el
+        # último lote queda guardado y la próxima corrida retoma desde ahí en
+        # vez de reiniciar siempre desde el mismo punto (ver PSCP: dataset con
+        # republicación completa, ~1.86M filas, imposible de recorrer entero
+        # dentro del timeout de un solo run).
+        new_cursor = connector.new_cursor()
+        if new_cursor:
+            set_cursor(source_id, **new_cursor)
 
     try:
         for raw in connector.fetch(cursor):
@@ -191,15 +207,13 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
                 _flush()
         _flush()
     except Exception as e:
-        # Fallo de fetch o de persistencia: no avanzar cursor.
+        # El cursor ya avanzó (en _flush) hasta el último lote persistido
+        # con éxito; solo se pierde el progreso del lote aún sin flushear
+        # en el momento del fallo -- la próxima corrida no reinicia desde cero.
         result.errores += 1
         record_failure(None, source_id, e, scope="fetch")
         log.error("connector_run_failed", source=source_id, error=str(e))
         return result
-
-    new_cursor = connector.new_cursor()
-    if new_cursor:
-        set_cursor(source_id, **new_cursor)
 
     if result.parsed or result.adjudicaciones:
         _post_ingestion(source_id)
