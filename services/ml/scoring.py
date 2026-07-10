@@ -1,8 +1,9 @@
 """Scoring batch de predicciones (Fase 6, RFC 20260611-2).
 
 Serving = batch nocturno + lectura de tabla (patrón ``ml_proba``): nada de
-inferencia online por request. Idempotente: PK natural + INSERT OR REPLACE —
-doble ejecución produce las mismas filas.
+inferencia online por request. Idempotente: PK natural + upsert
+(``ON CONFLICT ... DO UPDATE``, portable entre SQLite y Postgres) — doble
+ejecución produce las mismas filas.
 
 Si no hay versión activa del modelo en ``model_versions`` (no entrenado aún,
 o el entrenamiento no batió al baseline — criterio de honestidad), se sirve
@@ -59,9 +60,12 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     computed_at = now_utc_iso()
     with connect() as c:
         c.executemany(
-            "INSERT OR REPLACE INTO predicciones_baja "
+            "INSERT INTO predicciones_baja "
             "(licitacion_id, p10, p50, p90, model_version, computed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(licitacion_id) DO UPDATE SET "
+            "p10=excluded.p10, p50=excluded.p50, p90=excluded.p90, "
+            "model_version=excluded.model_version, computed_at=excluded.computed_at",
             [
                 (
                     p.licitacion_id,
@@ -156,9 +160,13 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
         model_version_str: str = str(version_int)
         with connect() as c:
             c.executemany(
-                "INSERT OR REPLACE INTO predicciones_retencion "
+                "INSERT INTO predicciones_retencion "
                 "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
-                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(licitacion_id) DO UPDATE SET "
+                "empresa_id=excluded.empresa_id, prob_retencion=excluded.prob_retencion, "
+                "riesgo_cambio=excluded.riesgo_cambio, "
+                "model_version=excluded.model_version, computed_at=excluded.computed_at",
                 [
                     (
                         f.licitacion_id,
@@ -199,9 +207,13 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
             )
         with connect() as c:
             c.executemany(
-                "INSERT OR REPLACE INTO predicciones_retencion "
+                "INSERT INTO predicciones_retencion "
                 "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
-                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(licitacion_id) DO UPDATE SET "
+                "empresa_id=excluded.empresa_id, prob_retencion=excluded.prob_retencion, "
+                "riesgo_cambio=excluded.riesgo_cambio, "
+                "model_version=excluded.model_version, computed_at=excluded.computed_at",
                 rows_to_insert,
             )
         log.info("retencion_baseline_done", filas=len(rows_to_insert))
