@@ -26,13 +26,18 @@ _YEARS = list(range(2022, 2027))
 
 
 def upgrade() -> None:
+    is_postgres = op.get_bind().dialect.name == "postgresql"
+    # CREATE VIEW IF NOT EXISTS es sintaxis SQLite; Postgres usa
+    # CREATE OR REPLACE VIEW (semánticamente equivalente para este caso:
+    # idempotente, la vista siempre queda con esta misma definición).
+    create_view = "CREATE OR REPLACE VIEW" if is_postgres else "CREATE VIEW IF NOT EXISTS"
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_licitaciones_history_externo_date "
         "ON licitaciones_history(id_externo, captured_at)"
     )
     for year in _YEARS:
         op.execute(
-            f"CREATE VIEW IF NOT EXISTS licitaciones_history_{year} AS "
+            f"{create_view} licitaciones_history_{year} AS "
             f"SELECT * FROM licitaciones_history "
             f"WHERE captured_at >= '{year}-01-01' AND captured_at < '{year + 1}-01-01'"
         )
