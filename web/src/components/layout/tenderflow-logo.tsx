@@ -43,7 +43,6 @@ export function TenderFlowLogo({
 
   return (
     <span className={cn("flex items-center gap-2", className)}>
-      {/* Green app-icon box */}
       <span
         style={{
           width: boxSize,
@@ -58,7 +57,7 @@ export function TenderFlowLogo({
 
       {showText && (
         <span className="min-w-0 leading-tight">
-          <span className="block truncate text-[15px] font-bold tracking-normal">
+          <span className="block truncate font-display text-[15px] font-bold tracking-normal">
             TenderFlow
           </span>
           <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">

@@ -65,11 +65,11 @@ export function ParticleField({
       "(prefers-reduced-motion: reduce)",
     ).matches;
 
-    // Brand color from the design tokens, e.g. "83 69% 36%".
+    // Brand color from the design tokens, e.g. "26 88% 62%".
     const primary =
       getComputedStyle(document.documentElement)
         .getPropertyValue("--primary")
-        .trim() || "83 69% 40%";
+        .trim() || "24 80% 58%";
     const stroke = (a: number) => `hsl(${primary} / ${a})`;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);

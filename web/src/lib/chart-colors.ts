@@ -66,3 +66,11 @@ export function getBandColor(band: string | null | undefined): string {
   const key = band ? BAND_TO_SCORE[band] : undefined;
   return key ? SCORE_COLOR[key] : SCORE_COLOR.skip;
 }
+
+/** Urgency semaphore (red -> green ramp) — deadline proximity, gantt bars, alerts. */
+export const URGENCY_COLORS = {
+  critical: "hsl(var(--urgency-critical))",
+  high: "hsl(var(--urgency-high))",
+  medium: "hsl(var(--urgency-medium))",
+  low: "hsl(var(--urgency-low))",
+} as const;

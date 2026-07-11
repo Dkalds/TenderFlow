@@ -34,7 +34,7 @@ export function PageHeader({
             {eyebrow}
           </p>
         )}
-        <h1 className="text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
+        <h1 className="tf-h1 text-foreground">
           {title}
         </h1>
         {description && (

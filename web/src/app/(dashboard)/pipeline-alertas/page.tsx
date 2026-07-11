@@ -65,6 +65,7 @@ import type {
   RetenderingResult,
   ForecastVolumeResult,
 } from "@/generated/api";
+import { URGENCY_COLORS } from "@/lib/chart-colors";
 
 /* ------------------------------------------------------------------ */
 /*  Lazy chart imports                                                 */
@@ -314,10 +315,10 @@ export default function PipelineAlertasPage() {
         end: e.fecha_fin_estimada!,
         color:
           (e.dias_hasta_fin ?? 999) < 90
-            ? "#ef4444"
+            ? URGENCY_COLORS.critical
             : (e.dias_hasta_fin ?? 999) < 180
-              ? "#f97316"
-              : "#22c55e",
+              ? URGENCY_COLORS.high
+              : URGENCY_COLORS.low,
       }));
   }, [forecastData]);
 

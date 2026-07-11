@@ -115,7 +115,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center gap-3 text-center">
           <TenderFlowLogo showText={false} boxSize={48} />
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">TenderFlow</h1>
+            <h1 className="tf-display text-foreground">TenderFlow</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Análisis y seguimiento de licitaciones en tiempo real
             </p>

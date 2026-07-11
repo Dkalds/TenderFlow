@@ -100,7 +100,7 @@ export const KpiCard = React.memo(function KpiCard({
         ) : (
           <AnimatedNumber
             value={value ?? "-"}
-            className="tf-tnum block text-[1.75rem] font-bold leading-none text-foreground"
+            className="tf-kpi block text-foreground"
           />
         )}
 

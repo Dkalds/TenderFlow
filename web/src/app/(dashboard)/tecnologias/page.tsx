@@ -521,7 +521,7 @@ export default function TecnologiasPage() {
                           className="flex items-center justify-center rounded p-1 text-xs tabular-nums"
                           style={{
                             backgroundColor: heatColor(val, heatmap.maxVal),
-                            color: val > heatmap.maxVal * 0.5 ? "#fff" : "inherit",
+                            color: val > heatmap.maxVal * 0.5 ? "hsl(var(--primary-foreground))" : "inherit",
                           }}
                           title={`${tech} x ${org}: ${val}`}
                         >

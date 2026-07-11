@@ -61,6 +61,7 @@ export function TreemapContent({
         rx={borderRadius}
         opacity={opacity}
       />
+      {/* White labels are a deliberate exception: they sit on saturated categorical fills, not theme surfaces. */}
       <text x={x + 6} y={y + 16} fill="#fff" fontSize={fontSize} fontWeight={600}>
         {name.length > width / (fontSize * 0.6)
           ? `${name.slice(0, Math.floor(width / (fontSize * 0.6)))}…`

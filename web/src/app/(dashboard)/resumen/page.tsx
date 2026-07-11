@@ -118,7 +118,7 @@ export default function ResumenPage() {
         />
         <div className="relative flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Resumen</h1>
+            <h1 className="tf-h1">Resumen</h1>
             <p className="text-muted-foreground">
               Qué requiere tu atención hoy y las oportunidades más relevantes del mercado.
             </p>

@@ -20,6 +20,7 @@ import {
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { numberFormatter, smartFormatter } from "@/lib/chart-formatters";
+import { URGENCY_COLORS } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -44,20 +45,20 @@ export interface UrgenciaValorPoint {
 }
 
 const HORIZON_COLORS: Record<string, string> = {
-  "0-7d": "#ef4444",
-  "7-30d": "#f97316",
-  "30-90d": "#eab308",
-  "90+d": "#22c55e",
+  "0-7d": URGENCY_COLORS.critical,
+  "7-30d": URGENCY_COLORS.high,
+  "30-90d": URGENCY_COLORS.medium,
+  "90+d": URGENCY_COLORS.low,
 };
 
 function horizonColor(label: string) {
   for (const [key, color] of Object.entries(HORIZON_COLORS)) {
     if (label.includes(key) || label.toLowerCase().includes(key)) return color;
   }
-  if (label.includes("7")) return "#ef4444";
-  if (label.includes("30")) return "#f97316";
-  if (label.includes("90")) return "#eab308";
-  return "#22c55e";
+  if (label.includes("7")) return URGENCY_COLORS.critical;
+  if (label.includes("30")) return URGENCY_COLORS.high;
+  if (label.includes("90")) return URGENCY_COLORS.medium;
+  return URGENCY_COLORS.low;
 }
 
 /* ── Exported chart components ─────────────────────────────────── */
@@ -110,7 +111,7 @@ export function PipelineQuarterlyChart({ data }: { data: TrimestreCount[] }) {
             type="monotone"
             dataKey="importe"
             name="Importe"
-            stroke="#f97316"
+            stroke="hsl(var(--chart-2))"
             strokeWidth={2}
             dot={false}
           />
@@ -247,9 +248,9 @@ export function PipelineUrgencyScatter({
           <Tooltip formatter={smartFormatter} />
           <ReferenceLine
             x={7}
-            stroke="#ef4444"
+            stroke={URGENCY_COLORS.critical}
             strokeDasharray="5 5"
-            label={{ value: "7d", fill: "#ef4444", fontSize: 11 }}
+            label={{ value: "7d", fill: URGENCY_COLORS.critical, fontSize: 11 }}
           />
           <Scatter
             data={data}
@@ -264,7 +265,7 @@ export function PipelineUrgencyScatter({
             }}
           >
             {data.map((point, i) => (
-              <Cell key={i} fill={point.es_urgente ? "#ef4444" : "#3b82f6"} />
+              <Cell key={i} fill={point.es_urgente ? URGENCY_COLORS.critical : "hsl(var(--chart-10))"} />
             ))}
           </Scatter>
         </ScatterChart>

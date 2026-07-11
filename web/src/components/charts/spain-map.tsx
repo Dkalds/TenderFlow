@@ -4,6 +4,7 @@ import * as React from "react";
 import type { FeatureCollection, Feature, Geometry } from "geojson";
 import type { Layer, LeafletMouseEvent } from "leaflet";
 import { GeoJSON, MapContainer, ZoomControl } from "react-leaflet";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
 
@@ -90,13 +91,24 @@ function normalizeCcaa(name: string): string {
 }
 
 const COLOR_SCALES = {
-  blue: { light: "hsl(210 100% 95%)", dark: "hsl(210 100% 35%)" },
-  green: { light: "hsl(140 60% 92%)", dark: "hsl(140 60% 30%)" },
-  orange: { light: "hsl(30 100% 92%)", dark: "hsl(30 100% 40%)" },
-};
+  light: {
+    blue: { light: "hsl(197 40% 93%)", dark: "hsl(197 70% 30%)" },
+    green: { light: "hsl(150 45% 92%)", dark: "hsl(152 70% 26%)" },
+    orange: { light: "hsl(26 70% 93%)", dark: "hsl(22 80% 38%)" },
+  },
+  dark: {
+    blue: { light: "hsl(198 30% 12%)", dark: "hsl(194 85% 60%)" },
+    green: { light: "hsl(155 30% 12%)", dark: "hsl(150 65% 48%)" },
+    orange: { light: "hsl(24 30% 12%)", dark: "hsl(26 90% 60%)" },
+  },
+} as const;
 
-function interpolateColor(t: number, scale: "blue" | "green" | "orange"): string {
-  const s = COLOR_SCALES[scale];
+function interpolateColor(
+  t: number,
+  scale: "blue" | "green" | "orange",
+  mode: "light" | "dark",
+): string {
+  const s = COLOR_SCALES[mode][scale];
   const parse = (c: string) => {
     const m = c.match(/hsl\((\d+)\s+(\d+)%\s+(\d+)%\)/);
     return m ? { h: +m[1], s: +m[2], l: +m[3] } : { h: 0, s: 0, l: 50 };
@@ -124,6 +136,8 @@ export const SpainMap = React.memo(function SpainMap({
   className,
   onCcaaClick,
 }: SpainMapProps) {
+  const { resolvedTheme } = useTheme();
+  const dark = resolvedTheme === "dark";
   const [geoData, setGeoData] = React.useState<FeatureCollection | null>(null);
   const [geoError, setGeoError] = React.useState(false);
   const [hoveredCcaa, setHoveredCcaa] = React.useState<string | null>(null);
@@ -161,11 +175,11 @@ export const SpainMap = React.memo(function SpainMap({
   const getColor = React.useCallback(
     (ccaa: string) => {
       const val = valueMap.get(ccaa);
-      if (val == null) return "hsl(210 15% 92%)";
+      if (val == null) return dark ? "hsl(200 15% 16%)" : "hsl(200 15% 92%)";
       const t = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
-      return interpolateColor(t, colorScale);
+      return interpolateColor(t, colorScale, dark ? "dark" : "light");
     },
-    [valueMap, minVal, maxVal, colorScale],
+    [valueMap, minVal, maxVal, colorScale, dark],
   );
 
   const hoveredValue = hoveredCcaa ? valueMap.get(hoveredCcaa) : undefined;
@@ -178,11 +192,17 @@ export const SpainMap = React.memo(function SpainMap({
       return {
         fillColor: getColor(canonical),
         fillOpacity: 0.85,
-        color: isHovered ? "#1e293b" : "#94a3b8",
+        color: dark
+          ? isHovered
+            ? "hsl(36 12% 90%)"
+            : "hsl(200 15% 40%)"
+          : isHovered
+            ? "hsl(204 35% 15%)"
+            : "hsl(200 15% 55%)",
         weight: isHovered ? 2.5 : 1,
       };
     },
-    [getColor, hoveredCcaa],
+    [getColor, hoveredCcaa, dark],
   );
 
   const onEachFeature = React.useCallback(
@@ -195,7 +215,7 @@ export const SpainMap = React.memo(function SpainMap({
       // Permanent label in the center of each region
       if ("bindTooltip" in layer && typeof layer.bindTooltip === "function") {
         (layer as Layer & { bindTooltip: (content: string, opts: Record<string, unknown>) => void }).bindTooltip(
-          `<div style="text-align:center;font-weight:600;font-size:11px;line-height:1.2;color:#1e293b">
+          `<div style="text-align:center;font-weight:600;font-size:11px;line-height:1.2">
             ${canonical}<br/>
             <span style="font-size:13px">${label}</span>
           </div>`,
@@ -243,11 +263,11 @@ export const SpainMap = React.memo(function SpainMap({
         maxZoom={8}
         zoomControl={false}
         scrollWheelZoom
-        style={{ height, width: "100%", background: "#f8fafc" }}
+        style={{ height, width: "100%", background: "hsl(var(--card))" }}
       >
         <ZoomControl position="bottomright" />
         <GeoJSON
-          key={`${colorScale}-${data.length}-${maxVal}`}
+          key={`${colorScale}-${data.length}-${maxVal}-${resolvedTheme}`}
           data={geoData}
           style={style}
           onEachFeature={onEachFeature}

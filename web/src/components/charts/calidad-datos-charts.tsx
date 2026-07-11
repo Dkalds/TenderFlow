@@ -11,6 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
+import { URGENCY_COLORS } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -20,9 +21,9 @@ interface ColumnCompleteness {
 }
 
 function barColor(pct: number): string {
-  if (pct >= 90) return "#22c55e";
-  if (pct >= 70) return "#eab308";
-  return "#ef4444";
+  if (pct >= 90) return URGENCY_COLORS.low;
+  if (pct >= 70) return URGENCY_COLORS.medium;
+  return URGENCY_COLORS.critical;
 }
 
 /* ── Exported chart components ─────────────────────────────────── */

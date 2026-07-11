@@ -144,7 +144,7 @@ export function KpiBar({ kpis = [], loading = false, filtered = false, collapsed
                   <Icon className="h-3.5 w-3.5 text-primary" />
                 )}
                 <span className="text-muted-foreground">{kpi.label}:</span>
-                <span className="font-medium">{kpi.value}</span>
+                <span className="tf-tnum font-medium">{kpi.value}</span>
                 {kpi.trend != null && (
                   <span
                     className={cn(
