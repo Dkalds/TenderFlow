@@ -4,6 +4,11 @@ Server-side implementation of the pure sklearn clustering logic in
 ``services.clustering_engine`` (KMeans / MiniBatchKMeans over TF-IDF
 embeddings with c-TF-IDF keyword labels). Returns per-cluster summaries,
 importe box-plot statistics and a bounded sample of tenders for drill-down.
+
+sklearn/scipy (~60 MB RSS) are imported lazily inside the functions that
+need them rather than at module level, since this module is loaded
+unconditionally by ``api/routes/analytics.py`` and the clusters endpoint
+is rarely used — most API processes never pay that cost.
 """
 
 from __future__ import annotations
@@ -14,19 +19,19 @@ from collections.abc import Iterable
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
-from typing import SupportsInt, cast
+from typing import TYPE_CHECKING, SupportsInt, cast
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
-from sklearn.cluster import KMeans, MiniBatchKMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import normalize
 
 from observability.logging import get_logger
 from services.classification import cpv_label, estado_label
 from services.licitaciones import load_stats_dataframe
+
+if TYPE_CHECKING:
+    # Solo para type hints — el import real es lazy (ver docstring del modulo).
+    from sklearn.cluster import KMeans, MiniBatchKMeans
 
 log = get_logger(__name__)
 
@@ -124,6 +129,9 @@ def _stopwords() -> tuple[str, ...]:
 
 def _tfidf_embeddings(texts: list[str], n_features: int = 256) -> np.ndarray:
     """TF-IDF sparse → dense, L2-normalised."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.preprocessing import normalize
+
     try:
         vec = TfidfVectorizer(
             max_features=n_features,
@@ -142,6 +150,8 @@ def _tfidf_embeddings(texts: list[str], n_features: int = 256) -> np.ndarray:
 
 
 def _kmeans_factory(k: int, n_samples: int) -> KMeans | MiniBatchKMeans:
+    from sklearn.cluster import KMeans, MiniBatchKMeans
+
     if n_samples >= _MINIBATCH_THRESHOLD:
         return MiniBatchKMeans(
             n_clusters=k,
@@ -159,6 +169,8 @@ def _k_max_for(n_samples: int, hard_cap: int = _MAX_CLUSTERS) -> int:
 
 
 def _optimal_k(embeddings: np.ndarray, k_min: int = 3, k_max: int | None = None) -> int:
+    from sklearn.metrics import silhouette_score
+
     n_samples = len(embeddings)
     if k_max is None:
         k_max = _k_max_for(n_samples)
@@ -179,6 +191,8 @@ def _optimal_k(embeddings: np.ndarray, k_min: int = 3, k_max: int | None = None)
 
 def _ctfidf_labels(texts: Iterable[str], labels: np.ndarray, top_n: int = 3) -> dict[int, str]:
     """Class-based TF-IDF keyword labels per cluster."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
     texts_list = list(texts)
     unique = sorted(set(labels.tolist()))
     if not unique:
@@ -329,6 +343,8 @@ def get_clusters(filters: ClustersFilters) -> ClustersResult:
     label_map = _ctfidf_labels(texts, labels)
 
     # Calidad de la partición (guía para elegir K). Acotado con sample_size.
+    from sklearn.metrics import silhouette_score
+
     silhouette: float | None
     try:
         silhouette = float(
