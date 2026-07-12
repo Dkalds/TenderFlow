@@ -49,3 +49,10 @@ _test_summary.txt
 .hypothesis/
 .secrets.baseline
 Makefile
+
+# graphify: knowledge graph de tooling para agentes IA (no runtime). Sin
+# excluirlo, COPY . . lo mete en la imagen (~16MB) y Trivy detecta falsos
+# positivos de secret-scanning sobre IDs de nodo auto-generados que
+# coinciden por azar con patrones de claves (ej. "sk_test_..." de un nodo
+# como mockStreamAsk matcheando el regex de Stripe secret key).
+graphify-out/
