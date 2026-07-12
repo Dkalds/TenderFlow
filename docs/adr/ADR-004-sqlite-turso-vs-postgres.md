@@ -1,7 +1,8 @@
 ---
 id: ADR-004
 title: "SQLite + Turso vs PostgreSQL"
-status: accepted
+status: superseded
+superseded_by: ADR-016
 date: 2024-01-01
 deciders: "Daniel Kalitovics"
 tags: [adr]
@@ -9,7 +10,7 @@ tags: [adr]
 
 # ADR-004: SQLite + Turso vs PostgreSQL
 
-**Status:** Accepted  
+**Status:** Superseded by ADR-016 (cutover a Supabase Postgres ejecutado, 2026-07)  
 **Date:** 2024-01-01  
 **Deciders:** Daniel Kalitovics
 

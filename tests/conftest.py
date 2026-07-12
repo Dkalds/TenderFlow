@@ -64,6 +64,28 @@ def _isolate_database_url(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _default_placsp_connector_disabled(monkeypatch):
+    """Fuerza ``PLACSP_CONNECTOR_ENABLED=False`` por defecto en tests unitarios.
+
+    Detectado 2026-07-12 al activar el flag en producción (F2 flip): decenas
+    de tests mockean ``scraper.pipeline.update_daily``/``update_recent`` y
+    llaman a ``run_daily_pipeline``/``run_bulk_pipeline`` directamente (o vía
+    ``scheduler.jobs.*``) sin fijar el flag. Con el default real ahora en
+    True, esos tests dejaban de ejercer el mock e iban por el camino del
+    connector real -- en el mejor caso, aserciones sobre el mock nunca
+    llamado; en el peor, ``run_connector`` intentando una descarga HTTP real
+    contra PLACSP dentro de un test (cuelgue de varios minutos, reproducido
+    en ``tests/test_recent_bulk.py::test_partial_failure_...``). Un test que
+    sí quiera ejercer el camino connector lo hace explícito con su propio
+    ``monkeypatch.setattr(settings, "PLACSP_CONNECTOR_ENABLED", True)``, que
+    gana sobre este default (se aplica después, en el cuerpo del test).
+    """
+    from config import settings
+
+    monkeypatch.setattr(settings, "PLACSP_CONNECTOR_ENABLED", False, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _disable_rate_limiter(monkeypatch):
     """Disable rate limiting in tests to avoid 429s from shared state."""
 

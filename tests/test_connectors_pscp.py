@@ -98,9 +98,14 @@ def test_field_candidates_y_number():
     assert _number({"pressupost_licitacio_sense": "n/d"}, "importe") is None
 
 
-def test_pscp_since_aplica_solape_de_un_dia():
+def test_pscp_since_devuelve_cursor_sin_solape():
+    """Desde el fix del 2026-07-12: sin solape de día -- last_entry_id
+    (usado en fetch()) da la continuidad exacta, así que _since() propaga
+    el timestamp del cursor tal cual, completo (no solo la fecha)."""
     connector = PscpConnector(dataset_id="t-t")
-    assert connector._since({"last_seen_updated": "2026-06-10"}) == "2026-06-09"
+    assert connector._since({"last_seen_updated": "2026-06-10T08:00:00.000"}) == (
+        "2026-06-10T08:00:00.000"
+    )
     assert len(connector._since(None)) == 10  # lookback por defecto YYYY-MM-DD
 
 
@@ -138,17 +143,27 @@ def test_pscp_fetch_pagina_y_avanza_cursor():
             self.calls.append(params)
             return FakeResponse(self.pages[len(self.calls) - 1])
 
-    rec1 = dict(_pscp_record(), **{":updated_at": "2026-05-21T08:00:00.000Z"})
-    rec2 = dict(_pscp_record(), codi_expedient="X-2", **{":updated_at": "2026-05-22T09:00:00.000Z"})
+    rec1 = dict(_pscp_record(), **{":updated_at": "2026-05-21T08:00:00.000Z", ":id": "row-1"})
+    rec2 = dict(
+        _pscp_record(),
+        codi_expedient="X-2",
+        **{":updated_at": "2026-05-22T09:00:00.000Z", ":id": "row-2"},
+    )
     session = FakeSession(pages=[[rec1, rec2]])
     connector = PscpConnector(dataset_id="abcd-1234", session=session)
 
     notices = list(connector.fetch({"last_seen_updated": "2026-05-21"}))
 
     assert [n.natural_id for n in notices] == ["CTTI-2026-00123", "X-2"]
-    assert connector.new_cursor() == {"last_seen_updated": "2026-05-22"}
+    # Cursor completo (timestamp + id), NO truncado a fecha (fix 2026-07-12).
+    assert connector.new_cursor() == {
+        "last_seen_updated": "2026-05-22T09:00:00.000Z",
+        "last_entry_id": "row-2",
+    }
     where = session.calls[0]["$where"]
-    assert ":updated_at >= '2026-05-20'" in where  # solape de 1 día
+    # Sin solape de día: el cursor de entrada no traía last_entry_id, así
+    # que arranca con '>=' simple desde el valor exacto del cursor.
+    assert ":updated_at >= '2026-05-21'" in where
     # Socrata rechaza con 400 "$select=:updated_at, *" (campo de sistema antes
     # del wildcard) — el wildcard debe ir primero. :id es el desempate estable
     # de la paginación por cursor (evita $offset, que degrada ~O(offset)).
@@ -213,3 +228,64 @@ def test_pscp_fetch_pagina_multiple_usa_cursor_no_offset(monkeypatch):
     # (frecuente tras una republicación completa del dataset) se perderían.
     assert ":updated_at = '2026-05-21T08:00:00.000Z'" in where_page2
     assert ":id > 'row-b'" in where_page2
+
+
+def test_pscp_cursor_avanza_entre_runs_con_timestamps_repetidos(monkeypatch):
+    """Regresión del bug real detectado en producción (2026-07-12): una
+    republicación masiva del dataset deja millones de filas con el MISMO
+    ``:updated_at``. Sin persistir ``last_entry_id`` entre corridas, cada
+    run reconsulta desde el mismo punto y el cursor queda pegado para
+    siempre (confirmado en logs de Actions: 6+ runs con
+    ``last_seen_updated='2026-06-19'`` sin avanzar un solo segundo).
+
+    Este test simula DOS runs separados (dos instancias de connector, cursor
+    persistido entre ambas) sobre filas que comparten exactamente el mismo
+    ``:updated_at`` y verifica que el segundo run avanza más allá de las
+    filas ya vistas por el primero -- no las repite ni se congela.
+    """
+    monkeypatch.setattr("scraper.connectors.pscp._PAGE_PAUSE_S", 0)
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class FakeSession:
+        def __init__(self, pages):
+            self.pages = pages
+            self.calls = []
+
+        def get(self, url, *, params, headers, timeout):
+            self.calls.append(params)
+            return FakeResponse(self.pages[len(self.calls) - 1])
+
+    # Las 3 filas comparten el mismo :updated_at (republicación masiva).
+    same_stamp = "2026-06-19T00:00:00.000Z"
+    rec_a = dict(_pscp_record(), codi_expedient="A", **{":updated_at": same_stamp, ":id": "id-a"})
+    rec_b = dict(_pscp_record(), codi_expedient="B", **{":updated_at": same_stamp, ":id": "id-b"})
+    rec_c = dict(_pscp_record(), codi_expedient="C", **{":updated_at": same_stamp, ":id": "id-c"})
+
+    # ── Run 1: sin cursor previo -- ve A y B, timeoutea (simulado: solo 1 página) ──
+    session1 = FakeSession(pages=[[rec_a, rec_b]])
+    connector1 = PscpConnector(dataset_id="abcd-1234", session=session1)
+    notices1 = list(connector1.fetch({"last_seen_updated": "2026-06-19"}))
+    assert [n.natural_id for n in notices1] == ["A", "B"]
+    cursor_after_run1 = connector1.new_cursor()
+    assert cursor_after_run1 == {"last_seen_updated": same_stamp, "last_entry_id": "id-b"}
+
+    # ── Run 2: retoma con el cursor persistido -- debe pedir solo lo nuevo (C) ──
+    session2 = FakeSession(pages=[[rec_c]])
+    connector2 = PscpConnector(dataset_id="abcd-1234", session=session2)
+    notices2 = list(connector2.fetch(cursor_after_run1))
+
+    where_run2 = session2.calls[0]["$where"]
+    # Con el bug viejo, esto habría sido ":updated_at >= '2026-06-19'" --
+    # idéntico al run 1, re-pidiendo A y B para siempre.
+    assert f":updated_at = '{same_stamp}'" in where_run2
+    assert ":id > 'id-b'" in where_run2
+    assert [n.natural_id for n in notices2] == ["C"]

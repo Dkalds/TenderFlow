@@ -183,6 +183,7 @@ class PscpConnector:
         self.default_lookback_days = default_lookback_days
         self._session = session or requests.Session()
         self._max_pub_date: str | None = None
+        self._max_pub_id: str | None = None
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -191,14 +192,28 @@ class PscpConnector:
         return f"https://{self.domain}/resource/{self.dataset_id}.json"
 
     def _since(self, cursor: dict[str, Any] | None) -> str:
+        """Punto de partida del fetch.
+
+        Con cursor persistido, devuelve el valor de ``last_seen_updated`` tal
+        cual (sin solape de días): la continuidad exacta la da
+        ``last_entry_id`` como desempate en ``fetch()``, así que reconsultar
+        un día entero de más es puro trabajo redundante. Sin cursor (primer
+        run), usa ``default_lookback_days`` como fecha de arranque.
+
+        Nota histórica (bug corregido 2026-07-12): la versión anterior
+        truncaba ``last_seen_updated`` a solo fecha (``[:10]``) antes de
+        restar el día de solape. Contra un dataset con una republicación
+        masiva (~1.86M filas comparten el mismo ``:updated_at`` de un solo
+        día), esa truncación hacía que el cursor persistido NUNCA superara
+        esa fecha -- cada run reconsultaba exactamente el mismo punto de
+        partida sin avanzar nunca, agotando el timeout del step sin progreso
+        neto. Ver ``_max_pub_date``/``_max_pub_id`` en ``fetch()``.
+        """
         from datetime import UTC, datetime, timedelta
 
         last = (cursor or {}).get("last_seen_updated")
         if last:
-            # Re-consultar desde el día anterior al último visto (solape de
-            # 1 día); el upsert idempotente absorbe los duplicados.
-            day = datetime.strptime(str(last)[:10], "%Y-%m-%d").replace(tzinfo=UTC)
-            return (day - timedelta(days=1)).strftime("%Y-%m-%d")
+            return str(last)
         start = datetime.now(UTC) - timedelta(days=self.default_lookback_days)
         return start.strftime("%Y-%m-%d")
 
@@ -223,7 +238,17 @@ class PscpConnector:
         # esté el recorrido -- imprescindible para un dataset de ~1.86M filas
         # (republicación completa detectada el mismo día).
         last_updated = since
-        last_id = ""
+        # Retoma el desempate exacto de la corrida anterior si el cursor
+        # tiene last_seen_updated (persistido por new_cursor() tras el fix
+        # del 2026-07-12). Sin él (cursor viejo pre-fix, o primer run con
+        # lookback_days), arranca con '>=' simple -- correcto pero puede
+        # reprocesar la última "marca" ya vista una vez (idempotente, el
+        # upsert lo absorbe).
+        last_id = (
+            str((cursor or {}).get("last_entry_id") or "")
+            if (cursor or {}).get("last_seen_updated")
+            else ""
+        )
         log.info("pscp_fetch_start", dataset=self.dataset_id, since=since)
         while True:
             page_num += 1
@@ -270,11 +295,16 @@ class PscpConnector:
                 natural_id = _text(record, "expediente")
                 if not natural_id:
                     continue
-                marca = str(record.get(_CURSOR_FIELD) or "")[:10] or _date(
-                    record, "fecha_publicacion"
-                )
-                if marca and (self._max_pub_date is None or marca > self._max_pub_date):
+                # Timestamp completo (NO truncar a fecha): el $order
+                # ":updated_at ASC, :id ASC" garantiza que el stream es
+                # monótono no-decreciente, así que basta con quedarse con la
+                # última marca/id vistos. Truncar a fecha fue el bug que
+                # dejaba el cursor pegado a un día con millones de filas.
+                marca = str(record.get(_CURSOR_FIELD) or "") or _date(record, "fecha_publicacion")
+                record_id = str(record.get(":id") or "")
+                if marca and (self._max_pub_date is None or marca >= self._max_pub_date):
                     self._max_pub_date = marca
+                    self._max_pub_id = record_id
                 yield RawNotice(natural_id=natural_id, payload=record)
             last_record = records[-1]
             last_updated = str(last_record.get(_CURSOR_FIELD) or last_updated)
@@ -347,7 +377,7 @@ class PscpConnector:
     def new_cursor(self) -> dict[str, Any] | None:
         if self._max_pub_date is None:
             return None
-        return {"last_seen_updated": self._max_pub_date}
+        return {"last_seen_updated": self._max_pub_date, "last_entry_id": self._max_pub_id}
 
 
 def main(argv: list[str] | None = None) -> int:

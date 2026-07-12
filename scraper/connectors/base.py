@@ -99,6 +99,15 @@ class ConnectorRunResult:
     actualizadas: int = 0
     adjudicaciones: int = 0
     errores: int = 0
+    # IDs afectados por el upsert — mismo contrato que UpsertResult, para que
+    # los wrappers de pipeline_runs puedan exponer el shape del pipeline legacy
+    # (listas de id_externo, no solo contadores).
+    inserted_ids: list[str] = field(default_factory=list)
+    modified_ids: list[str] = field(default_factory=list)
+    # True solo si fetch() abortó con excepción (fallo fatal de la fuente).
+    # Los errores por-aviso (parse → DLQ) NO lo activan: esos son recuperables
+    # y no deben marcar el run entero como fallido.
+    fetch_failed: bool = False
 
     def as_dict(self) -> dict[str, int | str]:
         return {
@@ -166,6 +175,8 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         upsert_result = upsert_licitaciones_with_history(lics, source=source_id)
         result.nuevas += len(upsert_result.inserted)
         result.actualizadas += len(upsert_result.modified)
+        result.inserted_ids.extend(upsert_result.inserted)
+        result.modified_ids.extend(upsert_result.modified)
         if adj_por_lic:
             n_adj, n_dropped, n_failed = replace_adjudicaciones_batch(
                 adj_por_lic, run_id=None, fuente=source_id
@@ -211,6 +222,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         # con éxito; solo se pierde el progreso del lote aún sin flushear
         # en el momento del fallo -- la próxima corrida no reinicia desde cero.
         result.errores += 1
+        result.fetch_failed = True
         record_failure(None, source_id, e, scope="fetch")
         log.error("connector_run_failed", source=source_id, error=str(e))
         return result

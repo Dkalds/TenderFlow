@@ -205,15 +205,67 @@ def run_daily_pipeline() -> dict[str, Any]:
 
 
 def _run_daily_pipeline_connector() -> dict[str, Any]:
-    """Implementación del carril diario usando PlacspAtomConnector (F2)."""
+    """Implementación del carril diario usando PlacspAtomConnector (F2).
+
+    Mantiene paridad operacional con el camino legacy (``update_daily``):
+
+    - ``ingestion_result`` expone ``inserted``/``modified`` como **listas de
+      id_externo** (mismo contrato que ``process_daily``; ``_log_daily_summary``
+      hace ``len()`` y ``join()`` sobre ellas).
+    - Los errores por-entry (parse → DLQ) **no** marcan el run como fallido —
+      igual que ``entries_error`` en legacy. Solo un fallo fatal de ``fetch``
+      produce ``status="error_fetch"`` (mismo nombre de status que legacy).
+    - Escribe ``log_extraccion`` (tabla ``extracciones``, fuente ``placsp``) y
+      envuelve el run en ``record_run`` para que la página de observabilidad
+      siga viendo los runs diarios tras el flip.
+    """
+    from db.database import log_extraccion
+    from observability import bind_run_context, record_run
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspAtomConnector
 
-    connector = PlacspAtomConnector()
-    run_result = run_connector(connector)
+    run_id = bind_run_context(entrypoint="run_daily_pipeline_connector")
+    with record_run(run_id) as metrics:
+        connector = PlacspAtomConnector()
+        run_result = run_connector(connector)
 
-    status = "ok" if run_result.errores == 0 else "degraded"
-    ingestion = run_result.as_dict()
+        status = "error_fetch" if run_result.fetch_failed else "ok"
+
+        if run_result.fetch_failed:
+            metrics.status = "error"
+            metrics.months_failed = 1
+            try:
+                from observability.alerts import AlertLevel, notify
+
+                notify(
+                    AlertLevel.ERROR,
+                    "Feed diario ATOM falló al descargar (connector)",
+                    body="run_connector(placsp) abortó en fetch; detalle en DLQ.",
+                )
+            except Exception:
+                log.debug("daily_connector_notify_failed")
+        else:
+            metrics.status = "ok"
+            metrics.licitaciones_nuevas = run_result.nuevas
+            metrics.licitaciones_actualizadas = run_result.actualizadas
+        metrics.notas = f"daily_connector|{status}"
+
+        if not run_result.fetch_failed:
+            try:
+                log_extraccion(
+                    fuente=run_result.source_id,
+                    nuevas=run_result.nuevas,
+                    actualizadas=run_result.actualizadas,
+                    total=run_result.parsed,
+                    notas=(
+                        f"connector matches:{run_result.parsed} "
+                        f"adj:{run_result.adjudicaciones} "
+                        f"inserted:{run_result.nuevas} modified:{run_result.actualizadas} "
+                        f"errors:{run_result.errores}"
+                    ),
+                )
+            except Exception:
+                log.warning("daily_connector_log_extraccion_failed")
 
     step_results = _run_post_ingestion_steps()
 
@@ -223,12 +275,12 @@ def _run_daily_pipeline_connector() -> dict[str, Any]:
             "status": status,
             "source": run_result.source_id,
             "tech_matches": run_result.parsed,
-            "inserted": run_result.nuevas,
-            "modified": run_result.actualizadas,
-            "unchanged": 0,
+            "inserted": list(run_result.inserted_ids),
+            "modified": list(run_result.modified_ids),
+            "unchanged": [],
             "entries_error": run_result.errores,
         },
-        "connector_result": ingestion,
+        "connector_result": run_result.as_dict(),
         "steps": step_results,
     }
 
@@ -346,46 +398,81 @@ def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
 
 
 def _run_bulk_pipeline_connector(months: int) -> dict[str, Any]:
-    """Implementación del carril bulk usando PlacspBulkConnector (F2)."""
+    """Implementación del carril bulk usando PlacspBulkConnector (F2).
+
+    Paridad operacional con el camino legacy (``update_recent``):
+
+    - Un fallo fatal de ``fetch`` de un mes se marca ``status="error"`` (los
+      errores por-entry van a DLQ y **no** fallan el mes — igual que
+      ``entries_error`` en ``process_month``).
+    - ``log_extraccion`` por mes con la misma ``fuente`` (``bulk_YYYYMM``) que
+      usaba el legacy, para continuidad de la serie en ``extracciones``.
+    - El run completo va envuelto en ``record_run`` (observabilidad).
+    """
     from datetime import UTC, datetime
 
     from dateutil.relativedelta import relativedelta
 
+    from db.database import log_extraccion
+    from observability import bind_run_context, record_run
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspBulkConnector
+    from scraper.pipeline import _summarize
 
     today = datetime.now(UTC).date()
     month_results: list[dict[str, Any]] = []
 
-    for i in range(months):
-        target = today - relativedelta(months=i)
-        connector = PlacspBulkConnector(target.year, target.month)
-        try:
-            r = run_connector(connector)
-            month_results.append(
-                {
-                    "year": target.year,
-                    "month": target.month,
-                    "status": "ok" if r.errores == 0 else "error",
-                    "nuevas": r.nuevas,
-                    "actualizadas": r.actualizadas,
-                    "adjudicaciones": r.adjudicaciones,
-                    "entries_error": r.errores,
-                }
-            )
-        except Exception as exc:
-            log.exception(
-                "bulk_connector_month_failed",
-                year=target.year,
-                month=target.month,
-                error=str(exc),
-            )
-            month_results.append(
-                {
-                    "year": target.year,
-                    "month": target.month,
-                    "status": "error",
-                }
-            )
+    run_id = bind_run_context(entrypoint="run_bulk_pipeline_connector", months=months)
+    with record_run(run_id) as metrics:
+        for i in range(months):
+            target = today - relativedelta(months=i)
+            connector = PlacspBulkConnector(target.year, target.month)
+            try:
+                r = run_connector(connector)
+                status = "error" if r.fetch_failed else "ok"
+                month_results.append(
+                    {
+                        "year": target.year,
+                        "month": target.month,
+                        "status": status,
+                        "nuevas": r.nuevas,
+                        "actualizadas": r.actualizadas,
+                        "adjudicaciones": r.adjudicaciones,
+                        "entries_error": r.errores,
+                    }
+                )
+                if not r.fetch_failed:
+                    try:
+                        log_extraccion(
+                            fuente=r.source_id,
+                            nuevas=r.nuevas,
+                            actualizadas=r.actualizadas,
+                            total=r.parsed,
+                            notas=(
+                                f"connector matches:{r.parsed} adj:{r.adjudicaciones} "
+                                f"errors:{r.errores}"
+                            ),
+                        )
+                    except Exception:
+                        log.warning(
+                            "bulk_connector_log_extraccion_failed",
+                            year=target.year,
+                            month=target.month,
+                        )
+            except Exception as exc:
+                log.exception(
+                    "bulk_connector_month_failed",
+                    year=target.year,
+                    month=target.month,
+                    error=str(exc),
+                )
+                month_results.append(
+                    {
+                        "year": target.year,
+                        "month": target.month,
+                        "status": "error",
+                    }
+                )
+        _summarize(month_results, metrics)
 
     return _finalize_ingestion(month_results, label="bulk refresh (connector)")

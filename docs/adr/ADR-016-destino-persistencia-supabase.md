@@ -127,3 +127,12 @@ Fases:
 ADR-004 queda superseded por este ADR al completar la fase F3c (cutover).
 Hasta entonces, el sistema opera en modo dual-config: SQLite cuando `DATABASE_URL`
 no está definida, Postgres cuando sí lo está.
+
+## Estado de ejecución (actualización 2026-07-11)
+
+**F3c ejecutado.** Producción opera sobre Supabase Postgres (`DATABASE_URL`
+vía Supavisor session pooler); ADR-004 queda **superseded efectivo**. El modo
+dual-config se conserva para desarrollo local (SQLite sin `DATABASE_URL`).
+Pendiente de F3d: hardening post-cutover (rotación de credencial, TLS
+`verify-full`, verificación RLS v52, backups cifrados, rol `tenderflow_app`,
+retirada de Turso) — trackeado como ítem P1 en `docs/IMPROVEMENT_BACKLOG.md`.

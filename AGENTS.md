@@ -6,21 +6,17 @@ Guía completa de navegación, workflows y patrones: [docs/AGENT_PLAYBOOK.md](do
 
 ---
 
-## 0. FREEZE de features (2026-07)
+## 0. FREEZE de features — LEVANTADO (2026-07-11)
 
-**Features nuevas congeladas** hasta completar las fases F2 (Retrofit PLACSP) y F4 (Dev/prod parity).
+El freeze de 2026-07 se levantó el **2026-07-11**: sus condiciones se cumplieron
+(F2 Retrofit PLACSP y F4a/b Dev/prod parity merged el 2026-07-05; `make check`
+verde — ruff limpio, mypy 461 archivos, 2290 unit tests, coverage 78.2%).
 
-Permitido durante el freeze:
-- Bugfixes y parches de seguridad.
-- Las fases F0–F5 del plan de deuda arquitectónica (este fichero).
-- Tests de caracterización y documentación.
-
-No permitido:
-- Nuevos endpoints, páginas o flujos de UI.
-- Nuevos conectores de fuente de datos.
-- Cambios de schema no relacionados con la migración a Postgres (F3).
-
-Revisión del freeze: cuando F2 y F4a/4b estén merged y `make check` verde.
+Features nuevas vuelven a estar permitidas. Prioridad de trabajo: seguir el
+orden de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) (activación
+multi-fuente y confianza en el dato antes que features de superficie). Los 67
+RFCs de UX existentes se implementan directamente sin nuevo RFC (ver política
+de RFCs, §5).
 
 ---
 

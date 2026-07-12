@@ -109,6 +109,16 @@ class PlacspAtomConnector:
         """
         from scraper.atom_live import iter_live_entries
 
+        if not cursor:
+            # Migración one-time post-flip (F2): el pipeline legacy avanzaba el
+            # cursor bajo la clave "place_live_atom"; el conector usa "placsp".
+            # Sin este fallback, el primer run tras activar el flag re-paginaría
+            # el feed completo (DAILY_MAX_PAGES). Tras el primer run exitoso,
+            # new_cursor() escribe "placsp" y este camino queda muerto.
+            from db.database import get_cursor
+
+            cursor = get_cursor("place_live_atom")
+
         last_seen_updated: str | None = None
         etag: str | None = None
         last_modified: str | None = None

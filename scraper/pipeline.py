@@ -1,4 +1,19 @@
-"""Pipeline completo: descarga -> parseo -> filtrado tecnología -> persistencia."""
+"""Pipeline completo: descarga -> parseo -> filtrado tecnología -> persistencia.
+
+.. deprecated:: 2026-07-11 (F2, ADR-009)
+   Los carriles **daily** y **bulk** de producción ya NO pasan por este módulo:
+   con ``PLACSP_CONNECTOR_ENABLED=True``, ``scheduler/pipeline_runs.py`` enruta
+   por ``PlacspAtomConnector`` / ``PlacspBulkConnector`` + ``run_connector``
+   (``scraper/connectors/``). Este módulo se conserva como camino de rollback
+   (flip a False) y NO debe recibir features nuevas de ingesta.
+
+   Siguen vivos y en uso desde aquí (no mover hasta retirar el legacy):
+   - ``_ml_classify_entry`` / ``_load_classifiers``: el fallback ML compartido,
+     consumido por ``scraper.connectors.placsp._PlacspParseCore``.
+   - ``backfill``: el carril de backfill histórico aún no tiene camino
+     connector (``run_backfill_pipeline`` delega aquí).
+   - ``_summarize``: métricas de run reutilizadas por el wrapper bulk connector.
+"""
 
 from __future__ import annotations
 

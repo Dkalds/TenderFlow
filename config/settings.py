@@ -279,9 +279,12 @@ class Settings(BaseSettings):
     # ── F2: Retrofit PLACSP → Connector (ADR-009) ────────────────────────
     # Cuando True, run_daily_pipeline y run_bulk_pipeline usan PlacspAtomConnector
     # / PlacspBulkConnector en lugar del pipeline legacy (scraper/pipeline.py).
-    # Mantener False hasta que el test de paridad de datos esté verde.
-    # Flip → True para validar en dev; retire el flag tras 1 ciclo estable.
-    PLACSP_CONNECTOR_ENABLED: bool = False
+    # Activado 2026-07-11 tras paridad verde sobre datos reales del feed ATOM
+    # (196 licitaciones + 166 adjudicaciones idénticas campo a campo entre
+    # ambos caminos; ver ADR-009). Rollback: poner False — el pipeline legacy
+    # sigue intacto (DEPRECATED, no borrado). Retirar el flag y el legacy tras
+    # ≥1 ciclo semanal estable en producción.
+    PLACSP_CONNECTOR_ENABLED: bool = True
     # Índice de resoluciones TACRC (Ministerio de Hacienda).
     #
     # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):

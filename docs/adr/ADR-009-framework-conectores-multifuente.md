@@ -67,9 +67,20 @@ decisiones bloqueantes:
   órgano normalizado + expediente nacional + CPV-4. Un guardrail de test
   (`tests/test_dedup_guardrail.py`) falla en CI si una consulta analítica nueva
   sobre `licitaciones`/`adjudicaciones` omite el filtro.
-- **Pendiente:** retrofit del pipeline PLACSP (bulk + ATOM) sobre el contrato
-  `Connector`. El pipeline actual sigue siendo el camino de producción para
-  PLACSP; el retrofit se hará con sus tests como red de seguridad.
+- **Resuelto (F2, activado 2026-07-11):** retrofit del pipeline PLACSP (bulk +
+  ATOM) sobre el contrato `Connector`. `PlacspAtomConnector` /
+  `PlacspBulkConnector` (`scraper/connectors/placsp.py`) reutilizan el parser
+  CODICE y el fallback ML del pipeline; `PLACSP_CONNECTOR_ENABLED=True` enruta
+  producción por `run_connector`. Validación previa al flip: 16 tests de
+  contrato/paridad + paridad sobre datos reales del feed ATOM (ventana de 3
+  días, 6.320 entries → 196 licitaciones y 166 adjudicaciones idénticas campo
+  a campo entre legacy y connector). Diferencias documentadas del flip:
+  (1) el cursor diario pasa de la clave `place_live_atom` a `placsp`, con
+  fallback one-time de lectura del cursor legacy; (2) `licitaciones_history.source`
+  y la `fuente` de `extracciones` del carril diario pasan a `placsp`;
+  (3) el camino connector ejecuta además `services/dedupe.py` post-ingesta
+  (el legacy no lo hacía). `scraper/pipeline.py` queda DEPRECATED como camino
+  de rollback; el carril **backfill** aún delega en él (sin camino connector).
 
 ## Alternatives Considered
 

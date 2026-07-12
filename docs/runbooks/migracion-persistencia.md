@@ -2,6 +2,31 @@
 
 **ADR:** ADR-016 | **Fase:** F3c | **Fecha estimada:** Semana 3-4 del plan
 
+> **ESTADO (2026-07-11): CUTOVER EJECUTADO.** Producción corre sobre Supabase
+> Postgres vía `DATABASE_URL` (Supavisor session pooler). Este runbook se
+> conserva como registro del procedimiento y como referencia para el
+> hardening pendiente: **el Paso 9 y la sección F3d+ siguen abiertos** — ver
+> el ítem P1 "Verificar checklist F3d post-cutover" en
+> [docs/IMPROVEMENT_BACKLOG.md](../IMPROVEMENT_BACKLOG.md).
+>
+> **Inventario verificado 2026-07-12** (`gh secret list` / `gh variable list`
+> — solo nombres, sin ver valores): `DATABASE_URL` y `DATABASE_SSL_ROOT_CERT`
+> existen como GH Secrets (añadidos 2026-07-09, consistente con la fecha del
+> cutover) → el paso "TLS verify-full" del Paso 9 tiene su credencial
+> disponible, pero **no se pudo verificar desde aquí** que el `DATABASE_URL`
+> vivo use efectivamente `sslmode=verify-full` (el validador
+> `_validate_prod_database_ssl` en `config/settings.py` lo exige en
+> ENV=prod/staging, pero el workflow `scrape-daily.yml` corre con `ENV=dev`,
+> que omite ese validator). **`BACKUP_ENCRYPTION_KEY` NO existe** en los
+> secrets del repo → los backups de `backup.yml` se están subiendo **sin
+> cifrar** a S3 privado ahora mismo (el propio workflow emite
+> `::warning::BACKUP_ENCRYPTION_KEY no definido` en cada corrida). No hay
+> secret `DATABASE_ADMIN_URL` ni evidencia de un rol `tenderflow_app`
+> separado → el rol de privilegios mínimos sigue sin crear. La migración
+> `v52_rls_lockdown` **existe** en `db/alembic/versions/` (creada
+> 2026-07-06) pero si está *aplicada* contra la Supabase viva no es
+> verificable sin credenciales — requiere `alembic current` contra prod.
+
 ## Pre-requisitos
 
 - F3b completado: `scripts/migrate_sqlite_to_pg.py` ejecutado y `verify_pg_parity.py` verde.

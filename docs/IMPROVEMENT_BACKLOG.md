@@ -13,28 +13,34 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-### [P1] Plan de migración de persistencia pre-cocido con disparador binario
-- **Área:** db/, observability, docs/adr
-- **Problema:** [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] reconoce que la premisa "single writer" de SQLite **ya no se cumple** (scraper + scheduler + API + dashboard escriben concurrentemente, y [[ADR-009-framework-conectores-multifuente|ADR-009]] sumó 3 conectores). Hay tripwires que *detectan* el riesgo pero la *decisión* de migración sigue diferida: cuando salte el tripwire, habrá que diseñar la migración bajo presión de incidente. Falta el plan en frío.
+### [P1] Cablear TED en el cron diario (PSCP/TACRC ya activos — ver hallazgo de corrección abajo)
+- **Área:** scraper/connectors, .github/workflows (gate humano §6)
+- **Problema:** **Corrección respecto a una entrada anterior de este backlog** (2026-07-12): PSCP y TACRC NO están "staged esperando repo vars" — `PSCP_DATASET_ID` y `TACRC_INDEX_URL` están configuradas desde el 2026-06-12 y ambos steps de `scrape-daily.yml` corren en **cada ejecución del cron** (cada 4h). TACRC funciona correctamente (`19 resoluciones · 0 nuevas · 1 actualizadas · 0 errores` en el run más reciente, confirmado vía `gh run view --log`). PSCP, en cambio, estaba **timeouteando en las 6+ corridas más recientes sin excepción** (10 min, cada vez, `continue-on-error: true` lo esconde detrás de un job verde) — causa raíz diagnosticada y **corregida** en `scraper/connectors/pscp.py` (ver ítem "Cerrados" de hoy). Solo falta cablear TED (`scraper/connectors/ted.py`, construido pero sin step en el workflow) — eso sí requiere editar `.github/workflows/scrape-daily.yml`, gate humano §6.
 - **Acceptance criteria:**
-  - Existe ADR-015 con **un** destino de persistencia decidido y justificado (no una disyuntiva abierta).
-  - Spike en branch que levanta el destino, corre `alembic upgrade head` y pasa un test de paridad de búsqueda FTS5↔reemplazo (`pg_trgm`).
-  - Runbook `docs/runbooks/migracion-persistencia.md` con corte, gates de paridad y rollback.
-  - La alerta del tripwire enlaza al runbook; el RFC declara el umbral que escala la **ejecución** a P0.
-- **Files de partida:** [docs/adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md](../docs/adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md), [docs/runbooks/persistence-tripwires.md](../docs/runbooks/persistence-tripwires.md), [observability/alert_rules.yml](../observability/alert_rules.yml), [db/connection.py](../db/connection.py)
-- **RFC:** [2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md](rfc/2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md)
-- **Riesgo:** bajo en preparación (docs + spike aislado); de-riesga una ejecución futura de riesgo alto. **La ejecución escala a P0 al dispararse el tripwire** (`sqlite_busy_errors_total` >10/h o `db_concurrent_writers` >3 sostenido).
+  - Step TED añadido a `scrape-daily.yml` (requiere OK humano — workflows, §6), con el mismo patrón `continue-on-error` + `timeout-minutes` + gate por var/secret que PSCP/TACRC.
+  - Tras el primer run: filas con `fuente='ted'` en producción.
+- **Files de partida:** [scraper/connectors/ted.py](../scraper/connectors/ted.py), [.github/workflows/scrape-daily.yml](../.github/workflows/scrape-daily.yml)
+- **Riesgo:** medio — activa un camino de ingesta nuevo en producción; mitigado por DLQ por aviso y dedupe reversible.
 
-### [P1] Retrofit del pipeline PLACSP sobre el contrato Connector
-- **Área:** scraper/ (connectors + pipeline), scheduler
-- **Problema:** Hay dos caminos de ingesta coexistiendo: `run_connector` (3 fuentes: ted/pscp/tacrc) y el pipeline legacy `scraper/pipeline.py` (PLACSP, la fuente de producción). [[ADR-009-framework-conectores-multifuente|ADR-009]] marca el retrofit como Pendiente. La bifurcación diverge en silencio (un fix de idempotencia/DLQ/cursor aplicado en un camino y no en el otro) y encarece con cada fuente nueva. Cerrarlo antes de las autonómicas restantes es más barato.
+### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
+- **Área:** scraper/connectors/pscp.py, observability
+- **Problema:** El fix del cursor PSCP (ver Cerrados) es correcto y verificado con tests, pero corre contra un cursor YA atascado en producción desde hace semanas (`last_seen_updated='2026-06-19'`, sin `last_entry_id`). El primer run post-deploy re-consultará desde ese mismo punto (comportamiento esperado y correcto), pero hay que confirmar en los logs de Actions que el cursor **avanza** en el run siguiente (antes se quedaba pegado indefinidamente). Además, dado el volumen de filas que comparten el `:updated_at` de la republicación masiva (~1.86M filas), el conector tardará muchos ciclos en ponerse al día — el throughput por-registro (~240ms, probablemente dominado por round-trips US↔EU a Supabase) es una preocupación separada, no resuelta por este fix.
 - **Acceptance criteria:**
-  - Existe `PlacspConnector` implementando el contrato `Connector` y **reutilizando** el parser CODICE/UBL y el `bulk_downloader` actuales (no reescritura).
-  - Test de paridad con **cero diferencias** (salvo documentadas) entre legacy y `run_connector` sobre un fixture fijo; idempotencia verificada.
-  - PLACSP en producción se enruta por `run_connector`; `scraper/pipeline.py` queda DEPRECATED; [[ADR-009-framework-conectores-multifuente|ADR-009]] actualizado.
-- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/pipeline.py](../scraper/pipeline.py), [scraper/bulk_downloader.py](../scraper/bulk_downloader.py), [docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md](../docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md)
-- **RFC:** [2026-06-30-rfc-retrofit-pipeline-placsp-connector.md](rfc/2026-06-30-rfc-retrofit-pipeline-placsp-connector.md)
-- **Riesgo:** medio — toca el camino de datos de producción; mitigado por ventana de paridad y reutilización (no reescritura) del parser/downloader.
+  - `gh run view <run> --log | grep pscp_fetch_start` muestra un `since` que avanza run a run (no repite el mismo timestamp).
+  - Si el throughput sigue siendo insuficiente para ponerse al día en un plazo razonable, evaluar subir `_PAGE_SIZE`/`timeout-minutes` (este último requiere editar el workflow, gate humano) o batchear los upserts para reducir round-trips por registro.
+- **Files de partida:** [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [.github/workflows/scrape-daily.yml](../.github/workflows/scrape-daily.yml)
+- **Riesgo:** bajo — solo observación; la acción de subir el timeout del step si hiciera falta requeriría gate humano.
+
+### [P1] Verificar checklist F3d post-cutover (hardening Supabase)
+- **Área:** db/, docs/runbooks, GitHub Settings, Supabase Dashboard
+- **Problema:** El cutover F3c a Supabase Postgres ya se ejecutó, pero el hardening post-cutover del runbook (`migracion-persistencia.md` Paso 9 y F3d+) no está verificado ni registrado. **Inventario 2026-07-12** (`gh secret list`/`gh variable list`, solo nombres): `DATABASE_URL` y `DATABASE_SSL_ROOT_CERT` existen (desde 2026-07-09) pero no es verificable desde el repo si el DSN vivo usa `sslmode=verify-full` — el workflow de scraping corre con `ENV=dev`, que omite el validator que lo exigiría. **`BACKUP_ENCRYPTION_KEY` confirmado ausente** → `backup.yml` sube dumps sin cifrar a S3 privado en cada corrida (el propio workflow lo advierte, `::warning::`). No hay `DATABASE_ADMIN_URL` ni rol `tenderflow_app` separado. La migración `v52_rls_lockdown` existe en el repo (2026-07-06) pero si está aplicada contra la Supabase viva no es verificable sin credenciales de psql.
+- **Acceptance criteria:**
+  - `BACKUP_ENCRYPTION_KEY` generado y cargado como GH Secret (acción del usuario) — el ítem más barato y de mayor impacto del checklist.
+  - Confirmado (vía panel Supabase o `psql`) que `DATABASE_URL` usa `sslmode=verify-full` y que `v52_rls_lockdown` está aplicada (`alembic current` contra prod).
+  - Rol `tenderflow_app` (solo DML + timeouts) creado, o registrado explícitamente como pendiente consciente con su dependencia RLS documentada.
+  - Turso retirado (o su retirada calendarizada) una vez pasada la ventana de rollback ≥14 días.
+- **Files de partida:** [docs/runbooks/migracion-persistencia.md](runbooks/migracion-persistencia.md), [docs/SECURITY.md](SECURITY.md), [db/alembic/](../db/alembic/), [.github/workflows/backup.yml](../.github/workflows/backup.yml)
+- **Riesgo:** bajo-medio — acciones de panel/secrets con gate humano (§6); el riesgo real es *no* hacerlo (backups sin cifrar, credencial que viajó por ETL sin rotar, RLS sin verificar).
 
 ### [P1] LLM como dependencia gestionada (presupuesto + circuit-breaker + fallback + eval RAG)
 - **Área:** llm/, api/routes/ask.py, observability
@@ -62,6 +68,45 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] RAG híbrido con pgvector para /ask e investigador
+- **Área:** api/routes/ask.py, db/, services/, db/alembic (gate humano §6)
+- **Problema:** El retrieval de `/ask` es puramente léxico (FTS/LIKE vía `search_for_ask`). FAISS se eliminó a propósito por superficie operativa; con la BD ya en Supabase, `pgvector` da retrieval semántico **sin infra nueva**. "Consultas en lenguaje natural" es un diferenciador clave para consultoría y hoy es keyword search con síntesis encima.
+- **Acceptance criteria:**
+  - Extensión `pgvector` habilitada + columna de embedding en `licitaciones` (o tabla lateral) + índice HNSW/IVFFlat, vía migración alembic nueva (append-only, OK humano).
+  - Retrieval híbrido (semántico + léxico con fusión de rankings) detrás de feature flag; fallback léxico puro si el flag está off o el modelo de embeddings no está disponible.
+  - Eval de recuperación determinista en CI (sin LLM real) con un set de queries etiquetadas — mismo criterio que el ítem P1 de LLM gestionado; los dos ítems comparten el eval set.
+- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [db/search_backend.py](../db/search_backend.py), [config/settings.py](../config/settings.py)
+- **Riesgo:** medio — toca un endpoint de producción y añade schema; mitigado por flag + fallback y por el eval en CI.
+
+### [P2] UI de webhooks y GDPR self-service
+- **Área:** web/, api/
+- **Problema:** Backend completo sin superficie de usuario: `db/webhooks.py` tiene entrega HMAC funcional con retry/DNS-pinning, y existen export GDPR (`/me/data`) y delete de cuenta. Nada de eso es usable sin tocar la API a mano. Para consultoría, webhooks = integrar alertas con los sistemas del cliente — mucho valor por pocas pantallas.
+- **Acceptance criteria:**
+  - Página de gestión de webhooks: CRUD, ping de prueba, visualización de secret una sola vez, estado de entregas.
+  - Página de cuenta con export de datos (descarga `/me/data`) y delete de cuenta con confirmación.
+  - Consume exclusivamente la API tipada (invariante §3.8); tests vitest de los flujos.
+- **Files de partida:** [db/webhooks.py](../db/webhooks.py), [api/routes/webhooks.py](../api/routes/webhooks.py), [api/routes/me.py](../api/routes/me.py), [web/src/app/(dashboard)/](../web/src/app/(dashboard)/)
+- **Riesgo:** bajo — el backend ya existe; solo se añade frontend.
+
+### [P2] Codegen OpenAPI real para api.d.ts + gate CI anti-drift
+- **Área:** web/, CI
+- **Problema:** `web/src/generated/api.d.ts` se mantiene a mano: el contrato tipado API↔web (invariante §3.5/§3.8) puede driftar en silencio — un campo renombrado en un DTO Pydantic no rompe el build del frontend hasta runtime.
+- **Acceptance criteria:**
+  - `npm run codegen` genera `api.d.ts` desde el OpenAPI de FastAPI de forma reproducible y Windows-safe (sin shell POSIX, cf. `codegen-best-effort.mjs`).
+  - Job CI que regenera y falla con diff si el archivo commiteado difiere del generado.
+  - El flujo documentado en CONTRIBUTING/AGENT_PLAYBOOK.
+- **Files de partida:** [web/src/generated/api.d.ts](../web/src/generated/api.d.ts), [web/scripts/codegen-best-effort.mjs](../web/scripts/codegen-best-effort.mjs), [.github/workflows/ci.yml](../.github/workflows/ci.yml)
+- **Riesgo:** bajo — tooling; el único punto sensible es editar el workflow CI (gate humano §6).
+
+### [P2] Registrar watchlist_rules_alerts en el registry de scheduler/jobs
+- **Área:** scheduler/
+- **Problema:** `check_rules_and_notify` (motor de reglas de mi-watchlist, v43) solo corre embebido en `_run_watchlist_notify` de la pipeline canónica (`scheduler/pipeline_runs.py`). No existe como job en `scheduler/jobs/` — si el plano APScheduler/Docker se usara como plano activo (ADR-012), las alertas por reglas no correrían nunca de forma independiente.
+- **Acceptance criteria:**
+  - Job registrado en `scheduler/jobs/__init__.py` con la misma semántica best-effort que en la pipeline.
+  - Test de que el registry lo incluye y de que no se ejecuta doble cuando la pipeline canónica ya lo corre.
+- **Files de partida:** [scheduler/jobs/__init__.py](../scheduler/jobs/__init__.py), [scheduler/watchlist_rules_alerts.py](../scheduler/watchlist_rules_alerts.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py)
+- **Riesgo:** bajo — aditivo al registry; la pipeline canónica no cambia.
+
 ### [P2] Cobertura de tests del frontend en flujos críticos
 - **Área:** web/ (tests vitest)
 - **Problema:** El frontend tiene thresholds reales 68/63/68/70 (vitest.config.ts) con 82 test files. Los flujos críticos de valor (filtros nuqs URL↔estado, watchlist, streaming `/ask`) no tienen cobertura. Una regresión en esos flujos pasa CI en verde.
@@ -75,6 +120,15 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P3 — Nice to have
+
+### [P3] pct_pyme real en analytics overview
+- **Área:** services/analytics, scraper (parser)
+- **Problema:** `services/analytics/overview.py:381` devuelve `pct_pyme=0.0` como placeholder — un KPI visible en la UI que siempre marca 0% es peor que no mostrarlo. `services/analytics/competitors.py:341` ya calcula `pct_pyme` desde la columna `es_pyme` cuando existe, así que la lógica de cálculo está resuelta; falta poblar la señal en el camino de datos de adjudicaciones (campo SME de CODICE/eForms) o, si no es extraíble, retirar el KPI del overview.
+- **Acceptance criteria:**
+  - O bien la señal `es_pyme` llega a las filas que consume el overview y `pct_pyme` refleja el dato real (reutilizando el cálculo de competitors.py), o bien el campo se elimina del DTO/UI con migración consciente (invariante §3.5).
+  - Sin placeholder engañoso en producción.
+- **Files de partida:** [services/analytics/overview.py](../services/analytics/overview.py), [services/analytics/competitors.py](../services/analytics/competitors.py), [scraper/parser.py](../scraper/parser.py)
+- **Riesgo:** bajo — un KPI; el único punto sensible es si requiere columna nueva (alembic → OK humano).
 
 ### [P3] F5: Refactor de repositories por olas (TID251 whitelist decreciente)
 - **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
@@ -93,9 +147,13 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-07-12] **P0: Cursor PSCP atascado indefinidamente (bug de producción, silencioso)** — Detectado durante due diligence del roadmap (auditoría de `gh run list`/`gh run view --log` sobre `scrape-daily.yml`, no reportado por el usuario ni por alertas): el conector PSCP (`scraper/connectors/pscp.py`) llevaba **6+ corridas consecutivas** (2026-07-10 17:46 → 2026-07-11 20:42, cada 4h) timeouteando a los 10 minutos **sin avanzar el cursor un solo segundo** (`last_seen_updated` clavado en `'2026-06-19'` en todos los runs), quemando presupuesto de CI 6x/día sin ingerir nada nuevo. `continue-on-error: true` en el step lo esconde detrás de un job verde — invisible sin mirar los logs por-step. Causa raíz: `_max_pub_date` truncaba el timestamp `:updated_at` a solo fecha (`[:10]`) antes de compararlo y persistirlo como cursor; contra un dataset con una republicación masiva (~1.86M filas comparten el mismo `:updated_at` de un solo día, según comentario preexistente en el código), el cursor nunca podía superar esa fecha — cada run reconsultaba exactamente el mismo punto de partida. Además, `new_cursor()` nunca persistía `last_entry_id` (el desempate de paginación por `:id`), así que ni dentro del mismo bug la continuidad entre runs era recuperable. Fix: `_max_pub_date`/`_max_pub_id` ahora trackean el timestamp completo (sin truncar) y el `:id` del último registro visto; `new_cursor()` persiste ambos; `_since()` ya no aplica solape de 1 día (innecesario con desempate exacto por id) y devuelve el cursor tal cual. Backward-compatible con el cursor ya atascado en prod (se auto-corrige desde el primer run post-deploy, sin reset manual). Test de regresión nuevo (`test_pscp_cursor_avanza_entre_runs_con_timestamps_repetidos`) simula el escenario exacto (timestamps repetidos entre dos runs) y falla con el código viejo. 11/11 tests de `tests/test_connectors_pscp.py` verdes (2 actualizados para el nuevo contrato del cursor). TACRC, en el mismo workflow, funciona correctamente (`19 resoluciones · 0 nuevas · 1 actualizada · 0 errores`, confirmado en logs) — no requirió cambios. Sigue abierto (P2 en Alta): verificar en el primer run post-deploy que el cursor efectivamente avanza, y evaluar throughput (~240ms/registro, backlog de ~1.86M filas del mismo día).
+
+- [2026-07-11] **P1: Activación PlacspConnector (F2 flip)** — `PLACSP_CONNECTOR_ENABLED=True` en `config/settings.py`: producción (daily + bulk) enruta por `run_connector`. Validación: 16 tests F2 + paridad sobre datos reales del feed ATOM (6.320 entries, ventana 3 días → 196 licitaciones y 166 adjudicaciones **idénticas campo a campo** entre legacy y connector). Fixes de glue pre-flip que los tests de contrato no cubrían: (1) `_run_daily_pipeline_connector` devolvía `inserted`/`modified` como ints y `_log_daily_summary` hacía `len()` → TypeError en cada run post-flip; ahora `ConnectorRunResult` lleva `inserted_ids`/`modified_ids` y el wrapper expone el shape legacy; (2) errores por-entry (DLQ) ya no marcan el run como fallido — solo fetch fatal → `error_fetch` (nuevo `fetch_failed`), evitando Actions en rojo por 1 entry malformada; (3) el camino connector ahora escribe `log_extraccion` + `record_run` (observabilidad viva post-flip); (4) fallback one-time del cursor legacy `place_live_atom` → evita re-scan de 50 páginas en el primer run. 6 tests nuevos en `tests/test_pipeline_runs_connector.py`. `scraper/pipeline.py` DEPRECATED (rollback = flip a False); **backfill** sigue en legacy (sin camino connector). ADR-009 actualizado con las 3 diferencias documentadas del flip.
+
 - [2026-07-05] **P2: Modo degradado (F4a)** — `api/routes/health.py`: `/ready` devuelve 503 **solo si `db != "ok"`**; Redis/disco degradado → HTTP 200 con `status:"degraded"` en payload. Extrae `_http_status_for_readiness(db)`. 5 tests `TestHealthEndpoints` pasan. Cierra el síntoma de 503 en local con Redis caído.
 
-- [2026-07-05] **P1: Plan de migración de persistencia (F3a-F3d)** — ADR-016 aceptado (Supabase + psycopg3 + Supavisor session pooler). Fundaciones: `db/connection.py` con is_postgres_backend + shim qmark→%s + `_PgConnAdapter` + psycopg_pool; `db/search_backend.py` (SearchBackend protocol + Fts5Backend + PgTsBackend); `db/alembic/env.py` con precedencia DATABASE_URL; migración `v50_pg_search_infra` (search_vector STORED + GIN + trgm, dialect-guarded). ETL: `scripts/migrate_sqlite_to_pg.py` + `scripts/verify_pg_parity.py`. Runbook: `docs/runbooks/migracion-persistencia.md`. Backup: `backup.yml` con rama pg_dump. Alertas pool Postgres en `observability/alert_rules.yml`. **Pendiente ejecutar**: GATES secrets/deps/alembic/workflows para F3c (cutover).
+- [2026-07-05] **P1: Plan de migración de persistencia (F3a-F3d)** — ADR-016 aceptado (Supabase + psycopg3 + Supavisor session pooler). Fundaciones: `db/connection.py` con is_postgres_backend + shim qmark→%s + `_PgConnAdapter` + psycopg_pool; `db/search_backend.py` (SearchBackend protocol + Fts5Backend + PgTsBackend); `db/alembic/env.py` con precedencia DATABASE_URL; migración `v50_pg_search_infra` (search_vector STORED + GIN + trgm, dialect-guarded). ETL: `scripts/migrate_sqlite_to_pg.py` + `scripts/verify_pg_parity.py`. Runbook: `docs/runbooks/migracion-persistencia.md`. Backup: `backup.yml` con rama pg_dump. Alertas pool Postgres en `observability/alert_rules.yml`. **Actualización 2026-07-11**: el cutover F3c **ya está ejecutado** — producción corre sobre Supabase Postgres (confirmado por el mantenedor; la BD PG es la viva, con ~28,6k licitaciones vs el SQLite local residual de dev). El hardening F3d (rotación de credencial, TLS `verify-full`, RLS v52, backups cifrados, rol `tenderflow_app`, retirada de Turso) queda como ítem P1 abierto "Verificar checklist F3d post-cutover".
 
 - [2026-07-05] **P1: Retrofit PLACSP → Connector (F2)** — `scraper/connectors/placsp.py`: PlacspAtomConnector + PlacspBulkConnector + _PlacspParseCore. Flag `PLACSP_CONNECTOR_ENABLED=False` en settings. Switch en `scheduler/pipeline_runs.py`. 16 tests de paridad. RFC retrofit → accepted.
 

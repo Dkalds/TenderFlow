@@ -125,3 +125,4 @@ envrionment
 cursos
 foto
 interpolar
+sme
