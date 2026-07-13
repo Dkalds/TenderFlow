@@ -53,6 +53,25 @@ jobs:
           LOG_FORMAT: json
         run: python -m scheduler.run_update --daily
 
+      # Conector TED — Search API v3 (RFC 20260611-1 / ADR-009: fue el
+      # conector usado para validar el framework multi-fuente, ~69 avisos
+      # con 38/39 enlazados al maestro en la primera pasada). API pública sin
+      # auth y sin dataset/índice por entorno que configurar, así que corre
+      # sin gate de variable (a diferencia de PSCP/TACRC más abajo).
+      - name: Run TED connector
+        continue-on-error: true
+        # Mismo presupuesto propio que PSCP/TACRC: no debe consumir el
+        # timeout del job (30 min) si la API pública se degrada.
+        timeout-minutes: 10
+        env:
+          ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          LOG_FORMAT: json
+        run: python -m scraper.connectors.ted
+
       # Conectores Fase 5 (RFC 20260611-1). Se omiten hasta que sus
       # variables estén configuradas tras validar las fuentes vivas
       # (scripts/probe_pscp.py · python -m scraper.connectors.tacrc --check).
