@@ -268,17 +268,35 @@ def reset_cache(namespace: str | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 T = TypeVar("T")
-_cache_locks: dict[str, asyncio.Lock] = {}
+_CACHE_LOCKS_MAX_SIZE = 1024  # LRU global — ver docstring de _get_cache_lock
+_cache_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
 _cache_locks_mutex = threading.Lock()
 
 
 def _get_cache_lock(key: str) -> asyncio.Lock:
-    """Obtiene (o crea) un ``asyncio.Lock`` por *key* de forma thread-safe."""
-    if key not in _cache_locks:
-        with _cache_locks_mutex:
-            if key not in _cache_locks:
-                _cache_locks[key] = asyncio.Lock()
-    return _cache_locks[key]
+    """Obtiene (o crea) un ``asyncio.Lock`` por *key* de forma thread-safe.
+
+    LRU-acotado a ``_CACHE_LOCKS_MAX_SIZE``: sin esto, cada combinación
+    distinta de filtros que llega a un endpoint cacheado deja un ``Lock``
+    vivo para siempre en este dict aunque su entrada ya haya expirado y sido
+    evictada de ``_MemoryBackend`` — un memory leak que crece con el uptime
+    del proceso, no con el volumen de datos. Evictar el lock menos usado no
+    rompe la protección anti-estampida de una request ya en vuelo (esa
+    coroutine ya tiene su propia referencia al ``Lock``); en el peor caso,
+    una nueva request para la misma key llegada justo después de la eviction
+    obtiene un ``Lock`` distinto y no queda deduplicada — mismo trade-off que
+    la eviction LRU del caché de datos.
+    """
+    with _cache_locks_mutex:
+        lock = _cache_locks.get(key)
+        if lock is not None:
+            _cache_locks.move_to_end(key)
+            return lock
+        if len(_cache_locks) >= _CACHE_LOCKS_MAX_SIZE:
+            _cache_locks.popitem(last=False)
+        lock = asyncio.Lock()
+        _cache_locks[key] = lock
+        return lock
 
 
 def cache_response(

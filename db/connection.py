@@ -28,7 +28,6 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-import libsql
 from pydantic import SecretStr
 
 from config import settings
@@ -452,7 +451,14 @@ def _return_pg_connection(adapter: _PgConnAdapter) -> None:
 
 
 def _create_sqlite_connection() -> Any:
-    """Crea una nueva conexión a la BD SQLite/Turso según la configuración actual."""
+    """Crea una nueva conexión a la BD SQLite/Turso según la configuración actual.
+
+    ``libsql`` (~15-25 MB RSS) se importa lazy aquí: en prod con backend
+    Postgres (DATABASE_URL, precedencia máxima) esta función nunca se llama,
+    así que el import no debe pagarse en cada arranque del proceso.
+    """
+    import libsql
+
     if is_turso_backend():
         return libsql.connect(
             settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN.get_secret_value()
