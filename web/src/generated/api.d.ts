@@ -1609,10 +1609,12 @@ export interface paths {
         post?: never;
         /**
          * GDPR — anonimizar y eliminar mis datos
-         * @description Anonimiza watchlist y feedback; revoca la API key autenticada.
+         * @description Anonimiza watchlist/reglas/perfil/notificaciones y revoca credenciales.
          *
-         *     La identificación es por ``key_hash`` — no por nombre de usuario,
-         *     evitando borrado accidental de datos de otros usuarios con el mismo nombre.
+         *     Con API key: revoca la key usada para autenticar esta request (igual que
+         *     antes). Con sesión OAuth: además anonimiza la cuenta (RGPD Art.17 —
+         *     ``db.users.anonymize_user``), revoca todas las sesiones activas y
+         *     desactiva todas las API keys que el usuario tuviera creadas.
          */
         delete: operations["delete_my_data_api_v1_me_delete"];
         options?: never;
@@ -1629,10 +1631,8 @@ export interface paths {
         };
         /**
          * GDPR — exportar todos mis datos
-         * @description Exporta watchlist, feedback, API keys y audit log en un ZIP JSON.
-         *
-         *     La exportación se vincula exclusivamente al ``key_hash`` de la API key
-         *     autenticada, evitando colisiones por nombre de usuario.
+         * @description Exporta watchlist, reglas, perfil, notificaciones, feedback, API keys y
+         *     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
          */
         get: operations["export_my_data_api_v1_me_data_get"];
         put?: never;
@@ -5987,7 +5987,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6000,6 +6002,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7645,7 +7656,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7660,6 +7673,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     export_my_data_api_v1_me_data_get: {
@@ -7667,7 +7689,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7679,6 +7703,15 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                     "application/zip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8760,7 +8793,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8782,6 +8817,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_api_v1_webhooks_post: {
@@ -8791,7 +8835,9 @@ export interface operations {
                 "Idempotency-Key"?: string | null;
             };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8847,7 +8893,9 @@ export interface operations {
             path: {
                 webhook_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8894,7 +8942,9 @@ export interface operations {
             path: {
                 webhook_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8944,7 +8994,9 @@ export interface operations {
             path: {
                 webhook_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9004,7 +9056,9 @@ export interface operations {
             path: {
                 webhook_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9051,7 +9105,9 @@ export interface operations {
             path: {
                 webhook_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {

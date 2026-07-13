@@ -33,7 +33,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install -e .
+          # [pliegos]: mypy necesita el módulo pypdf instalado para
+          # scraper/document_fetcher.py (no solo un stub) — sin esto falla
+          # con "Cannot find implementation or library stub for module pypdf".
+          pip install -e ".[pliegos]"
 
       - name: Lint (ruff)
         run: ruff check .
@@ -75,7 +78,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install -e .
+          # [pliegos]: tests/test_document_fetcher.py ejercita extracción real
+          # de PDF (pypdf), no solo el fallback de "extra ausente".
+          pip install -e ".[pliegos]"
 
       - name: Run tests with coverage
         env:
@@ -357,6 +362,8 @@ jobs:
         working-directory: web
 
       - name: Export OpenAPI schema (offline)
+        env:
+          ENV: dev
         run: python scripts/export_openapi.py
 
       - name: Regenerate typed client

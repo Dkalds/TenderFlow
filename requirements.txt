@@ -108,8 +108,10 @@ pandas==2.3.3
     #   statsmodels
 patsy==1.0.2
     # via statsmodels
-pillow==12.2.0
-    # via reportlab
+pillow==12.3.0
+    # via
+    #   -r requirements.in
+    #   reportlab
 plotly==6.8.0
     # via -r requirements.in
 prometheus-client==0.25.0
