@@ -2,7 +2,7 @@
 requests>=2.31.0,<3
 httpx>=0.27.0,<1
 lxml>=5.0.0,<7
-pandas>=2.1.0,<3
+pandas>=2.1.0,<4
 plotly>=5.18.0,<7
 python-dateutil>=2.8.2,<3
 tenacity>=8.2.0,<10
