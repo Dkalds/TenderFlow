@@ -232,3 +232,21 @@ class TestReplaceChunks:
             ).fetchall()
         assert [r[1] for r in rows] == ["primero", "segundo", "tercero"]
         assert [r[0] for r in rows] == [0, 1, 2]
+
+
+class TestCountAll:
+    def test_counts_across_licitaciones(self, repo):
+        _insert_licitacion("EXP-N1")
+        _insert_licitacion("EXP-N2")
+        assert repo.count_all() == 0
+
+        repo.upsert_meta("EXP-N1", [DocumentoReferencia(tipo="legal", uri="https://x/a.pdf")])
+        repo.upsert_meta(
+            "EXP-N2",
+            [
+                DocumentoReferencia(tipo="legal", uri="https://x/b.pdf"),
+                DocumentoReferencia(tipo="technical", uri="https://x/c.pdf"),
+            ],
+        )
+
+        assert repo.count_all() == 3
