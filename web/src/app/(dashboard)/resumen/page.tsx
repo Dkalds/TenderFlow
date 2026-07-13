@@ -10,14 +10,12 @@ import { useFilters } from "@/lib/filters";
 import { TimelineSection } from "./_components/timeline-section";
 import { NovedadesBanner } from "./_components/novedades-banner";
 import { KpiRows } from "./_components/kpi-rows";
-import { TopLicitacionesList } from "./_components/top-licitaciones-list";
 import { AtajosAnalisis } from "./_components/atajos-analisis";
 import type { TimelineItem, ExtendedOverview } from "./_components/types";
 import type {
   ResumenNovedadesResult,
   ResumenHoyResult,
   TimelineScatterResult,
-  TopLicitacionesResult,
 } from "@/lib/api-types";
 
 export default function ResumenPage() {
@@ -53,12 +51,6 @@ export default function ResumenPage() {
     "/api/v1/analytics/resumen/timeline",
     { staleTime: 5 * 60 * 1000 },
     { fecha_desde: timelineDesde },
-  );
-
-  const top = useFilteredQuery<TopLicitacionesResult>(
-    ["analytics", "resumen", "top"],
-    "/api/v1/analytics/resumen/top",
-    { staleTime: 5 * 60 * 1000 },
   );
 
   const data = overview.data;
@@ -120,7 +112,7 @@ export default function ResumenPage() {
           <div>
             <h1 className="tf-h1">Resumen</h1>
             <p className="text-muted-foreground">
-              Qué requiere tu atención hoy y las oportunidades más relevantes del mercado.
+              Qué requiere tu atención hoy en el mercado.
             </p>
           </div>
           <ExportPopover />
@@ -137,8 +129,6 @@ export default function ResumenPage() {
         hoyLoading={hoy.isLoading}
         porMes={data?.por_mes}
       />
-
-      <TopLicitacionesList data={top.data} isLoading={top.isLoading} />
 
       <TimelineSection
         scatterData={scatterData}
