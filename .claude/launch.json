@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "web",
       "port": 3000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8080"],
+      "port": 8080
     }
   ]
 }

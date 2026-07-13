@@ -1,4 +1,4 @@
-import type { AnalyticsOverview } from "@/generated/api";
+import type { AnalyticsOverview } from "@/lib/api-types";
 
 export interface TimelineItem {
   id_externo: string;

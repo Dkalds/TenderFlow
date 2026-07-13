@@ -16,9 +16,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from services.ml.calibration import CalibracionBajaDTO, calibracion_baja_dto
 from services.ml.scoring import prediccion_baja
+from shared.cache import cache_response
 
 router = APIRouter(tags=["predicciones"])
+
+# 15 min: la calibración depende de predicciones_baja + adjudicaciones, que
+# solo cambian con el batch nocturno de scoring — no hace falta recomputar
+# la agregación en cada request de la página calidad-datos.
+_CALIBRACION_CACHE_TTL_S = 900
 
 
 @router.get(
@@ -37,3 +44,24 @@ async def get_prediccion_baja(
             detail="Sin predicción ni adjudicación registrada para esa licitación.",
         )
     return data
+
+
+@router.get(
+    "/predicciones/calibracion",
+    summary="Calibración del modelo de baja — cobertura empírica del intervalo p10-p90",
+    response_model=CalibracionBajaDTO,
+)
+@cache_response(ttl=_CALIBRACION_CACHE_TTL_S, namespace="ml")
+async def get_calibracion_baja(
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> CalibracionBajaDTO:
+    """Cobertura real del intervalo p10-p90 vs bajas observadas (closed-loop).
+
+    On-demand: no hay tabla materializada, se computa contra
+    ``predicciones_baja``/``adjudicaciones`` al vuelo (cacheado ~15 min).
+    ``estado='insuficiente'`` cuando aún no hay suficientes pares
+    predicción↔realidad resueltos (menos de 30 licitaciones adjudicadas
+    con predicción previa) — no es un error, es el estado esperado en un
+    despliegue nuevo o con poco volumen de adjudicaciones recientes.
+    """
+    return await run_db(calibracion_baja_dto)

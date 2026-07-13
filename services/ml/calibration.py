@@ -17,7 +17,9 @@ por el canal existente; fail-open (nunca bloquea el scoring).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel
 
 from db.database import connect_read
 from observability.logging import get_logger
@@ -109,3 +111,47 @@ def comprobar_calibracion_baja() -> dict[str, Any]:
     except Exception as e:  # fail-open como el monitor de drift
         log.warning("ml_calibracion_check_failed", error=str(e))
         return {"status": "error", "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# DTO para GET /predicciones/calibracion (plan Pliegos+RAG, F11)
+# ---------------------------------------------------------------------------
+
+
+class CalibracionBajaDTO(BaseModel):
+    """Vista simplificada de 3 estados para la UI (calidad-datos).
+
+    ``comprobar_calibracion_baja()`` distingue 5 estados internos
+    (``ok|warn|crit|sin_datos|error``) para logging/alertas; el contrato
+    público solo necesita "todo bien / degradado / no hay datos aún" — el
+    matiz warn-vs-crit es ruido para el usuario, no una decisión que tome.
+    """
+
+    estado: Literal["ok", "degradado", "insuficiente"]
+    cobertura: float | None = None
+    cobertura_nominal: float = _COBERTURA_NOMINAL
+    mae_p50: float | None = None
+    sesgo_p50: float | None = None
+    n_evaluadas: int = 0
+
+
+def calibracion_baja_dto() -> CalibracionBajaDTO:
+    """Adapta ``comprobar_calibracion_baja()`` al contrato público de 3 estados."""
+    raw = comprobar_calibracion_baja()
+    status = raw.get("status")
+    n = int(raw.get("n", 0))
+
+    if status == "ok":
+        estado: Literal["ok", "degradado", "insuficiente"] = "ok"
+    elif status in ("warn", "crit"):
+        estado = "degradado"
+    else:  # "sin_datos" | "error" -- ambos son "no hay señal fiable todavía"
+        estado = "insuficiente"
+
+    return CalibracionBajaDTO(
+        estado=estado,
+        cobertura=raw.get("cobertura"),
+        mae_p50=raw.get("mae_p50"),
+        sesgo_p50=raw.get("sesgo_p50"),
+        n_evaluadas=n,
+    )

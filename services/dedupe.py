@@ -34,6 +34,7 @@ from typing import Any
 from db.database import connect, connect_read, get_cursor, is_postgres_backend, set_cursor
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
 
 log = get_logger(__name__)
@@ -168,6 +169,8 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
             marcas.append(
                 (duplicada["id_externo"], canonica["id_externo"], clave, confianza, status)
             )
+            source_pair = "|".join(sorted((str(row["fuente"]), str(candidata["fuente"]))))
+            dedupe_marked_total.labels(source_pair=source_pair, status=status).inc()
             if status == "confirmed":
                 result.confirmados += 1
             else:
@@ -192,6 +195,11 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
             )
     if max_extraccion and max_extraccion != watermark:
         set_cursor(cursor_source, last_seen_updated=max_extraccion)
+    if result.evaluadas:
+        # Solo se actualiza cuando hubo filas nuevas: una pasada vacía no debe
+        # arrastrar el gauge a 0 y disparar la alerta de banda en falso.
+        rate = (result.confirmados + result.pendientes) / result.evaluadas
+        dedupe_match_rate.labels(fuente=fuente).set(rate)
     if result.confirmados or result.pendientes:
         log.info("dedupe_detected", **result.as_dict())
     return result

@@ -59,6 +59,9 @@ test-unit:  ## Tests unitarios rápidos
 test-e2e:  ## Tests end-to-end
 	pytest tests/ -m e2e
 
+eval-llm:  ## Eval manual de generación RAG contra un LLM real (fuera de CI, requiere credenciales)
+	python scripts/eval_rag_generation.py
+
 test-property:  ## Tests basados en propiedades (hypothesis)
 	pytest tests/ -m property
 
@@ -108,6 +111,10 @@ web-build:  ## Build de producción del frontend Next.js
 
 web-codegen:  ## Genera cliente TS tipado desde la API OpenAPI (requiere API corriendo en :8080)
 	cd web && npm run codegen
+
+openapi:  ## Exporta api/openapi.json offline + regenera web/src/generated/api.d.ts
+	python scripts/export_openapi.py
+	cd web && npm run codegen:file
 
 web-lint:  ## Lint del frontend Next.js
 	cd web && npm run lint

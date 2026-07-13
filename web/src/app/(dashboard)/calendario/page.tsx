@@ -10,7 +10,7 @@ import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
-import type { TrendPoint } from "@/generated/api";
+import type { TrendPoint } from "@/lib/api-types";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 const CalendarioMonthlyChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioMonthlyChart })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
 const CalendarioDowChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioDowChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });

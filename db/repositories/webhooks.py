@@ -12,6 +12,14 @@ from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_der
 log = get_logger(__name__)
 
 
+def _split_event_types(raw: Any) -> list[str]:
+    """``event_types`` se guarda como TEXT (CSV) en la tabla; los consumidores
+    de la API esperan una lista (contrato de ``WebhookCreateResponse``/UI)."""
+    if not raw:
+        return []
+    return [e for e in str(raw).split(",") if e]
+
+
 def _get_webhook_master_key() -> str:
     """Obtiene la clave maestra para derivar secretos de webhook."""
     from config.settings import settings
@@ -55,7 +63,10 @@ class WebhookRepository:
                 "SELECT id, name, url, event_types, active, created_at, "
                 "last_triggered_at, last_status, failure_count FROM webhooks ORDER BY id"
             )
-            return rows_to_dicts(cur)
+            rows = rows_to_dicts(cur)
+        for row in rows:
+            row["event_types"] = _split_event_types(row.get("event_types"))
+        return rows
 
     def get_by_id(self, webhook_id: int) -> dict[str, Any] | None:
         with connect_read() as c:
@@ -68,7 +79,9 @@ class WebhookRepository:
             if row is None:
                 return None
             cols = [d[0] for d in cur.description]
-            return dict(zip(cols, row, strict=False))
+            result = dict(zip(cols, row, strict=False))
+        result["event_types"] = _split_event_types(result.get("event_types"))
+        return result
 
     def delete(self, webhook_id: int) -> bool:
         with connect() as c:

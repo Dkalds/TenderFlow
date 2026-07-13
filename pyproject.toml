@@ -85,6 +85,13 @@ analytics = [
 crypto = [
     "cryptography>=42.0,<50",
 ]
+# Extracción de texto de adjuntos (pliegos), plan Pliegos+RAG (F7).
+# Instalar con: pip install tenderflow[pliegos]
+# Sin este extra, scraper/document_fetcher.py falla al extraer PDF (import
+# diferido) pero no rompe el resto del pipeline de scraping.
+pliegos = [
+    "pypdf>=4.0,<7",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

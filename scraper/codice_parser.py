@@ -19,7 +19,7 @@ from typing import Any
 from lxml import etree
 
 from config import settings
-from db.database import Adjudicacion, Licitacion
+from db.database import Adjudicacion, DocumentoReferencia, Licitacion
 from observability.logging import get_logger
 from scraper.filters import matches_technology
 from shared.dates import to_iso_date
@@ -151,6 +151,39 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
                 )
             )
     return out
+
+
+# {tag CODICE, tipo lógico} — los tres siguen el mismo shape UBL DocumentReference
+# (0..N ocurrencias cada uno; Additional en particular suele repetirse).
+_DOC_REF_TAGS = (
+    ("cac:LegalDocumentReference", "legal"),
+    ("cac:TechnicalDocumentReference", "technical"),
+    ("cac:AdditionalDocumentReference", "additional"),
+)
+
+
+def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
+    """Extrae los adjuntos (pliegos) referenciados en el CODICE de una entry.
+
+    Recorre ``{Legal,Technical,Additional}DocumentReference`` bajo
+    ``ContractFolderStatus``, cada uno con estructura UBL estándar:
+    ``.../cac:Attachment/cac:ExternalReference/cbc:URI`` (+ opcional
+    ``cbc:FileName``). Fase A2 del plan Pliegos+RAG — el fetcher (F7) resuelve
+    la URI más tarde; este parser es puro y no descarga nada.
+
+    Una referencia sin URI (adjunto reservado/no publicado, frecuente en
+    CODICE) se descarta silenciosamente — no es un error de parseo.
+    """
+    cfs = "./cacext:ContractFolderStatus"
+    refs: list[DocumentoReferencia] = []
+    for tag, tipo in _DOC_REF_TAGS:
+        for node in entry.xpath(f"{cfs}/{tag}", namespaces=NS):
+            uri = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:URI")
+            if not uri:
+                continue
+            filename = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName")
+            refs.append(DocumentoReferencia(tipo=tipo, uri=uri, filename=filename))
+    return refs
 
 
 def _issue_date(entry: Any, cfs: str) -> str | None:

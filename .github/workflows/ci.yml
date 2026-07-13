@@ -159,7 +159,12 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:16
+        # pgvector/pgvector:pg16 en vez de postgres:16 desnudo: v56 corre
+        # `CREATE EXTENSION IF NOT EXISTS vector` (plan Pliegos+RAG, F5) --
+        # la extensión pgvector requiere los binarios compilados, ausentes en
+        # la imagen oficial de Postgres. Imagen mantenida por el proyecto
+        # pgvector, basada en postgres:16 + la extensión precompilada.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: tenderflow
           POSTGRES_PASSWORD: tenderflow  # pragma: allowlist secret -- contenedor efímero local, no es un secreto real
@@ -321,6 +326,45 @@ jobs:
 
       - name: Verify agents canon is in sync with generated files
         run: python scripts/sync_agents.py --check
+
+  # ── Contrato API↔web: openapi.json y api.d.ts sin drift ─────────────
+  codegen-drift:
+    name: Codegen Drift Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Export OpenAPI schema (offline)
+        run: python scripts/export_openapi.py
+
+      - name: Regenerate typed client
+        run: npm run codegen:file
+        working-directory: web
+
+      - name: Fail on drift (regenerar con `make openapi` y commitear)
+        run: git diff --exit-code api/openapi.json web/src/generated/api.d.ts
 
   # ── Frontend: typecheck, lint, unit tests, build ────────────────────
   frontend:

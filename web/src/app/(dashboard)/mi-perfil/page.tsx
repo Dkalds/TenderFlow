@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, Trash2, RotateCcw, Info } from "lucide-react";
+import { Save, Trash2, RotateCcw, Info, Download, ShieldAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +102,103 @@ function WeightSlider({
         className="w-full"
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RGPD — exportar / eliminar mis datos (F13·C3.3b, plan Pliegos+RAG)
+// ---------------------------------------------------------------------------
+
+function GdprSection() {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const exportMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/v1/me/data", { credentials: "include" });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return res.blob();
+    },
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mis-datos-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Descarga iniciada.");
+    },
+    onError: () => toast.error("No se pudo exportar tus datos."),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => apiMutate("DELETE", "/api/v1/me"),
+    onSuccess: () => {
+      toast.success("Datos eliminados. Cerrando sesión…");
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1500);
+    },
+    onError: () => {
+      toast.error("No se pudieron eliminar los datos.");
+      setConfirmDelete(false);
+    },
+  });
+
+  function handleDeleteClick() {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    deleteMut.mutate();
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ShieldAlert className="h-5 w-5" />
+          Mis datos (RGPD)
+        </CardTitle>
+        <CardDescription>
+          Exporta una copia de todos tus datos o elimínalos permanentemente (derecho de
+          portabilidad y al olvido, Art. 15/17 RGPD). Cubre tu watchlist, reglas de
+          seguimiento, perfil de scoring, notificaciones, claves API y feedback.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          onClick={() => exportMut.mutate()}
+          disabled={exportMut.isPending}
+          className="gap-1.5"
+        >
+          <Download className="h-4 w-4" />
+          {exportMut.isPending ? "Exportando…" : "Exportar mis datos"}
+        </Button>
+        <Button
+          variant={confirmDelete ? "destructive" : "outline"}
+          onClick={handleDeleteClick}
+          disabled={deleteMut.isPending}
+          className={
+            confirmDelete ? "gap-1.5" : "gap-1.5 text-destructive hover:bg-destructive/10"
+          }
+        >
+          <Trash2 className="h-4 w-4" />
+          {deleteMut.isPending
+            ? "Eliminando…"
+            : confirmDelete
+              ? "¿Confirmar eliminación?"
+              : "Eliminar mis datos"}
+        </Button>
+        {confirmDelete && !deleteMut.isPending && (
+          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+            Cancelar
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -367,6 +464,8 @@ export default function MiPerfilPage() {
           </div>
         </CardContent>
       </Card>
+
+      <GdprSection />
 
       {/* Acciones */}
       <div className="flex items-center gap-3 pb-6">

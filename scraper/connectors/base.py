@@ -39,7 +39,7 @@ from observability import get_logger
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from db.upsert import Adjudicacion, Licitacion
+    from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion
 
 log = get_logger(__name__)
 
@@ -61,6 +61,10 @@ class RawNotice:
 class ParsedTender:
     licitacion: Licitacion
     adjudicaciones: list[Adjudicacion] = field(default_factory=list)
+    # Plan Pliegos+RAG (F6): referencias a adjuntos (pliegos) del CODICE.
+    # Campo aditivo — connectores que no lo pueblan siguen funcionando igual
+    # (default vacío, run_connector no persiste nada si la lista está vacía).
+    documentos: list[DocumentoReferencia] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -122,6 +126,22 @@ class ConnectorRunResult:
         }
 
 
+def _persist_documentos(
+    docs_por_lic: dict[str, list[DocumentoReferencia]], *, source_id: str
+) -> None:
+    """Persiste metadatos de adjuntos (plan Pliegos+RAG, F6). Fail-open: un
+    fallo aquí no debe tumbar la ingesta de licitaciones/adjudicaciones, que
+    ya se persistieron antes de llamar a esta función."""
+    try:
+        from db.repositories.documentos import DocumentosRepository
+
+        repo = DocumentosRepository()
+        for licitacion_id, refs in docs_por_lic.items():
+            repo.upsert_meta(licitacion_id, refs)
+    except Exception as e:
+        log.warning("connector_documentos_persist_failed", source=source_id, error=str(e))
+
+
 def _post_ingestion(source_id: str) -> None:
     """Resolución de empresas + dedupe + eventos de contrato + caché. Fail-open."""
     try:
@@ -168,6 +188,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
 
     lics: list[Licitacion] = []
     adj_por_lic: dict[str, list[Adjudicacion]] = {}
+    docs_por_lic: dict[str, list[DocumentoReferencia]] = {}
 
     def _flush() -> None:
         if not lics:
@@ -185,8 +206,11 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             result.errores += n_failed
             if n_dropped:
                 log.warning("adj_rows_dropped", dropped=n_dropped, persisted=n_adj)
+        if docs_por_lic:
+            _persist_documentos(docs_por_lic, source_id=source_id)
         lics.clear()
         adj_por_lic.clear()
+        docs_por_lic.clear()
         # Avanzar el cursor por cada lote persistido, no solo al final del
         # fetch completo. Si la ejecución se corta a mitad de camino (timeout
         # externo del job, no una excepción Python), el progreso hasta el
@@ -214,6 +238,8 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             lics.append(parsed.licitacion)
             if parsed.adjudicaciones:
                 adj_por_lic[parsed.licitacion.id_externo] = parsed.adjudicaciones
+            if parsed.documentos:
+                docs_por_lic[parsed.licitacion.id_externo] = parsed.documentos
             if len(lics) >= batch_size:
                 _flush()
         _flush()

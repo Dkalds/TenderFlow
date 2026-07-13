@@ -64,7 +64,7 @@ import type {
   PipelineResult,
   RetenderingResult,
   ForecastVolumeResult,
-} from "@/generated/api";
+} from "@/lib/api-types";
 import { URGENCY_COLORS } from "@/lib/chart-colors";
 
 /* ------------------------------------------------------------------ */
@@ -295,8 +295,8 @@ export default function PipelineAlertasPage() {
         mes: p.mes,
         valor: p.valor,
         tipo: p.tipo,
-        lower: p.lower,
-        upper: p.upper,
+        lower: p.lower ?? null,
+        upper: p.upper ?? null,
       })),
     [volumeData],
   );
@@ -570,7 +570,7 @@ export default function PipelineAlertasPage() {
             {loadingPipeline ? (
               <Skeleton className="h-[260px] w-full" />
             ) : (pipelineData?.por_horizonte?.length ?? 0) > 0 ? (
-              <PipelineHorizonChart data={pipelineData!.por_horizonte} />
+              <PipelineHorizonChart data={pipelineData?.por_horizonte ?? []} />
             ) : (
               <EmptyState />
             )}
@@ -585,7 +585,7 @@ export default function PipelineAlertasPage() {
             {loadingPipeline ? (
               <Skeleton className="h-[260px] w-full" />
             ) : (pipelineData?.por_trimestre?.length ?? 0) > 0 ? (
-              <PipelineQuarterlyChart data={pipelineData!.por_trimestre} />
+              <PipelineQuarterlyChart data={pipelineData?.por_trimestre ?? []} />
             ) : (
               <EmptyState />
             )}
@@ -646,7 +646,7 @@ export default function PipelineAlertasPage() {
             <Skeleton className="h-[300px] w-full" />
           ) : (pipelineData?.urgencia_valor?.length ?? 0) > 0 ? (
             <PipelineUrgencyScatter
-              data={pipelineData!.urgencia_valor}
+              data={pipelineData?.urgencia_valor ?? []}
               onPointClick={(id) => router.push(`/detalle?lic=${id}`)}
             />
           ) : (
@@ -944,7 +944,7 @@ export default function PipelineAlertasPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {forecastData!.forecast_entries.map((entry) => (
+                  {(forecastData?.forecast_entries ?? []).map((entry) => (
                     <TableRow key={entry.id_externo}>
                       <TableCell className="max-w-[200px] truncate font-medium">
                         <Link href={`/detalle?lic=${entry.id_externo}`} className="hover:underline">
@@ -981,7 +981,7 @@ export default function PipelineAlertasPage() {
               </Table>
               <Separator className="my-3" />
               <p className="text-xs text-muted-foreground">
-                {forecastData!.forecast_entries.length} contratos en forecast
+                {(forecastData?.forecast_entries ?? []).length} contratos en forecast
               </p>
             </div>
           ) : (

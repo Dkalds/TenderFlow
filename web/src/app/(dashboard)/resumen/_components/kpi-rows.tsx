@@ -14,7 +14,7 @@ import {
   Clock,
   Activity,
 } from "lucide-react";
-import type { AnalyticsOverview, ResumenHoyResult } from "@/generated/api";
+import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
 
 interface KpiRowsProps {
   overview: AnalyticsOverview | undefined;

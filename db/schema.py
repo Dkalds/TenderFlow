@@ -436,6 +436,43 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     importe_max            REAL,
     updated_at             TEXT NOT NULL DEFAULT (datetime('now','utc'))
 );
+
+-- v56 (plan Pliegos+RAG, F5): metadatos + texto extraido de adjuntos de
+-- licitaciones. Equivalente SQLite de db/alembic/versions/v56_pg_documentos_pgvector.py
+-- (Postgres-only). storage_key reservado (NULL) para blob storage futuro.
+CREATE TABLE IF NOT EXISTS documentos (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    licitacion_id TEXT NOT NULL REFERENCES licitaciones(id_externo) ON DELETE CASCADE,
+    tipo          TEXT NOT NULL CHECK(tipo IN ('legal','technical','additional')),
+    uri           TEXT NOT NULL,
+    filename      TEXT,
+    content_type  TEXT,
+    size_bytes    INTEGER,
+    sha256        TEXT,
+    texto         TEXT,
+    status        TEXT NOT NULL DEFAULT 'pending'
+                  CHECK(status IN ('pending','downloaded','extracted','error')),
+    error_detail  TEXT,
+    storage_key   TEXT,
+    fetched_at    TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(licitacion_id, uri)
+);
+CREATE INDEX IF NOT EXISTS idx_documentos_licitacion ON documentos(licitacion_id);
+CREATE INDEX IF NOT EXISTS idx_documentos_status     ON documentos(status);
+
+-- Sin tsvector/HNSW (no existen en SQLite): solo para tests unitarios con
+-- tmp_db. El embedding real y el retrieval hibrido corren contra Postgres.
+CREATE TABLE IF NOT EXISTS documento_chunks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    documento_id INTEGER NOT NULL REFERENCES documentos(id) ON DELETE CASCADE,
+    chunk_index  INTEGER NOT NULL,
+    texto        TEXT NOT NULL,
+    embedding    BLOB,
+    UNIQUE(documento_id, chunk_index)
+);
+CREATE INDEX IF NOT EXISTS idx_documento_chunks_documento ON documento_chunks(documento_id);
 """
 
 

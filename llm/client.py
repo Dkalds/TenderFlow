@@ -145,14 +145,23 @@ def _record_usage(model: str, provider: str, usage: dict[str, int]) -> None:
         except Exception:
             pass
 
-    if cost_c is not None and model in _PRICE_PER_MTOK:
+    if model in _PRICE_PER_MTOK:
         price_in, price_out = _PRICE_PER_MTOK[model]
         cost = (input_tokens * price_in + output_tokens * price_out) / 1_000_000
+        if cost_c is not None:
+            try:
+                cost_c.labels(model=model, provider=provider).inc(cost)
+            except Exception:
+                pass
+        # Alimenta el presupuesto (RFC llm-dependencia-gestionada) con el mismo
+        # cálculo que nutre llm_cost_usd_total. Best-effort: nunca rompe el stream.
         try:
-            cost_c.labels(model=model, provider=provider).inc(cost)
+            from llm.budget import get_budget_guard
+
+            get_budget_guard().record(cost)
         except Exception:
-            pass
-    elif model not in _PRICE_PER_MTOK:
+            log.debug("llm_budget_record_failed", exc_info=True)
+    else:
         log.debug("llm_cost_unknown_model", model=model)
 
 
@@ -237,8 +246,18 @@ def stream_llm_response(
     Raises:
         ValueError: Si ``model`` no está en ``AVAILABLE_MODELS``, o si
                     ``question`` está fuera de rango, o si hay demasiados docs.
+        LLMBudgetExceeded: Si el presupuesto está agotado y
+                    ``LLM_BUDGET_MODE=enforce`` (RFC llm-dependencia-gestionada).
     """
     _validate_request(question, docs, model)
+
+    # Breaker de coste ANTES de llamar al proveedor: en enforce corta el gasto,
+    # en monitor solo instrumenta. Nota: al ser esto un generador, el check corre
+    # en la primera iteración; /ask hace además un check eager pre-stream para
+    # poder responder 429 antes de abrir el SSE.
+    from llm.budget import get_budget_guard
+
+    get_budget_guard().check()
 
     p = provider_for(model)
     t0 = time.monotonic()

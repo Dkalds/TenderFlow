@@ -33,7 +33,7 @@ import {
 import { DetailPanel, type LicitacionDetail } from "@/components/detail-panel";
 import { Comparator } from "@/components/comparator";
 import { ExportPopover } from "@/components/export-popover";
-import type { LicitacionSummary } from "@/generated/api";
+import type { LicitacionSummary } from "@/lib/api-types";
 import {
   ChevronLeft,
   ChevronRight,
@@ -705,14 +705,14 @@ export default function DetallePage() {
           items={selectedItems.map((r) => ({
             id_externo: r.id_externo,
             titulo: r.titulo,
-            organo_contratacion: r.organo_contratacion,
-            importe: r.importe,
-            estado: r.estado,
-            fecha_publicacion: r.fecha_publicacion,
-            ccaa: r.ccaa,
-            cpv: r.cpv,
-            url: r.url,
-            tecnologia: r.tecnologia,
+            organo_contratacion: r.organo_contratacion ?? null,
+            importe: r.importe ?? null,
+            estado: r.estado ?? null,
+            fecha_publicacion: r.fecha_publicacion ?? null,
+            ccaa: r.ccaa ?? null,
+            cpv: r.cpv ?? null,
+            url: r.url ?? null,
+            tecnologia: r.tecnologia ?? null,
             tipo_contrato: null,
             provincia: null,
             fecha_limite: null,

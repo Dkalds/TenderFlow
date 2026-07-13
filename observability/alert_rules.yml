@@ -68,6 +68,59 @@ groups:
             db_concurrent_writers supera 3 sostenido. El supuesto single-writer
             de ADR-004 ya no se sostiene; revisar arquitectura de persistencia.
 
+  - name: llm_budget
+    # Presupuesto LLM (RFC llm-dependencia-gestionada). En modo monitor estas
+    # alertas son la unica senal de que el enforcement habria cortado trafico.
+    rules:
+      - alert: LLMBudgetExceeded
+        expr: increase(llm_budget_exceeded_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          rfc: "2026-06-30-llm"
+        annotations:
+          summary: "Presupuesto LLM agotado (ventana {{ $labels.window }}, modo {{ $labels.mode }})"
+          description: >
+            llm_budget_exceeded_total sube: el gasto acumulado supero
+            LLM_BUDGET_USD_DAILY/_MONTHLY. En modo monitor no se corta trafico;
+            evaluar subir el presupuesto o activar LLM_BUDGET_MODE=enforce.
+
+  - name: dedupe_quality
+    # Banda del match-rate del dedupe cross-fuente (RFC validacion-dedupe-linaje).
+    # Un cambio de normalizacion que de golpe dispara el rate es una regresion de
+    # matching detectable en vivo (el gate absoluto vive en test_dedupe_quality.py).
+    rules:
+      - alert: DedupeMatchRateHigh
+        # Baseline esperado: el solape PSCP<->PLACSP es una fraccion minoritaria de
+        # las filas nuevas. Si mas de la mitad de una pasada se marca como duplicado,
+        # lo mas probable es una regresion de normalize_organo/natural_expediente.
+        expr: dedupe_match_rate > 0.5
+        for: 30m
+        labels:
+          severity: warning
+          rfc: "2026-06-30-dedupe"
+        annotations:
+          summary: "Dedupe: match-rate anómalo (>50% de filas nuevas marcadas)"
+          description: >
+            dedupe_match_rate{fuente} supera 0.5 sostenido. Revisar el último
+            cambio en services/dedupe.py / services/normalization.py y correr
+            tests/test_dedupe_quality.py contra el golden set.
+
+      - alert: DedupeConfirmedBurst
+        # Rafaga de marcados confirmados: un backfill legitimo puede dispararla,
+        # pero fuera de backfills indica clave debil sobre-matcheando.
+        expr: rate(dedupe_marked_total{status="confirmed"}[1h]) * 3600 > 500
+        for: 30m
+        labels:
+          severity: warning
+          rfc: "2026-06-30-dedupe"
+        annotations:
+          summary: "Dedupe: >500 confirmados/hora sostenido"
+          description: >
+            dedupe_marked_total{status=confirmed} crece a más de 500/h fuera de
+            un backfill conocido. Verificar precision con el golden set antes de
+            que exclude_duplicados_sql() borre señal real del análisis.
+
   - name: postgres_pool_alerts
     # Alertas de pool Postgres (ADR-016, activas post-cutover F3d).
     # Activar cuando DATABASE_URL esté configurada en producción.

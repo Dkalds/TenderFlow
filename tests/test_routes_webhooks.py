@@ -2,18 +2,35 @@
 
 No se duplican:
 - SSRF validation tests (en test_api_improvements.py)
-- Scope 403 tests (en test_api_improvements.py)
+- Scope 403 tests con API key restringida (en test_api_improvements.py)
 - Create + Idempotency-Key (en test_ola1_fixes.py)
+
+F13·C3.1 (plan Pliegos+RAG): los endpoints migraron de ``require_scope`` a
+``require_any_auth`` + ``is_admin`` (recurso compartido, sin owner por
+usuario — ver docstring de api/routes/webhooks.py). Los tests de sesión OAuth
+admin/no-admin viven aquí; los de API key restringida (sin scope ``*`` →
+``is_admin=False``) siguen en test_api_improvements.py.
 """
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from api.app import app
+from api.routes.dual_auth import require_any_auth
+
 # Fixtures client, auth, api_db se heredan de conftest.py
 
 _WEBHOOK_URL = "https://example.com/hook"
 _WEBHOOK_BODY = {"name": "hook", "url": _WEBHOOK_URL, "event_types": ["*"]}
+
+
+def _admin_session():
+    return {"user_id": 1, "email": "admin@test.com", "is_admin": True, "auth_method": "session"}
+
+
+def _non_admin_session():
+    return {"user_id": 2, "email": "user@test.com", "is_admin": False, "auth_method": "session"}
 
 
 def _create_webhook(client, auth, monkeypatch, *, name="hook", url=_WEBHOOK_URL):
@@ -43,6 +60,35 @@ def test_webhook_get_by_id(client, auth, monkeypatch):
     data = r.json()
     assert data["id"] == wh_id
     assert "secret" not in data, "El campo 'secret' no debe exponerse en GET detalle"
+
+
+def test_webhook_event_types_is_a_list_not_csv_string(client, auth, monkeypatch):
+    """Regresión: event_types se guarda como CSV en la tabla pero la API/UI
+    (F13·C3.3a, admin webhooks card) esperan una lista — no un string crudo."""
+    _create_webhook(client, auth, monkeypatch)
+
+    r_list = client.get("/api/v1/webhooks", headers=auth)
+    assert r_list.status_code == 200, r_list.text
+    assert isinstance(r_list.json()[0]["event_types"], list)
+    assert r_list.json()[0]["event_types"] == ["*"]
+
+    wh_id = r_list.json()[0]["id"]
+    r_get = client.get(f"/api/v1/webhooks/{wh_id}", headers=auth)
+    assert isinstance(r_get.json()["event_types"], list)
+
+    monkeypatch.setattr("api.routes.webhooks._is_ssrf_url", lambda u: False)
+    r_multi = client.post(
+        "/api/v1/webhooks",
+        json={
+            "name": "multi-event",
+            "url": _WEBHOOK_URL,
+            "event_types": ["watchlist_match", "watchlist_rule.matched"],
+        },
+        headers=auth,
+    )
+    multi_id = r_multi.json()["id"]
+    r_get_multi = client.get(f"/api/v1/webhooks/{multi_id}", headers=auth)
+    assert r_get_multi.json()["event_types"] == ["watchlist_match", "watchlist_rule.matched"]
 
 
 def test_webhook_get_by_id_no_existe(client, auth):
@@ -174,6 +220,46 @@ def test_webhook_deliveries_tras_ping(client, auth, monkeypatch):
     deliveries = r.json()
     assert len(deliveries) == 1
     assert deliveries[0]["event_type"] == "ping"
+
+
+# ---------------------------------------------------------------------------
+# F13·C3.1: require_any_auth + is_admin (sesión OAuth)
+# ---------------------------------------------------------------------------
+
+
+def test_session_non_admin_forbidden(client, api_db):
+    """Sesión OAuth sin is_admin → 403 (recurso compartido, no por-usuario)."""
+    app.dependency_overrides[require_any_auth] = _non_admin_session
+    try:
+        resp = client.get("/api/v1/webhooks")
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 403
+
+
+def test_session_admin_can_list(client, api_db):
+    """Sesión OAuth con is_admin=True → 200, igual que una API key con scope '*'."""
+    app.dependency_overrides[require_any_auth] = _admin_session
+    try:
+        resp = client.get("/api/v1/webhooks")
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_session_admin_can_create_with_watchlist_rule_matched_event(client, api_db, monkeypatch):
+    """F12·C2c: 'watchlist_rule.matched' es un event_type válido al crear."""
+    monkeypatch.setattr("api.routes.webhooks._is_ssrf_url", lambda u: False)
+    app.dependency_overrides[require_any_auth] = _admin_session
+    try:
+        resp = client.post(
+            "/api/v1/webhooks",
+            json={"name": "hook", "url": _WEBHOOK_URL, "event_types": ["watchlist_rule.matched"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 201, resp.text
 
 
 def test_webhook_deliveries_no_existe(client, auth):

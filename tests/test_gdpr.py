@@ -150,6 +150,118 @@ def test_anonymize_user_data_revokes_key(tmp_db):
     assert row[0] == 0
 
 
+def test_anonymize_user_data_without_key_id_does_not_touch_keys(tmp_db):
+    """Sesión OAuth (sin API key) -- key_id=None no debe tocar api_keys."""
+    db_mod, _ = tmp_db
+    _seed_user_and_key(db_mod, key_id=6, key_hash="untouched")
+    from services.gdpr import anonymize_user_data
+
+    anonymize_user_data("some-user-key")  # key_id omitido
+    with connect() as c:
+        row = c.execute("SELECT is_active FROM api_keys WHERE id = 6").fetchone()
+    assert row[0] == 1
+
+
+# ---------------------------------------------------------------------------
+# F13·C3.2: export/anonymize de watchlist_rules, user_profiles, user_notifications
+# ---------------------------------------------------------------------------
+
+
+def test_export_watchlist_rules(tmp_db):
+    _db_mod, _ = tmp_db
+    from services.gdpr import export_watchlist_rules
+    from services.watchlist_rules import WatchlistRule, create_rule
+
+    create_rule("uk1", WatchlistRule(keyword="SAP", frequency="daily"))
+    rows = export_watchlist_rules("uk1")
+    assert len(rows) == 1
+    assert rows[0]["keyword"] == "SAP"
+    assert export_watchlist_rules("otro-usuario") == []
+
+
+def test_export_user_profile(tmp_db):
+    _db_mod, _ = tmp_db
+    from db.repositories.user_profiles import upsert_user_profile
+    from services.gdpr import export_user_profile
+
+    assert export_user_profile("uk1") is None
+    upsert_user_profile("uk1", {"weights": {"importe": 100}})
+    profile = export_user_profile("uk1")
+    assert profile is not None
+    assert profile["weights"] == {"importe": 100}
+
+
+def test_export_user_notifications(tmp_db):
+    _db_mod, _ = tmp_db
+    with connect() as c:
+        c.execute(
+            "INSERT INTO user_notifications (user_key, created_at, type, title) "
+            "VALUES (?, ?, 'rule_match', ?)",
+            ("uk1", now_utc_iso(), "titulo"),
+        )
+    from services.gdpr import export_user_notifications
+
+    rows = export_user_notifications("uk1")
+    assert len(rows) == 1
+    assert rows[0]["title"] == "titulo"
+    assert export_user_notifications("otro-usuario") == []
+
+
+def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
+    """El borrado GDPR (F13·C3.2) cubre watchlist_rules/user_profiles/user_notifications."""
+    _db_mod, _ = tmp_db
+    from db.repositories.user_profiles import upsert_user_profile
+    from services.gdpr import anonymize_user_data
+    from services.watchlist_rules import WatchlistRule, create_rule
+
+    create_rule("uk1", WatchlistRule(keyword="SAP", frequency="daily"))
+    upsert_user_profile("uk1", {"weights": {"importe": 100}})
+    with connect() as c:
+        c.execute(
+            "INSERT INTO user_notifications (user_key, created_at, type, title) "
+            "VALUES (?, ?, 'rule_match', ?)",
+            ("uk1", now_utc_iso(), "titulo"),
+        )
+
+    anonymize_user_data("uk1")
+
+    with connect() as c:
+        n_rules = c.execute(
+            "SELECT COUNT(*) FROM watchlist_rules WHERE user_key = ?", ("uk1",)
+        ).fetchone()[0]
+        n_profile = c.execute(
+            "SELECT COUNT(*) FROM user_profiles WHERE user_key = ?", ("uk1",)
+        ).fetchone()[0]
+        n_notif = c.execute(
+            "SELECT COUNT(*) FROM user_notifications WHERE user_key = ?", ("uk1",)
+        ).fetchone()[0]
+    assert n_rules == 0
+    assert n_profile == 0
+    assert n_notif == 0
+
+
+def test_revoke_all_api_keys_for_user(tmp_db):
+    db_mod, _ = tmp_db
+    _seed_user_and_key(db_mod, user_id=20, key_id=20, key_hash="k20")
+    with connect() as c:
+        cols = db_mod.get_table_columns(c, "api_keys")
+        base = "INSERT INTO api_keys (id, key_hash, name, created_at, is_active"
+        vals: list[object] = [21, "k21", "second-key", now_utc_iso(), 1]
+        if "user_id" in cols:
+            base += ", user_id"
+            vals.append(20)
+        base += ") VALUES (" + ",".join("?" for _ in vals) + ")"
+        c.execute(base, vals)
+
+    from services.gdpr import revoke_all_api_keys_for_user
+
+    n = revoke_all_api_keys_for_user(20)
+    assert n == 2
+    with connect() as c:
+        rows = c.execute("SELECT is_active FROM api_keys WHERE id IN (20, 21)").fetchall()
+    assert all(r[0] == 0 for r in rows)
+
+
 # ---------------------------------------------------------------------------
 # list_user_keys / get_key_name_and_scopes / set_key_expiry
 # ---------------------------------------------------------------------------

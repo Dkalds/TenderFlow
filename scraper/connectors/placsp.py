@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from db.upsert import Adjudicacion, Licitacion
+from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 
@@ -54,7 +54,11 @@ class _PlacspParseCore:
         descartarla. El descarte puede ser por filtro de keywords (camino
         directo) o por el clasificador ML (si el modelo no supera el umbral).
         """
-        from scraper.codice_parser import parse_adjudicaciones, parse_entry
+        from scraper.codice_parser import (
+            parse_adjudicaciones,
+            parse_document_references,
+            parse_entry,
+        )
         from scraper.pipeline import _ml_classify_entry
 
         try:
@@ -73,7 +77,8 @@ class _PlacspParseCore:
             lic.fuente = fuente
 
             adjs: list[Adjudicacion] = parse_adjudicaciones(entry_elem, lic.id_externo)
-            return ParsedTender(licitacion=lic, adjudicaciones=adjs)
+            docs: list[DocumentoReferencia] = parse_document_references(entry_elem)
+            return ParsedTender(licitacion=lic, adjudicaciones=adjs, documentos=docs)
 
         except Exception as exc:
             log.debug("placsp_parse_entry_failed", error=str(exc))

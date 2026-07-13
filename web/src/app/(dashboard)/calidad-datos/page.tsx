@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { KpiCard } from "@/components/charts/kpi-card";
+import { CalibracionBajaBlock } from "@/components/calibracion-baja";
 import {
   ShieldCheck,
   AlertTriangle,
@@ -350,6 +351,9 @@ export default function CalidadDatosPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Calibración del modelo de baja — closed loop predicción vs. realidad */}
+      <CalibracionBajaBlock />
     </div>
   );
 }

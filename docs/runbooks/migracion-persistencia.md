@@ -14,18 +14,27 @@
 > existen como GH Secrets (añadidos 2026-07-09, consistente con la fecha del
 > cutover) → el paso "TLS verify-full" del Paso 9 tiene su credencial
 > disponible, pero **no se pudo verificar desde aquí** que el `DATABASE_URL`
-> vivo use efectivamente `sslmode=verify-full` (el validador
-> `_validate_prod_database_ssl` en `config/settings.py` lo exige en
-> ENV=prod/staging, pero el workflow `scrape-daily.yml` corre con `ENV=dev`,
-> que omite ese validator). **`BACKUP_ENCRYPTION_KEY` NO existe** en los
-> secrets del repo → los backups de `backup.yml` se están subiendo **sin
-> cifrar** a S3 privado ahora mismo (el propio workflow emite
+> vivo use efectivamente `sslmode=verify-full`. **`BACKUP_ENCRYPTION_KEY` NO
+> existe** en los secrets del repo → los backups de `backup.yml` se están
+> subiendo **sin cifrar** a S3 privado ahora mismo (el propio workflow emite
 > `::warning::BACKUP_ENCRYPTION_KEY no definido` en cada corrida). No hay
 > secret `DATABASE_ADMIN_URL` ni evidencia de un rol `tenderflow_app`
 > separado → el rol de privilegios mínimos sigue sin crear. La migración
 > `v52_rls_lockdown` **existe** en `db/alembic/versions/` (creada
 > 2026-07-06) pero si está *aplicada* contra la Supabase viva no es
 > verificable sin credenciales — requiere `alembic current` contra prod.
+>
+> **Actualización 2026-07-13** (plan Pliegos+RAG, fase D2): el gap
+> `ENV=dev` está **cerrado en código** — `_validate_prod_database_ssl` en
+> `config/settings.py` ahora exige `sslmode` seguro para cualquier
+> `DATABASE_URL` con host remoto, **sea cual sea `ENV`** (antes solo
+> aplicaba en prod/staging; `scrape-daily.yml` corre con `ENV=dev` contra
+> Supabase real y antes se colaba). `scripts/setup_pg_roles.sql` ya existe
+> (rol `tenderflow_app` + políticas RLS compatibles con v52). El Paso 9 de
+> abajo es ahora un checklist ejecutable — **las acciones siguen pendientes
+> de ejecución manual** (rotar password, crear `DATABASE_ADMIN_URL`, correr
+> el script contra Supabase): eso requiere credenciales del usuario y queda
+> fuera del alcance de lo que un agente puede hacer sin acceso al panel.
 
 ## Pre-requisitos
 
@@ -167,55 +176,74 @@ Durante las primeras 2 horas:
 - Prometheus: `db_write_duration_seconds` (latencias), `db_concurrent_writers`.
 - Supabase Dashboard: Connection graph, Query performance.
 
-## Paso 9 — Hardening post-cutover (seguridad)
+## Paso 9 — Hardening post-cutover (seguridad) — checklist ejecutable
 
-Una vez estable el nuevo backend, cerrar la superficie de seguridad:
+Una vez estable el nuevo backend, cerrar la superficie de seguridad. Cada ítem
+es una acción manual del usuario (gate secrets+ops, AGENTS.md §6) — el repo
+prepara el script/validator, la ejecución contra Supabase la hace el mantenedor.
 
-1. **Rotar la password del rol** — la credencial viajó por `.env`, laptops, ETL y
-   secrets durante la migración. Supabase Dashboard → Database → *Reset database
-   password*; reconstruir `DATABASE_URL` con `?sslmode=verify-full` y actualizarla
-   en Render + GitHub Secrets + `.env`. Ver `docs/SECURITY.md`.
-2. **Verificar TLS verificado** — `DATABASE_URL` con `sslmode=verify-full` y
-   `DATABASE_SSL_ROOT_CERT` apuntando a la CA de Supabase (descargable en Dashboard
-   → Database → SSL). `sslmode=disable/allow/prefer` se rechazan en prod.
-3. **Desactivar la Data API/PostgREST** — Supabase Dashboard → Settings → API.
-   Confirmar además que la migración `v52_rls_lockdown` está aplicada (RLS + REVOKE
-   a `anon`/`authenticated` como defensa en profundidad):
-   ```bash
-   psql "$DATABASE_URL" -c "SELECT relname FROM pg_class WHERE relrowsecurity AND relkind='r' LIMIT 5"
-   psql "$DATABASE_URL" -c "SELECT has_table_privilege('anon','users','SELECT')"  # debe ser false
-   ```
-4. **Backups cifrados** — configurar `BACKUP_ENCRYPTION_KEY` (GitHub Secret) para que
-   `backup.yml` cifre el dump antes de subirlo (ver ese workflow).
+- [ ] **1. Rotar la password del rol dueño** — la credencial viajó por `.env`,
+      laptops, ETL y secrets durante la migración. Supabase Dashboard → Database
+      → *Reset database password*.
+- [ ] **2. `DATABASE_URL` con TLS verificado** — reconstruir con
+      `?sslmode=verify-full` y `DATABASE_SSL_ROOT_CERT` apuntando a la CA de
+      Supabase (Dashboard → Database → SSL). Actualizar en Render + GitHub
+      Secrets + `.env`. El validator en `config/settings.py`
+      (`_validate_prod_database_ssl`) ya lo exige para **cualquier host
+      remoto, independientemente de `ENV`** (cierra el gap donde
+      `scrape-daily.yml` corría con `ENV=dev` sin TLS verificado) — si el
+      secret no cumple, el proceso falla al arrancar en vez de conectar sin
+      TLS.
+- [ ] **3. `DATABASE_ADMIN_URL` separada** — antes de crear `tenderflow_app`
+      (paso 5), guardar la `DATABASE_URL` actual (rol dueño) como
+      `DATABASE_ADMIN_URL` (GitHub Secret, **solo** para `alembic upgrade
+      head` — nunca en el runtime de la app/scheduler/scraper).
+- [ ] **4. Desactivar la Data API/PostgREST** — Supabase Dashboard → Settings
+      → API.
+- [ ] **5. Verificar RLS (v52_rls_lockdown) aplicada**:
+      ```bash
+      psql "$DATABASE_ADMIN_URL" -c "SELECT relname FROM pg_class WHERE relrowsecurity AND relkind='r' LIMIT 5"
+      psql "$DATABASE_ADMIN_URL" -c "SELECT has_table_privilege('anon','users','SELECT')"  # debe ser false
+      psql "$DATABASE_ADMIN_URL" -c "SELECT alembic_version_num FROM alembic_version"  # o: alembic current
+      ```
+- [ ] **6. Ejecutar `scripts/setup_pg_roles.sql`** (rol `tenderflow_app` de
+      solo-DML + políticas RLS compatibles — ver cabecera del script para el
+      procedimiento completo):
+      ```bash
+      psql "$DATABASE_ADMIN_URL" -f scripts/setup_pg_roles.sql
+      ```
+      Verificar que el rol puede DML pero **no** DDL:
+      ```bash
+      psql "$DATABASE_URL" -c "SELECT current_user"                    # tenderflow_app
+      psql "$DATABASE_URL" -c "CREATE TABLE probe_ddl(x int)"           # debe FALLAR (permission denied)
+      psql "$DATABASE_URL" -c "SELECT count(*) FROM licitaciones"       # debe funcionar
+      ```
+      Flip `DATABASE_URL` (app/scheduler/scraper) a la URL con `tenderflow_app`;
+      `DATABASE_ADMIN_URL` queda solo para alembic.
+- [ ] **7. Backups cifrados** — `BACKUP_ENCRYPTION_KEY` (GitHub Secret). Ver
+      `docs/runbooks/backup-restore.md` § "Backups Postgres cifrados" para el
+      procedimiento completo (generación, verificación, descifrado).
+- [ ] **8. Retirar Turso** — una vez pasada la ventana de rollback (**≥14
+      días** desde el cutover, ver cabecera de este runbook) y confirmada la
+      estabilidad en Postgres: borrar `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`
+      de GitHub Secrets y del `.env` de despliegue; el código ya trata Turso
+      como fallback opcional (`db/connection.py`), no requiere cambio de código.
 
-## Roadmap F3d+ — Rol de privilegios mínimos (pendiente)
+## Roadmap F3d+ — Rol de privilegios mínimos
 
 Hoy la app, el scheduler, el scraper, alembic y el backup comparten una única
-`DATABASE_URL` con un rol de altos privilegios (dueño del schema). Objetivo:
-separar responsabilidades.
+`DATABASE_URL` con un rol de altos privilegios (dueño del schema). El paso 6
+del checklist de arriba separa responsabilidades: `tenderflow_app` (solo DML,
+sin DDL/ownership) para runtime; `DATABASE_ADMIN_URL` (rol dueño) solo para
+`alembic upgrade head`.
 
-- Crear un rol `tenderflow_app` con **solo DML** sobre las tablas necesarias (sin
-  DDL/superuser) para la app/scheduler/scraper, y usar un `DATABASE_ADMIN_URL`
-  aparte (rol dueño) solo para migraciones alembic.
-- Fijar timeouts por rol: `ALTER ROLE tenderflow_app SET statement_timeout='30s'`,
-  `idle_in_transaction_session_timeout='60s'`.
-- ⚠️ **Dependencia con RLS (v52):** `tenderflow_app` NO sería dueño de las tablas,
-  así que la RLS activa (sin políticas) lo dejaría **deny-all**. Antes de cutover a
-  este rol hay que añadir políticas RLS explícitas (o `GRANT` por tabla) para
-  `tenderflow_app`. Es un cambio coordinado (panel Supabase + regenerar
-  `DATABASE_URL` + mini-cutover), fuera del alcance del hardening de repo.
-
-Boceto (`scripts/setup_pg_roles.sql`, a crear en esa fase):
-
-```sql
-CREATE ROLE tenderflow_app LOGIN PASSWORD '<generada>';  -- pragma: allowlist secret
-GRANT USAGE ON SCHEMA public TO tenderflow_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO tenderflow_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO tenderflow_app;
-ALTER ROLE tenderflow_app SET statement_timeout = '30s';
-ALTER ROLE tenderflow_app SET idle_in_transaction_session_timeout = '60s';
--- + políticas RLS por tabla o GRANT selectivos (por la migración v52).
-```
+⚠️ **Dependencia con RLS (v52):** `tenderflow_app` NO es dueño de las tablas,
+así que la RLS activa (sin políticas) lo dejaría **deny-all** — por eso
+`scripts/setup_pg_roles.sql` añade una política permisiva explícita
+(`tenderflow_app_full_access`, `FOR ALL … USING (true)`) por cada tabla. El
+control de acceso real sigue viviendo en la capa de aplicación (scopes,
+`auth_core`); RLS aquí solo cierra la Data API pública de Supabase para
+`anon`/`authenticated`, no filtra filas para `tenderflow_app`.
 
 ## Rollback
 

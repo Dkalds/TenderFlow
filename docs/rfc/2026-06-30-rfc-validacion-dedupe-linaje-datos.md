@@ -4,8 +4,20 @@ title: Validación de la precisión del dedupe cross-fuente y linaje de datos co
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
 date: 2026-06-30
-status: draft
+status: implemented
 ---
+
+> **Implementado 2026-07-12** (plan Pliegos+RAG, fases B1/B2). Golden set inicial:
+> 58 pares (`tests/fixtures/dedupe_golden.jsonl`). Baseline medido:
+> **precision_confirmed = 0.933** (28 TP / 2 FP conocidos de expediente genérico),
+> **recall_any = 0.857** (6 FN conocidos: siglas, bilingüe, formato de expediente,
+> órgano ausente, zero-padding, orden de palabras). Gate ratchet en
+> `tests/test_dedupe_quality.py`: `PRECISION_MIN = 0.90`. Métricas
+> `dedupe_marked_total{source_pair,status}` + `dedupe_match_rate{fuente}` en
+> `observability/runtime_metrics.py`, instrumentadas en `detect_duplicates`;
+> alertas de banda `DedupeMatchRateHigh`/`DedupeConfirmedBurst` en
+> `observability/alert_rules.yml`. El linaje (clave de match por marca) ya se
+> persistía en `licitaciones_duplicados.clave_match` — sin migración nueva.
 
 ## Contexto
 
@@ -120,15 +132,15 @@ eventual migración de schema, gateada por OK humano.
 
 ## Acceptance criteria
 
-- [ ] Existe `tests/fixtures/dedupe_golden.jsonl` con casos `duplicate`/`distinct`
+- [x] Existe `tests/fixtures/dedupe_golden.jsonl` con casos `duplicate`/`distinct`
       etiquetados a mano, incluyendo casos borde.
-- [ ] `tests/test_dedupe_quality.py` mide precision/recall sobre el golden set y
+- [x] `tests/test_dedupe_quality.py` mide precision/recall sobre el golden set y
       falla en CI si la precision baja del umbral fijado.
-- [ ] `services/dedupe.py` registra el criterio que produjo cada match (linaje
-      auditable y reversible).
-- [ ] `dedupe_match_rate` se expone y tiene alerta de desviación.
-- [ ] El umbral de precision no puede bajar sin justificación en review.
-- [ ] `make lint && make typecheck && make test-unit` pasan en verde.
+- [x] `services/dedupe.py` registra el criterio que produjo cada match (linaje
+      auditable y reversible) — ya cubierto por `clave_match` (v39).
+- [x] `dedupe_match_rate` se expone y tiene alerta de desviación.
+- [x] El umbral de precision no puede bajar sin justificación en review.
+- [x] `make lint && make typecheck && make test-unit` pasan en verde.
 
 ## Notas de review
 

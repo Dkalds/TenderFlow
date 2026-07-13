@@ -320,11 +320,72 @@ def search_for_ask(
     ccaa: str | None = None,
     tecnologia: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Búsqueda FTS5 + LIKE fallback para el endpoint /ask (RAG)."""
+    """Búsqueda para el endpoint ``/ask`` (RAG).
+
+    Con ``settings.RAG_HYBRID_ENABLED=True`` + backend Postgres + extra
+    ``[ml]`` instalado: retrieval híbrido (FTS + similitud vectorial sobre
+    ``documento_chunks``, fusión RRF) vía ``PgTsBackend.hybrid_search_docs``
+    — cada doc trae además ``chunks`` (fuentes citables). En cualquier otro
+    caso, o si el híbrido no encuentra nada (aún no hay pliegos chunkeados):
+    FTS5/search_vector + LIKE fallback, **idéntico** al comportamiento
+    histórico (plan Pliegos+RAG F9 — con el flag off este código no cambia
+    de camino en absoluto).
+    """
+    from config import settings
+
+    if settings.RAG_HYBRID_ENABLED:
+        hybrid_docs = _try_hybrid_search(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
+        if hybrid_docs:
+            return hybrid_docs
+
     docs = _repo.search_fts_docs(question, ccaa=ccaa, tecnologia=tecnologia, limit=top_k)
     if not docs:
         docs = _repo.search_like_for_ask(question, ccaa=ccaa, limit=top_k)
     return docs
+
+
+def _try_hybrid_search(
+    question: str,
+    top_k: int,
+    *,
+    ccaa: str | None,
+    tecnologia: str | None,
+) -> list[dict[str, Any]] | None:
+    """Intenta el retrieval híbrido; ``None`` si no aplica (no-Postgres, sin
+    modelo de embeddings, o error) — el llamador cae al FTS puro."""
+    from db.connection import is_postgres_backend
+
+    if not is_postgres_backend():
+        return None
+
+    from services.embeddings import embeddings_available, encode_texts
+
+    if not embeddings_available():
+        return None
+
+    try:
+        query_embedding = encode_texts([question])[0].tolist()
+    except Exception as e:
+        log.debug("hybrid_search_embed_query_failed", error=str(e))
+        return None
+
+    from db.database import connect_read
+    from db.search_backend import PgTsBackend
+
+    try:
+        with connect_read() as conn:
+            docs = PgTsBackend().hybrid_search_docs(
+                conn,
+                question,
+                query_embedding,
+                ccaa=ccaa,
+                tecnologia=tecnologia,
+                limit=top_k,
+            )
+    except Exception as e:
+        log.debug("hybrid_search_query_failed", error=str(e))
+        return None
+    return docs or None
 
 
 def load_licitaciones_for_index() -> pd.DataFrame:

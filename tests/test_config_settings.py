@@ -258,13 +258,29 @@ def test_database_url_invalid_scheme_raises():
         Settings(DATABASE_URL="mysql://user:pass@host/db")  # pragma: allowlist secret
 
 
-def test_database_url_without_sslmode_warns_in_dev():
+def test_database_url_without_sslmode_warns_in_dev_with_local_host():
+    """Host local (docker-compose de desarrollo): sin red externa que interceptar."""
     from config.settings import Settings
 
-    url = "postgresql://user:pass@host:5432/db"  # pragma: allowlist secret
+    url = "postgresql://user:pass@localhost:5432/db"  # pragma: allowlist secret
     with pytest.warns(UserWarning, match="sslmode"):
         s = Settings(ENV="dev", DATABASE_URL=url)
     assert s.DATABASE_URL.get_secret_value().startswith("postgresql://")
+
+
+def test_database_url_without_sslmode_raises_in_dev_with_remote_host():
+    """F4 (2026-07-13): cierra el gap de scrape-daily.yml (ENV=dev + Supabase real).
+
+    Un host remoto sin sslmode debe rechazarse aunque ENV=dev — el riesgo MITM
+    no depende del nombre del entorno, depende de si hay red externa de por medio.
+    """
+    from config.settings import Settings
+
+    with pytest.raises(ValueError, match="host remoto"):
+        Settings(
+            ENV="dev",
+            DATABASE_URL="postgresql://user:pass@db.supabase.co:5432/db",  # pragma: allowlist secret
+        )
 
 
 def test_database_url_without_sslmode_raises_in_prod():
@@ -329,9 +345,21 @@ def test_database_url_insecure_sslmode_raises_in_prod(mode):
             f"postgresql://user:pass@host:5432/db?sslmode={mode}"  # pragma: allowlist secret
         )
 
-    # y en dev solo avisa (no lanza)
-    dev_url = f"postgresql://user:pass@h:5432/d?sslmode={mode}"  # pragma: allowlist secret
+    # y en dev con host LOCAL solo avisa (no lanza) — sin red externa que interceptar
+    dev_url = f"postgresql://user:pass@localhost:5432/d?sslmode={mode}"  # pragma: allowlist secret
     with pytest.warns(UserWarning, match="sin TLS"):
+        Settings(ENV="dev", DATABASE_URL=dev_url)
+
+
+@pytest.mark.parametrize("mode", ["disable", "allow", "prefer"])
+def test_database_url_insecure_sslmode_raises_in_dev_with_remote_host(mode):
+    """F4 (2026-07-13): host remoto + sslmode inseguro rechazado aunque ENV=dev."""
+    from config.settings import Settings
+
+    dev_url = (
+        f"postgresql://user:pass@db.supabase.co:5432/d?sslmode={mode}"  # pragma: allowlist secret
+    )
+    with pytest.raises(ValueError, match="host remoto"):
         Settings(ENV="dev", DATABASE_URL=dev_url)
 
 

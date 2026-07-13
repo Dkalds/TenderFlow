@@ -36,7 +36,7 @@ class FakeConnector:
             yield RawNotice(natural_id=n["id"], payload=n)
 
     def parse(self, raw):
-        from db.upsert import Adjudicacion, Licitacion
+        from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion
 
         if raw.payload.get("explota"):
             raise ValueError("payload corrupto")
@@ -58,7 +58,13 @@ class FakeConnector:
                     fecha_adjudicacion="2026-02-01",
                 )
             )
-        return ParsedTender(licitacion=lic, adjudicaciones=adjs)
+        docs = []
+        if raw.payload.get("documentos"):
+            docs = [
+                DocumentoReferencia(tipo=d["tipo"], uri=d["uri"], filename=d.get("filename"))
+                for d in raw.payload["documentos"]
+            ]
+        return ParsedTender(licitacion=lic, adjudicaciones=adjs, documentos=docs)
 
     def new_cursor(self):
         return {"last_seen_updated": "2026-01-31"}
@@ -142,6 +148,83 @@ def test_runner_pasa_cursor_al_conector(db):
     fake = FakeConnector([])
     run_connector(fake)
     assert fake.received_cursor["last_seen_updated"] == "2025-12-01"
+
+
+# ---------------------------------------------------------------------------
+# Persistencia de documentos (plan Pliegos+RAG, F6)
+# ---------------------------------------------------------------------------
+
+
+def test_runner_persiste_metadatos_de_documentos(db):
+    from db.database import connect
+
+    notices = [
+        {
+            "id": "N1",
+            "titulo": "Aviso con pliegos",
+            "documentos": [
+                {"tipo": "legal", "uri": "https://x/pcap.pdf", "filename": "PCAP.pdf"},
+                {"tipo": "technical", "uri": "https://x/ptt.pdf"},
+            ],
+        },
+        {"id": "N2", "titulo": "Aviso sin pliegos"},
+    ]
+    run_connector(FakeConnector(notices))
+
+    with connect() as c:
+        rows = c.execute(
+            "SELECT licitacion_id, tipo, uri, status FROM documentos ORDER BY tipo"
+        ).fetchall()
+    assert rows == [
+        ("fake:N1", "legal", "https://x/pcap.pdf", "pending"),
+        ("fake:N1", "technical", "https://x/ptt.pdf", "pending"),
+    ]
+
+
+def test_runner_documentos_reingesta_no_duplica(db):
+    from db.database import connect
+
+    notices = [
+        {
+            "id": "N1",
+            "titulo": "Aviso con pliegos",
+            "documentos": [{"tipo": "legal", "uri": "https://x/pcap.pdf"}],
+        }
+    ]
+    run_connector(FakeConnector(notices))
+    run_connector(FakeConnector(notices))  # re-scrape del mismo aviso
+
+    with connect() as c:
+        count = c.execute("SELECT COUNT(*) FROM documentos").fetchone()[0]
+    assert count == 1
+
+
+def test_runner_documentos_persist_failure_no_aborta_el_run(db, monkeypatch):
+    """Fail-open: un fallo al persistir metadatos de documentos no debe
+    impedir que licitaciones/adjudicaciones ya persistidas cuenten como éxito."""
+    from db.database import connect
+    from db.repositories.documentos import DocumentosRepository
+
+    def _broken_upsert(self, licitacion_id, refs):
+        raise RuntimeError("BD de documentos caída")
+
+    monkeypatch.setattr(DocumentosRepository, "upsert_meta", _broken_upsert)
+
+    notices = [
+        {
+            "id": "N1",
+            "titulo": "Aviso con pliegos",
+            "documentos": [{"tipo": "legal", "uri": "https://x/pcap.pdf"}],
+        }
+    ]
+    result = run_connector(FakeConnector(notices))
+
+    assert result.nuevas == 1  # la licitación se persistió igual
+    with connect() as c:
+        ids = {r[0] for r in c.execute("SELECT id_externo FROM licitaciones").fetchall()}
+        n_docs = c.execute("SELECT COUNT(*) FROM documentos").fetchone()[0]
+    assert ids == {"fake:N1"}
+    assert n_docs == 0  # el fallo dejó los documentos sin persistir, no rompió el resto
 
 
 # ---------------------------------------------------------------------------

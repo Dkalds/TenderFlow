@@ -111,6 +111,23 @@ class Licitacion:
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
+@dataclass
+class DocumentoReferencia:
+    """Referencia a un adjunto (pliego) de una licitación, extraída del CODICE.
+
+    Plan Pliegos+RAG (F6): metadatos puros del parser — sin ``licitacion_id``
+    (se resuelve en el punto de persistencia, junto al resto del batch) ni
+    ``status``/``texto`` (los gestiona ``db/repositories/documentos.py`` tras
+    la descarga/extracción, F7-F8). No es un dataclass SQL-mapeado 1:1 como
+    ``Licitacion``/``Adjudicacion`` — ``documentos`` tiene columnas que el
+    parser nunca conoce (``sha256``, ``storage_key``…).
+    """
+
+    tipo: str  # legal | technical | additional
+    uri: str
+    filename: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Fragmentos SQL pre-computados (evitan recálculo por fila)
 # ---------------------------------------------------------------------------

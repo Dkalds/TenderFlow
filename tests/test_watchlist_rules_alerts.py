@@ -97,6 +97,69 @@ def test_sin_matches_no_notifica_pero_mueve_ventana(tmp_db):
     assert last is not None  # la ventana se movio aunque no haya matches
 
 
+def test_regla_due_con_matches_dispara_webhook(tmp_db, monkeypatch):
+    """F12·C2c: cada regla con matches nuevos dispara ``watchlist_rule.matched``."""
+    from db.database import connect
+
+    _, _ = tmp_db
+    calls = []
+    monkeypatch.setattr(
+        "db.webhooks.trigger_event", lambda event_type, payload: calls.append((event_type, payload))
+    )
+
+    rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    with connect() as c:
+        _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
+
+    n = watchlist_rules_alerts.check_rules_and_notify()
+    assert n == 1
+
+    assert len(calls) == 1
+    event_type, payload = calls[0]
+    assert event_type == "watchlist_rule.matched"
+    assert payload["rule_id"] == rid
+    assert payload["keyword"] == "SAP"
+    assert payload["total_matches"] == 1
+    assert payload["licitaciones"] == ["L1"]
+
+
+def test_webhook_trigger_failure_no_rompe_notificacion(tmp_db, monkeypatch):
+    """El disparo de webhook es best-effort: si falla, la notificación in-app persiste."""
+    from db.database import connect
+
+    _, _ = tmp_db
+
+    def _boom(event_type, payload):
+        raise RuntimeError("webhook endpoint unreachable")
+
+    monkeypatch.setattr("db.webhooks.trigger_event", _boom)
+
+    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    with connect() as c:
+        _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
+
+    n = watchlist_rules_alerts.check_rules_and_notify()  # no debe propagar la excepción
+    assert n == 1
+
+    with connect() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM user_notifications WHERE type = 'rule_match'"
+        ).fetchone()[0]
+    assert count == 1
+
+
+def test_sin_matches_no_dispara_webhook(tmp_db, monkeypatch):
+    _, _ = tmp_db
+    calls = []
+    monkeypatch.setattr(
+        "db.webhooks.trigger_event", lambda event_type, payload: calls.append((event_type, payload))
+    )
+
+    create_rule("user-a", WatchlistRule(keyword="NOEXISTE"))
+    assert watchlist_rules_alerts.check_rules_and_notify() == 0
+    assert calls == []
+
+
 def test_solo_matches_posteriores_a_last_notified(tmp_db):
     from db.database import connect
 

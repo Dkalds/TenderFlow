@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Info } from "lucide-react";
 import { formatCurrency, truncate } from "@/lib/utils";
-import type { ResumenNovedadesResult } from "@/generated/api";
+import type { ResumenNovedadesResult } from "@/lib/api-types";
 
 interface NovedadesBannerProps {
   data: ResumenNovedadesResult | undefined;
@@ -29,7 +29,7 @@ export function NovedadesBanner({ data, isLoading }: NovedadesBannerProps) {
                 {data.count} nuevas licitaciones desde tu ultima visita
               </p>
               <ul className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
-                {data.sample.slice(0, 5).map((item) => (
+                {(data.sample ?? []).slice(0, 5).map((item) => (
                   <li key={item.id_externo} className="flex items-center justify-between gap-4">
                     <span className="truncate">{truncate(item.titulo, 60)}</span>
                     {item.importe != null && (

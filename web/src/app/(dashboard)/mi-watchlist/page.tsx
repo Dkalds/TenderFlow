@@ -23,6 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
   Eye,
   Plus,
   Trash2,
@@ -30,6 +37,9 @@ import {
   Star,
   ChevronDown,
   ChevronRight,
+  Pencil,
+  FlaskConical,
+  Mail,
 } from "lucide-react";
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
@@ -54,6 +64,7 @@ interface ApiRule {
   frequency: Frequency;
   active: boolean;
   match_count: number;
+  email: string | null;
 }
 
 interface RuleBody {
@@ -64,6 +75,37 @@ interface RuleBody {
   ccaa: string | null;
   frequency: Frequency;
   active: boolean;
+}
+
+/** Estado de formulario compartido entre "Nueva regla" y el panel de edición. */
+interface RuleFormState {
+  keyword: string;
+  cpv: string;
+  minImporte: string;
+  ccaa: string;
+  frequency: Frequency;
+}
+
+function ruleToFormState(rule: ApiRule): RuleFormState {
+  return {
+    keyword: rule.keyword ?? "",
+    cpv: rule.cpv ?? "",
+    minImporte: rule.min_importe != null ? String(rule.min_importe) : "",
+    ccaa: rule.ccaa ?? "",
+    frequency: rule.frequency,
+  };
+}
+
+function formStateToBody(form: RuleFormState, active: boolean): RuleBody {
+  return {
+    nombre: form.keyword.trim() || null,
+    keyword: form.keyword.trim() || null,
+    cpv: form.cpv.trim() || null,
+    min_importe: form.minImporte ? parseFloat(form.minImporte) : null,
+    ccaa: form.ccaa || null,
+    frequency: form.frequency,
+    active,
+  };
 }
 
 interface MatchItem {
@@ -184,6 +226,203 @@ const FREQ_LABEL: Record<Frequency, string> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Campos de formulario reutilizables (edición de reglas)             */
+/* ------------------------------------------------------------------ */
+
+function RuleFormFields({
+  value,
+  onChange,
+  ccaaList,
+  idPrefix,
+}: {
+  value: RuleFormState;
+  onChange: (patch: Partial<RuleFormState>) => void;
+  ccaaList: string[];
+  idPrefix: string;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-1">
+        <label htmlFor={`${idPrefix}-keyword`} className="text-sm font-medium">
+          Palabra clave *
+        </label>
+        <Input
+          id={`${idPrefix}-keyword`}
+          placeholder="Ej: SAP, infraestructura..."
+          value={value.keyword}
+          onChange={(e) => onChange({ keyword: e.target.value })}
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor={`${idPrefix}-cpv`} className="text-sm font-medium">
+          Filtro CPV
+        </label>
+        <Input
+          id={`${idPrefix}-cpv`}
+          placeholder="Ej: 72000000"
+          value={value.cpv}
+          onChange={(e) => onChange({ cpv: e.target.value })}
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor={`${idPrefix}-importe`} className="text-sm font-medium">
+          Importe minimo
+        </label>
+        <Input
+          id={`${idPrefix}-importe`}
+          type="number"
+          placeholder="Ej: 100000"
+          value={value.minImporte}
+          onChange={(e) => onChange({ minImporte: e.target.value })}
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor={`${idPrefix}-ccaa`} className="text-sm font-medium">
+          Comunidad Autonoma
+        </label>
+        <Select
+          value={value.ccaa || "__all__"}
+          onValueChange={(v) => onChange({ ccaa: v === "__all__" ? "" : v })}
+        >
+          <SelectTrigger id={`${idPrefix}-ccaa`}>
+            <SelectValue placeholder="— Todas —" />
+          </SelectTrigger>
+          <SelectContent>
+            {ccaaList.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c === "__all__" ? "— Todas —" : c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <label htmlFor={`${idPrefix}-frequency`} className="text-sm font-medium">
+          Frecuencia de notificacion
+        </label>
+        <Select
+          value={value.frequency}
+          onValueChange={(v) => onChange({ frequency: v as Frequency })}
+        >
+          <SelectTrigger id={`${idPrefix}-frequency`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FREQ_OPTIONS.map((f) => (
+              <SelectItem key={f.value} value={f.value}>
+                {f.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Panel de edición de una regla existente (Sheet precargado)         */
+/* ------------------------------------------------------------------ */
+
+function EditRuleSheet({
+  rule,
+  ccaaList,
+  onClose,
+  onSave,
+  saving,
+}: {
+  rule: ApiRule | null;
+  ccaaList: string[];
+  onClose: () => void;
+  onSave: (id: number, body: RuleBody) => void;
+  saving: boolean;
+}) {
+  // Inicializado desde `rule` -- el llamador remonta este componente con
+  // `key={rule?.id}` cuando cambia la regla en edición, así que no hace
+  // falta sincronizar con un efecto (evita cascading renders).
+  const [form, setForm] = useState<RuleFormState | null>(() =>
+    rule ? ruleToFormState(rule) : null,
+  );
+  const previewMut = useMutation({
+    mutationFn: (body: RuleBody) =>
+      apiSend("POST", `${RULES_KEY}/preview`, body) as Promise<{ total: number }>,
+  });
+
+  return (
+    <Sheet open={rule != null} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>Editar regla</SheetTitle>
+          <SheetDescription>
+            Los cambios se aplican al guardar. Usa &quot;Probar regla&quot; para ver
+            cuántas licitaciones coinciden antes de guardar.
+          </SheetDescription>
+        </SheetHeader>
+        {form && rule && (
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              <Mail className="h-4 w-4 shrink-0" />
+              {rule.email ? (
+                <span>
+                  Entrega por email a <span className="font-medium">{rule.email}</span>
+                </span>
+              ) : (
+                <span>Sin email de entrega — solo notificaciones in-app.</span>
+              )}
+            </div>
+
+            <RuleFormFields
+              value={form}
+              onChange={(patch) => setForm((f) => (f ? { ...f, ...patch } : f))}
+              ccaaList={ccaaList}
+              idPrefix="edit-wl"
+            />
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => previewMut.mutate(formStateToBody(form, rule.active))}
+                disabled={!form.keyword.trim() || previewMut.isPending}
+              >
+                <FlaskConical className="mr-2 h-4 w-4" />
+                Probar regla
+              </Button>
+              {previewMut.isPending && (
+                <span className="text-sm text-muted-foreground">Calculando…</span>
+              )}
+              {previewMut.isSuccess && (
+                <Badge variant="secondary">
+                  {previewMut.data.total} licitacion(es) coincidirian
+                </Badge>
+              )}
+              {previewMut.isError && (
+                <span className="text-sm text-destructive">
+                  Error al probar la regla.
+                </span>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={!form.keyword.trim() || saving}
+                onClick={() => onSave(rule.id, formStateToBody(form, rule.active))}
+              >
+                Guardar cambios
+              </Button>
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Favoritos (licitaciones individuales, server-side)                 */
 /* ------------------------------------------------------------------ */
 
@@ -296,6 +535,7 @@ export default function MiWatchlistPage() {
   const [ccaa, setCcaa] = useState(() => prefill?.ccaa?.split(",")[0] ?? "");
   const [frequency, setFrequency] = useState<Frequency>("daily");
   const [formOpen, setFormOpen] = useState(true);
+  const [editingRule, setEditingRule] = useState<ApiRule | null>(null);
 
   /* ---- Reglas (server-side) ---- */
   const {
@@ -363,6 +603,12 @@ export default function MiWatchlistPage() {
       apiSend("PUT", `${RULES_KEY}/${id}`, body),
     onSuccess: invalidate,
   });
+  const saveEdit = (id: number, body: RuleBody) => {
+    updateMut.mutate(
+      { id, body },
+      { onSuccess: () => setEditingRule(null) },
+    );
+  };
   const deleteMut = useMutation({
     mutationFn: (id: number) => apiSend("DELETE", `${RULES_KEY}/${id}`),
     onSuccess: invalidate,
@@ -667,6 +913,15 @@ export default function MiWatchlistPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-9 w-9"
+                      title="Editar regla"
+                      onClick={() => setEditingRule(rule)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="h-9 w-9 text-destructive"
                       title="Eliminar"
                       onClick={() => deleteMut.mutate(rule.id)}
@@ -712,12 +967,27 @@ export default function MiWatchlistPage() {
                     </span>
                     <span className="text-sm">{FREQ_LABEL[rule.frequency]}</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground truncate">
+                      {rule.email ? rule.email : "Solo notificaciones in-app"}
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
       </div>
+
+      <EditRuleSheet
+        key={editingRule?.id ?? "none"}
+        rule={editingRule}
+        ccaaList={ccaaList}
+        onClose={() => setEditingRule(null)}
+        onSave={saveEdit}
+        saving={updateMut.isPending}
+      />
 
       {/* Combined matches */}
       {activeRules.length > 0 && (

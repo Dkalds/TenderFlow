@@ -4,8 +4,18 @@ title: LLM como dependencia gestionada — presupuesto, circuit-breaker, fallbac
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
 date: 2026-06-30
-status: draft
+status: implemented
 ---
+
+> **Implementado 2026-07-13** (plan Pliegos+RAG, fases LLM1/LLM2/A6):
+> `llm/budget.py::BudgetGuard` (presupuesto Redis+fallback in-memory,
+> `LLM_BUDGET_MODE=monitor` default) + fallback degradado en `/ask` (evento
+> SSE `degraded`, DTO intacto) + eval de **recuperación** determinista sin
+> LLM real (`tests/eval/test_eval_rag.py`, golden set de 15 preguntas,
+> hit_rate@5=1.00/MRR=1.00 medido, gate ratchet en CI) + `make eval-llm`
+> (`scripts/eval_rag_generation.py`) para inspección manual de calidad de
+> *generación* con LLM real, fuera del gate de CI. Detalle en
+> `docs/IMPROVEMENT_BACKLOG.md` (Cerrados, 2026-07-13).
 
 ## Contexto
 
@@ -128,16 +138,17 @@ contrato API intacto.
 
 ## Acceptance criteria
 
-- [ ] Con `LLM_BUDGET_MODE=enforce` y presupuesto superado, `/ask` responde
+- [x] Con `LLM_BUDGET_MODE=enforce` y presupuesto superado, `/ask` responde
       429/503 con mensaje claro y **no** llama al proveedor; `llm_budget_exceeded_total` sube.
-- [ ] Con `monitor`, solo se alerta (no se corta), validado con test.
-- [ ] Ante fallo del proveedor o breaker abierto, `/ask` degrada a documentos del
+- [x] Con `monitor`, solo se alerta (no se corta), validado con test.
+- [x] Ante fallo del proveedor o breaker abierto, `/ask` degrada a documentos del
       RAG sin síntesis, marcado `degraded` en el stream; el SSE no rompe.
-- [ ] El eval de **recuperación** corre determinista en CI sin llamar al LLM real y
+- [x] El eval de **recuperación** corre determinista en CI sin llamar al LLM real y
       falla si un cambio rompe el contexto recuperado.
-- [ ] El DTO Pydantic de `/ask` no cambia (§3.5).
-- [ ] `make lint && make typecheck && make test-unit` pasan en verde.
-- [ ] diff-cover ≥ 80% en líneas nuevas.
+- [x] El DTO Pydantic de `/ask` no cambia (§3.5).
+- [x] `make lint && make typecheck && make test-unit` pasan en verde.
+- [x] diff-cover ≥ 80% en líneas nuevas (cobertura completa de las líneas nuevas
+      vía los tests de `tests/eval/`, `test_llm_budget.py`, `test_ask_route.py`).
 
 ## Notas de review
 

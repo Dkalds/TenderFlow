@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -30,6 +29,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.routes.dual_auth import require_any_auth
+from config import settings
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -40,8 +40,17 @@ _MAX_Q_LEN = 500
 _DEFAULT_TOP_K = 5
 _MAX_TOP_K = 20
 
-# Timeout para la llamada al LLM (segundos). Configurable vía variable de entorno.
-_LLM_TIMEOUT_SECONDS = float(os.environ.get("ASK_LLM_TIMEOUT_SECONDS", "120"))
+# Campos que viajan en el evento SSE ``degraded`` (fallback sin síntesis LLM).
+# Aditivo al stream, NO al DTO (RFC llm-dependencia-gestionada §3.5).
+_DEGRADED_DOC_FIELDS = (
+    "id_externo",
+    "titulo",
+    "organo_contratacion",
+    "importe",
+    "estado",
+    "fecha_publicacion",
+    "url",
+)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -162,15 +171,41 @@ def _stream_ask(request: AskRequest) -> Any:
 
     keywords = [w for w in request.question.split() if len(w) > 3][:10]
 
+    # Payload del fallback degradado: los mismos docs del retrieval, sin campos
+    # internos (_score). El usuario recibe las licitaciones aunque no la prosa.
+    degraded_docs = [{k: d.get(k) for k in _DEGRADED_DOC_FIELDS} for d in docs]
+
+    def _degraded_event(reason: str) -> str:
+        payload = {"degraded": True, "reason": reason, "docs": degraded_docs}
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    # Campo aditivo opcional (plan Pliegos+RAG, F9): con retrieval híbrido
+    # activo (RAG_HYBRID_ENABLED), cada doc puede traer `chunks` -- los
+    # fragmentos de pliego que motivaron su inclusión (fuentes citables). Sin
+    # retrieval híbrido (o sin match vectorial) esto es simplemente [] y no
+    # se emite ningún evento — comportamiento idéntico al anterior al cambio.
+    fuentes_documentos = [
+        {
+            "id_externo": d.get("id_externo"),
+            "titulo": d.get("titulo"),
+            "chunks": d["chunks"],
+        }
+        for d in docs
+        if d.get("chunks")
+    ]
+
     async def _generate() -> AsyncGenerator[str, None]:
         """Async generator que envuelve el stream LLM síncrono con timeout.
 
         Usa ``asyncio.wait_for`` + ``run_in_executor`` para evitar que un LLM
-        colgado bloquee el worker indefinidamente.
+        colgado bloquee el worker indefinidamente. Ante fallo del proveedor,
+        breaker abierto o timeout, degrada a los documentos del retrieval sin
+        síntesis (evento SSE ``degraded``, RFC llm-dependencia-gestionada).
         """
+        timeout_seconds = float(settings.ASK_LLM_TIMEOUT_SECONDS)
         loop = asyncio.get_running_loop()
-        # Cola thread-safe para pasar chunks del executor al event loop
-        queue: asyncio.Queue[tuple[str, bool]] = asyncio.Queue()
+        # Cola thread-safe para pasar (kind, payload) del executor al event loop
+        queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
 
         def _run_sync() -> None:
             """Ejecuta el stream LLM en un thread y encola los chunks."""
@@ -181,38 +216,43 @@ def _stream_ask(request: AskRequest) -> Any:
                     model=request.model,
                     keywords=keywords,
                 ):
-                    loop.call_soon_threadsafe(queue.put_nowait, (chunk, False))
-                loop.call_soon_threadsafe(queue.put_nowait, ("", True))
+                    loop.call_soon_threadsafe(queue.put_nowait, ("chunk", chunk))
+                loop.call_soon_threadsafe(queue.put_nowait, ("done", ""))
             except Exception as exc:
-                log.warning("ask.llm_stream_error", error=str(exc))
-                loop.call_soon_threadsafe(
-                    queue.put_nowait,
-                    (json.dumps({"error": "Error generando respuesta LLM"}), True),
-                )
+                log.warning("ask.llm_stream_error_degrading", error=str(exc))
+                loop.call_soon_threadsafe(queue.put_nowait, ("degraded", "provider_error"))
+
+        if fuentes_documentos:
+            yield (
+                f"data: {json.dumps({'fuentes_documentos': fuentes_documentos}, ensure_ascii=False)}\n\n"
+            )
 
         executor_task = asyncio.ensure_future(asyncio.to_thread(_run_sync))
 
         try:
-            done = False
-            while not done:
+            while True:
                 # Esperar el siguiente chunk con timeout global
                 try:
-                    chunk, done = await asyncio.wait_for(queue.get(), timeout=_LLM_TIMEOUT_SECONDS)
+                    kind, payload = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
                 except TimeoutError:
                     log.error(
-                        "ask.llm_timeout",
+                        "ask.llm_timeout_degrading",
                         model=request.model,
-                        timeout=_LLM_TIMEOUT_SECONDS,
+                        timeout=timeout_seconds,
                     )
-                    yield f"data: {json.dumps({'error': 'Timeout esperando respuesta del LLM'})}\n\n"
+                    yield _degraded_event("timeout")
                     yield "data: [DONE]\n\n"
                     executor_task.cancel()
                     return
 
-                if done:
+                if kind == "done":
                     yield "data: [DONE]\n\n"
-                else:
-                    yield f"data: {json.dumps({'text': chunk})}\n\n"
+                    return
+                if kind == "degraded":
+                    yield _degraded_event(payload)
+                    yield "data: [DONE]\n\n"
+                    return
+                yield f"data: {json.dumps({'text': payload})}\n\n"
         finally:
             if not executor_task.done():
                 executor_task.cancel()
@@ -231,6 +271,7 @@ def _stream_ask(request: AskRequest) -> Any:
         200: {"description": "Stream SSE con la respuesta del LLM"},
         400: {"description": "Modelo no disponible o parámetros inválidos"},
         401: {"description": "API key inválida o sin scope ask:read"},
+        429: {"description": "Presupuesto LLM agotado (LLM_BUDGET_MODE=enforce)"},
     },
 )
 async def ask_question(
@@ -261,6 +302,19 @@ async def ask_question(
         question_len=len(body.question),
         user_key_id=user.get("user_id"),
     )
+
+    # Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
+    # agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
+    # (RFC llm-dependencia-gestionada). En monitor solo instrumenta.
+    from llm.budget import LLMBudgetExceeded, get_budget_guard
+
+    try:
+        get_budget_guard().check()
+    except LLMBudgetExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
 
     generator = _stream_ask(body)
 

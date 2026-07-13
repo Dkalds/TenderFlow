@@ -138,7 +138,15 @@ def register_exception_handlers(app: FastAPI) -> None:
             403: lambda: problem_403(str(exc.detail)),
             404: lambda: problem_404(str(exc.detail)),
             409: lambda: problem_409(str(exc.detail)),
-            429: lambda: problem_429(120, 60),
+            # Preserva el detail del route handler (e.g. presupuesto LLM agotado).
+            # El rate-limit middleware no pasa por aquí: construye su JSONResponse
+            # propia con límite/ventana reales.
+            429: lambda: ProblemDetail(
+                type="https://licitaciones-sap/errors/too-many-requests",
+                title="Too Many Requests",
+                status=429,
+                detail=str(exc.detail),
+            ),
             500: lambda: problem_500(str(exc.detail)),
             503: lambda: problem_503(str(exc.detail)),
         }

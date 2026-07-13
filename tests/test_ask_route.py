@@ -200,6 +200,64 @@ class TestAskStreaming:
         assert resp.status_code == 200
         assert "[DONE]" in resp.text
 
+    def test_ask_llm_error_degrada_a_docs_sin_sintesis(self, ask_client):
+        """RFC llm-dependencia-gestionada: fallo del proveedor → evento SSE
+        ``degraded: true`` con los docs del retrieval; el SSE no rompe y el
+        DTO no cambia (el flag viaja como evento, no como campo)."""
+        import json as _json
+
+        def _failing_stream(*_args, **_kwargs):
+            raise RuntimeError("proveedor caído")
+            yield  # hacer generador
+
+        with patch("api.routes.ask._retrieve_docs", return_value=_one_doc_retrieve()):
+            with patch("llm.client.stream_llm_response", _failing_stream):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿Cuántas licitaciones de SAP hay?"},
+                )
+
+        assert resp.status_code == 200
+        assert "[DONE]" in resp.text
+        degraded_events = [
+            _json.loads(line[len("data: ") :])
+            for line in resp.text.splitlines()
+            if line.startswith("data: {") and '"degraded"' in line
+        ]
+        assert len(degraded_events) == 1
+        event = degraded_events[0]
+        assert event["degraded"] is True
+        assert event["reason"] == "provider_error"
+        assert event["docs"][0]["id_externo"] == "LIC-001"
+        assert event["docs"][0]["titulo"] == "Implantación SAP S/4HANA"
+        # Los campos internos del retrieval no se filtran al cliente
+        assert "_score" not in event["docs"][0]
+        assert "descripcion" not in event["docs"][0]
+
+    def test_ask_timeout_degrada_a_docs(self, ask_client, monkeypatch):
+        """Timeout esperando al LLM → mismo fallback degradado que un 5xx."""
+        import time as _time
+
+        from config import settings
+
+        monkeypatch.setattr(settings, "ASK_LLM_TIMEOUT_SECONDS", 0.1, raising=False)
+
+        def _slow_stream(*_args, **_kwargs):
+            _time.sleep(3)
+            yield "tarde"
+
+        with patch("api.routes.ask._retrieve_docs", return_value=_one_doc_retrieve()):
+            with patch("llm.client.stream_llm_response", _slow_stream):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿Cuántas licitaciones hay?"},
+                )
+
+        assert resp.status_code == 200
+        assert '"degraded": true' in resp.text
+        assert '"reason": "timeout"' in resp.text
+        assert "[DONE]" in resp.text
+
     def test_ask_with_ccaa_filter_passes_filter_to_retrieve(self, ask_client):
         """El filtro ccaa se pasa correctamente a _retrieve_docs."""
         received: list[dict] = []
@@ -216,6 +274,49 @@ class TestAskStreaming:
 
         assert received[0]["ccaa"] == "Madrid"
         assert received[0]["tecnologia"] is None
+
+    def test_ask_emits_fuentes_documentos_when_docs_carry_chunks(self, ask_client):
+        """Plan Pliegos+RAG F9: cuando el retrieval devuelve docs con `chunks`
+        (retrieval híbrido), el stream emite un evento fuentes_documentos con
+        las citas antes de los tokens del LLM — campo aditivo, DTO intacto."""
+        docs_with_chunks = [
+            {
+                "id_externo": "LIC-HYB-1",
+                "titulo": "Implantación SAP S/4HANA",
+                "chunks": [{"chunk_id": 1, "chunk_index": 0, "texto": "cláusula técnica"}],
+            },
+            {"id_externo": "LIC-NOHYB", "titulo": "Sin chunks (solo FTS)"},
+        ]
+        import json as _json
+
+        with patch("api.routes.ask._retrieve_docs", return_value=docs_with_chunks):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿Qué dice el pliego técnico?"},
+                )
+
+        assert resp.status_code == 200
+        lines = [line for line in resp.text.splitlines() if '"fuentes_documentos"' in line]
+        assert len(lines) == 1
+        payload = _json.loads(lines[0][len("data: ") :])
+        fuentes = payload["fuentes_documentos"]
+        assert len(fuentes) == 1  # solo el doc con chunks no vacíos
+        assert fuentes[0]["id_externo"] == "LIC-HYB-1"
+        assert fuentes[0]["chunks"] == docs_with_chunks[0]["chunks"]
+
+    def test_ask_no_fuentes_documentos_event_without_chunks(self, ask_client):
+        """Sin retrieval híbrido (docs sin `chunks`), no se emite el evento --
+        comportamiento idéntico al anterior al cambio (flag off por defecto)."""
+        with patch("api.routes.ask._retrieve_docs", return_value=_one_doc_retrieve()):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿Cuántas licitaciones de SAP hay?"},
+                )
+
+        assert resp.status_code == 200
+        assert "fuentes_documentos" not in resp.text
 
     def test_ask_with_tecnologia_filter(self, ask_client):
         """El filtro tecnologia se pasa correctamente a _retrieve_docs."""

@@ -9,138 +9,48 @@ Endpoints:
     POST   /api/v1/webhooks/{id}/ping    — enviar entrega de prueba
     GET    /api/v1/webhooks/{id}/deliveries — historial de entregas
 
-Todos los endpoints requieren ``X-API-Key`` con scope ``webhooks:read`` (GET)
-o ``webhooks:write`` (mutaciones). Las keys con scope ``*`` tienen acceso total.
+Los webhooks son un recurso compartido a nivel de instancia (sin owner por
+usuario — cualquier integración registrada los ve todos), así que todos los
+endpoints requieren autenticación dual (sesión OAuth o API key,
+``require_any_auth``) **y** ``is_admin`` (F13·C3.1, plan Pliegos+RAG — antes
+requerían ``X-API-Key`` con scope ``webhooks:read``/``webhooks:write``; una
+key con scope ``*`` sigue teniendo acceso, ya que ``require_any_auth`` la
+marca ``is_admin`` en ese caso).
 """
 
 from __future__ import annotations
 
-import ipaddress
-import socket
 import urllib.parse
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 
-from api.auth import AuthContext, require_scope
 from api.concurrency import run_db
+from api.routes.dual_auth import require_any_auth
 from db.audit import log_event
 from db.repositories.webhooks import WebhookRepository
 from observability.logging import get_logger
+from shared.ssrf import is_ssrf_url as _is_ssrf_url
+from shared.ssrf import resolve_and_validate as _resolve_and_validate
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-_VALID_EVENTS = {"watchlist_match", "daily_summary", "*"}
-
-# Rangos de red privada / reservada para bloquear SSRF
-_PRIVATE_NETWORKS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),  # link-local
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("fe80::/10"),
-]
-
-# Dominios usados en DNS rebinding — resuelven a IPs arbitrarias controladas por el atacante
-_DNS_REBINDING_SUFFIXES = (
-    ".nip.io",
-    ".xip.io",
-    ".sslip.io",
-    ".localtest.me",
-    ".lvh.me",
-    ".traefik.me",
-)
+_VALID_EVENTS = {"watchlist_match", "daily_summary", "watchlist_rule.matched", "*"}
 
 
-def _is_ssrf_url(url: str) -> bool:
-    """Devuelve True si la URL apunta a una red privada/reservada o dominio de rebinding (SSRF risk)."""
-    try:
-        parsed = urllib.parse.urlparse(url)
-        host = parsed.hostname or ""
-        if not host:
-            return True
-
-        # Bloquear dominios de DNS rebinding por sufijo (antes de resolver DNS)
-        host_lower = host.lower()
-        if any(host_lower.endswith(suffix) for suffix in _DNS_REBINDING_SUFFIXES):
-            return True
-
-        # Resolver DNS y verificar la IP final
-        try:
-            addrs = socket.getaddrinfo(host, None)
-        except socket.gaierror:
-            # No resuelve — bloquear por defecto
-            return True
-        for info in addrs:
-            try:
-                addr = ipaddress.ip_address(info[4][0])
-                for net in _PRIVATE_NETWORKS:
-                    if addr in net:
-                        return True
-            except ValueError:
-                pass
-        return False
-    except Exception:
-        return True  # cualquier error → bloquear
+def _require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+    """Verifica que el usuario autenticado sea admin (recurso compartido)."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
+    return user
 
 
-def _resolve_and_validate(url: str) -> str:
-    """Resolve DNS at delivery time and return the IP-pinned URL.
-
-    Prevents DNS rebinding (TOCTOU): resolves the hostname NOW,
-    validates against private networks, and returns a URL with the
-    IP address substituted so ``requests.post`` doesn't re-resolve.
-
-    Raises:
-        ValueError: if the URL resolves to a private/reserved IP.
-    """
-    parsed = urllib.parse.urlparse(url)
-    host = parsed.hostname or ""
-    if not host:
-        raise ValueError("URL sin hostname")
-
-    # Re-check rebinding suffixes at delivery time
-    host_lower = host.lower()
-    if any(host_lower.endswith(suffix) for suffix in _DNS_REBINDING_SUFFIXES):
-        raise ValueError(f"Dominio de DNS rebinding bloqueado: {host}")
-
-    try:
-        addrs = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise ValueError(f"DNS resolution failed for {host}: {exc}") from exc
-
-    if not addrs:
-        raise ValueError(f"No DNS records for {host}")
-
-    # Pick first resolved IP and validate
-    resolved_ip = str(addrs[0][4][0])
-    try:
-        addr = ipaddress.ip_address(resolved_ip)
-    except ValueError as exc:
-        raise ValueError(f"Invalid resolved IP {resolved_ip}") from exc
-
-    for net in _PRIVATE_NETWORKS:
-        if addr in net:
-            raise ValueError(f"Resolved IP {resolved_ip} is in private network {net}")
-
-    # Build IP-pinned URL: replace hostname with resolved IP, pass original
-    # Host header via requests so TLS SNI and virtual hosts still work.
-    port = parsed.port
-    if ":" in resolved_ip:  # IPv6
-        netloc = f"[{resolved_ip}]:{port}" if port else f"[{resolved_ip}]"
-    else:
-        netloc = f"{resolved_ip}:{port}" if port else resolved_ip
-
-    pinned_url = urllib.parse.urlunparse(
-        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
-    )
-    return pinned_url
+def _actor_key(ctx: dict[str, Any]) -> str:
+    """Identificador corto para audit log — misma convención que feedback.py/me.py."""
+    return str(ctx.get("key_hash") or ctx.get("email") or "session")[:8]
 
 
 # ── Modelos ──────────────────────────────────────────────────────────────────
@@ -233,7 +143,7 @@ _repo = WebhookRepository()
 )
 async def create(
     body: WebhookCreate,
-    ctx: AuthContext = Depends(require_scope("webhooks:write")),
+    ctx: dict[str, Any] = Depends(_require_admin),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> WebhookCreateResponse:
     """Crea un webhook. Devuelve el ``secret`` solo en esta respuesta.
@@ -253,7 +163,7 @@ async def create(
     )
     log_event(
         event_type="webhook.created",
-        user_key=ctx.key_hash[:8],
+        user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
         detail={"name": body.name, "events": body.event_types},
     )
@@ -283,7 +193,7 @@ async def create(
     responses={401: {"description": "API key inválida"}},
 )
 async def list_all(
-    _ctx: AuthContext = Depends(require_scope("webhooks:read")),
+    _ctx: dict[str, Any] = Depends(_require_admin),
 ) -> list[dict[str, Any]]:
     return _repo.list_all()
 
@@ -295,7 +205,7 @@ async def list_all(
 )
 async def get_one(
     webhook_id: int,
-    _ctx: AuthContext = Depends(require_scope("webhooks:read")),
+    _ctx: dict[str, Any] = Depends(_require_admin),
 ) -> dict[str, Any]:
     wh = _repo.get_by_id(webhook_id)
     if wh is None:
@@ -315,7 +225,7 @@ async def get_one(
 async def update(
     webhook_id: int,
     body: WebhookUpdate,
-    ctx: AuthContext = Depends(require_scope("webhooks:write")),
+    ctx: dict[str, Any] = Depends(_require_admin),
 ) -> dict[str, Any]:
     """Actualiza nombre, URL, event_types o active de un webhook existente."""
     found = _repo.update(
@@ -329,7 +239,7 @@ async def update(
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
     log_event(
         event_type="webhook.updated",
-        user_key=ctx.key_hash[:8],
+        user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
     )
     wh = _repo.get_by_id(webhook_id)
@@ -347,13 +257,13 @@ async def update(
 )
 async def delete(
     webhook_id: int,
-    ctx: AuthContext = Depends(require_scope("webhooks:write")),
+    ctx: dict[str, Any] = Depends(_require_admin),
 ) -> None:
     if not _repo.delete(webhook_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe")
     log_event(
         event_type="webhook.deleted",
-        user_key=ctx.key_hash[:8],
+        user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
     )
 
@@ -370,7 +280,7 @@ async def delete(
 )
 async def ping(
     webhook_id: int,
-    ctx: AuthContext = Depends(require_scope("webhooks:write")),
+    _ctx: dict[str, Any] = Depends(_require_admin),
 ) -> dict[str, Any]:
     """Envía un payload de prueba al URL del webhook para verificar conectividad."""
     import asyncio as _asyncio
@@ -461,7 +371,7 @@ async def ping(
 async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
-    _ctx: AuthContext = Depends(require_scope("webhooks:read")),
+    _ctx: dict[str, Any] = Depends(_require_admin),
 ) -> list[dict[str, Any]]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     if _repo.get_by_id(webhook_id) is None:

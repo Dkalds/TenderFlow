@@ -143,6 +143,41 @@ class TestTriggerEvent:
         expected_sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
         assert sig_header == f"sha256={expected_sig}"
 
+    @patch("db.webhooks.requests.post")
+    def test_private_ip_rejected_at_delivery_time(self, mock_post, tmp_db):
+        """RFC llm-dependencia-gestionada §C3.0: DNS-pinning también en el envío
+        real (no solo en el ping manual). Un webhook apuntando a una IP privada
+        nunca debe llegar a ``requests.post`` — cierra la ventana TOCTOU."""
+        _db_mod, _ = tmp_db
+        wh_mod.create_webhook(
+            name="ssrf-attempt",
+            url="http://127.0.0.1:9999/hook",
+            event_types=["watchlist_match"],
+        )
+
+        count = wh_mod.trigger_event("watchlist_match", {"id": 1})
+
+        assert count == 0
+        mock_post.assert_not_called()
+        rows = wh_mod.list_webhooks()
+        hook = next(r for r in rows if r["url"] == "http://127.0.0.1:9999/hook")
+        assert hook["failure_count"] == 1
+
+    @patch("db.webhooks.requests.post")
+    def test_dns_rebinding_domain_rejected_at_delivery_time(self, mock_post, tmp_db):
+        """Sufijo de dominio de rebinding conocido también bloqueado en trigger_event."""
+        _db_mod, _ = tmp_db
+        wh_mod.create_webhook(
+            name="rebinding-attempt",
+            url="https://10.0.0.1.nip.io/hook",
+            event_types=["*"],
+        )
+
+        count = wh_mod.trigger_event("any_event", {})
+
+        assert count == 0
+        mock_post.assert_not_called()
+
 
 class TestRecordDelivery:
     def test_resets_failure_count_on_success(self, tmp_db):

@@ -13,6 +13,11 @@ Las entregas son **best-effort**: timeout de 5s, reintentos limitados,
 **Seguridad (issue #49)**: los secretos de nuevos webhooks se derivan de una
 clave maestra del servidor via HMAC. No se almacenan en texto plano.
 Webhooks legacy (pre-derivación) siguen funcionando con su secret almacenado.
+
+**Seguridad (RFC llm-dependencia-gestionada §C3.0)**: ``trigger_event`` resuelve
+DNS y pinnea la IP al momento del envío (misma validación que el ping manual,
+``shared/ssrf.py``) — cierra la ventana TOCTOU de DNS rebinding entre el
+registro del webhook y cada entrega real.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import urllib.parse
 from typing import Any, cast
 
 import requests
@@ -27,6 +33,7 @@ import requests
 from db.database import connect, now_utc_iso
 from observability.logging import get_logger
 from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
+from shared.ssrf import resolve_and_validate
 
 log = get_logger(__name__)
 
@@ -143,16 +150,27 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
         if event_type not in events and "*" not in events:
             continue
 
+        try:
+            pinned_url = resolve_and_validate(url)
+        except ValueError as exc:
+            log.warning("webhook_trigger_ssrf_blocked", webhook_id=wid, error=str(exc))
+            _record_delivery(wid, 0, False)
+            continue
+
         secret = _resolve_secret(wid, stored_secret)
         signature = _sign(secret, body)
+        original_host = urllib.parse.urlparse(url).hostname or ""
         headers = {
             "Content-Type": "application/json",
             "X-Webhook-Signature": f"sha256={signature}",
             "X-Webhook-Event": event_type,
             "User-Agent": "licitaciones-sap-webhook/1.0",
+            "Host": original_host,
         }
         try:
-            resp = requests.post(url, data=body, headers=headers, timeout=_DELIVERY_TIMEOUT_S)
+            resp = requests.post(
+                pinned_url, data=body, headers=headers, timeout=_DELIVERY_TIMEOUT_S
+            )
             ok = 200 <= resp.status_code < 300
             _record_delivery(wid, resp.status_code, ok)
             if ok:

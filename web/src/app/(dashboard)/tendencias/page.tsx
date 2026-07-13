@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import type { TrendPoint } from "@/generated/api";
+import type { TrendPoint } from "@/lib/api-types";
 import {
   Hash,
   DollarSign,

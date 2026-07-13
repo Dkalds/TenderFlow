@@ -18,7 +18,7 @@ import type {
   ResumenHoyResult,
   TimelineScatterResult,
   TopLicitacionesResult,
-} from "@/generated/api";
+} from "@/lib/api-types";
 
 export default function ResumenPage() {
   const { rango } = useFilters();

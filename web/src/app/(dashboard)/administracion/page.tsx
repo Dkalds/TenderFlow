@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable } from "@/components/ui/data-table";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertTriangle,
   Users,
@@ -25,6 +27,9 @@ import {
   Copy,
   Shield,
   Info,
+  Webhook as WebhookIcon,
+  Trash2,
+  Radio,
 } from "lucide-react";
 import { apiMutate } from "@/lib/api-client";
 import { formatDate, cn } from "@/lib/utils";
@@ -57,6 +62,20 @@ interface ApiUser {
   last_access?: string | null;
 }
 
+interface Webhook {
+  id: number;
+  name: string;
+  url: string;
+  event_types: string[];
+  active: boolean;
+  created_at: string;
+  last_triggered_at?: string | null;
+  last_status?: number | null;
+  failure_count: number;
+}
+
+const WEBHOOK_EVENTS = ["*", "watchlist_match", "watchlist_rule.matched", "daily_summary"];
+
 interface UserRow {
   id: number;
   email: string;
@@ -70,6 +89,10 @@ export default function AdministracionPage() {
   const queryClient = useQueryClient();
   const [newKeyToken, setNewKeyToken] = useState<string | null>(null);
   const [confirmDlq, setConfirmDlq] = useState(false);
+  const [newWebhookSecret, setNewWebhookSecret] = useState<string | null>(null);
+  const [whName, setWhName] = useState("");
+  const [whUrl, setWhUrl] = useState("");
+  const [whEvents, setWhEvents] = useState<string[]>(["*"]);
 
   const { data: quality, isLoading: qualityLoading } = useQuery<QualityData>({
     queryKey: ["analytics-quality-admin"],
@@ -136,6 +159,66 @@ export default function AdministracionPage() {
     },
     onError: () => toast.error("No se pudo cambiar el rol (¿eres admin?)"),
   });
+
+  const {
+    data: webhooksData,
+    isLoading: webhooksLoading,
+    error: webhooksError,
+  } = useQuery<Webhook[]>({
+    queryKey: ["webhooks"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/webhooks", { credentials: "include" });
+      if (res.status === 401) throw new Error("Sesion expirada");
+      if (res.status === 403) throw new Error("Requiere permisos de admin");
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const createWebhook = useMutation({
+    mutationFn: () =>
+      apiMutate<{ secret: string }>("POST", "/api/v1/webhooks", {
+        name: whName,
+        url: whUrl,
+        event_types: whEvents.length > 0 ? whEvents : ["*"],
+      }),
+    onSuccess: (data) => {
+      setNewWebhookSecret(data.secret);
+      setWhName("");
+      setWhUrl("");
+      setWhEvents(["*"]);
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+      toast.success("Webhook creado");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "No se pudo crear el webhook."),
+  });
+
+  const deleteWebhook = useMutation({
+    mutationFn: (id: number) => apiMutate("DELETE", `/api/v1/webhooks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+      toast.success("Webhook eliminado");
+    },
+    onError: () => toast.error("No se pudo eliminar el webhook."),
+  });
+
+  const pingWebhook = useMutation({
+    mutationFn: (id: number) =>
+      apiMutate<{ success: boolean; error?: string }>("POST", `/api/v1/webhooks/${id}/ping`),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+      if (data.success) toast.success("Entrega de prueba enviada correctamente");
+      else toast.error(`Fallo la entrega de prueba: ${data.error ?? "desconocido"}`);
+    },
+    onError: () => toast.error("No se pudo enviar la entrega de prueba."),
+  });
+
+  function toggleWhEvent(event: string, checked: boolean) {
+    setWhEvents((prev) =>
+      checked ? [...prev, event] : prev.filter((e) => e !== event),
+    );
+  }
 
   const rotateKey = useMutation({
     mutationFn: () =>
@@ -507,6 +590,174 @@ export default function AdministracionPage() {
               initialSorting={[{ id: "created_at", desc: true }]}
               emptyMessage="No hay claves API registradas."
             />
+          )}
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Webhooks — recurso compartido a nivel de instancia (F13·C3.1/C3.3a) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <WebhookIcon className="h-5 w-5" />
+            Webhooks
+          </CardTitle>
+          <CardDescription>
+            Integraciones salientes — todas las claves admin/sesión admin ven y gestionan
+            los mismos webhooks (no son por-usuario).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {newWebhookSecret && (
+            <Card className="border-green-500 bg-green-50/50 dark:bg-green-950/20">
+              <CardContent className="pt-4">
+                <p className="text-sm font-medium mb-2">
+                  Secret generado — cópialo ahora, no se mostrará de nuevo:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-muted p-2 rounded text-xs font-mono break-all">
+                    {newWebhookSecret}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(newWebhookSecret)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => setNewWebhookSecret(null)}
+                >
+                  Cerrar
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="wh-name" className="text-sm font-medium">
+                Nombre
+              </label>
+              <Input
+                id="wh-name"
+                placeholder="p.ej. slack-alertas"
+                value={whName}
+                onChange={(e) => setWhName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="wh-url" className="text-sm font-medium">
+                URL
+              </label>
+              <Input
+                id="wh-url"
+                placeholder="https://hooks.example.com/licitaciones"
+                value={whUrl}
+                onChange={(e) => setWhUrl(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">Eventos</p>
+            <div className="flex flex-wrap gap-4">
+              {WEBHOOK_EVENTS.map((ev) => (
+                <label key={ev} className="flex items-center gap-1.5 text-sm">
+                  <Checkbox
+                    checked={whEvents.includes(ev)}
+                    onCheckedChange={(checked) => toggleWhEvent(ev, checked === true)}
+                  />
+                  {ev}
+                </label>
+              ))}
+            </div>
+          </div>
+          <Button
+            onClick={() => createWebhook.mutate()}
+            disabled={!whName.trim() || !whUrl.trim() || createWebhook.isPending}
+            className="gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            {createWebhook.isPending ? "Creando…" : "Crear webhook"}
+          </Button>
+
+          <Separator />
+
+          {webhooksLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-3/4" />
+            </div>
+          ) : webhooksError ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
+              <Info className="h-4 w-4 shrink-0" />
+              <span>{(webhooksError as Error).message}</span>
+            </div>
+          ) : !webhooksData || webhooksData.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay webhooks registrados.</p>
+          ) : (
+            <div className="space-y-2">
+              {webhooksData.map((wh) => (
+                <div
+                  key={wh.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{wh.name}</p>
+                      <Badge
+                        variant={wh.active ? "default" : "secondary"}
+                        className={cn(
+                          wh.active &&
+                            "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+                        )}
+                      >
+                        {wh.active ? "Activo" : "Inactivo"}
+                      </Badge>
+                      {wh.failure_count > 0 && (
+                        <Badge variant="outline" className="text-destructive">
+                          {wh.failure_count} fallo(s)
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">{wh.url}</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {wh.event_types.map((ev) => (
+                        <Badge key={ev} variant="outline" className="text-xs">
+                          {ev}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={pingWebhook.isPending}
+                      onClick={() => pingWebhook.mutate(wh.id)}
+                      title="Enviar entrega de prueba"
+                    >
+                      <Radio className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive"
+                      disabled={deleteWebhook.isPending}
+                      onClick={() => deleteWebhook.mutate(wh.id)}
+                      title="Eliminar webhook"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

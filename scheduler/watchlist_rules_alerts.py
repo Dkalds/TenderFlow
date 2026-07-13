@@ -9,6 +9,8 @@ criterios y:
    bandeja in-app del usuario.
 2. Si la regla tiene ``email`` configurado, encola en ``pending_digests``
    para que ``send_pending_digests`` lo entregue por email.
+3. Dispara el evento ``watchlist_rule.matched`` a los webhooks externos
+   suscritos (best-effort, no bloquea si falla).
 
 Ya NO llama a ``notify()`` global (que mandaba todo al ALERT_EMAIL_TO).
 La entrega por email queda sujeta a la frecuencia de la regla; ``immediate``
@@ -244,6 +246,26 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
             in_app=written,
             has_email=bool(email),
         )
+
+        # B5: dispara webhook a suscriptores externos (best-effort, no bloquea).
+        try:
+            from db.webhooks import trigger_event
+
+            trigger_event(
+                "watchlist_rule.matched",
+                {
+                    "rule_id": rule_id,
+                    "user_key": user_key,
+                    "nombre": rule.nombre,
+                    "keyword": rule.keyword,
+                    "cpv": rule.cpv,
+                    "total_matches": len(new_matches),
+                    "licitaciones": [lic.get("id_externo") for lic in new_matches],
+                },
+            )
+        except Exception:
+            log.warning("webhook_trigger_failed", exc_info=True)
+
         alerted += 1
 
     return alerted

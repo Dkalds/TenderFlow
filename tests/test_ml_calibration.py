@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.ml.calibration import comprobar_calibracion_baja
+from services.ml.calibration import calibracion_baja_dto, comprobar_calibracion_baja
 
 
 @pytest.fixture()
@@ -105,3 +105,54 @@ def test_fail_open_si_falla_la_query(db, monkeypatch):
     monkeypatch.setattr(cal_mod, "connect_read", _boom)
     res = comprobar_calibracion_baja()
     assert res["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# calibracion_baja_dto — vista pública de 3 estados (plan Pliegos+RAG, F11)
+# ---------------------------------------------------------------------------
+
+
+def test_dto_sin_datos_mapea_a_insuficiente(db):
+    with db.connect() as c:
+        for i in range(5):  # < _MIN_EVALUADAS
+            _sembrar_par(c, f"L{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30)
+    dto = calibracion_baja_dto()
+    assert dto.estado == "insuficiente"
+    assert dto.n_evaluadas == 5
+    assert dto.cobertura is None
+
+
+def test_dto_ok_mapea_a_ok(db):
+    with db.connect() as c:
+        for i in range(40):
+            _sembrar_par(c, f"OK{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30)
+    dto = calibracion_baja_dto()
+    assert dto.estado == "ok"
+    assert dto.n_evaluadas == 40
+    assert dto.cobertura == pytest.approx(1.0)
+    assert dto.cobertura_nominal == pytest.approx(0.80)
+    assert dto.mae_p50 is not None
+    assert dto.sesgo_p50 is not None
+
+
+def test_dto_warn_y_crit_mapean_a_degradado(db):
+    with db.connect() as c:
+        for i in range(40):
+            real = 0.05 if i % 2 == 0 else 0.40
+            _sembrar_par(c, f"X{i}", 100_000.0, real, 0.19, 0.20, 0.21)
+    dto = calibracion_baja_dto()
+    assert dto.estado == "degradado"
+    assert dto.n_evaluadas == 40
+
+
+def test_dto_error_mapea_a_insuficiente(db, monkeypatch):
+    """Un error interno no debe filtrar detalles al cliente -- se trata como
+    'sin señal fiable todavía', igual que sin_datos."""
+    import services.ml.calibration as cal_mod
+
+    monkeypatch.setattr(
+        cal_mod, "connect_read", lambda: (_ for _ in ()).throw(RuntimeError("db caída"))
+    )
+    dto = calibracion_baja_dto()
+    assert dto.estado == "insuficiente"
+    assert dto.cobertura is None

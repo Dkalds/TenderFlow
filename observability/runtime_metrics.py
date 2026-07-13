@@ -109,6 +109,38 @@ try:
         ["table"],
     )
 
+    # ── LLM budget (RFC llm-dependencia-gestionada) ───────────────────────
+    llm_budget_exceeded_total = Counter(
+        "llm_budget_exceeded_total",
+        "Checks de presupuesto LLM que encontraron la ventana agotada",
+        ["window", "mode"],  # window: daily | monthly · mode: monitor | enforce
+    )
+
+    # ── Pliegos: fetch + chunking/embeddings (plan Pliegos+RAG, F8) ────────
+    documentos_fetched_total = Counter(
+        "documentos_fetched_total",
+        "Documentos procesados por fetch_and_extract, por resultado",
+        ["status"],  # extracted | error
+    )
+
+    documento_chunks_total = Counter(
+        "documento_chunks_total",
+        "Chunks con embedding insertados en documento_chunks",
+    )
+
+    # ── Dedupe cross-fuente (RFC validacion-dedupe-linaje) ────────────────
+    dedupe_marked_total = Counter(
+        "dedupe_marked_total",
+        "Pares marcados como duplicados cross-fuente por detect_duplicates",
+        ["source_pair", "status"],  # status: confirmed | pending
+    )
+
+    dedupe_match_rate = Gauge(
+        "dedupe_match_rate",
+        "Fracción de filas nuevas evaluadas que resultó marcada en la última pasada",
+        ["fuente"],
+    )
+
     _AVAILABLE = True
 except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
@@ -136,4 +168,9 @@ except ImportError:  # pragma: no cover
     parser_field_null_total = _NoopMetric()  # type: ignore[assignment]
     parser_entries_total = _NoopMetric()  # type: ignore[assignment]
     upsert_rows_dropped_total = _NoopMetric()  # type: ignore[assignment]
+    llm_budget_exceeded_total = _NoopMetric()  # type: ignore[assignment]
+    documentos_fetched_total = _NoopMetric()  # type: ignore[assignment]
+    documento_chunks_total = _NoopMetric()  # type: ignore[assignment]
+    dedupe_marked_total = _NoopMetric()  # type: ignore[assignment]
+    dedupe_match_rate = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False

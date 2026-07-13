@@ -114,3 +114,81 @@ def test_predicciones_adjudicada_sin_estimacion_previa(client, auth):
     assert "p50" not in data
     assert data["baja_real"] == pytest.approx(0.2)
     assert data["importe_adjudicado"] == 40_000
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/predicciones/calibracion (plan Pliegos+RAG, F11)
+# ---------------------------------------------------------------------------
+
+
+def _sembrar_par_calibracion(lic_id, importe, baja_realizada, p10, p50, p90):
+    import db.database as db_mod
+
+    with db_mod.connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
+            " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
+            "VALUES (?, 'Lic', 'Organo A', '72000000', 'Madrid', ?, 'Servicios', "
+            " 'placsp', '2026-01-01', datetime('now'))",
+            (lic_id, importe),
+        )
+        c.execute(
+            "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
+            " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
+            "VALUES (?, 'Empresa X', ?, '2026-03-01', 3, datetime('now'))",
+            (lic_id, importe * (1 - baja_realizada)),
+        )
+        c.execute(
+            "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
+            " computed_at) VALUES (?, ?, ?, ?, 1, datetime('now'))",
+            (lic_id, p10, p50, p90),
+        )
+
+
+@pytest.fixture(autouse=True)
+def _reset_ml_cache():
+    """@cache_response(namespace='ml') persiste entre tests (no depende de la
+    BD que resetea tmp_db/api_db) -- sin esto, el segundo test vería el
+    resultado cacheado del primero pese a haber sembrado datos distintos."""
+    from shared.cache import reset_cache
+
+    reset_cache("ml")
+    yield
+    reset_cache("ml")
+
+
+def test_calibracion_sin_auth(client):
+    r = client.get("/api/v1/predicciones/calibracion")
+    assert r.status_code in (401, 403)
+
+
+def test_calibracion_insuficiente_sin_datos(client, auth):
+    r = client.get("/api/v1/predicciones/calibracion", headers=auth)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["estado"] == "insuficiente"
+    assert data["n_evaluadas"] == 0
+    assert data["cobertura"] is None
+
+
+def test_calibracion_ok_con_datos_bien_calibrados(client, auth):
+    for i in range(40):
+        _sembrar_par_calibracion(f"CAL-OK-{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30)
+
+    r = client.get("/api/v1/predicciones/calibracion", headers=auth)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["estado"] == "ok"
+    assert data["n_evaluadas"] == 40
+    assert data["cobertura"] == pytest.approx(1.0)
+    assert data["cobertura_nominal"] == pytest.approx(0.80)
+
+
+def test_calibracion_degradado_con_intervalos_sobreconfiados(client, auth):
+    for i in range(40):
+        real = 0.05 if i % 2 == 0 else 0.40
+        _sembrar_par_calibracion(f"CAL-DEG-{i}", 100_000.0, real, 0.19, 0.20, 0.21)
+
+    r = client.get("/api/v1/predicciones/calibracion", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["estado"] == "degradado"

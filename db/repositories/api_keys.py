@@ -233,6 +233,18 @@ class ApiKeyRepository:
                 (now_utc_iso(), key_id),
             )
 
+    def deactivate_all_for_user(self, user_id: int) -> int:
+        """Desactiva todas las keys del usuario (GDPR, borrado de cuenta por sesión)."""
+        with connect() as c:
+            try:
+                cur = c.execute(
+                    "UPDATE api_keys SET is_active = 0, last_used = ? WHERE user_id = ?",
+                    (now_utc_iso(), user_id),
+                )
+                return int(cur.rowcount)
+            except Exception:
+                return 0
+
     def set_expiry(self, key_id: int, expires_at: str) -> None:
         """Establece ``expires_at`` en una API key (rotación con grace period)."""
         with connect() as c:

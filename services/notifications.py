@@ -81,3 +81,10 @@ def mark_all_alerts_read(user_key: str) -> None:
             "UPDATE user_notifications SET read_at = ? WHERE user_key = ? AND read_at IS NULL",
             (now_ts, user_key),
         )
+
+
+def delete_all_alerts(user_key: str) -> int:
+    """Borra todas las alertas in-app del usuario (GDPR). Devuelve filas borradas."""
+    with connect() as c:
+        cur = c.execute("DELETE FROM user_notifications WHERE user_key = ?", (user_key,))
+        return int(cur.rowcount)

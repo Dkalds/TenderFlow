@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatCurrency, truncate } from "@/lib/utils";
-import type { TopLicitacionesResult } from "@/generated/api";
+import type { TopLicitacionesResult } from "@/lib/api-types";
 
 interface TopLicitacionesListProps {
   data: TopLicitacionesResult | undefined;

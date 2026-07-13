@@ -4,12 +4,23 @@ GET  /api/v1/me/data      — exporta todos los datos del usuario (zip JSON)
 DELETE /api/v1/me         — anonimiza todos los datos del usuario
 POST /api/v1/auth/logout-all — revoca todas las sesiones activas
 
-Identificación: el usuario se identifica por el ``key_hash`` de la API Key
-autenticada. No se hace resolución por nombre/email para evitar colisiones GDPR.
+Autenticación dual (F13·C3.1, plan Pliegos+RAG): ``/me/data`` y ``/me`` aceptan
+sesión OAuth o API key (``require_any_auth``) — antes solo funcionaban con API
+key, dejando fuera de la exportación/borrado autoservicio a los usuarios que
+solo tienen sesión web (la mayoría — ver GDPR UI en mi-perfil, C3.3b).
+
+Identificación de los datos "de usuario" (watchlist/reglas/perfil/notificaciones):
+``user_key`` — la misma clave opaca ``sha256(email o key_hash)[:16]`` que usan
+``watchlist_rules``/``watchlist_items``/``competitive``/``user_profiles``, NO el
+``key_hash`` crudo (ver ``services/gdpr.py`` para el detalle del bug que esto
+corrige). La identificación de API keys/audit log sigue siendo específica del
+método de autenticación de la request (no se resuelve por nombre/email para
+evitar colisiones GDPR).
 """
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import zipfile
@@ -31,11 +42,15 @@ from services.gdpr import (
     export_api_keys,
     export_audit_log,
     export_feedback,
+    export_user_notifications,
+    export_user_profile,
     export_watchlist,
     export_watchlist_items,
+    export_watchlist_rules,
     get_key_name_and_scopes,
     get_user_id_from_key_id,
     list_user_keys,
+    revoke_all_api_keys_for_user,
     set_key_expiry,
 )
 
@@ -51,45 +66,80 @@ def _get_user_id_from_key_id(key_id: int) -> int | None:
     return get_user_id_from_key_id(key_id)
 
 
+def _user_key(ctx: dict[str, Any]) -> str:
+    """Clave opaca y estable por usuario (email de sesión o hash de API key).
+
+    Misma convención que ``watchlist_rules``/``watchlist_items``/``competitive``.
+    """
+    seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def _actor_key(ctx: dict[str, Any]) -> str:
+    """Identificador corto para audit log — misma convención que feedback.py."""
+    return str(ctx.get("key_hash") or ctx.get("email") or "session")[:8]
+
+
 @router.get(
     "/me/data",
     summary="GDPR — exportar todos mis datos",
     responses={200: {"content": {"application/zip": {}}}},
 )
-def export_my_data(ctx: AuthContext = Depends(require_api_key)) -> StreamingResponse:
-    """Exporta watchlist, feedback, API keys y audit log en un ZIP JSON.
-
-    La exportación se vincula exclusivamente al ``key_hash`` de la API key
-    autenticada, evitando colisiones por nombre de usuario.
+def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> StreamingResponse:
+    """Exporta watchlist, reglas, perfil, notificaciones, feedback, API keys y
+    audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
     """
-    key_name = _key_repo.get_name(ctx.key_hash) or ctx.key_hash[:8]
+    user_key = _user_key(ctx)
+    is_api_key = ctx.get("auth_method") == "api_key"
+
+    if is_api_key:
+        key_hash = str(ctx["key_hash"])
+        api_keys_data = export_api_keys(key_hash)
+        key_name = _key_repo.get_name(key_hash) or key_hash[:8]
+    else:
+        api_keys_data = _key_repo.get_all_for_user(ctx["user_id"])
+        key_name = str(ctx.get("email") or ctx["user_id"])
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        api_keys_data = export_api_keys(ctx.key_hash)
         zf.writestr("api_keys.json", json.dumps(api_keys_data, ensure_ascii=False, indent=2))
 
-        watchlist = export_watchlist(ctx.key_hash)
+        watchlist = export_watchlist(user_key)
         zf.writestr("watchlist.json", json.dumps(watchlist, ensure_ascii=False, indent=2))
 
-        watchlist_items = export_watchlist_items(ctx.key_hash)
+        watchlist_items = export_watchlist_items(user_key)
         zf.writestr(
             "watchlist_items.json", json.dumps(watchlist_items, ensure_ascii=False, indent=2)
         )
 
+        watchlist_rules = export_watchlist_rules(user_key)
+        zf.writestr(
+            "watchlist_rules.json", json.dumps(watchlist_rules, ensure_ascii=False, indent=2)
+        )
+
+        profile = export_user_profile(user_key)
+        zf.writestr("perfil_scoring.json", json.dumps(profile, ensure_ascii=False, indent=2))
+
+        notifications = export_user_notifications(user_key)
+        zf.writestr("notificaciones.json", json.dumps(notifications, ensure_ascii=False, indent=2))
+
         feedback = export_feedback()
         zf.writestr("feedback.json", json.dumps(feedback, ensure_ascii=False, indent=2))
 
-        audit = export_audit_log(ctx.key_hash)
+        audit = export_audit_log(_actor_key(ctx))
         zf.writestr("audit.json", json.dumps(audit, ensure_ascii=False, indent=2))
 
-        meta = {"exported_at": now_utc_iso(), "key_name": key_name}
+        meta = {
+            "exported_at": now_utc_iso(),
+            "key_name": key_name,
+            "auth_method": ctx.get("auth_method"),
+        }
         zf.writestr("metadata.json", json.dumps(meta, ensure_ascii=False, indent=2))
 
     buf.seek(0)
     log_event(
         event_type="gdpr.export",
-        user_key=ctx.key_hash[:8],
+        user_key=_actor_key(ctx),
         outcome="success",
     )
     log.info("gdpr_export_generated", key_name=key_name)
@@ -105,22 +155,37 @@ def export_my_data(ctx: AuthContext = Depends(require_api_key)) -> StreamingResp
     summary="GDPR — anonimizar y eliminar mis datos",
     status_code=200,
 )
-def delete_my_data(ctx: AuthContext = Depends(require_api_key)) -> dict[str, Any]:
-    """Anonimiza watchlist y feedback; revoca la API key autenticada.
+def delete_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+    """Anonimiza watchlist/reglas/perfil/notificaciones y revoca credenciales.
 
-    La identificación es por ``key_hash`` — no por nombre de usuario,
-    evitando borrado accidental de datos de otros usuarios con el mismo nombre.
+    Con API key: revoca la key usada para autenticar esta request (igual que
+    antes). Con sesión OAuth: además anonimiza la cuenta (RGPD Art.17 —
+    ``db.users.anonymize_user``), revoca todas las sesiones activas y
+    desactiva todas las API keys que el usuario tuviera creadas.
     """
-    anonymize_user_data(ctx.key_hash, ctx.key_id)
+    user_key = _user_key(ctx)
+    is_api_key = ctx.get("auth_method") == "api_key"
+    key_id = ctx["user_id"] if is_api_key else None
+
+    anonymize_user_data(user_key, key_id)
+
+    resource = f"api_key:{key_id}" if is_api_key else f"user:{ctx.get('user_id')}"
+    if not is_api_key:
+        from db.users import anonymize_user
+
+        user_id = ctx["user_id"]
+        anonymize_user(user_id)
+        revoke_all_sessions(user_id)
+        revoke_all_api_keys_for_user(user_id)
 
     log_event(
         event_type="gdpr.delete",
-        user_key=ctx.key_hash[:8],
+        user_key=_actor_key(ctx),
         outcome="success",
-        resource=f"api_key:{ctx.key_id}",
+        resource=resource,
     )
-    log.info("gdpr_delete_executed", key_id=ctx.key_id)
-    return {"status": "ok", "message": "Datos anonimizados y API key revocada."}
+    log.info("gdpr_delete_executed", auth_method=ctx.get("auth_method"))
+    return {"status": "ok", "message": "Datos anonimizados y credenciales revocadas."}
 
 
 @router.post(
@@ -128,14 +193,17 @@ def delete_my_data(ctx: AuthContext = Depends(require_api_key)) -> dict[str, Any
     summary="Revocar todas las sesiones activas",
     status_code=200,
 )
-def logout_all(ctx: AuthContext = Depends(require_api_key)) -> dict[str, Any]:
+def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
     """Revoca todas las sesiones server-side del usuario."""
-    user_id = _get_user_id_from_key_id(ctx.key_id)
+    if ctx.get("auth_method") == "session":
+        user_id = ctx["user_id"]
+    else:
+        user_id = _get_user_id_from_key_id(ctx["user_id"])
     if user_id:
         n = revoke_all_sessions(user_id)
         log_event(
             event_type="auth.logout_all",
-            user_key=ctx.key_hash[:8],
+            user_key=_actor_key(ctx),
             resource=f"user:{user_id}",
             detail={"sessions_revoked": n},
         )
@@ -258,13 +326,6 @@ class UserProfileOut(BaseModel):
     updated_at: str | None = None
 
 
-def _get_user_key_for_profile(ctx: dict[str, Any]) -> str:
-    import hashlib
-
-    seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
-
-
 @router.get("/me/profile", summary="Obtener el perfil de scoring del usuario")
 async def get_profile(
     ctx: dict[str, Any] = Depends(require_any_auth),
@@ -275,7 +336,7 @@ async def get_profile(
     """
     from db.repositories.user_profiles import get_user_profile
 
-    user_key = _get_user_key_for_profile(ctx)
+    user_key = _user_key(ctx)
     raw = get_user_profile(user_key)
     if raw is None:
         return UserProfileOut()
@@ -301,7 +362,7 @@ async def put_profile(
     from db.repositories.user_profiles import upsert_user_profile
 
     body.validate_weights()
-    user_key = _get_user_key_for_profile(ctx)
+    user_key = _user_key(ctx)
     upsert_user_profile(
         user_key,
         {
@@ -321,6 +382,6 @@ async def delete_profile(
     """Elimina el perfil de scoring. El scoring vuelve a los settings globales."""
     from db.repositories.user_profiles import delete_user_profile
 
-    user_key = _get_user_key_for_profile(ctx)
+    user_key = _user_key(ctx)
     delete_user_profile(user_key)
     return {"status": "ok"}

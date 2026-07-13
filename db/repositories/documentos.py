@@ -1,0 +1,208 @@
+"""Repository para ``documentos``/``documento_chunks`` (plan Pliegos+RAG, F6).
+
+Metadatos + texto extraído de los adjuntos (pliegos) de una licitación —
+v56 (``db/alembic/versions/v56_pg_documentos_pgvector.py`` / equivalente
+SQLite en ``db/schema.py``). Ciclo de vida por fila: ``pending`` (metadatos
+insertados por el parser) → ``downloaded``/``error`` (F7, descarga) →
+``extracted`` (F7, texto extraído) → chunks + embeddings (F8).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
+
+from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
+from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
+_MAX_ERROR_DETAIL_LEN = 2000
+
+
+def _to_pg_vector_literal(vec: Sequence[float]) -> str:
+    """Formato de texto que pgvector castea con ``::vector`` (``[0.1,0.2,...]``)."""
+    return "[" + ",".join(repr(float(x)) for x in vec) + "]"
+
+
+def _to_sqlite_blob(vec: Sequence[float]) -> bytes:
+    """BLOB float32 crudo — solo para tests unitarios con ``tmp_db`` (F8);
+    SQLite no tiene tipo vectorial ni operador de distancia, el embedding
+    ahí no es consultable, solo almacenable."""
+    import numpy as np
+
+    return np.asarray(vec, dtype="float32").tobytes()
+
+
+class DocumentosRepository:
+    """Acceso a la tabla ``documentos`` (TID251: SQL nuevo solo aquí)."""
+
+    def upsert_meta(self, licitacion_id: str, refs: list[DocumentoReferencia]) -> int:
+        """Inserta metadatos de documentos nuevos para una licitación.
+
+        Idempotente sobre ``UNIQUE(licitacion_id, uri)``: re-ingestar la misma
+        licitación (re-scrape diario) no duplica ni resetea el ``status`` de
+        documentos ya procesados — ``ON CONFLICT DO NOTHING`` deja intacta
+        cualquier fila existente. Devuelve el número de referencias procesadas
+        (no distingue insertadas de ya-existentes: el driver libsql no
+        garantiza un ``rowcount`` fiable tras ``executemany`` con conflicto).
+        """
+        if not refs:
+            return 0
+        rows = [(licitacion_id, r.tipo, r.uri, r.filename) for r in refs]
+        with connect() as c:
+            c.executemany(
+                "INSERT INTO documentos (licitacion_id, tipo, uri, filename) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(licitacion_id, uri) DO NOTHING",
+                rows,
+            )
+        return len(rows)
+
+    def list_pendientes(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Documentos con ``status='pending'``, los más antiguos primero (FIFO)."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, licitacion_id, tipo, uri, filename, content_type, size_bytes "
+                "FROM documentos WHERE status = 'pending' "
+                "ORDER BY created_at LIMIT ?",
+                (max(1, min(int(limit), 1000)),),
+            )
+            return rows_to_dicts(cur)
+
+    def mark_downloaded(
+        self,
+        documento_id: int,
+        *,
+        filename: str | None,
+        content_type: str | None,
+        size_bytes: int | None,
+        sha256: str | None,
+    ) -> None:
+        """Descarga completada — metadatos del binario, texto aún pendiente."""
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'downloaded', filename = ?, "
+                "content_type = ?, size_bytes = ?, sha256 = ?, fetched_at = ?, "
+                "updated_at = ? WHERE id = ?",
+                (
+                    filename,
+                    content_type,
+                    size_bytes,
+                    sha256,
+                    now_utc_iso(),
+                    now_utc_iso(),
+                    documento_id,
+                ),
+            )
+
+    def mark_extracted(self, documento_id: int, *, texto: str, sha256: str) -> None:
+        """Texto extraído con éxito. ``sha256`` es del binario descargado —
+        usado por el job de embeddings (F8) para saber si el contenido cambió
+        entre corridas (skip si el hash no varió, delete+reinsert si sí)."""
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'extracted', texto = ?, sha256 = ?, "
+                "fetched_at = ?, updated_at = ? WHERE id = ?",
+                (texto, sha256, now_utc_iso(), now_utc_iso(), documento_id),
+            )
+
+    def mark_error(self, documento_id: int, *, error_detail: str) -> None:
+        """Descarga o extracción fallida — no rompe el resto del batch."""
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'error', error_detail = ?, "
+                "updated_at = ? WHERE id = ?",
+                (error_detail[:_MAX_ERROR_DETAIL_LEN], now_utc_iso(), documento_id),
+            )
+
+    def get(self, documento_id: int) -> dict[str, Any] | None:
+        """Fila completa por id (incluye ``texto``) — usado por el job de embeddings."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, licitacion_id, tipo, uri, filename, content_type, "
+                "size_bytes, sha256, texto, status, error_detail, storage_key, "
+                "fetched_at, created_at, updated_at FROM documentos WHERE id = ?",
+                (documento_id,),
+            )
+            rows = rows_to_dicts(cur)
+            return rows[0] if rows else None
+
+    # ── documento_chunks (F8: chunking + embeddings) ────────────────────
+
+    def list_extracted_without_chunks(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Documentos con texto extraído que aún no tienen chunks generados.
+
+        Selección deliberadamente simple ("sin chunks" = candidato): en el
+        pipeline actual (F6/F7) un documento pasa por ``extracted`` una sola
+        vez — no hay camino de re-extracción que cambie ``texto`` después.
+        Por eso la idempotencia entre corridas la da esta misma condición
+        (`NOT EXISTS`): un documento ya chunkeado nunca vuelve a aparecer
+        aquí, así que el job nunca reprocesa trabajo ya hecho.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, licitacion_id, texto FROM documentos "
+                "WHERE status = 'extracted' "
+                "AND id NOT IN (SELECT DISTINCT documento_id FROM documento_chunks) "
+                "ORDER BY updated_at LIMIT ?",
+                (max(1, min(int(limit), 1000)),),
+            )
+            return rows_to_dicts(cur)
+
+    def replace_chunks(self, documento_id: int, chunks: list[str], embeddings: Any) -> int:
+        """Reemplaza (delete+insert) los chunks+embeddings de un documento.
+
+        ``embeddings`` es indexable fila a fila (``np.ndarray`` de shape
+        (n, dim) o lista de vectores), alineado 1:1 con ``chunks``.
+
+        Transaccional dentro de una sola conexión: el DELETE corre primero,
+        así que un fallo a mitad de los INSERTs no deja un estado "medio
+        chunkeado" que pase el filtro `NOT EXISTS` de
+        ``list_extracted_without_chunks`` — la siguiente corrida reintenta el
+        documento completo desde cero (delete+reinsert es idempotente frente
+        a reintentos, cumple el mismo contrato que pedía comparar por sha256
+        sin necesitar una columna nueva en el schema).
+        """
+        from db.connection import is_postgres_backend
+
+        if len(chunks) != len(embeddings):
+            raise ValueError(
+                f"chunks ({len(chunks)}) y embeddings ({len(embeddings)}) "
+                "deben tener la misma longitud"
+            )
+
+        is_pg = is_postgres_backend()
+        with connect() as c:
+            c.execute("DELETE FROM documento_chunks WHERE documento_id = ?", (documento_id,))
+            if not chunks:
+                return 0
+            if is_pg:
+                pg_rows = [
+                    (documento_id, i, texto, _to_pg_vector_literal(emb))
+                    for i, (texto, emb) in enumerate(zip(chunks, embeddings, strict=True))
+                ]
+                c.executemany(
+                    "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
+                    "VALUES (?, ?, ?, ?::vector)",
+                    pg_rows,
+                )
+            else:
+                sqlite_rows = [
+                    (documento_id, i, texto, _to_sqlite_blob(emb))
+                    for i, (texto, emb) in enumerate(zip(chunks, embeddings, strict=True))
+                ]
+                c.executemany(
+                    "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
+                    "VALUES (?, ?, ?, ?)",
+                    sqlite_rows,
+                )
+        return len(chunks)
+
+    def count_chunks(self, documento_id: int) -> int:
+        with connect_read() as c:
+            row = c.execute(
+                "SELECT COUNT(*) FROM documento_chunks WHERE documento_id = ?",
+                (documento_id,),
+            ).fetchone()
+            return int(row[0] if row else 0)

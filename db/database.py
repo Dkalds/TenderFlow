@@ -35,6 +35,8 @@ nivel:
 
 - ``Licitacion``                      — dataclass de una licitación PLACSP.
 - ``Adjudicacion``                    — dataclass de una adjudicación.
+- ``DocumentoReferencia``             — dataclass de un adjunto (pliego) referenciado
+                                        en el CODICE (ver db.repositories.documentos).
 - ``UpsertResult``                    — resultado enriquecido de upsert con
                                         historial (inserted/modified/unchanged).
 - ``upsert_licitaciones()``           — bulk upsert sin historial; devuelve
@@ -92,6 +94,7 @@ from db.schema import (
 # Re-exportar desde db.upsert
 from db.upsert import (
     Adjudicacion,
+    DocumentoReferencia,
     Licitacion,
     UpsertResult,
     count_licitaciones,
@@ -124,6 +127,7 @@ __all__ = [
     "init_db",
     # upsert
     "Adjudicacion",
+    "DocumentoReferencia",
     "Licitacion",
     "UpsertResult",
     "count_licitaciones",

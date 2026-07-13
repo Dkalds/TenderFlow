@@ -123,7 +123,9 @@ class TestJobRegistry:
         assert "wal_checkpoint" in names
         assert "ml_scoring_baja" in names
         assert "ml_retrain_baja" in names
-        assert len(registry) == 10
+        assert "documentos_embeddings" in names
+        assert "watchlist_rules" in names
+        assert len(registry) == 12
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry
@@ -136,6 +138,7 @@ class TestJobRegistry:
             "retention_cleanup",
             "ml_scoring_baja",
             "ml_retrain_baja",
+            "documentos_embeddings",
         }
 
     def test_all_jobs_have_callable_fn(self):

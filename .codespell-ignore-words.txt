@@ -126,3 +126,4 @@ cursos
 foto
 interpolar
 sme
+extensiones

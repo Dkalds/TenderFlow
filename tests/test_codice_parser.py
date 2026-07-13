@@ -14,6 +14,7 @@ from scraper.codice_parser import (
     _text,
     parse_adjudicaciones,
     parse_atom_bytes,
+    parse_document_references,
     parse_entry,
     parse_summary,
 )
@@ -157,6 +158,70 @@ def _make_entry_with_adjudicacion(lic_id: str = "ADJ-001") -> str:
                 <cac:PartyIdentification><cbc:ID>B12345678</cbc:ID></cac:PartyIdentification>
               </cac:WinningParty>
             </cac:TenderResult>
+          </cacext:ContractFolderStatus>
+        </entry>
+    """)
+
+
+def _make_entry_with_documentos(
+    lic_id: str = "DOC-001",
+    *,
+    legal_uri: str | None = "https://contrataciondelestado.es/pliego-legal.pdf",
+    technical_uri: str | None = "https://contrataciondelestado.es/pliego-tecnico.pdf",
+    additional_uris: tuple[str, ...] = (),
+    legal_filename: str | None = "PCAP.pdf",
+) -> str:
+    """Entry con {Legal,Technical,Additional}DocumentReference (adjuntos CODICE)."""
+    cbc = _NS["cbc"]
+    cac = _NS["cac"]
+    cacext = _NS["cacext"]
+    cbcext = _NS["cbcext"]
+
+    def _doc_ref(uri: str | None, filename: str | None) -> str:
+        if uri is None:
+            return ""
+        filename_xml = f"<cbc:FileName>{filename}</cbc:FileName>" if filename else ""
+        return f"""
+            <cac:Attachment>
+              <cac:ExternalReference>
+                <cbc:URI>{uri}</cbc:URI>
+                {filename_xml}
+              </cac:ExternalReference>
+            </cac:Attachment>"""
+
+    legal_xml = (
+        f"<cac:LegalDocumentReference><cbc:ID>1</cbc:ID>"
+        f"{_doc_ref(legal_uri, legal_filename)}</cac:LegalDocumentReference>"
+        if legal_uri is not None
+        else ""
+    )
+    technical_xml = (
+        f"<cac:TechnicalDocumentReference><cbc:ID>2</cbc:ID>"
+        f"{_doc_ref(technical_uri, None)}</cac:TechnicalDocumentReference>"
+        if technical_uri is not None
+        else ""
+    )
+    additional_xml = "".join(
+        f"<cac:AdditionalDocumentReference><cbc:ID>{i + 3}</cbc:ID>"
+        f"{_doc_ref(uri, None)}</cac:AdditionalDocumentReference>"
+        for i, uri in enumerate(additional_uris)
+    )
+
+    return textwrap.dedent(f"""\
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:cbc="{cbc}"
+               xmlns:cac="{cac}"
+               xmlns:cacext="{cacext}"
+               xmlns:cbcext="{cbcext}">
+          <id>https://example.com/{lic_id}</id>
+          <title>Contrato con pliegos</title>
+          <updated>2024-03-15T00:00:00Z</updated>
+          <cacext:ContractFolderStatus>
+            <cbc:ContractFolderID>{lic_id}</cbc:ContractFolderID>
+            <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+            {legal_xml}
+            {technical_xml}
+            {additional_xml}
           </cacext:ContractFolderStatus>
         </entry>
     """)
@@ -482,3 +547,99 @@ class TestDateNormalization:
             val = getattr(lic, field)
             if val is not None:
                 assert _ISO_GLOB_PREFIX.match(val), f"{field}={val!r} no pasa CHECK GLOB"
+
+
+# ─── parse_document_references (plan Pliegos+RAG, F6) ───────────────────────
+
+
+class TestParseDocumentReferences:
+    def _get_entry(self, entry_xml: str):
+        feed = _make_atom_feed(entry_xml)
+        root = etree.fromstring(feed)
+        return root.find("{http://www.w3.org/2005/Atom}entry")
+
+    def test_extracts_legal_technical_and_additional(self):
+        entry = self._get_entry(
+            _make_entry_with_documentos(
+                additional_uris=("https://contrataciondelestado.es/anexo1.pdf",),
+            )
+        )
+        refs = parse_document_references(entry)
+
+        assert len(refs) == 3
+        tipos = {r.tipo for r in refs}
+        assert tipos == {"legal", "technical", "additional"}
+
+    def test_legal_ref_has_uri_and_filename(self):
+        entry = self._get_entry(_make_entry_with_documentos())
+        refs = parse_document_references(entry)
+
+        legal = next(r for r in refs if r.tipo == "legal")
+        assert legal.uri == "https://contrataciondelestado.es/pliego-legal.pdf"
+        assert legal.filename == "PCAP.pdf"
+
+    def test_filename_is_optional(self):
+        entry = self._get_entry(_make_entry_with_documentos())
+        refs = parse_document_references(entry)
+
+        technical = next(r for r in refs if r.tipo == "technical")
+        assert technical.uri == "https://contrataciondelestado.es/pliego-tecnico.pdf"
+        assert technical.filename is None
+
+    def test_multiple_additional_documents(self):
+        entry = self._get_entry(
+            _make_entry_with_documentos(
+                legal_uri=None,
+                technical_uri=None,
+                additional_uris=(
+                    "https://contrataciondelestado.es/anexo1.pdf",
+                    "https://contrataciondelestado.es/anexo2.pdf",
+                    "https://contrataciondelestado.es/anexo3.pdf",
+                ),
+            )
+        )
+        refs = parse_document_references(entry)
+
+        assert len(refs) == 3
+        assert all(r.tipo == "additional" for r in refs)
+        assert {r.uri for r in refs} == {
+            "https://contrataciondelestado.es/anexo1.pdf",
+            "https://contrataciondelestado.es/anexo2.pdf",
+            "https://contrataciondelestado.es/anexo3.pdf",
+        }
+
+    def test_no_document_references_returns_empty_list(self):
+        """La mayoría de entries del feed no tienen adjuntos — caso común, no error."""
+        entry = self._get_entry(_make_sap_entry())
+        assert parse_document_references(entry) == []
+
+    def test_reference_without_attachment_uri_is_skipped(self):
+        """DocumentReference sin cac:Attachment (adjunto reservado/no publicado,
+        habitual en CODICE) no debe producir una referencia con uri=None."""
+        entry_xml = textwrap.dedent(f"""\
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:cbc="{_NS["cbc"]}"
+                   xmlns:cac="{_NS["cac"]}"
+                   xmlns:cacext="{_NS["cacext"]}"
+                   xmlns:cbcext="{_NS["cbcext"]}">
+              <id>https://example.com/DOC-NOATT</id>
+              <title>Contrato sin adjunto accesible</title>
+              <cacext:ContractFolderStatus>
+                <cbc:ContractFolderID>DOC-NOATT</cbc:ContractFolderID>
+                <cac:LegalDocumentReference>
+                  <cbc:ID>1</cbc:ID>
+                </cac:LegalDocumentReference>
+              </cacext:ContractFolderStatus>
+            </entry>
+        """)
+        entry = self._get_entry(entry_xml)
+        assert parse_document_references(entry) == []
+
+    def test_parse_entry_is_unaffected_by_document_references(self):
+        """parse_entry() sigue devolviendo Licitacion normalmente; los adjuntos
+        se extraen por separado (Licitacion no lleva ese campo, TID251/§3.5)."""
+        entry = self._get_entry(_make_entry_with_documentos())
+        lic = parse_entry(entry)
+        # No es una entry SAP -> parse_entry (con filtro de tecnología) descarta.
+        # Lo relevante es que no lance ni devuelva algo con un campo 'documentos'.
+        assert lic is None or not hasattr(lic, "documentos")

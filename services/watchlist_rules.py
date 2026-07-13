@@ -129,6 +129,13 @@ def delete_rule(user_key: str, rule_id: int) -> bool:
         return bool(cur.rowcount > 0)
 
 
+def delete_all_for_user(user_key: str) -> int:
+    """Borra todas las reglas del usuario (GDPR). Devuelve el numero de filas borradas."""
+    with connect() as c:
+        cur = c.execute("DELETE FROM watchlist_rules WHERE user_key = ?", (user_key,))
+        return int(cur.rowcount)
+
+
 # ---------------------------------------------------------------------------
 # Matching sobre el dataset completo
 #

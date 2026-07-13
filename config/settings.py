@@ -26,6 +26,20 @@ def _extract_sslmode(url: str) -> str | None:
     return values[-1].strip().lower()
 
 
+# Hosts sin red externa que interceptar — sslmode no aporta nada real ahí.
+_LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _extract_host(url: str) -> str | None:
+    """Devuelve el hostname de una DATABASE_URL, o None si no se puede parsear."""
+    from urllib.parse import urlsplit
+
+    try:
+        return urlsplit(url).hostname
+    except ValueError:
+        return None
+
+
 # En entornos donde el paquete se instala en site-packages (e.g. despliegues gestionados),
 # _ROOT apuntaría a un directorio sin permisos de escritura.  Usamos un
 # directorio escribible como fallback.
@@ -264,6 +278,10 @@ class Settings(BaseSettings):
     MAX_XML_SIZE_BYTES: int = 150 * 1024 * 1024
     DAILY_MAX_PAGES: int = 50
     BACKFILL_MAX_WORKERS: int = 3
+    # Límite de tamaño para un adjunto individual (pliego), plan Pliegos+RAG F7.
+    # Mucho más chico que MAX_DOWNLOAD_SIZE_BYTES (pensado para ZIPs mensuales
+    # con miles de entries) — un PDF de pliego legítimo rara vez supera 50 MB.
+    MAX_DOCUMENT_SIZE_BYTES: int = 50 * 1024 * 1024
 
     # ── Conectores autonómicos / TACRC (RFC 20260611-1, Fase 5) ─────────
     # Dataset Socrata de publicaciones de la PSCP en el portal de
@@ -346,6 +364,36 @@ class Settings(BaseSettings):
     # Necesario cuando el puerto TCP 6380 está bloqueado (redes domésticas/corporativas).
     # Cópialo desde Upstash Console → tu base de datos → "Connect" → REST API Token.
     REDIS_REST_TOKEN: str = ""
+
+    # ── Job dedicado de watchlist_rules (plan Pliegos+RAG, C2a) ────────────
+    # Default False: la pipeline canónica (scheduler/pipeline_runs.py::
+    # _run_watchlist_notify) ya llama a check_rules_and_notify() tras cada
+    # ingesta. Este job existe para el plano APScheduler/Docker (ADR-012) —
+    # activarlo solo si ese plano es el dueño de la orquestación, para no
+    # correr la evaluación de reglas dos veces (la idempotencia de
+    # user_notifications limita el daño a not-doble-notificación, pero no
+    # el trabajo duplicado de evaluar las reglas).
+    WATCHLIST_RULES_JOB_ENABLED: bool = False
+
+    # ── RAG híbrido sobre pliegos (plan Pliegos+RAG, F9) ───────────────────
+    # Default False: /ask sigue siendo FTS puro hasta activarlo explícitamente
+    # (requiere Postgres + extra [ml] instalado + documento_chunks poblada).
+    # Con el flag off, search_for_ask() es idéntico byte-a-byte al camino
+    # anterior — PR mergeable sin riesgo.
+    RAG_HYBRID_ENABLED: bool = False
+
+    # ── LLM: presupuesto de gasto + timeout (RFC llm-dependencia-gestionada) ──
+    # Tope de gasto del proveedor LLM por ventana (USD). <= 0 desactiva el límite.
+    LLM_BUDGET_USD_DAILY: float = 5.0
+    LLM_BUDGET_USD_MONTHLY: float = 50.0
+    # monitor: superar el presupuesto solo alerta (métrica + warning), no corta.
+    # enforce: /ask responde 429 sin llamar al proveedor. Default monitor para
+    # rodaje (medir antes de cortar), igual que el CSP Report-Only de fase 1.
+    LLM_BUDGET_MODE: Literal["monitor", "enforce"] = "monitor"
+    # Timeout (s) esperando al LLM en /ask. Antes era env directo en ask.py;
+    # el nombre del env var se mantiene, así que despliegues existentes siguen
+    # funcionando sin cambios.
+    ASK_LLM_TIMEOUT_SECONDS: float = 120.0
 
     # ── Validators ───────────────────────────────────────────────────────
 
@@ -615,32 +663,48 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_database_ssl(self) -> Settings:
-        """En producción/staging, exigir TLS verificado en DATABASE_URL (Postgres/Supabase).
+        """Exigir TLS verificado en DATABASE_URL (Postgres/Supabase) cuando aplica.
 
         ``sslmode=require`` cifra pero NO valida el certificado ni el hostname del
         servidor: un atacante capaz de interponerse (MITM) puede presentar su
         propio certificado y capturar credenciales + datos. ``verify-full`` valida
         cadena + hostname (necesita ``DATABASE_SSL_ROOT_CERT`` = CA de Supabase).
 
-        Política (prod/staging):
+        La política se aplica (``enforce``) si ``ENV`` es prod/staging **o** si el
+        host es remoto (no localhost/127.0.0.1/::1) — independientemente de ENV.
+        F4 (2026-07-13): esto cierra el gap de ``scrape-daily.yml``, que corre con
+        ``ENV=dev`` pero apunta a Supabase real — antes esa combinación solo
+        avisaba, nunca bloqueaba una conexión sin TLS verificado. Un host local
+        (docker-compose/desarrollo con Postgres en la propia máquina) no tiene red
+        externa que interceptar, así que ahí sigue bastando con avisar.
+
+        Política cuando ``enforce``:
           - ``sslmode`` ausente → error (psycopg podría negociar sin TLS).
           - ``disable``/``allow``/``prefer`` → error (no garantizan TLS; cierran el
             downgrade silencioso que el chequeo por substring anterior permitía).
           - ``require``/``verify-ca`` → permitido con warning (se recomienda verify-full).
           - ``verify-full`` → OK.
-        En dev solo se avisa.
+        Si no aplica (dev + host local), solo se avisa.
         """
         url = self.DATABASE_URL.get_secret_value()
         if not url:
             return self
 
+        host = _extract_host(url)
         is_prod = self.ENV in ("prod", "staging")
+        is_remote = host not in _LOCAL_DB_HOSTS
+        enforce = is_prod or is_remote
         sslmode = _extract_sslmode(url)
 
         if sslmode is None:
-            if is_prod:
+            if enforce:
+                reason = (
+                    "en ENV=prod/staging"
+                    if is_prod
+                    else f"apuntando a un host remoto ({host}), sea cual sea ENV"
+                )
                 raise ValueError(
-                    "DATABASE_URL no especifica sslmode en ENV=prod/staging. Añade "
+                    f"DATABASE_URL no especifica sslmode {reason}. Añade "
                     "'?sslmode=verify-full' (con DATABASE_SSL_ROOT_CERT) para exigir "
                     "TLS verificado en la conexión a Postgres/Supabase."
                 )
@@ -653,10 +717,15 @@ class Settings(BaseSettings):
 
         insecure = {"disable", "allow", "prefer"}
         if sslmode in insecure:
-            if is_prod:
+            if enforce:
+                reason = (
+                    "en ENV=prod/staging"
+                    if is_prod
+                    else f"apuntando a un host remoto ({host}), sea cual sea ENV"
+                )
                 raise ValueError(
-                    f"DATABASE_URL usa sslmode={sslmode!r}, que no garantiza TLS, en "
-                    "ENV=prod/staging. Usa 'verify-full' (recomendado) o al menos 'require'."
+                    f"DATABASE_URL usa sslmode={sslmode!r}, que no garantiza TLS, {reason}. "
+                    "Usa 'verify-full' (recomendado) o al menos 'require'."
                 )
             warnings.warn(
                 f"DATABASE_URL usa sslmode={sslmode!r}, que puede conectar sin TLS. "
@@ -665,7 +734,7 @@ class Settings(BaseSettings):
             )
             return self
 
-        if is_prod and sslmode in ("require", "verify-ca"):
+        if enforce and sslmode in ("require", "verify-ca"):
             warnings.warn(
                 f"DATABASE_URL usa sslmode={sslmode!r}: cifra pero no valida "
                 "completamente el certificado del servidor. Se recomienda "

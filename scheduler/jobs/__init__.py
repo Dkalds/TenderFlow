@@ -30,11 +30,13 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.dlq_retry import retry_failed_extractions
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
+    from scheduler.jobs.documentos_embeddings import run as run_documentos_embeddings
     from scheduler.jobs.ml_predicciones import run_retrain as run_ml_retrain
     from scheduler.jobs.ml_predicciones import run_scoring as run_ml_scoring
     from scheduler.jobs.recent_bulk import run as run_recent_bulk
     from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
     from scheduler.jobs.wal_checkpoint import run as run_wal_checkpoint
+    from scheduler.jobs.watchlist_rules import run as run_watchlist_rules
     from scheduler.watchlist_alerts import send_pending_digests
 
     return [
@@ -79,6 +81,14 @@ def build_default_registry() -> list[ScheduledJob]:
             initial_offset_minutes=720,
             heavy=True,
         ),
+        ScheduledJob(
+            name="documentos_embeddings",
+            fn=run_documentos_embeddings,
+            interval_env="SCHEDULER_DOCUMENTOS_EMBEDDINGS_INTERVAL_MINUTES",
+            default_interval_minutes=1440,  # nocturno
+            initial_offset_minutes=300,  # tras la ingesta diaria + scoring
+            heavy=True,  # descarga de red + inferencia del modelo de embeddings
+        ),
         # ── Light jobs (daemon threads) ───────────────────────────────
         ScheduledJob(
             name="dlq_retry",
@@ -93,6 +103,13 @@ def build_default_registry() -> list[ScheduledJob]:
             interval_env="SCHEDULER_DIGEST_INTERVAL_MINUTES",
             default_interval_minutes=1440,
             initial_offset_minutes=60,
+        ),
+        ScheduledJob(
+            name="watchlist_rules",
+            fn=run_watchlist_rules,
+            interval_env="SCHEDULER_WATCHLIST_RULES_INTERVAL_MINUTES",
+            default_interval_minutes=240,  # mismo cadencia que daily_atom
+            initial_offset_minutes=15,
         ),
         ScheduledJob(
             name="anomaly_checks",
