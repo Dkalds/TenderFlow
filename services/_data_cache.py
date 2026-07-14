@@ -13,6 +13,7 @@ valor, por lo que compartir la misma lista entre llamadas es seguro.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 from typing import Generic, TypeVar, cast
@@ -35,24 +36,40 @@ class SignalAwareCache(Generic[_T]):
         self._loaded_at = 0.0
         self._signal_ts = -1.0
         self._valid = False
+        self._lock = threading.Lock()
 
     def get(self, loader: Callable[[], _T]) -> _T:
-        """Devuelve el valor cacheado si sigue fresco; si no, llama a ``loader``."""
-        now = time.time()
-        sig = get_signal_timestamp()
-        fresh = self._valid and (now - self._loaded_at) < self._ttl and sig <= self._signal_ts
-        if fresh:
+        """Devuelve el valor cacheado si sigue fresco; si no, llama a ``loader``.
+
+        Serializado con un lock: sin esto, N requests concurrentes con caché
+        fría (típico justo tras un reinicio) llaman a ``loader()`` en paralelo,
+        cada una construyendo su propia copia de la carga full-table al mismo
+        tiempo — el pico de memoria se multiplica por N en vez de servirse una
+        sola vez. Ver postmortem OOM Render 2026-07-14.
+        """
+        if self._is_fresh():
             return cast("_T", self._value)
-        value = loader()
-        self._value = value
-        self._loaded_at = now
-        self._signal_ts = sig
-        self._valid = True
-        return value
+        with self._lock:
+            if self._is_fresh():
+                return cast("_T", self._value)
+            value = loader()
+            self._value = value
+            self._loaded_at = time.time()
+            self._signal_ts = get_signal_timestamp()
+            self._valid = True
+            return value
+
+    def _is_fresh(self) -> bool:
+        return (
+            self._valid
+            and (time.time() - self._loaded_at) < self._ttl
+            and get_signal_timestamp() <= self._signal_ts
+        )
 
     def clear(self) -> None:
         """Invalida la caché (tras una ingesta o en tests)."""
-        self._value = None
-        self._loaded_at = 0.0
-        self._signal_ts = -1.0
-        self._valid = False
+        with self._lock:
+            self._value = None
+            self._loaded_at = 0.0
+            self._signal_ts = -1.0
+            self._valid = False

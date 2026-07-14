@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 from services._data_cache import SignalAwareCache
 
 
@@ -69,3 +72,29 @@ def test_signal_invalidates_cache(monkeypatch):
     fake_ts["value"] = 200.0
     assert cache.get(loader) == 2  # invalidado por señal
     assert calls["n"] == 2
+
+
+def test_concurrent_miss_calls_loader_once():
+    """N threads con caché fría no deben construir el valor en paralelo.
+
+    Regresión: sin lock, cada thread llamaba a loader() de forma independiente
+    (postmortem OOM Render 2026-07-14 — 5 endpoints de analytics reconstruyendo
+    el DataFrame full-table al mismo tiempo tras un reinicio en frío).
+    """
+    calls = {"n": 0}
+    lock = threading.Lock()
+
+    def loader() -> int:
+        with lock:
+            calls["n"] += 1
+        time.sleep(0.05)
+        return 42
+
+    cache: SignalAwareCache[int] = SignalAwareCache(ttl=60.0)
+    threads = [threading.Thread(target=cache.get, args=(loader,)) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert calls["n"] == 1
