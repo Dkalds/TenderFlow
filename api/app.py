@@ -115,9 +115,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
             t0 = _t.monotonic()
             from services.adjudicaciones import load_raw_adjudicaciones
-            from services.licitaciones import load_stats_dataframe
+            from services.licitaciones import load_stats_base_df
 
-            await asyncio.to_thread(load_stats_dataframe)
+            await asyncio.to_thread(load_stats_base_df)
             await asyncio.to_thread(load_raw_adjudicaciones)
             elapsed = int((_t.monotonic() - t0) * 1000)
             log.info("api_prewarm_done", elapsed_ms=elapsed)
