@@ -9,7 +9,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
-from services.licitaciones import load_stats_dataframe
+from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
 
@@ -128,8 +128,7 @@ def _dlq_count() -> int:
 def get_quality() -> QualityResult:
     """Compute data quality metrics."""
     log.info("analytics_quality_start")
-    rows = load_stats_dataframe()
-    df = pd.DataFrame(rows)
+    df = load_stats_base_df()
 
     if df.empty:
         log.info("analytics_quality_done", total=0)

@@ -278,7 +278,7 @@ class CostTrackingMiddleware(BaseHTTPMiddleware):
 
                 # Usar route template para evitar cardinalidad explosiva
                 route = request.scope.get("route")
-                op = getattr(route, "path", None) or request.url.path.split("?")[0]
+                op = getattr(route, "path", None) or "unmatched"
                 api_cost_estimate_total.labels(operation=op).inc(int(usd * 1e6))
             except Exception:
                 pass

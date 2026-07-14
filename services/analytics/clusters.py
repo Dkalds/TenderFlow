@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
 from services.classification import cpv_label, estado_label
-from services.licitaciones import load_stats_dataframe
+from services.licitaciones import load_stats_base_df
 
 if TYPE_CHECKING:
     # Solo para type hints — el import real es lazy (ver docstring del modulo).
@@ -234,8 +234,7 @@ def _ctfidf_labels(texts: Iterable[str], labels: np.ndarray, top_n: int = 3) -> 
 
 
 def _load_df() -> pd.DataFrame:
-    rows = load_stats_dataframe()
-    df = pd.DataFrame(rows)
+    df = load_stats_base_df()
     if not df.empty:
         df["fecha_publicacion"] = pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True)
         df["importe"] = pd.to_numeric(df["importe"], errors="coerce")

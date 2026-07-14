@@ -6,7 +6,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
-from services.licitaciones import load_stats_dataframe
+from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
 
@@ -86,8 +86,7 @@ class PipelineResult(BaseModel):
 
 
 def _load_df() -> pd.DataFrame:
-    rows = load_stats_dataframe()
-    df = pd.DataFrame(rows)
+    df = load_stats_base_df()
     if not df.empty:
         df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
         # Parse fecha_limite if present

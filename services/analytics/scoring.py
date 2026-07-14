@@ -37,7 +37,7 @@ from services.analytics.scoring_signals import (
     load_competencia_stats,
     load_margen_stats,
 )
-from services.licitaciones import load_stats_dataframe
+from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
 
@@ -348,8 +348,7 @@ def get_scoring(
         filters=filters.model_dump(exclude_none=True),
         personalized=user_key is not None,
     )
-    rows = load_stats_dataframe()
-    df = pd.DataFrame(rows)
+    df = load_stats_base_df()
 
     if df.empty:
         log.info("analytics_scoring_done", total=0)

@@ -26,6 +26,12 @@ _repo = LicitacionRepository()
 # cachear el snapshot evita N relecturas de SQLite por petición.
 _stats_cache: SignalAwareCache[list[dict[str, Any]]] = SignalAwareCache()
 
+# Caché del DataFrame base (sin conversiones de tipo). Analytics services llaman
+# a load_stats_base_df() y reciben un .copy() — evita que N threads concurrentes
+# construyan pd.DataFrame(rows) simultáneamente desde la lista de dicts Python,
+# que durante la construcción requiere 2x la memoria del DataFrame resultante.
+_stats_df_cache: SignalAwareCache[pd.DataFrame] = SignalAwareCache()
+
 # ── Columnas reutilizadas por load_raw / stats ───────────────────────────
 _RAW_COLUMNS = (
     "id_externo, titulo, organo_contratacion, importe, estado, "
@@ -113,9 +119,27 @@ def load_stats_dataframe() -> list[dict[str, Any]]:
     return _stats_cache.get(_load)
 
 
+def load_stats_base_df() -> pd.DataFrame:
+    """Devuelve una copia mutable del DataFrame base de licitaciones para analytics.
+
+    El DataFrame base (sin conversiones de tipo) se construye una única vez desde
+    la lista cacheada en ``_stats_df_cache`` y se invalida junto con
+    ``_stats_cache`` al cambiar la señal de ingesta. Cada llamada devuelve
+    ``df.copy()`` para que el consumidor pueda mutar el DataFrame sin afectar la
+    copia cacheada.
+    """
+
+    def _build() -> pd.DataFrame:
+        rows = load_stats_dataframe()
+        return pd.DataFrame(rows)
+
+    return _stats_df_cache.get(_build).copy()
+
+
 def clear_stats_cache() -> None:
-    """Invalida la caché de :func:`load_stats_dataframe`."""
+    """Invalida la caché de :func:`load_stats_dataframe` y :func:`load_stats_base_df`."""
     _stats_cache.clear()
+    _stats_df_cache.clear()
 
 
 # ── Búsquedas especializadas ─────────────────────────────────────────────
