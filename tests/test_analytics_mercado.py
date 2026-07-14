@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import pandas as pd
+
 import services.analytics.clusters as clusters_mod
 import services.analytics.proyectos_modulos as pm_mod
 import services.analytics.tecnologias as tec_mod
@@ -84,7 +86,7 @@ def _tec_rows() -> list[dict]:
 
 
 def test_tecnologias_kpis_and_explode():
-    with patch.object(tec_mod, "load_stats_dataframe", return_value=_tec_rows()):
+    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame(_tec_rows())):
         res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
 
     labels = {e.tecnologia for e in res.tecnologias}
@@ -105,7 +107,7 @@ def test_tecnologias_kpis_and_explode():
 
 
 def test_tecnologias_cross_tabs_present():
-    with patch.object(tec_mod, "load_stats_dataframe", return_value=_tec_rows()):
+    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame(_tec_rows())):
         res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
     assert res.cross_organo and all(c.count > 0 for c in res.cross_organo)
     assert res.cross_geo and all(c.count > 0 for c in res.cross_geo)
@@ -113,7 +115,7 @@ def test_tecnologias_cross_tabs_present():
 
 
 def test_tecnologia_detalle_filters_by_label():
-    with patch.object(tec_mod, "load_stats_dataframe", return_value=_tec_rows()):
+    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame(_tec_rows())):
         det = tec_mod.get_tecnologia_detalle("SAP", tec_mod.TecnologiaDetalleFilters(limit=50))
     assert det.tecnologia == "SAP"
     assert det.n == 7  # de-duplicated across the comma-separated explode
@@ -123,7 +125,7 @@ def test_tecnologia_detalle_filters_by_label():
 
 
 def test_tecnologias_empty():
-    with patch.object(tec_mod, "load_stats_dataframe", return_value=[]):
+    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame([])):
         res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
     assert res.tecnologias == []
     assert res.n_tecnologias == 0
@@ -183,7 +185,7 @@ def _pm_rows() -> list[dict]:
 
 
 def test_proyectos_modulos_yoy_tipo_estado_cpv():
-    with patch.object(pm_mod, "load_stats_dataframe", return_value=_pm_rows()):
+    with patch.object(pm_mod, "load_stats_base_df", return_value=pd.DataFrame(_pm_rows())):
         res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
 
     assert res.top_modulo_yoy is not None
@@ -216,7 +218,7 @@ def test_proyectos_modulos_importe_distinct_sin_doble_conteo():
             "fecha_publicacion": _iso(30),
         },
     ]
-    with patch.object(pm_mod, "load_stats_dataframe", return_value=rows):
+    with patch.object(pm_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)):
         res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
 
     # FI y CO detectados → 2 filas de módulo…
@@ -262,7 +264,7 @@ def _cluster_rows(n: int = 30) -> list[dict]:
 
 def test_clusters_shape_and_labels():
     rows = _cluster_rows(30)
-    with patch.object(clusters_mod, "load_stats_dataframe", return_value=rows):
+    with patch.object(clusters_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)):
         res = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
 
     assert res.total == 30
@@ -288,7 +290,7 @@ def test_clusters_shape_and_labels():
 
 def test_clusters_deterministic():
     rows = _cluster_rows(30)
-    with patch.object(clusters_mod, "load_stats_dataframe", return_value=rows):
+    with patch.object(clusters_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)):
         a = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
         b = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
     assert [(c.cluster_id, c.n, c.label) for c in a.clusters] == [
@@ -297,7 +299,9 @@ def test_clusters_deterministic():
 
 
 def test_clusters_too_few_rows():
-    with patch.object(clusters_mod, "load_stats_dataframe", return_value=_cluster_rows(5)):
+    with patch.object(
+        clusters_mod, "load_stats_base_df", return_value=pd.DataFrame(_cluster_rows(5))
+    ):
         res = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
     assert res.total == 5
     assert res.clusters == []

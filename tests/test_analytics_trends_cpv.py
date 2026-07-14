@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import patch
 
+import pandas as pd
+
 from services.analytics.trends_cpv import TrendsCpvFilters, get_trends_cpv
 
 
@@ -49,7 +51,9 @@ def _rows() -> list[dict]:
 
 
 def test_ranking_por_importe_y_summary():
-    with patch("services.analytics.trends_cpv.load_stats_dataframe", return_value=_rows()):
+    with patch(
+        "services.analytics.trends_cpv.load_stats_base_df", return_value=pd.DataFrame(_rows())
+    ):
         result = get_trends_cpv(TrendsCpvFilters())
 
     assert [r.cpv for r in result.top_cpv_by_importe] == ["72000000", "48000000"]
@@ -63,7 +67,9 @@ def test_ranking_por_importe_y_summary():
 
 
 def test_series_mensuales_por_cpv():
-    with patch("services.analytics.trends_cpv.load_stats_dataframe", return_value=_rows()):
+    with patch(
+        "services.analytics.trends_cpv.load_stats_base_df", return_value=pd.DataFrame(_rows())
+    ):
         result = get_trends_cpv(TrendsCpvFilters())
 
     series = {s.cpv: s.series for s in result.series_by_cpv}
@@ -76,7 +82,9 @@ def test_series_mensuales_por_cpv():
 
 
 def test_top_n_limita_ranking_y_series():
-    with patch("services.analytics.trends_cpv.load_stats_dataframe", return_value=_rows()):
+    with patch(
+        "services.analytics.trends_cpv.load_stats_base_df", return_value=pd.DataFrame(_rows())
+    ):
         result = get_trends_cpv(TrendsCpvFilters(top_n=1))
 
     assert [r.cpv for r in result.top_cpv_by_importe] == ["72000000"]
@@ -86,7 +94,9 @@ def test_top_n_limita_ranking_y_series():
 
 
 def test_filtro_cpv_exacto():
-    with patch("services.analytics.trends_cpv.load_stats_dataframe", return_value=_rows()):
+    with patch(
+        "services.analytics.trends_cpv.load_stats_base_df", return_value=pd.DataFrame(_rows())
+    ):
         result = get_trends_cpv(TrendsCpvFilters(cpv="48000000"))
 
     assert [r.cpv for r in result.top_cpv_by_importe] == ["48000000"]
@@ -94,7 +104,9 @@ def test_filtro_cpv_exacto():
 
 
 def test_filtro_fechas():
-    with patch("services.analytics.trends_cpv.load_stats_dataframe", return_value=_rows()):
+    with patch(
+        "services.analytics.trends_cpv.load_stats_base_df", return_value=pd.DataFrame(_rows())
+    ):
         result = get_trends_cpv(
             TrendsCpvFilters(fecha_desde=date(2025, 2, 1), fecha_hasta=date(2025, 2, 28))
         )
@@ -106,7 +118,7 @@ def test_filtro_fechas():
 
 
 def test_dataset_vacio():
-    with patch("services.analytics.trends_cpv.load_stats_dataframe", return_value=[]):
+    with patch("services.analytics.trends_cpv.load_stats_base_df", return_value=pd.DataFrame([])):
         result = get_trends_cpv(TrendsCpvFilters())
     assert result.series_by_cpv == []
     assert result.top_cpv_by_importe == []

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
 import services.analytics.scoring as sc_mod
@@ -72,7 +73,11 @@ def _rows(n: int = 30) -> list[dict]:
 def test_scoring_top_n_ranks_and_truncates():
     """Modo por defecto: ordenado por score desc y truncado a limit."""
     comp, marg = _patch_signals()
-    with patch.object(sc_mod, "load_stats_dataframe", return_value=_rows(30)), comp, marg:
+    with (
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows(30))),
+        comp,
+        marg,
+    ):
         res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=5))
     assert len(res.opportunities) == 5
     scores = [o.score for o in res.opportunities]
@@ -83,7 +88,11 @@ def test_scoring_ids_returns_exactly_requested_rows():
     """Modo page-aligned: exactamente las filas pedidas, ignorando min_score/limit."""
     requested = ["L005", "L020", "L029", "L002"]
     comp, marg = _patch_signals()
-    with patch.object(sc_mod, "load_stats_dataframe", return_value=_rows(30)), comp, marg:
+    with (
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows(30))),
+        comp,
+        marg,
+    ):
         res = sc_mod.get_scoring(sc_mod.ScoringFilters(ids=requested, min_score=99, limit=1))
     got = {o.id_externo for o in res.opportunities}
     assert got == set(requested)
@@ -94,13 +103,21 @@ def test_scoring_ids_returns_exactly_requested_rows():
 def test_scoring_ids_normalization_matches_global():
     """El score de una fila es idéntico en top-N y en ids-mode (P10/P90 global)."""
     comp, marg = _patch_signals()
-    with patch.object(sc_mod, "load_stats_dataframe", return_value=_rows(30)), comp, marg:
+    with (
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows(30))),
+        comp,
+        marg,
+    ):
         full = {
             o.id_externo: o.score
             for o in sc_mod.get_scoring(sc_mod.ScoringFilters(limit=500)).opportunities
         }
     comp2, marg2 = _patch_signals()
-    with patch.object(sc_mod, "load_stats_dataframe", return_value=_rows(30)), comp2, marg2:
+    with (
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows(30))),
+        comp2,
+        marg2,
+    ):
         one = {
             o.id_externo: o.score
             for o in sc_mod.get_scoring(sc_mod.ScoringFilters(ids=["L005"])).opportunities
@@ -110,14 +127,18 @@ def test_scoring_ids_normalization_matches_global():
 
 def test_scoring_ids_unknown_is_empty():
     comp, marg = _patch_signals()
-    with patch.object(sc_mod, "load_stats_dataframe", return_value=_rows(10)), comp, marg:
+    with (
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows(10))),
+        comp,
+        marg,
+    ):
         res = sc_mod.get_scoring(sc_mod.ScoringFilters(ids=["NOPE", "ZZZ"]))
     assert res.opportunities == []
 
 
 def test_scoring_empty_dataset():
     comp, marg = _patch_signals()
-    with patch.object(sc_mod, "load_stats_dataframe", return_value=[]), comp, marg:
+    with patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame([])), comp, marg:
         res = sc_mod.get_scoring(sc_mod.ScoringFilters(ids=["L000"]))
     assert res.opportunities == []
     assert res.total_scored == 0
@@ -152,7 +173,9 @@ def test_competencia_less_competitive_scores_higher():
         "fecha_limite": "2026-04-15T00:00:00+00:00",
     }
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=[row_low_comp, row_high_comp]),
+        patch.object(
+            sc_mod, "load_stats_base_df", return_value=pd.DataFrame([row_low_comp, row_high_comp])
+        ),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -172,7 +195,7 @@ def test_competencia_fallback_global():
         "cpv": "99999999",
     }
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=[row]),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame([row])),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -193,7 +216,7 @@ def test_competencia_neutral_sin_datos():
         "cpv": "72000000",
     }
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=[row]),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame([row])),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -231,7 +254,7 @@ def test_margen_low_baja_scores_higher():
         {"id_externo": "M002", "titulo": "TI2", "importe": 100_000.0, "cpv": "72000000"},
     ]
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=rows),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -246,7 +269,7 @@ def test_margen_fallback_cpv4():
     comp = CompetenciaStats()
     row = {"id_externo": "N001", "titulo": "TI", "importe": 50_000.0, "cpv": "72000000"}
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=[row]),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame([row])),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -262,7 +285,7 @@ def test_margen_sin_prediccion_flag():
     comp = CompetenciaStats()
     row = {"id_externo": "P001", "titulo": "TI", "importe": 50_000.0, "cpv": "72000000"}
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=[row]),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame([row])),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -305,7 +328,7 @@ def test_afinidad_con_keywords_matchea_mas(monkeypatch):
         },
     ]
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=rows),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -322,7 +345,7 @@ def test_afinidad_lista_vacia_omite_key(monkeypatch):
     marg = MargenStats()
     row = {"id_externo": "AF03", "titulo": "Algo", "importe": 50_000.0, "cpv": "72000000"}
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=[row]),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame([row])),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):
@@ -374,7 +397,7 @@ def test_riesgo_max_tres_flags():
         # sin fecha_limite → flag sin_plazo
     }
     with (
-        patch.object(sc_mod, "load_stats_dataframe", return_value=[row]),
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame([row])),
         patch.object(sc_mod, "load_competencia_stats", return_value=comp),
         patch.object(sc_mod, "load_margen_stats", return_value=marg),
     ):

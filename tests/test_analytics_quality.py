@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pandas as pd
+
 import services.analytics.quality as q_mod
 
 
@@ -61,7 +63,7 @@ def _rows() -> list[dict]:
 def test_quality_date_format_vs_completeness():
     """pct_fecha (completitud) y pct_fecha_iso (formato) son métricas distintas."""
     with (
-        patch.object(q_mod, "load_stats_dataframe", return_value=_rows()),
+        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())),
         patch("db.dlq.count_unresolved", return_value=0),
     ):
         res = q_mod.get_quality()
@@ -76,7 +78,7 @@ def test_quality_date_format_vs_completeness():
 def test_quality_dlq_count_is_real_not_stub():
     """dlq_count refleja la DLQ real (antes era un stub fijo en 0)."""
     with (
-        patch.object(q_mod, "load_stats_dataframe", return_value=_rows()),
+        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())),
         patch("db.dlq.count_unresolved", return_value=7),
     ):
         res = q_mod.get_quality()
@@ -86,7 +88,7 @@ def test_quality_dlq_count_is_real_not_stub():
 def test_quality_dlq_count_on_empty_dataset():
     """Sin registros analíticos, el conteo de DLQ sigue siendo real."""
     with (
-        patch.object(q_mod, "load_stats_dataframe", return_value=[]),
+        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame([])),
         patch("db.dlq.count_unresolved", return_value=3),
     ):
         res = q_mod.get_quality()
@@ -97,7 +99,7 @@ def test_quality_dlq_count_on_empty_dataset():
 def test_quality_dlq_count_best_effort_on_error():
     """Si la DLQ no está disponible, dlq_count cae a 0 sin romper el panel."""
     with (
-        patch.object(q_mod, "load_stats_dataframe", return_value=_rows()),
+        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())),
         patch("db.dlq.count_unresolved", side_effect=RuntimeError("no table")),
     ):
         res = q_mod.get_quality()
@@ -112,7 +114,7 @@ def test_quality_all_iso_dates():
         {"id_externo": "B", "fecha_publicacion": "2026-01-02T10:00:00+00:00", "importe": 2.0},
     ]
     with (
-        patch.object(q_mod, "load_stats_dataframe", return_value=rows),
+        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)),
         patch("db.dlq.count_unresolved", return_value=0),
     ):
         res = q_mod.get_quality()

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pandas as pd
+
 import services.analytics.trends as tr_mod
 
 
@@ -53,7 +55,7 @@ def _rows() -> list[dict]:
 
 def test_trends_group_by_day_real_counts():
     """group_by=day agrega por fecha exacta (YYYY-MM-DD), sin reparto sintético."""
-    with patch.object(tr_mod, "load_stats_dataframe", return_value=_rows()):
+    with patch.object(tr_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())):
         res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by="day"))
 
     by_period = {p.period: p for p in res.series}
@@ -70,7 +72,7 @@ def test_trends_group_by_day_real_counts():
 
 def test_trends_group_by_month_aggregates():
     """group_by=month colapsa los días en su mes (comportamiento por defecto)."""
-    with patch.object(tr_mod, "load_stats_dataframe", return_value=_rows()):
+    with patch.object(tr_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())):
         res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by="month"))
 
     by_period = {p.period: p for p in res.series}
@@ -80,13 +82,13 @@ def test_trends_group_by_month_aggregates():
 
 def test_trends_filters_apply_before_grouping():
     """Los filtros (ccaa/tecnologia) acotan antes de construir la serie diaria."""
-    with patch.object(tr_mod, "load_stats_dataframe", return_value=_rows()):
+    with patch.object(tr_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())):
         res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by="day", tecnologia="ORACLE"))
     assert {p.period for p in res.series} == {"2026-03-04"}
     assert sum(p.count for p in res.series) == 1
 
 
 def test_trends_empty():
-    with patch.object(tr_mod, "load_stats_dataframe", return_value=[]):
+    with patch.object(tr_mod, "load_stats_base_df", return_value=pd.DataFrame([])):
         res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by="day"))
     assert res.series == []

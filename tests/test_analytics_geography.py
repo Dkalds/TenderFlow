@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pandas as pd
+
 from services.analytics.geography import GeoFilters, get_geography
 
 
@@ -49,7 +51,9 @@ def _rows() -> list[dict]:
 
 
 def test_geography_by_provincia_aggregates_full_dataset():
-    with patch("services.analytics.geography.load_stats_dataframe", return_value=_rows()):
+    with patch(
+        "services.analytics.geography.load_stats_base_df", return_value=pd.DataFrame(_rows())
+    ):
         res = get_geography(GeoFilters())
 
     provs = {p.provincia: p for p in res.by_provincia}
@@ -62,7 +66,9 @@ def test_geography_by_provincia_aggregates_full_dataset():
 
 def test_geography_by_provincia_respects_filters():
     """La agregación de provincias respeta los filtros (no es un sample global)."""
-    with patch("services.analytics.geography.load_stats_dataframe", return_value=_rows()):
+    with patch(
+        "services.analytics.geography.load_stats_base_df", return_value=pd.DataFrame(_rows())
+    ):
         res = get_geography(GeoFilters(tecnologia="SAP"))
 
     # Solo las filas SAP (Madrid); Barcelona es Cloud y queda fuera.

@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import patch
 
+import pandas as pd
+
 from services.analytics.compare import CompareFilters, _pct_delta, get_compare_periods
 
 
@@ -53,7 +55,7 @@ def _filters(**overrides) -> CompareFilters:
 
 
 def test_compare_periodos_y_deltas():
-    with patch("services.analytics.compare.load_stats_dataframe", return_value=_rows()):
+    with patch("services.analytics.compare.load_stats_base_df", return_value=pd.DataFrame(_rows())):
         result = get_compare_periods(_filters())
 
     # Período A: L1 + L2 (enero)
@@ -72,7 +74,7 @@ def test_compare_periodos_y_deltas():
 
 
 def test_compare_filtro_ccaa():
-    with patch("services.analytics.compare.load_stats_dataframe", return_value=_rows()):
+    with patch("services.analytics.compare.load_stats_base_df", return_value=pd.DataFrame(_rows())):
         result = get_compare_periods(_filters(ccaa="Madrid"))
 
     # Solo L1 (enero, Madrid) y L3 (febrero, Madrid)
@@ -83,7 +85,7 @@ def test_compare_filtro_ccaa():
 
 def test_compare_periodo_a_vacio_no_divide_por_cero():
     """Con período A sin datos los deltas quedan en 0.0 (no ZeroDivisionError)."""
-    with patch("services.analytics.compare.load_stats_dataframe", return_value=_rows()):
+    with patch("services.analytics.compare.load_stats_base_df", return_value=pd.DataFrame(_rows())):
         result = get_compare_periods(
             _filters(range_a_desde=date(2020, 1, 1), range_a_hasta=date(2020, 1, 31))
         )
@@ -95,7 +97,7 @@ def test_compare_periodo_a_vacio_no_divide_por_cero():
 
 
 def test_compare_dataset_vacio():
-    with patch("services.analytics.compare.load_stats_dataframe", return_value=[]):
+    with patch("services.analytics.compare.load_stats_base_df", return_value=pd.DataFrame([])):
         result = get_compare_periods(_filters())
     assert result.period_a.total == 0
     assert result.period_b.total == 0

@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import pandas as pd
+
 from services.analytics.pipeline import PipelineFilters, get_pipeline
 
 # ---------------------------------------------------------------------------
@@ -44,7 +46,7 @@ def _row(id_externo: str, dias_offset: int, importe: float | None = 100_000.0) -
 
 def test_pipeline_dataset_vacio_devuelve_defaults():
     """Con load_stats_dataframe vacío se devuelve PipelineResult con ceros."""
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=[]):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame([])):
         result = get_pipeline(PipelineFilters(dias=30, limit=50))
 
     assert result.total_en_plazo == 0
@@ -71,7 +73,7 @@ def test_pipeline_sin_columna_fecha_limite_early_return():
             # No hay 'fecha_limite' en este dict
         }
     ]
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=30, limit=50))
 
     assert result.total_en_plazo == 0
@@ -90,7 +92,7 @@ def test_pipeline_todo_vencido_devuelve_listas_vacias():
         _row("VENC-002", -10),
         _row("VENC-003", -1),
     ]
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=30, limit=50))
 
     assert result.upcoming == []
@@ -112,7 +114,7 @@ def test_pipeline_buckets_por_horizonte():
         _row("H-100d", 100),  # bucket 90+d
     ]
     # dias=120 para incluir todos
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=120, limit=50))
 
     assert result.total_en_plazo == 4
@@ -133,7 +135,7 @@ def test_pipeline_vencen_7d_y_30d():
         _row("V30-B", 29),  # ≤30d
         _row("V90", 50),  # >30d → ni vencen_7d ni vencen_30d
     ]
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=120, limit=50))
 
     assert result.vencen_7d == 2
@@ -150,7 +152,7 @@ def test_pipeline_limit_controla_upcoming():
     """El parámetro limit recorta upcoming sin afectar total_en_plazo ni conteos."""
     rows = [_row(f"LIM-{i:03d}", i + 1) for i in range(20)]  # 20 licitaciones en 1..20d
 
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=30, limit=5))
 
     assert len(result.upcoming) == 5
@@ -161,7 +163,7 @@ def test_pipeline_limit_mayor_que_datos_no_falla():
     """limit > nº de filas no lanza error y devuelve todas las entradas."""
     rows = [_row(f"FEW-{i}", i + 1) for i in range(3)]
 
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=30, limit=100))
 
     assert len(result.upcoming) == 3
@@ -179,7 +181,7 @@ def test_pipeline_importe_none_no_rompe():
         _row("NONE-IMP-2", 10, importe=None),
         _row("CON-IMP", 8, importe=200_000.0),
     ]
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=30, limit=50))
 
     assert result.total_en_plazo == 3
@@ -200,7 +202,7 @@ def test_pipeline_upcoming_ordenado_por_urgencia():
         _row("ORD-A", 2),
         _row("ORD-B", 10),
     ]
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=30, limit=50))
 
     dias = [e.dias_restantes for e in result.upcoming]
@@ -219,7 +221,7 @@ def test_pipeline_valor_total_suma_importes():
         _row("VAL-2", 10, importe=200_000.0),
         _row("VAL-3", 20, importe=300_000.0),
     ]
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=30, limit=50))
 
     assert result.valor_total == 600_000.0
@@ -228,7 +230,7 @@ def test_pipeline_valor_total_suma_importes():
 def test_pipeline_por_horizonte_tiene_cuatro_buckets():
     """por_horizonte siempre devuelve los 4 buckets (<7d, 7-30d, 30-90d, 90+d)."""
     rows = [_row("BK-1", 5)]
-    with patch("services.analytics.pipeline.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.pipeline.load_stats_base_df", return_value=pd.DataFrame(rows)):
         result = get_pipeline(PipelineFilters(dias=120, limit=50))
 
     assert len(result.por_horizonte) == 4

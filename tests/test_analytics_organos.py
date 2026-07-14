@@ -116,8 +116,8 @@ def test_lead_time_median_ignores_negative_diffs():
 
 def test_get_organos_ranking_and_pct():
     with patch(
-        "services.analytics.organos.load_stats_dataframe",
-        return_value=_lic_rows(),
+        "services.analytics.organos.load_stats_base_df",
+        return_value=pd.DataFrame(_lic_rows()),
     ):
         result = get_organos(OrganosFilters())
 
@@ -137,8 +137,8 @@ def test_get_organos_totales_sobre_dataset_completo_no_top_n():
     """importe_total y concentracion_top10 reflejan TODO el dataset, no el top-N
     que devuelve `organos` (regresión: antes el frontend los sumaba sobre el top-50)."""
     with patch(
-        "services.analytics.organos.load_stats_dataframe",
-        return_value=_lic_rows(),
+        "services.analytics.organos.load_stats_base_df",
+        return_value=pd.DataFrame(_lic_rows()),
     ):
         result = get_organos(OrganosFilters(limit=1))
 
@@ -152,7 +152,7 @@ def test_get_organos_totales_sobre_dataset_completo_no_top_n():
 
 
 def test_get_organos_empty():
-    with patch("services.analytics.organos.load_stats_dataframe", return_value=[]):
+    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame([])):
         result = get_organos(OrganosFilters())
     assert result.total_organos == 0
     assert result.organos == []
@@ -175,7 +175,7 @@ def test_get_organos_q_accent_insensitive():
             "modulos_str": None,
         }
     )
-    with patch("services.analytics.organos.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame(rows)):
         sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
         con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
 
@@ -203,7 +203,7 @@ def test_get_organos_q_filters_before_limit():
         }
     )
     # limit=1: sin q solo saldría ORG A; con q el match aparece igual
-    with patch("services.analytics.organos.load_stats_dataframe", return_value=rows):
+    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame(rows)):
         sin_q = get_organos(OrganosFilters(limit=1))
         con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
 
@@ -219,8 +219,8 @@ def test_get_organos_q_filters_before_limit():
 def test_get_organo_detail_lead_time_and_fields():
     with (
         patch(
-            "services.analytics.organo_detail.load_stats_dataframe",
-            return_value=_lic_rows(),
+            "services.analytics.organo_detail.load_stats_base_df",
+            return_value=pd.DataFrame(_lic_rows()),
         ),
         patch(
             "services.analytics.organo_detail.load_raw_adjudicaciones",
@@ -250,8 +250,8 @@ def test_get_organo_detail_lead_time_and_fields():
 def test_get_organo_detail_unknown_organo():
     with (
         patch(
-            "services.analytics.organo_detail.load_stats_dataframe",
-            return_value=_lic_rows(),
+            "services.analytics.organo_detail.load_stats_base_df",
+            return_value=pd.DataFrame(_lic_rows()),
         ),
         patch(
             "services.analytics.organo_detail.load_raw_adjudicaciones",
@@ -269,8 +269,8 @@ def test_get_organo_detail_unknown_organo():
 def test_get_overview_basic():
     with (
         patch(
-            "services.analytics.overview.load_stats_dataframe",
-            return_value=_lic_rows(),
+            "services.analytics.overview.load_stats_base_df",
+            return_value=pd.DataFrame(_lic_rows()),
         ),
         patch(
             "services.analytics.overview.load_adjudicaciones",
@@ -287,7 +287,7 @@ def test_get_overview_basic():
 
 def test_get_overview_empty():
     with (
-        patch("services.analytics.overview.load_stats_dataframe", return_value=[]),
+        patch("services.analytics.overview.load_stats_base_df", return_value=pd.DataFrame([])),
         patch(
             "services.analytics.overview.load_adjudicaciones",
             return_value=pd.DataFrame(),
@@ -303,8 +303,8 @@ def test_get_overview_q_filters_titulo_organo_id():
     en paridad con la búsqueda del listado (KPI bar honesto con q activo)."""
     with (
         patch(
-            "services.analytics.overview.load_stats_dataframe",
-            return_value=_lic_rows(),
+            "services.analytics.overview.load_stats_base_df",
+            return_value=pd.DataFrame(_lic_rows()),
         ),
         patch(
             "services.analytics.overview.load_adjudicaciones",
@@ -337,7 +337,7 @@ def test_get_overview_importe_min_excludes_below_and_nan():
         }
     )
     with (
-        patch("services.analytics.overview.load_stats_dataframe", return_value=rows),
+        patch("services.analytics.overview.load_stats_base_df", return_value=pd.DataFrame(rows)),
         patch(
             "services.analytics.overview.load_adjudicaciones",
             return_value=pd.DataFrame(),
@@ -367,7 +367,7 @@ def test_get_overview_ccaa_cubiertas_ignores_nulls():
         }
     )
     with (
-        patch("services.analytics.overview.load_stats_dataframe", return_value=rows),
+        patch("services.analytics.overview.load_stats_base_df", return_value=pd.DataFrame(rows)),
         patch(
             "services.analytics.overview.load_adjudicaciones",
             return_value=pd.DataFrame(),

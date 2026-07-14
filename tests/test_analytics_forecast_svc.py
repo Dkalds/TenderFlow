@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
 from services.analytics.forecast_svc import (
@@ -52,8 +53,8 @@ def _rows_volumen() -> list[dict]:
 def test_forecast_volume_historico_mas_proyeccion():
     with (
         patch(
-            "services.analytics.forecast_svc.load_stats_dataframe",
-            return_value=_rows_volumen(),
+            "services.analytics.forecast_svc.load_stats_base_df",
+            return_value=pd.DataFrame(_rows_volumen()),
         ),
         patch("services.analytics.forecast_svc.load_raw_adjudicaciones", return_value=[]),
     ):
@@ -80,8 +81,8 @@ def test_forecast_volume_historico_mas_proyeccion():
 def test_forecast_volume_metric_sum():
     with (
         patch(
-            "services.analytics.forecast_svc.load_stats_dataframe",
-            return_value=_rows_volumen(),
+            "services.analytics.forecast_svc.load_stats_base_df",
+            return_value=pd.DataFrame(_rows_volumen()),
         ),
         patch("services.analytics.forecast_svc.load_raw_adjudicaciones", return_value=[]),
     ):
@@ -96,7 +97,9 @@ def test_forecast_volume_historico_insuficiente():
     """Con <3 meses de histórico el motor devuelve serie vacía."""
     rows = [r for r in _rows_volumen() if r["fecha_publicacion"].startswith("2025-01")]
     with (
-        patch("services.analytics.forecast_svc.load_stats_dataframe", return_value=rows),
+        patch(
+            "services.analytics.forecast_svc.load_stats_base_df", return_value=pd.DataFrame(rows)
+        ),
         patch("services.analytics.forecast_svc.load_raw_adjudicaciones", return_value=[]),
     ):
         result = get_forecast_volume(ForecastFilters())
@@ -106,8 +109,8 @@ def test_forecast_volume_historico_insuficiente():
 def test_forecast_volume_filtro_ccaa():
     with (
         patch(
-            "services.analytics.forecast_svc.load_stats_dataframe",
-            return_value=_rows_volumen(),
+            "services.analytics.forecast_svc.load_stats_base_df",
+            return_value=pd.DataFrame(_rows_volumen()),
         ),
         patch("services.analytics.forecast_svc.load_raw_adjudicaciones", return_value=[]),
     ):
@@ -121,7 +124,7 @@ def test_forecast_volume_filtro_ccaa():
 
 def test_forecast_volume_dataset_vacio():
     with (
-        patch("services.analytics.forecast_svc.load_stats_dataframe", return_value=[]),
+        patch("services.analytics.forecast_svc.load_stats_base_df", return_value=pd.DataFrame([])),
         patch("services.analytics.forecast_svc.load_raw_adjudicaciones", return_value=[]),
     ):
         result = get_forecast_volume(ForecastFilters())
@@ -192,8 +195,8 @@ def _adj_retendering() -> list[dict]:
 def test_retendering_buckets_y_horizonte():
     with (
         patch(
-            "services.analytics.forecast_svc.load_stats_dataframe",
-            return_value=_rows_retendering(),
+            "services.analytics.forecast_svc.load_stats_base_df",
+            return_value=pd.DataFrame(_rows_retendering()),
         ),
         patch(
             "services.analytics.forecast_svc.load_raw_adjudicaciones",
@@ -212,8 +215,8 @@ def test_retendering_buckets_y_horizonte():
 def test_retendering_enriquece_con_adjudicacion():
     with (
         patch(
-            "services.analytics.forecast_svc.load_stats_dataframe",
-            return_value=_rows_retendering(),
+            "services.analytics.forecast_svc.load_stats_base_df",
+            return_value=pd.DataFrame(_rows_retendering()),
         ),
         patch(
             "services.analytics.forecast_svc.load_raw_adjudicaciones",
@@ -233,8 +236,8 @@ def test_retendering_enriquece_con_adjudicacion():
 def test_retendering_incluye_todos_los_tipos_sin_solo_mantenimiento():
     with (
         patch(
-            "services.analytics.forecast_svc.load_stats_dataframe",
-            return_value=_rows_retendering(),
+            "services.analytics.forecast_svc.load_stats_base_df",
+            return_value=pd.DataFrame(_rows_retendering()),
         ),
         patch(
             "services.analytics.forecast_svc.load_raw_adjudicaciones",
@@ -249,7 +252,7 @@ def test_retendering_incluye_todos_los_tipos_sin_solo_mantenimiento():
 
 def test_retendering_dataset_vacio():
     with (
-        patch("services.analytics.forecast_svc.load_stats_dataframe", return_value=[]),
+        patch("services.analytics.forecast_svc.load_stats_base_df", return_value=pd.DataFrame([])),
         patch("services.analytics.forecast_svc.load_raw_adjudicaciones", return_value=[]),
     ):
         result = get_retendering_forecast(RetenderingFilters())
