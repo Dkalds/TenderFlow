@@ -81,6 +81,44 @@ def test_intervalos_sobreconfiados_alertan(db, monkeypatch):
     assert alertas, "una calibración degradada debe disparar alerta"
 
 
+def test_multilote_no_infla_la_cobertura(db):
+    """Un expediente multi-lote cuenta como UN par y usa la baja agregada.
+
+    Antes del fix, el JOIN sin agregar producía una fila por lote comparando
+    cada adjudicado contra el importe total del expediente (baja realizada
+    ~cerca de 1.0), hundiendo la cobertura. Ahora se suman los lotes primero.
+    """
+    with db.connect() as c:
+        for i in range(35):
+            lic_id = f"ML{i}"
+            # importe 100k adjudicado en dos lotes de 40k => total 80k =>
+            # baja realizada agregada = 0.20, dentro de [0.10, 0.30].
+            c.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
+                " ccaa, importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
+                "VALUES (?, 'Lic', 'Organo A', '72000000', 'Madrid', 100000.0, 'Servicios', "
+                " 'placsp', '2026-01-01', datetime('now'))",
+                (lic_id,),
+            )
+            for lote in range(2):
+                c.execute(
+                    "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
+                    " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
+                    "VALUES (?, ?, 40000.0, '2026-03-01', 3, datetime('now'))",
+                    (lic_id, f"Empresa {lote}"),
+                )
+            c.execute(
+                "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
+                " computed_at) VALUES (?, 0.10, 0.20, 0.30, 1, datetime('now'))",
+                (lic_id,),
+            )
+    res = comprobar_calibracion_baja()
+    # 35 expedientes, no 70 filas; cobertura 1.0 (todos dentro del intervalo).
+    assert res["n"] == 35
+    assert res["cobertura"] == pytest.approx(1.0, abs=0.01)
+    assert res["status"] == "ok"
+
+
 def test_excluye_duplicados_confirmados(db):
     with db.connect() as c:
         for i in range(40):

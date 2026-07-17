@@ -24,7 +24,6 @@ from pydantic import BaseModel
 from db.database import connect_read
 from observability.logging import get_logger
 from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import VALID_PAIR
 
 log = get_logger(__name__)
 
@@ -45,16 +44,28 @@ def comprobar_calibracion_baja() -> dict[str, Any]:
     Fail-open: cualquier error se loguea y no propaga.
     """
     try:
-        # S608: VALID_PAIR y exclude_duplicados_sql son fragmentos constantes;
-        # no hay input de usuario en esta query.
+        # S608: exclude_duplicados_sql() es un fragmento constante; no hay input
+        # de usuario en esta query. Agregamos los lotes (SUM importe_adjudicado)
+        # por licitación ANTES de comparar, igual que _baja_real en scoring.py:
+        # una licitación multi-lote tiene varias filas en `adjudicaciones`, y sin
+        # agregar cada lote se comparaba contra el importe total del expediente
+        # (baja realizada ~cerca de 1.0), hundiendo la cobertura empírica.
         sql = f"""
-            WITH evaluadas AS (
+            WITH adjudicado AS (
+                SELECT a.licitacion_id AS lic_id,
+                       SUM(a.importe_adjudicado) AS total_adjudicado
+                FROM adjudicaciones a
+                WHERE a.importe_adjudicado > 0
+                  AND {exclude_duplicados_sql("a.licitacion_id")}
+                GROUP BY a.licitacion_id
+            ),
+            evaluadas AS (
                 SELECT pb.p10 AS p10, pb.p50 AS p50, pb.p90 AS p90,
-                       (l.importe - a.importe_adjudicado) / l.importe AS realizada
+                       (l.importe - adj.total_adjudicado) / l.importe AS realizada
                 FROM predicciones_baja pb
                 JOIN licitaciones l ON l.id_externo = pb.licitacion_id
-                JOIN adjudicaciones a ON a.licitacion_id = l.id_externo
-                WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
+                JOIN adjudicado adj ON adj.lic_id = l.id_externo
+                WHERE l.importe > 0 AND adj.total_adjudicado <= l.importe * 1.5
             )
             SELECT
                 COUNT(*) AS n,
