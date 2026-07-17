@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useFilterParams, useFilters } from "@/lib/filters";
-import { pathUsesGlobalFilters } from "@/lib/navigation";
+import { pageGlobalFilterKeys, pathUsesGlobalFilters } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 
@@ -105,7 +105,16 @@ function PresetMenu({
 
 export function GlobalFilterBar() {
   const pathname = usePathname();
-  const filtersApply = pathUsesGlobalFilters(pathname);
+  // Subconjunto de filtros de la página (o null = todos). Una página puede
+  // aplicar solo algunos filtros aunque no consuma el resto del estado global
+  // (p. ej. Renovaciones solo filtra por tecnología): en ese caso la barra se
+  // muestra con esos controles únicamente, en vez de ocultarse por completo.
+  const subsetKeys = pageGlobalFilterKeys(pathname);
+  const filtersApply =
+    pathUsesGlobalFilters(pathname) || (subsetKeys?.length ?? 0) > 0;
+  const shows = (
+    key: "q" | "fecha" | "ccaa" | "tecnologia" | "estado" | "importe",
+  ) => !subsetKeys || subsetKeys.includes(key);
   const filters = useFilters();
   const filterParams = useFilterParams();
   const activeCount = Object.keys(filterParams).length;
@@ -122,9 +131,11 @@ export function GlobalFilterBar() {
   });
 
   const chips = [
-    ...filters.estados.map((value) => ({ kind: "estado" as const, value })),
-    ...filters.ccaas.map((value) => ({ kind: "ccaa" as const, value })),
-    ...filters.tecnologias.map((value) => ({ kind: "tecnologia" as const, value })),
+    ...(shows("estado") ? filters.estados.map((value) => ({ kind: "estado" as const, value })) : []),
+    ...(shows("ccaa") ? filters.ccaas.map((value) => ({ kind: "ccaa" as const, value })) : []),
+    ...(shows("tecnologia")
+      ? filters.tecnologias.map((value) => ({ kind: "tecnologia" as const, value }))
+      : []),
   ];
 
   // Importe: input local + debounce 400ms antes de tocar la URL/refetch —
@@ -186,6 +197,7 @@ export function GlobalFilterBar() {
 
   return (
     <div className="tf-glass sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2">
+      {shows("q") && (
       <SearchAutocomplete
         className="min-w-56 flex-1 sm:max-w-80"
         data-search-input
@@ -198,7 +210,9 @@ export function GlobalFilterBar() {
         recentSearches={history}
         leftIcon={<Search className="h-4 w-4" />}
       />
+      )}
 
+      {shows("fecha") && (
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Calendar className="h-3.5 w-3.5 text-primary" />
         <span className="hidden sm:inline">Desde</span>
@@ -210,7 +224,9 @@ export function GlobalFilterBar() {
           className="bg-transparent text-foreground outline-none"
         />
       </label>
+      )}
 
+      {shows("fecha") && (
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <span className="hidden sm:inline">Hasta</span>
         <input
@@ -221,7 +237,9 @@ export function GlobalFilterBar() {
           className="bg-transparent text-foreground outline-none"
         />
       </label>
+      )}
 
+      {shows("fecha") && (
       <PresetMenu icon={<Calendar className="h-3.5 w-3.5 text-primary" />} label="Rangos de fecha rapidos">
         {(close) => (
           <>
@@ -242,7 +260,9 @@ export function GlobalFilterBar() {
           </>
         )}
       </PresetMenu>
+      )}
 
+      {shows("ccaa") && (
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Map className="h-3.5 w-3.5 text-primary" />
         <select
@@ -255,7 +275,9 @@ export function GlobalFilterBar() {
           {(meta?.ccaa ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
       </label>
+      )}
 
+      {shows("tecnologia") && (
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Cpu className="h-3.5 w-3.5 text-primary" />
         <select
@@ -268,7 +290,9 @@ export function GlobalFilterBar() {
           {(meta?.tecnologia ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
       </label>
+      )}
 
+      {shows("estado") && (
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <ListFilter className="h-3.5 w-3.5 text-primary" />
         <select
@@ -281,7 +305,9 @@ export function GlobalFilterBar() {
           {(meta?.estado ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
       </label>
+      )}
 
+      {shows("importe") && (
       <Input
         aria-label="Importe minimo"
         type="number"
@@ -290,7 +316,9 @@ export function GlobalFilterBar() {
         value={importeInput}
         onChange={(event) => setImporteInput(event.target.value ? Number(event.target.value) : "")}
       />
+      )}
 
+      {shows("importe") && (
       <PresetMenu icon={<span className="text-xs font-semibold text-primary">€</span>} label="Presets de importe minimo">
         {(close) => (
           <>
@@ -322,6 +350,7 @@ export function GlobalFilterBar() {
           </>
         )}
       </PresetMenu>
+      )}
 
       {chips.map((chip) => (
         <span

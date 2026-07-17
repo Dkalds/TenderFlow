@@ -137,4 +137,28 @@ describe("GlobalFilterBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /Limpiar/ }));
     expect(setters.resetFilters).toHaveBeenCalled();
   });
+
+  it("shows only the technology control on a subset page (renovaciones)", () => {
+    pathnameRef.current = "/renovaciones";
+    paramsRef.current = {};
+    renderBar();
+    // El único filtro que aplica Renovaciones es tecnología.
+    expect(screen.getByLabelText("Filtrar por tecnologia")).toBeInTheDocument();
+    // El resto de controles globales no se muestran (no mienten).
+    expect(screen.queryByLabelText("Buscar licitaciones")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Filtrar por CCAA")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Filtrar por estado")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Importe minimo")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Fecha desde")).not.toBeInTheDocument();
+  });
+
+  it("only renders chips for filters the subset page applies", () => {
+    // Aunque haya estado/ccaa activos, en Renovaciones solo se ve el chip de tecnología.
+    pathnameRef.current = "/renovaciones";
+    paramsRef.current = { tecnologia: "IA" };
+    renderBar();
+    expect(screen.getByRole("button", { name: "Quitar IA" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quitar PUB" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quitar MD" })).not.toBeInTheDocument();
+  });
 });

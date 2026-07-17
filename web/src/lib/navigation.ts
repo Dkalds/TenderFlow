@@ -33,6 +33,14 @@ import {
   Wrench,
 } from "lucide-react";
 
+export type GlobalFilterKey =
+  | "q"
+  | "fecha"
+  | "ccaa"
+  | "tecnologia"
+  | "estado"
+  | "importe";
+
 export interface NavPage {
   label: string;
   slug: string;
@@ -44,6 +52,13 @@ export interface NavPage {
    * Ausente equivale a `true`.
    */
   usesGlobalFilters?: boolean;
+  /**
+   * Subconjunto de filtros globales que la página aplica de verdad. Si se
+   * define, la GlobalFilterBar muestra SOLO esos controles (aunque
+   * `usesGlobalFilters` sea `false`, para no mostrar filtros inertes). El KPI
+   * bar sigue gobernado por `usesGlobalFilters`.
+   */
+  globalFilterKeys?: GlobalFilterKey[];
 }
 
 export interface NavSection {
@@ -213,6 +228,7 @@ export const SECTIONS: NavSection[] = [
           "Contratos que vencen proximamente: cartera en juego por empresa y pipeline comercial.",
         icon: CalendarClock,
         usesGlobalFilters: false,
+        globalFilterKeys: ["tecnologia"],
       },
       {
         label: "Mi Watchlist",
@@ -329,4 +345,15 @@ export function pathUsesGlobalFilters(pathname: string): boolean {
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
   return page ? page.usesGlobalFilters !== false : true;
+}
+
+/**
+ * Subconjunto de filtros globales que la página aplica, o `null` cuando la
+ * página consume todos (comportamiento por defecto). La GlobalFilterBar usa
+ * esto para renderizar solo los controles relevantes.
+ */
+export function pageGlobalFilterKeys(pathname: string): GlobalFilterKey[] | null {
+  const slug = pathname.replace(/^\//, "").split("/")[0];
+  const page = findPage(slug);
+  return page?.globalFilterKeys ?? null;
 }
