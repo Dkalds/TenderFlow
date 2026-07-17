@@ -50,6 +50,7 @@ def proximas_renovaciones(
     months_ahead: int = 6,
     empresa_id: int | None = None,
     ccaa: str | None = None,
+    tecnologias: list[str] | None = None,
     min_importe: float | None = None,
     limit: int = 200,
     offset: int = 0,
@@ -93,6 +94,11 @@ def proximas_renovaciones(
     if ccaa:
         sql += " AND l.ccaa = ?"
         params.append(ccaa)
+    tecnologias = [t for t in (tecnologias or []) if t]
+    if tecnologias:
+        placeholders = ",".join("?" for _ in tecnologias)
+        sql += f" AND l.tecnologia IN ({placeholders})"
+        params.extend(tecnologias)
     if min_importe is not None:
         sql += " AND a.importe_adjudicado >= ?"
         params.append(min_importe)
@@ -103,7 +109,11 @@ def proximas_renovaciones(
         return rows_to_dicts(c.execute(sql, params))
 
 
-def resumen_renovaciones(*, months_ahead: int = 12) -> list[dict[str, Any]]:
+def resumen_renovaciones(
+    *,
+    months_ahead: int = 12,
+    tecnologias: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """Vencimientos agregados por empresa para la ventana dada.
 
     Responde "¿qué cartera de cada competidor está en juego?": número de
@@ -122,9 +132,17 @@ def resumen_renovaciones(*, months_ahead: int = 12) -> list[dict[str, Any]]:
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         WHERE {fecha_fin} {_rango_vencimiento_sql()}
           AND {exclude_duplicados_sql()}
+    """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
+    params: list[Any] = [months_ahead]
+    tecnologias = [t for t in (tecnologias or []) if t]
+    if tecnologias:
+        placeholders = ",".join("?" for _ in tecnologias)
+        sql += f" AND l.tecnologia IN ({placeholders})"
+        params.extend(tecnologias)
+    sql += """
         GROUP BY a.empresa_id, empresa
         ORDER BY importe_en_juego DESC
         LIMIT 100
-    """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
+    """
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, [months_ahead]))
+        return rows_to_dicts(c.execute(sql, params))

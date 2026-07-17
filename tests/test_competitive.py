@@ -38,6 +38,7 @@ def insert_contract(
     ccaa: str = "Madrid",
     organo: str = "Ministerio X",
     n_ofertas: int = 4,
+    tecnologia: str | None = None,
 ):
     """Inserta licitación + adjudicación y resuelve la empresa contra el maestro."""
     from db.upsert import (
@@ -59,6 +60,7 @@ def insert_contract(
         fecha_inicio=fecha_inicio,
         duracion_valor=duracion_valor,
         duracion_unidad=duracion_unidad,
+        tecnologia=tecnologia,
     )
     upsert_licitaciones([lic])
     adj = Adjudicacion(
@@ -162,6 +164,37 @@ def test_renovaciones_filtro_por_empresa(db):
     items = proximas_renovaciones(months_ahead=2, empresa_id=zeta_id)
     assert len(items) == 1
     assert items[0]["empresa"] == "Zeta Solutions"
+
+
+def test_renovaciones_filtro_por_tecnologia(db):
+    from services.competitive.renovaciones import (
+        proximas_renovaciones,
+        resumen_renovaciones,
+    )
+
+    insert_contract(db, "R-T01", "Sap Partner SL", fecha_fin=_date(30), tecnologia="SAP")
+    insert_contract(db, "R-T02", "Sf Partner SL", fecha_fin=_date(30), tecnologia="SALESFORCE")
+    resolve(db)
+
+    # Sin filtro: ambos contratos.
+    assert len(proximas_renovaciones(months_ahead=3)) == 2
+
+    # Filtro por una tecnología.
+    solo_sap = proximas_renovaciones(months_ahead=3, tecnologias=["SAP"])
+    assert len(solo_sap) == 1
+    assert solo_sap[0]["licitacion_id"] == "R-T01"
+
+    # Filtro multi-valor (IN) devuelve ambos.
+    ambas = proximas_renovaciones(months_ahead=3, tecnologias=["SAP", "SALESFORCE"])
+    assert len(ambas) == 2
+
+    # Lista vacía / None se ignora (equivale a sin filtro).
+    assert len(proximas_renovaciones(months_ahead=3, tecnologias=[])) == 2
+
+    # El resumen agregado respeta el mismo filtro.
+    resumen_sap = resumen_renovaciones(months_ahead=3, tecnologias=["SAP"])
+    assert len(resumen_sap) == 1
+    assert resumen_sap[0]["empresa"] == "Sap Partner SL"
 
 
 def test_perfil_empresa_por_ccaa_es_por_empresa_y_completo(db):

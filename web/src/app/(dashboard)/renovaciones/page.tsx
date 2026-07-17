@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { useFilters } from "@/lib/filters";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -84,17 +85,29 @@ export default function RenovacionesPage() {
   const [meses, setMeses] = useState("6");
   const [empresaSearch, setEmpresaSearch] = useState("");
 
+  // Filtro global de la barra superior. Solo aplicamos "tecnología" aquí:
+  // el endpoint de renovaciones filtra por licitaciones.tecnologia.
+  const { tecnologias } = useFilters();
+  const tecnologiaParam = tecnologias.join(",");
+  const tecnologiaQs = tecnologiaParam
+    ? `&tecnologia=${encodeURIComponent(tecnologiaParam)}`
+    : "";
+
   const { data, isLoading, error } = useQuery<{ items: Renovacion[] }>({
-    queryKey: ["renovaciones", meses],
+    queryKey: ["renovaciones", meses, tecnologiaParam],
     queryFn: () =>
-      fetchWithAuth(`/api/v1/competitive/renovaciones?months=${meses}&limit=1000`),
+      fetchWithAuth(
+        `/api/v1/competitive/renovaciones?months=${meses}&limit=1000${tecnologiaQs}`,
+      ),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: resumen } = useQuery<{ items: ResumenEmpresa[] }>({
-    queryKey: ["renovaciones-resumen", meses],
+    queryKey: ["renovaciones-resumen", meses, tecnologiaParam],
     queryFn: () =>
-      fetchWithAuth(`/api/v1/competitive/renovaciones/resumen?months=${meses}`),
+      fetchWithAuth(
+        `/api/v1/competitive/renovaciones/resumen?months=${meses}${tecnologiaQs}`,
+      ),
     staleTime: 5 * 60 * 1000,
   });
 

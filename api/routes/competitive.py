@@ -44,6 +44,11 @@ async def get_renovaciones(
     months: int = Query(6, ge=1, le=60, description="Horizonte en meses"),
     empresa_id: int | None = Query(None),
     ccaa: str | None = Query(None, max_length=50),
+    tecnologia: str | None = Query(
+        None,
+        max_length=200,
+        description="Tecnología(s) separadas por comas (filtro global)",
+    ),
     min_importe: float | None = Query(None, ge=0),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -51,11 +56,13 @@ async def get_renovaciones(
 ) -> dict[str, Any]:
     """Pipeline de renovaciones: cada fila es un contrato-adjudicatario con
     fecha de fin efectiva (explícita o calculada con la duración CODICE)."""
+    tecnologias = [t.strip() for t in (tecnologia or "").split(",") if t.strip()]
     items = await run_db(
         proximas_renovaciones,
         months_ahead=months,
         empresa_id=empresa_id,
         ccaa=ccaa,
+        tecnologias=tecnologias or None,
         min_importe=min_importe,
         limit=limit,
         offset=offset,
@@ -66,9 +73,19 @@ async def get_renovaciones(
 @router.get("/renovaciones/resumen", summary="Cartera en juego por empresa")
 async def get_renovaciones_resumen(
     months: int = Query(12, ge=1, le=60),
+    tecnologia: str | None = Query(
+        None,
+        max_length=200,
+        description="Tecnología(s) separadas por comas (filtro global)",
+    ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
-    items = await run_db(resumen_renovaciones, months_ahead=months)
+    tecnologias = [t.strip() for t in (tecnologia or "").split(",") if t.strip()]
+    items = await run_db(
+        resumen_renovaciones,
+        months_ahead=months,
+        tecnologias=tecnologias or None,
+    )
     return {"items": items, "months_ahead": months}
 
 

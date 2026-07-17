@@ -6325,6 +6325,8 @@ export interface operations {
                 months?: number;
                 empresa_id?: number | null;
                 ccaa?: string | null;
+                /** @description Tecnología(s) separadas por comas (filtro global) */
+                tecnologia?: string | null;
                 min_importe?: number | null;
                 limit?: number;
                 offset?: number;
@@ -6363,6 +6365,8 @@ export interface operations {
         parameters: {
             query?: {
                 months?: number;
+                /** @description Tecnología(s) separadas por comas (filtro global) */
+                tecnologia?: string | null;
             };
             header?: never;
             path?: never;
