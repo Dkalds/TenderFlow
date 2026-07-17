@@ -56,7 +56,7 @@ def bajas_agregadas(
                {round_sql(f"MIN({_BAJA_PCT})", 2)} AS baja_min_pct,
                {round_sql(f"MAX({_BAJA_PCT})", 2)} AS baja_max_pct,
                COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total,
-               ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias
+               {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
@@ -95,7 +95,7 @@ def baja_de_referencia(
                {round_sql(f"AVG({_BAJA_PCT})", 2)} AS baja_media_pct,
                {round_sql(f"MIN({_BAJA_PCT})", 2)} AS baja_min_pct,
                {round_sql(f"MAX({_BAJA_PCT})", 2)} AS baja_max_pct,
-               ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias
+               {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}

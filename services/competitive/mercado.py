@@ -53,7 +53,7 @@ def cuota_mercado(
                    MAX(COALESCE(e.es_ute, 0)) AS es_ute,
                    COUNT(*) AS contratos,
                    COALESCE(SUM(a.importe_adjudicado), 0) AS importe,
-                   ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias
+                   {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
@@ -137,7 +137,7 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
                 f"""
                 SELECT COUNT(*) AS contratos,
                        COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total,
-                       ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias,
+                       {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias,
                        MIN(a.fecha_adjudicacion) AS primera_adjudicacion,
                        MAX(a.fecha_adjudicacion) AS ultima_adjudicacion
                 FROM adjudicaciones a
@@ -205,7 +205,7 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
                 FROM adjudicaciones a
                 WHERE a.empresa_id = ? AND a.fecha_adjudicacion IS NOT NULL
                   AND {exclude_duplicados_sql("a.licitacion_id")}
-                GROUP BY anio HAVING anio IS NOT NULL ORDER BY anio
+                GROUP BY anio HAVING {anio_expr} IS NOT NULL ORDER BY anio
                 """,  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
                 (empresa_id,),
             )

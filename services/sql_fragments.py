@@ -75,9 +75,11 @@ def round_sql(expr: str, ndigits: int) -> str:
 
     Postgres no tiene ``round(double precision, int)`` (solo ``round(numeric,
     int)``), así que las columnas ``real`` (p. ej. ``importe``) rompen con un
-    ``UndefinedFunction``. Casteamos el argumento a ``numeric`` antes de
-    redondear; SQLite acepta ``CAST(x AS numeric)`` sin cambiar la semántica.
-    Solo debe recibir fragmentos SQL constantes/whitelisted (nunca input de
-    usuario), igual que el resto de este módulo.
+    ``UndefinedFunction``. Redondeamos casteando a ``numeric`` y devolvemos el
+    resultado como ``FLOAT`` (``double precision`` en Postgres, afinidad
+    ``REAL`` en SQLite). El cast final es importante: sin él Postgres devuelve
+    ``Decimal``, que Pydantic v2 serializa como *string* en JSON y rompe el
+    frontend (``value.toFixed is not a function``). Solo debe recibir
+    fragmentos SQL constantes/whitelisted (nunca input de usuario).
     """
-    return f"ROUND(CAST({expr} AS numeric), {ndigits})"
+    return f"CAST(ROUND(CAST({expr} AS numeric), {ndigits}) AS FLOAT)"
