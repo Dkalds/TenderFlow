@@ -13,7 +13,9 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import VALID_PAIR
+from services.sql_fragments import VALID_PAIR, round_sql
+
+_BAJA_PCT = "(l.importe - a.importe_adjudicado) / l.importe * 100"
 
 _GROUP_COLUMNS = {
     "empresa": ("a.empresa_id", "COALESCE(e.nombre_canonico, a.nombre)"),
@@ -50,9 +52,9 @@ def bajas_agregadas(
         SELECT {select_id}
                {label_col} AS grupo,
                COUNT(*) AS contratos,
-               ROUND(AVG((l.importe - a.importe_adjudicado) / l.importe * 100), 2) AS baja_media_pct,
-               ROUND(MIN((l.importe - a.importe_adjudicado) / l.importe * 100), 2) AS baja_min_pct,
-               ROUND(MAX((l.importe - a.importe_adjudicado) / l.importe * 100), 2) AS baja_max_pct,
+               {round_sql(f"AVG({_BAJA_PCT})", 2)} AS baja_media_pct,
+               {round_sql(f"MIN({_BAJA_PCT})", 2)} AS baja_min_pct,
+               {round_sql(f"MAX({_BAJA_PCT})", 2)} AS baja_max_pct,
                COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total,
                ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias
         FROM adjudicaciones a
@@ -69,7 +71,7 @@ def bajas_agregadas(
         params.append(ccaa)
     sql += f"""
         GROUP BY {group_cols}
-        HAVING COUNT(*) >= ? AND grupo IS NOT NULL
+        HAVING COUNT(*) >= ? AND {label_col} IS NOT NULL
         ORDER BY contratos DESC
         LIMIT ?
     """
@@ -90,9 +92,9 @@ def baja_de_referencia(
     """
     sql = f"""
         SELECT COUNT(*) AS contratos,
-               ROUND(AVG((l.importe - a.importe_adjudicado) / l.importe * 100), 2) AS baja_media_pct,
-               ROUND(MIN((l.importe - a.importe_adjudicado) / l.importe * 100), 2) AS baja_min_pct,
-               ROUND(MAX((l.importe - a.importe_adjudicado) / l.importe * 100), 2) AS baja_max_pct,
+               {round_sql(f"AVG({_BAJA_PCT})", 2)} AS baja_media_pct,
+               {round_sql(f"MIN({_BAJA_PCT})", 2)} AS baja_min_pct,
+               {round_sql(f"MAX({_BAJA_PCT})", 2)} AS baja_max_pct,
                ROUND(AVG(a.n_ofertas_recibidas), 1) AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id

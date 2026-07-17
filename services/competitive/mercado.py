@@ -12,6 +12,7 @@ from typing import Any
 from db.database import connect_read, is_postgres_backend
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
+from services.sql_fragments import round_sql
 
 _SEGMENT_COLUMNS = {
     "cpv": "substr(l.cpv, 1, 2)",
@@ -60,7 +61,7 @@ def cuota_mercado(
             GROUP BY a.empresa_id, empresa
         )
         SELECT empresa_id, empresa, es_ute, contratos, importe, ofertas_medias,
-               ROUND(importe * 100.0 / NULLIF((SELECT SUM(importe) FROM segmento), 0), 2)
+               {round_sql("importe * 100.0 / NULLIF((SELECT SUM(importe) FROM segmento), 0)", 2)}
                    AS cuota_pct
         FROM segmento
         ORDER BY importe DESC
@@ -102,20 +103,22 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
                    COUNT(*) AS empresas
             FROM por_empresa GROUP BY segmento
         )
-        SELECT p.segmento,
-               t.empresas,
-               t.total AS importe_total,
-               (SELECT COUNT(*) FROM adjudicaciones a2
-                JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
-                WHERE {seg_col.replace("l.", "l2.")} = p.segmento
-                  AND a2.importe_adjudicado > 0
-                  AND {exclude_duplicados_sql("l2.id_externo")}) AS contratos,
-               ROUND(SUM((p.importe * 100.0 / t.total) * (p.importe * 100.0 / t.total)), 0)
-                   AS hhi
-        FROM por_empresa p
-        JOIN totales t ON t.segmento = p.segmento
-        GROUP BY p.segmento
-        HAVING contratos >= ?
+        SELECT * FROM (
+            SELECT p.segmento,
+                   t.empresas,
+                   t.total AS importe_total,
+                   (SELECT COUNT(*) FROM adjudicaciones a2
+                    JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
+                    WHERE {seg_col.replace("l.", "l2.")} = p.segmento
+                      AND a2.importe_adjudicado > 0
+                      AND {exclude_duplicados_sql("l2.id_externo")}) AS contratos,
+                   {round_sql("SUM((p.importe * 100.0 / t.total) * (p.importe * 100.0 / t.total))", 0)}
+                       AS hhi
+            FROM por_empresa p
+            JOIN totales t ON t.segmento = p.segmento
+            GROUP BY p.segmento, t.empresas, t.total
+        ) seg
+        WHERE contratos >= ?
         ORDER BY hhi DESC
     """  # noqa: S608 — seg_col sale de _SEGMENT_COLUMNS (whitelist); valores con ?
     with connect_read() as c:

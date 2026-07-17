@@ -68,3 +68,16 @@ COALESCE(
 def fecha_fin_sql() -> str:
     """Fragmento SQL de fecha de fin efectiva, correcto para el backend activo."""
     return _FECHA_FIN_SQL_POSTGRES if is_postgres_backend() else FECHA_FIN_SQL
+
+
+def round_sql(expr: str, ndigits: int) -> str:
+    """``ROUND`` cross-backend para expresiones sobre columnas de coma flotante.
+
+    Postgres no tiene ``round(double precision, int)`` (solo ``round(numeric,
+    int)``), así que las columnas ``real`` (p. ej. ``importe``) rompen con un
+    ``UndefinedFunction``. Casteamos el argumento a ``numeric`` antes de
+    redondear; SQLite acepta ``CAST(x AS numeric)`` sin cambiar la semántica.
+    Solo debe recibir fragmentos SQL constantes/whitelisted (nunca input de
+    usuario), igual que el resto de este módulo.
+    """
+    return f"ROUND(CAST({expr} AS numeric), {ndigits})"

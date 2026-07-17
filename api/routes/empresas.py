@@ -43,7 +43,10 @@ def _list_empresas(q: str | None, limit: int, offset: int) -> list[dict[str, Any
         )
         like = f"%{q.upper()}%"
         params.extend([like, like, like])
-    sql += "GROUP BY e.empresa_id ORDER BY importe_total DESC LIMIT ? OFFSET ?"
+    sql += (
+        "GROUP BY e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, g.nombre "
+        "ORDER BY importe_total DESC LIMIT ? OFFSET ?"
+    )
     params.extend([limit, offset])
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))
