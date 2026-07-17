@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import React, { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -97,6 +98,7 @@ interface CompetitorRecentContract {
   organo_contratacion?: string | null;
   fecha_adjudicacion?: string | null;
   importe_adjudicado?: number | null;
+  baja_pct?: number | null;
 }
 
 interface CompetitorCcaaEntry {
@@ -808,7 +810,7 @@ export default function CompetidoresPage() {
 
       {/* Drill-down Sheet */}
       <Sheet open={!!drillDownCompany} onOpenChange={(open) => !open && setDrillDownCompany(null)}>
-        <SheetContent className="flex flex-col overflow-hidden">
+        <SheetContent className="flex flex-col overflow-hidden sm:max-w-2xl lg:max-w-3xl">
           <SheetHeader>
             <SheetTitle>{drillDownCompany?.nombre}</SheetTitle>
           </SheetHeader>
@@ -922,7 +924,11 @@ export default function CompetidoresPage() {
                   ) : (drillDownProfile?.contratos_recientes?.length ?? 0) > 0 ? (
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                       {drillDownProfile?.contratos_recientes?.map((contract) => (
-                        <div key={contract.licitacion_id} className="rounded-md border p-2">
+                        <Link
+                          key={contract.licitacion_id}
+                          href={`/detalle?lic=${encodeURIComponent(contract.licitacion_id)}`}
+                          className="block rounded-md border p-2 transition-colors hover:border-primary hover:bg-muted/50"
+                        >
                           <p className="text-sm font-medium truncate" title={contract.titulo ?? contract.licitacion_id}>
                             {contract.titulo ?? contract.licitacion_id}
                           </p>
@@ -930,13 +936,21 @@ export default function CompetidoresPage() {
                             {contract.fecha_adjudicacion?.slice(0, 10) ?? "Sin fecha"}
                             {" · "}
                             {formatCurrency(contract.importe_adjudicado ?? 0)}
+                            {contract.baja_pct != null && (
+                              <>
+                                {" · "}
+                                <span className="text-emerald-600 dark:text-emerald-400">
+                                  Baja {contract.baja_pct.toFixed(1)}%
+                                </span>
+                              </>
+                            )}
                           </p>
                           {contract.organo_contratacion && (
                             <p className="text-xs text-muted-foreground truncate" title={contract.organo_contratacion}>
                               {contract.organo_contratacion}
                             </p>
                           )}
-                        </div>
+                        </Link>
                       ))}
                     </div>
                   ) : (

@@ -217,7 +217,12 @@ def perfil_empresa(empresa_id: int) -> dict[str, Any]:
                        l.titulo,
                        l.organo_contratacion,
                        a.fecha_adjudicacion,
-                       a.importe_adjudicado
+                       a.importe_adjudicado,
+                       CASE
+                         WHEN l.importe > 0 AND a.importe_adjudicado IS NOT NULL
+                         THEN (1.0 - (a.importe_adjudicado * 1.0) / l.importe) * 100
+                         ELSE NULL
+                       END AS baja_pct
                 FROM adjudicaciones a
                 LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id
                 WHERE a.empresa_id = ?
