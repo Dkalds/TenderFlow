@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -15,7 +15,15 @@ import { cn } from "@/lib/utils";
 type Mode = "login" | "register";
 
 export default function LoginPage() {
-  const router = useRouter();
+  return (
+    <Suspense>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent() {
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -37,7 +45,8 @@ export default function LoginPage() {
 
     try {
       await apiMutate("POST", "/api/v1/auth/login", { email, password });
-      router.push("/resumen");
+      const redirect = searchParams.get("redirect") ?? "/resumen";
+      window.location.href = redirect;
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.status === 401 ? "Credenciales incorrectas" : err.message);
@@ -66,7 +75,7 @@ export default function LoginPage() {
         password,
         display_name: displayName.trim() || undefined,
       });
-      router.push("/resumen");
+      window.location.href = "/resumen";
     } catch (err) {
       if (err instanceof ApiError) {
         // 409: email ya registrado · 400: contrasena no cumple la politica
@@ -342,7 +351,7 @@ export default function LoginPage() {
                         const body = await res.json().catch(() => ({}));
                         throw new Error(body.detail || "Dev login failed");
                       }
-                      router.push("/resumen");
+                      window.location.href = "/resumen";
                     } catch (err) {
                       setError(err instanceof Error ? err.message : "Dev login failed");
                     } finally {
