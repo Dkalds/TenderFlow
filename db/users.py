@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect, is_postgres_backend, now_utc_iso
 
 
 def get_or_create_oauth_user(
@@ -41,6 +41,13 @@ def get_or_create_oauth_user(
                 )
                 return int(row[0])
 
+        if is_postgres_backend():
+            cur = c.execute(
+                "INSERT INTO users (email, oauth_provider, oauth_sub, display_name, created_at) "
+                "VALUES (?, ?, ?, ?, ?) RETURNING id",
+                (email or None, oauth_provider, oauth_sub, display_name, now_utc_iso()),
+            )
+            return int(cur.fetchone()[0])
         cur = c.execute(
             "INSERT INTO users (email, oauth_provider, oauth_sub, display_name, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -63,6 +70,13 @@ def create_user(
     :func:`get_user_by_email`.
     """
     with connect() as c:
+        if is_postgres_backend():
+            cur = c.execute(
+                "INSERT INTO users (email, password_hash, display_name, created_at) "
+                "VALUES (?, ?, ?, ?) RETURNING id",
+                (email, password_hash, display_name, now_utc_iso()),
+            )
+            return int(cur.fetchone()[0])
         cur = c.execute(
             "INSERT INTO users (email, password_hash, display_name, created_at) "
             "VALUES (?, ?, ?, ?)",
