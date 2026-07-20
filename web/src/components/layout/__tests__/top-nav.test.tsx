@@ -63,13 +63,13 @@ describe("TopNav", () => {
 
   it("opens the mobile navigation drawer", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
     expect(screen.getByRole("dialog", { name: /Menú de navegación/ })).toBeInTheDocument();
   });
 
   it("auto-expands the section containing the active page", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
     // pathname is stubbed to "/resumen", which lives in "Inicio".
     const sectionToggle = screen.getByRole("button", { name: /Inicio/ });
     expect(sectionToggle).toHaveAttribute("aria-expanded", "true");
@@ -78,7 +78,7 @@ describe("TopNav", () => {
 
   it("expands and collapses a non-active section without navigating", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
     const mercadoToggle = screen.getByRole("button", { name: /Mercado/ });
     expect(mercadoToggle).toHaveAttribute("aria-expanded", "false");
 
@@ -94,7 +94,7 @@ describe("TopNav", () => {
 
   it("closes the mobile drawer when a child page link is clicked", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
     fireEvent.click(screen.getByRole("link", { name: /Resumen/ }));
     expect(screen.queryByRole("dialog", { name: /Menú de navegación/ })).not.toBeInTheDocument();
   });
