@@ -374,7 +374,11 @@ def perfil_empresa(
     tecnologias: list[str] | None = None,
     importe_min: float | None = None,
 ) -> dict[str, Any]:
-    """Return an explainable, filter-coherent competitive company dossier."""
+    """Return an explainable, filter-coherent competitive company dossier.
+
+    Todas las queries sobre licitaciones/adjudicaciones usan `_scope_sql()`,
+    que aplica `exclude_duplicados_sql()` para excluir duplicados cross-fuente.
+    """
     scope_where, scope_params = _scope_sql(
         empresa_id=empresa_id,
         fecha_desde=fecha_desde,
@@ -667,7 +671,11 @@ def listar_adjudicaciones_empresa(
     limit: int = 25,
     offset: int = 0,
 ) -> dict[str, Any]:
-    """Return the company's real awards with server-side filtering and pagination."""
+    """Return the company's real awards with server-side filtering and pagination.
+
+    Usa `_scope_sql()`, que aplica `exclude_duplicados_sql()` para excluir
+    duplicados cross-fuente de las tablas licitaciones/adjudicaciones.
+    """
     where, params = _scope_sql(
         empresa_id=empresa_id,
         fecha_desde=fecha_desde,

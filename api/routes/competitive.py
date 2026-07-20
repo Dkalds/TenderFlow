@@ -23,19 +23,17 @@ from db.watchlist_empresas import (
 )
 from observability.logging import get_logger
 from services.competitive.bajas import baja_de_referencia, bajas_agregadas
-from services.competitive.mercado import concentracion_hhi, cuota_mercado, perfil_empresa
-from services.competitive.renovaciones import (
-    proximas_renovaciones,
-    resumen_renovaciones,
-    totales_renovaciones,
-)
 from services.competitive.mercado import (
     concentracion_hhi,
     cuota_mercado,
     listar_adjudicaciones_empresa,
     perfil_empresa,
 )
-from services.competitive.renovaciones import proximas_renovaciones, resumen_renovaciones
+from services.competitive.renovaciones import (
+    proximas_renovaciones,
+    resumen_renovaciones,
+    totales_renovaciones,
+)
 from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
 
 log = get_logger(__name__)
