@@ -173,7 +173,17 @@ export interface paths {
         };
         /**
          * Forecast Retendering
+         * @deprecated
          * @description Retendering forecast — contracts approaching end of term.
+         *
+         *     .. deprecated:: 2026-07-20
+         *        Sin consumidor en `web/` desde el rework de Pipeline & Alertas — el
+         *        mismo ángulo ("contratos que vencen próximamente") lo cubre
+         *        ``GET /competitive/renovaciones`` con un dataset más rico (incluye
+         *        `riesgo_cambio` y opportunity score). Se mantiene el endpoint por
+         *        compatibilidad de contrato público (retirarlo es breaking change,
+         *        AGENTS.md §5) hasta confirmar ausencia de consumidores externos.
+         *        Ver docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
          */
         get: operations["forecast_retendering_api_v1_analytics_forecast_retendering_get"];
         put?: never;

@@ -90,6 +90,12 @@ class PipelineResult(BaseModel):
     # completa, no solo los `limit` items devueltos.
     calientes: int = 0
     valor_calientes: float = 0.0
+    # Sin consumidor en `web/` desde el rework de Pipeline & Alertas
+    # (2026-07-20, ver docs/IMPROVEMENT_BACKLOG.md Cerrados): el rework
+    # sustituyó los charts "Distribución por horizonte"/"Volumen trimestral"
+    # por el banner de /renovaciones. Se mantienen en el DTO porque retirar
+    # un campo del contrato público es un cambio breaking (AGENTS.md §5) —
+    # no se retira sin RFC/confirmación humana.
     por_horizonte: list[HorizonteCount] = Field(default_factory=list)
     por_trimestre: list[TrimestreCount] = Field(default_factory=list)
     urgencia_valor: list[UrgenciaValorPoint] = Field(default_factory=list)

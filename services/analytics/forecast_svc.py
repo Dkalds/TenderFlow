@@ -174,7 +174,13 @@ def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
 
 
 def get_retendering_forecast(filters: RetenderingFilters) -> RetenderingResult:
-    """Retendering forecast using build_forecast_df logic."""
+    """Retendering forecast using build_forecast_df logic.
+
+    .. deprecated:: 2026-07-20
+       Sin consumidor en `web/` desde el rework de Pipeline & Alertas — ver
+       nota de deprecación en ``api/routes/analytics.py::forecast_retendering``
+       y docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
+    """
     log.info("analytics_retendering_start", filters=filters.model_dump(exclude_none=True))
     df = _load_licit_df()
     df = _apply_filters(df, filters)

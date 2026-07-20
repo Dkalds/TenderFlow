@@ -460,7 +460,11 @@ def forecast_volume_endpoint(
     return get_forecast_volume(filters)
 
 
-@router.get("/forecast/retendering", response_model=RetenderingResult)
+@router.get(
+    "/forecast/retendering",
+    response_model=RetenderingResult,
+    deprecated=True,
+)
 @cache_response(ttl=600)
 def forecast_retendering(
     meses_anticipacion: int = Query(default=6, ge=1, le=24, description="Months anticipation"),
@@ -472,7 +476,17 @@ def forecast_retendering(
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> RetenderingResult:
-    """Retendering forecast — contracts approaching end of term."""
+    """Retendering forecast — contracts approaching end of term.
+
+    .. deprecated:: 2026-07-20
+       Sin consumidor en `web/` desde el rework de Pipeline & Alertas — el
+       mismo ángulo ("contratos que vencen próximamente") lo cubre
+       ``GET /competitive/renovaciones`` con un dataset más rico (incluye
+       `riesgo_cambio` y opportunity score). Se mantiene el endpoint por
+       compatibilidad de contrato público (retirarlo es breaking change,
+       AGENTS.md §5) hasta confirmar ausencia de consumidores externos.
+       Ver docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
+    """
     filters = RetenderingFilters(
         meses_anticipacion=meses_anticipacion,
         solo_mantenimiento=solo_mantenimiento,
