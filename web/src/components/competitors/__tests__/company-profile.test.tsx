@@ -16,7 +16,7 @@ const profile: CompanyProfileData = {
   empresa: {
     empresa_id: 7,
     nombre: "Ejemplo Digital",
-    nif: "B12345678",
+    nif: "B12345678", // pragma: allowlist secret
     es_ute: false,
     grupo: null,
   },
@@ -151,7 +151,7 @@ describe("company profile presentation helpers", () => {
             empresaId={7}
             company={{
               nombre: "Ejemplo Digital",
-              nif: "B12345678",
+              nif: "B12345678", // pragma: allowlist secret
               count: 4,
               importe: 500000,
               cuota: 8,
