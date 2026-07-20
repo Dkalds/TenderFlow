@@ -49,6 +49,21 @@ def _classify_integrity_error(exc: BaseException) -> str:
     return "other"
 
 
+def _earliest_iso_date(a: str | None, b: str | None) -> str | None:
+    """Devuelve la fecha ISO (YYYY-MM-DD) más temprana, ignorando nulos.
+
+    Las fechas ISO ordenan lexicográficamente igual que cronológicamente, así
+    que ``min`` sobre strings es correcto. Se usa para que ``fecha_publicacion``
+    conserve el primer anuncio del expediente y no retroceda/avance cuando una
+    fase posterior (adjudicación, formalización) trae la fecha de SU anuncio.
+    """
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a if a <= b else b
+
+
 # ---------------------------------------------------------------------------
 # Dataclasses de dominio
 # ---------------------------------------------------------------------------
@@ -161,20 +176,27 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
     with connect() as c:
         # Bulk SELECT para determinar qué IDs ya existen — evita N+1.
         # Particionado en grupos de 500 para respetar SQLITE_MAX_VARIABLE_NUMBER.
-        existing_ids: set[str] = set()
+        existing_pub: dict[str, str | None] = {}
         _CHUNK = 500
         for i in range(0, len(batch), _CHUNK):
             chunk = batch[i : i + _CHUNK]
             placeholders = ", ".join("?" for _ in chunk)
             chunk_ids = [lic.id_externo for lic in chunk]
             rows = c.execute(
-                f"SELECT id_externo FROM licitaciones WHERE id_externo IN ({placeholders})",
+                f"SELECT id_externo, fecha_publicacion FROM licitaciones "
+                f"WHERE id_externo IN ({placeholders})",
                 chunk_ids,
             ).fetchall()
-            existing_ids.update(row[0] for row in rows)
+            existing_pub.update((row[0], row[1]) for row in rows)
 
         for lic in batch:
             data = asdict(lic)
+            if lic.id_externo in existing_pub:
+                # No sobrescribir con una fecha de publicación posterior (fase
+                # de adjudicación/formalización): conservar el primer anuncio.
+                data["fecha_publicacion"] = _earliest_iso_date(
+                    existing_pub[lic.id_externo], data["fecha_publicacion"]
+                )
             vals = [data[k] for k in _LIC_KEYS]
             # Column names come from dataclass fields (controlled code) — safe
             c.execute(
@@ -183,6 +205,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
                 vals,
             )
 
+    existing_ids = set(existing_pub)
     nuevas = sum(1 for lic in batch if lic.id_externo not in existing_ids)
     actualizadas = len(batch) - nuevas
     return nuevas, actualizadas
@@ -449,16 +472,27 @@ def _upsert_chunk(
     with connect() as c:
         placeholders = ", ".join("?" for _ in chunk)
         ids = [lic.id_externo for lic in chunk]
+        # fecha_publicacion se pide como columna extra al final (fuera de
+        # col_names) para conservar el primer anuncio sin alterar el snapshot
+        # de historial (que solo cubre _HISTORY_SELECT_COLS).
         existing_rows = c.execute(
-            f"SELECT {_HISTORY_SELECT_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})",
+            f"SELECT {_HISTORY_SELECT_COLS}, fecha_publicacion FROM licitaciones "
+            f"WHERE id_externo IN ({placeholders})",
             ids,
         ).fetchall()
         existing: dict[str, dict[str, Any]] = {
             row[0]: dict(zip(col_names, row, strict=False)) for row in existing_rows
         }
+        existing_pub: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
 
         for lic in chunk:
             data = asdict(lic)
+            if lic.id_externo in existing_pub:
+                # No sobrescribir con una fecha de publicación posterior (fase
+                # de adjudicación/formalización): conservar el primer anuncio.
+                data["fecha_publicacion"] = _earliest_iso_date(
+                    existing_pub[lic.id_externo], data["fecha_publicacion"]
+                )
             vals = [data[k] for k in _LIC_KEYS]
             old_record = existing.get(lic.id_externo)
 

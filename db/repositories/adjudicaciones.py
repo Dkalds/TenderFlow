@@ -111,3 +111,34 @@ class AdjudicacionRepository:
         sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
+
+    def find_publicacion_posterior_a_adjudicacion(
+        self, *, fuentes: tuple[str, ...] | None = None
+    ) -> list[dict[str, Any]]:
+        """Licitaciones con ``fecha_publicacion`` posterior a su primera adjudicación.
+
+        Devuelve una fila por licitación con ``id_externo``, ``fuente``, ``pub``
+        (fecha_publicacion ISO, 10 chars) y ``min_adj`` (adjudicación más
+        temprana, ISO). Es imposible que una licitación se adjudique antes de
+        publicarse: estas filas tienen la fecha de publicación corrupta (una
+        fase posterior la sobrescribió). Source-agnóstico.
+        """
+        sql = (
+            "SELECT l.id_externo, l.fuente, "
+            "       substr(l.fecha_publicacion, 1, 10) AS pub, "
+            "       substr(MIN(a.fecha_adjudicacion), 1, 10) AS min_adj "
+            "FROM licitaciones l "
+            "JOIN adjudicaciones a ON a.licitacion_id = l.id_externo "
+            "WHERE l.fecha_publicacion IS NOT NULL "
+            "  AND a.fecha_adjudicacion IS NOT NULL "
+            "GROUP BY l.id_externo, l.fuente, substr(l.fecha_publicacion, 1, 10) "
+            "HAVING substr(l.fecha_publicacion, 1, 10) "
+            "       > substr(MIN(a.fecha_adjudicacion), 1, 10) "
+            "ORDER BY l.fuente, min_adj"
+        )
+        with connect_read() as c:
+            rows = rows_to_dicts(c.execute(sql))
+        if fuentes is not None:
+            rows = [r for r in rows if (r.get("fuente") or "").lower() in fuentes]
+        return rows
+

@@ -79,6 +79,65 @@ def test_upsert_updates_field(db):
     assert row[0] == pytest.approx(200.0)
 
 
+def test_upsert_keeps_earliest_fecha_publicacion(db):
+    """fecha_publicacion no debe avanzar a una fecha posterior en un re-upsert.
+
+    Regresión: una fase posterior (adjudicación/formalización) trae la fecha
+    de publicación de SU anuncio, que es posterior a la del primer anuncio.
+    Sobrescribirla dejaba el hito "publicación" DESPUÉS de la adjudicación en
+    el histórico. Debe conservarse siempre el primer anuncio (el más temprano).
+    """
+    from db.database import connect
+    from db.upsert import upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(fecha_publicacion="2026-05-01")])
+    # Re-scrape en fase de adjudicación: la fuente trae una fecha posterior.
+    upsert_licitaciones([make_licitacion(fecha_publicacion="2026-07-16")])
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT fecha_publicacion FROM licitaciones WHERE id_externo = ?", ["TEST-001"]
+        ).fetchone()
+    assert row[0] == "2026-05-01"
+
+
+def test_upsert_backfills_earlier_fecha_publicacion(db):
+    """Si el primer anuncio se ve después, fecha_publicacion retrocede a él."""
+    from db.database import connect
+    from db.upsert import upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(fecha_publicacion="2026-07-16")])
+    upsert_licitaciones([make_licitacion(fecha_publicacion="2026-05-01")])
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT fecha_publicacion FROM licitaciones WHERE id_externo = ?", ["TEST-001"]
+        ).fetchone()
+    assert row[0] == "2026-05-01"
+
+
+def test_upsert_with_history_keeps_earliest_fecha_publicacion(db):
+    """El camino con historial también conserva el primer anuncio."""
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history(
+        [make_licitacion(fecha_publicacion="2026-05-01")], source="pub"
+    )
+    upsert_licitaciones_with_history(
+        [make_licitacion(fecha_publicacion="2026-07-16", estado="ADJ")], source="adj"
+    )
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT fecha_publicacion, estado FROM licitaciones WHERE id_externo = ?",
+            ["TEST-001"],
+        ).fetchone()
+    assert row[0] == "2026-05-01"
+    # El resto de campos sí se actualiza normalmente.
+    assert row[1] == "ADJ"
+
+
 def test_upsert_empty_list(db):
     from db.upsert import upsert_licitaciones
 
