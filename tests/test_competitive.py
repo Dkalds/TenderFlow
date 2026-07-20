@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -334,6 +334,111 @@ def test_cuota_mercado_suma_100(db):
     assert items[0]["empresa"] == "Big Corp"
     assert items[0]["cuota_pct"] == 75.0
     assert sum(i["cuota_pct"] for i in items) == 100.0
+
+
+def test_perfil_empresa_dossier_filtrado_y_posicion(db):
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+    from shared.dto import CompetitiveCompanyProfileDTO
+
+    insert_contract(
+        db,
+        "M-DOSSIER-PREV",
+        "Dossier Alpha SL",
+        nif="B12340001",
+        adjudicado=100000,
+        fecha_adjudicacion=_date(-500),
+        ccaa="Madrid",
+        organo="Ministerio A",
+    )
+    insert_contract(
+        db,
+        "M-DOSSIER-1",
+        "Dossier Alpha SL",
+        nif="B12340001",
+        adjudicado=100000,
+        fecha_adjudicacion=_date(-60),
+        ccaa="Madrid",
+        organo="Ministerio A",
+        n_ofertas=1,
+    )
+    insert_contract(
+        db,
+        "M-DOSSIER-2",
+        "Dossier Alpha SL",
+        nif="B12340001",
+        adjudicado=200000,
+        fecha_adjudicacion=_date(-30),
+        ccaa="Galicia",
+        organo="Xunta de Galicia",
+        n_ofertas=3,
+    )
+    insert_contract(
+        db,
+        "M-DOSSIER-RIVAL",
+        "Dossier Beta SA",
+        nif="B12340002",
+        adjudicado=400000,
+        fecha_adjudicacion=_date(-20),
+    )
+    resolve(db)
+
+    with connect_read() as c:
+        empresa_id = int(
+            c.execute(
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340001'"
+            ).fetchone()[0]
+        )
+
+    profile = perfil_empresa(
+        empresa_id,
+        fecha_desde=date.today() - timedelta(days=364),
+        fecha_hasta=date.today(),
+    )
+
+    assert profile["_exists"] is True
+    assert profile["actividad_historica"]["contratos"] == 3
+    assert profile["actividad_historica"]["importe_total"] == 400000
+    assert profile["totales"]["contratos"] == 2
+    assert profile["totales"]["importe_total"] == 300000
+    assert profile["totales"]["importe_mediano"] == 150000
+    assert profile["totales"]["cobertura_ofertas_pct"] == 100
+    assert profile["posicion_mercado"]["rank"] == 2
+    assert profile["posicion_mercado"]["empresas"] == 2
+    assert profile["por_ccaa"][0]["label"] == "Galicia"
+    assert any(item["kind"] == "territory" for item in profile["movimientos"])
+    CompetitiveCompanyProfileDTO.model_validate(
+        {key: value for key, value in profile.items() if not key.startswith("_")}
+    )
+
+
+def test_listar_adjudicaciones_empresa_filtra_ordena_y_pagina(db):
+    from db.database import connect_read
+    from services.competitive.mercado import listar_adjudicaciones_empresa
+
+    for suffix, amount in (("A", 10000), ("B", 30000), ("C", 20000)):
+        insert_contract(
+            db,
+            f"M-LIST-{suffix}",
+            "Listado Profile SL",
+            nif="B12340003",
+            adjudicado=amount,
+            fecha_adjudicacion=_date(-10),
+        )
+    resolve(db)
+    with connect_read() as c:
+        empresa_id = int(
+            c.execute(
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340003'"
+            ).fetchone()[0]
+        )
+
+    page = listar_adjudicaciones_empresa(empresa_id, sort="importe_desc", limit=2)
+    assert page["total"] == 3
+    assert [item["licitacion_id"] for item in page["items"]] == ["M-LIST-B", "M-LIST-C"]
+    filtered = listar_adjudicaciones_empresa(empresa_id, q="M-LIST-A")
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["presupuesto_licitacion"] == 100000
 
 
 def test_hhi_monopolio_es_10000(db):

@@ -81,6 +81,15 @@ def test_competitive_perfil_no_existe(client, auth):
     assert r.status_code == 404
 
 
+def test_competitive_adjudicaciones_empresa_vacio(client, auth):
+    r = client.get(
+        "/api/v1/competitive/empresas/99999/adjudicaciones?sort=importe_desc",
+        headers=auth,
+    )
+    assert r.status_code == 200
+    assert r.json() == {"items": [], "total": 0, "limit": 25, "offset": 0}
+
+
 # ---------------------------------------------------------------------------
 # Watchlist
 # ---------------------------------------------------------------------------

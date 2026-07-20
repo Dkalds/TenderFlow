@@ -878,6 +878,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/competitive/empresas/{empresa_id}/adjudicaciones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Adjudicaciones paginadas de una empresa */
+        get: operations["get_adjudicaciones_empresa_api_v1_competitive_empresas__empresa_id__adjudicaciones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/competitive/empresas/{empresa_id}/perfil": {
         parameters: {
             query?: never;
@@ -885,7 +902,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Perfil competitivo de una empresa */
+        /** Dossier competitivo de una empresa */
         get: operations["get_perfil_api_v1_competitive_empresas__empresa_id__perfil_get"];
         put?: never;
         post?: never;
@@ -2447,6 +2464,324 @@ export interface components {
             deltas?: components["schemas"]["PeriodDeltas"];
             period_a?: components["schemas"]["PeriodStats"];
             period_b?: components["schemas"]["PeriodStats"];
+        };
+        /**
+         * CompetitiveCompanyAwardDTO
+         * @description Award row in the paginated company history.
+         */
+        CompetitiveCompanyAwardDTO: {
+            /** Baja Pct */
+            baja_pct?: number | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Expediente Url */
+            expediente_url?: string | null;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** N Ofertas Recibidas */
+            n_ofertas_recibidas?: number | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Presupuesto Licitacion */
+            presupuesto_licitacion?: number | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * CompetitiveCompanyAwardsDTO
+         * @description Paginated award history for a canonical company.
+         */
+        CompetitiveCompanyAwardsDTO: {
+            /** Items */
+            items?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
+            /** Limit */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * CompetitiveCompanyBreakdownDTO
+         * @description Reusable amount/count distribution row (CPV, territory or buyer).
+         */
+        CompetitiveCompanyBreakdownDTO: {
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Codigo */
+            codigo?: string | null;
+            /** Contratos */
+            contratos: number;
+            /** Cpv2 */
+            cpv2?: string | null;
+            /**
+             * Cuota Empresa Pct
+             * @default 0
+             */
+            cuota_empresa_pct: number;
+            /** Importe */
+            importe: number;
+            /** Label */
+            label: string;
+            /** Organo */
+            organo?: string | null;
+            /** Ultima Adjudicacion */
+            ultima_adjudicacion?: string | null;
+        };
+        /**
+         * CompetitiveCompanyComparisonDTO
+         * @description Current period compared with the immediately preceding equal period.
+         */
+        CompetitiveCompanyComparisonDTO: {
+            /** Anterior Desde */
+            anterior_desde: string;
+            /** Anterior Hasta */
+            anterior_hasta: string;
+            /**
+             * Contratos
+             * @default 0
+             */
+            contratos: number;
+            /**
+             * Contratos Anterior
+             * @default 0
+             */
+            contratos_anterior: number;
+            /** Desde */
+            desde: string;
+            /** Hasta */
+            hasta: string;
+            /**
+             * Importe
+             * @default 0
+             */
+            importe: number;
+            /**
+             * Importe Anterior
+             * @default 0
+             */
+            importe_anterior: number;
+            /** Importe Mediano */
+            importe_mediano?: number | null;
+            /** Importe Mediano Anterior */
+            importe_mediano_anterior?: number | null;
+            /** Variacion Contratos Pct */
+            variacion_contratos_pct?: number | null;
+            /** Variacion Importe Pct */
+            variacion_importe_pct?: number | null;
+        };
+        /**
+         * CompetitiveCompanyConcentrationDTO
+         * @description Dependence on the most relevant public buyers.
+         */
+        CompetitiveCompanyConcentrationDTO: {
+            /** Organo Principal */
+            organo_principal?: string | null;
+            /**
+             * Top1 Contratos Pct
+             * @default 0
+             */
+            top1_contratos_pct: number;
+            /**
+             * Top1 Importe Pct
+             * @default 0
+             */
+            top1_importe_pct: number;
+            /**
+             * Top3 Importe Pct
+             * @default 0
+             */
+            top3_importe_pct: number;
+        };
+        /**
+         * CompetitiveCompanyHistoryDTO
+         * @description Unfiltered company history, separate from the active analysis scope.
+         */
+        CompetitiveCompanyHistoryDTO: {
+            /**
+             * Contratos
+             * @default 0
+             */
+            contratos: number;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /** Primera Adjudicacion */
+            primera_adjudicacion?: string | null;
+            /** Ultima Adjudicacion */
+            ultima_adjudicacion?: string | null;
+        };
+        /**
+         * CompetitiveCompanyIdentityDTO
+         * @description Canonical identity displayed in a competitor dossier.
+         */
+        CompetitiveCompanyIdentityDTO: {
+            /** Empresa Id */
+            empresa_id: number;
+            /**
+             * Es Ute
+             * @default false
+             */
+            es_ute: boolean;
+            /** Grupo */
+            grupo?: string | null;
+            /** Nif */
+            nif?: string | null;
+            /** Nombre */
+            nombre: string;
+        };
+        /**
+         * CompetitiveCompanyPositionDTO
+         * @description Market position inside the currently selected segment.
+         */
+        CompetitiveCompanyPositionDTO: {
+            /** Cuota Pct */
+            cuota_pct?: number | null;
+            /**
+             * Empresas
+             * @default 0
+             */
+            empresas: number;
+            /**
+             * Importe Segmento
+             * @default 0
+             */
+            importe_segmento: number;
+            /** Rank */
+            rank?: number | null;
+        };
+        /**
+         * CompetitiveCompanyProfileDTO
+         * @description Full competitor dossier used by quick and deep company views.
+         */
+        CompetitiveCompanyProfileDTO: {
+            actividad_historica: components["schemas"]["CompetitiveCompanyHistoryDTO"];
+            comparacion: components["schemas"]["CompetitiveCompanyComparisonDTO"];
+            concentracion_clientes: components["schemas"]["CompetitiveCompanyConcentrationDTO"];
+            /** Contratos Recientes */
+            contratos_recientes?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
+            empresa: components["schemas"]["CompetitiveCompanyIdentityDTO"];
+            /** Movimientos */
+            movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
+            /** Organos Principales */
+            organos_principales?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Por Anio */
+            por_anio?: components["schemas"]["CompetitiveCompanyYearDTO"][];
+            /** Por Ccaa */
+            por_ccaa?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Por Cpv */
+            por_cpv?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            posicion_mercado: components["schemas"]["CompetitiveCompanyPositionDTO"];
+            scope: components["schemas"]["CompetitiveCompanyScopeDTO"];
+            totales: components["schemas"]["CompetitiveCompanyTotalsDTO"];
+        };
+        /**
+         * CompetitiveCompanyScopeDTO
+         * @description Effective filters used to calculate a company dossier.
+         */
+        CompetitiveCompanyScopeDTO: {
+            /** Ccaas */
+            ccaas?: string[];
+            /** Cpv */
+            cpv?: string | null;
+            /** Fecha Desde */
+            fecha_desde?: string | null;
+            /** Fecha Hasta */
+            fecha_hasta?: string | null;
+            /** Importe Min */
+            importe_min?: number | null;
+            /** Tecnologias */
+            tecnologias?: string[];
+        };
+        /**
+         * CompetitiveCompanySignalDTO
+         * @description Explainable movement or risk derived from observed awards.
+         */
+        CompetitiveCompanySignalDTO: {
+            /** Detail */
+            detail: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Tone */
+            tone: string;
+        };
+        /**
+         * CompetitiveCompanyTotalsDTO
+         * @description Headline activity and data-coverage metrics for the selected scope.
+         */
+        CompetitiveCompanyTotalsDTO: {
+            /** Baja Media Pct */
+            baja_media_pct?: number | null;
+            /**
+             * Cobertura Ofertas Pct
+             * @default 0
+             */
+            cobertura_ofertas_pct: number;
+            /**
+             * Contratos
+             * @default 0
+             */
+            contratos: number;
+            /**
+             * Familias Cpv
+             * @default 0
+             */
+            familias_cpv: number;
+            /** Importe Mediano */
+            importe_mediano?: number | null;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /** Ofertas Medias */
+            ofertas_medias?: number | null;
+            /**
+             * Organos
+             * @default 0
+             */
+            organos: number;
+            /** Pct Oferta Unica */
+            pct_oferta_unica?: number | null;
+            /** Primera Adjudicacion */
+            primera_adjudicacion?: string | null;
+            /**
+             * Territorios
+             * @default 0
+             */
+            territorios: number;
+            /** Ultima Adjudicacion */
+            ultima_adjudicacion?: string | null;
+        };
+        /**
+         * CompetitiveCompanyYearDTO
+         * @description Annual activity point.
+         */
+        CompetitiveCompanyYearDTO: {
+            /** Anio */
+            anio: number;
+            /** Contratos */
+            contratos: number;
+            /** Importe */
+            importe: number;
         };
         /**
          * CompetitorEntry
@@ -6247,9 +6582,21 @@ export interface operations {
             };
         };
     };
-    get_perfil_api_v1_competitive_empresas__empresa_id__perfil_get: {
+    get_adjudicaciones_empresa_api_v1_competitive_empresas__empresa_id__adjudicaciones_get: {
         parameters: {
-            query?: never;
+            query?: {
+                fecha_desde?: string | null;
+                fecha_hasta?: string | null;
+                cpv?: string | null;
+                ccaa?: string | null;
+                tecnologia?: string | null;
+                importe_min?: number | null;
+                q?: string | null;
+                organo?: string | null;
+                sort?: string;
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path: {
                 empresa_id: number;
@@ -6266,9 +6613,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CompetitiveCompanyAwardsDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_perfil_api_v1_competitive_empresas__empresa_id__perfil_get: {
+        parameters: {
+            query?: {
+                fecha_desde?: string | null;
+                fecha_hasta?: string | null;
+                cpv?: string | null;
+                ccaa?: string | null;
+                tecnologia?: string | null;
+                importe_min?: number | null;
+            };
+            header?: never;
+            path: {
+                empresa_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompetitiveCompanyProfileDTO"];
                 };
             };
             /** @description Validation Error */

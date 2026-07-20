@@ -8,7 +8,7 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { KpiCard } from "@/components/charts/kpi-card";
 const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 const CompetitorsBarChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsBarChart })), { ssr: false, loading: () => <Skeleton className="h-[500px] w-full rounded-md" /> });
@@ -29,7 +29,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Stagger } from "@/components/motion";
 
-import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import {
+  buildExecutiveSummary,
+  type CompanyProfileData,
+} from "@/components/competitors/company-profile-types";
 import { useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
 import type { ScatterPoint } from "@/components/charts/competitors-charts";
@@ -90,26 +94,6 @@ interface CompetitorsData {
   scatter_data?: ScatterPoint[];
   heatmap_ccaa?: HeatmapEntry[];
   estacionalidad?: { mes: number; count: number; importe: number }[];
-}
-
-interface CompetitorRecentContract {
-  licitacion_id: string;
-  titulo?: string | null;
-  organo_contratacion?: string | null;
-  fecha_adjudicacion?: string | null;
-  importe_adjudicado?: number | null;
-  baja_pct?: number | null;
-}
-
-interface CompetitorCcaaEntry {
-  ccaa: string;
-  contratos: number;
-  importe: number;
-}
-
-interface CompetitorProfile {
-  por_ccaa?: CompetitorCcaaEntry[];
-  contratos_recientes?: CompetitorRecentContract[];
 }
 
 type SortKey = "nombre" | "count" | "importe" | "cuota" | "contratos_por_anio" | "importe_medio" | "baja_media" | "nif" | "ofertas_medias" | "pct_monopolio" | "pct_top_organo" | "ultima";
@@ -173,17 +157,15 @@ export default function CompetidoresPage() {
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [drillDownCompany, setDrillDownCompany] = useState<Competitor | null>(null);
   const drillDownCompanyId = drillDownCompany?.empresa_id;
-  const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } = useQuery<CompetitorProfile>({
-    queryKey: ["competitive-company-profile", drillDownCompanyId],
-    queryFn: () => {
-      if (drillDownCompanyId == null) {
-        throw new Error("Empresa no seleccionada");
-      }
-      return fetchWithAuth(`/api/v1/competitive/empresas/${drillDownCompanyId}/perfil`);
-    },
-    enabled: drillDownCompanyId != null,
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } =
+    useFilteredQuery<CompanyProfileData>(
+      ["competitive-company-profile", String(drillDownCompanyId ?? "none")],
+      `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/perfil`,
+      {
+        enabled: drillDownCompanyId != null,
+        staleTime: 5 * 60 * 1000,
+      },
+    );
 
   const toggleCompareSelection = useCallback((nombre: string) => {
     setSelectedCompanies((prev) => {
@@ -364,7 +346,7 @@ export default function CompetidoresPage() {
   const drillDownCcaa = useMemo(() => {
     const rows = drillDownProfile?.por_ccaa ?? [];
     return [...rows]
-      .filter((r) => r.ccaa)
+      .filter((r) => r.label)
       .sort((a, b) => b.contratos - a.contratos);
   }, [drillDownProfile]);
 
@@ -819,9 +801,9 @@ export default function CompetidoresPage() {
               {drillDownCompany.nif && (
                 <Badge variant="outline">NIF: {drillDownCompany.nif}</Badge>
               )}
-              {drillDownCompany.ultima && (
-                <p className="text-xs text-muted-foreground">Ultima adjudicacion: {drillDownCompany.ultima}</p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Última adjudicación: {formatDate(drillDownProfile?.totales.ultima_adjudicacion)}
+              </p>
               {drillDownCompany.empresa_id != null && (
                 <Button
                   variant={watchedIds.has(drillDownCompany.empresa_id) ? "secondary" : "default"}
@@ -839,46 +821,47 @@ export default function CompetidoresPage() {
                   {watchedIds.has(drillDownCompany.empresa_id) ? "Vigilando" : "Vigilar empresa"}
                 </Button>
               )}
+              {drillDownProfile?.totales.contratos ? (
+                <div className="rounded-lg border border-primary/20 bg-primary/[0.035] p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-primary">
+                    Lectura rápida
+                  </p>
+                  <p className="mt-1.5 text-sm leading-6">
+                    {buildExecutiveSummary(drillDownProfile)}
+                  </p>
+                </div>
+              ) : null}
               <div className="grid grid-cols-2 gap-4">
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Adjudicaciones</p>
-                  <p className="text-lg font-bold">{formatNumber(drillDownCompany.count)}</p>
+                  <p className="text-lg font-bold">
+                    {formatNumber(drillDownProfile?.totales.contratos ?? drillDownCompany.count)}
+                  </p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Importe Total</p>
-                  <p className="text-lg font-bold">{formatCurrency(drillDownCompany.importe)}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Cuota</p>
-                  <p className="text-lg font-bold">{formatPercent(drillDownCompany.cuota)}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Baja Media</p>
                   <p className="text-lg font-bold">
-                    {drillDownCompany.baja_media != null ? formatPercent(drillDownCompany.baja_media) : "-"}
+                    {formatCurrency(
+                      drillDownProfile?.totales.importe_total ?? drillDownCompany.importe,
+                    )}
                   </p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Contratos/Año</p>
+                  <p className="text-xs text-muted-foreground">Cuota y posición</p>
                   <p className="text-lg font-bold">
-                    {drillDownCompany.contratos_por_anio != null ? formatNumber(drillDownCompany.contratos_por_anio) : "-"}
+                    {formatPercent(
+                      drillDownProfile?.posicion_mercado.cuota_pct ?? drillDownCompany.cuota,
+                    )}
+                    {drillDownProfile?.posicion_mercado.rank
+                      ? ` · #${drillDownProfile.posicion_mercado.rank}`
+                      : ""}
                   </p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Importe Medio</p>
+                  <p className="text-xs text-muted-foreground">Ticket mediano</p>
                   <p className="text-lg font-bold">
-                    {drillDownCompany.importe_medio != null ? formatCurrency(drillDownCompany.importe_medio) : "-"}
+                    {formatCurrency(drillDownProfile?.totales.importe_mediano)}
                   </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">% Sin competencia</p>
-                  <p className="text-lg font-bold">
-                    {drillDownCompany.pct_monopolio != null ? formatPercent(drillDownCompany.pct_monopolio) : "—"}
-                  </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Ofertas Medias</p>
-                  <p className="text-lg font-bold">{drillDownCompany.ofertas_medias?.toFixed(1) ?? "-"}</p>
                 </div>
               </div>
 
@@ -892,17 +875,18 @@ export default function CompetidoresPage() {
                   ) : drillDownCcaa.length > 0 ? (
                     <div className="space-y-1">
                       {drillDownCcaa.slice(0, 8).map((h) => {
-                        const maxCount = drillDownCcaa[0]?.contratos ?? 1;
                         return (
-                          <div key={h.ccaa} className="flex items-center gap-2 text-sm">
-                            <span className="w-32 truncate text-muted-foreground">{h.ccaa}</span>
+                          <div key={h.label} className="flex items-center gap-2 text-sm">
+                            <span className="w-32 truncate text-muted-foreground">{h.label}</span>
                             <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-primary rounded-full"
-                                style={{ width: `${(h.contratos / maxCount) * 100}%` }}
+                                style={{ width: `${Math.max(2, h.cuota_empresa_pct)}%` }}
                               />
                             </div>
-                            <span className="tabular-nums text-xs w-8 text-right">{h.contratos}</span>
+                            <span className="tabular-nums text-xs w-10 text-right">
+                              {formatPercent(h.cuota_empresa_pct, 0)}
+                            </span>
                           </div>
                         );
                       })}
@@ -918,58 +902,46 @@ export default function CompetidoresPage() {
               <>
                 <Separator />
                 <div>
-                  <p className="text-sm font-medium mb-2">Contratos recientes</p>
+                  <p className="mb-3 text-sm font-medium">Clientes principales</p>
                   {isLoadingDrillDownProfile ? (
                     <Skeleton className="h-24 w-full" />
-                  ) : (drillDownProfile?.contratos_recientes?.length ?? 0) > 0 ? (
-                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {drillDownProfile?.contratos_recientes?.map((contract) => (
-                        <Link
-                          key={contract.licitacion_id}
-                          href={`/detalle?lic=${encodeURIComponent(contract.licitacion_id)}`}
-                          className="block rounded-md border p-2 transition-colors hover:border-primary hover:bg-muted/50"
+                  ) : (drillDownProfile?.organos_principales.length ?? 0) > 0 ? (
+                    <div className="space-y-3">
+                      {drillDownProfile?.organos_principales.slice(0, 5).map((row) => (
+                        <div
+                          key={row.label}
+                          className="flex items-start justify-between gap-4 text-sm"
                         >
-                          <p className="text-sm font-medium truncate" title={contract.titulo ?? contract.licitacion_id}>
-                            {contract.titulo ?? contract.licitacion_id}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {contract.fecha_adjudicacion?.slice(0, 10) ?? "Sin fecha"}
-                            {" · "}
-                            {formatCurrency(contract.importe_adjudicado ?? 0)}
-                            {contract.baja_pct != null && (
-                              <>
-                                {" · "}
-                                <span className="text-emerald-600 dark:text-emerald-400">
-                                  Baja {contract.baja_pct.toFixed(1)}%
-                                </span>
-                              </>
-                            )}
-                          </p>
-                          {contract.organo_contratacion && (
-                            <p className="text-xs text-muted-foreground truncate" title={contract.organo_contratacion}>
-                              {contract.organo_contratacion}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium" title={row.label}>
+                              {row.label}
                             </p>
-                          )}
-                        </Link>
+                            <p className="text-xs text-muted-foreground">
+                              {formatNumber(row.contratos)} adjudicaciones
+                            </p>
+                          </div>
+                          <p className="shrink-0 font-medium tabular-nums">
+                            {formatCurrency(row.importe)}
+                          </p>
+                        </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Sin contratos disponibles para esta empresa.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Sin clientes identificados para esta empresa.
+                    </p>
                   )}
                 </div>
               </>
 
-              <Separator />
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-muted-foreground">N. Organos</p>
-                  <p className="font-medium">{formatNumber(drillDownCompany.n_organos ?? 0)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">% Top Organo</p>
-                  <p className="font-medium">{formatPercent(drillDownCompany.pct_top_organo ?? 0)}</p>
-                </div>
-              </div>
+              {drillDownCompany.empresa_id != null ? (
+                <Link
+                  href={`/competidores/empresa/${drillDownCompany.empresa_id}`}
+                  className={buttonVariants({ className: "min-h-10 w-full" })}
+                >
+                  Abrir dossier completo
+                </Link>
+              ) : null}
             </div>
           )}
         </SheetContent>

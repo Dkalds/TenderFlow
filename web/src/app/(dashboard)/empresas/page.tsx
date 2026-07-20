@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { KpiCard } from "@/components/charts/kpi-card";
+import { CompanyYearTrend } from "@/components/competitors/company-year-trend";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,12 +28,9 @@ import {
   Eye,
   EyeOff,
   Handshake,
-  Minus,
   Percent,
   Search,
   ShieldQuestion,
-  TrendingDown,
-  TrendingUp,
   X,
 } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -362,7 +360,7 @@ function EmpresaPerfil({ empresaId }: { empresaId: number }) {
         {/* Trayectoria temporal: ¿crece o decae? (señal competitiva) */}
         {(perfil?.por_anio?.length ?? 0) > 0 && (
           <>
-            <YearTrend rows={perfil!.por_anio!} />
+            <CompanyYearTrend rows={perfil!.por_anio!} />
             <Separator />
           </>
         )}
@@ -481,55 +479,6 @@ function MiniRanking({
           ))}
         </ul>
       )}
-    </div>
-  );
-}
-
-/* Trayectoria temporal de la empresa: barras por año (orden cronológico) y un
-   indicador de tendencia comparando el último año con el anterior. */
-function YearTrend({ rows }: { rows: { anio: number; contratos: number; importe: number }[] }) {
-  const maxC = Math.max(...rows.map((r) => r.contratos), 1);
-  const last = rows[rows.length - 1];
-  const prev = rows.length > 1 ? rows[rows.length - 2] : null;
-  const delta = prev ? last.contratos - prev.contratos : 0;
-
-  return (
-    <div>
-      <div className="mb-2 flex items-center gap-2">
-        <h3 className="text-sm font-semibold">Trayectoria por año</h3>
-        {prev && (
-          <Badge
-            variant={delta > 0 ? "default" : delta < 0 ? "destructive" : "secondary"}
-            className="gap-1"
-          >
-            {delta > 0 ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : delta < 0 ? (
-              <TrendingDown className="h-3 w-3" />
-            ) : (
-              <Minus className="h-3 w-3" />
-            )}
-            {delta > 0 ? `+${delta}` : delta} vs {prev.anio}
-          </Badge>
-        )}
-      </div>
-      <div className="space-y-1">
-        {rows.map((r) => (
-          <div key={r.anio} className="flex items-center gap-2 text-sm">
-            <span className="w-12 shrink-0 tabular-nums text-muted-foreground">{r.anio}</span>
-            <div className="h-4 flex-1 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${(r.contratos / maxC) * 100}%` }}
-              />
-            </div>
-            <span className="w-8 shrink-0 text-right tabular-nums text-xs">{r.contratos}</span>
-            <span className="w-24 shrink-0 text-right font-mono text-xs text-muted-foreground">
-              {formatCurrency(r.importe)}
-            </span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

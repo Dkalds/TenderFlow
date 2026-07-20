@@ -192,3 +192,15 @@ def test_empty_rows():
     assert res.competitors == []
     assert res.total_empresas == 0
     assert res.total_adjudicaciones == 0
+
+
+def test_contratos_por_anio_usa_los_anios_activos_de_cada_empresa():
+    rows = _rows()
+    rows[-1] = {**rows[-1], "fecha_adjudicacion": "2024-04-01"}
+
+    with patch(_PATCH_TARGET, return_value=rows):
+        result = get_competitors(CompetitorFilters())
+
+    accenture = next(item for item in result.competitors if item.nombre == "Accenture")
+    assert accenture.count == 2
+    assert accenture.contratos_por_anio == 2

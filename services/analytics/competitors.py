@@ -191,10 +191,15 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     g["cuota"] = g["importe"] / total_importe * 100
 
     # Compute extra fields
-    n_years = 1
+    active_years_by_empresa: dict[str, int] = {}
     if "fecha_adjudicacion" in df.columns:
-        years = df["fecha_adjudicacion"].dropna().dt.year.nunique()
-        n_years = max(years, 1)
+        dated = df.dropna(subset=["fecha_adjudicacion"]).copy()
+        if not dated.empty:
+            dated["_activity_year"] = dated["fecha_adjudicacion"].dt.year
+            active_years_by_empresa = {
+                str(key): max(int(value), 1)
+                for key, value in dated.groupby("empresa")["_activity_year"].nunique().items()
+            }
 
     # baja_media per empresa
     baja_by_empresa: dict[str, float] = {}
@@ -293,7 +298,8 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             cuota=float(row["cuota"]),
             empresa_id=empresa_id_map.get(row["empresa"]),
             nif=nif_by_empresa.get(row["empresa"]),
-            contratos_por_anio=float(row["count"]) / n_years,
+            contratos_por_anio=float(row["count"])
+            / active_years_by_empresa.get(str(row["empresa"]), 1),
             importe_medio=float(row["importe"] or 0) / max(int(row["count"]), 1),
             baja_media=baja_by_empresa.get(row["empresa"]),
             n_organos=int(n_organos_map.get(row["empresa"], 0)),

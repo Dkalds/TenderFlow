@@ -104,11 +104,11 @@ arreglando primero las dos incoherencias.
 
 ## Acceptance criteria
 
-- [ ] El ranking de bajas respeta los filtros globales, o lo declara explícitamente en UI.
-- [ ] El drill-down muestra desglose CCAA para cualquier empresa (no solo top-10).
-- [ ] El Sheet muestra trayectoria temporal (↑/↓) del competidor.
+- [x] El ranking de bajas respeta los filtros globales, o lo declara explícitamente en UI.
+- [x] El drill-down muestra desglose CCAA para cualquier empresa (no solo top-10).
+- [x] El Sheet muestra trayectoria temporal (↑/↓) del competidor.
 - [ ] Existe un bloque de señales/movimientos sobre empresas/CCAA vigiladas.
-- [ ] Fechas con `formatDate`.
+- [x] Fechas con `formatDate`.
 - [ ] `npm run typecheck && npm run lint && npm test` (web) y `make ...` (backend) en verde.
 - [ ] diff-cover ≥ 80% en líneas nuevas.
 
@@ -143,3 +143,20 @@ añade hallazgos.
 **Diferido:** trayectoria temporal por competidor en el Sheet (#3), señales
 proactivas/"Movimientos" sobre watchlist (#4), y fechas crudas → `formatDate`
 (#5). También honrar de verdad los filtros completos en `/competitive/bajas`.
+
+2026-07-20 — **Rework del perfil competitivo implementado.**
+
+- El Sheet pasa a ser un resumen ejecutivo con cuatro KPIs comparables, posición
+  en el segmento, concentración de clientes y acceso a un dossier profundo.
+- El dossier dedicado incorpora alcance temporal explícito, comparación con el
+  periodo anterior, trayectoria anual, especialización CPV, huella territorial,
+  organismos compradores y señales explicables derivadas de adjudicaciones.
+- El historial de licitaciones deja de estar limitado a una muestra: dispone de
+  endpoint paginado con búsqueda, filtros, ordenación y exportación CSV.
+- El perfil y el historial comparten los filtros activos y contratos Pydantic v2;
+  se regeneró el contrato OpenAPI tipado del frontend.
+- Se corrigió el KPI `contratos_por_anio`: cada empresa se divide por sus propios
+  años activos y no por la antigüedad global del dataset.
+- #2, #3 y #5 quedan completos. #4 avanza con un bloque de movimientos calculado
+  bajo demanda para la empresa, pero sigue pendiente su activación proactiva desde
+  watchlist/notificaciones. El alcance declarado de `/competitive/bajas` no cambia.
