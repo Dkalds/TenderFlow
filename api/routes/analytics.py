@@ -326,10 +326,27 @@ def clusters(
 def pipeline(
     dias: int = Query(default=30, ge=1, le=365, description="Deadline window in days"),
     limit: int = Query(default=50, ge=1, le=500, description="Max entries to return"),
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> PipelineResult:
     """Upcoming deadlines and urgency alerts."""
-    filters = PipelineFilters(dias=dias, limit=limit)
+    filters = PipelineFilters(
+        dias=dias,
+        limit=limit,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        estado=estado,
+        q=q,
+        importe_min=importe_min,
+    )
     return get_pipeline(filters)
 
 

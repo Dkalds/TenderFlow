@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 
 import services.analytics.scoring as sc_mod
-from services.analytics.scoring import _effective_weights
+from services.analytics.scoring import _effective_weights, score_dataframe
 from services.analytics.scoring_signals import CompetenciaStats, MargenStats
 
 # ---------------------------------------------------------------------------
@@ -407,6 +407,79 @@ def test_riesgo_max_tres_flags():
     assert "sin_importe" in opp.risk_flags
     assert "sin_titulo" in opp.risk_flags
     assert "sin_plazo" in opp.risk_flags
+
+
+# ---------------------------------------------------------------------------
+# score_dataframe — helper público sin perfil de usuario (usado por
+# services/analytics/pipeline.py para poblar score/band en /analytics/pipeline)
+# ---------------------------------------------------------------------------
+
+
+def test_score_dataframe_target_vacio_devuelve_columnas_vacias():
+    comp, marg = _patch_signals()
+    with comp, marg:
+        out = score_dataframe(pd.DataFrame(_rows(5)), pd.DataFrame([]))
+    assert list(out.columns) == ["id_externo", "score", "band"]
+    assert out.empty
+
+
+def test_score_dataframe_devuelve_id_score_band_por_fila():
+    comp, marg = _patch_signals()
+    rows = _rows(5)
+    with comp, marg:
+        out = score_dataframe(pd.DataFrame(rows), pd.DataFrame(rows))
+    assert set(out.columns) >= {"id_externo", "score", "band"}
+    assert len(out) == 5
+    assert set(out["id_externo"]) == {r["id_externo"] for r in rows}
+    assert out["band"].isin(["Caliente", "Atractiva", "Tibia", "Descarte"]).all()
+
+
+def test_score_dataframe_coincide_con_get_scoring_para_la_misma_fila():
+    """score_dataframe (sin perfil) debe dar el mismo score que get_scoring top-N
+    para la misma fila y el mismo dataset base — ambos usan _build_context/_score_row
+    sin perfil de usuario.
+
+    Sin "fecha_limite" en las filas: get_scoring solo parsea fecha_limite_dt si
+    la columna existe, y score_dataframe (a diferencia de get_scoring) no hace
+    ningún parseo de fechas por su cuenta — lo evitamos aquí para comparar
+    manzanas con manzanas (ver test_pipeline_score_y_band_poblados_en_upcoming
+    en test_analytics_pipeline_svc.py para la integración real con fechas).
+    """
+    comp, marg = _patch_signals()
+    rows = [{k: v for k, v in r.items() if k != "fecha_limite"} for r in _rows(10)]
+    with (
+        patch.object(sc_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)),
+        comp,
+        marg,
+    ):
+        scoring_result = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=500))
+    scoring_scores = {o.id_externo: o.score for o in scoring_result.opportunities}
+
+    comp2, marg2 = _patch_signals()
+    with comp2, marg2:
+        out = score_dataframe(pd.DataFrame(rows), pd.DataFrame(rows))
+    df_scores = dict(zip(out["id_externo"], out["score"], strict=True))
+
+    assert df_scores == scoring_scores
+
+
+def test_score_dataframe_usa_contexto_del_base_df_no_del_target():
+    """Los percentiles P10/P90 de importe se calculan sobre base_df completo,
+    no sobre el target_df (que puede ser un subconjunto ya filtrado)."""
+    comp, marg = _patch_signals()
+    base_rows = _rows(30)  # importes 10_000..300_000 -> P10/P90 amplios
+    target = [base_rows[0]]  # una sola fila, importe bajo dentro del rango base
+
+    with comp, marg:
+        out_wide_ctx = score_dataframe(pd.DataFrame(base_rows), pd.DataFrame(target))
+
+    # Si el contexto se calculara sobre target_df (1 fila), P10==P90 y el caso
+    # "sin rango" daría un score distinto (dimensión importe → 50% neutral).
+    narrow_comp, narrow_marg = _patch_signals()
+    with narrow_comp, narrow_marg:
+        out_narrow_ctx = score_dataframe(pd.DataFrame(target), pd.DataFrame(target))
+
+    assert out_wide_ctx["score"].iloc[0] != out_narrow_ctx["score"].iloc[0]
 
 
 # ---------------------------------------------------------------------------

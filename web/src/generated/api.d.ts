@@ -2664,6 +2664,44 @@ export interface components {
             n: number;
         };
         /**
+         * EventoFeedItem
+         * @description Un evento del feed reciente de movimientos de contrato.
+         */
+        EventoFeedItem: {
+            /** Detalle */
+            detalle?: string | null;
+            /** Fecha */
+            fecha?: string | null;
+            /** Fuente */
+            fuente?: string | null;
+            /** Importe Delta */
+            importe_delta?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Tipo */
+            tipo: string;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * EventosFeedResult
+         * @description Respuesta de ``GET /eventos``.
+         */
+        EventosFeedResult: {
+            /**
+             * Dias
+             * @default 30
+             */
+            dias: number;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["EventoFeedItem"][];
+        };
+        /**
          * EvolucionEntry
          * @description Monthly point for a technology.
          */
@@ -3475,6 +3513,8 @@ export interface components {
          * @description Single pipeline entry with deadline info.
          */
         PipelineEntry: {
+            /** Band */
+            band?: string | null;
             /** Dias Restantes */
             dias_restantes: number;
             /** Estado */
@@ -3497,6 +3537,11 @@ export interface components {
          * @description Combined pipeline response.
          */
         PipelineResult: {
+            /**
+             * Calientes
+             * @default 0
+             */
+            calientes: number;
             /** Por Horizonte */
             por_horizonte?: components["schemas"]["HorizonteCount"][];
             /** Por Trimestre */
@@ -3520,6 +3565,11 @@ export interface components {
              * @default 0
              */
             valor_7d: number;
+            /**
+             * Valor Calientes
+             * @default 0
+             */
+            valor_calientes: number;
             /**
              * Valor Total
              * @default 0
@@ -5287,6 +5337,20 @@ export interface operations {
                 dias?: number;
                 /** @description Max entries to return */
                 limit?: number;
+                /** @description Start date (YYYY-MM-DD) */
+                fecha_desde?: string | null;
+                /** @description End date (YYYY-MM-DD) */
+                fecha_hasta?: string | null;
+                /** @description Filter by CCAA */
+                ccaa?: string | null;
+                /** @description Filter by tecnologia */
+                tecnologia?: string | null;
+                /** @description Filter by estado */
+                estado?: string | null;
+                /** @description Free-text search (titulo, organo, id) */
+                q?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
             };
             header?: never;
             path?: never;
@@ -6719,9 +6783,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EventosFeedResult"];
                 };
             };
             /** @description Validation Error */

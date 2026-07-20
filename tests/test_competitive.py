@@ -261,6 +261,46 @@ def test_resumen_renovaciones_agrega_por_empresa(db):
     assert items[0]["importe_en_juego"] == 120000
 
 
+def test_totales_renovaciones_suma_sobre_todas_las_empresas(db):
+    """totales_renovaciones — mismos filtros que resumen_renovaciones pero sin
+    GROUP BY: usado por el banner de Pipeline & Alertas (server-side, ADR-014)."""
+    from services.competitive.renovaciones import totales_renovaciones
+
+    insert_contract(
+        db, "R-T10", "Acme S.L.", nif="B44444444", fecha_fin=_date(30), adjudicado=50000
+    )
+    insert_contract(
+        db, "R-T11", "Beta S.L.", nif="B55555555", fecha_fin=_date(60), adjudicado=70000
+    )
+    resolve(db)
+
+    totales = totales_renovaciones(months_ahead=6)
+    assert totales["contratos_venciendo"] == 2
+    assert totales["importe_en_juego"] == 120000
+
+
+def test_totales_renovaciones_filtro_por_tecnologia(db):
+    from services.competitive.renovaciones import totales_renovaciones
+
+    insert_contract(db, "R-T12", "Sap Partner SL", fecha_fin=_date(30), tecnologia="SAP")
+    insert_contract(db, "R-T13", "Sf Partner SL", fecha_fin=_date(30), tecnologia="SALESFORCE")
+    resolve(db)
+
+    todos = totales_renovaciones(months_ahead=3)
+    assert todos["contratos_venciendo"] == 2
+
+    solo_sap = totales_renovaciones(months_ahead=3, tecnologias=["SAP"])
+    assert solo_sap["contratos_venciendo"] == 1
+
+
+def test_totales_renovaciones_dataset_vacio(db):
+    from services.competitive.renovaciones import totales_renovaciones
+
+    totales = totales_renovaciones(months_ahead=6)
+    assert totales["contratos_venciendo"] == 0
+    assert totales["importe_en_juego"] == 0
+
+
 # ---------------------------------------------------------------------------
 # Bajas
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ const PAGES: Record<PipelinePageKey, PageMeta> = {
   "pipeline-alertas": {
     href: "/pipeline-alertas",
     label: "Pipeline & Alertas",
-    role: "Oportunidades activas que están cerrando + forecast de re-licitación",
+    role: "Oportunidades activas que están cerrando + alertas suscribibles",
     icon: Bell,
   },
   renovaciones: {

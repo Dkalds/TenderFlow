@@ -23,7 +23,11 @@ from db.watchlist_empresas import (
 from observability.logging import get_logger
 from services.competitive.bajas import baja_de_referencia, bajas_agregadas
 from services.competitive.mercado import concentracion_hhi, cuota_mercado, perfil_empresa
-from services.competitive.renovaciones import proximas_renovaciones, resumen_renovaciones
+from services.competitive.renovaciones import (
+    proximas_renovaciones,
+    resumen_renovaciones,
+    totales_renovaciones,
+)
 
 log = get_logger(__name__)
 
@@ -86,7 +90,12 @@ async def get_renovaciones_resumen(
         months_ahead=months,
         tecnologias=tecnologias or None,
     )
-    return {"items": items, "months_ahead": months}
+    totales = await run_db(
+        totales_renovaciones,
+        months_ahead=months,
+        tecnologias=tecnologias or None,
+    )
+    return {"items": items, "months_ahead": months, "totales": totales}
 
 
 # ── Bajas ─────────────────────────────────────────────────────────────────

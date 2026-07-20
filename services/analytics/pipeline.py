@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
+from services.analytics.scoring import score_dataframe
 from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
@@ -21,6 +24,13 @@ class PipelineFilters(BaseModel):
 
     dias: int = 30
     limit: int = 50
+    fecha_desde: date | None = None
+    fecha_hasta: date | None = None
+    ccaa: str | None = None
+    tecnologia: str | None = None
+    estado: str | None = None
+    q: str | None = None
+    importe_min: float | None = None
 
 
 class PipelineEntry(BaseModel):
@@ -34,6 +44,7 @@ class PipelineEntry(BaseModel):
     dias_restantes: int
     estado: str | None = None
     score: int | None = None
+    band: str | None = None
 
 
 class HorizonteCount(BaseModel):
@@ -75,6 +86,10 @@ class PipelineResult(BaseModel):
     valor_total: float = 0.0
     valor_7d: float = 0.0
     valor_30d: float = 0.0
+    # Oportunidades con score de banda "Caliente" (≥75) dentro de la ventana
+    # completa, no solo los `limit` items devueltos.
+    calientes: int = 0
+    valor_calientes: float = 0.0
     por_horizonte: list[HorizonteCount] = Field(default_factory=list)
     por_trimestre: list[TrimestreCount] = Field(default_factory=list)
     urgencia_valor: list[UrgenciaValorPoint] = Field(default_factory=list)
@@ -89,6 +104,10 @@ def _load_df() -> pd.DataFrame:
     df = load_stats_base_df()
     if not df.empty:
         df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+        if "fecha_publicacion" in df.columns:
+            df["fecha_publicacion"] = pd.to_datetime(
+                df["fecha_publicacion"], errors="coerce", utc=True
+            )
         # Parse fecha_limite if present
         if "fecha_limite" in df.columns:
             df["fecha_limite_dt"] = pd.to_datetime(
@@ -96,6 +115,36 @@ def _load_df() -> pd.DataFrame:
                 errors="coerce",
                 utc=True,
             )
+    return df
+
+
+def _apply_filters(df: pd.DataFrame, filters: PipelineFilters) -> pd.DataFrame:
+    """Aplica los filtros globales (misma semántica que overview._apply_filters)."""
+    if df.empty:
+        return df
+    if filters.fecha_desde is not None:
+        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
+        df = df[df["fecha_publicacion"] >= ts]
+    if filters.fecha_hasta is not None:
+        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
+        df = df[df["fecha_publicacion"] <= ts]
+    if filters.ccaa:
+        df = df[df["ccaa"] == filters.ccaa]
+    if filters.tecnologia:
+        df = df[df["tecnologia"] == filters.tecnologia]
+    if filters.estado:
+        df = df[df["estado"] == filters.estado]
+    if filters.q:
+        needle = filters.q.strip().lower()
+        if needle:
+            mask = (
+                df["titulo"].fillna("").str.lower().str.contains(needle, regex=False)
+                | df["organo_contratacion"].fillna("").str.lower().str.contains(needle, regex=False)
+                | df["id_externo"].fillna("").str.lower().str.contains(needle, regex=False)
+            )
+            df = df[mask]
+    if filters.importe_min is not None:
+        df = df[df["importe"] >= filters.importe_min]
     return df
 
 
@@ -112,6 +161,12 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
     if df.empty or "fecha_limite_dt" not in df.columns:
         log.info("analytics_pipeline_done", total=0)
         return PipelineResult()
+
+    # Dataset completo (pre-filtros de usuario) — contexto de percentiles/señales
+    # para el scoring, igual que get_scoring: no se sesga por el subconjunto filtrado.
+    base_df = df
+
+    df = _apply_filters(df, filters)
 
     # Filter to future deadlines
     hoy = pd.Timestamp.now("UTC")
@@ -142,7 +197,24 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
 
     # Sort by urgency and limit
     all_df = df.copy()  # keep full for extra computations
-    df = df.sort_values("dias_restantes").head(filters.limit)
+
+    # Score toda la ventana (no solo los `limit` items devueltos) para que el
+    # conteo de "calientes" sea real sobre el dataset completo de la ventana.
+    score_df = score_dataframe(base_df, all_df)
+    if not score_df.empty:
+        all_df["id_externo"] = all_df["id_externo"].astype(str)
+        all_df = all_df.merge(score_df, on="id_externo", how="left")
+    else:
+        all_df["score"] = None
+        all_df["band"] = None
+
+    calientes_mask = all_df["band"] == "Caliente"
+    calientes = int(calientes_mask.sum())
+    valor_calientes = float(
+        pd.to_numeric(all_df.loc[calientes_mask, "importe"], errors="coerce").sum(skipna=True)
+    )
+
+    df = all_df.sort_values("dias_restantes").head(filters.limit)
 
     upcoming = []
     for _, row in df.iterrows():
@@ -160,6 +232,7 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
                 dias_restantes=int(row["dias_restantes"]),
                 estado=row.get("estado") if pd.notna(row.get("estado")) else None,
                 score=int(row["score"]) if pd.notna(row.get("score")) else None,
+                band=row.get("band") if pd.notna(row.get("band")) else None,
             )
         )
 
@@ -223,9 +296,16 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
         valor_total=valor_total,
         valor_7d=valor_7d,
         valor_30d=valor_30d,
+        calientes=calientes,
+        valor_calientes=valor_calientes,
         por_horizonte=por_horizonte,
         por_trimestre=por_trimestre,
         urgencia_valor=urgencia_valor,
     )
-    log.info("analytics_pipeline_done", total=total_en_plazo, vencen_7d=vencen_7d)
+    log.info(
+        "analytics_pipeline_done",
+        total=total_en_plazo,
+        vencen_7d=vencen_7d,
+        calientes=calientes,
+    )
     return result

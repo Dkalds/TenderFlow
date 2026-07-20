@@ -107,3 +107,57 @@ crea una regla de watchlist con el umbral de importe actual (frecuencia diaria) 
 `POST /api/v1/watchlist/rules`, reutilizando el motor de alertas server-side construido
 para `ux-mi-watchlist` (tabla `watchlist_rules` v43 + job del scheduler que entrega las
 notificaciones reales). Con esto los 3 criterios quedan cubiertos → status `implemented`.
+
+**2026-07-20 — Rework de altitud (cierra el "pendiente de decisión" del RFC de
+Resumen sobre reubicación de charts).** El set de charts nunca fue objeto de una
+decisión explícita; el rework aplica el mismo criterio que el Resumen (quitar lo
+que duplica página dedicada, KPIs accionables/clicables) más 3 fixes de datos
+descubiertos en el camino:
+
+- **Fix de datos:** `PipelineEntry.score` era siempre `null` (no existía columna
+  `score` en `load_stats_base_df()`) — el badge de Score de la Cola de cierre nunca
+  se veía. Nuevo helper público `score_dataframe()` en `services/analytics/scoring.py`
+  (reusa `_build_context`/`_score_row`, sin perfil de usuario) puebla `score`/`band`
+  de verdad, mergeado sobre la ventana completa del pipeline.
+- **Fix de datos:** la página no pasaba `dias`, así que corría con el default de
+  30d del endpoint — "En plazo" ≡ "Vencen ≤30 días" (mismo número) y los buckets
+  30-90d/90+d del chart de horizonte estaban siempre vacíos. La página ahora pide
+  `dias=365`.
+- **Fix de datos:** `/analytics/pipeline` no aceptaba los filtros globales que
+  `useFilteredQuery` ya enviaba (`ccaa`/`tecnologia`/`estado`/`q`/`importe_min`/
+  `fecha_desde`/`fecha_hasta`) — FastAPI los descartaba en silencio. Añadidos al
+  `PipelineFilters`/route, con el mismo `_apply_filters` que `overview.py`.
+
+**Quitado** (duplicaba página dedicada): "Distribución por horizonte" y "Volumen
+trimestral" (redundantes con los KPIs/tendencias de mercado); "Forecast de volumen
+(6 meses)" (duplicado exacto del que ya tiene `/tendencias`); el bloque completo
+"Forecast re-licitación" (filtros + 5 cards + Gantt + tabla), que solapaba con
+`/renovaciones` (mismo ángulo — contratos que vencen — con un modelo más rico:
+`riesgo_cambio` + opportunity score). Sustituido por `RenovacionesBanner`, un CTA
+compacto con totales server-side nuevos (`totales_renovaciones()` en
+`services/competitive/renovaciones.py`, expuesto en
+`GET /competitive/renovaciones/resumen`).
+
+**Añadido:** KPI "Calientes" (licitaciones en plazo con banda de scoring ≥75,
+agregado nuevo `PipelineResult.calientes`/`valor_calientes`); los 4 KPIs ahora son
+clicables (`href` a `#cola-cierre`/`#ultimas-alertas`, patrón ya usado en Resumen/
+Renovaciones); feed "Últimas alertas" (`AlertsFeed`, vía `GET /notifications` —
+la página se llamaba "Alertas" pero no mostraba ninguna); feed "Movimientos del
+pipeline" (`EventosFeed`, vía `GET /eventos`/`contrato_eventos`, endpoint existente
+sin explotar); banda de score (Caliente/Atractiva/Tibia/Descarte) visible en la
+Cola de cierre.
+
+**Mantenido:** fila KPI (reformada), Alertas suscribibles, scatter Urgencia vs
+valor, Cola de cierre, `PipelineRoleNav`, `ExportPopover`, filtros globales.
+`GanttChart` (sin otro consumidor) y los charts `PipelineHorizonChart`/
+`PipelineQuarterlyChart`/`PipelineForecastChart` se eliminaron de
+`pipeline-charts.tsx`; los endpoints `forecast/volume` y `forecast/retendering`
+quedan intactos en el backend (sin consumidor en esta página) — ver
+`docs/IMPROVEMENT_BACKLOG.md` para la decisión pendiente sobre su futuro.
+
+Verde: backend (`ruff`/`mypy`/`pytest` — 2499 tests) y frontend (`tsc`/`eslint`/
+`vitest` — 89 files, 789 tests, `next build`); `check_frontend_invariants.py` sin
+hallazgos nuevos. Verificación manual end-to-end (servicio real contra SQLite
+sembrada): score/band poblados, `calientes` cuenta banda Caliente sobre la ventana
+completa, filtro `ccaa` filtra de verdad, `totales_renovaciones`/`eventos_recientes`
+devuelven los datos esperados.
