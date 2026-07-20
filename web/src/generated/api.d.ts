@@ -2801,6 +2801,13 @@ export interface components {
             cuota: number;
             /** Empresa Id */
             empresa_id?: number | null;
+            /** Empresa Ids */
+            empresa_ids?: number[];
+            /**
+             * Es Agrupacion
+             * @default false
+             */
+            es_agrupacion: boolean;
             /** Importe */
             importe: number;
             /**
@@ -2815,8 +2822,12 @@ export interface components {
             n_organos: number;
             /** Nif */
             nif?: string | null;
+            /** Nifs */
+            nifs?: string[];
             /** Nombre */
             nombre: string;
+            /** Nombres Variantes */
+            nombres_variantes?: string[];
             /** Ofertas Medias */
             ofertas_medias?: number | null;
             /** Pct Monopolio */

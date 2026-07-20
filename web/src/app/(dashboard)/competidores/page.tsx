@@ -38,6 +38,7 @@ const CompetitorsEstacionalidadChart = dynamic(
 );
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
@@ -68,8 +69,12 @@ import {
 
 interface Competitor {
   nombre: string;
-  empresa_id?: number;
-  nif?: string;
+  empresa_id?: number | null;
+  nif?: string | null;
+  empresa_ids?: number[];
+  nifs?: string[];
+  nombres_variantes?: string[];
+  es_agrupacion?: boolean;
   count: number;
   importe: number;
   cuota: number;
@@ -205,10 +210,16 @@ export default function CompetidoresPage() {
 
   // Apply search filter to all data
   const searchFilter = useCallback(
-    (items: { nombre: string }[]) => {
+    (items: { nombre: string; nif?: string | null; nifs?: string[]; nombres_variantes?: string[] }[]) => {
       if (!search) return items;
       const q = search.toLowerCase();
-      return items.filter((c) => c.nombre.toLowerCase().includes(q));
+      return items.filter((c) =>
+        [c.nombre, c.nif, ...(c.nifs ?? []), ...(c.nombres_variantes ?? [])]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+      );
     },
     [search],
   );
@@ -414,7 +425,9 @@ export default function CompetidoresPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Competidores</h1>
-          <p className="text-muted-foreground">Cuota de mercado de empresas competidoras.</p>
+          <p className="text-muted-foreground">
+            Cuota de mercado agrupada por empresa maestra, CIF o nombre normalizado.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <SearchAutocomplete
@@ -766,46 +779,93 @@ export default function CompetidoresPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSorted.map((c, idx) => (
-                    <TableRow key={c.nif ?? c.nombre ?? idx} className="hover:bg-muted/50 border-b last:border-0">
-                      <TableCell className="px-2 py-2">
-                        <Checkbox
-                          className="h-5 w-5"
-                          checked={selectedCompanies.includes(c.nombre)}
-                          onCheckedChange={() => toggleCompareSelection(c.nombre)}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className="text-primary cursor-pointer px-3 py-2 font-medium hover:underline"
-                        onClick={() => setDrillDownCompany(c)}
-                      >
-                        {c.nombre}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">{c.nif ?? "-"}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{formatNumber(c.count)}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{formatCurrency(c.importe)}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{formatPercent(c.cuota)}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">
-                        {c.contratos_por_anio != null ? formatNumber(c.contratos_por_anio) : "-"}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">
-                        {c.importe_medio != null ? formatCurrency(c.importe_medio) : "-"}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">
-                        {c.baja_media != null ? formatPercent(c.baja_media) : "-"}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">
-                        {c.ofertas_medias != null ? c.ofertas_medias.toFixed(1) : "-"}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">
-                        {c.pct_monopolio != null ? formatPercent(c.pct_monopolio) : "-"}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">
-                        {c.pct_top_organo != null ? formatPercent(c.pct_top_organo) : "-"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">{c.ultima ?? "-"}</TableCell>
-                    </TableRow>
-                  ))}
+                  {filteredSorted.map((c, idx) => {
+                    const cifs = (c.nifs?.length ?? 0) > 1 ? c.nifs! : c.nif ? [c.nif] : (c.nifs ?? []);
+                    const variantCount = c.nombres_variantes?.length ?? 0;
+                    const identityCount = c.empresa_ids?.length ?? 0;
+                    const groupingLabel =
+                      cifs.length > 1
+                        ? `${cifs.length} CIF`
+                        : variantCount > 1
+                          ? `${variantCount} nombres`
+                          : identityCount > 1
+                            ? `${identityCount} identidades`
+                            : "Agrupada";
+                    const groupingDetails = [
+                      variantCount > 0 ? `${variantCount} variantes de nombre` : null,
+                      cifs.length > 0 ? `${cifs.length} CIF` : null,
+                      identityCount > 0 ? `${identityCount} identidades del maestro` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    const rowKey =
+                      identityCount > 0
+                        ? `ids:${c.empresa_ids!.join("-")}`
+                        : c.nifs?.length
+                          ? `nifs:${c.nifs.join("-")}`
+                          : `nombre:${c.nombre}:${idx}`;
+
+                    return (
+                      <TableRow key={rowKey} className="hover:bg-muted/50 border-b last:border-0">
+                        <TableCell className="px-2 py-2">
+                          <Checkbox
+                            className="h-5 w-5"
+                            checked={selectedCompanies.includes(c.nombre)}
+                            onCheckedChange={() => toggleCompareSelection(c.nombre)}
+                          />
+                        </TableCell>
+                        <TableCell className="px-3 py-2 font-medium">
+                          <div className="flex min-w-52 items-center gap-2">
+                            {c.empresa_id != null ? (
+                              <button
+                                type="button"
+                                className="text-primary cursor-pointer text-left hover:underline"
+                                onClick={() => setDrillDownCompany(c)}
+                              >
+                                {c.nombre}
+                              </button>
+                            ) : (
+                              <span title="Grupo con varias identidades legales; el dossier individual no está disponible.">
+                                {c.nombre}
+                              </span>
+                            )}
+                            {c.es_agrupacion ? (
+                              <Badge variant="secondary" className="shrink-0 font-normal" title={groupingDetails}>
+                                {groupingLabel}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground px-3 py-2 tabular-nums" title={cifs.join(", ")}>
+                          {cifs.length > 1 ? `${cifs[0]} +${cifs.length - 1}` : (cifs[0] ?? "-")}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">{formatNumber(c.count)}</TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">{formatCurrency(c.importe)}</TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">{formatPercent(c.cuota)}</TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">
+                          {c.contratos_por_anio != null ? formatNumber(c.contratos_por_anio) : "-"}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">
+                          {c.importe_medio != null ? formatCurrency(c.importe_medio) : "-"}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">
+                          {c.baja_media != null ? formatPercent(c.baja_media) : "-"}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">
+                          {c.ofertas_medias != null ? c.ofertas_medias.toFixed(1) : "-"}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">
+                          {c.pct_monopolio != null ? formatPercent(c.pct_monopolio) : "-"}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 tabular-nums">
+                          {c.pct_top_organo != null ? formatPercent(c.pct_top_organo) : "-"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">
+                          {c.ultima ?? "-"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -832,7 +892,7 @@ export default function CompetidoresPage() {
           {drillDownCompany && drillDownCompanyId != null ? (
             <CompanyQuickView
               empresaId={drillDownCompanyId}
-              company={drillDownCompany}
+              company={{ ...drillDownCompany, nif: drillDownCompany.nif ?? undefined }}
               profile={drillDownProfile}
               recentAwards={drillDownAwards}
               isLoadingProfile={isLoadingDrillDownProfile}

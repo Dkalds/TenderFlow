@@ -186,6 +186,109 @@ def test_grouping_without_master_falls_back_to_raw_name():
     assert res.competitors[0].empresa_id is None
 
 
+def test_grouping_without_master_joins_distinct_names_with_same_nif():
+    rows = [
+        {
+            "licitacion_id": "L-NIF-1",
+            "nombre": "INDRA SISTEMAS, S.A.",
+            "nif": "A-28599033",
+            "importe_adjudicado": 30000.0,
+            "importe_licitacion": 40000.0,
+            "fecha_adjudicacion": "2025-03-01",
+        },
+        {
+            "licitacion_id": "L-NIF-2",
+            "nombre": "MINSAIT BUSINESS CONSULTING, S.L.",
+            "nif": "A28599033",
+            "importe_adjudicado": 50000.0,
+            "importe_licitacion": 60000.0,
+            "fecha_adjudicacion": "2025-04-01",
+        },
+    ]
+
+    with patch(_PATCH_TARGET, return_value=rows):
+        result = get_competitors(CompetitorFilters())
+
+    assert result.total_empresas == 1
+    competitor = result.competitors[0]
+    assert competitor.count == 2
+    assert competitor.importe == 80000.0
+    assert competitor.nif == "A28599033"
+    assert competitor.nifs == ["A28599033"]
+    assert competitor.empresa_ids == []
+    assert set(competitor.nombres_variantes) == {
+        "INDRA SISTEMAS, S.A.",
+        "MINSAIT BUSINESS CONSULTING, S.L.",
+    }
+    assert competitor.es_agrupacion is True
+
+
+def test_grouping_joins_same_normalized_name_with_distinct_nifs_safely():
+    rows = [
+        {
+            "licitacion_id": "L-NAME-1",
+            "nombre": "ACME, S.L.",
+            "nif": "B-11111111",
+            "empresa_id": 40,
+            "empresa_nombre_master": "Acme, S.L.",
+            "empresa_nif_master": "B11111111",
+            "importe_adjudicado": 20000.0,
+            "importe_licitacion": 25000.0,
+            "fecha_adjudicacion": "2025-03-01",
+        },
+        {
+            "licitacion_id": "L-NAME-2",
+            "nombre": "ACME SA",
+            "nif": "A-22222222",
+            "empresa_id": 41,
+            "empresa_nombre_master": "ACME SA",
+            "empresa_nif_master": "A22222222",
+            "importe_adjudicado": 30000.0,
+            "importe_licitacion": 40000.0,
+            "fecha_adjudicacion": "2025-04-01",
+        },
+    ]
+
+    with patch(_PATCH_TARGET, return_value=rows):
+        result = get_competitors(CompetitorFilters())
+
+    assert result.total_empresas == 1
+    competitor = result.competitors[0]
+    assert competitor.count == 2
+    assert competitor.empresa_id is None
+    assert competitor.empresa_ids == [40, 41]
+    assert competitor.nif is None
+    assert competitor.nifs == ["A22222222", "B11111111"]
+    assert competitor.es_agrupacion is True
+
+
+def test_grouping_does_not_join_distinct_names_through_placeholder_nif():
+    rows = [
+        {
+            "licitacion_id": "L-EMPTY-NIF-1",
+            "nombre": "Empresa Norte, S.L.",
+            "nif": "N/A",
+            "importe_adjudicado": 10000.0,
+        },
+        {
+            "licitacion_id": "L-EMPTY-NIF-2",
+            "nombre": "Empresa Sur, S.L.",
+            "nif": "N/A",
+            "importe_adjudicado": 20000.0,
+        },
+    ]
+
+    with patch(_PATCH_TARGET, return_value=rows):
+        result = get_competitors(CompetitorFilters())
+
+    assert result.total_empresas == 2
+    assert {competitor.nombre for competitor in result.competitors} == {
+        "Empresa Norte, S.L.",
+        "Empresa Sur, S.L.",
+    }
+    assert all(competitor.nifs == [] for competitor in result.competitors)
+
+
 def test_empty_rows():
     with patch(_PATCH_TARGET, return_value=[]):
         res = get_competitors(CompetitorFilters())

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
 from services.adjudicaciones import load_raw_adjudicaciones
+from services.normalization import normalize_company, normalize_nif
 
 log = get_logger(__name__)
 
@@ -39,6 +40,10 @@ class CompetitorEntry(BaseModel):
     cuota: float
     empresa_id: int | None = None
     nif: str | None = None
+    empresa_ids: list[int] = Field(default_factory=list)
+    nifs: list[str] = Field(default_factory=list)
+    nombres_variantes: list[str] = Field(default_factory=list)
+    es_agrupacion: bool = False
     contratos_por_anio: float = 0.0
     importe_medio: float = 0.0
     baja_media: float | None = None
@@ -93,6 +98,187 @@ class CompetitorResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+_GROUP_KEY = "_competitor_key"
+_INVALID_NIF_KEYS = frozenset(
+    {"N/A", "NA", "NULL", "NONE", "NOCONSTA", "SINCIF", "DESCONOCIDO", "000000000"}
+)
+
+
+def _clean_text(values: pd.Series) -> pd.Series:
+    """Return trimmed nullable strings, treating blanks as missing."""
+    cleaned = values.astype("string").str.strip()
+    return cleaned.mask(cleaned.eq(""))
+
+
+def _optional_text_column(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series(pd.NA, index=df.index, dtype="string")
+    return _clean_text(df[column])
+
+
+def _normalise_identity_text(values: pd.Series, *, nif: bool = False) -> pd.Series:
+    normalizer = normalize_nif if nif else normalize_company
+    normalised = values.map(
+        lambda value: normalizer(str(value)) if pd.notna(value) else None,
+    ).astype("string")
+    if nif:
+        normalised = normalised.mask(normalised.isin(_INVALID_NIF_KEYS))
+    return normalised
+
+
+def _connected_identity_keys(df: pd.DataFrame) -> list[str]:
+    """Build transitive identity groups from master id, NIF and normalised name.
+
+    A disjoint-set is intentional here: two rows may be connected by a NIF while
+    another alias connects them by name. Iterating the three compact identity
+    columns with ``itertuples`` avoids the much slower ``iterrows`` hot path.
+    """
+    parent: dict[str, str] = {}
+
+    def find(token: str) -> str:
+        parent.setdefault(token, token)
+        root = token
+        while parent[root] != root:
+            root = parent[root]
+        while parent[token] != token:
+            next_token = parent[token]
+            parent[token] = root
+            token = next_token
+        return root
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    primary_tokens: list[str] = []
+    identity_columns = df[["_empresa_id_key", "_nif_key", "_name_key"]]
+    for position, (empresa_id, nif_key, name_key) in enumerate(
+        identity_columns.itertuples(index=False, name=None)
+    ):
+        tokens: list[str] = []
+        if pd.notna(empresa_id):
+            tokens.append(f"empresa:{int(empresa_id)}")
+        if pd.notna(nif_key):
+            tokens.append(f"nif:{nif_key}")
+        if pd.notna(name_key):
+            tokens.append(f"nombre:{name_key}")
+        if not tokens:
+            tokens.append(f"fila:{position}")
+        primary = tokens[0]
+        find(primary)
+        for token in tokens[1:]:
+            union(primary, token)
+        primary_tokens.append(primary)
+
+    return [find(token) for token in primary_tokens]
+
+
+def _preferred_names(df: pd.DataFrame) -> dict[str, str]:
+    """Choose a stable display name, preferring master names over raw aliases."""
+    candidates = pd.concat(
+        [
+            df[[_GROUP_KEY, "_master_name"]]
+            .rename(columns={"_master_name": "candidate"})
+            .assign(priority=0),
+            df[[_GROUP_KEY, "_raw_name"]]
+            .rename(columns={"_raw_name": "candidate"})
+            .assign(priority=1),
+        ],
+        ignore_index=True,
+    ).dropna(subset=["candidate"])
+    if candidates.empty:
+        return {}
+    ranked = (
+        candidates.groupby([_GROUP_KEY, "priority", "candidate"], sort=False, observed=True)
+        .size()
+        .rename("frequency")
+        .reset_index()
+        .sort_values(
+            [_GROUP_KEY, "priority", "frequency", "candidate"],
+            ascending=[True, True, False, True],
+        )
+        .drop_duplicates(subset=[_GROUP_KEY])
+    )
+    return dict(ranked[[_GROUP_KEY, "candidate"]].itertuples(index=False, name=None))
+
+
+def _unique_strings(values: pd.Series) -> list[str]:
+    return sorted({str(value) for value in values.dropna() if str(value).strip()})
+
+
+def _unique_ints(values: pd.Series) -> list[int]:
+    return sorted({int(value) for value in values.dropna()})
+
+
+def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
+    """Attach one traceable competitor identity to every award row.
+
+    Matching signals are exact after normalisation: canonical ``empresa_id``,
+    NIF/CIF, or company name. This intentionally groups equal names with
+    different NIFs for market analysis, without mutating the conservative
+    company master or pretending that an ambiguous group has one profile id.
+    """
+    prepared = df.copy()
+    raw_column = "adjudicatario" if "adjudicatario" in prepared.columns else "nombre"
+    prepared["_raw_name"] = _optional_text_column(prepared, raw_column)
+    prepared["_master_name"] = _optional_text_column(prepared, "empresa_nombre_master")
+    effective_name = prepared["_master_name"].combine_first(prepared["_raw_name"])
+    prepared["_name_key"] = _normalise_identity_text(effective_name)
+
+    prepared["_raw_nif"] = _optional_text_column(prepared, "nif")
+    prepared["_master_nif"] = _optional_text_column(prepared, "empresa_nif_master")
+    effective_nif = prepared["_master_nif"].combine_first(prepared["_raw_nif"])
+    prepared["_nif_key"] = _normalise_identity_text(effective_nif, nif=True)
+
+    empresa_id_values = (
+        prepared["empresa_id"]
+        if "empresa_id" in prepared.columns
+        else pd.Series(pd.NA, index=prepared.index, dtype="Int64")
+    )
+    prepared["_empresa_id_key"] = pd.to_numeric(
+        empresa_id_values,
+        errors="coerce",
+    ).astype("Int64")
+    prepared[_GROUP_KEY] = pd.Categorical(_connected_identity_keys(prepared))
+
+    name_map = _preferred_names(prepared)
+    prepared["empresa"] = (
+        prepared[_GROUP_KEY]
+        .astype("string")
+        .map(name_map)
+        .fillna("Empresa sin identificar")
+    )
+    return prepared.drop(columns=["_master_name", "_raw_nif", "_name_key"])
+
+
+def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """Return traceability metadata once per analytical competitor group."""
+    summary = (
+        df.groupby(_GROUP_KEY, sort=False, observed=True)
+        .agg(
+            empresa_ids=("_empresa_id_key", _unique_ints),
+            nifs=("_nif_key", _unique_strings),
+            nombres_variantes=("_raw_name", _unique_strings),
+            master_nifs=("_master_nif", _unique_strings),
+        )
+        .reset_index()
+    )
+    summary["empresa_id"] = summary["empresa_ids"].map(
+        lambda values: values[0] if len(values) == 1 else None
+    )
+    single_nif = summary["nifs"].str.len().eq(1)
+    preferred_nif = summary["master_nifs"].str[0].fillna(summary["nifs"].str[0])
+    summary["nif"] = preferred_nif.where(single_nif)
+    summary["es_agrupacion"] = (
+        summary["empresa_ids"].str.len().gt(1)
+        | summary["nifs"].str.len().gt(1)
+        | summary["nombres_variantes"].str.len().gt(1)
+    )
+    return summary.drop(columns=["master_nifs"])
+
+
 def _load_df(ccaa: str | None) -> pd.DataFrame:
     ccaa_filter = (ccaa,) if ccaa else None
     rows = load_raw_adjudicaciones(ccaa_filter=ccaa_filter)
@@ -111,29 +297,8 @@ def _load_df(ccaa: str | None) -> pd.DataFrame:
             ),
             errors="coerce",
         )
-        # Clave de agrupación canónica: nombre del maestro de empresas (v35),
-        # con fallback al nombre crudo del adjudicatario. Sin esto las cuotas y
-        # el HHI se fragmentan entre variantes del mismo adjudicatario
-        # ("Accenture S.L." vs "Accenture, S.L.U." cuentan como dos).
-        raw_name = df["adjudicatario"] if "adjudicatario" in df.columns else df.get("nombre")
-        master_name = df.get("empresa_nombre_master")
-        if master_name is not None and raw_name is not None:
-            df["empresa"] = master_name.where(
-                master_name.notna() & (master_name.astype(str) != ""), raw_name
-            )
-        elif master_name is not None:
-            df["empresa"] = master_name
-        elif raw_name is not None:
-            df["empresa"] = raw_name
-        # NIF: preferir el canónico del maestro sobre el de la adjudicación.
-        master_nif = df.get("empresa_nif_master")
-        if master_nif is not None:
-            base_nif = df["nif"] if "nif" in df.columns else None
-            df["nif"] = (
-                master_nif.where(master_nif.notna() & (master_nif.astype(str) != ""), base_nif)
-                if base_nif is not None
-                else master_nif
-            )
+        # Una sola clave analítica combina maestro, CIF y nombre normalizados.
+        df = _prepare_company_identity(df)
     return df
 
 
@@ -179,11 +344,15 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
 
     total = len(df)
 
-    # Group by empresa
+    identity_by_group = _identity_summary(df).set_index(_GROUP_KEY).to_dict(orient="index")
     g = (
-        df.groupby("empresa")
-        .agg(count=("empresa", "count"), importe=("importe", "sum"))
-        .sort_values("count", ascending=False)
+        df.groupby(_GROUP_KEY, sort=False, observed=True)
+        .agg(
+            empresa=("empresa", "first"),
+            count=(_GROUP_KEY, "count"),
+            importe=("importe", "sum"),
+        )
+        .sort_values(["count", "importe"], ascending=False)
         .reset_index()
     )
 
@@ -198,7 +367,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             dated["_activity_year"] = dated["fecha_adjudicacion"].dt.year
             active_years_by_empresa = {
                 str(key): max(int(value), 1)
-                for key, value in dated.groupby("empresa")["_activity_year"].nunique().items()
+                for key, value in dated.groupby(_GROUP_KEY, observed=True)[
+                    "_activity_year"
+                ].nunique().items()
             }
 
     # baja_media per empresa
@@ -213,27 +384,17 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             df_baja["_baja"] = ((1 - imp_adj / imp_lic) * 100).where(
                 (imp_lic > 0) & imp_adj.notna()
             )
-            baja_means = df_baja.groupby("empresa")["_baja"].mean()
+            baja_means = df_baja.groupby(_GROUP_KEY, observed=True)["_baja"].mean()
             baja_by_empresa = {str(k): float(v) for k, v in baja_means.items() if pd.notna(v)}
-
-    # nif per empresa
-    nif_by_empresa: dict[str, str] = {}
-    if "nif" in df.columns:
-        nif_first = df.dropna(subset=["nif"]).groupby("empresa")["nif"].first()
-        nif_by_empresa = {str(k): str(v) for k, v in nif_first.items()}
-
-    # empresa_id canónico per empresa (para enlazar perfil / watchlist)
-    empresa_id_map: dict[str, int] = {}
-    if "empresa_id" in df.columns:
-        eid_first = df.dropna(subset=["empresa_id"]).groupby("empresa")["empresa_id"].first()
-        empresa_id_map = {str(k): int(v) for k, v in eid_first.items() if pd.notna(v)}
 
     # n_organos per empresa
     n_organos_map: dict[str, int] = {}
     if "organo_contratacion" in df.columns:
         n_organos_map = {
             str(k): int(v)
-            for k, v in df.groupby("empresa")["organo_contratacion"].nunique().to_dict().items()
+            for k, v in df.groupby(_GROUP_KEY, observed=True)[
+                "organo_contratacion"
+            ].nunique().items()
         }
 
     # ofertas_medias per empresa
@@ -243,7 +404,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         _df_of = df.assign(_ofertas=_ofertas)
         ofertas_map = {
             str(k): float(v)
-            for k, v in _df_of.groupby("empresa")["_ofertas"].mean().items()
+            for k, v in _df_of.groupby(_GROUP_KEY, observed=True)["_ofertas"].mean().items()
             if pd.notna(v)
         }
 
@@ -264,52 +425,78 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
 
     # pct_monopolio per empresa (% de sus licitaciones —con dato— sin rival)
     pct_monopolio_map: dict[str, float | None] = {}
-    if lic_id_col in df.columns:
-        for emp_name, emp_sub in df.groupby("empresa"):
-            emp_lics = set(emp_sub[lic_id_col].unique()) & lics_con_ofertas
-            total_emp = len(emp_lics)
-            if total_emp == 0:
-                pct_monopolio_map[str(emp_name)] = None  # sin cobertura → desconocido
-                continue
-            mono = len(emp_lics & single_bid_lics)
-            pct_monopolio_map[str(emp_name)] = mono / total_emp * 100
+    if lic_id_col in df.columns and lics_con_ofertas:
+        covered = df[df[lic_id_col].isin(lics_con_ofertas)]
+        covered_counts = covered.groupby(_GROUP_KEY, observed=True)[lic_id_col].nunique()
+        single_counts = (
+            covered[covered[lic_id_col].isin(single_bid_lics)]
+            .groupby(_GROUP_KEY, observed=True)[lic_id_col]
+            .nunique()
+            .reindex(covered_counts.index, fill_value=0)
+        )
+        pct_monopolio_map = {
+            str(key): float(value)
+            for key, value in (single_counts / covered_counts * 100).items()
+        }
 
     # pct_top_organo per empresa (% from their most common organo)
     pct_top_organo_map: dict[str, float] = {}
     if "organo_contratacion" in df.columns:
-        for emp_name, emp_sub in df.groupby("empresa"):
-            org_counts = emp_sub["organo_contratacion"].value_counts()
-            if not org_counts.empty and len(emp_sub) > 0:
-                pct_top_organo_map[str(emp_name)] = float(org_counts.iloc[0] / len(emp_sub) * 100)
+        organ_rows = df.dropna(subset=["organo_contratacion"])
+        organ_counts = organ_rows.groupby(
+            [_GROUP_KEY, "organo_contratacion"], observed=True
+        ).size()
+        if not organ_counts.empty:
+            top_organ = organ_counts.groupby(level=0, observed=True).max()
+            group_sizes = df.groupby(_GROUP_KEY, observed=True).size()
+            pct_top_organo_map = {
+                str(key): float(value)
+                for key, value in (top_organ / group_sizes * 100).dropna().items()
+            }
 
     # ultima adjudicacion per empresa
     ultima_map: dict[str, str] = {}
     if "fecha_adjudicacion" in df.columns:
-        for emp_name, emp_sub in df.groupby("empresa"):
-            last = emp_sub["fecha_adjudicacion"].dropna().max()
-            if pd.notna(last):
-                ultima_map[str(emp_name)] = str(last.strftime("%Y-%m-%d"))
+        last_dates = df.groupby(_GROUP_KEY, observed=True)["fecha_adjudicacion"].max().dropna()
+        ultima_map = {
+            str(key): str(value.strftime("%Y-%m-%d")) for key, value in last_dates.items()
+        }
 
-    entries = [
-        CompetitorEntry(
-            nombre=row["empresa"],
-            count=int(row["count"]),
-            importe=float(row["importe"] or 0),
-            cuota=float(row["cuota"]),
-            empresa_id=empresa_id_map.get(row["empresa"]),
-            nif=nif_by_empresa.get(row["empresa"]),
-            contratos_por_anio=float(row["count"])
-            / active_years_by_empresa.get(str(row["empresa"]), 1),
-            importe_medio=float(row["importe"] or 0) / max(int(row["count"]), 1),
-            baja_media=baja_by_empresa.get(row["empresa"]),
-            n_organos=int(n_organos_map.get(row["empresa"], 0)),
-            ofertas_medias=ofertas_map.get(row["empresa"]),
-            pct_monopolio=pct_monopolio_map.get(row["empresa"]),
-            pct_top_organo=pct_top_organo_map.get(row["empresa"], 0.0),
-            ultima=ultima_map.get(row["empresa"]),
-        )
-        for _, row in g.head(filters.limit).iterrows()
+    entries: list[CompetitorEntry] = []
+    entry_columns = g.head(filters.limit)[
+        [_GROUP_KEY, "empresa", "count", "importe", "cuota"]
     ]
+    for group_key, empresa, count, importe, cuota in entry_columns.itertuples(
+        index=False, name=None
+    ):
+        key = str(group_key)
+        identity = identity_by_group.get(key, {})
+        representative_id = identity.get("empresa_id")
+        representative_nif = identity.get("nif")
+        entries.append(
+            CompetitorEntry(
+                nombre=str(empresa),
+                count=int(count),
+                importe=float(importe or 0),
+                cuota=float(cuota),
+                empresa_id=(
+                    int(representative_id) if pd.notna(representative_id) else None
+                ),
+                nif=str(representative_nif) if pd.notna(representative_nif) else None,
+                empresa_ids=list(identity.get("empresa_ids", [])),
+                nifs=list(identity.get("nifs", [])),
+                nombres_variantes=list(identity.get("nombres_variantes", [])),
+                es_agrupacion=bool(identity.get("es_agrupacion", False)),
+                contratos_por_anio=float(count) / active_years_by_empresa.get(key, 1),
+                importe_medio=float(importe or 0) / max(int(count), 1),
+                baja_media=baja_by_empresa.get(key),
+                n_organos=int(n_organos_map.get(key, 0)),
+                ofertas_medias=ofertas_map.get(key),
+                pct_monopolio=pct_monopolio_map.get(key),
+                pct_top_organo=pct_top_organo_map.get(key, 0.0),
+                ultima=ultima_map.get(key),
+            )
+        )
 
     hhi = _compute_hhi(g["cuota"])
 
@@ -319,16 +506,16 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     pct_unica = (len(single_bid_lics) / total_lics * 100) if total_lics else 0.0
 
     # Scatter data: ticket_medio vs n_organos
-    scatter_data: list[ScatterPoint] = []
-    for _, row in g.head(filters.limit).iterrows():
-        ticket = float(row["importe"] or 0) / max(int(row["count"]), 1)
-        n_organos = 1
-        if "organo_contratacion" in df.columns:
-            emp_df = df[df["empresa"] == row["empresa"]]
-            n_organos = int(emp_df["organo_contratacion"].nunique())
-        scatter_data.append(
-            ScatterPoint(nombre=row["empresa"], ticket_medio=ticket, n_organos=n_organos)
+    scatter_data = [
+        ScatterPoint(
+            nombre=str(empresa),
+            ticket_medio=float(importe or 0) / max(int(count), 1),
+            n_organos=int(n_organos_map.get(str(group_key), 1)),
         )
+        for group_key, empresa, count, importe in g.head(filters.limit)[
+            [_GROUP_KEY, "empresa", "count", "importe"]
+        ].itertuples(index=False, name=None)
+    ]
 
     # Desglose CCAA x empresa para las empresas listadas (``filters.limit``).
     # El heatmap del front muestra su propio top 10, pero el drill-down de
@@ -336,12 +523,18 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     # dejaba vacío el panel de detalle para las posiciones 11..N.
     heatmap_ccaa: list[HeatmapCcaaCell] = []
     if "ccaa" in df.columns:
-        listed_empresas = g.head(filters.limit)["empresa"].tolist()
-        hm_df = df[df["empresa"].isin(listed_empresas)]
-        hm_counts = hm_df.groupby(["ccaa", "empresa"]).size().reset_index(name="count")
+        listed_groups = g.head(filters.limit)[_GROUP_KEY]
+        hm_df = df[df[_GROUP_KEY].isin(listed_groups)]
+        hm_counts = (
+            hm_df.groupby(["ccaa", _GROUP_KEY], observed=True)
+            .agg(empresa=("empresa", "first"), count=(_GROUP_KEY, "count"))
+            .reset_index()
+        )
         heatmap_ccaa = [
-            HeatmapCcaaCell(ccaa=str(r["ccaa"]), empresa=str(r["empresa"]), count=int(r["count"]))
-            for _, r in hm_counts.iterrows()
+            HeatmapCcaaCell(ccaa=str(ccaa), empresa=str(empresa), count=int(count))
+            for ccaa, empresa, count in hm_counts[
+                ["ccaa", "empresa", "count"]
+            ].itertuples(index=False, name=None)
         ]
 
     # pct_pyme
@@ -358,16 +551,18 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             monthly["_mes"] = monthly["fecha_adjudicacion"].dt.month
             agg_m = (
                 monthly.groupby("_mes")
-                .agg(_count=("empresa", "count"), _importe=("importe", "sum"))
+                .agg(_count=(_GROUP_KEY, "count"), _importe=("importe", "sum"))
                 .reset_index()
             )
             estacionalidad = [
                 EstacionalidadEntry(
-                    mes=int(r["_mes"]),
-                    count=int(r["_count"]),
-                    importe=float(r["_importe"] or 0),
+                    mes=int(month),
+                    count=int(count),
+                    importe=float(importe or 0),
                 )
-                for _, r in agg_m.iterrows()
+                for month, count, importe in agg_m[
+                    ["_mes", "_count", "_importe"]
+                ].itertuples(index=False, name=None)
             ]
 
     result = CompetitorResult(
