@@ -7,6 +7,7 @@ concentración HHI, perfil de competidor y watchlist por empresa.
 from __future__ import annotations
 
 import hashlib
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -28,6 +29,14 @@ from services.competitive.renovaciones import (
     resumen_renovaciones,
     totales_renovaciones,
 )
+from services.competitive.mercado import (
+    concentracion_hhi,
+    cuota_mercado,
+    listar_adjudicaciones_empresa,
+    perfil_empresa,
+)
+from services.competitive.renovaciones import proximas_renovaciones, resumen_renovaciones
+from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
 
 log = get_logger(__name__)
 
@@ -38,6 +47,11 @@ def _user_key(ctx: dict[str, Any]) -> str:
     """Clave opaca y estable por usuario (email de sesión o hash de API key)."""
     seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def _split_filter(value: str | None) -> list[str] | None:
+    items = [item.strip() for item in (value or "").split(",") if item.strip()]
+    return items or None
 
 
 # ── Renovaciones ──────────────────────────────────────────────────────────
@@ -156,18 +170,77 @@ async def get_hhi(
     return {"items": items, "segment_by": segment_by}
 
 
-@router.get("/empresas/{empresa_id}/perfil", summary="Perfil competitivo de una empresa")
+@router.get(
+    "/empresas/{empresa_id}/perfil",
+    response_model=CompetitiveCompanyProfileDTO,
+    summary="Dossier competitivo de una empresa",
+)
 async def get_perfil(
     empresa_id: int,
+    fecha_desde: date | None = Query(None),
+    fecha_hasta: date | None = Query(None),
+    cpv: str | None = Query(None, max_length=8),
+    ccaa: str | None = Query(None, max_length=500),
+    tecnologia: str | None = Query(None, max_length=500),
+    importe_min: float | None = Query(None, ge=0),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
-    perfil = await run_db(perfil_empresa, empresa_id)
-    if not perfil.get("totales", {}).get("contratos"):
+    perfil = await run_db(
+        perfil_empresa,
+        empresa_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        cpv_prefix=cpv,
+        ccaas=_split_filter(ccaa),
+        tecnologias=_split_filter(tecnologia),
+        importe_min=importe_min,
+    )
+    if not perfil.pop("_exists", False):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Empresa sin adjudicaciones registradas.",
+            detail="Empresa no encontrada.",
         )
     return perfil
+
+
+@router.get(
+    "/empresas/{empresa_id}/adjudicaciones",
+    response_model=CompetitiveCompanyAwardsDTO,
+    summary="Adjudicaciones paginadas de una empresa",
+)
+async def get_adjudicaciones_empresa(
+    empresa_id: int,
+    fecha_desde: date | None = Query(None),
+    fecha_hasta: date | None = Query(None),
+    cpv: str | None = Query(None, max_length=8),
+    ccaa: str | None = Query(None, max_length=500),
+    tecnologia: str | None = Query(None, max_length=500),
+    importe_min: float | None = Query(None, ge=0),
+    q: str | None = Query(None, max_length=200),
+    organo: str | None = Query(None, max_length=300),
+    sort: str = Query(
+        "fecha_desc",
+        pattern="^(fecha_desc|fecha_asc|importe_desc|importe_asc)$",
+    ),
+    limit: int = Query(25, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, Any]:
+    return await run_db(
+        listar_adjudicaciones_empresa,
+        empresa_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        cpv_prefix=cpv,
+        ccaas=_split_filter(ccaa),
+        tecnologias=_split_filter(tecnologia),
+        importe_min=importe_min,
+        q=q,
+        organo=organo,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ── Watchlist por empresa ─────────────────────────────────────────────────

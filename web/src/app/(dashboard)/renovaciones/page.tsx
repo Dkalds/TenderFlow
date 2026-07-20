@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import { useFilters } from "@/lib/filters";
@@ -82,6 +83,7 @@ function diasBadgeVariant(dias: number | null): "destructive" | "secondary" | "o
 }
 
 export default function RenovacionesPage() {
+  const router = useRouter();
   const [meses, setMeses] = useState("6");
   const [empresaSearch, setEmpresaSearch] = useState("");
 
@@ -316,7 +318,17 @@ export default function RenovacionesPage() {
                 </TableHeader>
                 <TableBody>
                   {items.map((r) => (
-                    <TableRow key={`${r.licitacion_id}-${r.empresa_id ?? r.empresa}`}>
+                    <TableRow
+                      key={`${r.licitacion_id}-${r.empresa_id ?? r.empresa}`}
+                      tabIndex={0}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => router.push(`/detalle?lic=${encodeURIComponent(r.licitacion_id)}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          router.push(`/detalle?lic=${encodeURIComponent(r.licitacion_id)}`);
+                        }
+                      }}
+                    >
                       <TableCell className="whitespace-nowrap">
                         <div className="flex flex-col gap-1">
                           <span className="text-sm">{r.fecha_fin_efectiva ?? "—"}</span>
@@ -337,6 +349,7 @@ export default function RenovacionesPage() {
                               rel="noopener noreferrer"
                               className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
                               aria-label="Abrir anuncio original"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
