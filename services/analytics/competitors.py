@@ -245,10 +245,7 @@ def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
 
     name_map = _preferred_names(prepared)
     prepared["empresa"] = (
-        prepared[_GROUP_KEY]
-        .astype("string")
-        .map(name_map)
-        .fillna("Empresa sin identificar")
+        prepared[_GROUP_KEY].astype("string").map(name_map).fillna("Empresa sin identificar")
     )
     return prepared.drop(columns=["_master_name", "_raw_nif", "_name_key"])
 
@@ -367,9 +364,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             dated["_activity_year"] = dated["fecha_adjudicacion"].dt.year
             active_years_by_empresa = {
                 str(key): max(int(value), 1)
-                for key, value in dated.groupby(_GROUP_KEY, observed=True)[
-                    "_activity_year"
-                ].nunique().items()
+                for key, value in dated.groupby(_GROUP_KEY, observed=True)["_activity_year"]
+                .nunique()
+                .items()
             }
 
     # baja_media per empresa
@@ -392,9 +389,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     if "organo_contratacion" in df.columns:
         n_organos_map = {
             str(k): int(v)
-            for k, v in df.groupby(_GROUP_KEY, observed=True)[
-                "organo_contratacion"
-            ].nunique().items()
+            for k, v in df.groupby(_GROUP_KEY, observed=True)["organo_contratacion"]
+            .nunique()
+            .items()
         }
 
     # ofertas_medias per empresa
@@ -435,17 +432,14 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             .reindex(covered_counts.index, fill_value=0)
         )
         pct_monopolio_map = {
-            str(key): float(value)
-            for key, value in (single_counts / covered_counts * 100).items()
+            str(key): float(value) for key, value in (single_counts / covered_counts * 100).items()
         }
 
     # pct_top_organo per empresa (% from their most common organo)
     pct_top_organo_map: dict[str, float] = {}
     if "organo_contratacion" in df.columns:
         organ_rows = df.dropna(subset=["organo_contratacion"])
-        organ_counts = organ_rows.groupby(
-            [_GROUP_KEY, "organo_contratacion"], observed=True
-        ).size()
+        organ_counts = organ_rows.groupby([_GROUP_KEY, "organo_contratacion"], observed=True).size()
         if not organ_counts.empty:
             top_organ = organ_counts.groupby(level=0, observed=True).max()
             group_sizes = df.groupby(_GROUP_KEY, observed=True).size()
@@ -463,9 +457,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         }
 
     entries: list[CompetitorEntry] = []
-    entry_columns = g.head(filters.limit)[
-        [_GROUP_KEY, "empresa", "count", "importe", "cuota"]
-    ]
+    entry_columns = g.head(filters.limit)[[_GROUP_KEY, "empresa", "count", "importe", "cuota"]]
     for group_key, empresa, count, importe, cuota in entry_columns.itertuples(
         index=False, name=None
     ):
@@ -479,9 +471,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
                 count=int(count),
                 importe=float(importe or 0),
                 cuota=float(cuota),
-                empresa_id=(
-                    int(representative_id) if pd.notna(representative_id) else None
-                ),
+                empresa_id=(int(representative_id) if pd.notna(representative_id) else None),
                 nif=str(representative_nif) if pd.notna(representative_nif) else None,
                 empresa_ids=list(identity.get("empresa_ids", [])),
                 nifs=list(identity.get("nifs", [])),
@@ -532,9 +522,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         )
         heatmap_ccaa = [
             HeatmapCcaaCell(ccaa=str(ccaa), empresa=str(empresa), count=int(count))
-            for ccaa, empresa, count in hm_counts[
-                ["ccaa", "empresa", "count"]
-            ].itertuples(index=False, name=None)
+            for ccaa, empresa, count in hm_counts[["ccaa", "empresa", "count"]].itertuples(
+                index=False, name=None
+            )
         ]
 
     # pct_pyme
@@ -560,9 +550,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
                     count=int(count),
                     importe=float(importe or 0),
                 )
-                for month, count, importe in agg_m[
-                    ["_mes", "_count", "_importe"]
-                ].itertuples(index=False, name=None)
+                for month, count, importe in agg_m[["_mes", "_count", "_importe"]].itertuples(
+                    index=False, name=None
+                )
             ]
 
     result = CompetitorResult(

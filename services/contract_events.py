@@ -62,6 +62,7 @@ class EventosFeedResult(BaseModel):
     items: list[EventoFeedItem] = []
     dias: int = 30
 
+
 _CURSOR_SOURCE = "contract_events"
 
 _ESTADO_EVENTO = {

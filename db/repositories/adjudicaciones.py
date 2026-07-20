@@ -141,4 +141,3 @@ class AdjudicacionRepository:
         if fuentes is not None:
             rows = [r for r in rows if (r.get("fuente") or "").lower() in fuentes]
         return rows
-
