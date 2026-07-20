@@ -37,6 +37,10 @@ def test_export_openapi_produces_nonempty_paths(tmp_path):
     # Endpoints ancla que no deberían desaparecer sin migración consciente.
     assert "/api/v1/health" in on_disk["paths"]
     assert "/api/v1/licitaciones" in on_disk["paths"]
+    # Endpoint huérfano (sin consumidor en web/) marcado deprecated en vez de
+    # retirado — ver docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
+    retendering_path = on_disk["paths"]["/api/v1/analytics/forecast/retendering"]
+    assert retendering_path["get"]["deprecated"] is True
 
 
 def test_export_openapi_is_deterministic(tmp_path):
