@@ -28,11 +28,39 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from pydantic import BaseModel
+
 from db.database import connect, connect_read, get_cursor, is_postgres_backend, set_cursor
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# DTOs — respuesta tipada de GET /eventos (el feed reciente, no la timeline
+# por licitación, que sigue siendo dict[str, Any] de forma variable por UNION).
+# ---------------------------------------------------------------------------
+
+
+class EventoFeedItem(BaseModel):
+    """Un evento del feed reciente de movimientos de contrato."""
+
+    licitacion_id: str
+    tipo: str
+    fecha: str | None = None
+    detalle: str | None = None
+    importe_delta: float | None = None
+    titulo: str | None = None
+    organo_contratacion: str | None = None
+    fuente: str | None = None
+
+
+class EventosFeedResult(BaseModel):
+    """Respuesta de ``GET /eventos``."""
+
+    items: list[EventoFeedItem] = []
+    dias: int = 30
 
 _CURSOR_SOURCE = "contract_events"
 

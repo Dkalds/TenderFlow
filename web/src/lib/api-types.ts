@@ -26,3 +26,7 @@ export type ResumenNovedadesResult = Schemas["ResumenNovedadesResult"];
 export type TimelineScatterResult = Schemas["TimelineScatterResult"];
 export type TopLicitacionesResult = Schemas["TopLicitacionesResult"];
 export type CalibracionBajaDTO = Schemas["CalibracionBajaDTO"];
+export type NotificationsResult = Schemas["NotificationsResult"];
+export type AlertItem = Schemas["AlertItem"];
+export type EventosFeedResult = Schemas["EventosFeedResult"];
+export type EventoFeedItem = Schemas["EventoFeedItem"];

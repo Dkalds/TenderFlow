@@ -329,6 +329,36 @@ def _score_row(
     return final, band, flags, desglose
 
 
+def score_dataframe(base_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFrame:
+    """Puntúa ``target_df`` con contexto (percentiles, señales) calculado sobre
+    ``base_df`` (el dataset completo, para que P10/P90 y medias no se sesguen
+    por un subconjunto ya filtrado).
+
+    Sin perfil de usuario: pensado para endpoints compartidos/cacheados donde
+    el score no puede personalizarse por usuario (ver ``get_scoring`` para la
+    variante personalizada). Requiere que ``target_df`` tenga las columnas que
+    ``_score_row`` lee (``importe``, ``titulo``, ``cpv``, ``fecha_limite_dt``,
+    ``id_externo``).
+
+    Devuelve un DataFrame con columnas ``id_externo``, ``score``, ``band``.
+    """
+    if target_df.empty:
+        return pd.DataFrame(columns=["id_externo", "score", "band"])
+
+    ctx = _build_context(base_df)
+
+    ids: list[str] = []
+    scores: list[int] = []
+    bands: list[str] = []
+    for _, row in target_df.iterrows():
+        s, band, _flags, _desglose = _score_row(row, ctx)
+        ids.append(str(row.get("id_externo", "")))
+        scores.append(s)
+        bands.append(band)
+
+    return pd.DataFrame({"id_externo": ids, "score": scores, "band": bands})
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------

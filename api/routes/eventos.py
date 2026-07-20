@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.database import connect_read
-from services.contract_events import eventos_recientes, timeline
+from services.contract_events import EventoFeedItem, EventosFeedResult, eventos_recientes, timeline
 
 router = APIRouter(tags=["eventos"])
 
@@ -59,7 +59,11 @@ async def get_timeline(
     return {"licitacion_id": licitacion_id, "items": items}
 
 
-@router.get("/eventos", summary="Feed de eventos de contrato recientes")
+@router.get(
+    "/eventos",
+    summary="Feed de eventos de contrato recientes",
+    response_model=EventosFeedResult,
+)
 async def get_eventos(
     tipo: str | None = Query(
         None, description="Filtro: adjudicacion|formalizacion|modificacion|prorroga|anulacion"
@@ -67,7 +71,7 @@ async def get_eventos(
     dias: int = Query(30, ge=1, le=365),
     limit: int = Query(100, ge=1, le=500),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> EventosFeedResult:
     tipos: tuple[str, ...] | None = None
     if tipo:
         if tipo not in _TIPOS_VALIDOS:
@@ -77,4 +81,4 @@ async def get_eventos(
             )
         tipos = (tipo,)
     items = await run_db(eventos_recientes, tipos=tipos, dias=dias, limit=limit)
-    return {"items": items, "dias": dias}
+    return EventosFeedResult(items=[EventoFeedItem(**i) for i in items], dias=dias)

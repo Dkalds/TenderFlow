@@ -146,3 +146,34 @@ def resumen_renovaciones(
     """
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))
+
+
+def totales_renovaciones(
+    *,
+    months_ahead: int = 6,
+    tecnologias: list[str] | None = None,
+) -> dict[str, Any]:
+    """Totales agregados (sin GROUP BY) de contratos que vencen en la ventana.
+
+    Pensado para banners/resúmenes que necesitan un par de cifras del dataset
+    completo, sin traer ni truncar la lista de contratos en el cliente.
+    """
+    months_ahead = max(1, min(int(months_ahead), 60))
+    fecha_fin = fecha_fin_sql()
+    sql = f"""
+        SELECT COUNT(*) AS contratos_venciendo,
+               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        WHERE {fecha_fin} {_rango_vencimiento_sql()}
+          AND {exclude_duplicados_sql()}
+    """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
+    params: list[Any] = [months_ahead]
+    tecnologias = [t for t in (tecnologias or []) if t]
+    if tecnologias:
+        placeholders = ",".join("?" for _ in tecnologias)
+        sql += f" AND l.tecnologia IN ({placeholders})"
+        params.extend(tecnologias)
+    with connect_read() as c:
+        rows = rows_to_dicts(c.execute(sql, params))
+    return rows[0] if rows else {"contratos_venciendo": 0, "importe_en_juego": 0}

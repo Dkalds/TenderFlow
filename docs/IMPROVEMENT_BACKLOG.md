@@ -110,6 +110,42 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** `pyproject.toml` (whitelist TID251), `db/repositories/`
 - **Riesgo:** medio — toca caminos de datos; mitigado por ratchet como gate y tests de caracterización previos a cada movimiento.
 
+### [P3] Endpoints huérfanos tras el rework de Pipeline & Alertas (forecast/retendering, por_horizonte/por_trimestre)
+- **Área:** api/routes/analytics, services/analytics/pipeline, services/analytics/forecast_svc
+- **Problema:** el rework de 2026-07-20 quitó de `pipeline-alertas/page.tsx` el bloque "Forecast re-licitación" (sustituido por un banner hacia `/renovaciones`, que ya cubre ese ángulo con `riesgo_cambio` + opportunity score) y los charts "Distribución por horizonte"/"Volumen trimestral". `GET /api/v1/analytics/forecast/retendering` se quedó sin consumidor en el frontend, y `PipelineResult.por_horizonte`/`por_trimestre` se quedaron sin consumidor pero **no se retiraron del DTO** (quitar un campo del contrato es breaking y excedía el alcance de ese cambio).
+- **Acceptance criteria:**
+  - Decisión explícita: o se fusiona `forecast/retendering` con `competitive/renovaciones` (mismo ángulo, dos implementaciones), o se marca deprecado con fecha de retirada.
+  - `por_horizonte`/`por_trimestre` se retiran de `PipelineResult` (con aviso de breaking change) o se documenta por qué se mantienen.
+- **Files de partida:** [services/analytics/forecast_svc.py](../services/analytics/forecast_svc.py), [services/analytics/pipeline.py](../services/analytics/pipeline.py), [services/competitive/renovaciones.py](../services/competitive/renovaciones.py)
+- **Riesgo:** bajo — son endpoints ya sin tráfico de UI; el único cuidado es verificar que ningún consumidor externo (API pública) dependa de ellos antes de deprecar.
+
+### [P3] Unificar la definición de "Calientes" (heurística de resumen vs banda de scoring)
+- **Área:** services/analytics/resumen, services/analytics/pipeline, services/analytics/scoring
+- **Problema:** `services/analytics/resumen.py::get_resumen_hoy` calcula "calientes" como `importe ≥ P75 AND estado activo AND en plazo` (heurística ad-hoc), mientras que el KPI "Calientes" nuevo de `/analytics/pipeline` (2026-07-20) usa la banda de scoring genérico (`score ≥ 75`, `services/analytics/scoring.py`). Son dos definiciones distintas de la misma palabra visibles en páginas contiguas (Resumen enlaza su "Calientes" a Pipeline & Alertas), lo que puede desconcertar si los números no coinciden.
+- **Acceptance criteria:**
+  - Una sola definición de "caliente" reutilizada por ambos endpoints (lo más simple: `resumen_hoy` adopta la banda de scoring, ya que es la señal más rica — importe/plazo/competencia/margen/afinidad/riesgo vs. solo importe).
+  - Los números de "Calientes" coinciden entre `/resumen` y `/pipeline-alertas` para el mismo dataset.
+- **Files de partida:** [services/analytics/resumen.py](../services/analytics/resumen.py), [services/analytics/pipeline.py](../services/analytics/pipeline.py), [services/analytics/scoring.py](../services/analytics/scoring.py)
+- **Riesgo:** bajo — cambia un número visible en dos KPIs; sin migración de schema.
+
+### [P3] KPIs de /renovaciones fabricados en cliente sobre lista truncada (viola ADR-014)
+- **Área:** web/renovaciones, api/routes/competitive, services/competitive/renovaciones
+- **Problema:** `renovaciones/page.tsx` calcula sus 4 KPIs (`contratos`, `importe`, `importeAltoRiesgo`, `calientes`) con un `.reduce()` en cliente sobre `data.items` — una lista con `limit` (por defecto 200). Si hay más de 200 contratos venciendo, los KPIs subcuentan en silencio. El rework de Pipeline & Alertas (2026-07-20) añadió `totales_renovaciones()` (server-side, sin `GROUP BY`, sobre el dataset completo) para su propio banner — el mismo patrón resuelve el problema aquí, aunque `totales_renovaciones` hoy solo cubre `contratos_venciendo`/`importe_en_juego` (faltarían `importeAltoRiesgo`/`calientes`, que dependen de `riesgo_cambio`).
+- **Acceptance criteria:**
+  - Los 4 KPIs de `/renovaciones` se calculan en backend sobre el dataset completo (ampliar `totales_renovaciones` o análogo), no sobre `items` truncado en cliente.
+  - `scripts/check_frontend_invariants.py` no marca la página (o se justifica con `fdi-allow` si queda algo intencional).
+- **Files de partida:** [web/src/app/(dashboard)/renovaciones/page.tsx](<../web/src/app/(dashboard)/renovaciones/page.tsx>), [services/competitive/renovaciones.py](../services/competitive/renovaciones.py), [api/routes/competitive.py](../api/routes/competitive.py)
+- **Riesgo:** bajo — aditivo en backend; el cambio de frontend es sustituir un `.reduce()` por datos ya servidos.
+
+### [P2] Caché de /analytics/scoring compartida entre usuarios pese a ser personalizado
+- **Área:** api/routes/analytics, shared/cache
+- **Problema:** `GET /analytics/scoring` personaliza el resultado por `user_key` (pesos/keywords del perfil, Feature B) pero está decorado con `@cache_response(ttl=300)`, y `cache_response` excluye argumentos privados (`_user`) de la clave de caché (`shared/cache.py`). Dos usuarios con perfiles de scoring distintos que golpean el endpoint dentro de la misma ventana de 5 minutos pueden recibir la respuesta cacheada del primero — una fuga de personalización entre usuarios (no de datos sensibles per se, pero sí de configuración/resultados que no les corresponden). Detectado durante el rework de Pipeline & Alertas al construir `score_dataframe()` (que deliberadamente NO toma `user_key`, precisamente para poder cachearse de forma compartida sin este problema).
+- **Acceptance criteria:**
+  - `cache_response` incluye `user_key`/`_user` en la clave cuando el endpoint decorado depende de él (o `/analytics/scoring` deja de cachear la variante personalizada).
+  - Test de regresión: dos perfiles distintos consultando `/analytics/scoring` en la misma ventana de caché reciben resultados distintos.
+- **Files de partida:** [shared/cache.py](../shared/cache.py), [api/routes/analytics.py](../api/routes/analytics.py)
+- **Riesgo:** medio — es un bug de datos servidos a usuarios equivocados (no una fuga de secretos), pero toca el decorador de caché compartido por ~20 endpoints; cambiar su firma requiere revisar todos los usos.
+
 ---
 
 ## Cerrados

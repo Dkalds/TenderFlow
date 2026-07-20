@@ -25,6 +25,18 @@ def test_competitive_renovaciones_resumen_vacio(client, auth):
     assert isinstance(data["items"], list)
 
 
+def test_competitive_renovaciones_resumen_incluye_totales(client, auth):
+    """GET /competitive/renovaciones/resumen expone `totales` (server-side, sin
+    GROUP BY) para banners que necesitan un par de cifras del dataset completo
+    (usado por el banner de Pipeline & Alertas hacia /renovaciones)."""
+    r = client.get("/api/v1/competitive/renovaciones/resumen", headers=auth)
+    assert r.status_code == 200
+    data = r.json()
+    assert "totales" in data
+    assert data["totales"]["contratos_venciendo"] == 0
+    assert data["totales"]["importe_en_juego"] == 0
+
+
 # ---------------------------------------------------------------------------
 # Bajas
 # ---------------------------------------------------------------------------
