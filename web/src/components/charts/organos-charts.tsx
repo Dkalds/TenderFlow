@@ -25,7 +25,8 @@ interface RankingEntry {
 
 interface TreemapEntry {
   name: string;
-  size: number;
+  size?: number;
+  children?: { name: string; size: number }[];
   [key: string]: unknown;
 }
 
