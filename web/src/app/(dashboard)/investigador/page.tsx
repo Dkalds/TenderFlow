@@ -673,7 +673,7 @@ export default function InvestigadorPage() {
               <div className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
                 {askAnswer ? renderAnswer(askAnswer) : ""}
                 {streaming && (
-                  <span className="animate-pulse text-primary">&#9612;</span>
+                  <span className="motion-safe:animate-pulse text-primary" aria-hidden="true">&#9612;</span>
                 )}
               </div>
             </CardContent>

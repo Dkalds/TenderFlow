@@ -63,6 +63,7 @@ export function Sidebar() {
           size="icon"
           className="h-9 w-9 shrink-0"
           onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
         >
           {collapsed ? (
             <PanelLeftOpen className="h-4 w-4" />

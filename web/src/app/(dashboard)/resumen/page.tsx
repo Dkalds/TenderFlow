@@ -56,15 +56,18 @@ export default function ResumenPage() {
   const data = overview.data;
   const isLoading = overview.isLoading;
 
-  const scatterData =
-    timeline.data?.items?.map((item) => ({
-      x: new Date(item.fecha_publicacion ?? "").getTime(),
-      y: item.importe ?? 0,
-      z: item.importe ?? 0,
-      titulo: item.titulo ?? "",
-      estado: item.estado ?? "",
-      fill: getEstadoChartColor(item.estado),
-    })) ?? [];
+  const scatterData = useMemo(
+    () =>
+      timeline.data?.items?.map((item) => ({
+        x: new Date(item.fecha_publicacion ?? "").getTime(),
+        y: item.importe ?? 0,
+        z: item.importe ?? 0,
+        titulo: item.titulo ?? "",
+        estado: item.estado ?? "",
+        fill: getEstadoChartColor(item.estado),
+      })) ?? [],
+    [timeline.data?.items],
+  );
 
   const sortedPubs = useMemo(() => {
     const items = [...(timeline.data?.items ?? [])] as TimelineItem[];

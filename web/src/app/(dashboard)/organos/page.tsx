@@ -10,7 +10,6 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Badge } from "@/components/ui/badge";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,7 +22,6 @@ import {
 import { ExportPopover } from "@/components/export-popover";
 import { foldText, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES } from "@/lib/chart-colors";
-import { TreemapContent } from "@/components/charts/treemap-content";
 import {
   Building2,
   Hash,
@@ -34,16 +32,10 @@ import {
   Users,
   TrendingUp,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-const Treemap = dynamic(() => import("recharts").then(m => ({ default: m.Treemap })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const OrganosRankingChart = dynamic(() => import("@/components/charts/organos-charts").then(m => ({ default: m.OrganosRankingChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const OrganosTreemapChart = dynamic(() => import("@/components/charts/organos-charts").then(m => ({ default: m.OrganosTreemapChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const OrganosAdjudicatariosChart = dynamic(() => import("@/components/charts/organos-charts").then(m => ({ default: m.OrganosAdjudicatariosChart })), { ssr: false, loading: () => <Skeleton className="h-[280px] w-full rounded-md" /> });
+const OrganosEstacionalidadChart = dynamic(() => import("@/components/charts/organos-charts").then(m => ({ default: m.OrganosEstacionalidadChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });
 
 const TIPO_CONTRATO_LABEL: Record<string, string> = { "1": "Servicios", "2": "Suministros", "3": "Obras" };
 
@@ -104,11 +96,6 @@ interface OrganoDetailResponse {
   estacionalidad: { mes_numero: number; count: number }[];
   top_scored: TopScoredItem[];
 }
-
-const MONTH_LABELS = [
-  "Ene", "Feb", "Mar", "Abr", "May", "Jun",
-  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
-];
 
 export default function OrganosPage() {
   const searchParams = useSearchParams();
@@ -292,34 +279,14 @@ export default function OrganosPage() {
             {isLoading ? (
               <Skeleton className="h-[500px] w-full" />
             ) : top20.length > 0 ? (
-              <ChartErrorBoundary>
-                <ResponsiveContainer width="100%" height={Math.max(400, top20.length * 28)}>
-                  <BarChart data={top20} layout="vertical" margin={{ left: 200 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fontSize: 12 }} />
-                    <YAxis
-                      dataKey="organo_contratacion"
-                      type="category"
-                      width={200}
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(v: string) => v.length > 35 ? v.slice(0, 35) + "..." : v}
-                    />
-                    <Tooltip
-                      formatter={(value) => [formatNumber(value as number), "Licitaciones"]}
-                      labelFormatter={(label) => label}
-                    />
-                    <Bar
-                      dataKey="count"
-                      fill={CHART_SERIES[0]}
-                      radius={[0, 4, 4, 0]}
-                      className="cursor-pointer"
-                      onClick={(_data, idx) => {
-                        if (top20[idx]) handleOrganoClick(top20[idx].organo_contratacion);
-                      }}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <OrganosRankingChart
+                data={top20}
+                dataKey="count"
+                fill={CHART_SERIES[0]}
+                tooltipLabel="Licitaciones"
+                formatValue={formatNumber}
+                onBarClick={handleOrganoClick}
+              />
             ) : (
               <EmptyState />
             )}
@@ -340,38 +307,14 @@ export default function OrganosPage() {
             {isLoading ? (
               <Skeleton className="h-[500px] w-full" />
             ) : top15ByImporte.length > 0 ? (
-              <ChartErrorBoundary>
-                <ResponsiveContainer width="100%" height={Math.max(400, top15ByImporte.length * 28)}>
-                  <BarChart data={top15ByImporte} layout="vertical" margin={{ left: 200 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(v: number) => formatCurrency(v)}
-                    />
-                    <YAxis
-                      dataKey="organo_contratacion"
-                      type="category"
-                      width={200}
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(v: string) => v.length > 35 ? v.slice(0, 35) + "..." : v}
-                    />
-                    <Tooltip
-                      formatter={(value) => [formatCurrency(value as number), "Importe"]}
-                      labelFormatter={(label) => label}
-                    />
-                    <Bar
-                      dataKey="importe"
-                      fill={CHART_SERIES[1]}
-                      radius={[0, 4, 4, 0]}
-                      className="cursor-pointer"
-                      onClick={(_data, idx) => {
-                        if (top15ByImporte[idx]) handleOrganoClick(top15ByImporte[idx].organo_contratacion);
-                      }}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartErrorBoundary>
+              <OrganosRankingChart
+                data={top15ByImporte}
+                dataKey="importe"
+                fill={CHART_SERIES[1]}
+                tooltipLabel="Importe"
+                formatValue={formatCurrency}
+                onBarClick={handleOrganoClick}
+              />
             ) : (
               <EmptyState />
             )}
@@ -393,16 +336,7 @@ export default function OrganosPage() {
           {isLoading ? (
             <Skeleton className="h-[400px] w-full" />
           ) : treemapData.length > 0 ? (
-            <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={400}>
-                <Treemap
-                  data={treemapData}
-                  dataKey="size"
-                  nameKey="name"
-                  content={<TreemapContent formatValue={(v) => formatCurrency(v)} />}
-                />
-              </ResponsiveContainer>
-            </ChartErrorBoundary>
+            <OrganosTreemapChart data={treemapData} />
           ) : (
             <EmptyState />
           )}
@@ -580,34 +514,7 @@ export default function OrganosPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ChartErrorBoundary>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <BarChart
-                          data={detailData.top_adjudicatarios.slice(0, 10).reverse()}
-                          layout="vertical"
-                          margin={{ left: 120 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                          <XAxis
-                            type="number"
-                            tick={{ fontSize: 11 }}
-                            tickFormatter={(v: number) => formatCurrency(v)}
-                          />
-                          <YAxis
-                            dataKey="nombre"
-                            type="category"
-                            width={120}
-                            tick={{ fontSize: 11 }}
-                            tickFormatter={(v: string) => v.length > 18 ? v.slice(0, 18) + "…" : v}
-                          />
-                          <Tooltip
-                            formatter={(value) => [formatCurrency(value as number), "Importe"]}
-                            labelFormatter={(label) => label}
-                          />
-                          <Bar dataKey="importe" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </ChartErrorBoundary>
+                    <OrganosAdjudicatariosChart data={detailData.top_adjudicatarios} />
                   </CardContent>
                 </Card>
               )}
@@ -619,24 +526,7 @@ export default function OrganosPage() {
                     <CardTitle className="text-sm">Estacionalidad mensual</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ChartErrorBoundary>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={detailData.estacionalidad}>
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                          <XAxis
-                            dataKey="mes_numero"
-                            tick={{ fontSize: 12 }}
-                            tickFormatter={(m: number) => MONTH_LABELS[m - 1] ?? String(m)}
-                          />
-                          <YAxis tick={{ fontSize: 12 }} />
-                          <Tooltip
-                            labelFormatter={(m) => MONTH_LABELS[(m as number) - 1] ?? String(m)}
-                            formatter={(v) => [formatNumber(v as number), "Licitaciones"]}
-                          />
-                          <Bar dataKey="count" fill={CHART_SERIES[0]} radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </ChartErrorBoundary>
+                    <OrganosEstacionalidadChart data={detailData.estacionalidad} />
                   </CardContent>
                 </Card>
               )}

@@ -108,6 +108,8 @@ export function TopNav() {
             size="icon"
             className="md:hidden"
             onClick={() => (mobileOpen ? setMobileOpen(false) : openMobileNav())}
+            aria-expanded={mobileOpen}
+            aria-label={mobileOpen ? "Cerrar menu" : "Abrir menu"}
           >
             <Menu className="h-5 w-5" />
             <span className="sr-only">Menu</span>
@@ -141,7 +143,7 @@ export function TopNav() {
           <div className="ml-auto flex items-center gap-1">
             <span className="hidden items-center gap-1.5 rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground lg:inline-flex">
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+                <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
               <span>Datos en vivo</span>

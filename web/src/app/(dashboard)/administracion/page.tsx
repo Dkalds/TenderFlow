@@ -93,6 +93,7 @@ export default function AdministracionPage() {
   const [whName, setWhName] = useState("");
   const [whUrl, setWhUrl] = useState("");
   const [whEvents, setWhEvents] = useState<string[]>(["*"]);
+  const [confirmDeleteWebhookId, setConfirmDeleteWebhookId] = useState<number | null>(null);
 
   const { data: quality, isLoading: qualityLoading } = useQuery<QualityData>({
     queryKey: ["analytics-quality-admin"],
@@ -199,9 +200,21 @@ export default function AdministracionPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["webhooks"] });
       toast.success("Webhook eliminado");
+      setConfirmDeleteWebhookId(null);
     },
-    onError: () => toast.error("No se pudo eliminar el webhook."),
+    onError: () => {
+      toast.error("No se pudo eliminar el webhook.");
+      setConfirmDeleteWebhookId(null);
+    },
   });
+
+  const handleDeleteWebhookClick = (id: number) => {
+    if (confirmDeleteWebhookId !== id) {
+      setConfirmDeleteWebhookId(id);
+      return;
+    }
+    deleteWebhook.mutate(id);
+  };
 
   const pingWebhook = useMutation({
     mutationFn: (id: number) =>
@@ -741,19 +754,33 @@ export default function AdministracionPage() {
                       disabled={pingWebhook.isPending}
                       onClick={() => pingWebhook.mutate(wh.id)}
                       title="Enviar entrega de prueba"
+                      aria-label="Enviar entrega de prueba"
                     >
                       <Radio className="h-4 w-4" />
                     </Button>
+                    {confirmDeleteWebhookId === wh.id && (
+                      <span className="text-xs text-destructive">Confirmar?</span>
+                    )}
                     <Button
-                      variant="ghost"
+                      variant={confirmDeleteWebhookId === wh.id ? "destructive" : "ghost"}
                       size="sm"
-                      className="text-destructive"
+                      className={confirmDeleteWebhookId === wh.id ? "" : "text-destructive"}
                       disabled={deleteWebhook.isPending}
-                      onClick={() => deleteWebhook.mutate(wh.id)}
-                      title="Eliminar webhook"
+                      onClick={() => handleDeleteWebhookClick(wh.id)}
+                      title={confirmDeleteWebhookId === wh.id ? "Confirmar eliminacion" : "Eliminar webhook"}
+                      aria-label={confirmDeleteWebhookId === wh.id ? "Confirmar eliminacion de webhook" : "Eliminar webhook"}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                    {confirmDeleteWebhookId === wh.id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmDeleteWebhookId(null)}
+                      >
+                        Cancelar
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
