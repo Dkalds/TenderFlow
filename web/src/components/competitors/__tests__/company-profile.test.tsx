@@ -1,7 +1,15 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { buildExecutiveSummary, cpvFamilyLabel, type CompanyProfileData } from "../company-profile-types";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+
+import { CompanyQuickView } from "../company-quick-view";
+import {
+  buildExecutiveSummary,
+  cpvFamilyLabel,
+  type CompanyAwardsData,
+  type CompanyProfileData,
+} from "../company-profile-types";
 import { CompanyYearTrend } from "../company-year-trend";
 
 const profile: CompanyProfileData = {
@@ -87,6 +95,27 @@ const profile: CompanyProfileData = {
   movimientos: [],
 };
 
+const recentAwards: CompanyAwardsData = {
+  items: [
+    {
+      licitacion_id: "EXP-2025-001",
+      titulo: "Servicio de soporte y evolución de sistemas",
+      organo_contratacion: "Ministerio de Ejemplo",
+      fecha_adjudicacion: "2025-10-01",
+      cpv: "72000000",
+      ccaa: "Madrid",
+      tecnologia: null,
+      presupuesto_licitacion: 150000,
+      importe_adjudicado: 120000,
+      baja_pct: 20,
+      n_ofertas_recibidas: 3,
+    },
+  ],
+  total: 1,
+  limit: 5,
+  offset: 0,
+};
+
 describe("company profile presentation helpers", () => {
   it("translates known CPV families", () => {
     expect(cpvFamilyLabel("72")).toBe("Servicios TI y consultoría tecnológica");
@@ -112,5 +141,45 @@ describe("company profile presentation helpers", () => {
       />,
     );
     expect(screen.getByText("Año en curso · dato parcial")).toBeInTheDocument();
+  });
+
+  it("restores operational KPIs, yearly progress and recent awards in the company quick view", () => {
+    render(
+      <Sheet open>
+        <SheetContent>
+          <CompanyQuickView
+            empresaId={7}
+            company={{
+              nombre: "Ejemplo Digital",
+              nif: "B12345678",
+              count: 4,
+              importe: 500000,
+              cuota: 8,
+              baja_media: 12,
+              ofertas_medias: 2.5,
+            }}
+            profile={{
+              ...profile,
+              por_anio: [
+                { anio: 2024, contratos: 3, importe: 400000 },
+                { anio: 2025, contratos: 4, importe: 500000 },
+              ],
+            }}
+            recentAwards={recentAwards}
+            isLoadingProfile={false}
+            isLoadingAwards={false}
+            watched={false}
+            watchPending={false}
+            onToggleWatch={vi.fn()}
+          />
+        </SheetContent>
+      </Sheet>,
+    );
+
+    expect(screen.getByText("Operativa en cifras")).toBeInTheDocument();
+    expect(screen.getByText("Baja media")).toBeInTheDocument();
+    expect(screen.getByText("Progreso anual")).toBeInTheDocument();
+    expect(screen.getByText("Adjudicaciones recientes")).toBeInTheDocument();
+    expect(screen.getByText("Servicio de soporte y evolución de sistemas")).toBeInTheDocument();
   });
 });

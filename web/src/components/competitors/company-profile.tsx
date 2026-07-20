@@ -7,18 +7,16 @@ import { ArrowLeft, Building2, CalendarDays, Eye, EyeOff, ShieldAlert } from "lu
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { useFilters } from "@/lib/filters";
-import { cn, formatDate, formatNumber } from "@/lib/utils";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 import { CompanyAwards } from "./company-awards";
 import { CompanyProfileSummary } from "./company-profile-summary";
 import type { CompanyProfileData } from "./company-profile-types";
-import { CompanyYearTrend } from "./company-year-trend";
 
-type ProfileTab = "resumen" | "evolucion" | "adjudicaciones";
 type Period = "12m" | "3y" | "all" | "global";
 
 interface CompanyProfileProps {
@@ -48,8 +46,7 @@ function ProfileSkeleton() {
 export function CompanyProfile({ empresaId }: CompanyProfileProps) {
   const filters = useFilters();
   const hasGlobalPeriod = Boolean(filters.rango.desde || filters.rango.hasta);
-  const [period, setPeriod] = useState<Period>(hasGlobalPeriod ? "global" : "12m");
-  const [tab, setTab] = useState<ProfileTab>("resumen");
+  const [period, setPeriod] = useState<Period>(hasGlobalPeriod ? "global" : "3y");
   const queryClient = useQueryClient();
 
   const scopeQuery = useMemo(() => {
@@ -129,8 +126,7 @@ export function CompanyProfile({ empresaId }: CompanyProfileProps) {
 
   return (
     <div className="space-y-6 pb-12">
-      <section className="bg-card relative overflow-hidden rounded-xl border">
-        <div className="from-primary via-primary/60 absolute inset-x-0 top-0 h-1 bg-gradient-to-r to-transparent" />
+      <section className="bg-card rounded-xl border">
         <div className="p-5 md:p-7">
           <Link
             href="/competidores"
@@ -142,9 +138,9 @@ export function CompanyProfile({ empresaId }: CompanyProfileProps) {
           <div className="mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">Empresa #{profile.empresa.empresa_id}</Badge>
-                {profile.empresa.nif ? <Badge variant="secondary">{profile.empresa.nif}</Badge> : null}
+                {profile.empresa.nif ? <Badge variant="outline">NIF {profile.empresa.nif}</Badge> : null}
                 {profile.empresa.es_ute ? <Badge variant="info">UTE</Badge> : null}
+                {profile.empresa.grupo ? <Badge variant="secondary">Grupo {profile.empresa.grupo}</Badge> : null}
               </div>
               <h1 className="mt-3 max-w-4xl text-2xl font-semibold tracking-tight md:text-3xl">
                 {profile.empresa.nombre}
@@ -156,12 +152,10 @@ export function CompanyProfile({ empresaId }: CompanyProfileProps) {
                   {formatDate(profile.actividad_historica.ultima_adjudicacion)}
                 </span>
                 <span>{formatNumber(profile.actividad_historica.contratos)} adjudicaciones históricas</span>
-                {profile.empresa.grupo ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Building2 className="h-4 w-4" aria-hidden="true" />
-                    Grupo {profile.empresa.grupo}
-                  </span>
-                ) : null}
+                <span className="inline-flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4" aria-hidden="true" />
+                  {formatNumber(profile.totales.organos)} clientes públicos en el periodo
+                </span>
               </div>
             </div>
             <Button
@@ -202,47 +196,15 @@ export function CompanyProfile({ empresaId }: CompanyProfileProps) {
           </p>
         </div>
       ) : (
-        <>
-          <div className="flex gap-1 overflow-x-auto border-b" role="tablist" aria-label="Secciones del perfil">
-            {(
-              [
-                ["resumen", "Resumen operativo"],
-                ["evolucion", "Evolución"],
-                ["adjudicaciones", "Adjudicaciones"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                className={cn(
-                  "min-h-11 shrink-0 border-b-2 px-4 text-sm font-medium transition-colors",
-                  tab === value
-                    ? "border-primary text-foreground"
-                    : "text-muted-foreground hover:text-foreground border-transparent",
-                )}
-                onClick={() => setTab(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {tab === "resumen" ? <CompanyProfileSummary profile={profile} /> : null}
-          {tab === "evolucion" ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Progreso anual</CardTitle>
-                <CardDescription>Importe y número de adjudicaciones por año dentro del ámbito elegido</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <CompanyYearTrend rows={profile.por_anio} />
-              </CardContent>
-            </Card>
-          ) : null}
-          {tab === "adjudicaciones" ? <CompanyAwards empresaId={empresaId} scopeQuery={scopeQuery} /> : null}
-        </>
+        <div className="space-y-8">
+          <CompanyProfileSummary profile={profile} />
+          <section aria-labelledby="company-awards-section-title">
+            <h2 id="company-awards-section-title" className="sr-only">
+              Listado de adjudicaciones
+            </h2>
+            <CompanyAwards empresaId={empresaId} scopeQuery={scopeQuery} />
+          </section>
+        </div>
       )}
     </div>
   );

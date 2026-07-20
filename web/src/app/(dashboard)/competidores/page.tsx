@@ -3,37 +3,53 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import React, { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { KpiCard } from "@/components/charts/kpi-card";
-const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then(m => ({ default: m.RadarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
-const CompetitorsBarChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsBarChart })), { ssr: false, loading: () => <Skeleton className="h-[500px] w-full rounded-md" /> });
-const CompetitorsPieChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsPieChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-const CompetitorsScatterChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsScatterChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-const CompetitorsTreemap = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsTreemap })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-const CompetitorsPositioningChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsPositioningChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-const CompetitorsEstacionalidadChart = dynamic(() => import("@/components/charts/competitors-charts").then(m => ({ default: m.CompetitorsEstacionalidadChart })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
+const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then((m) => ({ default: m.RadarChart })), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[420px] w-full rounded-md" />,
+});
+const CompetitorsBarChart = dynamic(
+  () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsBarChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[500px] w-full rounded-md" /> },
+);
+const CompetitorsPieChart = dynamic(
+  () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsPieChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+);
+const CompetitorsScatterChart = dynamic(
+  () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsScatterChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+);
+const CompetitorsTreemap = dynamic(
+  () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsTreemap })),
+  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+);
+const CompetitorsPositioningChart = dynamic(
+  () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsPositioningChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+);
+const CompetitorsEstacionalidadChart = dynamic(
+  () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsEstacionalidadChart })),
+  { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> },
+);
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { Badge } from "@/components/ui/badge";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Stagger } from "@/components/motion";
 
-import { formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
-import {
-  buildExecutiveSummary,
-  type CompanyProfileData,
-} from "@/components/competitors/company-profile-types";
+import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { CompanyQuickView } from "@/components/competitors/company-quick-view";
+import type { CompanyAwardsData, CompanyProfileData } from "@/components/competitors/company-profile-types";
 import { useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
 import type { ScatterPoint } from "@/components/charts/competitors-charts";
@@ -47,10 +63,8 @@ import {
   ArrowDown,
   Search,
   Users,
-  Eye,
   TrendingDown,
 } from "lucide-react";
-
 
 interface Competitor {
   nombre: string;
@@ -96,7 +110,19 @@ interface CompetitorsData {
   estacionalidad?: { mes: number; count: number; importe: number }[];
 }
 
-type SortKey = "nombre" | "count" | "importe" | "cuota" | "contratos_por_anio" | "importe_medio" | "baja_media" | "nif" | "ofertas_medias" | "pct_monopolio" | "pct_top_organo" | "ultima";
+type SortKey =
+  | "nombre"
+  | "count"
+  | "importe"
+  | "cuota"
+  | "contratos_por_anio"
+  | "importe_medio"
+  | "baja_media"
+  | "nif"
+  | "ofertas_medias"
+  | "pct_monopolio"
+  | "pct_top_organo"
+  | "ultima";
 
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -131,10 +157,7 @@ export default function CompetidoresPage() {
     queryFn: () => fetchWithAuth("/api/v1/competitive/watchlist"),
     staleTime: 60 * 1000,
   });
-  const watchedIds = useMemo(
-    () => new Set((watchlist?.items ?? []).map((w) => w.empresa_id)),
-    [watchlist],
-  );
+  const watchedIds = useMemo(() => new Set((watchlist?.items ?? []).map((w) => w.empresa_id)), [watchlist]);
   const toggleWatch = useMutation({
     mutationFn: async (e: { empresa_id: number; watched: boolean }) =>
       e.watched
@@ -149,23 +172,28 @@ export default function CompetidoresPage() {
   const [search, setSearch] = useState("");
   const { ccaas, setCcaas } = useFilters();
   const activeCcaa = useMemo(() => new Set(ccaas), [ccaas]);
-  const toggleCcaa = useCallback(
-    (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas)),
-    [ccaas, setCcaas],
-  );
+  const toggleCcaa = useCallback((ccaa: string) => setCcaas(toggleValue(ccaa, ccaas)), [ccaas, setCcaas]);
   const { sortKey, sortDir, toggleSort } = useSortToggle<SortKey>("count");
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [drillDownCompany, setDrillDownCompany] = useState<Competitor | null>(null);
   const drillDownCompanyId = drillDownCompany?.empresa_id;
-  const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } =
-    useFilteredQuery<CompanyProfileData>(
-      ["competitive-company-profile", String(drillDownCompanyId ?? "none")],
-      `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/perfil`,
-      {
-        enabled: drillDownCompanyId != null,
-        staleTime: 5 * 60 * 1000,
-      },
-    );
+  const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } = useFilteredQuery<CompanyProfileData>(
+    ["competitive-company-profile", String(drillDownCompanyId ?? "none")],
+    `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/perfil`,
+    {
+      enabled: drillDownCompanyId != null,
+      staleTime: 5 * 60 * 1000,
+    },
+  );
+  const { data: drillDownAwards, isLoading: isLoadingDrillDownAwards } = useFilteredQuery<CompanyAwardsData>(
+    ["competitive-company-awards-preview", String(drillDownCompanyId ?? "none")],
+    `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/adjudicaciones`,
+    {
+      enabled: drillDownCompanyId != null,
+      staleTime: 5 * 60 * 1000,
+    },
+    { limit: "5", offset: "0", sort: "fecha_desc" },
+  );
 
   const toggleCompareSelection = useCallback((nombre: string) => {
     setSelectedCompanies((prev) => {
@@ -236,7 +264,13 @@ export default function CompetidoresPage() {
 
   // Heatmap
   const heatmapData = useMemo(() => {
-    if (!data?.heatmap_ccaa?.length) return { empresas: [] as string[], ccaas: [] as string[], matrix: {} as Record<string, Record<string, number>>, max: 0 };
+    if (!data?.heatmap_ccaa?.length)
+      return {
+        empresas: [] as string[],
+        ccaas: [] as string[],
+        matrix: {} as Record<string, Record<string, number>>,
+        max: 0,
+      };
     const filtered = search
       ? data.heatmap_ccaa.filter((h) => h.empresa.toLowerCase().includes(search.toLowerCase()))
       : data.heatmap_ccaa;
@@ -343,13 +377,6 @@ export default function CompetidoresPage() {
   // completo hasta 20 CCAA), no del heatmap_ccaa global recortado al top-10
   // empresas — que dejaba el drill-down VACÍO para cualquier empresa fuera de
   // ese top, prometiendo más de lo que entregaba (ADR-014).
-  const drillDownCcaa = useMemo(() => {
-    const rows = drillDownProfile?.por_ccaa ?? [];
-    return [...rows]
-      .filter((r) => r.label)
-      .sort((a, b) => b.contratos - a.contratos);
-  }, [drillDownProfile]);
-
   // Ranking de bajas por empresa (más agresivas primero)
   const bajasSorted = useMemo(() => {
     const items = (bajasData?.items ?? []).filter((b) => b.baja_media_pct != null);
@@ -360,7 +387,7 @@ export default function CompetidoresPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
+      <div className="border-destructive/50 bg-destructive/10 rounded-lg border p-6 text-center" role="alert">
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -387,9 +414,7 @@ export default function CompetidoresPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Competidores</h1>
-          <p className="text-muted-foreground">
-            Cuota de mercado de empresas competidoras.
-          </p>
+          <p className="text-muted-foreground">Cuota de mercado de empresas competidoras.</p>
         </div>
         <div className="flex items-center gap-3">
           <SearchAutocomplete
@@ -463,7 +488,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[500px] w-full" />
             ) : barData.length > 0 ? (
               <ChartErrorBoundary>
-              <CompetitorsBarChart data={barData} />
+                <CompetitorsBarChart data={barData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -481,7 +506,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : pieData.length > 0 ? (
               <ChartErrorBoundary>
-              <CompetitorsPieChart data={pieData} />
+                <CompetitorsPieChart data={pieData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -502,7 +527,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : scatterData.length > 0 ? (
               <ChartErrorBoundary>
-              <CompetitorsScatterChart data={scatterData} top5Names={scatterTop5} />
+                <CompetitorsScatterChart data={scatterData} top5Names={scatterTop5} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -514,7 +539,7 @@ export default function CompetidoresPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Actividad por CCAA y Empresa</CardTitle>
-            <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
+            <p className="text-muted-foreground text-xs">Clic en una CCAA para filtrar</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -528,14 +553,14 @@ export default function CompetidoresPage() {
                   }}
                 >
                   {/* Header row */}
-                  <div className="font-medium text-muted-foreground p-1" />
+                  <div className="text-muted-foreground p-1 font-medium" />
                   {heatmapData.ccaas.map((ccaa) => (
                     <button
                       key={ccaa}
                       type="button"
                       onClick={() => toggleCcaa(ccaa)}
                       aria-pressed={activeCcaa.has(ccaa)}
-                      className={`cursor-pointer rounded-sm p-1 text-center font-medium truncate transition-colors hover:bg-muted ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                      className={`hover:bg-muted cursor-pointer truncate rounded-sm p-1 text-center font-medium transition-colors ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
                       title={`Filtrar por ${ccaa}`}
                     >
                       {truncate(ccaa, 10)}
@@ -544,7 +569,7 @@ export default function CompetidoresPage() {
                   {/* Data rows */}
                   {heatmapData.empresas.map((empresa) => (
                     <React.Fragment key={empresa}>
-                      <div key={`label-${empresa}`} className="font-medium p-1 truncate" title={empresa}>
+                      <div key={`label-${empresa}`} className="truncate p-1 font-medium" title={empresa}>
                         {truncate(empresa, 25)}
                       </div>
                       {heatmapData.ccaas.map((ccaa) => {
@@ -552,7 +577,7 @@ export default function CompetidoresPage() {
                         return (
                           <div
                             key={`${empresa}-${ccaa}`}
-                            className="p-1 text-center rounded-sm cursor-default transition-colors"
+                            className="cursor-default rounded-sm p-1 text-center transition-colors"
                             style={{ backgroundColor: heatColor(val, heatmapData.max) }}
                             title={`${empresa} - ${ccaa}: ${val}`}
                           >
@@ -582,7 +607,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : treemapData.length > 0 ? (
               <ChartErrorBoundary>
-              <CompetitorsTreemap data={treemapData} />
+                <CompetitorsTreemap data={treemapData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -599,7 +624,7 @@ export default function CompetidoresPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : positioningData.length > 0 ? (
               <ChartErrorBoundary>
-              <CompetitorsPositioningChart data={positioningData} />
+                <CompetitorsPositioningChart data={positioningData} />
               </ChartErrorBoundary>
             ) : (
               <EmptyState />
@@ -616,7 +641,7 @@ export default function CompetidoresPage() {
           </CardHeader>
           <CardContent>
             <ChartErrorBoundary>
-            <CompetitorsEstacionalidadChart data={estacionalidadData} />
+              <CompetitorsEstacionalidadChart data={estacionalidadData} />
             </ChartErrorBoundary>
           </CardContent>
         </Card>
@@ -626,11 +651,11 @@ export default function CompetidoresPage() {
       {bajasSorted.rows.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
               <TrendingDown className="h-4 w-4" />
               Empresas mas agresivas en precio (baja media)
             </CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-muted-foreground mt-1 text-xs">
               Ambito: respeta el filtro de CCAA; no aplica rango de fechas, CPV ni importe.
             </p>
           </CardHeader>
@@ -641,24 +666,22 @@ export default function CompetidoresPage() {
                   <span className="w-48 truncate" title={b.grupo}>
                     {truncate(b.grupo, 32)}
                   </span>
-                  <div className="h-4 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div className="bg-muted h-4 flex-1 overflow-hidden rounded-full">
                     <div
-                      className="h-full rounded-full bg-primary"
+                      className="bg-primary h-full rounded-full"
                       style={{ width: `${((b.baja_media_pct ?? 0) / bajasSorted.maxBaja) * 100}%` }}
                     />
                   </div>
-                  <span className="w-14 text-right tabular-nums text-xs">
-                    {formatPercent(b.baja_media_pct ?? 0)}
-                  </span>
-                  <span className="w-10 text-right tabular-nums text-xs text-muted-foreground">
+                  <span className="w-14 text-right text-xs tabular-nums">{formatPercent(b.baja_media_pct ?? 0)}</span>
+                  <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
                     {formatNumber(b.contratos)}
                   </span>
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Baja media = (presupuesto − adjudicado) / presupuesto, sobre empresas con ≥ 5
-              contratos. La cifra gris es el nº de contratos.
+            <p className="text-muted-foreground mt-3 text-xs">
+              Baja media = (presupuesto − adjudicado) / presupuesto, sobre empresas con ≥ 5 contratos. La cifra gris es
+              el nº de contratos.
             </p>
           </CardContent>
         </Card>
@@ -668,7 +691,7 @@ export default function CompetidoresPage() {
       {radarData && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
               <Users className="h-4 w-4" />
               Comparacion: {truncate(radarData.nameA, 25)} vs {truncate(radarData.nameB, 25)}
             </CardTitle>
@@ -696,9 +719,7 @@ export default function CompetidoresPage() {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base">Todos los Competidores</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Selecciona 2 empresas para comparar con radar
-            </p>
+            <p className="text-muted-foreground text-xs">Selecciona 2 empresas para comparar con radar</p>
           </div>
         </CardHeader>
         <CardContent>
@@ -712,27 +733,29 @@ export default function CompetidoresPage() {
             <div className="overflow-x-auto">
               <Table className="w-full text-sm">
                 <TableHeader>
-                  <TableRow className="border-b text-left text-muted-foreground">
-                    <TableHead className="px-2 py-2 font-medium w-10">
+                  <TableRow className="text-muted-foreground border-b text-left">
+                    <TableHead className="w-10 px-2 py-2 font-medium">
                       <span className="sr-only">Comparar</span>
                     </TableHead>
                     {TABLE_COLUMNS.map(({ key, label }) => (
                       <TableHead
                         key={key}
-                        className="cursor-pointer select-none px-3 py-2 font-medium hover:text-foreground whitespace-nowrap"
+                        className="hover:text-foreground cursor-pointer px-3 py-2 font-medium whitespace-nowrap select-none"
                         tabIndex={0}
                         role="columnheader"
                         aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
                         onClick={() => toggleSort(key)}
-                        onKeyDown={(e) => { if (e.key === "Enter") toggleSort(key); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") toggleSort(key);
+                        }}
                       >
                         <span className="inline-flex items-center gap-1">
                           {label}
                           {sortKey === key ? (
                             sortDir === "asc" ? (
-                              <ArrowUp className="h-3 w-3 text-primary" />
+                              <ArrowUp className="text-primary h-3 w-3" />
                             ) : (
-                              <ArrowDown className="h-3 w-3 text-primary" />
+                              <ArrowDown className="text-primary h-3 w-3" />
                             )
                           ) : (
                             <ArrowUpDown className="h-3 w-3 opacity-40" />
@@ -744,7 +767,7 @@ export default function CompetidoresPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredSorted.map((c, idx) => (
-                    <TableRow key={c.nif ?? c.nombre ?? idx} className="border-b last:border-0 hover:bg-muted/50">
+                    <TableRow key={c.nif ?? c.nombre ?? idx} className="hover:bg-muted/50 border-b last:border-0">
                       <TableCell className="px-2 py-2">
                         <Checkbox
                           className="h-5 w-5"
@@ -753,37 +776,50 @@ export default function CompetidoresPage() {
                         />
                       </TableCell>
                       <TableCell
-                        className="px-3 py-2 font-medium cursor-pointer hover:underline text-primary"
+                        className="text-primary cursor-pointer px-3 py-2 font-medium hover:underline"
                         onClick={() => setDrillDownCompany(c)}
                       >
                         {c.nombre}
                       </TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums text-muted-foreground">{c.nif ?? "-"}</TableCell>
+                      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">{c.nif ?? "-"}</TableCell>
                       <TableCell className="px-3 py-2 tabular-nums">{formatNumber(c.count)}</TableCell>
                       <TableCell className="px-3 py-2 tabular-nums">{formatCurrency(c.importe)}</TableCell>
                       <TableCell className="px-3 py-2 tabular-nums">{formatPercent(c.cuota)}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{c.contratos_por_anio != null ? formatNumber(c.contratos_por_anio) : "-"}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{c.importe_medio != null ? formatCurrency(c.importe_medio) : "-"}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{c.baja_media != null ? formatPercent(c.baja_media) : "-"}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{c.ofertas_medias != null ? c.ofertas_medias.toFixed(1) : "-"}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{c.pct_monopolio != null ? formatPercent(c.pct_monopolio) : "-"}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums">{c.pct_top_organo != null ? formatPercent(c.pct_top_organo) : "-"}</TableCell>
-                      <TableCell className="px-3 py-2 tabular-nums text-muted-foreground">{c.ultima ?? "-"}</TableCell>
+                      <TableCell className="px-3 py-2 tabular-nums">
+                        {c.contratos_por_anio != null ? formatNumber(c.contratos_por_anio) : "-"}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 tabular-nums">
+                        {c.importe_medio != null ? formatCurrency(c.importe_medio) : "-"}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 tabular-nums">
+                        {c.baja_media != null ? formatPercent(c.baja_media) : "-"}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 tabular-nums">
+                        {c.ofertas_medias != null ? c.ofertas_medias.toFixed(1) : "-"}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 tabular-nums">
+                        {c.pct_monopolio != null ? formatPercent(c.pct_monopolio) : "-"}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 tabular-nums">
+                        {c.pct_top_organo != null ? formatPercent(c.pct_top_organo) : "-"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">{c.ultima ?? "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
           ) : (
-            <p className="py-8 text-center text-muted-foreground">
+            <p className="text-muted-foreground py-8 text-center">
               {search ? "No se encontraron competidores" : "Sin datos disponibles"}
             </p>
           )}
           {!isLoading && filteredSorted.length > 0 && (
             <>
               <Separator className="my-3" />
-              <p className="text-xs text-muted-foreground">
-                Mostrando {filteredSorted.length} de {data?.total_empresas ?? data?.competitors.length ?? 0} competidores
+              <p className="text-muted-foreground text-xs">
+                Mostrando {filteredSorted.length} de {data?.total_empresas ?? data?.competitors.length ?? 0}{" "}
+                competidores
               </p>
             </>
           )}
@@ -792,158 +828,25 @@ export default function CompetidoresPage() {
 
       {/* Drill-down Sheet */}
       <Sheet open={!!drillDownCompany} onOpenChange={(open) => !open && setDrillDownCompany(null)}>
-        <SheetContent className="flex flex-col overflow-hidden sm:max-w-2xl lg:max-w-3xl">
-          <SheetHeader>
-            <SheetTitle>{drillDownCompany?.nombre}</SheetTitle>
-          </SheetHeader>
-          {drillDownCompany && (
-            <div className="mt-6 space-y-4 overflow-y-auto flex-1 pr-4">
-              {drillDownCompany.nif && (
-                <Badge variant="outline">NIF: {drillDownCompany.nif}</Badge>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Última adjudicación: {formatDate(drillDownProfile?.totales.ultima_adjudicacion)}
-              </p>
-              {drillDownCompany.empresa_id != null && (
-                <Button
-                  variant={watchedIds.has(drillDownCompany.empresa_id) ? "secondary" : "default"}
-                  size="sm"
-                  className="gap-2"
-                  disabled={toggleWatch.isPending}
-                  onClick={() =>
-                    toggleWatch.mutate({
-                      empresa_id: drillDownCompany.empresa_id!,
-                      watched: watchedIds.has(drillDownCompany.empresa_id!),
-                    })
-                  }
-                >
-                  <Eye className="h-4 w-4" />
-                  {watchedIds.has(drillDownCompany.empresa_id) ? "Vigilando" : "Vigilar empresa"}
-                </Button>
-              )}
-              {drillDownProfile?.totales.contratos ? (
-                <div className="rounded-lg border border-primary/20 bg-primary/[0.035] p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-primary">
-                    Lectura rápida
-                  </p>
-                  <p className="mt-1.5 text-sm leading-6">
-                    {buildExecutiveSummary(drillDownProfile)}
-                  </p>
-                </div>
-              ) : null}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Adjudicaciones</p>
-                  <p className="text-lg font-bold">
-                    {formatNumber(drillDownProfile?.totales.contratos ?? drillDownCompany.count)}
-                  </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Importe Total</p>
-                  <p className="text-lg font-bold">
-                    {formatCurrency(
-                      drillDownProfile?.totales.importe_total ?? drillDownCompany.importe,
-                    )}
-                  </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Cuota y posición</p>
-                  <p className="text-lg font-bold">
-                    {formatPercent(
-                      drillDownProfile?.posicion_mercado.cuota_pct ?? drillDownCompany.cuota,
-                    )}
-                    {drillDownProfile?.posicion_mercado.rank
-                      ? ` · #${drillDownProfile.posicion_mercado.rank}`
-                      : ""}
-                  </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Ticket mediano</p>
-                  <p className="text-lg font-bold">
-                    {formatCurrency(drillDownProfile?.totales.importe_mediano)}
-                  </p>
-                </div>
-              </div>
-
-              {/* CCAA breakdown */}
-              <>
-                <Separator />
-                <div>
-                  <p className="text-sm font-medium mb-2">Actividad por CCAA</p>
-                  {isLoadingDrillDownProfile ? (
-                    <Skeleton className="h-24 w-full" />
-                  ) : drillDownCcaa.length > 0 ? (
-                    <div className="space-y-1">
-                      {drillDownCcaa.slice(0, 8).map((h) => {
-                        return (
-                          <div key={h.label} className="flex items-center gap-2 text-sm">
-                            <span className="w-32 truncate text-muted-foreground">{h.label}</span>
-                            <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-primary rounded-full"
-                                style={{ width: `${Math.max(2, h.cuota_empresa_pct)}%` }}
-                              />
-                            </div>
-                            <span className="tabular-nums text-xs w-10 text-right">
-                              {formatPercent(h.cuota_empresa_pct, 0)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Sin desglose por CCAA disponible para esta empresa.
-                    </p>
-                  )}
-                </div>
-              </>
-
-              <>
-                <Separator />
-                <div>
-                  <p className="mb-3 text-sm font-medium">Clientes principales</p>
-                  {isLoadingDrillDownProfile ? (
-                    <Skeleton className="h-24 w-full" />
-                  ) : (drillDownProfile?.organos_principales.length ?? 0) > 0 ? (
-                    <div className="space-y-3">
-                      {drillDownProfile?.organos_principales.slice(0, 5).map((row) => (
-                        <div
-                          key={row.label}
-                          className="flex items-start justify-between gap-4 text-sm"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate font-medium" title={row.label}>
-                              {row.label}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatNumber(row.contratos)} adjudicaciones
-                            </p>
-                          </div>
-                          <p className="shrink-0 font-medium tabular-nums">
-                            {formatCurrency(row.importe)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Sin clientes identificados para esta empresa.
-                    </p>
-                  )}
-                </div>
-              </>
-
-              {drillDownCompany.empresa_id != null ? (
-                <Link
-                  href={`/competidores/empresa/${drillDownCompany.empresa_id}`}
-                  className={buttonVariants({ className: "min-h-10 w-full" })}
-                >
-                  Abrir dossier completo
-                </Link>
-              ) : null}
-            </div>
-          )}
+        <SheetContent className="flex flex-col overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl">
+          {drillDownCompany && drillDownCompanyId != null ? (
+            <CompanyQuickView
+              empresaId={drillDownCompanyId}
+              company={drillDownCompany}
+              profile={drillDownProfile}
+              recentAwards={drillDownAwards}
+              isLoadingProfile={isLoadingDrillDownProfile}
+              isLoadingAwards={isLoadingDrillDownAwards}
+              watched={watchedIds.has(drillDownCompanyId)}
+              watchPending={toggleWatch.isPending}
+              onToggleWatch={() =>
+                toggleWatch.mutate({
+                  empresa_id: drillDownCompanyId,
+                  watched: watchedIds.has(drillDownCompanyId),
+                })
+              }
+            />
+          ) : null}
         </SheetContent>
       </Sheet>
     </div>
