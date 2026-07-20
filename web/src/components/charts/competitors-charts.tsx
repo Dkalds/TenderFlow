@@ -21,6 +21,7 @@ import {
   Line,
   ComposedChart,
 } from "recharts";
+import * as React from "react";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { TreemapContent } from "@/components/charts/treemap-content";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
@@ -67,7 +68,7 @@ interface EstacionalidadEntry {
 
 /* ── Exported chart components ─────────────────────────────────── */
 
-export function CompetitorsBarChart({ data }: { data: BarEntry[] }) {
+export const CompetitorsBarChart = React.memo(function CompetitorsBarChart({ data }: { data: BarEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(400, data.length * 32)}>
@@ -87,9 +88,9 @@ export function CompetitorsBarChart({ data }: { data: BarEntry[] }) {
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );
-}
+});
 
-export function CompetitorsPieChart({ data }: { data: PieEntry[] }) {
+export const CompetitorsPieChart = React.memo(function CompetitorsPieChart({ data }: { data: PieEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={400}>
@@ -115,9 +116,9 @@ export function CompetitorsPieChart({ data }: { data: PieEntry[] }) {
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );
-}
+});
 
-export function CompetitorsScatterChart({
+export const CompetitorsScatterChart = React.memo(function CompetitorsScatterChart({
   data,
   top5Names,
 }: {
@@ -181,9 +182,9 @@ export function CompetitorsScatterChart({
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );
-}
+});
 
-export function CompetitorsTreemap({ data }: { data: TreemapEntry[] }) {
+export const CompetitorsTreemap = React.memo(function CompetitorsTreemap({ data }: { data: TreemapEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={400}>
@@ -222,9 +223,9 @@ export function CompetitorsTreemap({ data }: { data: TreemapEntry[] }) {
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );
-}
+});
 
-export function CompetitorsPositioningChart({ data }: { data: PositioningEntry[] }) {
+export const CompetitorsPositioningChart = React.memo(function CompetitorsPositioningChart({ data }: { data: PositioningEntry[] }) {
   const top5Names = new Set(
     [...data].sort((a, b) => b.count - a.count).slice(0, 5).map((d) => d.nombre),
   );
@@ -301,9 +302,9 @@ export function CompetitorsPositioningChart({ data }: { data: PositioningEntry[]
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );
-}
+});
 
-export function CompetitorsEstacionalidadChart({ data }: { data: EstacionalidadEntry[] }) {
+export const CompetitorsEstacionalidadChart = React.memo(function CompetitorsEstacionalidadChart({ data }: { data: EstacionalidadEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={300}>
@@ -345,4 +346,4 @@ export function CompetitorsEstacionalidadChart({ data }: { data: EstacionalidadE
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );
-}
+});

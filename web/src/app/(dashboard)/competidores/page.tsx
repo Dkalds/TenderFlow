@@ -139,6 +139,102 @@ function heatColor(value: number, max: number): string {
   return `hsl(var(--primary) / ${alpha})`;
 }
 
+interface CompetitorRowProps {
+  competitor: Competitor;
+  selected: boolean;
+  onToggleCompare: (nombre: string) => void;
+  onDrillDown: (competitor: Competitor) => void;
+}
+
+// Memoizado: evita recalcular formato/derivados y re-renderizar cada fila
+// cuando el padre cambia por estado ajeno a la tabla (ej. abrir el drill-down
+// del panel lateral), que era la causa del bloqueo largo de INP al hacer clic
+// en el nombre de una empresa.
+const CompetitorRow = React.memo(function CompetitorRow({
+  competitor: c,
+  selected,
+  onToggleCompare,
+  onDrillDown,
+}: CompetitorRowProps) {
+  const cifs = (c.nifs?.length ?? 0) > 1 ? c.nifs! : c.nif ? [c.nif] : (c.nifs ?? []);
+  const variantCount = c.nombres_variantes?.length ?? 0;
+  const identityCount = c.empresa_ids?.length ?? 0;
+  const groupingLabel =
+    cifs.length > 1
+      ? `${cifs.length} CIF`
+      : variantCount > 1
+        ? `${variantCount} nombres`
+        : identityCount > 1
+          ? `${identityCount} identidades`
+          : "Agrupada";
+  const groupingDetails = [
+    variantCount > 0 ? `${variantCount} variantes de nombre` : null,
+    cifs.length > 0 ? `${cifs.length} CIF` : null,
+    identityCount > 0 ? `${identityCount} identidades del maestro` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <TableRow className="hover:bg-muted/50 border-b last:border-0">
+      <TableCell className="px-2 py-2">
+        <Checkbox
+          className="h-5 w-5"
+          checked={selected}
+          onCheckedChange={() => onToggleCompare(c.nombre)}
+        />
+      </TableCell>
+      <TableCell className="px-3 py-2 font-medium">
+        <div className="flex min-w-52 items-center gap-2">
+          {c.empresa_id != null ? (
+            <button
+              type="button"
+              className="text-primary cursor-pointer text-left hover:underline"
+              onClick={() => onDrillDown(c)}
+            >
+              {c.nombre}
+            </button>
+          ) : (
+            <span title="Grupo con varias identidades legales; el dossier individual no está disponible.">
+              {c.nombre}
+            </span>
+          )}
+          {c.es_agrupacion ? (
+            <Badge variant="secondary" className="shrink-0 font-normal" title={groupingDetails}>
+              {groupingLabel}
+            </Badge>
+          ) : null}
+        </div>
+      </TableCell>
+      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums" title={cifs.join(", ")}>
+        {cifs.length > 1 ? `${cifs[0]} +${cifs.length - 1}` : (cifs[0] ?? "-")}
+      </TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">{formatNumber(c.count)}</TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">{formatCurrency(c.importe)}</TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">{formatPercent(c.cuota)}</TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">
+        {c.contratos_por_anio != null ? formatNumber(c.contratos_por_anio) : "-"}
+      </TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">
+        {c.importe_medio != null ? formatCurrency(c.importe_medio) : "-"}
+      </TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">
+        {c.baja_media != null ? formatPercent(c.baja_media) : "-"}
+      </TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">
+        {c.ofertas_medias != null ? c.ofertas_medias.toFixed(1) : "-"}
+      </TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">
+        {c.pct_monopolio != null ? formatPercent(c.pct_monopolio) : "-"}
+      </TableCell>
+      <TableCell className="px-3 py-2 tabular-nums">
+        {c.pct_top_organo != null ? formatPercent(c.pct_top_organo) : "-"}
+      </TableCell>
+      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">{c.ultima ?? "-"}</TableCell>
+    </TableRow>
+  );
+});
+
 export default function CompetidoresPage() {
   const { data, isLoading, error } = useFilteredQuery<CompetitorsData>(
     ["analytics", "competitors"],
@@ -780,24 +876,7 @@ export default function CompetidoresPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredSorted.map((c, idx) => {
-                    const cifs = (c.nifs?.length ?? 0) > 1 ? c.nifs! : c.nif ? [c.nif] : (c.nifs ?? []);
-                    const variantCount = c.nombres_variantes?.length ?? 0;
                     const identityCount = c.empresa_ids?.length ?? 0;
-                    const groupingLabel =
-                      cifs.length > 1
-                        ? `${cifs.length} CIF`
-                        : variantCount > 1
-                          ? `${variantCount} nombres`
-                          : identityCount > 1
-                            ? `${identityCount} identidades`
-                            : "Agrupada";
-                    const groupingDetails = [
-                      variantCount > 0 ? `${variantCount} variantes de nombre` : null,
-                      cifs.length > 0 ? `${cifs.length} CIF` : null,
-                      identityCount > 0 ? `${identityCount} identidades del maestro` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ");
                     const rowKey =
                       identityCount > 0
                         ? `ids:${c.empresa_ids!.join("-")}`
@@ -806,64 +885,13 @@ export default function CompetidoresPage() {
                           : `nombre:${c.nombre}:${idx}`;
 
                     return (
-                      <TableRow key={rowKey} className="hover:bg-muted/50 border-b last:border-0">
-                        <TableCell className="px-2 py-2">
-                          <Checkbox
-                            className="h-5 w-5"
-                            checked={selectedCompanies.includes(c.nombre)}
-                            onCheckedChange={() => toggleCompareSelection(c.nombre)}
-                          />
-                        </TableCell>
-                        <TableCell className="px-3 py-2 font-medium">
-                          <div className="flex min-w-52 items-center gap-2">
-                            {c.empresa_id != null ? (
-                              <button
-                                type="button"
-                                className="text-primary cursor-pointer text-left hover:underline"
-                                onClick={() => setDrillDownCompany(c)}
-                              >
-                                {c.nombre}
-                              </button>
-                            ) : (
-                              <span title="Grupo con varias identidades legales; el dossier individual no está disponible.">
-                                {c.nombre}
-                              </span>
-                            )}
-                            {c.es_agrupacion ? (
-                              <Badge variant="secondary" className="shrink-0 font-normal" title={groupingDetails}>
-                                {groupingLabel}
-                              </Badge>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground px-3 py-2 tabular-nums" title={cifs.join(", ")}>
-                          {cifs.length > 1 ? `${cifs[0]} +${cifs.length - 1}` : (cifs[0] ?? "-")}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">{formatNumber(c.count)}</TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">{formatCurrency(c.importe)}</TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">{formatPercent(c.cuota)}</TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">
-                          {c.contratos_por_anio != null ? formatNumber(c.contratos_por_anio) : "-"}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">
-                          {c.importe_medio != null ? formatCurrency(c.importe_medio) : "-"}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">
-                          {c.baja_media != null ? formatPercent(c.baja_media) : "-"}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">
-                          {c.ofertas_medias != null ? c.ofertas_medias.toFixed(1) : "-"}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">
-                          {c.pct_monopolio != null ? formatPercent(c.pct_monopolio) : "-"}
-                        </TableCell>
-                        <TableCell className="px-3 py-2 tabular-nums">
-                          {c.pct_top_organo != null ? formatPercent(c.pct_top_organo) : "-"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">
-                          {c.ultima ?? "-"}
-                        </TableCell>
-                      </TableRow>
+                      <CompetitorRow
+                        key={rowKey}
+                        competitor={c}
+                        selected={selectedCompanies.includes(c.nombre)}
+                        onToggleCompare={toggleCompareSelection}
+                        onDrillDown={setDrillDownCompany}
+                      />
                     );
                   })}
                 </TableBody>

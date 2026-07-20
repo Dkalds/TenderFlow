@@ -29,7 +29,7 @@ interface RadarChartProps {
   className?: string;
 }
 
-export function RadarChart({
+export const RadarChart = React.memo(function RadarChart({
   data,
   name = "Valor",
   compareData,
@@ -86,4 +86,4 @@ export function RadarChart({
       </ResponsiveContainer>
     </div>
   );
-}
+});
