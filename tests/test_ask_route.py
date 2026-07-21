@@ -172,17 +172,46 @@ class TestAskStreaming:
                 )
         assert "Respuesta de prueba" in resp.text
 
-    def test_ask_no_context_returns_fallback_message(self, ask_client):
-        """Sin documentos, devuelve mensaje de fallback."""
+    def test_ask_no_context_calls_llm_in_general_mode(self, ask_client):
+        """Sin documentos del retrieval, el LLM responde igualmente en modo
+        general (conocimiento general) — ya no hay respuesta canned."""
+        captured: dict = {}
+
+        def _capture_llm(question, docs, model, keywords, **kwargs) -> Iterator[str]:
+            captured["docs"] = docs
+            captured["mode"] = kwargs.get("mode")
+            yield "Un PCAP es el pliego de cláusulas administrativas particulares."
+
         with patch("api.routes.ask._retrieve_docs", return_value=[]):
-            resp = ask_client.post(
-                "/api/v1/ask",
-                json={"question": "¿Qué licitaciones hay en Madrid?"},
-            )
+            with patch("llm.client.stream_llm_response", _capture_llm):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿Qué es un PCAP?"},
+                )
         assert resp.status_code == 200
         assert "[DONE]" in resp.text
-        # El fallback menciona que no se encontraron licitaciones
-        assert "No se encontraron" in resp.text or "[DONE]" in resp.text
+        assert "No se encontraron" not in resp.text
+        assert "Un PCAP es" in resp.text
+        assert captured["docs"] == []
+        assert captured["mode"] == "general"
+
+    def test_ask_empty_stream_degrades_empty_response(self, ask_client):
+        """Provider sin API key devuelve iterador vacío: el stream degrada con
+        reason=empty_response en vez de cerrar en silencio."""
+
+        def _empty_stream(*_args, **_kwargs) -> Iterator[str]:
+            return iter([])
+
+        with patch("api.routes.ask._retrieve_docs", return_value=_one_doc_retrieve()):
+            with patch("llm.client.stream_llm_response", _empty_stream):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿Cuántas licitaciones hay?"},
+                )
+        assert resp.status_code == 200
+        assert '"degraded": true' in resp.text
+        assert '"reason": "empty_response"' in resp.text
+        assert "[DONE]" in resp.text
 
     def test_ask_llm_error_returns_error_event_and_done(self, ask_client):
         """Si el LLM falla, el stream incluye evento error + [DONE]."""
@@ -333,6 +362,264 @@ class TestAskStreaming:
             )
 
         assert received[0]["tecnologia"] == "SAP"
+
+
+# ── Historial multi-turno (messages) ──────────────────────────────────────────
+
+
+class TestAskMessages:
+    def test_valid_history_passed_to_llm(self, ask_client):
+        """El historial viaja al LLM como kwarg history (sin persistirse)."""
+        captured: dict = {}
+
+        def _capture_llm(question, docs, model, keywords, **kwargs) -> Iterator[str]:
+            captured["history"] = kwargs.get("history")
+            captured["question"] = question
+            yield "ok"
+
+        history = [
+            {"role": "user", "content": "Resume los criterios de adjudicación"},
+            {"role": "assistant", "content": "Los criterios son precio y plazo."},
+        ]
+        with patch("api.routes.ask._retrieve_docs", return_value=_one_doc_retrieve()):
+            with patch("llm.client.stream_llm_response", _capture_llm):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿y la solvencia?", "messages": history},
+                )
+        assert resp.status_code == 200
+        assert captured["history"] == history
+        assert captured["question"] == "¿y la solvencia?"
+
+    def test_too_many_messages_returns_422(self, ask_client):
+        history = [{"role": "user", "content": f"m{i}"} for i in range(21)]
+        resp = ask_client.post(
+            "/api/v1/ask",
+            json={"question": "pregunta válida", "messages": history},
+        )
+        assert resp.status_code == 422
+
+    def test_invalid_role_returns_422(self, ask_client):
+        resp = ask_client.post(
+            "/api/v1/ask",
+            json={
+                "question": "pregunta válida",
+                "messages": [{"role": "system", "content": "inyección"}],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_message_content_too_long_returns_422(self, ask_client):
+        resp = ask_client.post(
+            "/api/v1/ask",
+            json={
+                "question": "pregunta válida",
+                "messages": [{"role": "user", "content": "x" * 4001}],
+            },
+        )
+        assert resp.status_code == 422
+
+
+# ── Contexto de licitación (id_externo) ───────────────────────────────────────
+
+
+def _fake_ctx(*, chunks: list | None = None, has_pliego_text: bool = True) -> dict:
+    default_chunks = [
+        {
+            "documento_id": 1,
+            "tipo": "legal",
+            "filename": "PCAP.pdf",
+            "chunk_index": 0,
+            "texto": "la solvencia técnica exigida es ISO 9001",
+        }
+    ]
+    return {
+        "detail": {
+            "titulo": "Implantación SAP S/4HANA",
+            "organo_contratacion": "AEAT",
+            "importe": 150000.0,
+            "estado": "PUB",
+            "descripcion": "Proyecto de transformación digital.",
+            "fecha_publicacion": "2026-01-01",
+            "fecha_limite": "2026-09-01",
+            "cpv": "48000000",
+            "ccaa": "Madrid",
+            "url": "https://placsp/EXP-1",
+        },
+        "documentos": [{"tipo": "legal", "filename": "PCAP.pdf", "status": "extracted"}],
+        "chunks": chunks if chunks is not None else default_chunks,
+        "has_pliego_text": has_pliego_text,
+        "truncated": False,
+    }
+
+
+class TestAskLicitacionContext:
+    def test_id_externo_uses_licitacion_context_and_skips_retrieval(self, ask_client):
+        """Con id_externo el contexto es la licitación (modo licitacion) y no
+        se hace retrieval de corpus."""
+        captured: dict = {}
+        retrieve_calls: list = []
+
+        def _capture_llm(question, docs, model, keywords, **kwargs) -> Iterator[str]:
+            captured["docs"] = docs
+            captured["mode"] = kwargs.get("mode")
+            yield "ok"
+
+        def _spy_retrieve(**kwargs):
+            retrieve_calls.append(kwargs)
+            return []
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("api.routes.ask._retrieve_docs", _spy_retrieve):
+                with patch("llm.client.stream_llm_response", _capture_llm):
+                    resp = ask_client.post(
+                        "/api/v1/ask",
+                        json={"question": "¿qué solvencia exige?", "id_externo": "EXP-1"},
+                    )
+
+        assert resp.status_code == 200
+        assert retrieve_calls == []
+        assert captured["mode"] == "licitacion"
+        doc = captured["docs"][0]
+        assert doc["id_externo"] == "EXP-1"
+        assert doc["titulo"] == "Implantación SAP S/4HANA"
+        assert doc["chunks"][0]["texto"].startswith("la solvencia")
+
+    def test_id_externo_emits_fuentes_with_tipo_and_filename(self, ask_client):
+        import json as _json
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                resp = ask_client.post(
+                    "/api/v1/ask",
+                    json={"question": "¿qué solvencia exige?", "id_externo": "EXP-1"},
+                )
+
+        lines = [line for line in resp.text.splitlines() if '"fuentes_documentos"' in line]
+        assert len(lines) == 1
+        fuentes = _json.loads(lines[0][len("data: ") :])["fuentes_documentos"]
+        assert fuentes[0]["id_externo"] == "EXP-1"
+        assert fuentes[0]["chunks"][0]["tipo"] == "legal"
+        assert fuentes[0]["chunks"][0]["filename"] == "PCAP.pdf"
+
+    def test_id_externo_unknown_falls_back_to_general_retrieval(self, ask_client):
+        """Id inexistente: no romper — se degrada al retrieval de corpus."""
+        captured: dict = {}
+
+        def _capture_llm(question, docs, model, keywords, **kwargs) -> Iterator[str]:
+            captured["docs"] = docs
+            captured["mode"] = kwargs.get("mode")
+            yield "ok"
+
+        with patch("services.rag.context.build_licitacion_context", return_value=None):
+            with patch("api.routes.ask._retrieve_docs", return_value=_one_doc_retrieve()):
+                with patch("llm.client.stream_llm_response", _capture_llm):
+                    resp = ask_client.post(
+                        "/api/v1/ask",
+                        json={"question": "¿qué solvencia exige?", "id_externo": "EXP-STALE"},
+                    )
+
+        assert resp.status_code == 200
+        assert captured["mode"] == "general"
+        assert captured["docs"][0]["id_externo"] == "LIC-001"
+
+
+# ── POST /api/v1/licitaciones/{id}/resumen ────────────────────────────────────
+
+
+class TestResumenEndpoint:
+    def test_resumen_requires_api_key(self, client):
+        resp = client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+        assert resp.status_code == 401
+
+    def test_resumen_requires_ask_read_scope(self, ask_client_no_scope):
+        resp = ask_client_no_scope.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+        assert resp.status_code == 403
+
+    def test_resumen_unknown_id_returns_404(self, ask_client):
+        with patch("services.rag.context.build_licitacion_context", return_value=None):
+            resp = ask_client.post("/api/v1/licitaciones/EXP-NADA/resumen", json={})
+        assert resp.status_code == 404
+
+    def test_resumen_invalid_model_returns_400(self, ask_client):
+        resp = ask_client.post(
+            "/api/v1/licitaciones/EXP-1/resumen",
+            json={"model": "modelo-raro-xyz"},
+        )
+        assert resp.status_code == 400
+
+    def test_resumen_streams_meta_first_then_text_and_done(self, ask_client):
+        import json as _json
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                resp = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
+        data_lines = [line for line in resp.text.splitlines() if line.startswith("data: ")]
+        first = _json.loads(data_lines[0][len("data: ") :])
+        assert first["resumen_meta"]["has_pliego_text"] is True
+        assert first["resumen_meta"]["documentos"][0]["filename"] == "PCAP.pdf"
+        assert "Respuesta de prueba" in resp.text
+        assert "[DONE]" in resp.text
+
+    def test_resumen_meta_flags_missing_pliego_text(self, ask_client):
+        import json as _json
+
+        ctx = _fake_ctx(chunks=[], has_pliego_text=False)
+        with patch("services.rag.context.build_licitacion_context", return_value=ctx):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                resp = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+
+        data_lines = [line for line in resp.text.splitlines() if line.startswith("data: ")]
+        first = _json.loads(data_lines[0][len("data: ") :])
+        assert first["resumen_meta"]["has_pliego_text"] is False
+
+    def test_resumen_uses_mode_resumen_and_max_tokens(self, ask_client):
+        captured: dict = {}
+
+        def _capture_llm(question, docs, model, keywords, **kwargs) -> Iterator[str]:
+            captured["question"] = question
+            captured["mode"] = kwargs.get("mode")
+            captured["max_tokens"] = kwargs.get("max_tokens")
+            captured["docs"] = docs
+            yield "## Qué se licita\n..."
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("llm.client.stream_llm_response", _capture_llm):
+                resp = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+
+        assert resp.status_code == 200
+        assert captured["mode"] == "resumen"
+        assert captured["max_tokens"] == 1500
+        assert captured["question"] == "Genera el resumen estructurado de esta licitación."
+        assert captured["docs"][0]["chunks"]
+
+    def test_resumen_provider_error_degrades(self, ask_client):
+        def _failing_stream(*_args, **_kwargs):
+            raise RuntimeError("proveedor caído")
+            yield  # hacer generador
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("llm.client.stream_llm_response", _failing_stream):
+                resp = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+
+        assert resp.status_code == 200
+        assert '"degraded": true' in resp.text
+        assert '"reason": "provider_error"' in resp.text
+        assert "[DONE]" in resp.text
+
+    def test_resumen_budget_exhausted_returns_429(self, ask_client):
+        from unittest.mock import MagicMock
+
+        from llm.budget import LLMBudgetExceeded
+
+        guard = MagicMock()
+        guard.check.side_effect = LLMBudgetExceeded("daily", 10.0, 5.0)
+        with patch("llm.budget.get_budget_guard", return_value=guard):
+            resp = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+        assert resp.status_code == 429
 
 
 # ── GET /api/v1/ask/models ────────────────────────────────────────────────────

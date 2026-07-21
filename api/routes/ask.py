@@ -1,18 +1,26 @@
-"""Endpoint RAG con LLM — POST /api/v1/ask
+"""Endpoints IA — POST /api/v1/ask y POST /api/v1/licitaciones/{id}/resumen
 
-Permite hacer preguntas en lenguaje natural sobre las licitaciones almacenadas.
-Recupera documentos relevantes mediante FTS5 y los envía al LLM configurado
-para generar una respuesta contextual (Retrieval-Augmented Generation).
+``/ask`` responde preguntas en lenguaje natural con soporte de conversación
+multi-turno (``messages``). Sin ``id_externo`` recupera licitaciones relevantes
+por FTS5 como contexto (modo general: si el corpus no cubre la pregunta, el
+modelo responde con conocimiento general indicándolo). Con ``id_externo`` el
+contexto es esa licitación concreta: metadatos del anuncio + fragmentos de sus
+pliegos (``services/rag/context.py``).
 
-Requiere API-key con scope ``ask:read``.
+``/licitaciones/{id_externo}/resumen`` genera al vuelo un resumen ejecutivo
+estructurado de la oportunidad y su pliego (streaming, sin caché).
+
+Ambos requieren API-key con scope ``ask:read`` o sesión activa.
 
 Ejemplo::
 
     curl -X POST /api/v1/ask \\
          -H "X-API-Key: sk-..." \\
          -H "Content-Type: application/json" \\
-         -d '{"question": "¿Cuántas licitaciones de SAP S/4HANA hay en Madrid?",
-              "model": "gpt-4o-mini", "top_k": 5}'
+         -d '{"question": "¿Y qué solvencia técnica exige?",
+              "messages": [{"role": "user", "content": "Resume los criterios"},
+                            {"role": "assistant", "content": "Los criterios son..."}],
+              "id_externo": "EXP-2024-001"}'
 
 Respuesta: ``text/event-stream`` con fragmentos del modelo + evento ``[DONE]``.
 """
@@ -21,8 +29,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator
-from typing import Any
+from collections.abc import AsyncGenerator, Callable, Iterator
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -30,6 +38,7 @@ from pydantic import BaseModel, Field
 
 from api.routes.dual_auth import require_any_auth
 from config import settings
+from llm.prompts import ChatMessage, PromptMode
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -39,6 +48,11 @@ router = APIRouter(tags=["ask"])
 _MAX_Q_LEN = 500
 _DEFAULT_TOP_K = 5
 _MAX_TOP_K = 20
+_MAX_HISTORY_MESSAGES = 20
+_MAX_HISTORY_CONTENT_LEN = 4000
+
+_RESUMEN_QUESTION = "Genera el resumen estructurado de esta licitación."
+_RESUMEN_MAX_TOKENS = 1500
 
 # Campos que viajan en el evento SSE ``degraded`` (fallback sin síntesis LLM).
 # Aditivo al stream, NO al DTO (RFC llm-dependencia-gestionada §3.5).
@@ -56,11 +70,26 @@ _DEGRADED_DOC_FIELDS = (
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 
+class ChatMessageDTO(BaseModel):
+    """Mensaje del historial de conversación (multi-turno)."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=_MAX_HISTORY_CONTENT_LEN)
+
+
 class AskRequest(BaseModel):
     """Cuerpo de la petición de preguntas en lenguaje natural."""
 
     question: str = Field(
         ..., min_length=3, max_length=_MAX_Q_LEN, description="Pregunta en lenguaje natural"
+    )
+    messages: list[ChatMessageDTO] | None = Field(
+        default=None,
+        max_length=_MAX_HISTORY_MESSAGES,
+        description=(
+            "Historial previo de la conversación (no incluye la pregunta actual). "
+            "No se persiste en el servidor."
+        ),
     )
     model: str = Field(
         # Mantener sincronizado con llm.client.DEFAULT_MODEL.
@@ -71,14 +100,19 @@ class AskRequest(BaseModel):
         default=_DEFAULT_TOP_K,
         ge=1,
         le=_MAX_TOP_K,
-        description="Número de licitaciones a recuperar como contexto",
+        description=(
+            "Número de licitaciones a recuperar como contexto. Se ignora si se envía id_externo."
+        ),
     )
     ccaa: str | None = Field(default=None, description="Filtrar licitaciones por CCAA")
     tecnologia: str | None = Field(default=None, description="Filtrar licitaciones por tecnología")
-    # Feature C: contexto especifico de una licitacion (backwards-compatible: opcional)
     id_externo: str | None = Field(
         default=None,
-        description="ID de una licitación específica para añadirla como primer documento de contexto",
+        description=(
+            "ID de una licitación específica: el contexto pasa a ser esa licitación "
+            "(metadatos del anuncio + fragmentos de sus pliegos) en lugar del retrieval "
+            "de corpus."
+        ),
     )
 
 
@@ -89,7 +123,53 @@ class AskModelInfo(BaseModel):
     default: str
 
 
+class ResumenRequest(BaseModel):
+    """Cuerpo de la petición de resumen IA de una licitación."""
+
+    model: str = Field(
+        default="deepseek-ai/deepseek-v4-pro",
+        description="Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.",
+    )
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _check_ask_scope(user: dict[str, Any]) -> None:
+    """Scope check para auth por API key (usuarios de sesión siempre permitidos)."""
+    if user.get("auth_method") == "api_key":
+        scopes_str = user.get("scopes", "")
+        scopes = frozenset(s.strip() for s in scopes_str.split(",") if s.strip())
+        if "*" not in scopes and "ask:read" not in scopes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado. Scope insuficiente.",
+            )
+
+
+def _check_budget() -> None:
+    """Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
+    agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
+    (RFC llm-dependencia-gestionada). En monitor solo instrumenta."""
+    from llm.budget import LLMBudgetExceeded, get_budget_guard
+
+    try:
+        get_budget_guard().check()
+    except LLMBudgetExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
+
+
+def _validate_model(model: str) -> None:
+    from llm.client import AVAILABLE_MODELS
+
+    if model not in AVAILABLE_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Modelo '{model}' no disponible. Usa GET /api/v1/ask/models.",
+        )
 
 
 def _retrieve_docs(
@@ -97,94 +177,31 @@ def _retrieve_docs(
     top_k: int,
     ccaa: str | None,
     tecnologia: str | None,
-    id_externo: str | None = None,
 ) -> list[dict[str, Any]]:
     """Recupera documentos relevantes usando FTS5 con LIKE fallback.
-
-    Si ``id_externo`` se proporciona (Feature C), antepone el registro completo
-    de esa licitación como primer documento de contexto.
 
     Delega en ``services.licitaciones.search_for_ask`` que orquesta
     FTS5 + LIKE fallback a través del repository.
     """
     try:
-        from services.licitaciones import get_licitacion_detail, search_for_ask
+        from services.licitaciones import search_for_ask
 
-        docs = search_for_ask(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
-
-        # Feature C: anteponer el detalle de la licitacion especifica si se proporciona
-        if id_externo:
-            try:
-                detail = get_licitacion_detail(id_externo)
-                if detail is not None:
-                    # Construir un doc de contexto con los campos mas relevantes
-                    primary_doc: dict[str, Any] = {
-                        "id_externo": id_externo,
-                        "titulo": detail.get("titulo"),
-                        "descripcion": str(detail.get("descripcion") or "")[:1000],
-                        "organo_contratacion": detail.get("organo_contratacion"),
-                        "importe": detail.get("importe"),
-                        "fecha_publicacion": detail.get("fecha_publicacion"),
-                        "fecha_limite": detail.get("fecha_limite"),
-                        "cpv": detail.get("cpv"),
-                        "ccaa": detail.get("ccaa"),
-                        "estado": detail.get("estado"),
-                        "url": detail.get("url"),
-                        "_score": 2.0,  # prioridad maxima
-                    }
-                    # Insertar al principio, evitar duplicado si ya aparece en FTS
-                    docs = [primary_doc] + [d for d in docs if d.get("id_externo") != id_externo]
-            except Exception as exc:
-                log.debug("ask.primary_doc_failed", id_externo=id_externo, error=str(exc))
-
-        return docs
+        return search_for_ask(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
     except Exception as exc:
         log.warning("ask.retrieve_docs_failed", error=str(exc))
         return []
 
 
-def _stream_ask(request: AskRequest) -> Any:
-    """Genera el stream SSE con los fragmentos del LLM."""
-    from llm.client import AVAILABLE_MODELS, stream_llm_response
+def _fuentes_documentos(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Evento aditivo ``fuentes_documentos``: fragmentos de pliego citables.
 
-    if request.model not in AVAILABLE_MODELS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Modelo '{request.model}' no disponible. Usa GET /api/v1/ask/models.",
-        )
-
-    docs = _retrieve_docs(
-        question=request.question,
-        top_k=request.top_k,
-        ccaa=request.ccaa,
-        tecnologia=request.tecnologia,
-        id_externo=request.id_externo,
-    )
-
-    if not docs:
-        # Respuesta sin contexto
-        async def _no_context() -> AsyncGenerator[str, None]:
-            yield "data: No se encontraron licitaciones relevantes para tu pregunta.\n\n"
-            yield "data: [DONE]\n\n"
-
-        return _no_context()
-
-    keywords = [w for w in request.question.split() if len(w) > 3][:10]
-
-    # Payload del fallback degradado: los mismos docs del retrieval, sin campos
-    # internos (_score). El usuario recibe las licitaciones aunque no la prosa.
-    degraded_docs = [{k: d.get(k) for k in _DEGRADED_DOC_FIELDS} for d in docs]
-
-    def _degraded_event(reason: str) -> str:
-        payload = {"degraded": True, "reason": reason, "docs": degraded_docs}
-        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-    # Campo aditivo opcional (plan Pliegos+RAG, F9): con retrieval híbrido
-    # activo (RAG_HYBRID_ENABLED), cada doc puede traer `chunks` -- los
-    # fragmentos de pliego que motivaron su inclusión (fuentes citables). Sin
-    # retrieval híbrido (o sin match vectorial) esto es simplemente [] y no
-    # se emite ningún evento — comportamiento idéntico al anterior al cambio.
-    fuentes_documentos = [
+    Con retrieval híbrido (RAG_HYBRID_ENABLED) o contexto de licitación
+    (``id_externo``), cada doc puede traer ``chunks``; sin ellos el evento no
+    se emite — comportamiento idéntico al contrato SSE previo. Los chunks
+    viajan tal cual (contrato aditivo: el camino ``id_externo`` añade
+    ``tipo``/``filename`` a cada chunk).
+    """
+    return [
         {
             "id_externo": d.get("id_externo"),
             "titulo": d.get("titulo"),
@@ -194,14 +211,26 @@ def _stream_ask(request: AskRequest) -> Any:
         if d.get("chunks")
     ]
 
-    async def _generate() -> AsyncGenerator[str, None]:
-        """Async generator que envuelve el stream LLM síncrono con timeout.
 
-        Usa ``asyncio.wait_for`` + ``run_in_executor`` para evitar que un LLM
-        colgado bloquee el worker indefinidamente. Ante fallo del proveedor,
-        breaker abierto o timeout, degrada a los documentos del retrieval sin
-        síntesis (evento SSE ``degraded``, RFC llm-dependencia-gestionada).
-        """
+def _sse_event(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _stream_sse(
+    stream_factory: Callable[[], Iterator[str]],
+    degraded_docs: list[dict[str, Any]],
+    pre_events: list[dict[str, Any]] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Generator SSE compartido por ``/ask`` y ``/resumen``.
+
+    Envuelve el stream LLM síncrono con ``asyncio.wait_for`` + executor para
+    evitar que un LLM colgado bloquee el worker. Ante fallo del proveedor,
+    stream vacío (API key ausente) o timeout, degrada a los documentos del
+    contexto sin síntesis (evento SSE ``degraded``, RFC llm-dependencia-
+    gestionada).
+    """
+
+    async def _generate() -> AsyncGenerator[str, None]:
         timeout_seconds = float(settings.ASK_LLM_TIMEOUT_SECONDS)
         loop = asyncio.get_running_loop()
         # Cola thread-safe para pasar (kind, payload) del executor al event loop
@@ -209,23 +238,23 @@ def _stream_ask(request: AskRequest) -> Any:
 
         def _run_sync() -> None:
             """Ejecuta el stream LLM en un thread y encola los chunks."""
+            emitted = 0
             try:
-                for chunk in stream_llm_response(
-                    question=request.question,
-                    docs=docs,
-                    model=request.model,
-                    keywords=keywords,
-                ):
+                for chunk in stream_factory():
+                    emitted += 1
                     loop.call_soon_threadsafe(queue.put_nowait, ("chunk", chunk))
-                loop.call_soon_threadsafe(queue.put_nowait, ("done", ""))
+                if emitted == 0:
+                    # Providers sin API key/paquete devuelven un iterador vacío
+                    # sin lanzar: degradar en vez de cerrar en silencio.
+                    loop.call_soon_threadsafe(queue.put_nowait, ("degraded", "empty_response"))
+                else:
+                    loop.call_soon_threadsafe(queue.put_nowait, ("done", ""))
             except Exception as exc:
                 log.warning("ask.llm_stream_error_degrading", error=str(exc))
                 loop.call_soon_threadsafe(queue.put_nowait, ("degraded", "provider_error"))
 
-        if fuentes_documentos:
-            yield (
-                f"data: {json.dumps({'fuentes_documentos': fuentes_documentos}, ensure_ascii=False)}\n\n"
-            )
+        for event in pre_events or []:
+            yield _sse_event(event)
 
         executor_task = asyncio.ensure_future(asyncio.to_thread(_run_sync))
 
@@ -235,12 +264,8 @@ def _stream_ask(request: AskRequest) -> Any:
                 try:
                     kind, payload = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
                 except TimeoutError:
-                    log.error(
-                        "ask.llm_timeout_degrading",
-                        model=request.model,
-                        timeout=timeout_seconds,
-                    )
-                    yield _degraded_event("timeout")
+                    log.error("ask.llm_timeout_degrading", timeout=timeout_seconds)
+                    yield _sse_event({"degraded": True, "reason": "timeout", "docs": degraded_docs})
                     yield "data: [DONE]\n\n"
                     executor_task.cancel()
                     return
@@ -249,7 +274,7 @@ def _stream_ask(request: AskRequest) -> Any:
                     yield "data: [DONE]\n\n"
                     return
                 if kind == "degraded":
-                    yield _degraded_event(payload)
+                    yield _sse_event({"degraded": True, "reason": payload, "docs": degraded_docs})
                     yield "data: [DONE]\n\n"
                     return
                 yield f"data: {json.dumps({'text': payload})}\n\n"
@@ -260,12 +285,76 @@ def _stream_ask(request: AskRequest) -> Any:
     return _generate()
 
 
+def _stream_ask(request: AskRequest) -> AsyncGenerator[str, None]:
+    """Prepara contexto + historial y devuelve el stream SSE del LLM."""
+    from llm.client import stream_llm_response
+
+    _validate_model(request.model)
+
+    mode: PromptMode = "general"
+    docs: list[dict[str, Any]] = []
+
+    if request.id_externo:
+        # Contexto de licitación: anuncio completo + fragmentos de pliego
+        # relevantes a la pregunta. Si el id no existe se degrada al retrieval
+        # general (no romper consumidores que envían ids stale).
+        try:
+            from services.rag.context import build_licitacion_context, primary_doc_from_context
+
+            ctx = build_licitacion_context(request.id_externo, request.question)
+        except Exception as exc:
+            log.warning(
+                "ask.licitacion_context_failed", id_externo=request.id_externo, error=str(exc)
+            )
+            ctx = None
+        if ctx is not None:
+            docs = [primary_doc_from_context(request.id_externo, ctx)]
+            mode = "licitacion"
+
+    if not docs:
+        # Modo general: sin docs el LLM responde igualmente con conocimiento
+        # general (el prompt indica que no se basa en el corpus).
+        docs = _retrieve_docs(
+            question=request.question,
+            top_k=request.top_k,
+            ccaa=request.ccaa,
+            tecnologia=request.tecnologia,
+        )
+        mode = "general"
+
+    keywords = [w for w in request.question.split() if len(w) > 3][:10]
+    history: list[ChatMessage] = [
+        {"role": m.role, "content": m.content} for m in request.messages or []
+    ]
+
+    # Payload del fallback degradado: los mismos docs del contexto, sin campos
+    # internos (_score). El usuario recibe las licitaciones aunque no la prosa.
+    degraded_docs = [{k: d.get(k) for k in _DEGRADED_DOC_FIELDS} for d in docs]
+    fuentes = _fuentes_documentos(docs)
+
+    def _factory() -> Iterator[str]:
+        return stream_llm_response(
+            question=request.question,
+            docs=docs,
+            model=request.model,
+            keywords=keywords,
+            history=history,
+            mode=mode,
+        )
+
+    return _stream_sse(
+        _factory,
+        degraded_docs,
+        pre_events=[{"fuentes_documentos": fuentes}] if fuentes else None,
+    )
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
 @router.post(
     "/ask",
-    summary="Pregunta en lenguaje natural sobre licitaciones (RAG + LLM)",
+    summary="Pregunta en lenguaje natural (chat multi-turno, RAG + LLM)",
     response_class=StreamingResponse,
     responses={
         200: {"description": "Stream SSE con la respuesta del LLM"},
@@ -278,45 +367,117 @@ async def ask_question(
     body: AskRequest,
     user: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
-    """Responde a preguntas sobre licitaciones usando RAG + LLM.
+    """Responde preguntas con contexto del corpus o de una licitación concreta.
 
-    Recupera las licitaciones más relevantes mediante FTS5 y las usa como
-    contexto para generar una respuesta con el modelo LLM configurado.
+    Sin ``id_externo``: recupera las licitaciones más relevantes (FTS5) como
+    contexto; si el corpus no cubre la pregunta, el modelo responde con
+    conocimiento general indicándolo. Con ``id_externo``: el contexto es esa
+    licitación (anuncio + fragmentos de pliegos). ``messages`` habilita la
+    conversación multi-turno.
 
     Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
     """
-    # Scope check for API key auth only (session users always allowed)
-    if user.get("auth_method") == "api_key":
-        scopes_str = user.get("scopes", "")
-        scopes = frozenset(s.strip() for s in scopes_str.split(",") if s.strip())
-        if "*" not in scopes and "ask:read" not in scopes:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Acceso denegado. Scope insuficiente.",
-            )
+    _check_ask_scope(user)
 
     log.info(
         "ask.request",
         model=body.model,
         top_k=body.top_k,
         question_len=len(body.question),
+        n_messages=len(body.messages or []),
+        id_externo=body.id_externo,
         user_key_id=user.get("user_id"),
     )
 
-    # Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
-    # agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
-    # (RFC llm-dependencia-gestionada). En monitor solo instrumenta.
-    from llm.budget import LLMBudgetExceeded, get_budget_guard
-
-    try:
-        get_budget_guard().check()
-    except LLMBudgetExceeded as exc:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(exc),
-        ) from exc
+    _check_budget()
 
     generator = _stream_ask(body)
+
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post(
+    "/licitaciones/{id_externo}/resumen",
+    summary="Resumen IA de una licitación (oportunidad + pliegos)",
+    response_class=StreamingResponse,
+    responses={
+        200: {"description": "Stream SSE con el resumen generado"},
+        400: {"description": "Modelo no disponible"},
+        401: {"description": "API key inválida o sin scope ask:read"},
+        404: {"description": "Licitación no encontrada"},
+        429: {"description": "Presupuesto LLM agotado (LLM_BUDGET_MODE=enforce)"},
+    },
+)
+async def resumen_licitacion(
+    id_externo: str,
+    body: ResumenRequest,
+    user: dict[str, Any] = Depends(require_any_auth),
+) -> StreamingResponse:
+    """Genera al vuelo un resumen ejecutivo de la licitación (sin caché).
+
+    Secciones: qué se licita, órgano y contexto, importe y plazos, requisitos
+    clave del pliego, y riesgos/avisos. El primer evento SSE es
+    ``resumen_meta`` con ``has_pliego_text`` y el estado de los documentos —
+    si no hay texto de pliegos procesado, el resumen se basa solo en los
+    metadatos del anuncio y lo indica.
+
+    Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
+    """
+    _check_ask_scope(user)
+    _validate_model(body.model)
+
+    log.info(
+        "resumen.request",
+        model=body.model,
+        id_externo=id_externo,
+        user_key_id=user.get("user_id"),
+    )
+
+    _check_budget()
+
+    from llm.client import stream_llm_response
+    from services.rag.context import build_licitacion_context, primary_doc_from_context
+
+    ctx = build_licitacion_context(id_externo, None)
+    if ctx is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Licitación '{id_externo}' no encontrada.",
+        )
+
+    doc = primary_doc_from_context(id_externo, ctx)
+    degraded_docs = [{k: doc.get(k) for k in _DEGRADED_DOC_FIELDS}]
+    resumen_meta = {
+        "has_pliego_text": ctx["has_pliego_text"],
+        "truncated": ctx["truncated"],
+        "documentos": [
+            {"tipo": d.get("tipo"), "filename": d.get("filename"), "status": d.get("status")}
+            for d in ctx["documentos"]
+        ],
+    }
+
+    def _factory() -> Iterator[str]:
+        return stream_llm_response(
+            question=_RESUMEN_QUESTION,
+            docs=[doc],
+            model=body.model,
+            keywords=[],
+            mode="resumen",
+            max_tokens=_RESUMEN_MAX_TOKENS,
+        )
+
+    generator = _stream_sse(
+        _factory,
+        degraded_docs,
+        pre_events=[{"resumen_meta": resumen_meta}],
+    )
 
     return StreamingResponse(
         generator,
