@@ -199,6 +199,62 @@ class DocumentosRepository:
                 )
         return len(chunks)
 
+    # ── Lectura por licitación (resumen IA + chat contextualizado) ──────
+
+    def list_by_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+        """Metadatos (sin ``texto``) de los documentos de una licitación.
+
+        ``licitacion_id`` es el ``id_externo`` de la licitación (misma FK que
+        usa el resto del pipeline). Orden: pliego legal → técnico → anexos.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, tipo, uri, filename, content_type, size_bytes, status, "
+                "error_detail, updated_at FROM documentos WHERE licitacion_id = ? "
+                "ORDER BY CASE tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, id",
+                (licitacion_id,),
+            )
+            return rows_to_dicts(cur)
+
+    def list_chunks_by_licitacion(
+        self, licitacion_id: str, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        """Chunks de pliego de una licitación en orden documental.
+
+        Orden: legal → technical → additional, y dentro de cada documento por
+        ``chunk_index``. El ranking semántico frente a una pregunta se hace en
+        Python (``services/rag/context.py``) — aquí no se consulta el embedding
+        persistido, así que el mismo SQL sirve en Postgres y SQLite.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto "
+                "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
+                "WHERE d.licitacion_id = ? "
+                "ORDER BY CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
+                "dc.documento_id, dc.chunk_index LIMIT ?",
+                (licitacion_id, max(1, min(int(limit), 1000))),
+            )
+            return rows_to_dicts(cur)
+
+    def list_textos_by_licitacion(
+        self, licitacion_id: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Texto completo de los documentos ya extraídos de una licitación.
+
+        Fallback para licitaciones cuyo texto está extraído pero el job de
+        chunking aún no corrió (``documento_chunks`` vacío).
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, tipo, filename, texto FROM documentos "
+                "WHERE licitacion_id = ? AND status = 'extracted' AND texto IS NOT NULL "
+                "ORDER BY CASE tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, id "
+                "LIMIT ?",
+                (licitacion_id, max(1, min(int(limit), 100))),
+            )
+            return rows_to_dicts(cur)
+
     def count_chunks(self, documento_id: int) -> int:
         with connect_read() as c:
             row = c.execute(

@@ -234,6 +234,87 @@ class TestReplaceChunks:
         assert [r[0] for r in rows] == [0, 1, 2]
 
 
+class TestListByLicitacion:
+    def test_orders_pliegos_first(self, repo):
+        _insert_licitacion("EXP-L1")
+        repo.upsert_meta(
+            "EXP-L1",
+            [
+                DocumentoReferencia(tipo="additional", uri="https://x/anexo.pdf"),
+                DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf", filename="PCAP.pdf"),
+                DocumentoReferencia(tipo="technical", uri="https://x/ppt.pdf"),
+            ],
+        )
+
+        docs = repo.list_by_licitacion("EXP-L1")
+
+        assert [d["tipo"] for d in docs] == ["legal", "technical", "additional"]
+        assert docs[0]["filename"] == "PCAP.pdf"
+        assert "texto" not in docs[0]  # solo metadatos
+
+    def test_empty_for_unknown_licitacion(self, repo):
+        assert repo.list_by_licitacion("EXP-NADA") == []
+
+
+class TestListChunksByLicitacion:
+    def test_joins_tipo_filename_and_orders_documentally(self, repo):
+        _insert_licitacion("EXP-CH1")
+        repo.upsert_meta(
+            "EXP-CH1",
+            [
+                DocumentoReferencia(tipo="technical", uri="https://x/ppt.pdf", filename="PPT.pdf"),
+                DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf", filename="PCAP.pdf"),
+            ],
+        )
+        pendientes = repo.list_pendientes()
+        for p in pendientes:
+            repo.mark_extracted(p["id"], texto=f"texto {p['tipo']}", sha256="h")
+        tech = next(p for p in pendientes if p["tipo"] == "technical")
+        legal = next(p for p in pendientes if p["tipo"] == "legal")
+        repo.replace_chunks(tech["id"], ["ppt chunk 0"], [[0.1] * 384])
+        repo.replace_chunks(legal["id"], ["pcap chunk 0", "pcap chunk 1"], [[0.2] * 384] * 2)
+
+        chunks = repo.list_chunks_by_licitacion("EXP-CH1")
+
+        assert [(c["tipo"], c["chunk_index"]) for c in chunks] == [
+            ("legal", 0),
+            ("legal", 1),
+            ("technical", 0),
+        ]
+        assert chunks[0]["filename"] == "PCAP.pdf"
+        assert chunks[0]["texto"] == "pcap chunk 0"
+
+    def test_respects_limit(self, repo):
+        doc = _seed_extracted(repo, "EXP-CH2")
+        repo.replace_chunks(doc["id"], ["a", "b", "c"], [[0.1] * 384] * 3)
+        assert len(repo.list_chunks_by_licitacion("EXP-CH2", limit=2)) == 2
+
+    def test_empty_when_no_chunks(self, repo):
+        _seed_extracted(repo, "EXP-CH3")
+        assert repo.list_chunks_by_licitacion("EXP-CH3") == []
+
+
+class TestListTextosByLicitacion:
+    def test_returns_only_extracted_with_texto(self, repo):
+        _insert_licitacion("EXP-T1")
+        repo.upsert_meta(
+            "EXP-T1",
+            [
+                DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf"),
+                DocumentoReferencia(tipo="technical", uri="https://x/ppt.pdf"),
+            ],
+        )
+        legal = next(p for p in repo.list_pendientes() if p["tipo"] == "legal")
+        repo.mark_extracted(legal["id"], texto="contenido del PCAP", sha256="h")
+        # el technical queda pending → no debe aparecer
+
+        textos = repo.list_textos_by_licitacion("EXP-T1")
+
+        assert len(textos) == 1
+        assert textos[0]["tipo"] == "legal"
+        assert textos[0]["texto"] == "contenido del PCAP"
+
+
 class TestCountAll:
     def test_counts_across_licitaciones(self, repo):
         _insert_licitacion("EXP-N1")

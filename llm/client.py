@@ -1,12 +1,17 @@
 """Cliente LLM unificado — despacha al proveedor correcto según el modelo.
 
 Interfaz pública:
-    stream_llm_response(question, docs, model, keywords) -> Iterator[str]
-    provider_for(model) -> str  # "openai" | "anthropic" | "unknown"
+    stream_llm_response(question, docs, model, keywords, *,
+                        history=None, mode="general", max_tokens=None) -> Iterator[str]
+    provider_for(model) -> str  # "openai" | "anthropic" | "nvidia" | "unknown"
+
+Los prompts y el montaje de mensajes (system + historial + contexto) viven en
+``llm/prompts.py``; los providers solo reciben ``(system, messages)``.
 
 Hardening (B11):
     - Valida ``model`` contra ``AVAILABLE_MODELS`` — lanza ``ValueError`` si desconocido.
-    - Valida longitud de ``question`` (3-2000 chars) y cantidad de docs (<=50).
+    - Valida longitud de ``question`` (3-2000 chars), cantidad de docs (<=50)
+      y el historial de conversación (<=20 mensajes de <=4000 chars).
     - ``_get_key`` loguea warning si el secreto no puede leerse, en vez de silenciar.
     - Prometheus histogram ``llm_request_duration_seconds`` para latencia end-to-end.
 """
@@ -18,6 +23,7 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
+from llm.prompts import ChatMessage, PromptMode, build_messages
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -51,6 +57,8 @@ DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
 _MAX_QUESTION_LEN = 2000
 _MIN_QUESTION_LEN = 3
 _MAX_DOCS = 50
+_MAX_HISTORY_MESSAGES = 20
+_MAX_HISTORY_CONTENT_LEN = 4000
 
 # ── Precio por millón de tokens (USD): (input, output) ────────────────────────
 _PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
@@ -200,7 +208,12 @@ def _get_key(env_var: str) -> str:
     return val
 
 
-def _validate_request(question: str, docs: list[dict[str, Any]], model: str) -> None:
+def _validate_request(
+    question: str,
+    docs: list[dict[str, Any]],
+    model: str,
+    history: list[ChatMessage] | None = None,
+) -> None:
     """Valida los parámetros de entrada antes de llamar al proveedor.
 
     Raises:
@@ -219,6 +232,19 @@ def _validate_request(question: str, docs: list[dict[str, Any]], model: str) -> 
         )
     if len(docs) > _MAX_DOCS:
         raise ValueError(f"Se proporcionaron {len(docs)} documentos; el máximo es {_MAX_DOCS}.")
+    if history:
+        # Defensa en profundidad: la API ya limita esto vía Pydantic.
+        if len(history) > _MAX_HISTORY_MESSAGES:
+            raise ValueError(
+                f"El historial tiene {len(history)} mensajes; el máximo es {_MAX_HISTORY_MESSAGES}."
+            )
+        for msg in history:
+            if msg.get("role") not in ("user", "assistant"):
+                raise ValueError(f"Rol de historial inválido: {msg.get('role')!r}.")
+            if len(msg.get("content", "")) > _MAX_HISTORY_CONTENT_LEN:
+                raise ValueError(
+                    f"Un mensaje del historial excede {_MAX_HISTORY_CONTENT_LEN} caracteres."
+                )
 
 
 # ── API pública ────────────────────────────────────────────────────────────────
@@ -229,27 +255,38 @@ def stream_llm_response(
     docs: list[dict[str, Any]],
     model: str,
     keywords: list[str],
+    *,
+    history: list[ChatMessage] | None = None,
+    mode: PromptMode = "general",
+    max_tokens: int | None = None,
 ) -> Iterator[str]:
     """Genera tokens LLM en streaming delegando al proveedor correcto.
 
     Args:
         question: Pregunta del usuario (3-2000 caracteres).
         docs: Lista de dicts con claves ``id_externo``, ``titulo``,
-              ``organo_contratacion``, ``importe``, ``estado``, ``descripcion``.
-              Máximo 50 documentos.
+              ``organo_contratacion``, ``importe``, ``estado``, ``descripcion``
+              y opcionalmente ``chunks`` (fragmentos de pliego). Máximo 50.
         model: Nombre del modelo. Debe estar en ``AVAILABLE_MODELS``.
         keywords: Palabras clave para el extracto contextual.
+        history: Historial previo de la conversación (no incluye ``question``).
+            Máximo 20 mensajes de 4000 chars; se sanea y trunca en
+            ``llm/prompts.py``. No se persiste.
+        mode: Modo de prompt — ``general`` (corpus + conocimiento general),
+            ``licitacion`` (un expediente con sus pliegos) o ``resumen``.
+        max_tokens: Límite de tokens de salida; ``None`` usa el default del
+            provider.
 
     Yields:
         Fragmentos de texto del modelo a medida que llegan.
 
     Raises:
         ValueError: Si ``model`` no está en ``AVAILABLE_MODELS``, o si
-                    ``question`` está fuera de rango, o si hay demasiados docs.
+                    ``question``/``docs``/``history`` están fuera de rango.
         LLMBudgetExceeded: Si el presupuesto está agotado y
                     ``LLM_BUDGET_MODE=enforce`` (RFC llm-dependencia-gestionada).
     """
-    _validate_request(question, docs, model)
+    _validate_request(question, docs, model, history)
 
     # Breaker de coste ANTES de llamar al proveedor: en enforce corta el gasto,
     # en monitor solo instrumenta. Nota: al ser esto un generador, el check corre
@@ -260,6 +297,7 @@ def stream_llm_response(
     get_budget_guard().check()
 
     p = provider_for(model)
+    system, messages = build_messages(question, docs, keywords, mode=mode, history=history)
     t0 = time.monotonic()
     status = "ok"
     usage: dict[str, int] = {}
@@ -269,26 +307,36 @@ def stream_llm_response(
             from llm.providers.openai_provider import stream as _stream_openai
 
             yield from _stream_openai(
-                question, docs, model, keywords, _get_key("OPENAI_API_KEY"), usage_sink=usage
+                system,
+                messages,
+                model,
+                _get_key("OPENAI_API_KEY"),
+                usage_sink=usage,
+                max_tokens=max_tokens,
             )
         elif p == "anthropic":
             from llm.providers.anthropic_provider import stream as _stream_anthropic
 
             yield from _stream_anthropic(
-                question, docs, model, keywords, _get_key("ANTHROPIC_API_KEY"), usage_sink=usage
+                system,
+                messages,
+                model,
+                _get_key("ANTHROPIC_API_KEY"),
+                usage_sink=usage,
+                max_tokens=max_tokens,
             )
         elif p == "nvidia":
             # NVIDIA NIM reutiliza el proveedor OpenAI con su base_url propio.
             from llm.providers.openai_provider import stream as _stream_nvidia
 
             yield from _stream_nvidia(
-                question,
-                docs,
+                system,
+                messages,
                 model,
-                keywords,
                 _get_key("NVIDIA_API_KEY"),
                 usage_sink=usage,
                 base_url=_NVIDIA_BASE_URL,
+                max_tokens=max_tokens,
             )
         else:
             raise ValueError(f"Proveedor desconocido para modelo '{model}'")

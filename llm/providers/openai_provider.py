@@ -4,6 +4,9 @@ Compatible con cualquier endpoint que hable el protocolo OpenAI Chat Completions
 Pasando ``base_url`` se reutiliza este mismo proveedor para servicios como
 NVIDIA NIM (``https://integrate.api.nvidia.com/v1``), Together, Groq, etc.
 
+Los prompts se montan en ``llm/prompts.py`` (fuente única): este módulo recibe
+``(system, messages)`` ya construidos y solo gestiona la mecánica de streaming.
+
 Hardening (B11):
     - Timeout de 30 s en la llamada a la API.
     - Retry automático (3 intentos, backoff exponencial) ante errores transitorios
@@ -16,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Iterator, MutableMapping
 from typing import Any
 
+from llm.prompts import ChatMessage
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -28,42 +32,6 @@ _TEMPERATURE = 0.2
 
 # Errores HTTP de OpenAI que ameritan retry
 _RETRYABLE_HTTP_CODES = frozenset({429, 500, 502, 503, 504})
-
-
-def _build_prompt(question: str, docs: list[dict[str, Any]], keywords: list[str]) -> str:
-    """Construye el prompt RAG estándar."""
-
-    def _excerpt(text: str | None, kws: list[str], max_chars: int = 300) -> str:
-        if not text:
-            return ""
-        text = text[: max_chars * 3]
-        lower = text.lower()
-        for kw in kws:
-            pos = lower.find(kw.lower())
-            if pos >= 0:
-                start = max(0, pos - 60)
-                return text[start : start + max_chars]
-        return text[:max_chars]
-
-    context = "\n\n".join(
-        f"[{d['id_externo']}] {d.get('titulo', '')}\n"
-        f"Órgano: {d.get('organo_contratacion', '—')}\n"
-        f"Importe: {d.get('importe', '—')}\n"
-        f"Estado: {d.get('estado', '—')}\n"
-        f"Descripción: {_excerpt(d.get('descripcion'), keywords)}"
-        for d in docs
-    )
-    return (
-        "Eres un asistente experto en licitaciones del sector público español. "
-        "Responde ÚNICAMENTE con información de los expedientes del contexto. "
-        "Si el contexto no contiene la respuesta, escribe exactamente: "
-        "'No encontrado en el corpus.' "
-        "Cita siempre el ID del expediente entre corchetes, ej: [EXP-2024-001]. "
-        "Si hay varios expedientes relevantes, incluye una tabla Markdown resumen al final "
-        "con columnas: Expediente | Órgano | Importe | Relevancia.\n\n"
-        f"CONTEXTO:\n{context}\n\n"
-        f"PREGUNTA: {question}"
-    )
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -80,25 +48,26 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def stream(
-    question: str,
-    docs: list[dict[str, Any]],
+    system: str,
+    messages: list[ChatMessage],
     model: str,
-    keywords: list[str],
     api_key: str,
     usage_sink: MutableMapping[str, int] | None = None,
     base_url: str | None = None,
+    max_tokens: int | None = None,
 ) -> Iterator[str]:
     """Streaming OpenAI (o endpoint compatible) con retry y timeout.
 
     Args:
-        question: Pregunta del usuario.
-        docs: Documentos de contexto.
+        system: System prompt ya montado (ver ``llm/prompts.py``); se antepone
+            como mensaje ``{"role": "system"}``.
+        messages: Conversación en formato canónico (roles user/assistant).
         model: Nombre del modelo OpenAI.
-        keywords: Palabras clave para excerpts.
         api_key: Clave de API del proveedor.
         usage_sink: Si se provee, se rellena con input_tokens, output_tokens, source.
         base_url: URL base de la API. ``None`` usa el endpoint oficial de OpenAI;
             con un valor (p. ej. NVIDIA NIM) se enruta al endpoint compatible.
+        max_tokens: Límite de tokens de salida; ``None`` usa el default del módulo.
 
     Yields:
         Fragmentos de texto del modelo.
@@ -113,12 +82,12 @@ def stream(
         log.warning("llm_openai.package_not_installed", hint="pip install openai")
         return
 
-    prompt = _build_prompt(question, docs, keywords)
-    estimated_tokens = len(prompt) // 4
+    chat_messages = [{"role": "system", "content": system}, *messages]
+    estimated_tokens = (len(system) + sum(len(m["content"]) for m in messages)) // 4
     log.debug(
         "llm_openai.start",
         model=model,
-        n_docs=len(docs),
+        n_messages=len(messages),
         estimated_tokens=estimated_tokens,
     )
 
@@ -130,8 +99,8 @@ def stream(
             client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT, base_url=base_url)
             stream_kwargs: dict[str, Any] = {
                 "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": _MAX_TOKENS,
+                "messages": chat_messages,
+                "max_tokens": max_tokens or _MAX_TOKENS,
                 "temperature": _TEMPERATURE,
                 "stream": True,
             }

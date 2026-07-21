@@ -138,10 +138,9 @@ def test_anthropic_usage_sink_populated():
 
         result = list(
             stream(
-                "test?",
-                [{"id_externo": "X", "titulo": "T"}],
+                "system prompt",
+                [{"role": "user", "content": "test?"}],
                 "claude-haiku-4-5",
-                [],
                 "key123",
                 usage_sink=usage,
             )
@@ -184,10 +183,9 @@ def test_openai_usage_sink_populated():
 
         result = list(
             stream(
-                "test?",
-                [{"id_externo": "X", "titulo": "T"}],
+                "system prompt",
+                [{"role": "user", "content": "test?"}],
                 "gpt-4o-mini",
-                [],
                 "key123",
                 usage_sink=usage,
             )
@@ -219,10 +217,9 @@ def test_openai_usage_sink_estimation_fallback():
 
         result = list(
             stream(
-                "test?",
-                [{"id_externo": "X", "titulo": "T"}],
+                "system prompt",
+                [{"role": "user", "content": "test?"}],
                 "gpt-4o-mini",
-                [],
                 "key123",
                 usage_sink=usage,
             )
@@ -246,10 +243,9 @@ def test_partial_consumption_does_not_record_tokens():
     from collections.abc import Iterator
 
     def fake_stream(
-        question: str,
-        docs: list,
+        system: str,
+        messages: list,
         model: str,
-        keywords: list,
         api_key: str,
         usage_sink: dict | None = None,
         **kwargs: object,

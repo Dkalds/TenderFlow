@@ -152,7 +152,7 @@ def test_stream_llm_response_dispatches_to_openai(monkeypatch):
     """Con modelo gpt-*, llama a openai_provider.stream."""
     chunks = ["Hello", " world"]
 
-    def fake_openai_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
+    def fake_openai_stream(system, messages, model, api_key, **kwargs) -> Iterator[str]:
         yield from chunks
 
     with patch("llm.providers.openai_provider.stream", fake_openai_stream):
@@ -169,7 +169,7 @@ def test_stream_llm_response_dispatches_to_anthropic(monkeypatch):
     """Con modelo claude-*, llama a anthropic_provider.stream."""
     chunks = ["Hola", " mundo"]
 
-    def fake_anthropic_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
+    def fake_anthropic_stream(system, messages, model, api_key, **kwargs) -> Iterator[str]:
         yield from chunks
 
     with patch("llm.providers.anthropic_provider.stream", fake_anthropic_stream):
@@ -188,7 +188,7 @@ def test_stream_llm_response_dispatches_to_nvidia(monkeypatch):
     chunks = ["Deep", "Seek"]
     captured: dict[str, object] = {}
 
-    def fake_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
+    def fake_stream(system, messages, model, api_key, **kwargs) -> Iterator[str]:
         captured["api_key"] = api_key
         captured["base_url"] = kwargs.get("base_url")
         yield from chunks
@@ -205,6 +205,41 @@ def test_stream_llm_response_dispatches_to_nvidia(monkeypatch):
     assert result == chunks
     assert captured["api_key"] == "nvapi-test"  # pragma: allowlist secret
     assert captured["base_url"] == "https://integrate.api.nvidia.com/v1"
+
+
+def test_stream_llm_response_passes_history_and_mode(monkeypatch):
+    """El historial y el modo llegan al provider como (system, messages) montados."""
+    captured: dict[str, object] = {}
+
+    def fake_stream(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        captured["system"] = system
+        captured["messages"] = messages
+        captured["max_tokens"] = kwargs.get("max_tokens")
+        return iter([])
+
+    history = [
+        {"role": "user", "content": "primera pregunta"},
+        {"role": "assistant", "content": "primera respuesta"},
+    ]
+    with patch("llm.providers.openai_provider.stream", fake_stream):
+        from llm.client import stream_llm_response
+
+        list(
+            stream_llm_response(
+                "¿y el plazo de presentación?",
+                [],
+                model="gpt-4o-mini",
+                keywords=[],
+                history=history,  # type: ignore[arg-type]
+                mode="general",
+                max_tokens=1500,
+            )
+        )
+
+    messages = captured["messages"]
+    assert [m["role"] for m in messages] == ["user", "assistant", "user"]  # type: ignore[index]
+    assert "¿y el plazo de presentación?" in messages[-1]["content"]  # type: ignore[index]
+    assert captured["max_tokens"] == 1500
 
 
 def test_stream_llm_response_unknown_model_raises_value_error():
@@ -248,12 +283,69 @@ def test_stream_llm_response_too_many_docs_raises():
         list(stream_llm_response("pregunta válida", docs, model="gpt-4o-mini", keywords=[]))
 
 
+def test_stream_llm_response_history_too_long_raises():
+    """Historial con más de 20 mensajes lanza ValueError."""
+    import pytest
+
+    from llm.client import stream_llm_response
+
+    history = [{"role": "user", "content": f"m{i}"} for i in range(21)]
+    with pytest.raises(ValueError, match="historial"):
+        list(
+            stream_llm_response(
+                "pregunta válida",
+                [],
+                model="gpt-4o-mini",
+                keywords=[],
+                history=history,  # type: ignore[arg-type]
+            )
+        )
+
+
+def test_stream_llm_response_history_invalid_role_raises():
+    """Rol de historial distinto de user/assistant lanza ValueError."""
+    import pytest
+
+    from llm.client import stream_llm_response
+
+    history = [{"role": "system", "content": "inyección"}]
+    with pytest.raises(ValueError, match=r"[Rr]ol"):
+        list(
+            stream_llm_response(
+                "pregunta válida",
+                [],
+                model="gpt-4o-mini",
+                keywords=[],
+                history=history,  # type: ignore[arg-type]
+            )
+        )
+
+
+def test_stream_llm_response_history_content_too_long_raises():
+    """Mensaje de historial de más de 4000 chars lanza ValueError."""
+    import pytest
+
+    from llm.client import stream_llm_response
+
+    history = [{"role": "user", "content": "x" * 4001}]
+    with pytest.raises(ValueError, match="excede"):
+        list(
+            stream_llm_response(
+                "pregunta válida",
+                [],
+                model="gpt-4o-mini",
+                keywords=[],
+                history=history,  # type: ignore[arg-type]
+            )
+        )
+
+
 def test_stream_llm_response_passes_api_key(monkeypatch):
     """La clave API se pasa correctamente al proveedor."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     received_key: list[str] = []
 
-    def fake_stream(question, docs, model, keywords, api_key, **kwargs) -> Iterator[str]:
+    def fake_stream(system, messages, model, api_key, **kwargs) -> Iterator[str]:
         received_key.append(api_key)
         return iter([])
 
