@@ -26,7 +26,7 @@ import {
   cn,
 } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Network, Hash, Users, Search, Trophy, TrendingUp } from "lucide-react";
+import { Network, Hash, Users, Search, Trophy, TrendingUp, Layers, ArrowUpRight } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -77,9 +77,18 @@ interface PartnerEdge {
   importe: number;
 }
 
+interface CommunitySummary {
+  community: number;
+  size: number;
+  leader: string;
+  importe_total: number;
+  top_members: string[];
+}
+
 interface PartnershipGraphResponse {
   nodes: PartnerNode[];
   edges: PartnerEdge[];
+  communities: CommunitySummary[];
   total_utes: number;
 }
 
@@ -94,6 +103,9 @@ export default function EcosistemaPartnersPage() {
   const [activeTab, setActiveTab] = useState<"red" | "ganadores">("red");
   const [minWeight, setMinWeight] = useState(1);
   const [maxNodes, setMaxNodes] = useState(20);
+  // Partner enfocado: cuando está activo, el grafo muestra su ego-network en vez
+  // del hairball global.
+  const [focusPartner, setFocusPartner] = useState<string | null>(null);
   const { data, isLoading, error } = useFilteredQuery<CompetitorsData>(
     ["analytics", "competitors"],
     "/api/v1/analytics/competitors",
@@ -108,6 +120,8 @@ export default function EcosistemaPartnersPage() {
       { staleTime: 5 * 60 * 1000 },
       { top_nodes: String(maxNodes), min_contratos: String(minWeight) },
     );
+
+  const communities = useMemo(() => graphData?.communities ?? [], [graphData]);
 
   const { graphNodes, graphLinks, graphGroupLabels, graphHighlightIds } = useMemo(() => {
     const lowHL = search.trim().toLowerCase();
@@ -142,6 +156,30 @@ export default function EcosistemaPartnersPage() {
       graphHighlightIds: hl,
     };
   }, [graphData, search]);
+
+  // Ego-network del partner enfocado: subconjunto (vecinos directos) del grafo
+  // que YA vino del backend. Es un enfoque de vista, no fabricación de datos.
+  const { egoNodes, egoLinks } = useMemo(() => {
+    if (!focusPartner) return { egoNodes: [], egoLinks: [] };
+    const neighbors = new Set<string>([focusPartner]);
+    for (const l of graphLinks) {
+      if (l.source === focusPartner) neighbors.add(l.target);
+      if (l.target === focusPartner) neighbors.add(l.source);
+    }
+    return {
+      egoNodes: graphNodes.filter((n) => neighbors.has(n.id)),
+      egoLinks: graphLinks.filter((l) => neighbors.has(l.source) && neighbors.has(l.target)),
+    };
+  }, [focusPartner, graphNodes, graphLinks]);
+
+  const partnerNames = useMemo(
+    () => (graphData?.nodes ?? []).map((n) => n.name),
+    [graphData],
+  );
+
+  const focusOnPartner = (name: string) => {
+    if (partnerNames.includes(name)) setFocusPartner(name);
+  };
 
   const filteredPartners = useMemo(() => {
     if (!data?.competitors) return [];
@@ -210,28 +248,6 @@ export default function EcosistemaPartnersPage() {
     [],
   );
 
-  // Top CCAAs per empresa for cards
-  const empresaCcaaTop = useMemo(() => {
-    if (!data?.heatmap_ccaa) return new Map<string, string[]>();
-    const m = new Map<string, { ccaa: string; count: number }[]>();
-    for (const cell of data.heatmap_ccaa) {
-      const list = m.get(cell.empresa) ?? [];
-      list.push({ ccaa: cell.ccaa, count: cell.count });
-      m.set(cell.empresa, list);
-    }
-    const result = new Map<string, string[]>();
-    for (const [emp, list] of m) {
-      result.set(
-        emp,
-        list
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 3)
-          .map((x) => x.ccaa),
-      );
-    }
-    return result;
-  }, [data]);
-
   // Top winners by count for Ganadores tab
   const topWinners = useMemo(() => {
     if (!data?.competitors?.length) return [];
@@ -278,8 +294,8 @@ export default function EcosistemaPartnersPage() {
             Ecosistema Partners
           </h1>
           <p className="text-muted-foreground">
-            Grafo de co-licitacion real: un enlace existe solo si las empresas han
-            formado UTE conjunta.
+            Clústeres de empresas que co-licitan en UTE y con quién conviene aliarse
+            por segmento.
           </p>
         </div>
         <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "ecosistema-partners" }} />
@@ -294,12 +310,11 @@ export default function EcosistemaPartnersPage() {
           loading={isLoading}
         />
         <KpiCard
-          title="Total Adjudicaciones"
-          value={
-            isLoading ? undefined : formatNumber(data?.total_adjudicaciones)
-          }
-          icon={Hash}
-          loading={isLoading}
+          title="Comunidades"
+          value={graphLoading ? undefined : formatNumber(communities.length)}
+          subtitle="Clústeres de co-licitación"
+          icon={Layers}
+          loading={graphLoading}
         />
         <KpiCard
           title="HHI Concentracion"
@@ -332,7 +347,7 @@ export default function EcosistemaPartnersPage() {
           className="h-8 px-4 text-sm"
           onClick={() => setActiveTab("red")}
         >
-          Red de Partners
+          Partners &amp; Comunidades
         </Button>
         <Button
           size="sm"
@@ -346,87 +361,153 @@ export default function EcosistemaPartnersPage() {
 
       {activeTab === "red" && (
       <>
+      {/* HERO: comunidades de co-licitación */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Layers className="h-4 w-4" />
+            Comunidades de co-licitación
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Bloques de empresas que forman UTEs entre sí. Click en una para enfocar su red.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {graphLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 w-full rounded-md" />
+              ))}
+            </div>
+          ) : communities.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {communities.map((c) => (
+                <Card key={c.community} className="border-primary/15">
+                  <CardContent className="space-y-2 p-4">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary" className="text-xs">
+                        Clúster {c.community + 1}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {formatNumber(c.size)} empresas
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => focusOnPartner(c.leader)}
+                      className="block text-left text-sm font-medium hover:text-primary"
+                    >
+                      {truncate(c.leader, 40)}
+                    </button>
+                    <p className="text-xs tabular-nums text-muted-foreground">
+                      {formatCurrency(c.importe_total)} en co-licitaciones
+                    </p>
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {c.top_members
+                        .filter((m) => m !== c.leader)
+                        .slice(0, 3)
+                        .map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => focusOnPartner(m)}
+                            className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                          >
+                            {truncate(m, 24)}
+                          </button>
+                        ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Layers}
+              title="Sin comunidades"
+              hint="No hay suficientes UTEs conectadas para detectar clústeres con los filtros actuales."
+            />
+          )}
+        </CardContent>
+      </Card>
+
       {/* Search */}
       <SearchAutocomplete
         className="max-w-md"
-        placeholder="Buscar partners..."
+        placeholder="Buscar partner y enfocar su red..."
         value={search}
         onChange={setSearch}
-        suggestions={data?.competitors?.map((c) => c.nombre) ?? []}
+        onSubmit={focusOnPartner}
+        suggestions={partnerNames}
         leftIcon={<Search className="h-4 w-4" />}
         inputClassName="pl-9"
       />
 
-      {/* Search results cards */}
-      {search && filteredPartners.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredPartners.slice(0, 6).map((c) => (
-            <Card key={c.nombre} className="border-primary/20">
-              <CardContent className="p-4 space-y-2">
-                <p className="font-medium text-sm">
-                  {truncate(c.nombre, 45)}
-                </p>
-                {c.nif && <p className="text-xs text-muted-foreground">NIF: {c.nif}</p>}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <span className="text-muted-foreground">Adjudicaciones</span>
-                  <span className="tabular-nums font-medium">{formatNumber(c.count)}</span>
-                  <span className="text-muted-foreground">Importe</span>
-                  <span className="tabular-nums font-medium">{formatCurrency(c.importe)}</span>
-                  <span className="text-muted-foreground">Cuota</span>
-                  <span className="tabular-nums font-medium">{formatPercent(c.cuota)}</span>
-                  {c.importe_medio != null && (
-                    <>
-                      <span className="text-muted-foreground">Imp. Medio</span>
-                      <span className="tabular-nums font-medium">{formatCurrency(c.importe_medio)}</span>
-                    </>
-                  )}
-                  {c.baja_media != null && (
-                    <>
-                      <span className="text-muted-foreground">Baja Media</span>
-                      <span className="tabular-nums font-medium">{formatPercent(c.baja_media)}</span>
-                    </>
-                  )}
-                </div>
-                {empresaCcaaTop.get(c.nombre) && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {empresaCcaaTop.get(c.nombre)!.map((ccaa) => (
-                      <Badge key={ccaa} variant="outline" className="text-xs">
-                        {ccaa}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Force Graph */}
+      {/* Force Graph: ego del partner enfocado o red global */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Network className="h-4 w-4" />
-              Red de Partners (Top {maxNodes})
+              {focusPartner ? (
+                <>
+                  Red de {truncate(focusPartner, 34)}
+                </>
+              ) : (
+                <>Red de Partners (Top {maxNodes})</>
+              )}
             </CardTitle>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Max nodos</span>
-                <input type="range" aria-label="Max nodos" min={5} max={40} step={5} value={maxNodes} onChange={(e) => setMaxNodes(Number(e.target.value))} className="w-20 accent-primary" />
-                <Badge variant="secondary" className="text-xs">{maxNodes}</Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Min peso</span>
-                <input type="range" aria-label="Min peso" min={1} max={10} step={1} value={minWeight} onChange={(e) => setMinWeight(Number(e.target.value))} className="w-20 accent-primary" />
-                <Badge variant="secondary" className="text-xs">{minWeight}</Badge>
-              </div>
+              {focusPartner ? (
+                <button
+                  type="button"
+                  onClick={() => setFocusPartner(null)}
+                  className="rounded border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  Ver toda la red
+                </button>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Max nodos</span>
+                    <input type="range" aria-label="Max nodos" min={5} max={40} step={5} value={maxNodes} onChange={(e) => setMaxNodes(Number(e.target.value))} className="w-20 accent-primary" />
+                    <Badge variant="secondary" className="text-xs">{maxNodes}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Min peso</span>
+                    <input type="range" aria-label="Min peso" min={1} max={10} step={1} value={minWeight} onChange={(e) => setMinWeight(Number(e.target.value))} className="w-20 accent-primary" />
+                    <Badge variant="secondary" className="text-xs">{minWeight}</Badge>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {graphLoading ? (
             <Skeleton className="h-[460px] w-full" />
+          ) : focusPartner ? (
+            egoNodes.length > 0 ? (
+              <ForceGraph
+                nodes={egoNodes}
+                links={egoLinks}
+                height={460}
+                layout="ego"
+                centerId={focusPartner}
+                groupLabels={graphGroupLabels}
+                onNodeClick={(id) =>
+                  id === focusPartner
+                    ? router.push(`/empresas?q=${encodeURIComponent(id)}`)
+                    : setFocusPartner(id)
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Network}
+                title="Sin co-licitaciones"
+                hint="Este partner no tiene UTEs conjuntas en el grafo actual."
+              />
+            )
           ) : graphNodes.length > 0 ? (
             <ForceGraph
               nodes={graphNodes}
@@ -435,7 +516,7 @@ export default function EcosistemaPartnersPage() {
               layout="force"
               groupLabels={graphGroupLabels}
               highlightIds={graphHighlightIds}
-              onNodeClick={(id) => router.push(`/empresas?q=${encodeURIComponent(id)}`)}
+              onNodeClick={(id) => setFocusPartner(id)}
             />
           ) : (
             <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted py-16">
@@ -447,6 +528,38 @@ export default function EcosistemaPartnersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Search results cards */}
+      {search && filteredPartners.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredPartners.slice(0, 6).map((c) => (
+            <Card key={c.nombre} className="border-primary/20">
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-sm">{truncate(c.nombre, 40)}</p>
+                  <button
+                    type="button"
+                    onClick={() => focusOnPartner(c.nombre)}
+                    className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary"
+                    aria-label="Enfocar red de este partner"
+                  >
+                    <ArrowUpRight className="h-4 w-4" />
+                  </button>
+                </div>
+                {c.nif && <p className="text-xs text-muted-foreground">NIF: {c.nif}</p>}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Adjudicaciones</span>
+                  <span className="tabular-nums font-medium">{formatNumber(c.count)}</span>
+                  <span className="text-muted-foreground">Importe</span>
+                  <span className="tabular-nums font-medium">{formatCurrency(c.importe)}</span>
+                  <span className="text-muted-foreground">Cuota</span>
+                  <span className="tabular-nums font-medium">{formatPercent(c.cuota)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Partners Table */}
       <Card>
