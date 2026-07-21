@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopilotPanel } from "@/components/copilot-panel";
+import { DocumentosBlock } from "@/components/documentos-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
@@ -232,6 +233,9 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
 
         {/* Resoluciones de recursos (TACRC) */}
         <ResolucionesBlock licitacionId={l.id_externo} />
+
+        {/* Documentos (pliegos) parseados */}
+        <DocumentosBlock licitacionId={l.id_externo} />
 
         {/* External link */}
         {l.url && (

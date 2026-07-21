@@ -70,6 +70,19 @@ class DocumentosRepository:
             )
             return rows_to_dicts(cur)
 
+    def list_by_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+        """Metadatos de los documentos de una licitación, para mostrarlos en el
+        detalle de la UI (bloque "Documentos"). Excluye ``texto`` (puede ser
+        muy pesado y solo lo usa el pipeline RAG internamente)."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, tipo, uri, filename, content_type, size_bytes, "
+                "status, created_at FROM documentos WHERE licitacion_id = ? "
+                "ORDER BY created_at",
+                (licitacion_id,),
+            )
+            return rows_to_dicts(cur)
+
     def mark_downloaded(
         self,
         documento_id: int,

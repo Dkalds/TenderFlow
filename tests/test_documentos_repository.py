@@ -107,6 +107,35 @@ class TestListPendientes:
         assert repo.list_pendientes() == []
 
 
+class TestListByLicitacion:
+    def test_returns_docs_of_that_licitacion_only(self, repo):
+        _insert_licitacion("EXP-DOC1")
+        _insert_licitacion("EXP-DOC2")
+        repo.upsert_meta(
+            "EXP-DOC1",
+            [
+                DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf", filename="PCAP.pdf"),
+                DocumentoReferencia(tipo="technical", uri="https://x/ppt.pdf"),
+            ],
+        )
+        repo.upsert_meta("EXP-DOC2", [DocumentoReferencia(tipo="legal", uri="https://x/otro.pdf")])
+
+        items = repo.list_by_licitacion("EXP-DOC1")
+
+        assert {i["uri"] for i in items} == {"https://x/pcap.pdf", "https://x/ppt.pdf"}
+        pcap = next(i for i in items if i["uri"] == "https://x/pcap.pdf")
+        assert pcap["filename"] == "PCAP.pdf"
+        assert pcap["status"] == "pending"
+        assert "texto" not in pcap
+
+    def test_returns_empty_list_when_no_documentos(self, repo):
+        _insert_licitacion("EXP-DOC3")
+        assert repo.list_by_licitacion("EXP-DOC3") == []
+
+    def test_returns_empty_list_for_unknown_licitacion(self, repo):
+        assert repo.list_by_licitacion("NOPE-DOC") == []
+
+
 class TestMarkTransitions:
     def test_mark_downloaded_sets_metadata(self, repo):
         _insert_licitacion("EXP-8")

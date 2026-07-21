@@ -24,6 +24,7 @@ from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_any_auth
 from db.repositories.adjudicaciones import AdjudicacionRepository
+from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 
@@ -39,6 +40,7 @@ _MAX_QUERY_LENGTH = 200
 # Singletons — instanciados una vez
 _lic_repo = LicitacionRepository()
 _adj_repo = AdjudicacionRepository()
+_doc_repo = DocumentosRepository()
 
 
 def _validate_date(value: str | None, field: str) -> None:
@@ -103,6 +105,17 @@ class AdjudicacionSummary(BaseModel):
     ccaa: str | None = None
     es_pyme: int | None = None
     n_ofertas_recibidas: int | None = None
+
+
+class DocumentoSummary(BaseModel):
+    id: int
+    tipo: str
+    uri: str
+    filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    status: str
+    created_at: str | None = None
 
 
 class PaginatedResponse(BaseModel, Generic[_T]):
@@ -485,6 +498,30 @@ async def explain_licitacion(
         "id_externo": id_externo,
         "tecnologia": tecnologia,
         "explanation": explanation,
+    }
+
+
+# ── /licitaciones/{id_externo}/documentos ─────────────────────────────────
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/documentos",
+    summary="Documentos (pliegos) referenciados por una licitación",
+    responses={401: {"description": "API key inválida"}},
+)
+async def get_documentos(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, Any]:
+    """Metadatos de los adjuntos (pliegos) parseados del CODICE/UBL para esta
+    licitación — sin el texto extraído, que solo usa internamente el pipeline
+    RAG ("Preguntar al copilot"). Lista vacía si aún no se procesó ningún
+    documento (no todas las fuentes/licitaciones tienen adjuntos parseados).
+    """
+    items = await run_db(_doc_repo.list_by_licitacion, id_externo)
+    return {
+        "id_externo": id_externo,
+        "items": [DocumentoSummary.model_validate(d) for d in items],
     }
 
 
