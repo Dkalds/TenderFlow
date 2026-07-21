@@ -180,7 +180,7 @@ def test_ask_endpoint_context_includes_expected_licitacion(tmp_db):
 
     captured_docs: list[list[dict[str, Any]]] = []
 
-    def _fake_stream(question, docs, model, keywords):
+    def _fake_stream(question, docs, model, keywords, **_kwargs):
         captured_docs.append(docs)
         yield "respuesta simulada"
 
