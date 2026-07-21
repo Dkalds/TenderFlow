@@ -1,10 +1,9 @@
 /**
- * Tests for src/hooks/use-ask.ts
+ * Tests for src/hooks/use-ask.ts (useChat + useAskModels).
  *
  * Strategy:
  *  - Mock `@/lib/ask-stream` so streamAsk is a vi.fn() we fully control.
- *  - useAsk also exports useAskModels (uses fetch via react-query); mock fetch
- *    globally for those tests.
+ *  - useAskModels uses fetch via react-query; mock fetch globally for those.
  *  - Each renderHook gets a fresh QueryClient (retry: false) to avoid state bleed.
  */
 
@@ -12,19 +11,17 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { AskParams, AskStreamResult } from "@/lib/ask-stream";
 
 // ── Mock ask-stream before importing the hook ──────────────────────────────────
-const mockStreamAsk = vi.fn<
-  (params: import("@/lib/ask-stream").AskParams) => Promise<string>
->();
+const mockStreamAsk = vi.fn<(params: AskParams) => Promise<AskStreamResult>>();
 
 vi.mock("@/lib/ask-stream", () => ({
-  streamAsk: (...args: Parameters<typeof mockStreamAsk>) =>
-    mockStreamAsk(...args),
+  streamAsk: (...args: Parameters<typeof mockStreamAsk>) => mockStreamAsk(...args),
 }));
 
 // ── Subject under test ─────────────────────────────────────────────────────────
-import { useAsk, useAskModels } from "@/hooks/use-ask";
+import { useChat, useAskModels } from "@/hooks/use-ask";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -33,12 +30,12 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      children,
-    );
+    return React.createElement(QueryClientProvider, { client: queryClient }, children);
   };
+}
+
+function makeResult(overrides: Partial<AskStreamResult> = {}): AskStreamResult {
+  return { answer: "", fuentes: [], degraded: null, resumenMeta: null, ...overrides };
 }
 
 /** Build a minimal Response-like object. */
@@ -62,179 +59,185 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// ── useAsk tests ───────────────────────────────────────────────────────────────
+// ── useChat tests ──────────────────────────────────────────────────────────────
 
-describe("useAsk", () => {
+describe("useChat", () => {
   it("returns the initial idle state", () => {
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
-    expect(result.current.answer).toBeNull();
+    expect(result.current.messages).toEqual([]);
     expect(result.current.streaming).toBe(false);
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(typeof result.current.ask).toBe("function");
+    expect(typeof result.current.send).toBe("function");
+    expect(typeof result.current.stop).toBe("function");
     expect(typeof result.current.reset).toBe("function");
   });
 
   it("ignores empty / whitespace-only questions", async () => {
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
     await act(async () => {
-      await result.current.ask("   ");
+      await result.current.send("   ");
     });
 
     expect(mockStreamAsk).not.toHaveBeenCalled();
-    expect(result.current.loading).toBe(false);
+    expect(result.current.messages).toEqual([]);
   });
 
-  it("sets loading=true and streaming=true while streamAsk is pending, then resolves", async () => {
-    // Never-resolving promise to capture in-flight state.
-    let resolveStream!: (v: string) => void;
+  it("appends user + assistant turns and streams tokens into the last turn", async () => {
+    let resolveStream!: (v: AskStreamResult) => void;
     mockStreamAsk.mockImplementation(({ onToken }) => {
-      return new Promise<string>((resolve) => {
-        resolveStream = (text) => {
-          onToken(text);
-          resolve(text);
+      return new Promise<AskStreamResult>((resolve) => {
+        onToken("Hola ");
+        resolveStream = (r) => {
+          onToken(r.answer);
+          resolve(r);
         };
       });
     });
 
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
-    // Start streaming — don't await yet.
     act(() => {
-      void result.current.ask("¿Qué licitaciones hay?");
+      void result.current.send("Saluda");
     });
 
     await waitFor(() => expect(result.current.loading).toBe(true));
     expect(result.current.streaming).toBe(true);
-    expect(result.current.answer).toBe("");
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[0]).toEqual({ role: "user", content: "Saluda" });
+    expect(result.current.messages[1].role).toBe("assistant");
+    expect(result.current.messages[1].content).toBe("Hola ");
 
-    // Resolve the stream with a final answer.
     await act(async () => {
-      resolveStream("Aquí están las licitaciones.");
+      resolveStream(makeResult({ answer: "Hola mundo" }));
     });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.messages[1].content).toBe("Hola mundo");
     expect(result.current.streaming).toBe(false);
-    expect(result.current.answer).toBe("Aquí están las licitaciones.");
-    expect(result.current.error).toBeNull();
   });
 
-  it("accumulates partial tokens via onToken callback", async () => {
+  it("sends the previous turns as messages history on the next send", async () => {
     mockStreamAsk.mockImplementation(async ({ onToken }) => {
-      onToken("Hola ");
-      onToken("Hola mundo");
-      return "Hola mundo";
+      onToken("Respuesta 1");
+      return makeResult({ answer: "Respuesta 1" });
     });
 
-    const { result } = renderHook(() => useAsk(), {
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.send("Primera pregunta");
+    });
+    await act(async () => {
+      await result.current.send("¿Y el plazo?");
+    });
+
+    expect(mockStreamAsk).toHaveBeenCalledTimes(2);
+    const secondCall = mockStreamAsk.mock.calls[1][0];
+    expect(secondCall.question).toBe("¿Y el plazo?");
+    expect(secondCall.messages).toEqual([
+      { role: "user", content: "Primera pregunta" },
+      { role: "assistant", content: "Respuesta 1" },
+    ]);
+  });
+
+  it("passes idExterno, model and topK to streamAsk", async () => {
+    mockStreamAsk.mockResolvedValue(makeResult({ answer: "ok" }));
+
+    const { result } = renderHook(() => useChat({ idExterno: "EXP-1" }), {
       wrapper: createWrapper(),
     });
 
     await act(async () => {
-      await result.current.ask("Saluda");
+      await result.current.send("pregunta", { model: "gpt-4o", topK: 5 });
     });
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.answer).toBe("Hola mundo");
+    expect(mockStreamAsk).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: "pregunta",
+        idExterno: "EXP-1",
+        model: "gpt-4o",
+        topK: 5,
+      }),
+    );
   });
 
-  it("sets error state when streamAsk throws a non-abort error", async () => {
+  it("attaches fuentes and degraded metadata to the assistant turn", async () => {
+    const fuentes = [{ id_externo: "EXP-1", titulo: "T", chunks: [{ chunk_index: 0, texto: "frag" }] }];
+    mockStreamAsk.mockResolvedValue(makeResult({ answer: "respuesta", fuentes, degraded: null }));
+
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.send("pregunta");
+    });
+
+    const last = result.current.messages[1];
+    expect(last.content).toBe("respuesta");
+    expect(last.fuentes).toEqual(fuentes);
+  });
+
+  it("sets error and drops the empty assistant placeholder on failure", async () => {
     mockStreamAsk.mockRejectedValue(new Error("Error 503"));
 
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
     await act(async () => {
-      await result.current.ask("¿Falla el servidor?");
+      await result.current.send("¿Falla el servidor?");
     });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("Error 503");
-    expect(result.current.answer).toBeNull();
-    expect(result.current.streaming).toBe(false);
+    // El turno user queda; el placeholder assistant vacío se elimina.
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].role).toBe("user");
   });
 
   it("uses 'Error desconocido' for non-Error throws", async () => {
     mockStreamAsk.mockRejectedValue("string error");
 
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
     await act(async () => {
-      await result.current.ask("¿Algo raro?");
+      await result.current.send("¿Algo raro?");
     });
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.error).toBe("Error desconocido");
+    await waitFor(() => expect(result.current.error).toBe("Error desconocido"));
   });
 
   it("silently swallows AbortError (request cancelled)", async () => {
     const abortError = new DOMException("The user aborted a request.", "AbortError");
     mockStreamAsk.mockRejectedValue(abortError);
 
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
     await act(async () => {
-      await result.current.ask("Pregunta cancelada");
+      await result.current.send("Pregunta cancelada");
     });
 
-    // After an AbortError the hook returns early — no error state is set.
     expect(result.current.error).toBeNull();
   });
 
-  it("reset() clears answer, error, streaming and loading", async () => {
+  it("reset() clears the conversation and error state", async () => {
     mockStreamAsk.mockRejectedValue(new Error("fallo"));
 
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
     await act(async () => {
-      await result.current.ask("pregunta");
+      await result.current.send("pregunta");
     });
-
     await waitFor(() => expect(result.current.error).toBe("fallo"));
 
     act(() => {
       result.current.reset();
     });
 
-    expect(result.current.answer).toBeNull();
+    expect(result.current.messages).toEqual([]);
     expect(result.current.error).toBeNull();
     expect(result.current.streaming).toBe(false);
     expect(result.current.loading).toBe(false);
-  });
-
-  it("passes model and topK options to streamAsk", async () => {
-    mockStreamAsk.mockResolvedValue("ok");
-
-    const { result } = renderHook(() => useAsk(), {
-      wrapper: createWrapper(),
-    });
-
-    await act(async () => {
-      await result.current.ask("pregunta", { model: "gpt-4", topK: 5 });
-    });
-
-    expect(mockStreamAsk).toHaveBeenCalledWith(
-      expect.objectContaining({
-        question: "pregunta",
-        model: "gpt-4",
-        topK: 5,
-      }),
-    );
   });
 });
 
@@ -242,10 +245,7 @@ describe("useAsk", () => {
 
 describe("useAskModels", () => {
   it("returns the models array from a successful response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(makeResponse(["gpt-4", "gpt-3.5"])),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeResponse(["gpt-4", "gpt-3.5"])));
 
     const { result } = renderHook(() => useAskModels(), {
       wrapper: createWrapper(),
@@ -256,10 +256,7 @@ describe("useAskModels", () => {
   });
 
   it("extracts models from a { models: [...] } shape", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(makeResponse({ models: ["llama3"] })),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeResponse({ models: ["llama3"] })));
 
     const { result } = renderHook(() => useAskModels(), {
       wrapper: createWrapper(),
@@ -270,10 +267,7 @@ describe("useAskModels", () => {
   });
 
   it("returns [] on non-ok response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(makeResponse(null, 500)),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeResponse(null, 500)));
 
     const { result } = renderHook(() => useAskModels(), {
       wrapper: createWrapper(),

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { streamAsk } from "@/lib/ask-stream";
+import { streamAsk, type ChatMessage, type DegradedInfo, type FuenteDocumento } from "@/lib/ask-stream";
 
 /** Available LLM models for the copilot (shared cache key with /investigador). */
 export function useAskModels() {
@@ -19,28 +19,66 @@ export function useAskModels() {
   });
 }
 
-export interface UseAskResult {
-  answer: string | null;
+/** Client-side truncation of the history sent to the backend (server re-trims). */
+const MAX_HISTORY_TURNS = 12;
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+  /** Pliego/corpus citations attached to an assistant turn. */
+  fuentes?: FuenteDocumento[];
+  /** Set when the backend degraded (no LLM synthesis) for this turn. */
+  degraded?: DegradedInfo | null;
+}
+
+export interface SendOptions {
+  model?: string;
+  topK?: number;
+  /** Extra body params (e.g. ccaa, tecnologia from global filters). */
+  extras?: Record<string, unknown>;
+}
+
+export interface UseChatResult {
+  messages: ChatTurn[];
   streaming: boolean;
   loading: boolean;
   error: string | null;
-  ask: (question: string, opts?: { model?: string; topK?: number }) => Promise<void>;
+  send: (question: string, opts?: SendOptions) => Promise<void>;
+  stop: () => void;
   reset: () => void;
 }
 
 /**
- * Stateful wrapper around `streamAsk` for the global copilot.
- * Manages answer/streaming/loading/error and aborts in-flight requests.
+ * Multi-turn chat over `streamAsk`. The history lives only in this hook's
+ * state (never persisted); each `send` posts the previous turns as `messages`
+ * so the model keeps the conversation context.
  */
-export function useAsk(): UseAskResult {
-  const [answer, setAnswer] = useState<string | null>(null);
+export function useChat(opts?: { idExterno?: string }): UseChatResult {
+  const idExterno = opts?.idExterno;
+  const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const messagesRef = useRef<ChatTurn[]>([]);
 
-  const ask = useCallback(
-    async (question: string, opts?: { model?: string; topK?: number }) => {
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const updateLastAssistant = useCallback((patch: Partial<ChatTurn>) => {
+    setMessages((prev) => {
+      if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
+      const next = prev.slice();
+      next[next.length - 1] = { ...next[next.length - 1], ...patch };
+      return next;
+    });
+  }, []);
+
+  const send = useCallback(
+    async (question: string, sendOpts?: SendOptions) => {
       const q = question.trim();
       if (!q) return;
 
@@ -48,38 +86,68 @@ export function useAsk(): UseAskResult {
       const abort = new AbortController();
       abortRef.current = abort;
 
+      const history: ChatMessage[] = messagesRef.current
+        .filter((m) => m.content.trim())
+        .slice(-MAX_HISTORY_TURNS)
+        .map(({ role, content }) => ({ role, content }));
+
+      setMessages((prev) => [...prev, { role: "user", content: q }, { role: "assistant", content: "" }]);
       setLoading(true);
       setError(null);
-      setAnswer("");
       setStreaming(true);
 
       try {
-        await streamAsk({
+        const result = await streamAsk({
           question: q,
-          model: opts?.model,
-          topK: opts?.topK,
+          messages: history,
+          idExterno,
+          model: sendOpts?.model,
+          topK: sendOpts?.topK,
+          extras: sendOpts?.extras,
           signal: abort.signal,
-          onToken: setAnswer,
+          onToken: (accumulated) => updateLastAssistant({ content: accumulated }),
+          onFuentes: (fuentes) => updateLastAssistant({ fuentes }),
+          onDegraded: (degraded) => updateLastAssistant({ degraded }),
+        });
+        updateLastAssistant({
+          content: result.answer,
+          fuentes: result.fuentes.length > 0 ? result.fuentes : undefined,
+          degraded: result.degraded,
         });
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
+        if (abortRef.current !== abort) return; // superseded by a newer send
         setError(err instanceof Error ? err.message : "Error desconocido");
-        setAnswer(null);
+        // Drop the empty assistant placeholder so the thread stays consistent.
+        setMessages((prev) =>
+          prev.length > 0 && prev[prev.length - 1].role === "assistant" && !prev[prev.length - 1].content
+            ? prev.slice(0, -1)
+            : prev,
+        );
       } finally {
-        setLoading(false);
-        setStreaming(false);
+        // A newer send may already own the loading/streaming flags.
+        if (abortRef.current === abort) {
+          setLoading(false);
+          setStreaming(false);
+        }
       }
     },
-    [],
+    [idExterno, updateLastAssistant],
   );
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    setLoading(false);
+    setStreaming(false);
+  }, []);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
-    setAnswer(null);
+    setMessages([]);
     setError(null);
     setStreaming(false);
     setLoading(false);
   }, []);
 
-  return { answer, streaming, loading, error, ask, reset };
+  return { messages, streaming, loading, error, send, stop, reset };
 }

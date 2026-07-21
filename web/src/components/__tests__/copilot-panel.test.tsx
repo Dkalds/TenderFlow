@@ -1,38 +1,40 @@
 /**
  * Tests for src/components/copilot-panel.tsx
  *
- * Covers: CopilotPanel, GlobalCopilot, CopilotBar, renderAnswer helper.
+ * Covers: CopilotPanel (chat multi-turno), GlobalCopilot, CopilotBar.
  *
  * Strategy:
- *  - Mock `useAsk` and `useUiStore` so we control all hook state without
+ *  - Mock `useChat` and `useUiStore` so we control all hook state without
  *    network calls.
  *  - Mock Radix Sheet to a simple div so we can render in jsdom without
  *    portal / focus-trap issues.
- *  - Mock lucide-react icons to avoid SVG rendering quirks.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import * as React from "react";
+import type { ChatTurn } from "@/hooks/use-ask";
 
 // ── Shared mock state ──────────────────────────────────────────────────────────
 
-const mockAsk = vi.fn();
+const mockSend = vi.fn();
+const mockStop = vi.fn();
 const mockReset = vi.fn();
 
-const defaultAskState = {
-  answer: null as string | null,
+const defaultChatState = {
+  messages: [] as ChatTurn[],
   streaming: false,
   loading: false,
   error: null as string | null,
-  ask: mockAsk,
+  send: mockSend,
+  stop: mockStop,
   reset: mockReset,
 };
 
-let askState = { ...defaultAskState };
+let chatState = { ...defaultChatState };
 
 vi.mock("@/hooks/use-ask", () => ({
-  useAsk: () => askState,
+  useChat: () => chatState,
 }));
 
 // ── Mock UI store ──────────────────────────────────────────────────────────────
@@ -50,46 +52,34 @@ const defaultUiStore = {
 let uiStoreState = { ...defaultUiStore };
 
 vi.mock("@/lib/ui-store", () => ({
-  useUiStore: (selector: (s: typeof uiStoreState) => unknown) =>
-    selector(uiStoreState),
+  useUiStore: (selector: (s: typeof uiStoreState) => unknown) => selector(uiStoreState),
 }));
 
 // ── Mock Radix Sheet as simple divs ───────────────────────────────────────────
 // Avoids jsdom focus-trap / portal issues while still rendering children.
 
 vi.mock("@/components/ui/sheet", () => ({
-  Sheet: ({
-    children,
-    open,
-  }: {
-    children: React.ReactNode;
-    open: boolean;
-  }) => (open ? React.createElement("div", { "data-testid": "sheet" }, children) : null),
+  Sheet: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
+    open ? React.createElement("div", { "data-testid": "sheet" }, children) : null,
   SheetContent: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", { "data-testid": "sheet-content" }, children),
-  SheetHeader: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("div", null, children),
-  SheetTitle: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("h2", null, children),
-  SheetDescription: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("p", null, children),
+  SheetHeader: ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children),
+  SheetTitle: ({ children }: { children: React.ReactNode }) => React.createElement("h2", null, children),
+  SheetDescription: ({ children }: { children: React.ReactNode }) => React.createElement("p", null, children),
 }));
 
 // ── Subject under test ─────────────────────────────────────────────────────────
-import {
-  CopilotPanel,
-  GlobalCopilot,
-  CopilotBar,
-} from "@/components/copilot-panel";
+import { CopilotPanel, GlobalCopilot, CopilotBar } from "@/components/copilot-panel";
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  mockAsk.mockReset();
+  mockSend.mockReset();
+  mockStop.mockReset();
   mockReset.mockReset();
   mockOpenCopilot.mockReset();
   mockSetCopilotOpen.mockReset();
-  askState = { ...defaultAskState };
+  chatState = { ...defaultChatState };
   uiStoreState = { ...defaultUiStore };
 });
 
@@ -97,19 +87,15 @@ beforeEach(() => {
 
 describe("CopilotPanel", () => {
   it("renders without crashing when open", () => {
-    expect(() =>
-      render(
-        <CopilotPanel open={true} onOpenChange={vi.fn()} />,
-      ),
-    ).not.toThrow();
+    expect(() => render(<CopilotPanel open={true} onOpenChange={vi.fn()} />)).not.toThrow();
   });
 
   it("shows example questions in idle state", () => {
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
     expect(screen.getByText("Preguntas de ejemplo")).toBeInTheDocument();
-    expect(
-      screen.getByText("¿Cuáles son las licitaciones más recientes?"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("¿Cuáles son las licitaciones más recientes?")).toBeInTheDocument();
+    // El modo automático ofrece también preguntas generales (no solo corpus).
+    expect(screen.getByText("¿Qué es un PCAP y qué contiene?")).toBeInTheDocument();
   });
 
   it("does not render content when closed (Sheet returns null)", () => {
@@ -117,24 +103,25 @@ describe("CopilotPanel", () => {
     expect(screen.queryByText("Copiloto")).not.toBeInTheDocument();
   });
 
-  it("calls ask() when user types and submits via button", () => {
+  it("calls send() when user types and submits via button", () => {
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
     const input = screen.getByPlaceholderText("Escribe una pregunta…");
     fireEvent.change(input, { target: { value: "¿Qué licitaciones hay?" } });
     fireEvent.click(screen.getByRole("button", { name: /Enviar/i }));
 
-    expect(mockAsk).toHaveBeenCalledWith("¿Qué licitaciones hay?");
+    expect(mockSend).toHaveBeenCalledWith("¿Qué licitaciones hay?");
   });
 
-  it("calls ask() on Enter keydown in the input", () => {
+  it("calls send() on Enter keydown and clears the input", () => {
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
     const input = screen.getByPlaceholderText("Escribe una pregunta…");
     fireEvent.change(input, { target: { value: "pregunta enter" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mockAsk).toHaveBeenCalledWith("pregunta enter");
+    expect(mockSend).toHaveBeenCalledWith("pregunta enter");
+    expect((input as HTMLInputElement).value).toBe("");
   });
 
   it("send button is disabled when input is empty", () => {
@@ -143,28 +130,31 @@ describe("CopilotPanel", () => {
     expect(btn).toBeDisabled();
   });
 
-  it("send button is disabled while loading", () => {
-    askState = { ...defaultAskState, loading: true };
+  it("shows a stop button instead of send while loading", () => {
+    chatState = { ...defaultChatState, loading: true };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText("Escribe una pregunta…");
-    fireEvent.change(input, { target: { value: "pregunta" } });
-
-    const btn = screen.getByRole("button", { name: /Enviar/i });
-    expect(btn).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Enviar/i })).not.toBeInTheDocument();
+    const stopBtn = screen.getByRole("button", { name: /Detener/i });
+    fireEvent.click(stopBtn);
+    expect(mockStop).toHaveBeenCalledOnce();
   });
 
-  it("shows skeleton placeholders while loading and not streaming", () => {
-    askState = { ...defaultAskState, loading: true, streaming: false, answer: "" };
+  it("hides example questions while loading", () => {
+    chatState = {
+      ...defaultChatState,
+      loading: true,
+      messages: [
+        { role: "user", content: "pregunta" },
+        { role: "assistant", content: "" },
+      ],
+    };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
-
-    // Skeleton components should appear; they render as divs with an animate class.
-    // We check the container by expecting example questions are hidden.
     expect(screen.queryByText("Preguntas de ejemplo")).not.toBeInTheDocument();
   });
 
   it("displays the error message in an alert when error is set", () => {
-    askState = { ...defaultAskState, error: "Error del servidor" };
+    chatState = { ...defaultChatState, error: "Error del servidor" };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
     const alert = screen.getByRole("alert");
@@ -172,17 +162,27 @@ describe("CopilotPanel", () => {
     expect(alert).toHaveTextContent("Error del servidor");
   });
 
-  it("renders the answer text when available", () => {
-    askState = { ...defaultAskState, answer: "Aquí están los resultados." };
+  it("renders user and assistant turns of the conversation", () => {
+    chatState = {
+      ...defaultChatState,
+      messages: [
+        { role: "user", content: "¿Cuántas hay?" },
+        { role: "assistant", content: "Aquí están los resultados." },
+      ],
+    };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
+    expect(screen.getByText("¿Cuántas hay?")).toBeInTheDocument();
     expect(screen.getByText("Aquí están los resultados.")).toBeInTheDocument();
   });
 
   it("renders id_externo tokens as links to /detalle", () => {
-    askState = {
-      ...defaultAskState,
-      answer: "La licitación ABC-123-XYZ-001 fue adjudicada.",
+    chatState = {
+      ...defaultChatState,
+      messages: [
+        { role: "user", content: "estado" },
+        { role: "assistant", content: "La licitación ABC-123-XYZ-001 fue adjudicada." },
+      ],
     };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
@@ -191,79 +191,100 @@ describe("CopilotPanel", () => {
   });
 
   it("shows streaming cursor when streaming=true", () => {
-    askState = { ...defaultAskState, answer: "Respondiendo", streaming: true };
+    chatState = {
+      ...defaultChatState,
+      streaming: true,
+      messages: [
+        { role: "user", content: "pregunta" },
+        { role: "assistant", content: "Respondiendo" },
+      ],
+    };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    // The blinking cursor character ▌ is rendered.
     expect(screen.getByText("▌")).toBeInTheDocument();
   });
 
-  it("shows 'Nueva pregunta' button when there is a result and not loading", () => {
-    askState = { ...defaultAskState, answer: "Respuesta final" };
+  it("shows pliego sources block for assistant turns with fuentes", () => {
+    chatState = {
+      ...defaultChatState,
+      messages: [
+        { role: "user", content: "¿solvencia?" },
+        {
+          role: "assistant",
+          content: "La solvencia exigida es ISO 9001.",
+          fuentes: [
+            {
+              id_externo: "EXP-1",
+              titulo: "Implantación",
+              chunks: [{ chunk_index: 0, texto: "fragmento del pliego", tipo: "legal", filename: "PCAP.pdf" }],
+            },
+          ],
+        },
+      ],
+    };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: /Nueva pregunta/i })).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /Fuentes del pliego \(1\)/i });
+    fireEvent.click(toggle);
+    expect(screen.getByText(/fragmento del pliego/)).toBeInTheDocument();
+    expect(screen.getByText(/PCAP\.pdf/)).toBeInTheDocument();
   });
 
-  it("clicking 'Nueva pregunta' calls reset() and clears the input", () => {
-    askState = { ...defaultAskState, answer: "Respuesta final" };
+  it("shows a degraded notice with retrieved docs when the backend degraded", () => {
+    chatState = {
+      ...defaultChatState,
+      messages: [
+        { role: "user", content: "pregunta" },
+        {
+          role: "assistant",
+          content: "",
+          degraded: {
+            reason: "provider_error",
+            docs: [{ id_externo: "LIC-1", titulo: "Licitación uno" }],
+          },
+        },
+      ],
+    };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText("Escribe una pregunta…");
-    fireEvent.change(input, { target: { value: "algo" } });
+    expect(screen.getByRole("status")).toHaveTextContent("El asistente no está disponible");
+    expect(screen.getByRole("link", { name: "Licitación uno" })).toHaveAttribute("href", "/detalle?lic=LIC-1");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /Nueva pregunta/i }));
+  it("shows 'Nueva conversación' when there are messages and not loading", () => {
+    chatState = {
+      ...defaultChatState,
+      messages: [
+        { role: "user", content: "p" },
+        { role: "assistant", content: "r" },
+      ],
+    };
+    render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
+    const btn = screen.getByRole("button", { name: /Nueva conversación/i });
+    fireEvent.click(btn);
     expect(mockReset).toHaveBeenCalledOnce();
-    expect((input as HTMLInputElement).value).toBe("");
   });
 
-  it("example question badge click calls ask() and sets the input", () => {
+  it("example question badge click calls send()", () => {
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    const badge = screen.getByText("¿Qué órganos licitan más en consultoría?");
+    const badge = screen.getByText("¿Qué es un PCAP y qué contiene?");
     fireEvent.click(badge);
 
-    expect(mockAsk).toHaveBeenCalledWith(
-      "¿Qué órganos licitan más en consultoría?",
-    );
-  });
-
-  it("example question badge fires on Enter keydown", () => {
-    render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
-
-    const badge = screen.getByText("Licitaciones de S/4HANA con importe mayor a 500K");
-    fireEvent.keyDown(badge, { key: "Enter" });
-
-    expect(mockAsk).toHaveBeenCalledWith(
-      "Licitaciones de S/4HANA con importe mayor a 500K",
-    );
+    expect(mockSend).toHaveBeenCalledWith("¿Qué es un PCAP y qué contiene?");
   });
 
   it("runs the seedQuestion when seedKey > 0", () => {
-    render(
-      <CopilotPanel
-        open={true}
-        onOpenChange={vi.fn()}
-        seedQuestion="pregunta semilla"
-        seedKey={1}
-      />,
-    );
+    render(<CopilotPanel open={true} onOpenChange={vi.fn()} seedQuestion="pregunta semilla" seedKey={1} />);
 
-    expect(mockAsk).toHaveBeenCalledWith("pregunta semilla");
+    expect(mockSend).toHaveBeenCalledWith("pregunta semilla");
   });
 
   it("does NOT run seedQuestion when seedKey is 0 (default)", () => {
-    render(
-      <CopilotPanel
-        open={true}
-        onOpenChange={vi.fn()}
-        seedQuestion="no debería ejecutarse"
-        seedKey={0}
-      />,
-    );
+    render(<CopilotPanel open={true} onOpenChange={vi.fn()} seedQuestion="no debería ejecutarse" seedKey={0} />);
 
-    expect(mockAsk).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });
 
@@ -294,9 +315,7 @@ describe("GlobalCopilot", () => {
 describe("CopilotBar", () => {
   it("renders the ask input and submit button", () => {
     render(<CopilotBar />);
-    expect(
-      screen.getByPlaceholderText("Pregúntale a tus licitaciones…"),
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Pregúntale a tus licitaciones…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Preguntar/i })).toBeInTheDocument();
   });
 

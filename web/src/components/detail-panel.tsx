@@ -1,16 +1,10 @@
 "use client";
 
 import * as React from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CopilotPanel } from "@/components/copilot-panel";
+import { LicitacionAI } from "@/components/licitacion-ai";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
@@ -59,29 +53,26 @@ const DESGLOSE_LABELS: Record<string, string> = {
 };
 
 const ESTADO_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  "Adjudicada": "default",
-  "Resuelta": "default",
+  Adjudicada: "default",
+  Resuelta: "default",
   "En plazo": "secondary",
-  "Evaluación": "secondary",
-  "Anulada": "destructive",
-  "Desierta": "destructive",
+  Evaluación: "secondary",
+  Anulada: "destructive",
+  Desierta: "destructive",
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dt className="text-muted-foreground text-xs font-medium">{label}</dt>
       <dd className="text-sm">{children ?? <span className="text-muted-foreground">-</span>}</dd>
     </div>
   );
 }
 
 export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelProps) {
-  const [copilotOpen, setCopilotOpen] = React.useState(false);
-  const [copilotSeedKey, setCopilotSeedKey] = React.useState(0);
-  const copilotSeedQuestion = l.titulo
-    ? `Analiza esta licitación: ${l.titulo}`
-    : "Analiza esta licitación";
+  // Bump para activar el tab "Preguntar" del asistente IA desde la cabecera.
+  const [askSignal, setAskSignal] = React.useState(0);
 
   const handleCopyLink = React.useCallback(async () => {
     const url = `${window.location.origin}/detalle?lic=${encodeURIComponent(l.id_externo)}`;
@@ -95,27 +86,18 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
 
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className={cn("w-full sm:max-w-lg overflow-y-auto", className)}>
+      <SheetContent side="right" className={cn("w-full overflow-y-auto sm:max-w-lg", className)}>
         <SheetHeader className="mb-6">
           <SheetTitle className="text-base leading-snug">{l.titulo ?? l.id_externo}</SheetTitle>
           <SheetDescription>{l.id_externo}</SheetDescription>
         </SheetHeader>
 
         {/* Estado + importe */}
-        <div className="mb-6 flex items-center gap-3 flex-wrap">
-          {l.estado && (
-            <Badge variant={ESTADO_VARIANTS[l.estado] ?? "outline"}>{l.estado}</Badge>
-          )}
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          {l.estado && <Badge variant={ESTADO_VARIANTS[l.estado] ?? "outline"}>{l.estado}</Badge>}
           <RecurridoBadge licitacionId={l.id_externo} />
-          {l.importe != null && (
-            <span className="text-lg font-semibold">{formatCurrency(l.importe)}</span>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={handleCopyLink}
-          >
+          {l.importe != null && <span className="text-lg font-semibold">{formatCurrency(l.importe)}</span>}
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleCopyLink}>
             <Link2 className="h-3.5 w-3.5" />
             Copiar enlace
           </Button>
@@ -124,38 +106,33 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             size="sm"
             className="gap-1.5"
             onClick={() => {
-              setCopilotSeedKey((k) => k + 1);
-              setCopilotOpen(true);
+              setAskSignal((k) => k + 1);
+              document.getElementById("licitacion-ai")?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           >
             <MessageSquare className="h-3.5 w-3.5" />
-            Preguntar al copilot
+            Preguntar a la IA
           </Button>
         </div>
 
-        {/* Copilot panel contextualizado en esta licitacion */}
-        <CopilotPanel
-          open={copilotOpen}
-          onOpenChange={setCopilotOpen}
-          seedQuestion={copilotSeedQuestion}
-          seedKey={copilotSeedKey}
-        />
+        {/* Asistente IA contextualizado: resumen + chat sobre esta licitación */}
+        <LicitacionAI idExterno={l.id_externo} askSignal={askSignal} />
 
         {/* Score section */}
         {l.score != null && (
           <div className="mb-6 space-y-2">
             <h3 className="text-sm font-medium">Puntuación</h3>
-              <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                role="progressbar"
+                aria-valuenow={Math.min(100, l.score)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Puntuación"
+                className="bg-muted h-2 flex-1 overflow-hidden rounded-full"
+              >
                 <div
-                  role="progressbar"
-                  aria-valuenow={Math.min(100, l.score)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label="Puntuación"
-                  className="h-2 flex-1 rounded-full bg-muted overflow-hidden"
-                >
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
+                  className="bg-primary h-full rounded-full transition-all"
                   style={{ width: `${Math.min(100, l.score)}%` }}
                 />
               </div>
@@ -165,19 +142,16 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
               <div className="space-y-1 pl-1">
                 {Object.entries(l.score_desglose).map(([dim, val]) => (
                   <div key={dim} className="flex items-center gap-2 text-xs">
-                    <span className="w-28 truncate text-muted-foreground">{DESGLOSE_LABELS[dim] ?? dim}</span>
+                    <span className="text-muted-foreground w-28 truncate">{DESGLOSE_LABELS[dim] ?? dim}</span>
                     <div
                       role="progressbar"
                       aria-valuenow={Math.min(100, val)}
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-label={`Puntuación ${dim}`}
-                      className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden"
+                      className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full"
                     >
-                      <div
-                        className="h-full rounded-full bg-primary/60"
-                        style={{ width: `${Math.min(100, val)}%` }}
-                      />
+                      <div className="bg-primary/60 h-full rounded-full" style={{ width: `${Math.min(100, val)}%` }} />
                     </div>
                     <span className="w-8 text-right">{val.toFixed(1)}</span>
                   </div>
@@ -193,7 +167,9 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             <h3 className="text-sm font-medium">Alertas</h3>
             <div className="flex flex-wrap gap-1.5">
               {l.risk_flags.map((flag) => (
-                <Badge key={flag} variant="destructive" className="text-xs">{flag}</Badge>
+                <Badge key={flag} variant="destructive" className="text-xs">
+                  {flag}
+                </Badge>
               ))}
             </div>
           </div>
@@ -216,14 +192,14 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
         {/* Description */}
         {l.descripcion && (
           <div className="mt-6 space-y-1">
-            <h3 className="text-sm font-medium text-muted-foreground">Descripción</h3>
+            <h3 className="text-muted-foreground text-sm font-medium">Descripción</h3>
             <p className="text-sm whitespace-pre-wrap">{l.descripcion}</p>
           </div>
         )}
 
         {/* Eventos de contrato */}
         <div className="mt-6 space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Línea de tiempo</h3>
+          <h3 className="text-muted-foreground text-sm font-medium">Línea de tiempo</h3>
           <EventosTimeline licitacionId={l.id_externo} />
         </div>
 
@@ -239,7 +215,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             href={l.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-6 inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+            className="text-primary mt-6 inline-flex items-center gap-1.5 text-sm hover:underline"
           >
             Ver en PLACSP <ExternalLink className="h-3.5 w-3.5" />
           </a>

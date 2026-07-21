@@ -2,13 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +24,8 @@ import {
 import { formatCurrency, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
-import { streamAsk } from "@/lib/ask-stream";
+import { useChat } from "@/hooks/use-ask";
+import { ChatThread } from "@/components/chat-thread";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -70,9 +65,9 @@ const DEFAULT_CONFIG: InvestigadorConfig = {
 
 const EXAMPLE_QUESTIONS = [
   "Cuales son las licitaciones mas recientes?",
-  "Que organos licitan mas en consultoria?",
+  "Que es un PCAP y que contiene?",
+  "Como funciona el procedimiento abierto simplificado?",
   "Resumen de licitaciones de mantenimiento en Madrid",
-  "Cual es la tendencia de importes en el ultimo ano?",
   "Buscar licitaciones de S/4HANA con importe mayor a 500K",
 ];
 
@@ -99,18 +94,8 @@ function saveHistory(h: string[]) {
 
 function relevanceBadge(score: number | undefined) {
   if (score == null) return null;
-  if (score >= 0.8)
-    return (
-      <Badge className="bg-green-600 hover:bg-green-700 text-white">
-        Alta
-      </Badge>
-    );
-  if (score >= 0.5)
-    return (
-      <Badge className="bg-yellow-500 hover:bg-yellow-600 text-white">
-        Media
-      </Badge>
-    );
+  if (score >= 0.8) return <Badge className="bg-green-600 text-white hover:bg-green-700">Alta</Badge>;
+  if (score >= 0.5) return <Badge className="bg-yellow-500 text-white hover:bg-yellow-600">Media</Badge>;
   return <Badge variant="secondary">Baja</Badge>;
 }
 
@@ -120,7 +105,7 @@ function highlightQuery(text: string, query: string) {
   const parts = text.split(new RegExp(`(${escaped})`, "gi"));
   return parts.map((part, i) =>
     part.toLowerCase() === query.toLowerCase() ? (
-      <mark key={i} className="bg-yellow-200 dark:bg-yellow-800 font-semibold">
+      <mark key={i} className="bg-yellow-200 font-semibold dark:bg-yellow-800">
         {part}
       </mark>
     ) : (
@@ -130,14 +115,7 @@ function highlightQuery(text: string, query: string) {
 }
 
 function exportCSV(results: SearchResult[]) {
-  const headers = [
-    "id_externo",
-    "titulo",
-    "organo",
-    "importe",
-    "score",
-    "source",
-  ];
+  const headers = ["id_externo", "titulo", "organo", "importe", "score", "source"];
   const rows = results.map((r) =>
     [
       r.id_externo ?? r.id ?? "",
@@ -167,15 +145,15 @@ export default function InvestigadorPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(
-    null,
-  );
-  const [askAnswer, setAskAnswer] = useState<string | null>(null);
-  const [streaming, setStreaming] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [config, setConfig] = useState<InvestigadorConfig>(DEFAULT_CONFIG);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Modo "Preguntar": hilo de chat multi-turno (historial en cliente).
+  const chat = useChat();
+  const chatSend = chat.send;
 
   // Global filters
   const globalFilters = useFilters();
@@ -206,21 +184,18 @@ export default function InvestigadorPage() {
       });
       if (!res.ok) return [];
       const data = await res.json();
-      return Array.isArray(data) ? data : data.models ?? [];
+      return Array.isArray(data) ? data : (data.models ?? []);
     },
     staleTime: Infinity,
   });
 
-  const updateConfig = useCallback(
-    (patch: Partial<InvestigadorConfig>) => {
-      setConfig((prev) => {
-        const next = { ...prev, ...patch };
-        saveConfig(next);
-        return next;
-      });
-    },
-    [],
-  );
+  const updateConfig = useCallback((patch: Partial<InvestigadorConfig>) => {
+    setConfig((prev) => {
+      const next = { ...prev, ...patch };
+      saveConfig(next);
+      return next;
+    });
+  }, []);
 
   const addHistory = useCallback((q: string) => {
     setHistory((prev) => {
@@ -236,17 +211,6 @@ export default function InvestigadorPage() {
     async (overrideQuery?: string) => {
       const q = (overrideQuery ?? query).trim();
       if (!q) return;
-
-      // Abort any previous streaming request
-      abortRef.current?.abort();
-      const abort = new AbortController();
-      abortRef.current = abort;
-
-      setLoading(true);
-      setError(null);
-      setSearchResults(null);
-      setAskAnswer(null);
-      setStreaming(false);
       addHistory(q);
 
       // Filtros globales → se mandan TODOS los valores (no solo el primero) y el
@@ -256,54 +220,56 @@ export default function InvestigadorPage() {
       const filterExtras: Record<string, unknown> = {};
       if (config.useGlobalFilters) {
         if (globalFilters.ccaas.length > 0) filterExtras.ccaa = globalFilters.ccaas;
-        if (globalFilters.tecnologias.length > 0)
-          filterExtras.tecnologia = globalFilters.tecnologias;
+        if (globalFilters.tecnologias.length > 0) filterExtras.tecnologia = globalFilters.tecnologias;
         if (globalFilters.rango.desde) filterExtras.fecha_desde = globalFilters.rango.desde;
         if (globalFilters.rango.hasta) filterExtras.fecha_hasta = globalFilters.rango.hasta;
       }
 
+      if (mode === "ask") {
+        // Chat multi-turno — el hook gestiona historial, streaming y abort.
+        setQuery("");
+        await chatSend(q, {
+          model: config.model || undefined,
+          topK: config.topK,
+          extras: filterExtras,
+        });
+        return;
+      }
+
+      // Modo búsqueda semántica (sin LLM).
+      abortRef.current?.abort();
+      const abort = new AbortController();
+      abortRef.current = abort;
+
+      setLoading(true);
+      setError(null);
+      setSearchResults(null);
+
       try {
-        if (mode === "search") {
-          const res = await fetch("/api/v1/search/semantic", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              q,
-              top_k: config.topK,
-              alpha: config.alpha,
-              ...filterExtras,
-            }),
-            signal: abort.signal,
-          });
-          if (!res.ok) throw new Error(`Error ${res.status}`);
-          const data = await res.json();
-          const hits: SearchResult[] =
-            data.hits ?? data.results ?? data.items ?? [];
-          setSearchResults(hits);
-        } else {
-          // SSE streaming for Ask mode — shared client (see lib/ask-stream.ts).
-          setStreaming(true);
-          setAskAnswer("");
-          await streamAsk({
-            question: q,
-            model: config.model || undefined,
-            topK: config.topK,
-            extras: filterExtras,
-            signal: abort.signal,
-            onToken: setAskAnswer,
-          });
-          setStreaming(false);
-        }
+        const res = await fetch("/api/v1/search/semantic", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            q,
+            top_k: config.topK,
+            alpha: config.alpha,
+            ...filterExtras,
+          }),
+          signal: abort.signal,
+        });
+        if (!res.ok) throw new Error(`Error ${res.status}`);
+        const data = await res.json();
+        const hits: SearchResult[] = data.hits ?? data.results ?? data.items ?? [];
+        setSearchResults(hits);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Error desconocido");
       } finally {
         setLoading(false);
-        setStreaming(false);
       }
     },
-    [query, mode, config, globalFilters, addHistory],
+    [query, mode, config, globalFilters, addHistory, chatSend],
   );
 
   /* ---- Example chip click ---- */
@@ -315,60 +281,40 @@ export default function InvestigadorPage() {
     [handleSubmit],
   );
 
-  /* ---- Render answer with clickable citations ---- */
-  function renderAnswer(text: string) {
-    // Match patterns like [id_externo] or references to IDs
-    const parts = text.split(/(\b[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)*\b)/g);
-    return parts.map((part, i) => {
-      // Heuristic: if it looks like an id_externo (has dashes, uppercase)
-      if (/^[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+/.test(part)) {
-        return (
-          <a
-            key={i}
-            href={`/detalle?lic=${part}`}
-            className="text-primary underline hover:no-underline"
-          >
-            {part}
-          </a>
-        );
-      }
-      return part;
-    });
-  }
-
-  const showEmpty =
-    !loading && !error && !searchResults && !askAnswer && !streaming;
+  const showEmpty = !loading && !error && !searchResults && chat.messages.length === 0 && !chat.loading && !chat.error;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
           <BookOpen className="h-7 w-7" />
           Investigador
         </h1>
         <p className="text-muted-foreground">
-          Busqueda semantica RAG sobre el corpus de licitaciones.
+          Busca en el corpus o pregunta lo que quieras: el asistente cita expedientes cuando son relevantes y responde
+          con conocimiento general cuando no lo son.
         </p>
       </div>
 
       {/* ---- Configuration panel ---- */}
       <Card>
         <CardHeader
-          className="cursor-pointer select-none py-3"
+          className="cursor-pointer py-3 select-none"
           onClick={() => setSettingsOpen((o) => !o)}
           tabIndex={0}
           role="button"
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSettingsOpen((o) => !o); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setSettingsOpen((o) => !o);
+            }
+          }}
         >
-          <CardTitle className="text-sm flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
             <Settings className="h-4 w-4" />
             Configuracion
-            {settingsOpen ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
+            {settingsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </CardTitle>
         </CardHeader>
         {settingsOpen && (
@@ -376,9 +322,7 @@ export default function InvestigadorPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {/* top_k */}
               <div className="space-y-1">
-                <label className="text-xs font-medium">
-                  top_k: {config.topK}
-                </label>
+                <label className="text-xs font-medium">top_k: {config.topK}</label>
                 <Slider
                   value={[config.topK]}
                   onValueChange={([v]) => updateConfig({ topK: v })}
@@ -389,9 +333,7 @@ export default function InvestigadorPage() {
               </div>
               {/* Alpha */}
               <div className="space-y-1">
-                <label className="text-xs font-medium">
-                  Alpha (FAISS vs FTS5): {config.alpha.toFixed(2)}
-                </label>
+                <label className="text-xs font-medium">Alpha (FAISS vs FTS5): {config.alpha.toFixed(2)}</label>
                 <Slider
                   value={[Math.round(config.alpha * 100)]}
                   onValueChange={([v]) => updateConfig({ alpha: v / 100 })}
@@ -402,8 +344,13 @@ export default function InvestigadorPage() {
               </div>
               {/* Model */}
               <div className="space-y-1">
-                <label htmlFor="inv-model" className="text-xs font-medium">Modelo LLM</label>
-                <Select value={config.model || "__default__"} onValueChange={(v) => updateConfig({ model: v === "__default__" ? "" : v })}>
+                <label htmlFor="inv-model" className="text-xs font-medium">
+                  Modelo LLM
+                </label>
+                <Select
+                  value={config.model || "__default__"}
+                  onValueChange={(v) => updateConfig({ model: v === "__default__" ? "" : v })}
+                >
                   <SelectTrigger id="inv-model">
                     <SelectValue placeholder="Por defecto" />
                   </SelectTrigger>
@@ -422,15 +369,10 @@ export default function InvestigadorPage() {
                 <Checkbox
                   id="use-global-filters"
                   checked={config.useGlobalFilters}
-                  onCheckedChange={(checked) =>
-                    updateConfig({ useGlobalFilters: !!checked })
-                  }
+                  onCheckedChange={(checked) => updateConfig({ useGlobalFilters: !!checked })}
                   className="h-5 w-5"
                 />
-                <label
-                  htmlFor="use-global-filters"
-                  className="text-xs font-medium cursor-pointer"
-                >
+                <label htmlFor="use-global-filters" className="cursor-pointer text-xs font-medium">
                   Respetar filtros globales
                 </label>
               </div>
@@ -443,20 +385,12 @@ export default function InvestigadorPage() {
       <Card>
         <CardContent className="pt-6">
           {/* Mode toggle */}
-          <div className="flex gap-2 mb-4">
-            <Button
-              variant={mode === "search" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMode("search")}
-            >
+          <div className="mb-4 flex gap-2">
+            <Button variant={mode === "search" ? "default" : "outline"} size="sm" onClick={() => setMode("search")}>
               <Search className="mr-2 h-4 w-4" />
               Busqueda
             </Button>
-            <Button
-              variant={mode === "ask" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMode("ask")}
-            >
+            <Button variant={mode === "ask" ? "default" : "outline"} size="sm" onClick={() => setMode("ask")}>
               <MessageSquare className="mr-2 h-4 w-4" />
               Preguntar
             </Button>
@@ -474,12 +408,11 @@ export default function InvestigadorPage() {
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               className="flex-1"
             />
-            <Button
-              onClick={() => handleSubmit()}
-              disabled={loading || !query.trim()}
-            >
-              {loading
-                ? "Buscando..."
+            <Button onClick={() => handleSubmit()} disabled={loading || chat.loading || !query.trim()}>
+              {loading || chat.loading
+                ? mode === "search"
+                  ? "Buscando..."
+                  : "Preguntando..."
                 : mode === "search"
                   ? "Buscar"
                   : "Preguntar"}
@@ -488,20 +421,26 @@ export default function InvestigadorPage() {
 
           {/* History chips */}
           {history.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Clock className="text-muted-foreground mt-0.5 h-4 w-4" />
               {history.map((h) => (
                 <Badge
                   key={h}
                   variant="secondary"
-                  className="cursor-pointer hover:bg-accent"
+                  className="hover:bg-accent cursor-pointer"
                   role="button"
                   tabIndex={0}
                   onClick={() => {
                     setQuery(h);
                     handleSubmit(h);
                   }}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setQuery(h); handleSubmit(h); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setQuery(h);
+                      handleSubmit(h);
+                    }
+                  }}
                 >
                   {h}
                 </Badge>
@@ -511,8 +450,8 @@ export default function InvestigadorPage() {
 
           {/* Filtros activos sobre la búsqueda: relación explícita (no un flag oculto) */}
           {activeSearchFilters.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 mt-3">
-              <span className="text-xs text-muted-foreground">Filtros activos:</span>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground text-xs">Filtros activos:</span>
               {activeSearchFilters.map((f) => (
                 <Badge key={f} variant="outline" className="text-xs">
                   {f}
@@ -526,22 +465,25 @@ export default function InvestigadorPage() {
       {/* ---- Example question chips ---- */}
       {showEmpty && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground font-medium">
-              Preguntas de ejemplo
-            </span>
+          <div className="mb-3 flex items-center gap-2">
+            <Sparkles className="text-muted-foreground h-4 w-4" />
+            <span className="text-muted-foreground text-sm font-medium">Preguntas de ejemplo</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {EXAMPLE_QUESTIONS.map((eq) => (
               <Badge
                 key={eq}
                 variant="outline"
-                className="cursor-pointer hover:bg-accent px-3 py-1.5 text-sm"
+                className="hover:bg-accent cursor-pointer px-3 py-1.5 text-sm"
                 role="button"
                 tabIndex={0}
                 onClick={() => handleExampleClick(eq)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleExampleClick(eq); } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleExampleClick(eq);
+                  }
+                }}
               >
                 {eq}
               </Badge>
@@ -550,12 +492,12 @@ export default function InvestigadorPage() {
         </div>
       )}
 
-      {/* ---- Loading ---- */}
-      {loading && !streaming && (
+      {/* ---- Loading (búsqueda) ---- */}
+      {loading && (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
-              <CardContent className="pt-6 space-y-2">
+              <CardContent className="space-y-2 pt-6">
                 <Skeleton className="h-5 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
                 <Skeleton className="h-4 w-1/3" />
@@ -578,15 +520,9 @@ export default function InvestigadorPage() {
       {!loading && searchResults && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">
-              {searchResults.length} resultados encontrados
-            </h2>
+            <h2 className="text-lg font-semibold">{searchResults.length} resultados encontrados</h2>
             {searchResults.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => exportCSV(searchResults)}
-              >
+              <Button variant="outline" size="sm" onClick={() => exportCSV(searchResults)}>
                 <Download className="mr-2 h-4 w-4" />
                 Exportar CSV
               </Button>
@@ -594,18 +530,15 @@ export default function InvestigadorPage() {
           </div>
           {searchResults.length === 0 ? (
             <Card className="border-dashed">
-              <CardContent className="py-8 text-center text-muted-foreground">
+              <CardContent className="text-muted-foreground py-8 text-center">
                 No se encontraron resultados para tu busqueda.
               </CardContent>
             </Card>
           ) : (
             searchResults.map((r, i) => {
-              const organo =
-                r.organo_contratacion ?? r.organo ?? "";
+              const organo = r.organo_contratacion ?? r.organo ?? "";
               const rid = r.id_externo ?? r.id ?? String(i);
-              const excerpt = r.description
-                ? truncate(r.description, 200)
-                : null;
+              const excerpt = r.description ? truncate(r.description, 200) : null;
 
               return (
                 <Card key={rid}>
@@ -619,32 +552,18 @@ export default function InvestigadorPage() {
                           {r.titulo ?? "Sin titulo"}
                         </a>
                       </CardTitle>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex shrink-0 items-center gap-2">
                         {relevanceBadge(r.score)}
-                        {r.score != null && (
-                          <Badge variant="outline">
-                            {(r.score * 100).toFixed(1)}%
-                          </Badge>
-                        )}
+                        {r.score != null && <Badge variant="outline">{(r.score * 100).toFixed(1)}%</Badge>}
                       </div>
                     </div>
-                    {organo && (
-                      <CardDescription>{organo}</CardDescription>
-                    )}
+                    {organo && <CardDescription>{organo}</CardDescription>}
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {/* Context excerpt */}
-                    {excerpt && (
-                      <p className="text-sm text-muted-foreground">
-                        {highlightQuery(excerpt, query)}
-                      </p>
-                    )}
+                    {excerpt && <p className="text-muted-foreground text-sm">{highlightQuery(excerpt, query)}</p>}
                     <div className="flex items-center gap-4">
-                      {r.importe != null && (
-                        <Badge variant="secondary">
-                          {formatCurrency(r.importe)}
-                        </Badge>
-                      )}
+                      {r.importe != null && <Badge variant="secondary">{formatCurrency(r.importe)}</Badge>}
                       {r.source && (
                         <Badge variant="outline" className="text-xs">
                           {r.source}
@@ -659,39 +578,37 @@ export default function InvestigadorPage() {
         </div>
       )}
 
-      {/* ---- Ask answer (streaming or static) ---- */}
-      {(askAnswer != null || streaming) && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Respuesta
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
-                {askAnswer ? renderAnswer(askAnswer) : ""}
-                {streaming && (
-                  <span className="motion-safe:animate-pulse text-primary" aria-hidden="true">&#9612;</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      {/* ---- Hilo de chat (modo Preguntar) ---- */}
+      {(chat.messages.length > 0 || chat.loading || chat.error) && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="h-4 w-4" />
+              Conversación
+            </CardTitle>
+            {chat.messages.length > 0 && !chat.loading && (
+              <Button variant="ghost" size="sm" onClick={chat.reset}>
+                Nueva conversación
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            <ChatThread messages={chat.messages} streaming={chat.streaming} loading={chat.loading} error={chat.error} />
+          </CardContent>
+        </Card>
       )}
 
       {/* ---- Empty state (no example chips shown above already) ---- */}
       {showEmpty && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Search className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-lg font-medium text-muted-foreground">
+            <Search className="text-muted-foreground/50 mb-4 h-12 w-12" />
+            <p className="text-muted-foreground text-lg font-medium">
               Introduce una consulta para buscar en el corpus de licitaciones
             </p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              Usa el modo &quot;Busqueda&quot; para resultados semanticos o
-              &quot;Preguntar&quot; para respuestas generativas.
+            <p className="text-muted-foreground/70 mt-1 text-sm">
+              Usa el modo &quot;Busqueda&quot; para resultados semanticos o &quot;Preguntar&quot; para conversar con el
+              asistente (corpus + conocimiento general).
             </p>
           </CardContent>
         </Card>

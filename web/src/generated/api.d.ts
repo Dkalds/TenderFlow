@@ -627,11 +627,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Pregunta en lenguaje natural sobre licitaciones (RAG + LLM)
-         * @description Responde a preguntas sobre licitaciones usando RAG + LLM.
+         * Pregunta en lenguaje natural (chat multi-turno, RAG + LLM)
+         * @description Responde preguntas con contexto del corpus o de una licitación concreta.
          *
-         *     Recupera las licitaciones más relevantes mediante FTS5 y las usa como
-         *     contexto para generar una respuesta con el modelo LLM configurado.
+         *     Sin ``id_externo``: recupera las licitaciones más relevantes (FTS5) como
+         *     contexto; si el corpus no cubre la pregunta, el modelo responde con
+         *     conocimiento general indicándolo. Con ``id_externo``: el contexto es esa
+         *     licitación (anuncio + fragmentos de pliegos). ``messages`` habilita la
+         *     conversación multi-turno.
          *
          *     Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
          */
@@ -1561,6 +1564,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resumen IA de una licitación (oportunidad + pliegos)
+         * @description Genera al vuelo un resumen ejecutivo de la licitación (sin caché).
+         *
+         *     Secciones: qué se licita, órgano y contexto, importe y plazos, requisitos
+         *     clave del pliego, y riesgos/avisos. El primer evento SSE es
+         *     ``resumen_meta`` con ``has_pliego_text`` y el estado de los documentos —
+         *     si no hay texto de pliegos procesado, el resumen se basa solo en los
+         *     metadatos del anuncio y lo indica.
+         *
+         *     Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
+         */
+        post: operations["resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/tech-scores": {
         parameters: {
             query?: never;
@@ -2265,56 +2296,56 @@ export interface components {
     schemas: {
         /** AdjudicacionSummary */
         AdjudicacionSummary: {
+            /** Id */
+            id: number;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Nombre */
+            nombre: string;
+            /** Nif */
+            nif?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
             /** Ccaa */
             ccaa?: string | null;
             /** Es Pyme */
             es_pyme?: number | null;
-            /** Fecha Adjudicacion */
-            fecha_adjudicacion?: string | null;
-            /** Id */
-            id: number;
-            /** Importe Adjudicado */
-            importe_adjudicado?: number | null;
-            /** Licitacion Id */
-            licitacion_id: string;
             /** N Ofertas Recibidas */
             n_ofertas_recibidas?: number | null;
-            /** Nif */
-            nif?: string | null;
-            /** Nombre */
-            nombre: string;
         };
         /** AlertItem */
         AlertItem: {
-            /** Body */
-            body?: string | null;
-            /** Created At */
-            created_at?: string | null;
             /** Id */
             id: number;
+            /** Created At */
+            created_at?: string | null;
+            /** Type */
+            type: string;
+            /** Title */
+            title?: string | null;
+            /** Body */
+            body?: string | null;
             /** Licitacion Id */
             licitacion_id?: string | null;
+            /** Rule Id */
+            rule_id?: number | null;
             /**
              * Read
              * @default false
              */
             read: boolean;
-            /** Rule Id */
-            rule_id?: number | null;
-            /** Title */
-            title?: string | null;
-            /** Type */
-            type: string;
         };
         /**
          * AskModelInfo
          * @description Información sobre los modelos LLM disponibles.
          */
         AskModelInfo: {
-            /** Default */
-            default: string;
             /** Models */
             models: string[];
+            /** Default */
+            default: string;
         };
         /**
          * AskRequest
@@ -2322,15 +2353,15 @@ export interface components {
          */
         AskRequest: {
             /**
-             * Ccaa
-             * @description Filtrar licitaciones por CCAA
+             * Question
+             * @description Pregunta en lenguaje natural
              */
-            ccaa?: string | null;
+            question: string;
             /**
-             * Id Externo
-             * @description ID de una licitación específica para añadirla como primer documento de contexto
+             * Messages
+             * @description Historial previo de la conversación (no incluye la pregunta actual). No se persiste en el servidor.
              */
-            id_externo?: string | null;
+            messages?: components["schemas"]["ChatMessageDTO"][] | null;
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
@@ -2338,21 +2369,26 @@ export interface components {
              */
             model: string;
             /**
-             * Question
-             * @description Pregunta en lenguaje natural
+             * Top K
+             * @description Número de licitaciones a recuperar como contexto. Se ignora si se envía id_externo.
+             * @default 5
              */
-            question: string;
+            top_k: number;
+            /**
+             * Ccaa
+             * @description Filtrar licitaciones por CCAA
+             */
+            ccaa?: string | null;
             /**
              * Tecnologia
              * @description Filtrar licitaciones por tecnología
              */
             tecnologia?: string | null;
             /**
-             * Top K
-             * @description Número de licitaciones a recuperar como contexto
-             * @default 5
+             * Id Externo
+             * @description ID de una licitación específica: el contexto pasa a ser esa licitación (metadatos del anuncio + fragmentos de sus pliegos) en lugar del retrieval de corpus.
              */
-            top_k: number;
+            id_externo?: string | null;
         };
         /** BulkGetRequest */
         BulkGetRequest: {
@@ -2376,6 +2412,11 @@ export interface components {
          *     matiz warn-vs-crit es ruido para el usuario, no una decisión que tome.
          */
         CalibracionBajaDTO: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "ok" | "degradado" | "insuficiente";
             /** Cobertura */
             cobertura?: number | null;
             /**
@@ -2383,20 +2424,28 @@ export interface components {
              * @default 0.8
              */
             cobertura_nominal: number;
-            /**
-             * Estado
-             * @enum {string}
-             */
-            estado: "ok" | "degradado" | "insuficiente";
             /** Mae P50 */
             mae_p50?: number | null;
+            /** Sesgo P50 */
+            sesgo_p50?: number | null;
             /**
              * N Evaluadas
              * @default 0
              */
             n_evaluadas: number;
-            /** Sesgo P50 */
-            sesgo_p50?: number | null;
+        };
+        /**
+         * ChatMessageDTO
+         * @description Mensaje del historial de conversación (multi-turno).
+         */
+        ChatMessageDTO: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: string;
         };
         /**
          * ClusterEntry
@@ -2405,59 +2454,59 @@ export interface components {
         ClusterEntry: {
             /** Cluster Id */
             cluster_id: number;
-            /** Cpv Dominante */
-            cpv_dominante?: string | null;
-            importe_box?: components["schemas"]["ImporteBox"] | null;
-            /** Importe Medio */
-            importe_medio: number;
-            /** Importe Total */
-            importe_total: number;
-            /** Items */
-            items?: components["schemas"]["ClusterItem"][];
             /** Label */
             label: string;
             /** N */
             n: number;
+            /** Importe Medio */
+            importe_medio: number;
+            /** Importe Total */
+            importe_total: number;
+            /** Cpv Dominante */
+            cpv_dominante?: string | null;
             /** Organo Dominante */
             organo_dominante?: string | null;
+            importe_box?: components["schemas"]["ImporteBox"] | null;
+            /** Items */
+            items?: components["schemas"]["ClusterItem"][];
         };
         /**
          * ClusterItem
          * @description Single tender inside a cluster (drill-down).
          */
         ClusterItem: {
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
             /** Ccaa */
             ccaa?: string | null;
             /** Estado */
             estado?: string | null;
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
-            /** Titulo */
-            titulo?: string | null;
         };
         /**
          * ClustersResult
          * @description Combined clusters response.
          */
         ClustersResult: {
-            /** Clusters */
-            clusters?: components["schemas"]["ClusterEntry"][];
             /**
              * N Clusters Detectados
              * @default 0
              */
             n_clusters_detectados: number;
-            /** Silhouette */
-            silhouette?: number | null;
             /**
              * Total
              * @default 0
              */
             total: number;
+            /** Silhouette */
+            silhouette?: number | null;
+            /** Clusters */
+            clusters?: components["schemas"]["ClusterEntry"][];
         };
         /**
          * ColumnCompleteness
@@ -2471,39 +2520,39 @@ export interface components {
         };
         /** CompareResult */
         CompareResult: {
-            deltas?: components["schemas"]["PeriodDeltas"];
             period_a?: components["schemas"]["PeriodStats"];
             period_b?: components["schemas"]["PeriodStats"];
+            deltas?: components["schemas"]["PeriodDeltas"];
         };
         /**
          * CompetitiveCompanyAwardDTO
          * @description Award row in the paginated company history.
          */
         CompetitiveCompanyAwardDTO: {
-            /** Baja Pct */
-            baja_pct?: number | null;
-            /** Ccaa */
-            ccaa?: string | null;
-            /** Cpv */
-            cpv?: string | null;
-            /** Expediente Url */
-            expediente_url?: string | null;
-            /** Fecha Adjudicacion */
-            fecha_adjudicacion?: string | null;
-            /** Importe Adjudicado */
-            importe_adjudicado?: number | null;
             /** Licitacion Id */
             licitacion_id: string;
-            /** N Ofertas Recibidas */
-            n_ofertas_recibidas?: number | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
-            /** Presupuesto Licitacion */
-            presupuesto_licitacion?: number | null;
-            /** Tecnologia */
-            tecnologia?: string | null;
             /** Titulo */
             titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Presupuesto Licitacion */
+            presupuesto_licitacion?: number | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Baja Pct */
+            baja_pct?: number | null;
+            /** N Ofertas Recibidas */
+            n_ofertas_recibidas?: number | null;
+            /** Expediente Url */
+            expediente_url?: string | null;
         };
         /**
          * CompetitiveCompanyAwardsDTO
@@ -2512,6 +2561,11 @@ export interface components {
         CompetitiveCompanyAwardsDTO: {
             /** Items */
             items?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
             /** Limit */
             limit: number;
             /**
@@ -2519,36 +2573,31 @@ export interface components {
              * @default 0
              */
             offset: number;
-            /**
-             * Total
-             * @default 0
-             */
-            total: number;
         };
         /**
          * CompetitiveCompanyBreakdownDTO
          * @description Reusable amount/count distribution row (CPV, territory or buyer).
          */
         CompetitiveCompanyBreakdownDTO: {
-            /** Ccaa */
-            ccaa?: string | null;
             /** Codigo */
             codigo?: string | null;
-            /** Contratos */
-            contratos: number;
+            /** Label */
+            label: string;
             /** Cpv2 */
             cpv2?: string | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Organo */
+            organo?: string | null;
+            /** Contratos */
+            contratos: number;
+            /** Importe */
+            importe: number;
             /**
              * Cuota Empresa Pct
              * @default 0
              */
             cuota_empresa_pct: number;
-            /** Importe */
-            importe: number;
-            /** Label */
-            label: string;
-            /** Organo */
-            organo?: string | null;
             /** Ultima Adjudicacion */
             ultima_adjudicacion?: string | null;
         };
@@ -2557,6 +2606,10 @@ export interface components {
          * @description Current period compared with the immediately preceding equal period.
          */
         CompetitiveCompanyComparisonDTO: {
+            /** Desde */
+            desde: string;
+            /** Hasta */
+            hasta: string;
             /** Anterior Desde */
             anterior_desde: string;
             /** Anterior Hasta */
@@ -2571,10 +2624,8 @@ export interface components {
              * @default 0
              */
             contratos_anterior: number;
-            /** Desde */
-            desde: string;
-            /** Hasta */
-            hasta: string;
+            /** Variacion Contratos Pct */
+            variacion_contratos_pct?: number | null;
             /**
              * Importe
              * @default 0
@@ -2585,14 +2636,12 @@ export interface components {
              * @default 0
              */
             importe_anterior: number;
+            /** Variacion Importe Pct */
+            variacion_importe_pct?: number | null;
             /** Importe Mediano */
             importe_mediano?: number | null;
             /** Importe Mediano Anterior */
             importe_mediano_anterior?: number | null;
-            /** Variacion Contratos Pct */
-            variacion_contratos_pct?: number | null;
-            /** Variacion Importe Pct */
-            variacion_importe_pct?: number | null;
         };
         /**
          * CompetitiveCompanyConcentrationDTO
@@ -2644,6 +2693,10 @@ export interface components {
         CompetitiveCompanyIdentityDTO: {
             /** Empresa Id */
             empresa_id: number;
+            /** Nombre */
+            nombre: string;
+            /** Nif */
+            nif?: string | null;
             /**
              * Es Ute
              * @default false
@@ -2651,135 +2704,131 @@ export interface components {
             es_ute: boolean;
             /** Grupo */
             grupo?: string | null;
-            /** Nif */
-            nif?: string | null;
-            /** Nombre */
-            nombre: string;
         };
         /**
          * CompetitiveCompanyPositionDTO
          * @description Market position inside the currently selected segment.
          */
         CompetitiveCompanyPositionDTO: {
-            /** Cuota Pct */
-            cuota_pct?: number | null;
+            /** Rank */
+            rank?: number | null;
             /**
              * Empresas
              * @default 0
              */
             empresas: number;
+            /** Cuota Pct */
+            cuota_pct?: number | null;
             /**
              * Importe Segmento
              * @default 0
              */
             importe_segmento: number;
-            /** Rank */
-            rank?: number | null;
         };
         /**
          * CompetitiveCompanyProfileDTO
          * @description Full competitor dossier used by quick and deep company views.
          */
         CompetitiveCompanyProfileDTO: {
+            empresa: components["schemas"]["CompetitiveCompanyIdentityDTO"];
+            scope: components["schemas"]["CompetitiveCompanyScopeDTO"];
             actividad_historica: components["schemas"]["CompetitiveCompanyHistoryDTO"];
+            totales: components["schemas"]["CompetitiveCompanyTotalsDTO"];
+            posicion_mercado: components["schemas"]["CompetitiveCompanyPositionDTO"];
             comparacion: components["schemas"]["CompetitiveCompanyComparisonDTO"];
             concentracion_clientes: components["schemas"]["CompetitiveCompanyConcentrationDTO"];
-            /** Contratos Recientes */
-            contratos_recientes?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
-            empresa: components["schemas"]["CompetitiveCompanyIdentityDTO"];
-            /** Movimientos */
-            movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
+            /** Por Cpv */
+            por_cpv?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Por Ccaa */
+            por_ccaa?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
             /** Organos Principales */
             organos_principales?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
             /** Por Anio */
             por_anio?: components["schemas"]["CompetitiveCompanyYearDTO"][];
-            /** Por Ccaa */
-            por_ccaa?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
-            /** Por Cpv */
-            por_cpv?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
-            posicion_mercado: components["schemas"]["CompetitiveCompanyPositionDTO"];
-            scope: components["schemas"]["CompetitiveCompanyScopeDTO"];
-            totales: components["schemas"]["CompetitiveCompanyTotalsDTO"];
+            /** Movimientos */
+            movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
+            /** Contratos Recientes */
+            contratos_recientes?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
         };
         /**
          * CompetitiveCompanyScopeDTO
          * @description Effective filters used to calculate a company dossier.
          */
         CompetitiveCompanyScopeDTO: {
-            /** Ccaas */
-            ccaas?: string[];
-            /** Cpv */
-            cpv?: string | null;
             /** Fecha Desde */
             fecha_desde?: string | null;
             /** Fecha Hasta */
             fecha_hasta?: string | null;
-            /** Importe Min */
-            importe_min?: number | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Ccaas */
+            ccaas?: string[];
             /** Tecnologias */
             tecnologias?: string[];
+            /** Importe Min */
+            importe_min?: number | null;
         };
         /**
          * CompetitiveCompanySignalDTO
          * @description Explainable movement or risk derived from observed awards.
          */
         CompetitiveCompanySignalDTO: {
-            /** Detail */
-            detail: string;
             /** Kind */
             kind: string;
-            /** Title */
-            title: string;
             /** Tone */
             tone: string;
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
         };
         /**
          * CompetitiveCompanyTotalsDTO
          * @description Headline activity and data-coverage metrics for the selected scope.
          */
         CompetitiveCompanyTotalsDTO: {
-            /** Baja Media Pct */
-            baja_media_pct?: number | null;
-            /**
-             * Cobertura Ofertas Pct
-             * @default 0
-             */
-            cobertura_ofertas_pct: number;
             /**
              * Contratos
              * @default 0
              */
             contratos: number;
             /**
-             * Familias Cpv
-             * @default 0
-             */
-            familias_cpv: number;
-            /** Importe Mediano */
-            importe_mediano?: number | null;
-            /**
              * Importe Total
              * @default 0
              */
             importe_total: number;
+            /** Importe Mediano */
+            importe_mediano?: number | null;
             /** Ofertas Medias */
             ofertas_medias?: number | null;
+            /** Baja Media Pct */
+            baja_media_pct?: number | null;
+            /** Pct Oferta Unica */
+            pct_oferta_unica?: number | null;
+            /**
+             * Cobertura Ofertas Pct
+             * @default 0
+             */
+            cobertura_ofertas_pct: number;
+            /** Primera Adjudicacion */
+            primera_adjudicacion?: string | null;
+            /** Ultima Adjudicacion */
+            ultima_adjudicacion?: string | null;
             /**
              * Organos
              * @default 0
              */
             organos: number;
-            /** Pct Oferta Unica */
-            pct_oferta_unica?: number | null;
-            /** Primera Adjudicacion */
-            primera_adjudicacion?: string | null;
             /**
              * Territorios
              * @default 0
              */
             territorios: number;
-            /** Ultima Adjudicacion */
-            ultima_adjudicacion?: string | null;
+            /**
+             * Familias Cpv
+             * @default 0
+             */
+            familias_cpv: number;
         };
         /**
          * CompetitiveCompanyYearDTO
@@ -2798,46 +2847,46 @@ export interface components {
          * @description Single competitor entry.
          */
         CompetitorEntry: {
-            /** Baja Media */
-            baja_media?: number | null;
-            /**
-             * Contratos Por Anio
-             * @default 0
-             */
-            contratos_por_anio: number;
+            /** Nombre */
+            nombre: string;
             /** Count */
             count: number;
+            /** Importe */
+            importe: number;
             /** Cuota */
             cuota: number;
             /** Empresa Id */
             empresa_id?: number | null;
+            /** Nif */
+            nif?: string | null;
             /** Empresa Ids */
             empresa_ids?: number[];
+            /** Nifs */
+            nifs?: string[];
+            /** Nombres Variantes */
+            nombres_variantes?: string[];
             /**
              * Es Agrupacion
              * @default false
              */
             es_agrupacion: boolean;
-            /** Importe */
-            importe: number;
+            /**
+             * Contratos Por Anio
+             * @default 0
+             */
+            contratos_por_anio: number;
             /**
              * Importe Medio
              * @default 0
              */
             importe_medio: number;
+            /** Baja Media */
+            baja_media?: number | null;
             /**
              * N Organos
              * @default 0
              */
             n_organos: number;
-            /** Nif */
-            nif?: string | null;
-            /** Nifs */
-            nifs?: string[];
-            /** Nombre */
-            nombre: string;
-            /** Nombres Variantes */
-            nombres_variantes?: string[];
             /** Ofertas Medias */
             ofertas_medias?: number | null;
             /** Pct Monopolio */
@@ -2857,32 +2906,16 @@ export interface components {
         CompetitorResult: {
             /** Competitors */
             competitors?: components["schemas"]["CompetitorEntry"][];
-            /** Estacionalidad */
-            estacionalidad?: components["schemas"]["EstacionalidadEntry"][];
-            /** Heatmap Ccaa */
-            heatmap_ccaa?: components["schemas"]["HeatmapCcaaCell"][];
             /**
              * Hhi
              * @default 0
              */
             hhi: number;
             /**
-             * Importe Total
-             * @default 0
-             */
-            importe_total: number;
-            /**
              * Pct Oferta Unica
              * @default 0
              */
             pct_oferta_unica: number;
-            /**
-             * Pct Pyme
-             * @default 0
-             */
-            pct_pyme: number;
-            /** Scatter Data */
-            scatter_data?: components["schemas"]["ScatterPoint"][];
             /**
              * Total Adjudicaciones
              * @default 0
@@ -2893,29 +2926,45 @@ export interface components {
              * @default 0
              */
             total_empresas: number;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /** Scatter Data */
+            scatter_data?: components["schemas"]["ScatterPoint"][];
+            /** Heatmap Ccaa */
+            heatmap_ccaa?: components["schemas"]["HeatmapCcaaCell"][];
+            /**
+             * Pct Pyme
+             * @default 0
+             */
+            pct_pyme: number;
+            /** Estacionalidad */
+            estacionalidad?: components["schemas"]["EstacionalidadEntry"][];
         };
         /**
          * CpvEntry
          * @description Top CPV code aggregate.
          */
         CpvEntry: {
-            /** Count */
-            count: number;
             /** Cpv */
             cpv: string;
             /** Cpv Desc */
             cpv_desc: string;
+            /** Count */
+            count: number;
             /** Importe */
             importe: number;
         };
         /** CpvImporteRank */
         CpvImporteRank: {
-            /** Count */
-            count: number;
             /** Cpv */
             cpv: string;
             /** Importe Total */
             importe_total: number;
+            /** Count */
+            count: number;
         };
         /** CpvSeries */
         CpvSeries: {
@@ -2928,24 +2977,24 @@ export interface components {
         };
         /** CpvSeriesPoint */
         CpvSeriesPoint: {
+            /** Period */
+            period: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Period */
-            period: string;
         };
         /** CpvSummary */
         CpvSummary: {
-            /** Periodo Fin */
-            periodo_fin?: string | null;
-            /** Periodo Inicio */
-            periodo_inicio?: string | null;
             /**
              * Total Cpvs
              * @default 0
              */
             total_cpvs: number;
+            /** Periodo Inicio */
+            periodo_inicio?: string | null;
+            /** Periodo Fin */
+            periodo_fin?: string | null;
         };
         /**
          * CrossGeoEntry
@@ -2954,36 +3003,36 @@ export interface components {
         CrossGeoEntry: {
             /** Ccaa */
             ccaa: string;
-            /** Count */
-            count: number;
             /** Tecnologia */
             tecnologia: string;
+            /** Count */
+            count: number;
         };
         /**
          * CrossOrganoEntry
          * @description tecnologia x organo cell.
          */
         CrossOrganoEntry: {
-            /** Count */
-            count: number;
             /** Organo */
             organo: string;
             /** Tecnologia */
             tecnologia: string;
+            /** Count */
+            count: number;
         };
         /** CursorPaginatedResponse[LicitacionSummary] */
         CursorPaginatedResponse_LicitacionSummary_: {
+            /** Items */
+            items: components["schemas"]["LicitacionSummary"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
             /**
              * Has More
              * @default false
              */
             has_more: boolean;
-            /** Items */
-            items: components["schemas"]["LicitacionSummary"][];
             /** Limit */
             limit: number;
-            /** Next Cursor */
-            next_cursor?: string | null;
         };
         /** DeactivateBody */
         DeactivateBody: {
@@ -2992,22 +3041,22 @@ export interface components {
         };
         /** Estacionalidad */
         Estacionalidad: {
-            /** Count */
-            count: number;
             /** Mes Numero */
             mes_numero: number;
+            /** Count */
+            count: number;
         };
         /**
          * EstacionalidadEntry
          * @description Monthly seasonality entry.
          */
         EstacionalidadEntry: {
+            /** Mes */
+            mes: number;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Mes */
-            mes: number;
         };
         /**
          * EstadoCount
@@ -3024,22 +3073,22 @@ export interface components {
          * @description Un evento del feed reciente de movimientos de contrato.
          */
         EventoFeedItem: {
-            /** Detalle */
-            detalle?: string | null;
-            /** Fecha */
-            fecha?: string | null;
-            /** Fuente */
-            fuente?: string | null;
-            /** Importe Delta */
-            importe_delta?: number | null;
             /** Licitacion Id */
             licitacion_id: string;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
             /** Tipo */
             tipo: string;
+            /** Fecha */
+            fecha?: string | null;
+            /** Detalle */
+            detalle?: string | null;
+            /** Importe Delta */
+            importe_delta?: number | null;
             /** Titulo */
             titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Fuente */
+            fuente?: string | null;
         };
         /**
          * EventosFeedResult
@@ -3047,29 +3096,29 @@ export interface components {
          */
         EventosFeedResult: {
             /**
-             * Dias
-             * @default 30
-             */
-            dias: number;
-            /**
              * Items
              * @default []
              */
             items: components["schemas"]["EventoFeedItem"][];
+            /**
+             * Dias
+             * @default 30
+             */
+            dias: number;
         };
         /**
          * EvolucionEntry
          * @description Monthly point for a technology.
          */
         EvolucionEntry: {
-            /** Count */
-            count: number;
-            /** Importe */
-            importe: number;
             /** Mes */
             mes: string;
             /** Tecnologia */
             tecnologia: string;
+            /** Count */
+            count: number;
+            /** Importe */
+            importe: number;
         };
         /** FeedbackRequest */
         FeedbackRequest: {
@@ -3080,18 +3129,18 @@ export interface components {
              */
             expediente: string;
             /**
+             * Relevante
+             * @description True si la licitación es relevante.
+             * @example true
+             */
+            relevante: boolean;
+            /**
              * Nota
              * @description Nota libre opcional (máx. 500 chars).
              * @default
              * @example Encaja con perfil SAP S/4HANA Cloud
              */
             nota: string;
-            /**
-             * Relevante
-             * @description True si la licitación es relevante.
-             * @example true
-             */
-            relevante: boolean;
             /**
              * Tecnologia
              * @description Tecnología principal seleccionada por el etiquetador.
@@ -3110,19 +3159,19 @@ export interface components {
         };
         /** FeedbackResponse */
         FeedbackResponse: {
-            /** Expediente */
-            expediente: string;
             /** Status */
             status: string;
+            /** Expediente */
+            expediente: string;
             /** Stored At */
             stored_at: string;
         };
         /** FlagIn */
         FlagIn: {
-            /** Enabled */
-            enabled: boolean;
             /** Flag */
             flag: string;
+            /** Enabled */
+            enabled: boolean;
             /**
              * Rollout Pct
              * @default 100
@@ -3134,53 +3183,53 @@ export interface components {
          * @description Flag tal y como lo expone el backend (fuente de verdad).
          */
         FlagOut: {
+            /** Flag */
+            flag: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Rollout Pct */
+            rollout_pct: number;
             /**
              * Description
              * @default
              */
             description: string;
-            /** Enabled */
-            enabled: boolean;
-            /** Flag */
-            flag: string;
-            /** Rollout Pct */
-            rollout_pct: number;
             /** Updated At */
             updated_at?: string | null;
         };
         /** ForecastEntry */
         ForecastEntry: {
-            /** Adjudicatarios */
-            adjudicatarios?: string | null;
-            /** Baja Pct */
-            baja_pct?: number | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Fecha Fin Estimada */
+            fecha_fin_estimada?: string | null;
             /** Dias Hasta Fin */
             dias_hasta_fin?: number | null;
             /** Estado Forecast */
             estado_forecast?: string | null;
-            /** Fecha Fin Estimada */
-            fecha_fin_estimada?: string | null;
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
-            /** Titulo */
-            titulo?: string | null;
+            /** Adjudicatarios */
+            adjudicatarios?: string | null;
+            /** Baja Pct */
+            baja_pct?: number | null;
         };
         /** ForecastSeriesPoint */
         ForecastSeriesPoint: {
-            /** Lower */
-            lower?: number | null;
             /** Mes */
             mes: string;
-            /** Tipo */
-            tipo: string;
-            /** Upper */
-            upper?: number | null;
             /** Valor */
             valor: number;
+            /** Tipo */
+            tipo: string;
+            /** Lower */
+            lower?: number | null;
+            /** Upper */
+            upper?: number | null;
         };
         /** ForecastVolumeResult */
         ForecastVolumeResult: {
@@ -3222,45 +3271,45 @@ export interface components {
             by_ccaa?: components["schemas"]["GeoEntry"][];
             /** By Provincia */
             by_provincia?: components["schemas"]["ProvinciaEntry"][];
-            /** Ccaa Mas Activa */
-            ccaa_mas_activa?: string | null;
             /**
              * Concentracion Top3
              * @default 0
              */
             concentracion_top3: number;
+            /** Ccaa Mas Activa */
+            ccaa_mas_activa?: string | null;
         };
         /**
          * GraphEdge
          * @description Arista = adjudicación real órgano → empresa (peso = nº/importe reales).
          */
         GraphEdge: {
-            /** Contratos */
-            contratos: number;
-            /** Empresa */
-            empresa: string;
-            /** Frecuencia Anual */
-            frecuencia_anual: number;
-            /** Importe Total */
-            importe_total: number;
             /** Organo */
             organo: string;
+            /** Empresa */
+            empresa: string;
+            /** Contratos */
+            contratos: number;
+            /** Importe Total */
+            importe_total: number;
+            /** Frecuencia Anual */
+            frecuencia_anual: number;
         };
         /**
          * GraphNode
          * @description Nodo del grafo (órgano o empresa).
          */
         GraphNode: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
             /** Degree */
             degree: number;
             /** Importe Total */
             importe_total: number;
             /** Key */
             key?: string | null;
-            /** Name */
-            name: string;
-            /** Type */
-            type: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3269,14 +3318,14 @@ export interface components {
         };
         /** HealthResponse */
         HealthResponse: {
-            /** Db */
-            db: string;
-            /** Disk */
-            disk: string;
-            /** Redis */
-            redis: string;
             /** Status */
             status: string;
+            /** Db */
+            db: string;
+            /** Redis */
+            redis: string;
+            /** Disk */
+            disk: string;
             /** Timestamp */
             timestamp: string;
         };
@@ -3287,20 +3336,20 @@ export interface components {
         HeatmapCcaaCell: {
             /** Ccaa */
             ccaa: string;
-            /** Count */
-            count: number;
             /** Empresa */
             empresa: string;
+            /** Count */
+            count: number;
         };
         /**
          * HeatmapCell
          * @description Single cell in the month x estado heatmap.
          */
         HeatmapCell: {
-            /** Col */
-            col: string;
             /** Row */
             row: string;
+            /** Col */
+            col: string;
             /** Value */
             value: number;
         };
@@ -3319,10 +3368,10 @@ export interface components {
          * @description Count by horizon bucket.
          */
         HorizonteCount: {
-            /** Count */
-            count: number;
             /** Horizonte */
             horizonte: string;
+            /** Count */
+            count: number;
             /** Importe */
             importe: number;
         };
@@ -3334,6 +3383,11 @@ export interface components {
              */
             calientes: number;
             /**
+             * Vencen 48H
+             * @default 0
+             */
+            vencen_48h: number;
+            /**
              * Nuevas 24H
              * @default 0
              */
@@ -3343,109 +3397,104 @@ export interface components {
              * @default 0
              */
             total_activas: number;
-            /**
-             * Vencen 48H
-             * @default 0
-             */
-            vencen_48h: number;
         };
         /**
          * ImporteBox
          * @description Five-number summary of importe for a cluster (box-plot).
          */
         ImporteBox: {
-            /** Max */
-            max: number;
-            /** Median */
-            median: number;
             /** Min */
             min: number;
             /** Q1 */
             q1: number;
+            /** Median */
+            median: number;
             /** Q3 */
             q3: number;
+            /** Max */
+            max: number;
         };
         /** LicitacionDetail */
         LicitacionDetail: {
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo: string;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Estado */
+            estado?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
             /** Ccaa */
             ccaa?: string | null;
             /** Cpv */
             cpv?: string | null;
-            /** Descripcion */
-            descripcion?: string | null;
-            /** Duracion Unidad */
-            duracion_unidad?: string | null;
-            /** Duracion Valor */
-            duracion_valor?: number | null;
-            /** Estado */
-            estado?: string | null;
-            /** Fecha Extraccion */
-            fecha_extraccion?: string | null;
-            /** Fecha Fin */
-            fecha_fin?: string | null;
-            /** Fecha Inicio */
-            fecha_inicio?: string | null;
-            /** Fecha Limite */
-            fecha_limite?: string | null;
-            /** Fecha Publicacion */
-            fecha_publicacion?: string | null;
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
+            /** Url */
+            url?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Ml Tecnologias */
+            ml_tecnologias?: string | null;
             /** Ml Proba Max */
             ml_proba_max?: number | null;
             /** Ml Tech Principal */
             ml_tech_principal?: string | null;
-            /** Ml Tecnologias */
-            ml_tecnologias?: string | null;
-            /** Moneda */
-            moneda?: string | null;
-            /** Nuts Code */
-            nuts_code?: string | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
-            /** Provincia */
-            provincia?: string | null;
-            /** Raw Keywords */
-            raw_keywords?: string | null;
-            /** Tecnologia */
-            tecnologia?: string | null;
+            /** Descripcion */
+            descripcion?: string | null;
             /** Tipo Contrato */
             tipo_contrato?: string | null;
-            /** Titulo */
-            titulo: string;
-            /** Url */
-            url?: string | null;
+            /** Moneda */
+            moneda?: string | null;
+            /** Provincia */
+            provincia?: string | null;
+            /** Nuts Code */
+            nuts_code?: string | null;
+            /** Duracion Valor */
+            duracion_valor?: number | null;
+            /** Duracion Unidad */
+            duracion_unidad?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Fecha Inicio */
+            fecha_inicio?: string | null;
+            /** Fecha Fin */
+            fecha_fin?: string | null;
+            /** Raw Keywords */
+            raw_keywords?: string | null;
+            /** Fecha Extraccion */
+            fecha_extraccion?: string | null;
         };
         /** LicitacionSummary */
         LicitacionSummary: {
-            /** Ccaa */
-            ccaa?: string | null;
-            /** Cpv */
-            cpv?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo: string;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
             /** Estado */
             estado?: string | null;
             /** Fecha Publicacion */
             fecha_publicacion?: string | null;
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Ml Tecnologias */
+            ml_tecnologias?: string | null;
             /** Ml Proba Max */
             ml_proba_max?: number | null;
             /** Ml Tech Principal */
             ml_tech_principal?: string | null;
-            /** Ml Tecnologias */
-            ml_tecnologias?: string | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
-            /** Tecnologia */
-            tecnologia?: string | null;
-            /** Titulo */
-            titulo: string;
-            /** Url */
-            url?: string | null;
         };
         /**
          * LoginRequest
@@ -3462,13 +3511,13 @@ export interface components {
         };
         /** MarkAlertsReadRequest */
         MarkAlertsReadRequest: {
+            /** Ids */
+            ids?: number[];
             /**
              * All
              * @default false
              */
             all: boolean;
-            /** Ids */
-            ids?: number[];
         };
         /** MarkReadRequest */
         MarkReadRequest: {
@@ -3480,29 +3529,31 @@ export interface components {
          * @description Monthly aggregate.
          */
         MesAggregate: {
-            /** Importe */
-            importe: number;
             /** Mes */
             mes: string;
             /** N Licitaciones */
             n_licitaciones: number;
+            /** Importe */
+            importe: number;
         };
         /**
          * ModuloEntry
          * @description Single SAP module entry.
          */
         ModuloEntry: {
+            /** Modulo */
+            modulo: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Modulo */
-            modulo: string;
         };
         /** NotificationItem */
         NotificationItem: {
             /** Id */
             id: string;
+            /** Titulo */
+            titulo?: string | null;
             /** Importe */
             importe?: number | null;
             /** Organo Contratacion */
@@ -3512,11 +3563,16 @@ export interface components {
              * @default false
              */
             read: boolean;
-            /** Titulo */
-            titulo?: string | null;
         };
         /** NotificationsResult */
         NotificationsResult: {
+            /** Items */
+            items?: components["schemas"]["NotificationItem"][];
+            /**
+             * Unread Count
+             * @default 0
+             */
+            unread_count: number;
             /** Alerts */
             alerts?: components["schemas"]["AlertItem"][];
             /**
@@ -3525,53 +3581,46 @@ export interface components {
              */
             alerts_unread_count: number;
             hoy?: components["schemas"]["HoyCounters"];
-            /** Items */
-            items?: components["schemas"]["NotificationItem"][];
-            /**
-             * Unread Count
-             * @default 0
-             */
-            unread_count: number;
         };
         /**
          * OrganCompanyGraphResult
          * @description Grafo bipartito órgano-empresa + totales del dataset completo.
          */
         OrganCompanyGraphResult: {
-            /** Edges */
-            edges?: components["schemas"]["GraphEdge"][];
             /** Nodes */
             nodes?: components["schemas"]["GraphNode"][];
-            /**
-             * Total Empresas
-             * @default 0
-             */
-            total_empresas: number;
+            /** Edges */
+            edges?: components["schemas"]["GraphEdge"][];
             /**
              * Total Organos
              * @default 0
              */
             total_organos: number;
+            /**
+             * Total Empresas
+             * @default 0
+             */
+            total_empresas: number;
         };
         /**
          * OrganoAggregate
          * @description Top organo aggregate.
          */
         OrganoAggregate: {
-            /** Importe */
-            importe: number;
-            /** N */
-            n: number;
             /** Organo Contratacion */
             organo_contratacion: string;
+            /** N */
+            n: number;
+            /** Importe */
+            importe: number;
         };
         /** OrganoDetailResult */
         OrganoDetailResult: {
-            /** Estacionalidad */
-            estacionalidad?: components["schemas"]["Estacionalidad"][];
             kpis?: components["schemas"]["OrganoKpis"];
             /** Top Adjudicatarios */
             top_adjudicatarios?: components["schemas"]["TopAdjudicatario"][];
+            /** Estacionalidad */
+            estacionalidad?: components["schemas"]["Estacionalidad"][];
             /** Top Scored */
             top_scored?: components["schemas"]["TopScored"][];
         };
@@ -3580,64 +3629,54 @@ export interface components {
          * @description Single organo ranking entry.
          */
         OrganoEntry: {
-            /** Ccaa */
-            ccaa?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Organo Contratacion */
-            organo_contratacion: string;
             /** Pct */
             pct: number;
+            /** Ccaa */
+            ccaa?: string | null;
         };
         /** OrganoKpis */
         OrganoKpis: {
+            /**
+             * Total Licitaciones
+             * @default 0
+             */
+            total_licitaciones: number;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
             /**
              * Importe Medio
              * @default 0
              */
             importe_medio: number;
             /**
-             * Importe Total
-             * @default 0
-             */
-            importe_total: number;
-            /** Lead Time Medio */
-            lead_time_medio?: number | null;
-            /**
              * Pct Adjudicado
              * @default 0
              */
             pct_adjudicado: number;
+            /** Lead Time Medio */
+            lead_time_medio?: number | null;
+            /** Top Adjudicatario */
+            top_adjudicatario?: string | null;
             /**
              * Top Adj Importe
              * @default 0
              */
             top_adj_importe: number;
-            /** Top Adjudicatario */
-            top_adjudicatario?: string | null;
-            /**
-             * Total Licitaciones
-             * @default 0
-             */
-            total_licitaciones: number;
         };
         /**
          * OrganosResult
          * @description Combined organos response.
          */
         OrganosResult: {
-            /**
-             * Concentracion Top10
-             * @default 0
-             */
-            concentracion_top10: number;
-            /**
-             * Importe Total
-             * @default 0
-             */
-            importe_total: number;
             /** Organos */
             organos?: components["schemas"]["OrganoEntry"][];
             /**
@@ -3645,6 +3684,16 @@ export interface components {
              * @default 0
              */
             total_organos: number;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /**
+             * Concentracion Top10
+             * @default 0
+             */
+            concentracion_top10: number;
             /** Treemap Breakdown */
             treemap_breakdown?: components["schemas"]["TreemapItem"][];
         };
@@ -3654,25 +3703,46 @@ export interface components {
          */
         OverviewResult: {
             /**
-             * Calientes Hoy
+             * Total Licitaciones
              * @default 0
              */
-            calientes_hoy: number;
+            total_licitaciones: number;
             /**
-             * Ccaa Cubiertas
+             * Importe Total
              * @default 0
              */
-            ccaa_cubiertas: number;
+            importe_total: number;
             /**
-             * Concentracion Geo Top3
+             * Importe Medio
              * @default 0
              */
-            concentracion_geo_top3: number;
+            importe_medio: number;
             /**
-             * Concentracion Top10
+             * Organos Unicos
              * @default 0
              */
-            concentracion_top10: number;
+            organos_unicos: number;
+            /**
+             * Yoy Delta
+             * @default 0
+             */
+            yoy_delta: number;
+            /**
+             * Licitaciones 30D
+             * @default 0
+             */
+            licitaciones_30d: number;
+            /**
+             * Importe 30D
+             * @default 0
+             */
+            importe_30d: number;
+            /** Por Estado */
+            por_estado?: components["schemas"]["EstadoCount"][];
+            /** Por Mes */
+            por_mes?: components["schemas"]["MesAggregate"][];
+            /** Top Organos */
+            top_organos?: components["schemas"]["OrganoAggregate"][];
             /** Funnel Estados */
             funnel_estados?: components["schemas"]["FunnelStep"][];
             /**
@@ -3680,38 +3750,6 @@ export interface components {
              * @default 0
              */
             hhi: number;
-            /**
-             * Importe 30D
-             * @default 0
-             */
-            importe_30d: number;
-            /**
-             * Importe Medio
-             * @default 0
-             */
-            importe_medio: number;
-            /**
-             * Importe Total
-             * @default 0
-             */
-            importe_total: number;
-            /** Lead Time Medio */
-            lead_time_medio?: number | null;
-            /**
-             * Licitaciones 30D
-             * @default 0
-             */
-            licitaciones_30d: number;
-            /**
-             * Nuevas 24H
-             * @default 0
-             */
-            nuevas_24h: number;
-            /**
-             * Organos Unicos
-             * @default 0
-             */
-            organos_unicos: number;
             /**
              * Pct Oferta Unica
              * @default 0
@@ -3722,96 +3760,107 @@ export interface components {
              * @default 0
              */
             pct_pyme: number;
-            /** Por Estado */
-            por_estado?: components["schemas"]["EstadoCount"][];
-            /** Por Mes */
-            por_mes?: components["schemas"]["MesAggregate"][];
+            /**
+             * Concentracion Top10
+             * @default 0
+             */
+            concentracion_top10: number;
+            /** Lead Time Medio */
+            lead_time_medio?: number | null;
             /**
              * Tasa Anulacion
              * @default 0
              */
             tasa_anulacion: number;
-            /** Top Organos */
-            top_organos?: components["schemas"]["OrganoAggregate"][];
             /**
-             * Total Licitaciones
+             * Concentracion Geo Top3
              * @default 0
              */
-            total_licitaciones: number;
+            concentracion_geo_top3: number;
+            /**
+             * Ccaa Cubiertas
+             * @default 0
+             */
+            ccaa_cubiertas: number;
+            /**
+             * Calientes Hoy
+             * @default 0
+             */
+            calientes_hoy: number;
             /**
              * Vencen 48H
              * @default 0
              */
             vencen_48h: number;
             /**
-             * Yoy Delta
+             * Nuevas 24H
              * @default 0
              */
-            yoy_delta: number;
+            nuevas_24h: number;
         };
         /** PaginatedResponse[AdjudicacionSummary] */
         PaginatedResponse_AdjudicacionSummary_: {
-            /** Deprecation Notice */
-            deprecation_notice?: string | null;
-            /** Items */
-            items: components["schemas"]["AdjudicacionSummary"][];
+            /** Total */
+            total: number;
             /** Limit */
             limit: number;
             /** Offset */
             offset: number;
-            /** Total */
-            total: number;
+            /** Items */
+            items: components["schemas"]["AdjudicacionSummary"][];
+            /** Deprecation Notice */
+            deprecation_notice?: string | null;
         };
         /** PaginatedResponse[LicitacionSummary] */
         PaginatedResponse_LicitacionSummary_: {
-            /** Deprecation Notice */
-            deprecation_notice?: string | null;
-            /** Items */
-            items: components["schemas"]["LicitacionSummary"][];
+            /** Total */
+            total: number;
             /** Limit */
             limit: number;
             /** Offset */
             offset: number;
-            /** Total */
-            total: number;
+            /** Items */
+            items: components["schemas"]["LicitacionSummary"][];
+            /** Deprecation Notice */
+            deprecation_notice?: string | null;
         };
         /**
          * PartnerEdge
          * @description Arista = co-licitación real (UTE conjunta); peso = nº contratos + importe.
          */
         PartnerEdge: {
-            /** Contratos */
-            contratos: number;
-            /** Importe */
-            importe: number;
             /** Source */
             source: string;
             /** Target */
             target: string;
+            /** Contratos */
+            contratos: number;
+            /** Importe */
+            importe: number;
         };
         /**
          * PartnerNode
          * @description Nodo del grafo = empresa que ha co-licitado en UTE.
          */
         PartnerNode: {
-            /** Community */
-            community?: number | null;
+            /** Name */
+            name: string;
             /** Contratos */
             contratos: number;
             /** Importe */
             importe: number;
-            /** Name */
-            name: string;
+            /** Community */
+            community?: number | null;
         };
         /**
          * PartnershipGraphResult
          * @description Grafo de co-licitación + nº de adjudicaciones UTE del dataset.
          */
         PartnershipGraphResult: {
-            /** Edges */
-            edges?: components["schemas"]["PartnerEdge"][];
             /** Nodes */
             nodes?: components["schemas"]["PartnerNode"][];
+            /** Edges */
+            edges?: components["schemas"]["PartnerEdge"][];
             /**
              * Total Utes
              * @default 0
@@ -3821,180 +3870,180 @@ export interface components {
         /** PeriodDeltas */
         PeriodDeltas: {
             /**
-             * Importe Medio Pct
+             * Total Pct
              * @default 0
              */
-            importe_medio_pct: number;
+            total_pct: number;
             /**
              * Importe Total Pct
              * @default 0
              */
             importe_total_pct: number;
             /**
+             * Importe Medio Pct
+             * @default 0
+             */
+            importe_medio_pct: number;
+            /**
              * Organos Pct
              * @default 0
              */
             organos_pct: number;
-            /**
-             * Total Pct
-             * @default 0
-             */
-            total_pct: number;
         };
         /** PeriodStats */
         PeriodStats: {
             /**
-             * Importe Medio
+             * Total
              * @default 0
              */
-            importe_medio: number;
+            total: number;
             /**
              * Importe Total
              * @default 0
              */
             importe_total: number;
             /**
+             * Importe Medio
+             * @default 0
+             */
+            importe_medio: number;
+            /**
              * Organos
              * @default 0
              */
             organos: number;
-            /**
-             * Total
-             * @default 0
-             */
-            total: number;
         };
         /**
          * PipelineEntry
          * @description Single pipeline entry with deadline info.
          */
         PipelineEntry: {
-            /** Band */
-            band?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
             /** Dias Restantes */
             dias_restantes: number;
             /** Estado */
             estado?: string | null;
-            /** Fecha Limite */
-            fecha_limite?: string | null;
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
             /** Score */
             score?: number | null;
-            /** Titulo */
-            titulo?: string | null;
+            /** Band */
+            band?: string | null;
         };
         /**
          * PipelineResult
          * @description Combined pipeline response.
          */
         PipelineResult: {
-            /**
-             * Calientes
-             * @default 0
-             */
-            calientes: number;
-            /** Por Horizonte */
-            por_horizonte?: components["schemas"]["HorizonteCount"][];
-            /** Por Trimestre */
-            por_trimestre?: components["schemas"]["TrimestreCount"][];
+            /** Upcoming */
+            upcoming?: components["schemas"]["PipelineEntry"][];
             /**
              * Total En Plazo
              * @default 0
              */
             total_en_plazo: number;
-            /** Upcoming */
-            upcoming?: components["schemas"]["PipelineEntry"][];
-            /** Urgencia Valor */
-            urgencia_valor?: components["schemas"]["UrgenciaValorPoint"][];
             /**
-             * Valor 30D
+             * Vencen 7D
              * @default 0
              */
-            valor_30d: number;
-            /**
-             * Valor 7D
-             * @default 0
-             */
-            valor_7d: number;
-            /**
-             * Valor Calientes
-             * @default 0
-             */
-            valor_calientes: number;
-            /**
-             * Valor Total
-             * @default 0
-             */
-            valor_total: number;
+            vencen_7d: number;
             /**
              * Vencen 30D
              * @default 0
              */
             vencen_30d: number;
             /**
-             * Vencen 7D
+             * Valor Total
              * @default 0
              */
-            vencen_7d: number;
+            valor_total: number;
+            /**
+             * Valor 7D
+             * @default 0
+             */
+            valor_7d: number;
+            /**
+             * Valor 30D
+             * @default 0
+             */
+            valor_30d: number;
+            /**
+             * Calientes
+             * @default 0
+             */
+            calientes: number;
+            /**
+             * Valor Calientes
+             * @default 0
+             */
+            valor_calientes: number;
+            /** Por Horizonte */
+            por_horizonte?: components["schemas"]["HorizonteCount"][];
+            /** Por Trimestre */
+            por_trimestre?: components["schemas"]["TrimestreCount"][];
+            /** Urgencia Valor */
+            urgencia_valor?: components["schemas"]["UrgenciaValorPoint"][];
         };
         /**
          * ProvinciaEntry
          * @description Single provincia entry (aggregated over the full filtered dataset).
          */
         ProvinciaEntry: {
+            /** Provincia */
+            provincia: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Provincia */
-            provincia: string;
         };
         /**
          * ProyectoTipoEntry
          * @description Single project type entry.
          */
         ProyectoTipoEntry: {
+            /** Tipo */
+            tipo: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Tipo */
-            tipo: string;
         };
         /**
          * ProyectosModulosResult
          * @description Combined proyectos & modulos response.
          */
         ProyectosModulosResult: {
-            /** Cpv */
-            cpv?: components["schemas"]["CpvEntry"][];
-            /**
-             * Importe Total Sap
-             * @default 0
-             */
-            importe_total_sap: number;
             /** Modulos */
             modulos?: components["schemas"]["ModuloEntry"][];
-            /**
-             * Ticket Medio Sap
-             * @default 0
-             */
-            ticket_medio_sap: number;
-            /** Tipo Estado */
-            tipo_estado?: components["schemas"]["TipoEstadoEntry"][];
             /** Tipos Proyecto */
             tipos_proyecto?: components["schemas"]["ProyectoTipoEntry"][];
-            top_modulo_yoy?: components["schemas"]["TopModuloYoY"] | null;
             /**
              * Total Clasificados
              * @default 0
              */
             total_clasificados: number;
+            /**
+             * Importe Total Sap
+             * @default 0
+             */
+            importe_total_sap: number;
+            /**
+             * Ticket Medio Sap
+             * @default 0
+             */
+            ticket_medio_sap: number;
+            top_modulo_yoy?: components["schemas"]["TopModuloYoY"] | null;
+            /** Tipo Estado */
+            tipo_estado?: components["schemas"]["TipoEstadoEntry"][];
+            /** Cpv */
+            cpv?: components["schemas"]["CpvEntry"][];
         };
         /**
          * QualityResult
@@ -4002,67 +4051,65 @@ export interface components {
          */
         QualityResult: {
             /**
-             * Cobertura Modulo Sap
+             * Total Records
              * @default 0
              */
-            cobertura_modulo_sap: number;
-            /**
-             * Cobertura Nif
-             * @default 0
-             */
-            cobertura_nif: number;
-            /** Completitud Columnas */
-            completitud_columnas?: components["schemas"]["ColumnCompleteness"][];
-            /**
-             * Dlq Count
-             * @default 0
-             */
-            dlq_count: number;
-            /**
-             * Fechas No Iso
-             * @default 0
-             */
-            fechas_no_iso: number;
-            /** Last Scrape Hours Ago */
-            last_scrape_hours_ago?: number | null;
+            total_records: number;
             /**
              * Pct Cpv
              * @default 0
              */
             pct_cpv: number;
             /**
+             * Pct Importe
+             * @default 0
+             */
+            pct_importe: number;
+            /**
              * Pct Fecha
              * @default 0
              */
             pct_fecha: number;
+            /**
+             * Pct Titulo
+             * @default 0
+             */
+            pct_titulo: number;
+            /** Last Scrape Hours Ago */
+            last_scrape_hours_ago?: number | null;
+            /**
+             * Dlq Count
+             * @default 0
+             */
+            dlq_count: number;
+            /** Completitud Columnas */
+            completitud_columnas?: components["schemas"]["ColumnCompleteness"][];
+            /**
+             * Cobertura Nif
+             * @default 0
+             */
+            cobertura_nif: number;
+            /**
+             * Cobertura Modulo Sap
+             * @default 0
+             */
+            cobertura_modulo_sap: number;
             /**
              * Pct Fecha Iso
              * @default 0
              */
             pct_fecha_iso: number;
             /**
-             * Pct Importe
+             * Fechas No Iso
              * @default 0
              */
-            pct_importe: number;
-            /**
-             * Pct Titulo
-             * @default 0
-             */
-            pct_titulo: number;
-            /**
-             * Total Records
-             * @default 0
-             */
-            total_records: number;
+            fechas_no_iso: number;
         };
         /**
          * RegisterRequest
          * @description Datos para el alta self-service con email + password.
          */
         RegisterRequest: {
-            /** Display Name */
-            display_name?: string | null;
             /**
              * Email
              * Format: email
@@ -4070,6 +4117,8 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+            /** Display Name */
+            display_name?: string | null;
         };
         /** ResumenHoyResult */
         ResumenHoyResult: {
@@ -4078,6 +4127,11 @@ export interface components {
              * @default 0
              */
             calientes: number;
+            /**
+             * Vencen 48H
+             * @default 0
+             */
+            vencen_48h: number;
             /**
              * Nuevas 24H
              * @default 0
@@ -4088,11 +4142,6 @@ export interface components {
              * @default 0
              */
             total_activas: number;
-            /**
-             * Vencen 48H
-             * @default 0
-             */
-            vencen_48h: number;
         };
         /** ResumenNovedadesResult */
         ResumenNovedadesResult: {
@@ -4108,12 +4157,24 @@ export interface components {
         ResumenNovedadesSample: {
             /** Id Externo */
             id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
             /** Importe */
             importe?: number | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
-            /** Titulo */
-            titulo?: string | null;
+        };
+        /**
+         * ResumenRequest
+         * @description Cuerpo de la petición de resumen IA de una licitación.
+         */
+        ResumenRequest: {
+            /**
+             * Model
+             * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
+             * @default deepseek-ai/deepseek-v4-pro
+             */
+            model: string;
         };
         /** RetenderingResult */
         RetenderingResult: {
@@ -4124,30 +4185,30 @@ export interface components {
         /** RetenderingResumen */
         RetenderingResumen: {
             /**
-             * Mas Doce M
+             * Ya Vencido
              * @default 0
              */
-            mas_doce_m: number;
+            ya_vencido: number;
             /**
              * Menos 3M
              * @default 0
              */
             menos_3m: number;
             /**
-             * Seis Doce M
-             * @default 0
-             */
-            seis_doce_m: number;
-            /**
              * Tres Seis M
              * @default 0
              */
             tres_seis_m: number;
             /**
-             * Ya Vencido
+             * Seis Doce M
              * @default 0
              */
-            ya_vencido: number;
+            seis_doce_m: number;
+            /**
+             * Mas Doce M
+             * @default 0
+             */
+            mas_doce_m: number;
         };
         /** ReviewDecision */
         ReviewDecision: {
@@ -4175,67 +4236,67 @@ export interface components {
         };
         /** SankeyResult */
         SankeyResult: {
-            /** Links */
-            links?: components["schemas"]["SankeyLink"][];
             /** Nodes */
             nodes?: components["schemas"]["SankeyNode"][];
+            /** Links */
+            links?: components["schemas"]["SankeyLink"][];
         };
         /** SaveFilterRequest */
         SaveFilterRequest: {
-            /** Filters Json */
-            filters_json: string;
             /** Name */
             name: string;
+            /** Filters Json */
+            filters_json: string;
         };
         /**
          * SavedFilter
          * @description Vista guardada tal como se devuelve al cliente.
          */
         SavedFilter: {
-            /** Created At */
-            created_at: string;
-            /** Filters Json */
-            filters_json: string;
             /** Id */
             id: number;
             /** Name */
             name: string;
+            /** Filters Json */
+            filters_json: string;
+            /** Created At */
+            created_at: string;
         };
         /**
          * ScatterPoint
          * @description Scatter data point for competitors.
          */
         ScatterPoint: {
-            /** N Organos */
-            n_organos: number;
             /** Nombre */
             nombre: string;
             /** Ticket Medio */
             ticket_medio: number;
+            /** N Organos */
+            n_organos: number;
         };
         /**
          * ScoredOpportunity
          * @description Single scored opportunity.
          */
         ScoredOpportunity: {
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Score */
+            score: number;
             /** Band */
             band: string;
+            /** Risk Flags */
+            risk_flags?: string[];
             /** Desglose */
             desglose?: {
                 [key: string]: number;
             };
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
-            /** Risk Flags */
-            risk_flags?: string[];
-            /** Score */
-            score: number;
-            /** Titulo */
-            titulo?: string | null;
         };
         /**
          * ScoringResult
@@ -4252,18 +4313,24 @@ export interface components {
         };
         /** SearchRequest */
         SearchRequest: {
-            /** Ccaa */
-            ccaa?: string[] | null;
+            /** Q */
+            q?: string | null;
             /** Estado */
             estado?: string[] | null;
+            /** Ccaa */
+            ccaa?: string[] | null;
+            /** Tecnologia */
+            tecnologia?: string[] | null;
+            /** Importe Min */
+            importe_min?: number | null;
+            /** Importe Max */
+            importe_max?: number | null;
             /** Fecha Desde */
             fecha_desde?: string | null;
             /** Fecha Hasta */
             fecha_hasta?: string | null;
-            /** Importe Max */
-            importe_max?: number | null;
-            /** Importe Min */
-            importe_min?: number | null;
+            /** Sort */
+            sort?: string | null;
             /**
              * Limit
              * @default 50
@@ -4274,12 +4341,6 @@ export interface components {
              * @default 0
              */
             offset: number;
-            /** Q */
-            q?: string | null;
-            /** Sort */
-            sort?: string | null;
-            /** Tecnologia */
-            tecnologia?: string[] | null;
             /**
              * With Total
              * @default true
@@ -4291,29 +4352,29 @@ export interface components {
          * @description Un resultado de búsqueda semántica.
          */
         SemanticHit: {
-            /** Ccaa */
-            ccaa: string | null;
-            /** Descripcion */
-            descripcion: string | null;
-            /** Estado */
-            estado: string | null;
-            /** Fecha Publicacion */
-            fecha_publicacion: string | null;
             /** Id Externo */
             id_externo: string;
-            /** Importe */
-            importe: number | null;
+            /** Titulo */
+            titulo: string | null;
             /** Organo Contratacion */
             organo_contratacion: string | null;
+            /** Importe */
+            importe: number | null;
+            /** Descripcion */
+            descripcion: string | null;
+            /** Url */
+            url: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion: string | null;
+            /** Ccaa */
+            ccaa: string | null;
+            /** Estado */
+            estado: string | null;
             /**
              * Score
              * @description Puntuación de relevancia combinada [0, 1]
              */
             score: number;
-            /** Titulo */
-            titulo: string | null;
-            /** Url */
-            url: string | null;
         };
         /**
          * SemanticSearchRequest
@@ -4321,22 +4382,38 @@ export interface components {
          */
         SemanticSearchRequest: {
             /**
+             * Q
+             * @description Consulta en lenguaje natural
+             */
+            q: string;
+            /**
+             * Top K
+             * @description Número máximo de resultados
+             * @default 10
+             */
+            top_k: number;
+            /**
              * Alpha
              * @description Peso de FAISS vs FTS5 (1.0 = solo semántica, 0.0 = solo léxica)
              * @default 0.7
              */
             alpha: number;
             /**
-             * Ccaa
-             * @description Filtra resultados por CCAA (multi-valor)
-             */
-            ccaa?: string[];
-            /**
              * Embedding Model
              * @description Nombre del modelo de embeddings (vacío = modelo por defecto de settings)
              * @default
              */
             embedding_model: string;
+            /**
+             * Ccaa
+             * @description Filtra resultados por CCAA (multi-valor)
+             */
+            ccaa?: string[];
+            /**
+             * Tecnologia
+             * @description Filtra resultados por tecnología (multi-valor)
+             */
+            tecnologia?: string[];
             /**
              * Fecha Desde
              * @description Fecha de publicación desde (YYYY-MM-DD)
@@ -4347,41 +4424,25 @@ export interface components {
              * @description Fecha de publicación hasta (YYYY-MM-DD)
              */
             fecha_hasta?: string | null;
-            /**
-             * Q
-             * @description Consulta en lenguaje natural
-             */
-            q: string;
-            /**
-             * Tecnologia
-             * @description Filtra resultados por tecnología (multi-valor)
-             */
-            tecnologia?: string[];
-            /**
-             * Top K
-             * @description Número máximo de resultados
-             * @default 10
-             */
-            top_k: number;
         };
         /**
          * SemanticSearchResponse
          * @description Respuesta de búsqueda semántica.
          */
         SemanticSearchResponse: {
-            /** Elapsed Ms */
-            elapsed_ms: number;
-            /** Hits */
-            hits: components["schemas"]["SemanticHit"][];
             /** Q */
             q: string;
+            /** Top K */
+            top_k: number;
             /**
              * Source
              * @description Motor usado: FAISS+FTS5 | FAISS | FTS5 | LIKE
              */
             source: string;
-            /** Top K */
-            top_k: number;
+            /** Hits */
+            hits: components["schemas"]["SemanticHit"][];
+            /** Elapsed Ms */
+            elapsed_ms: number;
         };
         /** SetAdminBody */
         SetAdminBody: {
@@ -4398,51 +4459,53 @@ export interface components {
          * @description Single tender row in the detail table.
          */
         TecnologiaDetalleItem: {
-            /** Ccaa */
-            ccaa?: string | null;
-            /** Estado */
-            estado?: string | null;
-            /** Fecha Publicacion */
-            fecha_publicacion?: string | null;
             /** Id Externo */
             id_externo: string;
-            /** Importe */
-            importe?: number | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
             /** Titulo */
             titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Estado */
+            estado?: string | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
         };
         /**
          * TecnologiaDetalleResult
          * @description Detail payload for a single technology.
          */
         TecnologiaDetalleResult: {
-            /**
-             * Importe Medio
-             * @default 0
-             */
-            importe_medio: number;
-            /**
-             * Importe Total
-             * @default 0
-             */
-            importe_total: number;
-            /** Items */
-            items?: components["schemas"]["TecnologiaDetalleItem"][];
+            /** Tecnologia */
+            tecnologia: string;
             /**
              * N
              * @default 0
              */
             n: number;
-            /** Tecnologia */
-            tecnologia: string;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /**
+             * Importe Medio
+             * @default 0
+             */
+            importe_medio: number;
+            /** Items */
+            items?: components["schemas"]["TecnologiaDetalleItem"][];
         };
         /**
          * TecnologiaEntry
          * @description Single technology aggregate (keyed by readable label).
          */
         TecnologiaEntry: {
+            /** Tecnologia */
+            tecnologia: string;
             /** Count */
             count: number;
             /** Importe */
@@ -4453,73 +4516,71 @@ export interface components {
             pct: number;
             /** Pct Adjudicado */
             pct_adjudicado: number;
-            /** Tecnologia */
-            tecnologia: string;
         };
         /**
          * TecnologiasResult
          * @description Combined tecnologias response.
          */
         TecnologiasResult: {
-            /** Cross Geo */
-            cross_geo?: components["schemas"]["CrossGeoEntry"][];
-            /** Cross Organo */
-            cross_organo?: components["schemas"]["CrossOrganoEntry"][];
-            /** Evolucion Mensual */
-            evolucion_mensual?: components["schemas"]["EvolucionEntry"][];
-            /**
-             * Importe Medio Global
-             * @default 0
-             */
-            importe_medio_global: number;
-            /**
-             * Lider Count
-             * @default 0
-             */
-            lider_count: number;
-            /**
-             * N Tecnologias
-             * @default 0
-             */
-            n_tecnologias: number;
+            /** Tecnologias */
+            tecnologias?: components["schemas"]["TecnologiaEntry"][];
             /**
              * Sin Clasificar
              * @default 0
              */
             sin_clasificar: number;
             /**
-             * Tasa Adjudicacion Media
-             * @default 0
-             */
-            tasa_adjudicacion_media: number;
-            /** Tecnologia Lider */
-            tecnologia_lider?: string | null;
-            /** Tecnologias */
-            tecnologias?: components["schemas"]["TecnologiaEntry"][];
-            /**
              * Total
              * @default 0
              */
             total: number;
+            /**
+             * N Tecnologias
+             * @default 0
+             */
+            n_tecnologias: number;
+            /** Tecnologia Lider */
+            tecnologia_lider?: string | null;
+            /**
+             * Lider Count
+             * @default 0
+             */
+            lider_count: number;
+            /**
+             * Importe Medio Global
+             * @default 0
+             */
+            importe_medio_global: number;
+            /**
+             * Tasa Adjudicacion Media
+             * @default 0
+             */
+            tasa_adjudicacion_media: number;
+            /** Cross Organo */
+            cross_organo?: components["schemas"]["CrossOrganoEntry"][];
+            /** Cross Geo */
+            cross_geo?: components["schemas"]["CrossGeoEntry"][];
+            /** Evolucion Mensual */
+            evolucion_mensual?: components["schemas"]["EvolucionEntry"][];
         };
         /** TimelineScatterItem */
         TimelineScatterItem: {
-            /** Ccaa */
-            ccaa?: string | null;
-            /** Estado */
-            estado?: string | null;
-            /** Fecha Publicacion */
-            fecha_publicacion?: string | null;
             /** Id Externo */
             id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
             /** Importe */
             importe?: number | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Estado */
+            estado?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
             /** Tipo Contrato */
             tipo_contrato?: string | null;
-            /** Titulo */
-            titulo?: string | null;
+            /** Ccaa */
+            ccaa?: string | null;
         };
         /** TimelineScatterResult */
         TimelineScatterResult: {
@@ -4531,38 +4592,38 @@ export interface components {
          * @description tipo_contrato x estado cell (for the stacked-bar relationship).
          */
         TipoEstadoEntry: {
+            /** Tipo */
+            tipo: string;
             /** Estado */
             estado: string;
             /** N */
             n: number;
-            /** Tipo */
-            tipo: string;
         };
         /** TopAdjudicatario */
         TopAdjudicatario: {
+            /** Nombre */
+            nombre: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Nombre */
-            nombre: string;
         };
         /** TopLicitacionItem */
         TopLicitacionItem: {
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Estado */
+            estado?: string | null;
             /** Adjudicatario */
             adjudicatario?: string | null;
             /** Baja Pct */
             baja_pct?: number | null;
-            /** Estado */
-            estado?: string | null;
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
-            /** Organo Contratacion */
-            organo_contratacion?: string | null;
-            /** Titulo */
-            titulo?: string | null;
         };
         /** TopLicitacionesResult */
         TopLicitacionesResult: {
@@ -4574,97 +4635,89 @@ export interface components {
          * @description Fastest-growing SAP module year-over-year.
          */
         TopModuloYoY: {
-            /** Crecimiento Pct */
-            crecimiento_pct: number;
             /** Modulo */
             modulo: string;
+            /** Crecimiento Pct */
+            crecimiento_pct: number;
             /** N Act */
             n_act: number;
         };
         /** TopScored */
         TopScored: {
-            /** Baja Pct */
-            baja_pct?: number | null;
-            /** Banda */
-            banda?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Titulo */
+            titulo?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Score */
+            score: number;
             /** Ccaa */
             ccaa?: string | null;
-            /** Cpv Desc */
-            cpv_desc?: string | null;
-            /** Empresa */
-            empresa?: string | null;
             /** Estado */
             estado?: string | null;
             /** Estado Desc */
             estado_desc?: string | null;
+            /** Banda */
+            banda?: string | null;
+            /** Empresa */
+            empresa?: string | null;
+            /** Baja Pct */
+            baja_pct?: number | null;
             /** Fecha Adjudicacion */
             fecha_adjudicacion?: string | null;
-            /** Id Externo */
-            id_externo: string;
-            /** Importe */
-            importe?: number | null;
             /** Modulos Str */
             modulos_str?: string | null;
-            /** Score */
-            score: number;
-            /** Tipo Contrato Desc */
-            tipo_contrato_desc?: string | null;
-            /** Tipo Proyecto */
-            tipo_proyecto?: string | null;
-            /** Titulo */
-            titulo?: string | null;
             /** Url */
             url?: string | null;
+            /** Tipo Proyecto */
+            tipo_proyecto?: string | null;
+            /** Tipo Contrato Desc */
+            tipo_contrato_desc?: string | null;
+            /** Cpv Desc */
+            cpv_desc?: string | null;
         };
         /**
          * TreemapItem
          * @description Single cell in the organo → tipo_contrato treemap breakdown.
          */
         TreemapItem: {
-            /** Importe */
-            importe: number;
             /** Organo */
             organo: string;
             /** Tipo Contrato */
             tipo_contrato: string;
+            /** Importe */
+            importe: number;
         };
         /**
          * TrendPoint
          * @description Single point in the time series.
          */
         TrendPoint: {
+            /** Period */
+            period: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Period */
-            period: string;
         };
         /** TrendsCpvResult */
         TrendsCpvResult: {
             /** Series By Cpv */
             series_by_cpv?: components["schemas"]["CpvSeries"][];
-            summary?: components["schemas"]["CpvSummary"];
             /** Top Cpv By Importe */
             top_cpv_by_importe?: components["schemas"]["CpvImporteRank"][];
+            summary?: components["schemas"]["CpvSummary"];
         };
         /**
          * TrendsResult
          * @description Combined trends response.
          */
         TrendsResult: {
-            /** Heatmap */
-            heatmap?: components["schemas"]["HeatmapCell"][];
-            /** Histogram Bins */
-            histogram_bins?: components["schemas"]["HistogramBin"][];
-            /** Mes Pico */
-            mes_pico?: {
-                [key: string]: unknown;
-            } | null;
             /** Series */
             series?: components["schemas"]["TrendPoint"][];
-            /** Waterfall */
-            waterfall?: components["schemas"]["WaterfallPoint"][];
+            /** Heatmap */
+            heatmap?: components["schemas"]["HeatmapCell"][];
             /**
              * Yoy Count
              * @default 0
@@ -4675,92 +4728,100 @@ export interface components {
              * @default 0
              */
             yoy_importe: number;
+            /** Waterfall */
+            waterfall?: components["schemas"]["WaterfallPoint"][];
+            /** Histogram Bins */
+            histogram_bins?: components["schemas"]["HistogramBin"][];
+            /** Mes Pico */
+            mes_pico?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * TrimestreCount
          * @description Count by calendar quarter.
          */
         TrimestreCount: {
+            /** Trimestre */
+            trimestre: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Trimestre */
-            trimestre: string;
         };
         /** UTEComparacion */
         UTEComparacion: {
-            individual?: components["schemas"]["UTETablaComparativa"];
             ute?: components["schemas"]["UTETablaComparativa"];
+            individual?: components["schemas"]["UTETablaComparativa"];
         };
         /** UTEEvolucion */
         UTEEvolucion: {
+            /** Period */
+            period: string;
             /** Contratos */
             contratos: number;
             /** Importe */
             importe: number;
-            /** Period */
-            period: string;
         };
         /** UTEKpis */
         UTEKpis: {
             /**
-             * Empresas Distintas
+             * Total Ute
              * @default 0
              */
-            empresas_distintas: number;
+            total_ute: number;
             /**
              * Importe Ute
              * @default 0
              */
             importe_ute: number;
             /**
-             * Ticket Medio Individual
-             * @default 0
-             */
-            ticket_medio_individual: number;
-            /**
              * Ticket Medio Ute
              * @default 0
              */
             ticket_medio_ute: number;
             /**
-             * Total Ute
+             * Ticket Medio Individual
              * @default 0
              */
-            total_ute: number;
+            ticket_medio_individual: number;
+            /**
+             * Empresas Distintas
+             * @default 0
+             */
+            empresas_distintas: number;
         };
         /** UTEMiembro */
         UTEMiembro: {
+            /** Nombre */
+            nombre: string;
             /** Count */
             count: number;
             /** Importe */
             importe: number;
-            /** Nombre */
-            nombre: string;
         };
         /** UTEResult */
         UTEResult: {
-            /** Evolucion */
-            evolucion?: components["schemas"]["UTEEvolucion"][];
             kpis?: components["schemas"]["UTEKpis"];
-            /** Socios Frecuentes */
-            socios_frecuentes?: components["schemas"]["UTESocioPar"][];
-            tabla_comparativa?: components["schemas"]["UTEComparacion"];
             /** Top Miembros */
             top_miembros?: components["schemas"]["UTEMiembro"][];
+            /** Socios Frecuentes */
+            socios_frecuentes?: components["schemas"]["UTESocioPar"][];
+            /** Evolucion */
+            evolucion?: components["schemas"]["UTEEvolucion"][];
+            tabla_comparativa?: components["schemas"]["UTEComparacion"];
         };
         /**
          * UTESocioPar
          * @description Par de empresas que han co-licitado en UTE (quién se asocia con quién).
          */
         UTESocioPar: {
-            /** Contratos */
-            contratos: number;
             /** Empresa A */
             empresa_a: string;
             /** Empresa B */
             empresa_b: string;
+            /** Contratos */
+            contratos: number;
             /** Importe */
             importe: number;
         };
@@ -4787,92 +4848,92 @@ export interface components {
          * @description Scatter point: urgency vs value.
          */
         UrgenciaValorPoint: {
-            /** Dias Restantes */
-            dias_restantes: number;
-            /** Es Urgente */
-            es_urgente: boolean;
             /** Id Externo */
             id_externo: string;
-            /** Importe */
-            importe: number;
             /** Titulo */
             titulo?: string | null;
+            /** Dias Restantes */
+            dias_restantes: number;
+            /** Importe */
+            importe: number;
+            /** Es Urgente */
+            es_urgente: boolean;
         };
         /**
          * UserInfo
          * @description Public user info returned by auth endpoints.
          */
         UserInfo: {
-            /** Display Name */
-            display_name?: string | null;
+            /** User Id */
+            user_id: number;
             /** Email */
             email?: string | null;
+            /** Display Name */
+            display_name?: string | null;
             /**
              * Is Admin
              * @default false
              */
             is_admin: boolean;
-            /** User Id */
-            user_id: number;
         };
         /**
          * UserProfileBody
          * @description Cuerpo para crear/actualizar el perfil de scoring.
          */
         UserProfileBody: {
-            /** Afinidad Keywords */
-            afinidad_keywords?: string[] | null;
-            /** Importe Max */
-            importe_max?: number | null;
-            /** Importe Min */
-            importe_min?: number | null;
             /** Weights */
             weights?: {
                 [key: string]: number;
             } | null;
+            /** Afinidad Keywords */
+            afinidad_keywords?: string[] | null;
+            /** Importe Min */
+            importe_min?: number | null;
+            /** Importe Max */
+            importe_max?: number | null;
         };
         /**
          * UserProfileOut
          * @description Perfil devuelto al cliente.
          */
         UserProfileOut: {
-            /** Afinidad Keywords */
-            afinidad_keywords?: string[] | null;
-            /** Importe Max */
-            importe_max?: number | null;
-            /** Importe Min */
-            importe_min?: number | null;
-            /** Updated At */
-            updated_at?: string | null;
             /** User Key */
             user_key?: string | null;
             /** Weights */
             weights?: {
                 [key: string]: number;
             } | null;
+            /** Afinidad Keywords */
+            afinidad_keywords?: string[] | null;
+            /** Importe Min */
+            importe_min?: number | null;
+            /** Importe Max */
+            importe_max?: number | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** WatchlistEmpresaRequest */
         WatchlistEmpresaRequest: {
+            /** Empresa Id */
+            empresa_id: number;
             /**
              * Email
              * @description Destino de alertas
              */
             email?: string | null;
-            /** Empresa Id */
-            empresa_id: number;
             /**
              * Frequency
              * @default daily
@@ -4892,85 +4953,78 @@ export interface components {
          * @description Cuerpo de creacion/edicion de una regla (sin id, con limites de tamano).
          */
         WatchlistRuleBody: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Ccaa */
-            ccaa?: string | null;
+            /** Nombre */
+            nombre?: string | null;
+            /** Keyword */
+            keyword?: string | null;
             /** Cpv */
             cpv?: string | null;
+            /** Min Importe */
+            min_importe?: number | null;
+            /** Ccaa */
+            ccaa?: string | null;
             /**
              * Frequency
              * @default daily
              * @enum {string}
              */
             frequency: "immediate" | "daily" | "weekly";
-            /** Keyword */
-            keyword?: string | null;
-            /** Min Importe */
-            min_importe?: number | null;
-            /** Nombre */
-            nombre?: string | null;
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
         };
         /**
          * WatchlistRuleOut
          * @description Regla devuelta al cliente, enriquecida con el conteo real de matches.
          */
         WatchlistRuleOut: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Ccaa */
-            ccaa?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Nombre */
+            nombre?: string | null;
+            /** Keyword */
+            keyword?: string | null;
             /** Cpv */
             cpv?: string | null;
-            /** Email */
-            email?: string | null;
+            /** Min Importe */
+            min_importe?: number | null;
+            /** Ccaa */
+            ccaa?: string | null;
             /**
              * Frequency
              * @default daily
              * @enum {string}
              */
             frequency: "immediate" | "daily" | "weekly";
-            /** Id */
-            id?: number | null;
-            /** Keyword */
-            keyword?: string | null;
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
             /**
              * Match Count
              * @default 0
              */
             match_count: number;
-            /** Min Importe */
-            min_importe?: number | null;
-            /** Nombre */
-            nombre?: string | null;
+            /** Email */
+            email?: string | null;
         };
         /**
          * WaterfallPoint
          * @description Month-to-month delta.
          */
         WaterfallPoint: {
-            /** Cumulative */
-            cumulative: number;
-            /** Delta */
-            delta: number;
             /** Period */
             period: string;
+            /** Delta */
+            delta: number;
+            /** Cumulative */
+            cumulative: number;
         };
         /** WebhookCreate */
         WebhookCreate: {
-            /**
-             * Event Types
-             * @example [
-             *       "watchlist_match"
-             *     ]
-             */
-            event_types?: string[];
             /**
              * Name
              * @example mi-integracion-slack
@@ -4981,33 +5035,40 @@ export interface components {
              * @example https://hooks.example.com/licitaciones
              */
             url: string;
+            /**
+             * Event Types
+             * @example [
+             *       "watchlist_match"
+             *     ]
+             */
+            event_types?: string[];
         };
         /** WebhookCreateResponse */
         WebhookCreateResponse: {
-            /** Event Types */
-            event_types: string[];
             /** Id */
             id: number;
             /** Name */
             name: string;
+            /** Url */
+            url: string;
+            /** Event Types */
+            event_types: string[];
             /**
              * Secret
              * @description Secret para verificar firma HMAC (X-Webhook-Signature). Solo se devuelve en la creación; guárdalo de forma segura.
              */
             secret: string;
-            /** Url */
-            url: string;
         };
         /** WebhookUpdate */
         WebhookUpdate: {
-            /** Active */
-            active?: boolean | null;
-            /** Event Types */
-            event_types?: string[] | null;
             /** Name */
             name?: string | null;
             /** Url */
             url?: string | null;
+            /** Event Types */
+            event_types?: string[] | null;
+            /** Active */
+            active?: boolean | null;
         };
     };
     responses: never;
@@ -7992,6 +8053,69 @@ export interface operations {
             };
         };
     };
+    resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumenRequest"];
+            };
+        };
+        responses: {
+            /** @description Stream SSE con el resumen generado */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Modelo no disponible */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description API key inválida o sin scope ask:read */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Licitación no encontrada */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Presupuesto LLM agotado (LLM_BUDGET_MODE=enforce) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_tech_scores_api_v1_licitaciones__id_externo__tech_scores_get: {
         parameters: {
             query?: never;
@@ -8910,8 +9034,8 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/atom+xml": unknown;
                     "application/json": unknown;
+                    "application/atom+xml": unknown;
                 };
             };
             /** @description Token inválido o ausente */
