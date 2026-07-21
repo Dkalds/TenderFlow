@@ -21,6 +21,8 @@ type Period = "12m" | "3y" | "all" | "global";
 
 interface CompanyProfileProps {
   empresaId: number;
+  /** IDs adicionales del grupo cuando el competidor agrega varias identidades del maestro. */
+  groupIds?: number[];
 }
 
 function dateDaysAgo(days: number): string {
@@ -43,14 +45,18 @@ function ProfileSkeleton() {
   );
 }
 
-export function CompanyProfile({ empresaId }: CompanyProfileProps) {
+export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
   const filters = useFilters();
   const hasGlobalPeriod = Boolean(filters.rango.desde || filters.rango.hasta);
   const [period, setPeriod] = useState<Period>(hasGlobalPeriod ? "global" : "3y");
   const queryClient = useQueryClient();
+  // El dossier agrega la actividad de todo el grupo; el usuario nunca elige
+  // cuál identidad abrir.
+  const allIds = useMemo(() => [...new Set([empresaId, ...(groupIds ?? [])])], [empresaId, groupIds]);
 
   const scopeQuery = useMemo(() => {
     const params = new URLSearchParams();
+    if (allIds.length > 1) params.set("empresa_ids", allIds.join(","));
     if (filters.ccaas.length) params.set("ccaa", filters.ccaas.join(","));
     if (filters.tecnologias.length) params.set("tecnologia", filters.tecnologias.join(","));
     if (filters.importeMin != null) params.set("importe_min", String(filters.importeMin));
@@ -66,7 +72,7 @@ export function CompanyProfile({ empresaId }: CompanyProfileProps) {
       params.set("fecha_hasta", new Date().toISOString().slice(0, 10));
     }
     return params.toString();
-  }, [filters.ccaas, filters.importeMin, filters.rango.desde, filters.rango.hasta, filters.tecnologias, period]);
+  }, [allIds, filters.ccaas, filters.importeMin, filters.rango.desde, filters.rango.hasta, filters.tecnologias, period]);
 
   const {
     data: profile,
@@ -84,15 +90,19 @@ export function CompanyProfile({ empresaId }: CompanyProfileProps) {
     queryFn: () => fetchWithAuth("/api/v1/competitive/watchlist"),
     staleTime: 60 * 1000,
   });
-  const watched = (watchlist?.items ?? []).some((item) => item.empresa_id === empresaId);
+  const watched = (watchlist?.items ?? []).some((item) => allIds.includes(item.empresa_id));
   const toggleWatch = useMutation({
     mutationFn: () =>
-      watched
-        ? apiMutate("DELETE", `/api/v1/competitive/watchlist/${empresaId}`)
-        : apiMutate("POST", "/api/v1/competitive/watchlist", {
-            empresa_id: empresaId,
-            frequency: "daily",
-          }),
+      Promise.all(
+        allIds.map((id) =>
+          watched
+            ? apiMutate("DELETE", `/api/v1/competitive/watchlist/${id}`)
+            : apiMutate("POST", "/api/v1/competitive/watchlist", {
+                empresa_id: id,
+                frequency: "daily",
+              }),
+        ),
+      ),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["watchlist-empresas"] }),
   });
 

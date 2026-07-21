@@ -25,6 +25,8 @@ export interface CompanyQuickViewIdentity {
 
 interface CompanyQuickViewProps {
   empresaId: number;
+  /** IDs adicionales del grupo cuando el competidor agrega varias identidades del maestro. */
+  groupIds?: number[];
   company: CompanyQuickViewIdentity;
   profile?: CompanyProfileData;
   recentAwards?: CompanyAwardsData;
@@ -124,6 +126,7 @@ function AwardsPreview({ data, loading }: { data?: CompanyAwardsData; loading: b
 
 export function CompanyQuickView({
   empresaId,
+  groupIds,
   company,
   profile,
   recentAwards,
@@ -139,6 +142,10 @@ export function CompanyQuickView({
   const awardCount = totals?.contratos ?? company.count;
   const awardedAmount = totals?.importe_total ?? company.importe;
   const averageTicket = awardCount ? awardedAmount / awardCount : company.importe_medio;
+  const fullProfileHref =
+    groupIds && groupIds.length > 1
+      ? `/competidores/empresa/${empresaId}?ids=${groupIds.join(",")}`
+      : `/competidores/empresa/${empresaId}`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -282,7 +289,7 @@ export function CompanyQuickView({
           <Eye aria-hidden="true" />
           {watched ? "Vigilando" : "Vigilar empresa"}
         </Button>
-        <Link href={`/competidores/empresa/${empresaId}`} className={cn(buttonVariants(), "min-h-10 gap-2")}>
+        <Link href={fullProfileHref} className={cn(buttonVariants(), "min-h-10 gap-2")}>
           Ver análisis y listado completo
           <ExternalLink aria-hidden="true" />
         </Link>

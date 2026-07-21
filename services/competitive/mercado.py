@@ -131,6 +131,7 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
 def _scope_sql(
     *,
     empresa_id: int | None = None,
+    empresa_ids: list[int] | None = None,
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     cpv_prefix: str | None = None,
@@ -138,10 +139,19 @@ def _scope_sql(
     tecnologias: list[str] | None = None,
     importe_min: float | None = None,
 ) -> tuple[str, list[Any]]:
-    """Build the shared award scope with parameterised values only."""
+    """Build the shared award scope with parameterised values only.
+
+    ``empresa_ids`` agrupa varias identidades del maestro (mismo competidor
+    analítico sin fusionar aún) bajo un único dossier — tiene prioridad sobre
+    ``empresa_id`` cuando se informan ambos.
+    """
     clauses = [exclude_duplicados_sql()]
     params: list[Any] = []
-    if empresa_id is not None:
+    if empresa_ids:
+        placeholders = ", ".join("?" for _ in empresa_ids)
+        clauses.append(f"a.empresa_id IN ({placeholders})")
+        params.extend(empresa_ids)
+    elif empresa_id is not None:
         clauses.append("a.empresa_id = ?")
         params.append(empresa_id)
     if fecha_desde is not None:
@@ -367,6 +377,7 @@ def _company_movements(
 def perfil_empresa(
     empresa_id: int,
     *,
+    empresa_ids: list[int] | None = None,
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     cpv_prefix: str | None = None,
@@ -376,11 +387,20 @@ def perfil_empresa(
 ) -> dict[str, Any]:
     """Return an explainable, filter-coherent competitive company dossier.
 
+    ``empresa_ids`` permite agregar el dossier de un competidor analítico
+    que el maestro todavía tiene repartido en varias identidades legales
+    (mismo nombre/NIF conectado pero sin fusionar) — el usuario nunca elige
+    cuál abrir, el dossier suma la actividad de todas.
+
     Todas las queries sobre licitaciones/adjudicaciones usan `_scope_sql()`,
     que aplica `exclude_duplicados_sql()` para excluir duplicados cross-fuente.
     """
+    group_ids = sorted({empresa_id, *(empresa_ids or [])})
+    is_group = len(group_ids) > 1
+
     scope_where, scope_params = _scope_sql(
         empresa_id=empresa_id,
+        empresa_ids=group_ids if is_group else None,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         cpv_prefix=cpv_prefix,
@@ -390,6 +410,7 @@ def perfil_empresa(
     )
     baseline_where, baseline_params = _scope_sql(
         empresa_id=empresa_id,
+        empresa_ids=group_ids if is_group else None,
         cpv_prefix=cpv_prefix,
         ccaas=ccaas,
         tecnologias=tecnologias,
@@ -403,7 +424,10 @@ def perfil_empresa(
         tecnologias=tecnologias,
         importe_min=importe_min,
     )
-    history_where, history_params = _scope_sql(empresa_id=empresa_id)
+    history_where, history_params = _scope_sql(
+        empresa_id=empresa_id,
+        empresa_ids=group_ids if is_group else None,
+    )
     activity_select = """
         SELECT a.licitacion_id,
                l.titulo,
@@ -419,13 +443,14 @@ def perfil_empresa(
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
     """
     with connect_read() as c:
+        id_placeholders = ", ".join("?" for _ in group_ids)
         identity_rows = rows_to_dicts(
             c.execute(
-                "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, "
+                "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, "  # noqa: S608
                 "       g.nombre AS grupo "
                 "FROM empresas e LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
-                "WHERE e.empresa_id = ?",
-                (empresa_id,),
+                f"WHERE e.empresa_id IN ({id_placeholders})",
+                group_ids,
             )
         )
         history_rows = rows_to_dicts(
@@ -455,6 +480,10 @@ def perfil_empresa(
                 )
             )
         )
+        # Cuando hay varias identidades agrupadas, se suman como un único
+        # competidor antes de rankear frente al resto (que siguen sueltos por
+        # empresa_id) — así la cuota/posición reflejan al competidor real, no
+        # a una de sus identidades sueltas.
         position_rows = rows_to_dicts(
             c.execute(
                 f"""
@@ -466,26 +495,41 @@ def perfil_empresa(
                     WHERE a.empresa_id IS NOT NULL AND {market_where}
                     GROUP BY a.empresa_id
                 ),
+                agrupado AS (
+                    SELECT CASE WHEN empresa_id IN ({id_placeholders}) THEN -1 ELSE empresa_id END
+                               AS gid,
+                           importe
+                    FROM segmento
+                ),
+                sumado AS (
+                    SELECT gid, SUM(importe) AS importe
+                    FROM agrupado
+                    GROUP BY gid
+                ),
                 ranked AS (
-                    SELECT empresa_id,
+                    SELECT gid,
                            importe,
                            RANK() OVER (ORDER BY importe DESC) AS rank,
                            COUNT(*) OVER () AS empresas,
                            SUM(importe) OVER () AS importe_segmento
-                    FROM segmento
+                    FROM sumado
                 )
-                SELECT empresa_id, rank, empresas, importe_segmento,
+                SELECT gid AS empresa_id, rank, empresas, importe_segmento,
                        importe * 100.0 / NULLIF(importe_segmento, 0) AS cuota_pct
-                FROM ranked WHERE empresa_id = ?
-                """,  # noqa: S608 -- market_where only contains constant fragments
-                [*market_params, empresa_id],
+                FROM ranked WHERE gid = -1
+                """,  # noqa: S608 -- market_where/placeholders constant, valores con ?
+                [*market_params, *group_ids],
             )
         )
 
+    primary_identity = next(
+        (row for row in identity_rows if row.get("empresa_id") == empresa_id),
+        None,
+    )
     identity = (
-        identity_rows[0]
-        if identity_rows
-        else {
+        primary_identity
+        or (identity_rows[0] if identity_rows else None)
+        or {
             "empresa_id": empresa_id,
             "nombre_canonico": f"Empresa {empresa_id}",
             "nif_canonico": None,
@@ -493,6 +537,17 @@ def perfil_empresa(
             "grupo": None,
         }
     )
+    if is_group and identity_rows:
+        # Agregado: NIF solo se muestra si todas las identidades comparten el
+        # mismo (si no, ambigüo mostrar uno); es_ute/grupo se toman de
+        # cualquiera de las identidades que lo tenga.
+        distinct_nifs = {row["nif_canonico"] for row in identity_rows if row.get("nif_canonico")}
+        identity = {
+            **identity,
+            "nif_canonico": next(iter(distinct_nifs)) if len(distinct_nifs) == 1 else None,
+            "es_ute": any(bool(row.get("es_ute")) for row in identity_rows),
+            "grupo": next((row.get("grupo") for row in identity_rows if row.get("grupo")), None),
+        }
     history = history_rows[0]
     amounts = [
         float(row["importe_adjudicado"])
@@ -659,6 +714,7 @@ _AWARD_SORT_SQL = {
 def listar_adjudicaciones_empresa(
     empresa_id: int,
     *,
+    empresa_ids: list[int] | None = None,
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     cpv_prefix: str | None = None,
@@ -673,11 +729,16 @@ def listar_adjudicaciones_empresa(
 ) -> dict[str, Any]:
     """Return the company's real awards with server-side filtering and pagination.
 
+    ``empresa_ids`` agrega las adjudicaciones de varias identidades del
+    maestro que representan al mismo competidor analítico (ver `perfil_empresa`).
+
     Usa `_scope_sql()`, que aplica `exclude_duplicados_sql()` para excluir
     duplicados cross-fuente de las tablas licitaciones/adjudicaciones.
     """
+    group_ids = sorted({empresa_id, *(empresa_ids or [])})
     where, params = _scope_sql(
         empresa_id=empresa_id,
+        empresa_ids=group_ids if len(group_ids) > 1 else None,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         cpv_prefix=cpv_prefix,

@@ -187,20 +187,25 @@ const CompetitorRow = React.memo(function CompetitorRow({
       </TableCell>
       <TableCell className="px-3 py-2 font-medium">
         <div className="flex min-w-52 items-center gap-2">
-          {c.empresa_id != null ? (
+          {c.empresa_id != null || (c.empresa_ids?.length ?? 0) > 0 ? (
             <button
               type="button"
               className="text-primary cursor-pointer text-left hover:underline"
               onClick={() => onDrillDown(c)}
+              title={
+                c.es_agrupacion
+                  ? "Abrir el dossier agregando todas las identidades del grupo"
+                  : undefined
+              }
             >
               {c.nombre}
             </button>
           ) : (
-            <span title="Grupo con varias identidades legales; el dossier individual no está disponible.">
+            <span title="Sin identidad en el maestro de empresas; el dossier individual no está disponible.">
               <Link
                 href={`/empresas?q=${encodeURIComponent(c.nombre)}`}
                 className="text-primary text-left hover:underline"
-                title="Abrir las identidades relacionadas en el maestro de empresas"
+                title="Buscar esta empresa en el maestro de empresas"
               >
                 {c.nombre}
               </Link>
@@ -267,13 +272,17 @@ export default function CompetidoresPage() {
   });
   const watchedIds = useMemo(() => new Set((watchlist?.items ?? []).map((w) => w.empresa_id)), [watchlist]);
   const toggleWatch = useMutation({
-    mutationFn: async (e: { empresa_id: number; watched: boolean }) =>
-      e.watched
-        ? apiMutate("DELETE", `/api/v1/competitive/watchlist/${e.empresa_id}`)
-        : apiMutate("POST", "/api/v1/competitive/watchlist", {
-            empresa_id: e.empresa_id,
-            frequency: "daily",
-          }),
+    mutationFn: async (e: { empresaIds: number[]; watched: boolean }) =>
+      Promise.all(
+        e.empresaIds.map((id) =>
+          e.watched
+            ? apiMutate("DELETE", `/api/v1/competitive/watchlist/${id}`)
+            : apiMutate("POST", "/api/v1/competitive/watchlist", {
+                empresa_id: id,
+                frequency: "daily",
+              }),
+        ),
+      ),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["watchlist-empresas"] }),
   });
 
@@ -284,24 +293,44 @@ export default function CompetidoresPage() {
   const { sortKey, sortDir, toggleSort } = useSortToggle<SortKey>("count");
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [drillDownCompany, setDrillDownCompany] = useState<Competitor | null>(null);
-  const drillDownCompanyId = drillDownCompany?.empresa_id;
+  // Grupo de identidades del maestro que representan al mismo competidor
+  // analítico (mismo nombre/NIF conectado, aún sin fusionar). El dossier
+  // siempre agrega todas — el usuario nunca elige cuál abrir.
+  const drillDownGroupIds = useMemo(() => {
+    if (!drillDownCompany) return [];
+    const ids = new Set<number>();
+    if (drillDownCompany.empresa_id != null) ids.add(drillDownCompany.empresa_id);
+    for (const id of drillDownCompany.empresa_ids ?? []) ids.add(id);
+    return [...ids];
+  }, [drillDownCompany]);
+  const drillDownCompanyId = drillDownGroupIds[0];
+  const drillDownExtraParams = useMemo(
+    () => (drillDownGroupIds.length > 1 ? { empresa_ids: drillDownGroupIds.join(",") } : {}),
+    [drillDownGroupIds],
+  );
   const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } = useFilteredQuery<CompanyProfileData>(
-    ["competitive-company-profile", String(drillDownCompanyId ?? "none")],
+    ["competitive-company-profile", String(drillDownCompanyId ?? "none"), drillDownGroupIds.join(",")],
     `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/perfil`,
     {
       enabled: drillDownCompanyId != null,
       staleTime: 5 * 60 * 1000,
     },
+    drillDownExtraParams,
   );
   const { data: drillDownAwards, isLoading: isLoadingDrillDownAwards } = useFilteredQuery<CompanyAwardsData>(
-    ["competitive-company-awards-preview", String(drillDownCompanyId ?? "none")],
+    [
+      "competitive-company-awards-preview",
+      String(drillDownCompanyId ?? "none"),
+      drillDownGroupIds.join(","),
+    ],
     `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/adjudicaciones`,
     {
       enabled: drillDownCompanyId != null,
       staleTime: 5 * 60 * 1000,
     },
-    { limit: "5", offset: "0", sort: "fecha_desc" },
+    { limit: "5", offset: "0", sort: "fecha_desc", ...drillDownExtraParams },
   );
+
 
   const toggleCompareSelection = useCallback((nombre: string) => {
     setSelectedCompanies((prev) => {
@@ -927,17 +956,18 @@ export default function CompetidoresPage() {
           {drillDownCompany && drillDownCompanyId != null ? (
             <CompanyQuickView
               empresaId={drillDownCompanyId}
+              groupIds={drillDownGroupIds}
               company={{ ...drillDownCompany, nif: drillDownCompany.nif ?? undefined }}
               profile={drillDownProfile}
               recentAwards={drillDownAwards}
               isLoadingProfile={isLoadingDrillDownProfile}
               isLoadingAwards={isLoadingDrillDownAwards}
-              watched={watchedIds.has(drillDownCompanyId)}
+              watched={drillDownGroupIds.some((id) => watchedIds.has(id))}
               watchPending={toggleWatch.isPending}
               onToggleWatch={() =>
                 toggleWatch.mutate({
-                  empresa_id: drillDownCompanyId,
-                  watched: watchedIds.has(drillDownCompanyId),
+                  empresaIds: drillDownGroupIds,
+                  watched: drillDownGroupIds.some((id) => watchedIds.has(id)),
                 })
               }
             />

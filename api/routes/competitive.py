@@ -52,6 +52,19 @@ def _split_filter(value: str | None) -> list[str] | None:
     return items or None
 
 
+def _split_int_filter(value: str | None) -> list[int] | None:
+    items = _split_filter(value)
+    if not items:
+        return None
+    try:
+        return [int(item) for item in items]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="empresa_ids debe ser una lista de IDs numéricos separados por comas.",
+        ) from exc
+
+
 # ── Renovaciones ──────────────────────────────────────────────────────────
 
 
@@ -175,6 +188,11 @@ async def get_hhi(
 )
 async def get_perfil(
     empresa_id: int,
+    empresa_ids: str | None = Query(
+        None,
+        max_length=500,
+        description="IDs adicionales del grupo (separados por comas) para agregar el dossier",
+    ),
     fecha_desde: date | None = Query(None),
     fecha_hasta: date | None = Query(None),
     cpv: str | None = Query(None, max_length=8),
@@ -186,6 +204,7 @@ async def get_perfil(
     perfil = await run_db(
         perfil_empresa,
         empresa_id,
+        empresa_ids=_split_int_filter(empresa_ids),
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         cpv_prefix=cpv,
@@ -208,6 +227,11 @@ async def get_perfil(
 )
 async def get_adjudicaciones_empresa(
     empresa_id: int,
+    empresa_ids: str | None = Query(
+        None,
+        max_length=500,
+        description="IDs adicionales del grupo (separados por comas) para agregar el listado",
+    ),
     fecha_desde: date | None = Query(None),
     fecha_hasta: date | None = Query(None),
     cpv: str | None = Query(None, max_length=8),
@@ -227,6 +251,7 @@ async def get_adjudicaciones_empresa(
     return await run_db(
         listar_adjudicaciones_empresa,
         empresa_id,
+        empresa_ids=_split_int_filter(empresa_ids),
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         cpv_prefix=cpv,
