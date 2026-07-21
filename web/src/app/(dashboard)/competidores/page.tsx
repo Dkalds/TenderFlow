@@ -304,10 +304,13 @@ export default function CompetidoresPage() {
     return [...ids];
   }, [drillDownCompany]);
   const drillDownCompanyId = drillDownGroupIds[0];
-  const drillDownExtraParams = useMemo(
-    () => (drillDownGroupIds.length > 1 ? { empresa_ids: drillDownGroupIds.join(",") } : {}),
-    [drillDownGroupIds],
-  );
+  const drillDownExtraParams = useMemo<Record<string, string>>(() => {
+    const extra: Record<string, string> = {};
+    if (drillDownGroupIds.length > 1) {
+      extra.empresa_ids = drillDownGroupIds.join(",");
+    }
+    return extra;
+  }, [drillDownGroupIds]);
   const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } = useFilteredQuery<CompanyProfileData>(
     ["competitive-company-profile", String(drillDownCompanyId ?? "none"), drillDownGroupIds.join(",")],
     `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/perfil`,

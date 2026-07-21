@@ -7027,6 +7027,8 @@ export interface operations {
     get_adjudicaciones_empresa_api_v1_competitive_empresas__empresa_id__adjudicaciones_get: {
         parameters: {
             query?: {
+                /** @description IDs adicionales del grupo (separados por comas) para agregar el listado */
+                empresa_ids?: string | null;
                 fecha_desde?: string | null;
                 fecha_hasta?: string | null;
                 cpv?: string | null;
@@ -7072,6 +7074,8 @@ export interface operations {
     get_perfil_api_v1_competitive_empresas__empresa_id__perfil_get: {
         parameters: {
             query?: {
+                /** @description IDs adicionales del grupo (separados por comas) para agregar el dossier */
+                empresa_ids?: string | null;
                 fecha_desde?: string | null;
                 fecha_hasta?: string | null;
                 cpv?: string | null;
