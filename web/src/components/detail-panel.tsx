@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LicitacionAI } from "@/components/licitacion-ai";
+import { DocumentosBlock } from "@/components/documentos-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
@@ -208,6 +209,9 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
 
         {/* Resoluciones de recursos (TACRC) */}
         <ResolucionesBlock licitacionId={l.id_externo} />
+
+        {/* Documentos (pliegos) parseados */}
+        <DocumentosBlock licitacionId={l.id_externo} />
 
         {/* External link */}
         {l.url && (

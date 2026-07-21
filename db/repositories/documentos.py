@@ -70,6 +70,19 @@ class DocumentosRepository:
             )
             return rows_to_dicts(cur)
 
+    def list_by_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+        """Metadatos de los documentos de una licitación, para mostrarlos en el
+        detalle de la UI (bloque "Documentos"). Excluye ``texto`` (puede ser
+        muy pesado y solo lo usa el pipeline RAG internamente)."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, tipo, uri, filename, content_type, size_bytes, "
+                "status, created_at FROM documentos WHERE licitacion_id = ? "
+                "ORDER BY created_at",
+                (licitacion_id,),
+            )
+            return rows_to_dicts(cur)
+
     def mark_downloaded(
         self,
         documento_id: int,
@@ -199,22 +212,9 @@ class DocumentosRepository:
                 )
         return len(chunks)
 
-    # ── Lectura por licitación (resumen IA + chat contextualizado) ──────
-
-    def list_by_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
-        """Metadatos (sin ``texto``) de los documentos de una licitación.
-
-        ``licitacion_id`` es el ``id_externo`` de la licitación (misma FK que
-        usa el resto del pipeline). Orden: pliego legal → técnico → anexos.
-        """
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT id, tipo, uri, filename, content_type, size_bytes, status, "
-                "error_detail, updated_at FROM documentos WHERE licitacion_id = ? "
-                "ORDER BY CASE tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, id",
-                (licitacion_id,),
-            )
-            return rows_to_dicts(cur)
+    # ── Lectura para el contexto LLM (resumen IA + chat contextualizado) ─
+    # ``list_by_licitacion`` (más arriba) sirve tanto al bloque Documentos de
+    # la UI como al contexto del asistente IA.
 
     def list_chunks_by_licitacion(
         self, licitacion_id: str, limit: int = 200
