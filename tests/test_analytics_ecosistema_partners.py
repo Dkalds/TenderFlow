@@ -72,3 +72,34 @@ def test_partnership_empty_without_utes():
     assert res.edges == []
     assert res.nodes == []
     assert res.total_utes == 0
+
+
+def _rows_two_clusters() -> list[dict]:
+    # Dos UTEs desconectadas → dos comunidades.
+    return [
+        {
+            "es_ute": 1,
+            "nombre": "UTE CONSTRUCCIONES ALFA - OBRAS BETA",
+            "importe_adjudicado": 5000.0,
+        },
+        {
+            "es_ute": 1,
+            "nombre": "UTE SERVICIOS DELTA - LIMPIEZA EPSILON",
+            "importe_adjudicado": 1000.0,
+        },
+    ]
+
+
+def test_partnership_communities_summary():
+    with patch(_PATCH, return_value=_rows_two_clusters()):
+        res = get_partnership_graph(PartnerGraphFilters(min_contratos=1, top_nodes=20))
+
+    # Cada UTE desconectada forma su propia comunidad.
+    assert len(res.communities) == 2
+    # Cada resumen expone líder, tamaño y top miembros.
+    for c in res.communities:
+        assert c.size >= 1
+        assert c.leader
+        assert c.leader in c.top_members
+    # Orden por importe total del clúster desc: el de 5000 va primero.
+    assert res.communities[0].importe_total >= res.communities[1].importe_total

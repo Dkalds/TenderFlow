@@ -91,4 +91,15 @@ describe("ForceGraph", () => {
     expect(highlighted?.getAttribute("opacity")).toBe("1");
     expect(dimmed?.getAttribute("opacity")).toBe("0.15");
   });
+
+  it('layout="ego" fija el nodo central en el centro del lienzo', () => {
+    // height por defecto 420 → centro virtual (VW/2, VH/2) = (500, 210).
+    const { container } = renderGraph({ layout: "ego", centerId: "organo::A" });
+    const center = container.querySelector('circle[data-id="organo::A"]');
+    expect(center?.getAttribute("cx")).toBe("500");
+    expect(center?.getAttribute("cy")).toBe("210");
+    // Los vecinos no quedan en el centro (se reparten en el anillo).
+    const neighbor = container.querySelector('circle[data-id="empresa::X"]');
+    expect(neighbor?.getAttribute("cx")).not.toBe("500");
+  });
 });

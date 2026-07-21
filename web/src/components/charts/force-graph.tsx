@@ -13,6 +13,7 @@ import {
   forceCollide,
   forceX,
   forceY,
+  forceRadial,
 } from "d3-force";
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3-force";
 import { zoom as d3Zoom, zoomIdentity, type ZoomBehavior } from "d3-zoom";
@@ -50,8 +51,13 @@ export interface ForceGraphProps {
   links: GraphLink[];
   height?: number;
   className?: string;
-  /** "force" (libre, con contención) o "bipartite" (dos columnas por `column`). */
-  layout?: "force" | "bipartite";
+  /**
+   * "force" (libre, con contención), "bipartite" (dos columnas por `column`) o
+   * "ego" (una entidad central fija + vecinos en anillo — usar con `centerId`).
+   */
+  layout?: "force" | "bipartite" | "ego";
+  /** Id del nodo central para `layout="ego"` (se fija en el centro). */
+  centerId?: string;
   /** Ids a resaltar (p.ej. resultados de búsqueda). */
   highlightIds?: string[];
   /** Etiqueta legible por grupo para la leyenda (group → texto). */
@@ -99,6 +105,7 @@ export const ForceGraph = React.memo(function ForceGraph({
   height = 420,
   className,
   layout = "force",
+  centerId,
   highlightIds,
   groupLabels,
   showLegend = true,
@@ -201,6 +208,27 @@ export const ForceGraph = React.memo(function ForceGraph({
           forceX<SimNode>((d) => (d.column === 0 ? VW * 0.28 : VW * 0.72)).strength(0.45),
         )
         .force("y", forceY<SimNode>(VH / 2).strength(0.06));
+    } else if (layout === "ego") {
+      // Ego-network: la entidad central se fija en el centro y los vecinos se
+      // reparten en un anillo (forceRadial). La posición SÍ significa algo aquí:
+      // "esta entidad y sus contrapartes directas".
+      const ringRadius = Math.min(VW, VH) * 0.34;
+      const center = simNodes.find((n) => n.id === centerId);
+      if (center) {
+        center.fx = VW / 2;
+        center.fy = VH / 2;
+      }
+      simulation
+        .force(
+          "radial",
+          forceRadial<SimNode>(
+            (d) => (d.id === centerId ? 0 : ringRadius),
+            VW / 2,
+            VH / 2,
+          ).strength((d) => (d.id === centerId ? 1 : 0.75)),
+        )
+        .force("x", forceX<SimNode>(VW / 2).strength(0.03))
+        .force("y", forceY<SimNode>(VH / 2).strength(0.03));
     } else {
       // Contención suave hacia el centro: los componentes inconexos no se escapan.
       simulation
@@ -294,8 +322,12 @@ export const ForceGraph = React.memo(function ForceGraph({
       });
     node.call(dragBehavior);
 
-    // Etiquetas: top-K por tamaño (decluttered), el resto aparece en hover.
-    const labelCount = Math.min(simNodes.length, layout === "bipartite" ? 24 : 14);
+    // Etiquetas: en ego se muestran todas (set pequeño y legible); en el resto
+    // top-K por tamaño (decluttered), el resto aparece en hover.
+    const labelCount =
+      layout === "ego"
+        ? simNodes.length
+        : Math.min(simNodes.length, layout === "bipartite" ? 24 : 14);
     const labelIds = new Set(
       [...simNodes]
         .sort((a, b) => b.radius - a.radius)
@@ -359,7 +391,7 @@ export const ForceGraph = React.memo(function ForceGraph({
       simulation.stop();
     };
     // colorOf depende de groups (de nodes); incluido para refrescar el fill.
-  }, [nodes, links, layout, VH, prefersReducedMotion, colorOf]);
+  }, [nodes, links, layout, centerId, VH, prefersReducedMotion, colorOf]);
 
   /* ── Resaltado: highlightIds (búsqueda) o hover (vecindario) ── */
   const [hoverId, setHoverId] = React.useState<string | null>(null);

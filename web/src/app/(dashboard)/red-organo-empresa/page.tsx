@@ -1,29 +1,62 @@
 "use client";
-import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { KpiCard } from "@/components/charts/kpi-card";
-import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-const ForceGraph = dynamic(() => import("@/components/charts/force-graph").then(m => ({ default: m.ForceGraph })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 import {
-  formatNumber,
-  formatCurrency,
-  truncate,
-} from "@/lib/utils";
-import { GitBranch, Building2, Users, Network } from "lucide-react";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import { cn, formatNumber, formatCurrency, truncate } from "@/lib/utils";
+import {
+  Building2,
+  Lock,
+  Unlock,
+  Network,
+  Search,
+  ArrowUpRight,
+  ExternalLink,
+} from "lucide-react";
+
+const ForceGraph = dynamic(
+  () => import("@/components/charts/force-graph").then((m) => ({ default: m.ForceGraph })),
+  { ssr: false, loading: () => <Skeleton className="h-[440px] w-full rounded-md" /> },
+);
 
 /* ------------------------------------------------------------------ */
-/*  Types — grafo de adjudicaciones REALES (backend)                  */
+/*  Types — todo calculado en backend (ADR-014)                       */
 /* ------------------------------------------------------------------ */
+
+interface OrganoConcentracion {
+  organo: string;
+  n_empresas: number;
+  n_contratos: number;
+  importe_total: number;
+  top_empresa: string;
+  cuota_top1: number;
+  cuota_top3: number;
+  hhi: number;
+  apertura: string;
+}
+
+interface ConcentracionResponse {
+  organos: OrganoConcentracion[];
+  total_organos: number;
+}
 
 interface GraphNode {
   name: string;
@@ -48,47 +81,99 @@ interface OrganCompanyGraphResponse {
   total_empresas: number;
 }
 
+interface EdgeLicitacion {
+  licitacion_id: string | null;
+  titulo: string | null;
+  importe_adjudicado: number | null;
+  fecha_adjudicacion: string | null;
+  url: string | null;
+}
+
+interface EdgeDetailResponse {
+  organo: string;
+  empresa: string;
+  n_licitaciones: number;
+  importe_total: number;
+  licitaciones: EdgeLicitacion[];
+}
+
+type Entity = { type: "organo" | "empresa"; key: string };
+
+/* ------------------------------------------------------------------ */
+/*  Apertura badge — semáforo de concentración                        */
+/* ------------------------------------------------------------------ */
+
+const APERTURA_STYLE: Record<string, string> = {
+  Abierto: "border-success/25 bg-success/12 text-success",
+  Moderado: "border-warning/30 bg-warning/15 text-warning",
+  Cerrado: "border-destructive/25 bg-destructive/12 text-destructive",
+};
+
+function AperturaBadge({ value }: { value: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
+        APERTURA_STYLE[value] ?? "border-muted-foreground/20 bg-muted-foreground/10 text-muted-foreground",
+      )}
+    >
+      {value}
+    </span>
+  );
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 /* ------------------------------------------------------------------ */
 /*  Page                                                              */
 /* ------------------------------------------------------------------ */
 
 export default function RedOrganoEmpresaPage() {
   const router = useRouter();
-  const [minContratos, setMinContratos] = useState(1);
-  const [maxOrganos, setMaxOrganos] = useState(10);
-  const [maxEmpresas, setMaxEmpresas] = useState(10);
+  const [minContratos, setMinContratos] = useState(5);
+  const [organoSearch, setOrganoSearch] = useState("");
+  const [selected, setSelected] = useState<Entity | null>(null);
+  const [edge, setEdge] = useState<{ organo: string; empresa: string } | null>(null);
 
-  const { data, isLoading, error } = useFilteredQuery<OrganCompanyGraphResponse>(
-    [
-      "analytics",
-      "organ-company-graph",
-      String(minContratos),
-      String(maxOrganos),
-      String(maxEmpresas),
-    ],
-    "/api/v1/analytics/organ-company-graph",
+  /* ── Hero: concentración por órgano ── */
+  const { data, isLoading, error } = useFilteredQuery<ConcentracionResponse>(
+    ["analytics", "organ-concentration", String(minContratos)],
+    "/api/v1/analytics/organ-concentration",
     { staleTime: 5 * 60 * 1000 },
-    {
-      min_contratos: String(minContratos),
-      top_organos: String(maxOrganos),
-      top_empresas: String(maxEmpresas),
-    },
+    { min_contratos: String(minContratos), top_n: "25" },
   );
 
-  const nodes = useMemo(() => data?.nodes ?? [], [data]);
-  const edges = useMemo(() => data?.edges ?? [], [data]);
+  const organos = useMemo(() => data?.organos ?? [], [data]);
+  const totalOrganos = data?.total_organos ?? 0;
+  const nCerrados = organos.filter((o) => o.apertura === "Cerrado").length;
+  const nAbiertos = organos.filter((o) => o.apertura === "Abierto").length;
+  const hhiMediano = median(organos.map((o) => o.hhi));
 
-  // ForceGraph: nodos/aristas reales (peso = nº de contratos reales). El
-  // componente escala el grosor de la arista; ya no se clampa en cliente.
-  const { graphNodes, graphLinks } = useMemo(() => {
+  /* ── Ego-network de la entidad seleccionada ── */
+  const { data: egoData, isLoading: egoLoading } = useFilteredQuery<OrganCompanyGraphResponse>(
+    ["analytics", "organ-company-ego", selected?.type ?? "", selected?.key ?? ""],
+    "/api/v1/analytics/organ-company-graph/ego",
+    { enabled: !!selected, staleTime: 5 * 60 * 1000 },
+    selected
+      ? { entity_type: selected.type, entity_key: selected.key, top_neighbors: "30" }
+      : undefined,
+  );
+
+  const { egoNodes, egoLinks, centerId } = useMemo(() => {
+    const nodes = egoData?.nodes ?? [];
+    const edges = egoData?.edges ?? [];
     const gNodes = nodes.map((n) => ({
       id: `${n.type}::${n.name}`,
-      label: truncate(n.name, 28),
+      label: truncate(n.name, 26),
       group: n.type,
       size: Math.max(n.importe_total, 1),
       importe: n.importe_total,
       degree: n.degree,
-      column: (n.type === "organo" ? 0 : 1) as 0 | 1,
     }));
     const gLinks = edges.map((e) => ({
       source: `organo::${e.organo}`,
@@ -97,54 +182,54 @@ export default function RedOrganoEmpresaPage() {
       importe: e.importe_total,
       contratos: e.contratos,
     }));
-    return { graphNodes: gNodes, graphLinks: gLinks };
-  }, [nodes, edges]);
+    return {
+      egoNodes: gNodes,
+      egoLinks: gLinks,
+      centerId: selected ? `${selected.type}::${selected.key}` : undefined,
+    };
+  }, [egoData, selected]);
 
-  // Drill-down: nodo → ficha de órgano/empresa; arista → empresa adjudicataria.
-  const navFromNodeId = (id: string) => {
-    const sep = id.indexOf("::");
-    const type = id.slice(0, sep);
-    const name = id.slice(sep + 2);
-    router.push(
-      type === "organo"
-        ? `/organos?q=${encodeURIComponent(name)}`
-        : `/empresas?q=${encodeURIComponent(name)}`,
-    );
-  };
-
-  // Aristas ordenadas para la tabla.
-  const sortedEdges = useMemo(
-    () => [...edges].sort((a, b) => b.contratos - a.contratos),
-    [edges],
+  /* ── Drill-down de arista ── */
+  const { data: edgeData, isLoading: edgeLoading } = useFilteredQuery<EdgeDetailResponse>(
+    ["analytics", "organ-company-edge", edge?.organo ?? "", edge?.empresa ?? ""],
+    "/api/v1/analytics/organ-company-edge",
+    { enabled: !!edge, staleTime: 5 * 60 * 1000 },
+    edge ? { organo: edge.organo, empresa: edge.empresa } : undefined,
   );
 
-  // Matriz órgano×empresa con CONTRATOS REALES (top-10 por importe).
-  const matrix = useMemo(() => {
-    const organos = nodes.filter((n) => n.type === "organo");
-    const empresas = nodes.filter((n) => n.type === "empresa");
-    const topOrg = [...organos].sort((a, b) => b.importe_total - a.importe_total).slice(0, 10);
-    const topEmp = [...empresas].sort((a, b) => b.importe_total - a.importe_total).slice(0, 10);
-    const cell = new Map<string, number>();
-    for (const e of edges) cell.set(`${e.organo}|${e.empresa}`, e.contratos);
-    const grid = topOrg.map((org) =>
-      topEmp.map((emp) => cell.get(`${org.name}|${emp.name}`) ?? 0),
-    );
-    const maxCount = Math.max(1, ...grid.flat());
-    return { topOrg, topEmp, grid, maxCount };
-  }, [nodes, edges]);
+  const parseId = (id: string): Entity => {
+    const sep = id.indexOf("::");
+    return { type: id.slice(0, sep) as "organo" | "empresa", key: id.slice(sep + 2) };
+  };
 
-  // KPIs
-  const totalOrganos = data?.total_organos ?? 0;
-  const totalEmpresas = data?.total_empresas ?? 0;
-  const totalLinks = edges.length;
-  const nOrgNodes = graphNodes.filter((n) => n.group === "organo").length;
-  const nEmpNodes = graphNodes.filter((n) => n.group === "empresa").length;
-  const possiblePairs = nOrgNodes * nEmpNodes;
-  const densidad = possiblePairs > 0 ? (totalLinks / possiblePairs) * 100 : 0;
+  const handleNodeClick = (id: string) => {
+    const { type, key } = parseId(id);
+    // Click en el nodo central → ficha; en un vecino → re-centra el ego en él.
+    if (selected && type === selected.type && key === selected.key) {
+      router.push(
+        type === "organo"
+          ? `/organos?q=${encodeURIComponent(key)}`
+          : `/empresas?q=${encodeURIComponent(key)}`,
+      );
+    } else {
+      setSelected({ type, key });
+    }
+  };
+
+  const handleLinkClick = (source: string, target: string) => {
+    setEdge({ organo: parseId(source).key, empresa: parseId(target).key });
+  };
+
+  const selectOrgano = (organo: string) => {
+    if (organo) setSelected({ type: "organo", key: organo });
+  };
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
+      <div
+        className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center"
+        role="alert"
+      >
         <p className="text-destructive">Error: {(error as Error).message}</p>
       </div>
     );
@@ -155,231 +240,313 @@ export default function RedOrganoEmpresaPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Red Organo-Empresa
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">Estructura de mercado</h1>
           <p className="text-muted-foreground">
-            Grafo bipartito de adjudicaciones reales: un enlace existe solo si el
-            organo adjudico contratos a la empresa.
+            Quién es incumbente en cada órgano, qué tan cerrada está su base de
+            proveedores y qué licitaciones sostienen cada relación.
           </p>
         </div>
-        <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "red-organo-empresa" }} />
+        <ExportPopover
+          endpoint="/api/v1/exports/download"
+          extraParams={{ seccion: "red-organo-empresa" }}
+        />
       </div>
 
-      {/* KPI Row */}
+      {/* KPI Row — lectura de concentración */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Organos Unicos"
+          title="Órganos analizados"
           value={isLoading ? undefined : formatNumber(totalOrganos)}
           icon={Building2}
           loading={isLoading}
         />
         <KpiCard
-          title="Empresas Unicas"
-          value={isLoading ? undefined : formatNumber(totalEmpresas)}
-          icon={Users}
+          title="Cotos cerrados"
+          value={isLoading ? undefined : formatNumber(nCerrados)}
+          subtitle="HHI ≥ 2500 (top ranking)"
+          icon={Lock}
           loading={isLoading}
         />
         <KpiCard
-          title="Relaciones (links)"
-          value={isLoading ? undefined : formatNumber(totalLinks)}
-          icon={GitBranch}
+          title="Compradores abiertos"
+          value={isLoading ? undefined : formatNumber(nAbiertos)}
+          subtitle="HHI < 1500 (top ranking)"
+          icon={Unlock}
           loading={isLoading}
         />
         <KpiCard
-          title="Densidad"
-          value={isLoading ? undefined : `${densidad.toFixed(1)}%`}
-          subtitle="Relaciones / pares posibles"
+          title="HHI mediano"
+          value={isLoading ? undefined : formatNumber(Math.round(hhiMediano))}
+          subtitle="0 = competitivo · 10000 = monopolio"
           icon={Network}
           loading={isLoading}
         />
       </div>
 
-      {/* Bipartite Force Graph */}
+      {/* HERO: leaderboard de concentración / incumbencia */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Network className="h-4 w-4" />
-              Grafo Bipartito (Top {maxOrganos} Organos x Top {maxEmpresas} Empresas)
-            </CardTitle>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Organos</span>
-                <input type="range" aria-label="Max organos" min={3} max={20} step={1} value={maxOrganos} onChange={(e) => setMaxOrganos(Number(e.target.value))} className="w-20 accent-primary" />
-                <Badge variant="secondary" className="text-xs">{maxOrganos}</Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Empresas</span>
-                <input type="range" aria-label="Max empresas" min={3} max={20} step={1} value={maxEmpresas} onChange={(e) => setMaxEmpresas(Number(e.target.value))} className="w-20 accent-primary" />
-                <Badge variant="secondary" className="text-xs">{maxEmpresas}</Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Min contratos</span>
-                <input type="range" aria-label="Min contratos" min={1} max={20} step={1} value={minContratos} onChange={(e) => setMinContratos(Number(e.target.value))} className="w-20 accent-primary" />
-                <Badge variant="secondary" className="text-xs">{minContratos}</Badge>
-              </div>
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Lock className="h-4 w-4" />
+                Concentración por órgano
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ordenado de más cerrado a más abierto. Elegí un órgano para ver su red.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Mín. adjudicaciones</span>
+              <input
+                type="range"
+                aria-label="Mínimo de adjudicaciones por órgano"
+                min={1}
+                max={30}
+                step={1}
+                value={minContratos}
+                onChange={(e) => setMinContratos(Number(e.target.value))}
+                className="w-24 accent-primary"
+              />
+              <Badge variant="secondary" className="text-xs">
+                {minContratos}
+              </Badge>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <Skeleton className="h-[460px] w-full" />
-          ) : graphNodes.length > 0 ? (
-            <ForceGraph
-              nodes={graphNodes}
-              links={graphLinks}
-              height={460}
-              layout="bipartite"
-              groupLabels={{ organo: "Órgano", empresa: "Empresa" }}
-              onNodeClick={navFromNodeId}
-              onLinkClick={(_source, target) => navFromNodeId(target)}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted py-16">
-              <Network className="h-16 w-16 text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground">
-                Sin adjudicaciones para los filtros actuales
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Matriz órgano-empresa (contratos reales) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <GitBranch className="h-4 w-4" />
-            Matriz Organo-Empresa (Top 10 x Top 10)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[400px] w-full" />
-          ) : matrix.topOrg.length === 0 || matrix.topEmp.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className="overflow-x-auto">
-              <div className="min-w-[700px]">
-                {/* Column headers */}
-                <div className="flex">
-                  <div className="w-48 shrink-0" />
-                  {matrix.topEmp.map((e, idx) => (
-                    <div key={idx} className="flex-1 min-w-[60px] px-1 pb-2">
-                      <div className="text-xs text-muted-foreground truncate -rotate-45 origin-bottom-left translate-x-4 w-20">
-                        {truncate(e.name, 20)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {/* Rows */}
-                <div className="mt-8 space-y-1">
-                  {matrix.grid.map((row, rowIdx) => (
-                    <div key={rowIdx} className="flex items-center">
-                      <div className="w-48 shrink-0 pr-2 text-xs text-muted-foreground truncate text-right">
-                        {truncate(matrix.topOrg[rowIdx].name, 35)}
-                      </div>
-                      {row.map((val, colIdx) => (
-                        <div
-                          key={colIdx}
-                          className="flex-1 min-w-[60px] px-0.5"
-                          title={`${truncate(matrix.topOrg[rowIdx].name, 30)} — ${truncate(matrix.topEmp[colIdx].name, 30)}: ${val} contratos`}
-                        >
-                          <div
-                            className="min-h-[44px] rounded-sm transition-colors flex items-center justify-center"
-                            style={{
-                              backgroundColor: `hsla(221, 83%, 53%, ${Math.max(0.05, val / matrix.maxCount)})`,
-                            }}
-                          >
-                            {val > 0 && (
-                              <span className="text-xs font-medium" style={{ color: val / matrix.maxCount > 0.4 ? "white" : "hsl(var(--foreground))" }}>
-                                {val}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                {/* Legend */}
-                <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>Baja</span>
-                  <div className="flex gap-0.5">
-                    {[0.05, 0.15, 0.3, 0.5, 0.7, 0.9].map((v) => (
-                      <div
-                        key={v}
-                        className="h-4 w-6 rounded-sm"
-                        style={{ backgroundColor: `hsla(221, 83%, 53%, ${v})` }}
-                      />
-                    ))}
-                  </div>
-                  <span>Alta</span>
-                  <span className="ml-2">
-                    — N.º de adjudicaciones reales (organo → empresa)
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Relationships Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Relaciones Organo-Empresa
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
             <div className="space-y-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-11 w-full" />
               ))}
             </div>
-          ) : sortedEdges.length > 0 ? (
+          ) : organos.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="text-left text-muted-foreground">
-                    <TableHead>Organo</TableHead>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Contratos</TableHead>
-                    <TableHead>Importe total</TableHead>
-                    <TableHead>Frec. anual</TableHead>
+                    <TableHead>Órgano</TableHead>
+                    <TableHead>Apertura</TableHead>
+                    <TableHead>Incumbente (top-1)</TableHead>
+                    <TableHead className="text-right">Cuota top-1</TableHead>
+                    <TableHead className="text-right">CR3</TableHead>
+                    <TableHead className="text-right">Empresas</TableHead>
+                    <TableHead className="text-right">Importe</TableHead>
+                    <TableHead className="text-right">HHI</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedEdges.slice(0, 30).map((r, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell>{truncate(r.organo, 40)}</TableCell>
-                      <TableCell className="font-medium">{truncate(r.empresa, 35)}</TableCell>
-                      <TableCell className="tabular-nums">{formatNumber(r.contratos)}</TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">
-                        {formatCurrency(r.importe_total)}
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">
-                        {r.frecuencia_anual.toFixed(1)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {organos.map((o) => {
+                    const isSel = selected?.type === "organo" && selected.key === o.organo;
+                    return (
+                      <TableRow
+                        key={o.organo}
+                        onClick={() => selectOrgano(o.organo)}
+                        className={cn(
+                          "cursor-pointer transition-colors",
+                          isSel ? "bg-primary/5" : "hover:bg-muted/50",
+                        )}
+                      >
+                        <TableCell className="font-medium">{truncate(o.organo, 42)}</TableCell>
+                        <TableCell>
+                          <AperturaBadge value={o.apertura} />
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {truncate(o.top_empresa, 30)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {o.cuota_top1.toFixed(1)}%
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {o.cuota_top3.toFixed(1)}%
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatNumber(o.n_empresas)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {formatCurrency(o.importe_total)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">
+                          {formatNumber(Math.round(o.hhi))}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
               <Separator className="my-3" />
               <p className="text-xs text-muted-foreground">
-                {sortedEdges.length} relaciones de adjudicacion reales
+                {organos.length} de {formatNumber(totalOrganos)} órganos (top por
+                concentración). HHI = índice Herfindahl-Hirschman sobre el importe
+                por empresa.
               </p>
             </div>
           ) : (
-            <p className="py-8 text-center text-muted-foreground">
-              Sin relaciones para los filtros actuales
-            </p>
+            <EmptyState
+              icon={Lock}
+              title="Sin datos de concentración"
+              hint="Ningún órgano supera el mínimo de adjudicaciones para los filtros actuales."
+            />
           )}
         </CardContent>
       </Card>
+
+      {/* Ego-network de la entidad seleccionada */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Network className="h-4 w-4" />
+                Red de la entidad
+                {selected && (
+                  <span className="font-normal text-muted-foreground">
+                    · {truncate(selected.key, 40)}
+                  </span>
+                )}
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {selected
+                  ? "Click en un vecino para re-centrar; en una arista para ver las licitaciones."
+                  : "Elegí un órgano del ranking o buscá uno para ver su vecindario."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SearchAutocomplete
+                className="w-64"
+                placeholder="Buscar órgano…"
+                value={organoSearch}
+                onChange={setOrganoSearch}
+                onSubmit={selectOrgano}
+                suggestions={organos.map((o) => o.organo)}
+                leftIcon={<Search className="h-4 w-4" />}
+                inputClassName="pl-9"
+                aria-label="Buscar órgano para explorar su red"
+              />
+              {selected && (
+                <Link
+                  href={
+                    selected.type === "organo"
+                      ? `/organos?q=${encodeURIComponent(selected.key)}`
+                      : `/empresas?q=${encodeURIComponent(selected.key)}`
+                  }
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  Ver ficha <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!selected ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted py-16 text-center">
+              <Network className="mb-4 h-14 w-14 text-muted-foreground/30" />
+              <p className="text-muted-foreground">
+                Ninguna entidad seleccionada. Hacé click en un órgano del ranking.
+              </p>
+            </div>
+          ) : egoLoading ? (
+            <Skeleton className="h-[440px] w-full" />
+          ) : egoNodes.length > 0 ? (
+            <ForceGraph
+              nodes={egoNodes}
+              links={egoLinks}
+              height={440}
+              layout="ego"
+              centerId={centerId}
+              groupLabels={{ organo: "Órgano", empresa: "Empresa" }}
+              onNodeClick={handleNodeClick}
+              onLinkClick={handleLinkClick}
+            />
+          ) : (
+            <EmptyState
+              icon={Network}
+              title="Sin relaciones"
+              hint="Esta entidad no tiene adjudicaciones para los filtros actuales."
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Drill-down de arista: licitaciones que sustentan la relación */}
+      <Sheet open={!!edge} onOpenChange={(o) => !o && setEdge(null)}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Licitaciones de la relación</SheetTitle>
+            <SheetDescription>
+              {edge ? `${truncate(edge.organo, 40)} → ${truncate(edge.empresa, 40)}` : ""}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            {edgeLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-14 w-full" />
+                ))}
+              </div>
+            ) : edgeData && edgeData.licitaciones.length > 0 ? (
+              <>
+                <div className="mb-3 flex items-center gap-4 text-sm">
+                  <span className="text-muted-foreground">
+                    {formatNumber(edgeData.n_licitaciones)} licitaciones
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    {formatCurrency(edgeData.importe_total)}
+                  </span>
+                </div>
+                <ul className="space-y-2">
+                  {edgeData.licitaciones.map((lic, i) => (
+                    <li
+                      key={`${lic.licitacion_id ?? "sin-id"}-${i}`}
+                      className="rounded-md border border-border p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        {lic.licitacion_id ? (
+                          <Link
+                            href={`/detalle?lic=${encodeURIComponent(lic.licitacion_id)}`}
+                            className="text-sm font-medium hover:text-primary"
+                          >
+                            {truncate(lic.titulo ?? lic.licitacion_id, 70)}
+                          </Link>
+                        ) : (
+                          <span className="text-sm font-medium">
+                            {truncate(lic.titulo ?? "Sin título", 70)}
+                          </span>
+                        )}
+                        {lic.url && (
+                          <a
+                            href={lic.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary"
+                            aria-label="Abrir licitación en origen"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                        {lic.importe_adjudicado != null && (
+                          <span className="tabular-nums">
+                            {formatCurrency(lic.importe_adjudicado)}
+                          </span>
+                        )}
+                        {lic.fecha_adjudicacion && <span>{lic.fecha_adjudicacion}</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Sin licitaciones para esta relación.
+              </p>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
