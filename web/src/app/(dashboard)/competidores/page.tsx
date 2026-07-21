@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import React, { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -196,7 +197,13 @@ const CompetitorRow = React.memo(function CompetitorRow({
             </button>
           ) : (
             <span title="Grupo con varias identidades legales; el dossier individual no está disponible.">
-              {c.nombre}
+              <Link
+                href={`/empresas?q=${encodeURIComponent(c.nombre)}`}
+                className="text-primary text-left hover:underline"
+                title="Abrir las identidades relacionadas en el maestro de empresas"
+              >
+                {c.nombre}
+              </Link>
             </span>
           )}
           {c.es_agrupacion ? (

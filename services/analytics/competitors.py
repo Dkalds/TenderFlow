@@ -103,6 +103,15 @@ _INVALID_NIF_KEYS = frozenset(
     {"N/A", "NA", "NULL", "NONE", "NOCONSTA", "SINCIF", "DESCONOCIDO", "000000000"}
 )
 
+# Curated fallback while the ``grupos_empresariales`` master is populated.
+# Only verified tax IDs are grouped: a shared word in a company name is not a
+# sufficiently safe signal for joining distinct legal entities.
+_CURATED_GROUPS_BY_NIF: dict[str, tuple[str, str]] = {
+    "B81690471": ("deloitte", "Deloitte"),  # Deloitte Consulting, S.L.U.
+    "B16436099": ("deloitte", "Deloitte"),  # Deloitte Technology & Transformation, S.L.U.
+    "B86466448": ("deloitte", "Deloitte"),  # Deloitte Advisory, S.L.
+}
+
 
 def _clean_text(values: pd.Series) -> pd.Series:
     """Return trimmed nullable strings, treating blanks as missing."""
@@ -124,6 +133,41 @@ def _normalise_identity_text(values: pd.Series, *, nif: bool = False) -> pd.Seri
     if nif:
         normalised = normalised.mask(normalised.isin(_INVALID_NIF_KEYS))
     return normalised
+
+
+def _corporate_group_identity(
+    df: pd.DataFrame,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Return master/curated group keys and the preferred display name.
+
+    The company master is authoritative. The small tax-ID map above only fills
+    gaps while those same relationships are absent from the master.
+    """
+    master_ids = pd.to_numeric(
+        df.get(
+            "empresa_grupo_id",
+            pd.Series(pd.NA, index=df.index, dtype="Int64"),
+        ),
+        errors="coerce",
+    ).astype("Int64")
+    master_names = _optional_text_column(df, "empresa_grupo_master")
+
+    curated = df["_nif_key"].map(_CURATED_GROUPS_BY_NIF)
+    curated_keys = curated.map(
+        lambda value: value[0] if isinstance(value, tuple) else None,
+    ).astype("string")
+    curated_names = curated.map(
+        lambda value: value[1] if isinstance(value, tuple) else None,
+    ).astype("string")
+
+    master_keys = master_ids.map(
+        lambda value: f"master:{int(value)}" if pd.notna(value) else None,
+    ).astype("string")
+    curated_keys = curated_keys.map(
+        lambda value: f"curated:{value}" if pd.notna(value) else None,
+    ).astype("string")
+    group_names = master_names.combine_first(curated_names)
+    return master_keys, curated_keys, group_names
 
 
 def _connected_identity_keys(df: pd.DataFrame) -> list[str]:
@@ -153,11 +197,22 @@ def _connected_identity_keys(df: pd.DataFrame) -> list[str]:
             parent[right_root] = left_root
 
     primary_tokens: list[str] = []
-    identity_columns = df[["_empresa_id_key", "_nif_key", "_name_key"]]
-    for position, (empresa_id, nif_key, name_key) in enumerate(
+    identity_columns = df[
+        [
+            "_master_group_key",
+            "_curated_group_key",
+            "_empresa_id_key",
+            "_nif_key",
+            "_name_key",
+        ]
+    ]
+    for position, (master_group, curated_group, empresa_id, nif_key, name_key) in enumerate(
         identity_columns.itertuples(index=False, name=None)
     ):
         tokens: list[str] = []
+        for group_key in (master_group, curated_group):
+            if pd.notna(group_key):
+                tokens.append(f"grupo:{group_key}")
         if pd.notna(empresa_id):
             tokens.append(f"empresa:{int(empresa_id)}")
         if pd.notna(nif_key):
@@ -179,12 +234,15 @@ def _preferred_names(df: pd.DataFrame) -> dict[str, str]:
     """Choose a stable display name, preferring master names over raw aliases."""
     candidates = pd.concat(
         [
+            df[[_GROUP_KEY, "_corporate_group_name"]]
+            .rename(columns={"_corporate_group_name": "candidate"})
+            .assign(priority=0),
             df[[_GROUP_KEY, "_master_name"]]
             .rename(columns={"_master_name": "candidate"})
-            .assign(priority=0),
+            .assign(priority=1),
             df[[_GROUP_KEY, "_raw_name"]]
             .rename(columns={"_raw_name": "candidate"})
-            .assign(priority=1),
+            .assign(priority=2),
         ],
         ignore_index=True,
     ).dropna(subset=["candidate"])
@@ -231,6 +289,11 @@ def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
     prepared["_master_nif"] = _optional_text_column(prepared, "empresa_nif_master")
     effective_nif = prepared["_master_nif"].combine_first(prepared["_raw_nif"])
     prepared["_nif_key"] = _normalise_identity_text(effective_nif, nif=True)
+    (
+        prepared["_master_group_key"],
+        prepared["_curated_group_key"],
+        prepared["_corporate_group_name"],
+    ) = _corporate_group_identity(prepared)
 
     empresa_id_values = (
         prepared["empresa_id"]
@@ -247,7 +310,16 @@ def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
     prepared["empresa"] = (
         prepared[_GROUP_KEY].astype("string").map(name_map).fillna("Empresa sin identificar")
     )
-    return prepared.drop(columns=["_master_name", "_raw_nif", "_name_key"])
+    return prepared.drop(
+        columns=[
+            "_master_name",
+            "_raw_nif",
+            "_name_key",
+            "_master_group_key",
+            "_curated_group_key",
+            "_corporate_group_name",
+        ]
+    )
 
 
 def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:

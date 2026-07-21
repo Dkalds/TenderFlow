@@ -71,10 +71,13 @@ class AdjudicacionRepository:
             "       l.importe AS importe_licitacion, "
             "       e.nombre_canonico AS empresa_nombre_master, "
             "       e.nif_canonico AS empresa_nif_master, "
-            "       e.es_ute AS empresa_es_ute "
+            "       e.es_ute AS empresa_es_ute, "
+            "       e.grupo_id AS empresa_grupo_id, "
+            "       g.nombre AS empresa_grupo_master "
             "FROM adjudicaciones a "
             "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
             "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
+            "LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
         )
         params: list[Any] = []
         if ccaa_filter:

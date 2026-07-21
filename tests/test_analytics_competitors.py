@@ -307,3 +307,86 @@ def test_contratos_por_anio_usa_los_anios_activos_de_cada_empresa():
     accenture = next(item for item in result.competitors if item.nombre == "Accenture")
     assert accenture.count == 2
     assert accenture.contratos_por_anio == 2
+
+
+def test_grouping_joins_companies_from_same_master_group():
+    rows = [
+        {
+            "licitacion_id": "L-GROUP-1",
+            "nombre": "North Consulting, S.L.",
+            "nif": "B11111111",
+            "empresa_id": 50,
+            "empresa_nombre_master": "North Consulting, S.L.",
+            "empresa_nif_master": "B11111111",
+            "empresa_grupo_id": 7,
+            "empresa_grupo_master": "North Group",
+            "importe_adjudicado": 20000.0,
+        },
+        {
+            "licitacion_id": "L-GROUP-2",
+            "nombre": "North Advisory, S.A.",
+            "nif": "A22222222",
+            "empresa_id": 51,
+            "empresa_nombre_master": "North Advisory, S.A.",
+            "empresa_nif_master": "A22222222",
+            "empresa_grupo_id": 7,
+            "empresa_grupo_master": "North Group",
+            "importe_adjudicado": 30000.0,
+        },
+    ]
+
+    with patch(_PATCH_TARGET, return_value=rows):
+        result = get_competitors(CompetitorFilters())
+
+    assert result.total_empresas == 1
+    competitor = result.competitors[0]
+    assert competitor.nombre == "North Group"
+    assert competitor.count == 2
+    assert competitor.empresa_id is None
+    assert competitor.empresa_ids == [50, 51]
+    assert competitor.nifs == ["A22222222", "B11111111"]
+
+
+def test_grouping_joins_curated_deloitte_legal_entities():
+    rows = [
+        {
+            "licitacion_id": "L-DELOITTE-1",
+            "nombre": "DELOITTE CONSULTING, S.L.U.",
+            "nif": "B81690471",
+            "empresa_id": 66,
+            "empresa_nombre_master": "DELOITTE CONSULTING, S.L.U.",
+            "empresa_nif_master": "B81690471",
+            "importe_adjudicado": 20000.0,
+        },
+        {
+            "licitacion_id": "L-DELOITTE-2",
+            "nombre": "Deloitte Technology & Transformation S-L.U.",
+            "nif": "B16436099",
+            "empresa_id": 551,
+            "empresa_nombre_master": "Deloitte Technology & Transformation S-L.U.",
+            "empresa_nif_master": "B16436099",
+            "importe_adjudicado": 30000.0,
+        },
+        {
+            "licitacion_id": "L-DELOITTE-3",
+            "nombre": "Deloitte Advisory, S.L.",
+            "nif": "B86466448",
+            "empresa_id": 116,
+            "empresa_nombre_master": "Deloitte Advisory, S.L.",
+            "empresa_nif_master": "B86466448",
+            "importe_adjudicado": 40000.0,
+        },
+    ]
+
+    with patch(_PATCH_TARGET, return_value=rows):
+        result = get_competitors(CompetitorFilters())
+
+    assert result.total_empresas == 1
+    competitor = result.competitors[0]
+    assert competitor.nombre == "Deloitte"
+    assert competitor.count == 3
+    assert competitor.importe == 90000.0
+    assert competitor.empresa_id is None
+    assert competitor.empresa_ids == [66, 116, 551]
+    assert competitor.nifs == ["B16436099", "B81690471", "B86466448"]
+    assert competitor.es_agrupacion is True

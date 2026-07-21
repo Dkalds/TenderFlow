@@ -145,9 +145,12 @@ def _persist_documentos(
 def _post_ingestion(source_id: str) -> None:
     """Resolución de empresas + dedupe + eventos de contrato + caché. Fail-open."""
     try:
-        from services.entity_resolution import resolve_unlinked_adjudicaciones
+        from services.entity_resolution import resolve_all_unlinked
 
-        resolve_unlinked_adjudicaciones(fuente=source_id)
+        # Un solo lote dejaba bloqueadas las filas posteriores cuando las
+        # primeras contienen revisiones pendientes. Recorremos con cursor
+        # hasta drenar el remanente; la operacion es idempotente.
+        resolve_all_unlinked(fuente=source_id)
     except Exception as e:
         log.warning("connector_entity_resolution_failed", source=source_id, error=str(e))
     try:
