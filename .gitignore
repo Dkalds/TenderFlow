@@ -5,6 +5,7 @@ out.txt
 *.py.new
 *.py.bak
 data/downloads/
+data/backups/
 data/*.log
 data/*.db
 data/*.db-*

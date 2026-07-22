@@ -3,9 +3,42 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-from scraper.pipeline import _summarize, process_month
+from scraper.pipeline import _resolve_empresas_post_ingestion, _summarize, backfill, process_month
+
+
+def test_post_ingestion_drains_all_unlinked_companies():
+    with (
+        patch("services.entity_resolution.resolve_all_unlinked") as resolve_all,
+        patch("services.contract_events.derive_new_events"),
+    ):
+        _resolve_empresas_post_ingestion("place_live_atom")
+
+    resolve_all.assert_called_once_with(fuente="place_live_atom")
+
+
+def test_backfill_resolves_companies_once_after_parallel_months():
+    today = datetime.now(UTC).date()
+    with (
+        patch("scraper.pipeline.init_db"),
+        patch("scraper.pipeline.bind_run_context", return_value="run-test"),
+        patch("scraper.pipeline.record_run") as record_run,
+        patch("scraper.pipeline.process_month", return_value={"status": "ok"}) as month,
+        patch("scraper.pipeline._resolve_empresas_post_ingestion") as resolve_empresas,
+    ):
+        backfill(today.year, today.month)
+
+    month.assert_called_once_with(
+        today.year,
+        today.month,
+        run_id="run-test",
+        resolve_empresas=False,
+    )
+    resolve_empresas.assert_called_once_with("placsp_backfill")
+    assert record_run.return_value.__enter__.called
+
 
 # ─── _summarize ──────────────────────────────────────────────────────────────
 

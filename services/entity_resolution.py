@@ -71,9 +71,22 @@ class ResolutionStats:
         }
 
 
+def _cache_alias(caches: EmpresaCaches, alias: str, empresa_id: int) -> None:
+    if alias not in caches.alias:
+        caches.alias[alias] = empresa_id
+        caches.alias_by_length.setdefault(len(alias), set()).add(alias)
+
+
 def _fuzzy_candidate(alias: str, caches: EmpresaCaches) -> tuple[int, float] | None:
     """Mejor alias existente por similitud, o None si no llega al umbral."""
-    matches = difflib.get_close_matches(alias, caches.alias.keys(), n=1, cutoff=FUZZY_THRESHOLD)
+    alias_length = len(alias)
+    candidates = [
+        candidate
+        for length, aliases in caches.alias_by_length.items()
+        if 2 * min(alias_length, length) / (alias_length + length) >= FUZZY_THRESHOLD
+        for candidate in aliases
+    ]
+    matches = difflib.get_close_matches(alias, candidates, n=1, cutoff=FUZZY_THRESHOLD)
     if not matches:
         return None
     best = matches[0]
@@ -99,7 +112,7 @@ def _resolve_simple(
     if nif_norm and nif_norm in caches.nif:
         empresa_id = caches.nif[nif_norm]
         add_alias(conn, empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
-        caches.alias.setdefault(alias, empresa_id)
+        _cache_alias(caches, alias, empresa_id)
         stats.linked_nif += 1
         return empresa_id
 
@@ -153,7 +166,7 @@ def _resolve_simple(
         conn, nombre_canonico=nombre.strip(), nif_canonico=nif_norm, es_pyme=es_pyme
     )
     add_alias(conn, empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
-    caches.alias[alias] = empresa_id
+    _cache_alias(caches, alias, empresa_id)
     caches.nif_canonico[empresa_id] = nif_norm
     if nif_norm:
         caches.nif[nif_norm] = empresa_id
@@ -181,7 +194,7 @@ def _resolve_ute(
         ute_id = create_empresa(
             conn, nombre_canonico=nombre.strip(), nif_canonico=nif_norm, es_ute=True
         )
-        caches.alias[alias] = ute_id
+        _cache_alias(caches, alias, ute_id)
         caches.nif_canonico[ute_id] = nif_norm
         if nif_norm:
             caches.nif[nif_norm] = ute_id
@@ -195,7 +208,7 @@ def _resolve_ute(
         else:
             member_id = create_empresa(conn, nombre_canonico=member_alias)
             add_alias(conn, member_id, member_alias, fuente=f"{fuente}:ute_member")
-            caches.alias[member_alias] = member_id
+            _cache_alias(caches, member_alias, member_id)
             caches.nif_canonico[member_id] = None
         add_ute_member(conn, ute_id, member_id)
     stats.utes += 1
@@ -224,10 +237,14 @@ def resolve_unlinked_adjudicaciones(
             stats.last_id = max(stats.last_id, int(row["id"]))
             nombre = (row.get("nombre") or "").strip()
             alias = normalize_company(nombre)
+            nif_norm = normalize_nif(row.get("nif"))
             if not alias:
+                if nif_norm and nif_norm in caches.nif:
+                    link_adjudicacion(conn, int(row["id"]), caches.nif[nif_norm])
+                    stats.linked_nif += 1
+                    continue
                 stats.skipped += 1
                 continue
-            nif_norm = normalize_nif(row.get("nif"))
             if (alias, nif_norm or "") in pending:
                 stats.skipped += 1
                 continue

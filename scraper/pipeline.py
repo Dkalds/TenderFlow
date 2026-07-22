@@ -65,16 +65,11 @@ _DAILY_SOURCE = "place_live_atom"
 
 
 def _resolve_empresas_post_ingestion(fuente: str) -> None:
-    """Enlaza las adjudicaciones recién insertadas con el maestro de empresas.
-
-    Un lote suele bastar para una ingesta incremental; el remanente lo
-    recoge la siguiente ejecución o el backfill (idempotente). Fail-open:
-    un error aquí no debe tumbar la ingesta.
-    """
+    """Enlaza todas las adjudicaciones pendientes con el maestro de empresas."""
     try:
-        from services.entity_resolution import resolve_unlinked_adjudicaciones
+        from services.entity_resolution import resolve_all_unlinked
 
-        resolve_unlinked_adjudicaciones(fuente=fuente)
+        resolve_all_unlinked(fuente=fuente)
     except Exception as e:
         log.warning("entity_resolution_post_ingestion_failed", fuente=fuente, error=str(e))
     # Eventos de contrato (v38): deriva adjudicación/modificación/prórroga
@@ -294,7 +289,12 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
 
 @traced("scraper.process_month")
 def process_month(
-    year: int, month: int, *, run_id: str | None = None, force: bool = False
+    year: int,
+    month: int,
+    *,
+    run_id: str | None = None,
+    force: bool = False,
+    resolve_empresas: bool = True,
 ) -> dict[str, Any]:
     """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.
 
@@ -303,13 +303,26 @@ def process_month(
     """
     fuente = f"bulk_{year}{month:02d}"
     try:
-        return _process_month_impl(year, month, run_id=run_id, force=force, fuente=fuente)
+        return _process_month_impl(
+            year,
+            month,
+            run_id=run_id,
+            force=force,
+            fuente=fuente,
+            resolve_empresas=resolve_empresas,
+        )
     finally:
         close_pool()
 
 
 def _process_month_impl(
-    year: int, month: int, *, run_id: str | None, force: bool, fuente: str
+    year: int,
+    month: int,
+    *,
+    run_id: str | None,
+    force: bool,
+    fuente: str,
+    resolve_empresas: bool,
 ) -> dict[str, Any]:
     """Implementación interna de process_month (sin gestión de recursos del hilo)."""
     try:
@@ -388,8 +401,9 @@ def _process_month_impl(
     except Exception:
         log.debug("prometheus_instrumentation_failed", fuente=fuente)
 
-    # Enlace con el maestro de empresas + señal de invalidación de caché
-    _resolve_empresas_post_ingestion(fuente)
+    # El backfill paralelo difiere esta fase para evitar resolvedores concurrentes.
+    if resolve_empresas:
+        _resolve_empresas_post_ingestion(fuente)
     _signal_post_ingestion(fuente)
 
     return {
@@ -464,7 +478,16 @@ def backfill(start_year: int, start_month: int) -> list[dict[str, Any]]:
     with record_run(run_id) as metrics:
         results: list[dict[str, Any]] = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(process_month, y, m, run_id=run_id): (y, m) for y, m in months}
+            futures = {
+                pool.submit(
+                    process_month,
+                    y,
+                    m,
+                    run_id=run_id,
+                    resolve_empresas=False,
+                ): (y, m)
+                for y, m in months
+            }
             for future in as_completed(futures):
                 y, m = futures[future]
                 try:
@@ -473,6 +496,7 @@ def backfill(start_year: int, start_month: int) -> list[dict[str, Any]]:
                     log.exception("backfill_month_error", year=y, month=m)
                     results.append({"year": y, "month": m, "status": "error"})
             # Nota: las conexiones DB de cada worker se cierran en process_month via finally.
+                _resolve_empresas_post_ingestion("placsp_backfill")
         _summarize(results, metrics)
     return results
 

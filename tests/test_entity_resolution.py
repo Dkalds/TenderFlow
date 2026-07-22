@@ -134,6 +134,42 @@ def test_alias_match_without_nif(db):
     assert stats.linked_alias == 1
 
 
+def test_alias_match_adds_missing_canonical_nif(db):
+    """Un alias conocido completa el NIF canónico cuando llega posteriormente."""
+    from db.database import connect
+    from services.entity_resolution import resolve_unlinked_adjudicaciones
+
+    setup_lic(db, "LIC-001")
+    setup_lic(db, "LIC-002")
+    insert_adj(db, "Deloitte Consulting S.L.U.", lic_id="LIC-001")
+    resolve_unlinked_adjudicaciones()
+    insert_adj(db, "DELOITTE CONSULTING SLU", nif="B81690471", lic_id="LIC-002")
+
+    stats = resolve_unlinked_adjudicaciones()
+
+    assert stats.linked_alias == 1
+    with connect() as c:
+        assert c.execute("SELECT nif_canonico FROM empresas").fetchone()[0] == "B81690471"
+
+
+def test_nif_match_links_when_name_normalizes_to_empty(db):
+    """Un NIF exacto prevalece aunque el nombre recibido sea solo forma jurídica."""
+    from db.database import connect
+    from services.entity_resolution import resolve_unlinked_adjudicaciones
+
+    setup_lic(db, "LIC-001")
+    setup_lic(db, "LIC-002")
+    insert_adj(db, "Bluetab Solutions SLU", nif="B84521269", lic_id="LIC-001")
+    resolve_unlinked_adjudicaciones()
+    insert_adj(db, "S.L.U.", nif="B84521269", lic_id="LIC-002")
+
+    stats = resolve_unlinked_adjudicaciones()
+
+    assert stats.linked_nif == 1
+    with connect() as c:
+        assert c.execute("SELECT COUNT(DISTINCT empresa_id) FROM adjudicaciones").fetchone()[0] == 1
+
+
 def test_nif_conflict_goes_to_review(db):
     """Mismo nombre normalizado con NIF distinto no se enlaza: cola de revisión."""
     from services.entity_resolution import resolve_unlinked_adjudicaciones

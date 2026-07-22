@@ -4,6 +4,7 @@ Comprueba:
   1. La BD es accesible y tiene esquema correcto.
   2. Hubo al menos una extracción exitosa en las últimas N horas.
   3. No hay >K fallos sin resolver en la DLQ.
+    4. Al menos el 99% de adjudicaciones están enlazadas con una empresa.
 
 Salida:
   exit 0 → healthy
@@ -101,6 +102,43 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
         if not dlq_ok:
             warnings.append(f"dlq_above_threshold:{dlq_count}")
         checks.append({"name": "dlq_below_threshold", "ok": dlq_ok})
+
+        empresa_total, empresa_linked = c.execute(
+            "SELECT COUNT(*), "
+            "SUM(CASE WHEN empresa_id IS NOT NULL THEN 1 ELSE 0 END) "
+            "FROM adjudicaciones"
+        ).fetchone()
+        empresa_total = int(empresa_total or 0)
+        empresa_linked = int(empresa_linked or 0)
+        from services.normalization import normalize_company, normalize_nif
+
+        review_keys = {
+            (row[0], row[1])
+            for row in c.execute(
+                "SELECT alias_normalizado, COALESCE(nif, '') "
+                "FROM empresa_review_queue WHERE status = 'pending'"
+            ).fetchall()
+        }
+        unresolved_identities = c.execute(
+            "SELECT nombre, nif FROM adjudicaciones WHERE empresa_id IS NULL"
+        ).fetchall()
+        empresa_review = sum(
+            (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
+            for nombre, nif in unresolved_identities
+        )
+        empresa_covered = empresa_linked + empresa_review
+        empresa_coverage = empresa_covered / empresa_total * 100 if empresa_total else 100.0
+        empresa_coverage_ok = empresa_coverage >= 99.0
+        info["empresa_resolution"] = {
+            "total": empresa_total,
+            "enlazadas": empresa_linked,
+            "en_revision": empresa_review,
+            "pendientes": empresa_total - empresa_covered,
+            "pct_filas": round(empresa_coverage, 2),
+        }
+        if not empresa_coverage_ok:
+            warnings.append(f"empresa_resolution_below_threshold:{empresa_coverage:.2f}%")
+        checks.append({"name": "empresa_resolution_coverage", "ok": empresa_coverage_ok})
 
         # ── Plano de orquestación activo (ADR-012) ────────────────────
         import os

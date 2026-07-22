@@ -26,6 +26,7 @@ class EmpresaCaches:
 
     nif: dict[str, int]
     alias: dict[str, int]
+    alias_by_length: dict[int, set[str]]
     nif_canonico: dict[int, str | None]  # empresa_id → nif_canonico actual
 
 
@@ -45,7 +46,15 @@ def load_caches(conn: Any) -> EmpresaCaches:
         alias_map.setdefault(alias, int(empresa_id))
         if nif_var:
             nif_map.setdefault(nif_var, int(empresa_id))
-    return EmpresaCaches(nif=nif_map, alias=alias_map, nif_canonico=nif_canon)
+    alias_by_length: dict[int, set[str]] = {}
+    for alias in alias_map:
+        alias_by_length.setdefault(len(alias), set()).add(alias)
+    return EmpresaCaches(
+        nif=nif_map,
+        alias=alias_map,
+        alias_by_length=alias_by_length,
+        nif_canonico=nif_canon,
+    )
 
 
 def create_empresa(
@@ -59,10 +68,13 @@ def create_empresa(
     now = now_utc_iso()
     cur = conn.execute(
         "INSERT INTO empresas (nif_canonico, nombre_canonico, es_ute, es_pyme, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?) RETURNING empresa_id",
         (nif_canonico, nombre_canonico, int(es_ute), es_pyme, now, now),
     )
-    return int(cur.lastrowid)
+    row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("No se pudo recuperar empresa_id tras crear la empresa")
+    return int(row[0])
 
 
 def add_alias(
@@ -93,10 +105,11 @@ def set_nif_canonico_if_null(conn: Any, empresa_id: int, nif: str) -> bool:
     cur = conn.execute(
         "UPDATE empresas SET nif_canonico = ?, updated_at = ? "
         "WHERE empresa_id = ? AND nif_canonico IS NULL "
-        "AND NOT EXISTS (SELECT 1 FROM empresas WHERE nif_canonico = ?)",
+        "AND NOT EXISTS (SELECT 1 FROM empresas WHERE nif_canonico = ?) "
+        "RETURNING empresa_id",
         (nif, now_utc_iso(), empresa_id, nif),
     )
-    return bool(cur.rowcount)
+    return cur.fetchone() is not None
 
 
 def add_ute_member(conn: Any, ute_empresa_id: int, miembro_empresa_id: int) -> None:

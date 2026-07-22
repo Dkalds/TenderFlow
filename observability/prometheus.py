@@ -9,6 +9,8 @@ Métricas expuestas:
   - tenderflow_items_total{status}              — Ítems procesados
   - tenderflow_run_duration_seconds             — Histograma de duración
   - tenderflow_db_total                         — Gauge total en BD
+    - tenderflow_adjudicaciones_empresa_enlazadas — Adjudicaciones con empresa
+    - tenderflow_adjudicaciones_empresa_pendientes — Adjudicaciones sin empresa
   - tenderflow_last_run_timestamp               — Timestamp último run
   - tenderflow_parse_errors_total               — Errores de parseo
   - tenderflow_download_errors_total            — Errores de descarga
@@ -107,6 +109,19 @@ def _write_metrics(run: RunInstrumentation) -> None:
         _write_text_file(run)
 
 
+def _empresa_resolution_snapshot() -> tuple[int, int]:
+    """Devuelve adjudicaciones enlazadas y pendientes sin romper el scraper."""
+    try:
+        from db.empresas import resolution_stats
+
+        stats = resolution_stats()
+        linked = int(stats["adjudicaciones_enlazadas"])
+        return linked, int(stats["adjudicaciones_total"]) - linked
+    except Exception as e:
+        log.debug("prometheus_empresa_resolution_failed", error=str(e))
+        return 0, 0
+
+
 def _write_via_client(run: RunInstrumentation) -> None:
     """Usa prometheus_client para escribir métricas (formato correcto).
 
@@ -197,6 +212,20 @@ def _write_via_client(run: RunInstrumentation) -> None:
         log.debug("prometheus_db_count_failed", error=str(e))
         db_total.set(0)
 
+    linked, pending = _empresa_resolution_snapshot()
+    empresa_linked = Gauge(
+        "tenderflow_adjudicaciones_empresa_enlazadas",
+        "Adjudicaciones enlazadas con el maestro de empresas",
+        registry=registry,
+    )
+    empresa_linked.set(linked)
+    empresa_pending = Gauge(
+        "tenderflow_adjudicaciones_empresa_pendientes",
+        "Adjudicaciones pendientes de enlazar con el maestro de empresas",
+        registry=registry,
+    )
+    empresa_pending.set(pending)
+
     _METRICS_DIR.mkdir(parents=True, exist_ok=True)
     write_to_textfile(str(_METRICS_FILE), registry)
     log.info("prometheus.metrics_written", path=str(_METRICS_FILE))
@@ -214,6 +243,8 @@ def _write_text_file(run: RunInstrumentation) -> None:
         db_total = count_licitaciones()
     except Exception:
         log.debug("prometheus_db_count_failed")
+
+    linked, pending = _empresa_resolution_snapshot()
 
     lines = [
         "# HELP tenderflow_scraper_runs_total Total de runs del scraper",
@@ -240,6 +271,12 @@ def _write_text_file(run: RunInstrumentation) -> None:
         "# HELP tenderflow_db_total Total de licitaciones en la BD",
         "# TYPE tenderflow_db_total gauge",
         f"tenderflow_db_total {db_total}",
+        "# HELP tenderflow_adjudicaciones_empresa_enlazadas Adjudicaciones enlazadas con empresa",
+        "# TYPE tenderflow_adjudicaciones_empresa_enlazadas gauge",
+        f"tenderflow_adjudicaciones_empresa_enlazadas {linked}",
+        "# HELP tenderflow_adjudicaciones_empresa_pendientes Adjudicaciones pendientes de empresa",
+        "# TYPE tenderflow_adjudicaciones_empresa_pendientes gauge",
+        f"tenderflow_adjudicaciones_empresa_pendientes {pending}",
     ]
     _METRICS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     log.info("prometheus.metrics_written_text", path=str(_METRICS_FILE))

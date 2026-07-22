@@ -73,6 +73,82 @@ def test_healthcheck_degraded_when_dlq_above_threshold(tmp_db):
     assert any("dlq_above_threshold" in w for w in result["warnings"])
 
 
+def test_healthcheck_degraded_when_empresa_resolution_below_threshold(tmp_db):
+    from datetime import datetime
+
+    from db.database import connect
+
+    now = datetime.now(UTC).isoformat()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO extraction_runs "
+            "(run_id, started_at, ended_at, status) VALUES ('r1', ?, ?, 'ok')",
+            (now, now),
+        )
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
+            "VALUES ('LIC-001', 'Contrato de prueba', ?)",
+            (now,),
+        )
+        c.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, fecha_extraccion) VALUES ('LIC-001', 'Empresa', ?)",
+            (now,),
+        )
+
+    from scheduler.healthcheck import run_check
+
+    result = run_check()
+    assert result["status"] == "degraded"
+    assert result["info"]["empresa_resolution"]["pct_filas"] == 0.0
+    assert any("empresa_resolution_below_threshold" in w for w in result["warnings"])
+
+
+def test_healthcheck_counts_pending_review_as_covered(tmp_db):
+    from datetime import datetime
+
+    from db.database import connect
+
+    now = datetime.now(UTC).isoformat()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO extraction_runs "
+            "(run_id, started_at, ended_at, status) VALUES ('r1', ?, ?, 'ok')",
+            (now, now),
+        )
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
+            "VALUES ('LIC-001', 'Contrato de prueba', ?)",
+            (now,),
+        )
+        c.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, nif, fecha_extraccion) "
+            "VALUES ('LIC-001', 'Empresa Candidata S.L.', 'B12345678', ?)",
+            (now,),
+        )
+        c.execute(
+            "INSERT INTO empresa_review_queue "
+            "(nombre_original, alias_normalizado, nif, score, status, created_at) "
+            "VALUES ('Empresa Candidata S.L.', 'EMPRESA CANDIDATA', "
+            "'B12345678', 0.95, 'pending', ?)",
+            (now,),
+        )
+
+    from scheduler.healthcheck import run_check
+
+    result = run_check()
+    resolution = result["info"]["empresa_resolution"]
+    assert resolution == {
+        "total": 1,
+        "enlazadas": 0,
+        "en_revision": 1,
+        "pendientes": 0,
+        "pct_filas": 100.0,
+    }
+    assert not any("empresa_resolution_below_threshold" in w for w in result["warnings"])
+
+
 def test_healthcheck_main_returns_0_for_healthy(tmp_db):
     from unittest.mock import patch
 
