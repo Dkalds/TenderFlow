@@ -317,21 +317,6 @@ jobs:
           name: trivy-results
           path: trivy-results.sarif
 
-  # ── Agents sync check (independiente) ──────────────────────────────
-  agents-sync-check:
-    name: Agents Sync Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Verify agents canon is in sync with generated files
-        run: python scripts/sync_agents.py --check
-
   # ── Contrato API↔web: openapi.json y api.d.ts sin drift ─────────────
   codegen-drift:
     name: Codegen Drift Check

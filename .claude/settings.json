@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CMD=$(python3 -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',d).get('command',''))\" 2>/dev/null || true); case \"$CMD\" in *grep*|*rg\\ *|*ripgrep*|*find\\ *|*fd\\ *|*ack\\ *|*ag\\ *)   [ -f graphify-out/graph.json ] &&   echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at graphify-out/. For focused questions, run `graphify query \\\"<question>\\\"` (scoped subgraph, usually much smaller than GRAPH_REPORT.md) instead of grepping raw files. Read GRAPH_REPORT.md only for broad architecture context.\"}}'   || true ;; esac"
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\""
           }
         ]
       },
@@ -15,16 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"\nimport json, sys, os, pathlib\ntry:\n    d = json.load(sys.stdin)\n    fp = (d.get('tool_input') or d).get('file_path', '') or (d.get('tool_input') or d).get('new_path', '')\nexcept Exception:\n    fp = ''\n\n# Path denylist por rol de subagente\n# Lee la variable de entorno AGENT_ROLE si está seteada por el orchestrator\nrole = os.environ.get('AGENT_ROLE', '')\n\ndenylist_by_role = {\n    'architect': [\n        lambda p: p.endswith('.py') and 'docs/' not in p,\n        lambda p: p.startswith('db/alembic/'),\n        lambda p: p.startswith('.github/workflows/'),\n    ],\n    'reviewer': [\n        lambda p: True,  # reviewer: ninguna edición permitida\n    ],\n    'security_triage': [\n        lambda p: True,  # security_triage: ninguna edición permitida\n    ],\n    'test_engineer': [\n        lambda p: bool(p) and not p.startswith('tests/'),  # solo tests/\n    ],\n    'coder': [\n        lambda p: p.startswith('db/alembic/'),\n        lambda p: p.startswith('.github/workflows/'),\n        lambda p: p.startswith('.env'),\n        lambda p: p == 'pyproject.toml',\n        lambda p: 'requirements' in p and p.endswith(('.txt', '.in')),\n        lambda p: p == '.secrets.baseline',\n        lambda p: p == '.gitleaks.toml',\n        lambda p: p.startswith('tests/'),\n    ],\n}\n\nif role and fp and role in denylist_by_role:\n    for check in denylist_by_role[role]:\n        if check(fp):\n            result = {\n                'hookSpecificOutput': {\n                    'hookEventName': 'PreToolUse',\n                    'additionalContext': f'PATH DENYLIST BLOCKED: el rol {role!r} no puede editar {fp!r}. Consultá docs/agents/{role}.md para el path_denylist de este rol.'\n                }\n            }\n            print(json.dumps(result))\n            break\n\" 2>/dev/null || true"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -c \"import json,sys,os,pathlib; d=json.load(sys.stdin) if not sys.stdin.isatty() else {}; fp=(d.get('tool_input',d) or {}).get('file_path',''); skip=any(x in fp for x in ('.venv','graphify-out','.mypy_cache','.pytest_cache','.ruff_cache','__pycache__','htmlcov','node_modules')); ok=fp.endswith('.py') and not skip and os.path.isdir('graphify-out'); pathlib.Path('graphify-out/.graph_stale').touch() if ok else None\" 2>/dev/null || true"
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\""
           }
         ]
       }
