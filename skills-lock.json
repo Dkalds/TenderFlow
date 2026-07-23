@@ -12,6 +12,18 @@
       "skillPath": "skills/agent-browser/SKILL.md",
       "computedHash": "228f87d57035100d9dc6efcfc05aafd4b6e3962adacaa04b8217ab2fadb15dc8"
     },
+    "animation-vocabulary": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/animation-vocabulary/SKILL.md",
+      "computedHash": "280c6688ef2568ad92f40c4dc638f0cc5cde0f49bdd6debd097410aa9945f44f"
+    },
+    "apple-design": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/apple-design/SKILL.md",
+      "computedHash": "0d19303902efa64eace10e6b183eb29ef3220d424c1a7fd1eafc52adde216932"
+    },
     "bash-defensive-patterns": {
       "source": "wshobson/agents",
       "sourceType": "autoskills-registry",
@@ -22,6 +34,12 @@
       "sourceType": "autoskills-registry",
       "computedHash": "698dfb0ec0cf3e8d97c3f181e13b37b3b8fbc872a4b031d812adb4193f66035e"
     },
+    "emil-design-eng": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/emil-design-eng/SKILL.md",
+      "computedHash": "87067d79205fdedc6d682891027dd9c7335486c4b4dc2e785638941a9d2e6061"
+    },
     "fastapi-python": {
       "source": "mindrally/skills",
       "sourceType": "autoskills-registry",
@@ -31,6 +49,12 @@
       "source": "wshobson/agents",
       "sourceType": "autoskills-registry",
       "computedHash": "c8e98f955a805e73243713c24b8a5d41eb79fcdd7b950656bd27bef690cb295a"
+    },
+    "find-animation-opportunities": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/find-animation-opportunities/SKILL.md",
+      "computedHash": "c6b1d0f6d03a11f8772b1cef4ca5cc88301ae8641ac2697c85ffa87eb458e40a"
     },
     "find-skills": {
       "source": "vercel-labs/skills",
@@ -43,6 +67,12 @@
       "sourceType": "github",
       "skillPath": "skills/frontend-design/SKILL.md",
       "computedHash": "516bd2154eb843a8240e43d5b285229129853114ad7075a5e141e1c08e408c84"
+    },
+    "improve-animations": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/improve-animations/SKILL.md",
+      "computedHash": "9cd956e91139211efa5e17fc5e1675b9a3f711ef38cbc92aa8f3fa5b626b7e12"
     },
     "machine-learning": {
       "source": "pluginagentmarketplace/custom-plugin-python",
@@ -69,6 +99,12 @@
       "sourceType": "autoskills-registry",
       "computedHash": "61f79ae3c9a29fd452e5cf8dee9891f1d0ab7da72fa80aa0366784bcd2b46d2b"
     },
+    "pick-ui-library": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/pick-ui-library/SKILL.md",
+      "computedHash": "1a0a6819d13fb5361cf5cdc923f46a1effc37cb61ecb908419eedb0e11f428fe"
+    },
     "pydantic": {
       "source": "bobmatnyc/claude-mpm-skills",
       "sourceType": "autoskills-registry",
@@ -88,6 +124,12 @@
       "source": "wshobson/agents",
       "sourceType": "autoskills-registry",
       "computedHash": "07b87d62993c0b6159a91d18fc8723b7f4c13d5000c0984266c207493ce641ff"
+    },
+    "review-animations": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/review-animations/SKILL.md",
+      "computedHash": "6f8d633d7884c1390eff7af4bfaf7a450e798f117e1d49a555e00819dc877f64"
     },
     "scikit-learn": {
       "source": "davila7/claude-code-templates",

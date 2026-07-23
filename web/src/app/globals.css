@@ -235,6 +235,108 @@
   color: hsl(var(--muted-foreground));
 }
 
+/*
+ * Enter/exit animation primitives for Radix-driven overlays (dropdown menu,
+ * select, sheet). Tailwind v4 ships no built-in equivalent to the
+ * `tailwindcss-animate` plugin, so this replicates its composable
+ * custom-property pattern directly instead of adding a new dependency —
+ * `@utility` makes each name a real Tailwind utility, so variants like
+ * `data-[state=open]:animate-in` and `data-[side=bottom]:slide-in-from-top-2`
+ * compose correctly. `--tf-ease-out` mirrors the emil-design-eng house curve.
+ */
+@keyframes tf-enter {
+  from {
+    opacity: var(--tf-enter-opacity, 1);
+    transform: translate3d(var(--tf-enter-translate-x, 0), var(--tf-enter-translate-y, 0), 0)
+      scale3d(var(--tf-enter-scale, 1), var(--tf-enter-scale, 1), 1);
+  }
+}
+@keyframes tf-exit {
+  to {
+    opacity: var(--tf-exit-opacity, 1);
+    transform: translate3d(var(--tf-exit-translate-x, 0), var(--tf-exit-translate-y, 0), 0)
+      scale3d(var(--tf-exit-scale, 1), var(--tf-exit-scale, 1), 1);
+  }
+}
+
+@utility animate-in {
+  animation-name: tf-enter;
+  animation-duration: 150ms;
+  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  animation-fill-mode: both;
+  --tf-enter-opacity: initial;
+  --tf-enter-scale: initial;
+  --tf-enter-translate-x: initial;
+  --tf-enter-translate-y: initial;
+}
+@utility animate-out {
+  animation-name: tf-exit;
+  animation-duration: 150ms;
+  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  animation-fill-mode: both;
+  --tf-exit-opacity: initial;
+  --tf-exit-scale: initial;
+  --tf-exit-translate-x: initial;
+  --tf-exit-translate-y: initial;
+}
+/* Longer beat for modals/drawers (200-500ms budget) vs. the 150ms dropdown default. */
+@utility anim-duration-300 {
+  animation-duration: 300ms;
+}
+
+@utility fade-in-0 {
+  --tf-enter-opacity: 0;
+}
+@utility fade-out-0 {
+  --tf-exit-opacity: 0;
+}
+@utility zoom-in-95 {
+  --tf-enter-scale: 0.95;
+}
+@utility zoom-out-95 {
+  --tf-exit-scale: 0.95;
+}
+
+@utility slide-in-from-top-2 {
+  --tf-enter-translate-y: -0.5rem;
+}
+@utility slide-in-from-bottom-2 {
+  --tf-enter-translate-y: 0.5rem;
+}
+@utility slide-in-from-left-2 {
+  --tf-enter-translate-x: -0.5rem;
+}
+@utility slide-in-from-right-2 {
+  --tf-enter-translate-x: 0.5rem;
+}
+
+/* Full-range slide, for edge-anchored panels (Sheet) — symmetric enter/exit
+ * paths per apple-design §7: a panel must dismiss the same way it arrived. */
+@utility slide-in-from-top {
+  --tf-enter-translate-y: -100%;
+}
+@utility slide-in-from-bottom {
+  --tf-enter-translate-y: 100%;
+}
+@utility slide-in-from-left {
+  --tf-enter-translate-x: -100%;
+}
+@utility slide-in-from-right {
+  --tf-enter-translate-x: 100%;
+}
+@utility slide-out-to-top {
+  --tf-exit-translate-y: -100%;
+}
+@utility slide-out-to-bottom {
+  --tf-exit-translate-y: 100%;
+}
+@utility slide-out-to-left {
+  --tf-exit-translate-x: -100%;
+}
+@utility slide-out-to-right {
+  --tf-exit-translate-x: 100%;
+}
+
 /* Accessibility */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

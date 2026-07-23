@@ -449,7 +449,7 @@ export default function ActiveLearningPage() {
         {items.length > 0 && (
           <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden max-w-xs">
             <div
-              className="h-full bg-primary rounded-full transition-all"
+              className="h-full bg-primary rounded-full transition-[width]"
               style={{
                 width: `${Math.min((dismissed.size / items.length) * 100, 100)}%`,
               }}
@@ -621,7 +621,7 @@ export default function ActiveLearningPage() {
                       <div className="flex-1 h-2 max-w-[200px] rounded-full bg-muted overflow-hidden">
                         <div
                           className={cn(
-                            "h-full rounded-full transition-all",
+                            "h-full rounded-full transition-[width]",
                             prob >= 0.7
                               ? "bg-green-500"
                               : prob >= 0.4
@@ -699,7 +699,7 @@ export default function ActiveLearningPage() {
                               <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                                 <div
                                   className={cn(
-                                    "h-full rounded-full transition-all",
+                                    "h-full rounded-full transition-[width]",
                                     isSelected
                                       ? "bg-primary"
                                       : isSecondary

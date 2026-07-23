@@ -1,4 +1,7 @@
 {
+  "hooks": {
+    "PreToolUse": []
+  },
   "permissions": {
     "allow": [
       "Bash(python -c ' *)",

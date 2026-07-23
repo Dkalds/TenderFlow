@@ -66,7 +66,7 @@ export const KpiCard = React.memo(function KpiCard({
   const card = (
     <Card
       className={cn(
-        "group relative h-full min-h-[7.75rem] overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg",
+        "group relative h-full min-h-[7.75rem] overflow-hidden transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg",
         href && "cursor-pointer",
         className,
       )}

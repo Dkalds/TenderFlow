@@ -400,7 +400,7 @@ export default function OrganosPage() {
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
                             <div
-                              className="h-full bg-primary rounded-full transition-all"
+                              className="h-full bg-primary rounded-full transition-[width]"
                               style={{ width: `${(item.count / maxCount) * 100}%` }}
                             />
                           </div>

@@ -44,20 +44,35 @@ export function Sidebar() {
     <aside
       aria-label="Barra lateral de navegación"
       className={cn(
-        "tf-sidebar-surface sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border/70 transition-all duration-200 md:flex",
+        "tf-sidebar-surface sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border/70 transition-[width] duration-200 md:flex",
         collapsed ? "w-16" : "w-[248px]"
       )}
     >
       <div className="flex h-[60px] items-center justify-between border-b border-border/70 px-3">
-        {collapsed ? (
-          <Link href={withFilters("/resumen")} className="flex items-center justify-center w-full">
+        <div className="relative h-8 min-w-0 flex-1 overflow-hidden">
+          <Link
+            href={withFilters("/resumen")}
+            className={cn(
+              "absolute inset-0 flex items-center justify-center transition-opacity duration-200",
+              collapsed ? "opacity-100" : "pointer-events-none opacity-0"
+            )}
+            aria-hidden={!collapsed}
+            tabIndex={collapsed ? 0 : -1}
+          >
             <TenderFlowIcon size={32} />
           </Link>
-        ) : (
-          <Link href={withFilters("/resumen")} className="flex min-w-0 items-center">
+          <Link
+            href={withFilters("/resumen")}
+            className={cn(
+              "absolute inset-0 flex min-w-0 items-center transition-opacity duration-200",
+              collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+            )}
+            aria-hidden={collapsed}
+            tabIndex={collapsed ? -1 : 0}
+          >
             <TenderFlowLogo boxSize={32} />
           </Link>
-        )}
+        </div>
         <Button
           variant="ghost"
           size="icon"

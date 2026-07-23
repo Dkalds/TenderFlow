@@ -25,30 +25,39 @@ function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
         <FileText className="h-3 w-3" />
         Fuentes del pliego ({totalChunks})
       </button>
-      {open && (
-        <div className="mt-2 space-y-2">
-          {fuentes.map((f, i) => (
-            <div key={`${f.id_externo}-${i}`} className="border-border bg-muted/40 rounded-md border p-2">
-              <div className="mb-1 text-xs font-medium">
-                {f.id_externo ? (
-                  <a href={`/detalle?lic=${f.id_externo}`} className="text-primary hover:underline">
-                    {f.id_externo}
-                  </a>
-                ) : null}
-                {f.titulo ? <span className="text-muted-foreground"> — {f.titulo}</span> : null}
+      {/* Grid-rows trick: animates height without measuring it, and stays
+          interruptible if the user toggles again mid-transition. */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out",
+          open ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-2">
+            {fuentes.map((f, i) => (
+              <div key={`${f.id_externo}-${i}`} className="border-border bg-muted/40 rounded-md border p-2">
+                <div className="mb-1 text-xs font-medium">
+                  {f.id_externo ? (
+                    <a href={`/detalle?lic=${f.id_externo}`} className="text-primary hover:underline">
+                      {f.id_externo}
+                    </a>
+                  ) : null}
+                  {f.titulo ? <span className="text-muted-foreground"> — {f.titulo}</span> : null}
+                </div>
+                {f.chunks?.map((c, j) => (
+                  <blockquote key={j} className="border-primary/40 text-muted-foreground mt-1 border-l-2 pl-2 text-xs">
+                    {(c.tipo || c.filename) && (
+                      <span className="font-medium">[{[c.tipo, c.filename].filter(Boolean).join(" · ")}] </span>
+                    )}
+                    {c.texto}
+                  </blockquote>
+                ))}
               </div>
-              {f.chunks?.map((c, j) => (
-                <blockquote key={j} className="border-primary/40 text-muted-foreground mt-1 border-l-2 pl-2 text-xs">
-                  {(c.tipo || c.filename) && (
-                    <span className="font-medium">[{[c.tipo, c.filename].filter(Boolean).join(" · ")}] </span>
-                  )}
-                  {c.texto}
-                </blockquote>
-              ))}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

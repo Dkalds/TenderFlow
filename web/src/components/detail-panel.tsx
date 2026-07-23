@@ -133,7 +133,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
                 className="bg-muted h-2 flex-1 overflow-hidden rounded-full"
               >
                 <div
-                  className="bg-primary h-full rounded-full transition-all"
+                  className="bg-primary h-full rounded-full transition-[width]"
                   style={{ width: `${Math.min(100, l.score)}%` }}
                 />
               </div>
