@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 
+import { initialCompanyProfilePeriod } from "../company-profile";
 import { CompanyQuickView } from "../company-quick-view";
 import {
   buildExecutiveSummary,
@@ -117,6 +118,11 @@ const recentAwards: CompanyAwardsData = {
 };
 
 describe("company profile presentation helpers", () => {
+  it("opens the complete history unless a global date range is active", () => {
+    expect(initialCompanyProfilePeriod(false)).toBe("all");
+    expect(initialCompanyProfilePeriod(true)).toBe("global");
+  });
+
   it("translates known CPV families", () => {
     expect(cpvFamilyLabel("72")).toBe("Servicios TI y consultoría tecnológica");
     expect(cpvFamilyLabel("99")).toBe("Familia CPV 99");

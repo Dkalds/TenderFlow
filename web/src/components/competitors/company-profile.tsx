@@ -19,6 +19,10 @@ import type { CompanyProfileData } from "./company-profile-types";
 
 type Period = "12m" | "3y" | "all" | "global";
 
+export function initialCompanyProfilePeriod(hasGlobalPeriod: boolean): Period {
+  return hasGlobalPeriod ? "global" : "all";
+}
+
 interface CompanyProfileProps {
   empresaId: number;
   /** IDs adicionales del grupo cuando el competidor agrega varias identidades del maestro. */
@@ -48,7 +52,7 @@ function ProfileSkeleton() {
 export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
   const filters = useFilters();
   const hasGlobalPeriod = Boolean(filters.rango.desde || filters.rango.hasta);
-  const [period, setPeriod] = useState<Period>(hasGlobalPeriod ? "global" : "3y");
+  const [period, setPeriod] = useState<Period>(() => initialCompanyProfilePeriod(hasGlobalPeriod));
   const queryClient = useQueryClient();
   // El dossier agrega la actividad de todo el grupo; el usuario nunca elige
   // cuál identidad abrir.
