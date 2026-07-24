@@ -1,6 +1,23 @@
 @import "tailwindcss";
 
 /*
+ * Gate `hover:` behind a real hover capability (mouse/trackpad), not just
+ * `:hover`. Without this, touch devices get "sticky hover" — a tapped
+ * element stays in its hover state until the next tap elsewhere — because
+ * `:hover` alone fires on touch too (apple-design / review-animations
+ * accessibility standard: ungated hover motion is a finding). Redefines the
+ * variant repo-wide instead of adding `@media (hover:hover)` to every
+ * `hover:` usage individually.
+ */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+/*
  * TenderFlow design tokens.
  * Premium market-intelligence dashboard: neutral base, indigo accent,
  * layered surfaces, refined elevation, and consistent chart colors.
@@ -282,6 +299,11 @@
 /* Longer beat for modals/drawers (200-500ms budget) vs. the 150ms dropdown default. */
 @utility anim-duration-300 {
   animation-duration: 300ms;
+}
+/* Snappier exit — pair with anim-duration-300 as data-[state=closed]:anim-duration-200
+ * so a panel leaves faster than it enters (emil-design-eng: release stays snappy). */
+@utility anim-duration-200 {
+  animation-duration: 200ms;
 }
 
 @utility fade-in-0 {

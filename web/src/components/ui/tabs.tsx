@@ -28,7 +28,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "focus-visible:ring-ring data-[state=active]:bg-background data-[state=active]:text-foreground inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-all focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow",
+      "focus-visible:ring-ring data-[state=active]:bg-background data-[state=active]:text-foreground inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-[background-color,color,box-shadow] focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow",
       className,
     )}
     {...props}
@@ -42,7 +42,10 @@ const TabsContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
-    className={cn("focus-visible:ring-ring mt-3 focus-visible:ring-1 focus-visible:outline-none", className)}
+    // Cambio de pestaña frecuente por sesión: fade sutil (150ms, solo
+    // opacidad) en vez de aparición instantánea, sin competir con el resto
+    // de animaciones de la app.
+    className={cn("focus-visible:ring-ring mt-3 animate-in fade-in-0 focus-visible:ring-1 focus-visible:outline-none", className)}
     {...props}
   />
 ));

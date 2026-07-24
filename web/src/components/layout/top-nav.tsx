@@ -172,8 +172,8 @@ export function TopNav() {
             {/* Theme toggle */}
             <span className="mx-1 hidden h-5 w-px bg-border/70 sm:block" aria-hidden="true" />
             <Button variant="ghost" size="icon" onClick={toggleTheme}>
-              <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
               <span className="sr-only">Toggle theme</span>
             </Button>
 
@@ -193,7 +193,10 @@ export function TopNav() {
               </Button>
               {userMenuOpen && (
                 <div
-                  className="tf-glass-strong absolute right-0 top-full mt-1 w-48 rounded-md border p-1 shadow-md"
+                  // Same enter treatment as DropdownMenuContent (cohesion):
+                  // this menu is hand-rolled (holds a logout side-effect),
+                  // but it should still feel identical to the Radix ones.
+                  className="tf-glass-strong animate-in fade-in-0 zoom-in-95 origin-top-right absolute right-0 top-full mt-1 w-48 rounded-md border p-1 shadow-md"
                   role="menu"
                   tabIndex={-1}
                   onKeyDown={(e) => {
@@ -231,11 +234,13 @@ export function TopNav() {
         >
           <div
             role="presentation"
-            className="absolute inset-0 bg-black/50"
+            className="animate-in fade-in-0 anim-duration-300 absolute inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
             onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
           />
-          <nav className="tf-glass-strong absolute left-0 top-14 bottom-0 w-72 border-r p-4 space-y-1 overflow-y-auto" aria-label="Navegación móvil">
+          {/* Same edge-anchored slide as Sheet (apple-design §7): this drawer
+              is the mobile equivalent of a left-side sheet. */}
+          <nav className="tf-glass-strong animate-in slide-in-from-left anim-duration-300 absolute left-0 top-14 bottom-0 w-72 border-r p-4 space-y-1 overflow-y-auto" aria-label="Navegación móvil">
             {visibleSections.map((section) => {
               const Icon = section.icon;
               const active = section.pages.some((p) => pathname === `/${p.slug}`);

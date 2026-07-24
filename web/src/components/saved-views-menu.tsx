@@ -69,7 +69,9 @@ export function SavedViewsMenu() {
         <div
           role="menu"
           tabIndex={-1}
-          className="tf-glass-strong absolute right-0 top-full z-50 mt-2 w-72 rounded-lg border border-border/70 p-2 shadow-xl"
+          // Same enter treatment as DropdownMenuContent (this popover stays
+          // hand-rolled because it hosts a text input, see file header).
+          className="tf-glass-strong animate-in fade-in-0 zoom-in-95 origin-top-right absolute right-0 top-full z-50 mt-2 w-72 rounded-lg border border-border/70 p-2 shadow-xl"
           onKeyDown={(e) => {
             if (e.key === "Escape") setOpen(false);
           }}

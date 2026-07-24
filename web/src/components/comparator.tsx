@@ -42,9 +42,14 @@ export function Comparator({ items, onClose, className }: ComparatorProps) {
       aria-labelledby="comparator-title"
       tabIndex={-1}
       onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
-      className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/60", className)}
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in-0 anim-duration-300",
+        className,
+      )}
     >
-      <Card className="relative w-full max-w-6xl max-h-[90vh] overflow-auto mx-4">
+      {/* Modal centrado (caso excepcional): sin origin override, el default
+          transform-origin: center ya es el correcto (apple-design §7). */}
+      <Card className="relative w-full max-w-6xl max-h-[90vh] overflow-auto mx-4 animate-in fade-in-0 zoom-in-95 anim-duration-300">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle id="comparator-title">Comparar licitaciones</CardTitle>
           <button

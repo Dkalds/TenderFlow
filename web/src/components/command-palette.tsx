@@ -94,12 +94,15 @@ function CommandPaletteInner() {
       <button
         type="button"
         aria-label="Cerrar paleta de comandos"
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in"
+        // Sin animación a propósito: toggle vía atajo de teclado (⌘K), acción
+        // de alta frecuencia para power users. Raycast/Spotlight no animan su
+        // apertura y esa es la referencia (find-animation-opportunities).
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={() => setOpen(false)}
       />
       <Command
         label="Paleta de comandos"
-        className="tf-glass-strong relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-border/70 shadow-2xl motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95"
+        className="tf-glass-strong relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-border/70 shadow-2xl"
         loop
         onKeyDown={(e) => {
           if (e.key === "Escape") {

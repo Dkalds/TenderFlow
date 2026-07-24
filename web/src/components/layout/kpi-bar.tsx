@@ -111,59 +111,68 @@ export function KpiBarConnected() {
 
 export function KpiBar({ kpis = [], loading = false, filtered = false, collapsed = false }: KpiBarProps) {
   return (
+    // Collapse via grid-template-rows 1fr↔​0fr instead of max-height: only
+    // grid-rows + opacity animate (no transition-all over layout props). The
+    // inner overflow-hidden clips the bar — border included — as it collapses.
     <div
-      role="region"
-      aria-label="Indicadores clave de rendimiento"
       className={cn(
-        "flex items-center gap-3 overflow-x-auto border-b border-border/70 bg-card/80 px-4 backdrop-blur transition-all duration-200",
-        collapsed ? "max-h-0 min-h-0 opacity-0 overflow-hidden py-0 border-b-0" : "max-h-20 min-h-11 opacity-100",
+        "grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+        collapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
       )}
     >
-      {filtered && (
-        <span className="flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-          <SlidersHorizontal className="h-3 w-3" />
-          Filtrado
-        </span>
-      )}
-      {loading
-        ? Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex shrink-0 items-center gap-2 rounded-md border border-border/70 bg-background/50 px-3 py-2">
-              <Skeleton className="h-4 w-4 rounded" />
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-4 w-10" />
-            </div>
-          ))
-        : kpis.map((kpi) => {
-            const Icon = kpi.icon;
-            return (
-              <div
-                key={kpi.label}
-                className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-background/50 px-3 py-1.5 text-xs"
-              >
-                {Icon && (
-                  <Icon className="h-3.5 w-3.5 text-primary" />
-                )}
-                <span className="text-muted-foreground">{kpi.label}:</span>
-                <span className="tf-tnum font-medium">{kpi.value}</span>
-                {kpi.trend != null && (
-                  <span
-                    className={cn(
-                      "flex items-center gap-0.5 text-xs font-medium tabular-nums",
-                      kpi.trend >= 0 ? "text-success" : "text-destructive"
-                    )}
+      <div className="overflow-hidden">
+        <div
+          role="region"
+          aria-label="Indicadores clave de rendimiento"
+          className="flex min-h-11 items-center gap-3 overflow-x-auto border-b border-border/70 bg-card/80 px-4 backdrop-blur"
+        >
+          {filtered && (
+            <span className="flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+              <SlidersHorizontal className="h-3 w-3" />
+              Filtrado
+            </span>
+          )}
+          {loading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex shrink-0 items-center gap-2 rounded-md border border-border/70 bg-background/50 px-3 py-2">
+                  <Skeleton className="h-4 w-4 rounded" />
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-4 w-10" />
+                </div>
+              ))
+            : kpis.map((kpi) => {
+                const Icon = kpi.icon;
+                return (
+                  <div
+                    key={kpi.label}
+                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-background/50 px-3 py-1.5 text-xs"
                   >
-                    {kpi.trend >= 0 ? (
-                      <TrendingUp className="h-3 w-3" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3" />
+                    {Icon && (
+                      <Icon className="h-3.5 w-3.5 text-primary" />
                     )}
-                    <span className="sr-only">{kpi.trend >= 0 ? "(subida)" : "(bajada)"}</span>
-                    {Math.abs(kpi.trend).toFixed(1)}%
-                  </span>
-                )}
-              </div>
-            );
-          })}
+                    <span className="text-muted-foreground">{kpi.label}:</span>
+                    <span className="tf-tnum font-medium">{kpi.value}</span>
+                    {kpi.trend != null && (
+                      <span
+                        className={cn(
+                          "flex items-center gap-0.5 text-xs font-medium tabular-nums",
+                          kpi.trend >= 0 ? "text-success" : "text-destructive"
+                        )}
+                      >
+                        {kpi.trend >= 0 ? (
+                          <TrendingUp className="h-3 w-3" />
+                        ) : (
+                          <TrendingDown className="h-3 w-3" />
+                        )}
+                        <span className="sr-only">{kpi.trend >= 0 ? "(subida)" : "(bajada)"}</span>
+                        {Math.abs(kpi.trend).toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+        </div>
+      </div>
     </div>
   );
 }

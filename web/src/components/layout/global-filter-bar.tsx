@@ -91,7 +91,9 @@ function PresetMenu({
         <div
           role="menu"
           tabIndex={-1}
-          className="tf-glass-strong absolute left-0 top-full z-50 mt-1 min-w-40 rounded-md border border-border/70 p-1 shadow-xl"
+          // Same enter treatment as DropdownMenuContent (150ms, origin-aware)
+          // so hand-rolled and Radix popovers feel identical (cohesion).
+          className="tf-glass-strong animate-in fade-in-0 zoom-in-95 origin-top-left absolute left-0 top-full z-50 mt-1 min-w-40 rounded-md border border-border/70 p-1 shadow-xl"
           onKeyDown={(e) => {
             if (e.key === "Escape") setOpen(false);
           }}

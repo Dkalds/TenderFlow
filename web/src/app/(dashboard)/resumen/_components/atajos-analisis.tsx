@@ -34,7 +34,7 @@ export function AtajosAnalisis() {
               aria-label={`Ir a ${page.label}`}
               className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
-              <Card className="group h-full min-h-[7.75rem] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg">
+              <Card className="group h-full min-h-[7.75rem] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg">
                 <CardContent className="flex h-full flex-col gap-2 p-4">
                   <div className="flex items-center justify-between">
                     <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
