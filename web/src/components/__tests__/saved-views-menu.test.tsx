@@ -50,7 +50,9 @@ describe("SavedViewsMenu", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderMenu({ views: VIEWS });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    // Radix Popover.Content renders with role="dialog" (a non-modal popover,
+    // unlike Sheet's aria-modal="true" dialog).
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Vista A")).toBeInTheDocument();
     expect(screen.getByText("Vista B")).toBeInTheDocument();
   });
@@ -73,7 +75,8 @@ describe("SavedViewsMenu", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderMenu({ views: VIEWS });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Vista A/ }));
+    // Exact match: a regex here would also match "Eliminar vista Vista A".
+    fireEvent.click(screen.getByRole("button", { name: "Vista A" }));
     // applySnapshot replays the snapshot's q value onto the filter store.
     expect(setQ).toHaveBeenCalledWith("cloud");
   });
@@ -98,20 +101,24 @@ describe("SavedViewsMenu", () => {
   it("opens when the ui store's savedViewsOpen flag is set externally (e.g. from the command palette)", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderMenu({ views: VIEWS });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     act(() => {
       useUiStore.getState().openSavedViews();
     });
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("closing via outside click also updates the shared ui store", () => {
+  it("closing (e.g. Escape) also updates the shared ui store", () => {
+    // Real pointer-outside-click dismissal relies on Radix's DismissableLayer
+    // capturing a native pointerdown on `document`, which jsdom + fireEvent's
+    // synthetic events cannot reproduce reliably (see sheet.test.tsx); Escape
+    // exercises the same `onOpenChange(false)` codepath deterministically.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderMenu({ views: VIEWS });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
     expect(useUiStore.getState().savedViewsOpen).toBe(true);
-    fireEvent.mouseDown(document.body);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(useUiStore.getState().savedViewsOpen).toBe(false);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

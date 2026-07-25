@@ -46,7 +46,7 @@ export function Sidebar() {
       className={cn(
         // On-screen resize (not an enter/exit): ease-in-out per the house
         // curve, matching the drawer/dropdown easing used elsewhere.
-        "tf-sidebar-surface sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border/70 transition-[width] duration-200 ease-[cubic-bezier(0.77,0,0.175,1)] md:flex",
+        "tf-sidebar-surface sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border/70 transition-[width] duration-200 ease-in-out md:flex",
         collapsed ? "w-16" : "w-[248px]"
       )}
     >

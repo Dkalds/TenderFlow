@@ -10,7 +10,7 @@ import {
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { SessionProvider } from "@/lib/auth";
-import { MotionProvider } from "@/components/motion";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   notifyQueryError,
   notifyMutationError,
@@ -49,9 +49,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         disableTransitionOnChange
       >
         <SessionProvider>
-          <MotionProvider>
+          <TooltipProvider>
             <NuqsAdapter>{children}</NuqsAdapter>
-          </MotionProvider>
+          </TooltipProvider>
         </SessionProvider>
       </ThemeProvider>
     </QueryClientProvider>

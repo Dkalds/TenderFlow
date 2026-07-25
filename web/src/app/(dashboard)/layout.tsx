@@ -8,8 +8,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalCopilot } from "@/components/copilot-panel";
-import { PageTransition } from "@/components/motion";
-import { Toaster } from "sonner";
+import { Toaster } from "@/components/toaster";
 
 export const dynamic = "force-dynamic";
 
@@ -46,13 +45,16 @@ export default function DashboardLayout({
           <div className="mx-auto w-full max-w-[1640px] px-4 py-5 sm:px-6 lg:px-8">
             <Breadcrumb />
             <PageTabs />
-            <div id="main" className="mt-4"><Suspense fallback={null}><PageTransition>{children}</PageTransition></Suspense></div>
+            {/* No page-transition fade: navigation is the 100+/day tier
+                (emil-design-eng / find-animation-opportunities) — NProgress's
+                top bar is the sole in-flight indicator now. */}
+            <div id="main" className="mt-4"><Suspense fallback={null}>{children}</Suspense></div>
           </div>
         </DashboardShell>
       </div>
       <CommandPalette />
       <GlobalCopilot />
-      <Toaster richColors position="bottom-right" />
+      <Toaster />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const setters = {
   setQ: vi.fn(),
@@ -31,6 +32,13 @@ vi.mock("@/lib/filters", () => ({
 
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
 
+// Radix's DropdownMenu trigger opens on pointer down (not a synthetic
+// `click`) — see components/ui/__tests__/dropdown-menu.test.tsx.
+function openMenu(trigger: HTMLElement) {
+  fireEvent.pointerDown(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
+  fireEvent.pointerUp(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
+}
+
 function renderBar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   qc.setQueryData(["meta-filters"], {
@@ -40,9 +48,14 @@ function renderBar() {
     cpv: [],
   });
   qc.setQueryData(["saved-views"], []);
+  // The date/importe preset menus wrap their trigger in a Tooltip, which
+  // requires a TooltipProvider ancestor (real usage gets one from
+  // components/providers.tsx).
   return render(
     <QueryClientProvider client={qc}>
-      <GlobalFilterBar />
+      <TooltipProvider>
+        <GlobalFilterBar />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -88,7 +101,7 @@ describe("GlobalFilterBar", () => {
 
   it("applies a date preset via the quick-range menu", () => {
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: /Rangos de fecha rapidos/ }));
+    openMenu(screen.getByRole("button", { name: /Rangos de fecha rapidos/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Todo" }));
     expect(setters.setRango).toHaveBeenCalledWith({ desde: null, hasta: null });
   });
@@ -107,7 +120,7 @@ describe("GlobalFilterBar", () => {
 
   it("applies an amount preset instantly via the preset menu", () => {
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: /Presets de importe minimo/ }));
+    openMenu(screen.getByRole("button", { name: /Presets de importe minimo/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "> 500K" }));
     expect(setters.setImporteMin).toHaveBeenCalledWith(500_000);
   });

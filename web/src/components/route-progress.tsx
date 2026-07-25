@@ -4,7 +4,10 @@ import { Suspense, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import NProgress from "nprogress";
 
-NProgress.configure({ showSpinner: false, trickleSpeed: 200 });
+// Constant motion (a progress bar filling) wants `linear`, not NProgress's
+// default `ease` (review-animations / emil-design-eng easing decision tree:
+// hover/color changes get `ease`, constant motion gets `linear`).
+NProgress.configure({ showSpinner: false, trickleSpeed: 200, easing: "linear" });
 
 function RouteProgressInner() {
   const pathname = usePathname();

@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CardHeader, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { X } from "lucide-react";
 import type { LicitacionDetail } from "@/components/detail-panel";
 
 interface ComparatorProps {
@@ -35,30 +35,13 @@ function formatValue(key: string, value: unknown): string {
 
 export function Comparator({ items, onClose, className }: ComparatorProps) {
   return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="comparator-title"
-      tabIndex={-1}
-      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
-      className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in-0 anim-duration-300",
-        className,
-      )}
-    >
-      {/* Modal centrado (caso excepcional): sin origin override, el default
-          transform-origin: center ya es el correcto (apple-design §7). */}
-      <Card className="relative w-full max-w-6xl max-h-[90vh] overflow-auto mx-4 animate-in fade-in-0 zoom-in-95 anim-duration-300">
+    // Centered modal, so DialogContent keeps the default transform-origin:
+    // center rather than the trigger-anchored origin used by Sheet/DropdownMenu/
+    // Popover (apple-design §7 / emil-design-eng: modals are exempt).
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={cn("w-full max-w-6xl max-h-[90vh] overflow-auto mx-4", className)}>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle id="comparator-title">Comparar licitaciones</CardTitle>
-          <button
-            onClick={onClose}
-            className="rounded-sm p-1 opacity-70 hover:opacity-100 transition-opacity"
-          >
-            <X className="h-5 w-5" />
-            <span className="sr-only">Cerrar</span>
-          </button>
+          <DialogTitle>Comparar licitaciones</DialogTitle>
         </CardHeader>
         <CardContent>
           {items.length === 0 ? (
@@ -103,7 +86,7 @@ export function Comparator({ items, onClose, className }: ComparatorProps) {
           </table>
           )}
         </CardContent>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

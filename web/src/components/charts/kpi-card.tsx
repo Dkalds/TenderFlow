@@ -11,10 +11,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AnimatedNumber } from "@/components/motion";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 /** Vertical accent stripe color, keyed to the design-system score bands. */
 type KpiAccent = "primary" | "hot" | "warm" | "cold" | "skip";
+
+// A JS string constant (not raw JSX text) so it can't regress into literal
+// `\uXXXX` escape sequences — JSX text/attribute strings are not run through
+// the JS escape parser, unlike a real string literal referenced via `{}`.
+const ANOMALY_LABEL = "Anomalía detectada (desviación >2σ)";
 
 const ACCENT_BG: Record<KpiAccent, string> = {
   primary: "bg-primary",
@@ -83,9 +88,15 @@ export const KpiCard = React.memo(function KpiCard({
         </CardTitle>
         <div className="absolute right-4 top-4 flex items-center gap-1.5">
           {anomaly && (
-            <span className="grid h-6 w-6 place-items-center rounded-md bg-warning/15 text-warning" title="Anomal\u00eda detectada (desviaci\u00f3n >2\u03c3)">
-              <AlertTriangle className="h-3.5 w-3.5" />
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="grid h-6 w-6 place-items-center rounded-md bg-warning/15 text-warning">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span className="sr-only">{ANOMALY_LABEL}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{ANOMALY_LABEL}</TooltipContent>
+            </Tooltip>
           )}
           {Icon && (
             <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
@@ -98,10 +109,11 @@ export const KpiCard = React.memo(function KpiCard({
         {loading ? (
           <Skeleton className="h-8 w-24" />
         ) : (
-          <AnimatedNumber
-            value={value ?? "-"}
-            className="tf-kpi block text-foreground"
-          />
+          // Static render, no count-up: this is the number the user came to
+          // read, and it re-triggers on every filter change — animating it
+          // fails the frequency gate (find-animation-opportunities) and the
+          // previous count-up re-rendered on every animation frame.
+          <span className="tf-kpi block text-foreground">{value ?? "-"}</span>
         )}
 
         {!loading && (subtitle || trend != null || target) && (

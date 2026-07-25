@@ -131,7 +131,10 @@ function LoginPageContent() {
           </div>
         </div>
 
-        <Card className="border-border/70 shadow-xl backdrop-blur-sm">
+        {/* Rare, first-load-only screen: the only place a delight-tier
+            entrance is warranted (find-animation-opportunities — occasional
+            frequency, "delight" purpose). */}
+        <Card className="border-border/70 shadow-xl backdrop-blur-sm animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-200">
           <CardHeader className="space-y-4">
             {/* Login / Register tab switcher */}
             <div
@@ -168,12 +171,20 @@ function LoginPageContent() {
 
           <CardContent>
             <div id="auth-panel" role="tabpanel" aria-labelledby={`tab-${mode}`}>
-              <form onSubmit={isRegister ? handleRegister : handleLogin} className="space-y-4">
+              {/* tf-stagger cascades each direct child's entrance (reusing
+                  the app's one stagger token instead of hand-tuning a
+                  one-off value — review-animations: consolidate near-identical
+                  timing instead of fragmenting it). Only ever seen once per
+                  session, so the brief cascade is delight, not friction. */}
+              <form
+                onSubmit={isRegister ? handleRegister : handleLogin}
+                className="tf-stagger space-y-4"
+              >
                 {error && (
                   <div
                     role="alert"
                     aria-live="polite"
-                    className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                    className="animate-in fade-in-0 slide-in-from-bottom-2 flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
                   >
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     {error}
@@ -181,7 +192,7 @@ function LoginPageContent() {
                 )}
 
                 {isRegister && (
-                  <div className="space-y-2">
+                  <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
                     <label htmlFor="name" className="text-sm font-medium text-foreground">
                       {t("auth.name")}
                     </label>
@@ -197,7 +208,7 @@ function LoginPageContent() {
                   </div>
                 )}
 
-                <div className="space-y-2">
+                <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
                   <label htmlFor="email" className="text-sm font-medium text-foreground">
                     {t("auth.email")}
                     <span className="text-destructive ml-1" aria-hidden="true">
@@ -216,7 +227,7 @@ function LoginPageContent() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
                   <label htmlFor="password" className="text-sm font-medium text-foreground">
                     {t("auth.password")}
                     <span className="text-destructive ml-1" aria-hidden="true">
@@ -252,7 +263,7 @@ function LoginPageContent() {
                 </div>
 
                 {isRegister && (
-                  <div className="space-y-2">
+                  <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
                     <label
                       htmlFor="confirm-password"
                       className="text-sm font-medium text-foreground"
@@ -274,7 +285,7 @@ function LoginPageContent() {
                   </div>
                 )}
 
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="animate-in fade-in-0 slide-in-from-bottom-2 w-full" disabled={loading}>
                   {isRegister ? (
                     <UserPlus className="mr-2 h-4 w-4" />
                   ) : (

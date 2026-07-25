@@ -99,7 +99,13 @@ export function AlertsFeed() {
                 </>
               );
               return (
-                <li key={a.id}>
+                // Each `<li>` is keyed by alert id, so this only plays for a
+                // genuinely new alert mounting (a re-render/refetch of an
+                // already-seen alert reuses the same key and never remounts,
+                // so it won't replay) — prevents a new alert popping in with
+                // no transition (find-animation-opportunities: "preventing a
+                // jarring change").
+                <li key={a.id} className="animate-in fade-in-0 slide-in-from-top-2">
                   {a.licitacion_id ? (
                     <Link
                       href={`/detalle?lic=${encodeURIComponent(a.licitacion_id)}`}

@@ -1,8 +1,10 @@
 "use client";
 
+import * as React from "react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { TableVirtuoso, type TableComponents } from "react-virtuoso";
 import { fetchWithAuth } from "@/lib/api-client";
 import { useFilters } from "@/lib/filters";
 import { KpiCard } from "@/components/charts/kpi-card";
@@ -20,13 +22,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
@@ -81,6 +83,58 @@ function diasBadgeVariant(dias: number | null): "destructive" | "secondary" | "o
   if (dias <= 90) return "secondary";
   return "outline";
 }
+
+type RenovacionRow = Renovacion & { _score: number };
+
+interface RenovacionesRowContext {
+  onRowActivate: (licitacionId: string) => void;
+}
+
+/**
+ * Up to 1000 rows (`limit=1000`) previously rendered fully into the DOM
+ * inside a `max-h-[560px] overflow-auto` div (pick-ui-library: virtualize
+ * long lists/tables instead). `TableVirtuoso` composes with the existing
+ * `ui/table.tsx` primitives via its `components` map — `Table` is written
+ * inline (no wrapping div: Virtuoso's own Scroller owns the single
+ * scrollable container) and `TableRow` reads the row's `item` from context
+ * to wire the same click/keydown-to-navigate behavior the plain `<tr>` had.
+ * Defined at module scope (not per-render) per Virtuoso's own guidance —
+ * per-render data (the navigate callback) is passed via `context` instead.
+ */
+function VirtuosoTable(props: React.ComponentProps<"table">) {
+  return <table {...props} className="w-full caption-bottom text-sm" />;
+}
+
+function VirtuosoTableRow({
+  item,
+  context,
+  ...props
+}: React.ComponentProps<"tr"> & { item: RenovacionRow; context?: RenovacionesRowContext }) {
+  return (
+    <TableRow
+      {...props}
+      tabIndex={0}
+      className="cursor-pointer hover:bg-muted/50"
+      onClick={() => context?.onRowActivate(item.licitacion_id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") context?.onRowActivate(item.licitacion_id);
+      }}
+    />
+  );
+}
+
+const VirtuosoTableHead = React.forwardRef<HTMLTableSectionElement, React.ComponentProps<"thead">>(
+  function VirtuosoTableHead(props, ref) {
+    return <TableHeader ref={ref} {...props} className={cn("bg-card", props.className)} />;
+  },
+);
+
+const renovacionesTableComponents: TableComponents<RenovacionRow, RenovacionesRowContext> = {
+  Table: VirtuosoTable,
+  TableHead: VirtuosoTableHead,
+  TableBody,
+  TableRow: VirtuosoTableRow,
+};
 
 export default function RenovacionesPage() {
   const router = useRouter();
@@ -303,113 +357,107 @@ export default function RenovacionesPage() {
               hint="Ningún contrato coincide con el filtro actual."
             />
           ) : (
-            <div className="max-h-[560px] overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Vence</TableHead>
-                    <TableHead>Contrato</TableHead>
-                    <TableHead>Adjudicatario</TableHead>
-                    <TableHead>Órgano</TableHead>
-                    <TableHead className="text-right">Importe</TableHead>
-                    <TableHead className="text-right">Riesgo de cambio</TableHead>
-                    <TableHead className="text-right">Oportunidad</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((r) => (
-                    <TableRow
-                      key={`${r.licitacion_id}-${r.empresa_id ?? r.empresa}`}
-                      tabIndex={0}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => router.push(`/detalle?lic=${encodeURIComponent(r.licitacion_id)}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          router.push(`/detalle?lic=${encodeURIComponent(r.licitacion_id)}`);
+            <TableVirtuoso<RenovacionRow, RenovacionesRowContext>
+              style={{ height: 560 }}
+              data={items}
+              computeItemKey={(_index, r) => `${r.licitacion_id}-${r.empresa_id ?? r.empresa}`}
+              context={{
+                onRowActivate: (licitacionId) =>
+                  router.push(`/detalle?lic=${encodeURIComponent(licitacionId)}`),
+              }}
+              components={renovacionesTableComponents}
+              fixedHeaderContent={() => (
+                <TableRow>
+                  <TableHead>Vence</TableHead>
+                  <TableHead>Contrato</TableHead>
+                  <TableHead>Adjudicatario</TableHead>
+                  <TableHead>Órgano</TableHead>
+                  <TableHead className="text-right">Importe</TableHead>
+                  <TableHead className="text-right">Riesgo de cambio</TableHead>
+                  <TableHead className="text-right">Oportunidad</TableHead>
+                </TableRow>
+              )}
+              itemContent={(_index, r) => (
+                <>
+                  <TableCell className="whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm">{r.fecha_fin_efectiva ?? "—"}</span>
+                      <Badge variant={diasBadgeVariant(r.dias_restantes)} className="w-fit">
+                        {r.dias_restantes != null ? `${r.dias_restantes} días` : "—"}
+                      </Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-[320px]">
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-sm leading-snug">
+                        {truncate(r.titulo ?? r.licitacion_id, 90)}
+                      </span>
+                      {r.url && (
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+                          aria-label="Abrir anuncio original"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-[220px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-sm">{r.empresa ?? "—"}</span>
+                      {r.es_ute ? <Badge variant="outline">UTE</Badge> : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">
+                    {r.organo_contratacion ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-sm font-medium whitespace-nowrap">
+                    {r.importe_adjudicado != null
+                      ? formatCurrency(r.importe_adjudicado)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
+                    {r.riesgo_cambio != null ? (
+                      <Badge
+                        variant={
+                          r.riesgo_cambio >= 0.6
+                            ? "destructive"
+                            : r.riesgo_cambio >= 0.35
+                              ? "secondary"
+                              : "outline"
                         }
-                      }}
-                    >
-                      <TableCell className="whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-sm">{r.fecha_fin_efectiva ?? "—"}</span>
-                          <Badge variant={diasBadgeVariant(r.dias_restantes)} className="w-fit">
-                            {r.dias_restantes != null ? `${r.dias_restantes} días` : "—"}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[320px]">
-                        <div className="flex items-start gap-1.5">
-                          <span className="text-sm leading-snug">
-                            {truncate(r.titulo ?? r.licitacion_id, 90)}
-                          </span>
-                          {r.url && (
-                            <a
-                              href={r.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-                              aria-label="Abrir anuncio original"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[220px]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate text-sm">{r.empresa ?? "—"}</span>
-                          {r.es_ute ? <Badge variant="outline">UTE</Badge> : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">
-                        {r.organo_contratacion ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right text-sm font-medium whitespace-nowrap">
-                        {r.importe_adjudicado != null
-                          ? formatCurrency(r.importe_adjudicado)
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {r.riesgo_cambio != null ? (
+                        title={`Modelo de retención v${r.retencion_model_version ?? "?"}`}
+                      >
+                        {(r.riesgo_cambio * 100).toFixed(0)}%
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
+                    {r._score > 0 ? (
+                      (() => {
+                        const rel = maxScore > 0 ? Math.round((r._score / maxScore) * 100) : 0;
+                        return (
                           <Badge
-                            variant={
-                              r.riesgo_cambio >= 0.6
-                                ? "destructive"
-                                : r.riesgo_cambio >= 0.35
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                            title={`Modelo de retención v${r.retencion_model_version ?? "?"}`}
+                            variant={rel >= 66 ? "default" : rel >= 33 ? "secondary" : "outline"}
+                            title="Riesgo × importe × urgencia (relativo al máximo de la vista)"
                           >
-                            {(r.riesgo_cambio * 100).toFixed(0)}%
+                            {rel}
                           </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {r._score > 0 ? (
-                          (() => {
-                            const rel = maxScore > 0 ? Math.round((r._score / maxScore) * 100) : 0;
-                            return (
-                              <Badge
-                                variant={rel >= 66 ? "default" : rel >= 33 ? "secondary" : "outline"}
-                                title="Riesgo × importe × urgencia (relativo al máximo de la vista)"
-                              >
-                                {rel}
-                              </Badge>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                </>
+              )}
+            />
           )}
         </CardContent>
       </Card>

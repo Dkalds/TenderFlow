@@ -5,6 +5,13 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, ChevronDown, Cpu, Info, ListFilter, Map, RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -50,7 +57,11 @@ const IMPORTE_PRESETS = [
   { label: "> 1M", value: 1_000_000 },
 ];
 
-/** Popover minimalista con click-outside/Escape, mismo idioma que SavedViewsMenu. */
+/** Small preset dropdown (date ranges, importe presets) — a plain option
+ *  list with no form control, so `DropdownMenu` (unlike `SavedViewsMenu`,
+ *  which needs `Popover` for its text input — see components/ui/popover.tsx)
+ *  is the right primitive: exit animation, focus trap, and Escape/outside
+ *  dismissal come for free instead of being hand-rolled. */
 function PresetMenu({
   icon,
   label,
@@ -58,50 +69,31 @@ function PresetMenu({
 }: {
   icon: React.ReactNode;
   label: string;
-  children: (close: () => void) => React.ReactNode;
+  children: React.ReactNode;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const rootRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
   return (
-    <div ref={rootRef} className="relative">
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-9 gap-1 px-2 text-xs"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        title={label}
-      >
-        {icon}
-        <ChevronDown className="h-3 w-3" />
-        <span className="sr-only">{label}</span>
-      </Button>
-      {open && (
-        <div
-          role="menu"
-          tabIndex={-1}
-          // Same enter treatment as DropdownMenuContent (150ms, origin-aware)
-          // so hand-rolled and Radix popovers feel identical (cohesion).
-          className="tf-glass-strong animate-in fade-in-0 zoom-in-95 origin-top-left absolute left-0 top-full z-50 mt-1 min-w-40 rounded-md border border-border/70 p-1 shadow-xl"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-          }}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1 px-2 text-xs"
+              aria-haspopup="menu"
+            >
+              {icon}
+              <ChevronDown className="h-3 w-3" />
+              <span className="sr-only">{label}</span>
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="start" className="min-w-40">
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -243,24 +235,14 @@ export function GlobalFilterBar() {
 
       {shows("fecha") && (
       <PresetMenu icon={<Calendar className="h-3.5 w-3.5 text-primary" />} label="Rangos de fecha rapidos">
-        {(close) => (
-          <>
-            {DATE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                role="menuitem"
-                className="block w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                onClick={() => {
-                  filters.setRango({ desde: preset.desde(), hasta: preset.hasta() });
-                  close();
-                }}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </>
-        )}
+        {DATE_PRESETS.map((preset) => (
+          <DropdownMenuItem
+            key={preset.label}
+            onSelect={() => filters.setRango({ desde: preset.desde(), hasta: preset.hasta() })}
+          >
+            {preset.label}
+          </DropdownMenuItem>
+        ))}
       </PresetMenu>
       )}
 
@@ -322,35 +304,17 @@ export function GlobalFilterBar() {
 
       {shows("importe") && (
       <PresetMenu icon={<span className="text-xs font-semibold text-primary">€</span>} label="Presets de importe minimo">
-        {(close) => (
-          <>
-            {IMPORTE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                role="menuitem"
-                className="block w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                onClick={() => {
-                  filters.setImporteMin(preset.value);
-                  close();
-                }}
-              >
-                {preset.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full rounded-sm px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent"
-              onClick={() => {
-                filters.setImporteMin(null);
-                close();
-              }}
-            >
-              Cualquiera
-            </button>
-          </>
-        )}
+        {IMPORTE_PRESETS.map((preset) => (
+          <DropdownMenuItem key={preset.label} onSelect={() => filters.setImporteMin(preset.value)}>
+            {preset.label}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuItem
+          className="text-muted-foreground"
+          onSelect={() => filters.setImporteMin(null)}
+        >
+          Cualquiera
+        </DropdownMenuItem>
       </PresetMenu>
       )}
 

@@ -181,9 +181,14 @@ export function NotificationBell({ className: _className }: NotificationBellProp
         {liveItems.length > 0 && (
           <ul className="mb-1 space-y-1">
             {liveItems.map((n) => (
+              // Genuinely live data (pushed via SSE, prepended as it
+              // arrives) — fade+slide instead of popping in with no
+              // transition (find-animation-opportunities: "preventing a
+              // jarring change"). Keyed by a fresh uuid per push, so this
+              // only plays once per item, on its own mount.
               <li
                 key={n.id}
-                className="rounded-sm bg-primary/5 px-2 py-1.5 text-sm"
+                className="animate-in fade-in-0 slide-in-from-top-2 rounded-sm bg-primary/5 px-2 py-1.5 text-sm"
               >
                 <p>{n.message}</p>
               </li>

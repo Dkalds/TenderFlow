@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // TopNav wires together many stores/children. We stub the external
 // dependencies so TopNav's own markup and handlers run deterministically;
@@ -23,6 +24,13 @@ vi.mock("@/components/export-popover", () => ({ ExportPopover: () => <div data-t
 
 import { TopNav } from "@/components/layout/top-nav";
 
+// Radix's DropdownMenu trigger opens on pointer down (not a synthetic
+// `click`) — see components/ui/__tests__/dropdown-menu.test.tsx.
+function openMenu(trigger: HTMLElement) {
+  fireEvent.pointerDown(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
+  fireEvent.pointerUp(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   setTheme.mockClear();
@@ -38,7 +46,13 @@ function renderNav() {
       json: async () => ({ last_extraction: new Date().toISOString() }),
     }),
   );
-  return render(<TopNav />);
+  // The density/theme toggle buttons wrap in a Tooltip, which requires a
+  // TooltipProvider ancestor (real usage gets one from components/providers.tsx).
+  return render(
+    <TooltipProvider>
+      <TopNav />
+    </TooltipProvider>,
+  );
 }
 
 describe("TopNav", () => {
@@ -101,7 +115,7 @@ describe("TopNav", () => {
 
   it("opens the user menu and logs out", async () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Menú de usuario/ }));
+    openMenu(screen.getByRole("button", { name: /Menú de usuario/ }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
     const logout = screen.getByRole("menuitem", { name: /logout|cerrar|salir/i });
     fireEvent.click(logout);

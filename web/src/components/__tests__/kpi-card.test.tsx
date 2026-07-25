@@ -2,6 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import type { LucideIcon } from "lucide-react";
 import { KpiCard } from "@/components/charts/kpi-card";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 function TestIcon() {
   return (
@@ -15,13 +16,13 @@ describe("KpiCard", () => {
   it("renders title and value text", () => {
     render(<KpiCard title="Total" value="1.234" />);
     expect(screen.getByText("Total")).toBeInTheDocument();
-    expect(screen.getByLabelText("1.234")).toBeInTheDocument();
+    expect(screen.getByText("1.234")).toBeInTheDocument();
   });
 
   it("shows loading skeleton when loading={true}", () => {
     const { container } = render(<KpiCard title="Total" loading={true} />);
     // Value text should not be present; Skeleton div should be rendered
-    expect(screen.queryByLabelText("1.234")).not.toBeInTheDocument();
+    expect(screen.queryByText("1.234")).not.toBeInTheDocument();
     // Skeleton renders a div with the shimmer treatment
     const skeleton = container.querySelector('[data-slot="skeleton"]') ?? container.querySelector('.tf-shimmer');
     expect(skeleton).not.toBeNull();
@@ -43,11 +44,16 @@ describe("KpiCard", () => {
   });
 
   it("shows anomaly indicator when anomaly={true}", () => {
-    const { container } = render(<KpiCard title="Total" value="100" anomaly={true} />);
-    const anomalySpan = container.querySelector('[title]');
-    expect(anomalySpan).not.toBeNull();
-    // The title mentions anomaly
-    expect(anomalySpan?.getAttribute("title")).toContain("noma");
+    // The anomaly badge wraps in a Tooltip, which requires a TooltipProvider
+    // ancestor (real usage gets one from components/providers.tsx).
+    render(
+      <TooltipProvider>
+        <KpiCard title="Total" value="100" anomaly={true} />
+      </TooltipProvider>,
+    );
+    // The sr-only text inside the badge mentions the anomaly, same content
+    // as the Tooltip.
+    expect(screen.getByText(/Anomal.a detectada/)).toBeInTheDocument();
   });
 
   it("does not show anomaly indicator when anomaly={false} (default)", () => {

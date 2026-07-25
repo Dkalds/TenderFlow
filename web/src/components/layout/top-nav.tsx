@@ -21,6 +21,14 @@ import { SECTIONS } from "@/lib/navigation";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
 import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
@@ -46,8 +54,6 @@ export function TopNav() {
   const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [expandedSection, setExpandedSection] = React.useState<string | null>(null);
-  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
-  const userMenuTriggerRef = React.useRef<HTMLButtonElement>(null);
   const withFilters = useWithFilters();
   const setCommandOpen = useUiStore((s) => s.setCommandOpen);
 
@@ -164,83 +170,64 @@ export function TopNav() {
             <NotificationBell />
 
             {/* Density toggle */}
-            <Button variant="ghost" size="icon" onClick={toggleCompact} title={compact ? "Normal density" : "Compact density"}>
-              {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
-              <span className="sr-only">Toggle density</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={toggleCompact}>
+                  {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
+                  <span className="sr-only">Toggle density</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{compact ? "Normal density" : "Compact density"}</TooltipContent>
+            </Tooltip>
 
             {/* Theme toggle */}
             <span className="mx-1 hidden h-5 w-px bg-border/70 sm:block" aria-hidden="true" />
-            <Button variant="ghost" size="icon" onClick={toggleTheme}>
-              <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
-              <span className="sr-only">Toggle theme</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={toggleTheme}>
+                  <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
+                  <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
+                  <span className="sr-only">Toggle theme</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{theme === "dark" ? "Light mode" : "Dark mode"}</TooltipContent>
+            </Tooltip>
 
             {/* User menu */}
-            <div className="relative">
-              <Button
-                ref={userMenuTriggerRef}
-                variant="ghost"
-                size="icon"
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-                aria-label="Menú de usuario"
-                aria-expanded={userMenuOpen}
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium">
-                  <User className="h-4 w-4" />
-                </div>
-              </Button>
-              {userMenuOpen && (
-                <div
-                  // Same enter treatment as DropdownMenuContent (cohesion):
-                  // this menu is hand-rolled (holds a logout side-effect),
-                  // but it should still feel identical to the Radix ones.
-                  className="tf-glass-strong animate-in fade-in-0 zoom-in-95 origin-top-right absolute right-0 top-full mt-1 w-48 rounded-md border p-1 shadow-md"
-                  role="menu"
-                  tabIndex={-1}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      setUserMenuOpen(false);
-                      userMenuTriggerRef.current?.focus();
-                    }
-                  }}
-                >
-                  <button role="menuitem" className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm hover:bg-accent">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Menú de usuario">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium">
                     <User className="h-4 w-4" />
-                    Perfil
-                  </button>
-                  <button role="menuitem" onClick={handleLogout} className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm hover:bg-accent text-destructive">
-                    <LogOut className="h-4 w-4" />
-                    {t("auth.logout")}
-                  </button>
-                </div>
-              )}
-            </div>
+                  </div>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem>
+                  <User className="h-4 w-4" />
+                  Perfil
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleLogout()}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {t("auth.logout")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
 
-      {/* Mobile sheet */}
-      {mobileOpen && (
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-        <div
-          className="fixed inset-0 z-40 md:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Menú de navegación"
-          tabIndex={-1}
-          onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
-        >
-          <div
-            role="presentation"
-            className="animate-in fade-in-0 anim-duration-300 absolute inset-0 bg-black/50"
-            onClick={() => setMobileOpen(false)}
-            onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
-          />
-          {/* Same edge-anchored slide as Sheet (apple-design §7): this drawer
-              is the mobile equivalent of a left-side sheet. */}
-          <nav className="tf-glass-strong animate-in slide-in-from-left anim-duration-300 absolute left-0 top-14 bottom-0 w-72 border-r p-4 space-y-1 overflow-y-auto" aria-label="Navegación móvil">
+      {/* Mobile sheet — same primitive as the desktop Sheet (CopilotPanel,
+          DetailPanel, …), so it gets a real exit animation, focus trap, and
+          scroll lock for free instead of the hand-rolled version's
+          enter-only teleport-on-close. */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-72 overflow-y-auto p-4 md:hidden">
+          <SheetTitle className="sr-only">Menú de navegación</SheetTitle>
+          <nav className="space-y-1" aria-label="Navegación móvil">
             {visibleSections.map((section) => {
               const Icon = section.icon;
               const active = section.pages.some((p) => pathname === `/${p.slug}`);
@@ -299,8 +286,8 @@ export function TopNav() {
               );
             })}
           </nav>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

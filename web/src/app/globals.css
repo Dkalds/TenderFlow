@@ -212,6 +212,20 @@
   --font-display: var(--font-display);
 }
 
+/*
+ * House motion curves (emil-design-eng: built-in CSS easings are too weak
+ * for deliberate UI motion). Declared as real theme values (not `inline`) so
+ * `--ease-out`/`--ease-in-out` override Tailwind's default `ease-out`/
+ * `ease-in-out` utilities repo-wide, and so the `@utility animate-in/out`
+ * keyframes below and any `ease-[var(--ease-*)]` usage can read them as
+ * plain CSS custom properties.
+ */
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @utility tf-display {
   font-family: var(--font-display);
   font-size: 2.25rem;
@@ -279,7 +293,7 @@
 @utility animate-in {
   animation-name: tf-enter;
   animation-duration: 150ms;
-  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  animation-timing-function: var(--ease-out);
   animation-fill-mode: both;
   --tf-enter-opacity: initial;
   --tf-enter-scale: initial;
@@ -289,7 +303,7 @@
 @utility animate-out {
   animation-name: tf-exit;
   animation-duration: 150ms;
-  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  animation-timing-function: var(--ease-out);
   animation-fill-mode: both;
   --tf-exit-opacity: initial;
   --tf-exit-scale: initial;
@@ -359,13 +373,72 @@
   --tf-exit-translate-x: 100%;
 }
 
-/* Accessibility */
+/*
+ * Press feedback for any pressable element (emil-design-eng: "buttons must
+ * feel responsive" — subtle scale on `:active`, applies to any pressable
+ * element, not just `<button>`). `Button` already has its own `active:` via
+ * cva; this utility covers hand-rolled pressables (icon buttons, `Badge
+ * role="button"`, menu items) that don't go through it.
+ */
+@utility tf-pressable {
+  transition: transform 160ms var(--ease-out);
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+/*
+ * CSS-only group-entrance stagger (components/motion.tsx `Stagger`). Direct
+ * children (`Stagger.Item`, using `animate-in fade-in-0 slide-in-from-bottom-2`)
+ * get a cascading delay, 60ms apart — inside the skill's 30–80ms range —
+ * capped at 6 items; a stagger beyond that reads as slow, not natural.
+ * Pure CSS instead of JS `staggerChildren` (emil-design-eng: "CSS beats JS
+ * under load") — this is what let `motion`/Framer Motion come out of the
+ * bundle entirely.
+ */
+@utility tf-stagger {
+  & > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  & > *:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  & > *:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  & > *:nth-child(4) {
+    animation-delay: 180ms;
+  }
+  & > *:nth-child(5) {
+    animation-delay: 240ms;
+  }
+  & > *:nth-child(6) {
+    animation-delay: 300ms;
+  }
+}
+
+/*
+ * Accessibility — reduced motion means fewer and gentler animations, not
+ * zero (apple-design §14 / emil-design-eng). Movement and scale are
+ * neutralized (the `tf-enter`/`tf-exit` keyframes above read these same
+ * custom properties, so every `animate-in`/`animate-out` overlay in the app
+ * degrades to a pure opacity fade instead of vanishing instantly); opacity
+ * and color transitions are left intact because they carry information
+ * (a fading toast, a color state change) that helps comprehension.
+ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 150ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 150ms !important;
+    transition-property: opacity, color, background-color, border-color, fill, stroke !important;
     scroll-behavior: auto !important;
+    --tf-enter-translate-x: 0 !important;
+    --tf-enter-translate-y: 0 !important;
+    --tf-enter-scale: 1 !important;
+    --tf-exit-translate-x: 0 !important;
+    --tf-exit-translate-y: 0 !important;
+    --tf-exit-scale: 1 !important;
   }
 }
 
@@ -431,6 +504,20 @@ body {
   }
 }
 
+/*
+ * apple-design §14: prefers-reduced-transparency asks for frostier/solid
+ * surfaces (raise opacity, drop the blur), independent from reduced motion.
+ * Reuses the same solid backgrounds as the `@supports not (backdrop-filter)`
+ * fallback above rather than inventing new values.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  .tf-sidebar-surface {
+    background: linear-gradient(180deg, hsl(var(--card)), hsl(var(--background)));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .tf-card-shadow {
   box-shadow:
     inset 0 1px 0 hsl(0 0% 100% / 0.05),
@@ -465,6 +552,37 @@ body {
   }
   .tf-glass-strong {
     background: hsl(var(--popover));
+  }
+}
+
+/* apple-design §14: same solid fallback, triggered by user preference
+   instead of feature support. */
+@media (prefers-reduced-transparency: reduce) {
+  .tf-glass {
+    background: hsl(var(--card));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .tf-glass-strong {
+    background: hsl(var(--popover));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/*
+ * apple-design §14: prefers-contrast asks for near-solid backgrounds with a
+ * defined border instead of a soft translucent edge. Layers on top of the
+ * reduced-transparency rule above (both can be true at once).
+ */
+@media (prefers-contrast: more) {
+  .tf-glass,
+  .tf-glass-strong,
+  .tf-sidebar-surface {
+    background: hsl(var(--background));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: hsl(var(--foreground) / 0.4);
   }
 }
 
@@ -505,10 +623,17 @@ body {
   }
 }
 
-/* NProgress bar — match primary color */
+/*
+ * NProgress bar — match primary color. NProgress sets `transition: all
+ * {speed}ms {ease}` as an inline style via JS (only `transform` actually
+ * moves), so pin it to just `transform` here — animating `all` is always a
+ * finding (emil-design-eng), and `!important` is required to beat the
+ * inline style.
+ */
 #nprogress .bar {
   background: hsl(var(--primary)) !important;
   height: 3px !important;
+  transition: transform 200ms linear !important;
 }
 #nprogress .peg {
   box-shadow: 0 0 10px hsl(var(--primary)), 0 0 5px hsl(var(--primary)) !important;

@@ -116,7 +116,7 @@ export function KpiBar({ kpis = [], loading = false, filtered = false, collapsed
     // inner overflow-hidden clips the bar — border included — as it collapses.
     <div
       className={cn(
-        "grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+        "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
         collapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
       )}
     >

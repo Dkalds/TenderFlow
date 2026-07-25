@@ -92,4 +92,16 @@ describe("Button", () => {
     expect(ref.current).not.toBeNull();
     expect(ref.current?.tagName).toBe("BUTTON");
   });
+
+  it("asChild renders the button styling onto the child element, not a wrapping <button>", () => {
+    render(
+      <Button asChild>
+        <a href="/somewhere">go</a>
+      </Button>,
+    );
+    const link = screen.getByRole("link", { name: "go" });
+    expect(link.tagName).toBe("A");
+    expect(link).toHaveClass("inline-flex");
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
 });

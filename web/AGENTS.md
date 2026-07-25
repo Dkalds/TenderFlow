@@ -22,3 +22,11 @@ analítica.** Detalle completo, anti-patrones y checklist en
 
 Verificado por `python scripts/check_frontend_invariants.py` (modo aviso;
 `fdi-allow` por línea para excepciones justificadas).
+
+# Motion (Emil Kowalski design engineering)
+
+Tokens de easing, duraciones por tipo de elemento, primitivos enter/exit,
+qué no animar nunca y por qué `motion`/Framer Motion salió del bundle:
+[`docs/frontend-motion.md`](../docs/frontend-motion.md). Antes de tocar
+cualquier animación, revisar ese documento y las skills `emil-design-eng` /
+`review-animations` / `apple-design` (`.agents/skills/`).

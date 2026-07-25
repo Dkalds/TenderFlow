@@ -2,7 +2,7 @@
  * Tests for src/components/providers.tsx
  *
  * Strategy:
- *  - Mock all heavy external providers (next-themes, nuqs, motion, sonner,
+ *  - Mock all heavy external providers (next-themes, nuqs, sonner,
  *    next/navigation) so the unit test stays in-memory and fast.
  *  - Verify that Providers mounts without throwing and that children are
  *    rendered in the DOM.
@@ -23,11 +23,6 @@ vi.mock("next-themes", () => ({
 
 vi.mock("nuqs/adapters/next/app", () => ({
   NuqsAdapter: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-}));
-
-vi.mock("@/components/motion", () => ({
-  MotionProvider: ({ children }: { children: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children),
 }));
 
