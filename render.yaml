@@ -9,6 +9,11 @@ services:
     envVars:
       - key: ENV
         value: prod
+      # Perfil de componentes: este servicio sirve la API HTTP, así que exige
+      # SIGNING_KEY, API_HMAC_SECRET, REDIS_URL y CORS_ALLOWED_ORIGINS. Los
+      # jobs de GitHub Actions usan APP_PROFILE=scraper contra la misma BD.
+      - key: APP_PROFILE
+        value: api
       # Postgres/Supabase (ADR-016, F3) — tiene precedencia sobre TURSO_* y SQLite.
       # Usar Supavisor session pooler (puerto 5432). TLS: se recomienda
       # ?sslmode=verify-full + DATABASE_SSL_ROOT_CERT (CA de Supabase) para

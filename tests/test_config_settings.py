@@ -430,6 +430,120 @@ def test_turso_incomplete_pair_warns():
 
 
 # ---------------------------------------------------------------------------
+# APP_PROFILE — separación entorno de datos vs componentes arrancados
+# ---------------------------------------------------------------------------
+
+# Secretos que solo exige el perfil `api`. El cron de scrape toca datos de
+# producción pero no sirve HTTP, así que no debe necesitar ninguno de estos.
+_API_SECRETS = {
+    "SIGNING_KEY": "k" * 32,
+    "API_HMAC_SECRET": "h" * 32,
+    "REDIS_URL": "redis://localhost:6379/0",
+    "REDIS_PASSWORD": "p" * 32,
+}
+
+
+def test_app_profile_defaults_to_api():
+    """El default es el perfil más exigente: no relaja nada por omisión."""
+    from config.settings import Settings
+
+    assert Settings().APP_PROFILE == "api"
+
+
+@pytest.mark.parametrize("profile", ["scraper", "worker"])
+@pytest.mark.parametrize("env", ["prod", "staging"])
+def test_non_api_profiles_skip_http_secrets(env, profile):
+    """ENV=prod sin secretos HTTP es válido para scraper/worker.
+
+    Es el caso del cron de GitHub Actions: escribe en la BD de producción
+    (por eso ENV=prod, que mantiene activos los validators de BD) pero no
+    expone la API.
+    """
+    from config.settings import Settings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(ENV=env, APP_PROFILE=profile, DATABASE_URL="")
+
+    resultado = {"env": s.ENV, "perfil": s.APP_PROFILE}
+    assert resultado == {"env": env, "perfil": profile}
+
+
+@pytest.mark.parametrize(
+    ("missing", "match"),
+    [
+        ("SIGNING_KEY", "SIGNING_KEY es obligatorio"),
+        ("API_HMAC_SECRET", "API_HMAC_SECRET es obligatorio"),
+        ("REDIS_URL", "REDIS_URL es obligatorio"),
+    ],
+)
+def test_api_profile_still_requires_http_secrets(missing, match):
+    """El perfil api en prod sigue exigiendo todos los secretos HTTP."""
+    from config.settings import Settings
+
+    kwargs = dict(_API_SECRETS)
+    kwargs[missing] = ""
+
+    with pytest.raises(Exception, match=match):
+        Settings(ENV="prod", APP_PROFILE="api", DATABASE_URL="", **kwargs)
+
+
+def test_api_profile_prod_ok_with_all_secrets():
+    from config.settings import Settings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(ENV="prod", APP_PROFILE="api", DATABASE_URL="", **_API_SECRETS)
+
+    assert s.APP_PROFILE == "api"
+
+
+@pytest.mark.parametrize("profile", ["api", "worker", "scraper"])
+def test_database_ssl_validator_applies_to_every_profile(profile):
+    """El validator de TLS no depende del perfil.
+
+    Es el invariante que hacía falta: el cron corría con ENV=dev y por eso
+    escapaba de este chequeo apuntando a Supabase. Con APP_PROFILE separado,
+    ningún perfil puede saltárselo.
+    """
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="sslmode"):
+        Settings(
+            ENV="prod",
+            APP_PROFILE=profile,
+            DATABASE_URL="postgresql://u:p@db.supabase.co:5432/postgres",  # pragma: allowlist secret
+            **_API_SECRETS,
+        )
+
+
+@pytest.mark.parametrize("profile", ["api", "worker", "scraper"])
+def test_smtp_password_required_for_every_profile(profile):
+    """Las alertas las envían todos los perfiles, no solo la API."""
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="ALERT_SMTP_PASSWORD"):
+        Settings(
+            ENV="prod",
+            APP_PROFILE=profile,
+            DATABASE_URL="",
+            ALERT_EMAIL_TO="ops@example.com",
+            ALERT_SMTP_PASSWORD="",
+            **_API_SECRETS,
+        )
+
+
+def test_invalid_app_profile_rejected():
+    """``dashboard`` fue un perfil real (Streamlit, ADR-002) y ya no existe."""
+    from pydantic import ValidationError
+
+    from config.settings import Settings
+
+    with pytest.raises(ValidationError, match="APP_PROFILE"):
+        Settings(APP_PROFILE="dashboard")
+
+
+# ---------------------------------------------------------------------------
 # ensure_data_dirs
 # ---------------------------------------------------------------------------
 

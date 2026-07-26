@@ -37,49 +37,26 @@ jobs:
 
       - name: Run pliegos batch (fetch + chunk + embed)
         env:
-          # ENV=dev omite los validators de prod que requieren secrets de la
-          # aplicación (mismo criterio que ml-scoring.yml). La BD de producción
-          # es Supabase (ADR-016): DATABASE_URL tiene precedencia sobre TURSO_*.
-          ENV: dev
+          # ENV=prod porque este job escribe en la BD de producción, así que
+          # los validators de datos (TLS de DATABASE_URL, alertas) deben estar
+          # activos. APP_PROFILE=scraper omite los secretos que solo necesita
+          # el proceso HTTP (SIGNING_KEY, REDIS_URL, CORS): son ejes distintos.
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           LOG_FORMAT: json
-        run: |
-          python -c "
-          import json
-          from db.database import init_db
-          from scheduler.jobs.documentos_embeddings import run
-
-          init_db()
-          resumen = run()
-          print(json.dumps(resumen, default=str, indent=2))
-          if resumen['fetch']['error'] and not resumen['fetch']['extracted']:
-              # Todo el lote falló -- señal de un problema sistémico (SSRF/red/breaker),
-              # no de PDFs individuales corruptos (eso es normal y esperado).
-              raise SystemExit(f\"Lote de fetch falló por completo: {resumen['fetch']}\")
-          "
+        run: python -m scheduler.jobs.documentos_embeddings run
 
       - name: Report documento_chunks state
         env:
-          ENV: dev
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: |
-          python -c "
-          from db.database import connect_read
-
-          with connect_read() as c:
-              n_docs = c.execute('SELECT COUNT(*) FROM documentos').fetchone()[0]
-              n_pending = c.execute(\"SELECT COUNT(*) FROM documentos WHERE status = 'pending'\").fetchone()[0]
-              n_extracted = c.execute(\"SELECT COUNT(*) FROM documentos WHERE status = 'extracted'\").fetchone()[0]
-              n_error = c.execute(\"SELECT COUNT(*) FROM documentos WHERE status = 'error'\").fetchone()[0]
-              n_chunks = c.execute('SELECT COUNT(*) FROM documento_chunks').fetchone()[0]
-          print(
-              f'documentos: {n_docs} total · {n_pending} pending · '
-              f'{n_extracted} extracted · {n_error} error · documento_chunks: {n_chunks}'
-          )
-          "
+          LOG_FORMAT: json
+        run: python -m scheduler.jobs.documentos_embeddings report

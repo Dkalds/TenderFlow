@@ -269,3 +269,21 @@ class DocumentosRepository:
         with connect_read() as c:
             row = c.execute("SELECT COUNT(*) FROM documentos").fetchone()
             return int(row[0] if row else 0)
+
+    def status_counts(self) -> dict[str, int]:
+        """Recuento de ``documentos`` por ``status`` + total de chunks.
+
+        Usado por el reporting del job de embeddings (antes vivía como SQL
+        inline en un heredoc de ``pliegos.yml``). Devuelve siempre las claves
+        conocidas del ciclo de vida, con 0 cuando no hay filas, para que el
+        formato del informe no dependa de los datos.
+        """
+        counts = {"total": 0, "pending": 0, "downloaded": 0, "extracted": 0, "error": 0}
+        with connect_read() as c:
+            cur = c.execute("SELECT status, COUNT(*) FROM documentos GROUP BY status")
+            for status, n in cur.fetchall():
+                counts[str(status)] = int(n)
+                counts["total"] += int(n)
+            row = c.execute("SELECT COUNT(*) FROM documento_chunks").fetchone()
+            counts["chunks"] = int(row[0] if row else 0)
+        return counts
