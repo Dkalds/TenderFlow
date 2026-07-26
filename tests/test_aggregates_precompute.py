@@ -1,8 +1,6 @@
 """Tests para scheduler/aggregates_precompute.py.
 
 Cubre:
-- _compute_top_empresas: comportamiento con datos y BD vacía.
-- _persist_top_empresas: replace atómico en mat_top_empresas_ccaa.
 - _compute_clusters: comportamiento con datos y fallback sin sklearn.
 - _persist_clusters: replace atómico en mat_clusters.
 - run_aggregates_precompute: end-to-end con BD temporal.
@@ -21,19 +19,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def _insert_adjudicaciones(db_mod: Any, rows: list[tuple[str, str, float]]) -> None:
-    """Inserta rows de (ccaa, nombre, importe_adjudicado) en adjudicaciones."""
-    with db_mod.connect() as conn:
-        conn.execute("PRAGMA foreign_keys = OFF")
-        for i, (ccaa, nombre, importe) in enumerate(rows):
-            conn.execute(
-                "INSERT OR IGNORE INTO adjudicaciones "
-                "(licitacion_id, nombre, ccaa, importe_adjudicado, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (f"lic-{i}-{nombre[:8]}", nombre, ccaa, importe, "2026-01-01"),
-            )
-
-
 def _insert_licitaciones(db_mod: Any, rows: list[tuple[str, str, str]]) -> None:
     """Inserta rows de (id_externo, titulo, descripcion)."""
     with db_mod.connect() as conn:
@@ -43,13 +28,6 @@ def _insert_licitaciones(db_mod: Any, rows: list[tuple[str, str, str]]) -> None:
                 "VALUES (?, ?, ?, ?)",
                 (id_ext, titulo, desc, "2026-01-01"),
             )
-
-
-# ---------------------------------------------------------------------------
-# _compute_top_empresas
-# ---------------------------------------------------------------------------
-
-
 
 
 # ---------------------------------------------------------------------------

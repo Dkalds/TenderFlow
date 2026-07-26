@@ -25,6 +25,7 @@ nivel:
 - ``now_utc_iso()``         — ISO 8601 del instante actual en UTC.
 - ``safe_pragma()``         — ejecuta PRAGMA solo si el backend lo soporta.
 - ``set_db_path_override()``— override de ruta para tests (evita reload).
+- ``set_pg_test_url()``     — apunta la suite a un Postgres real (ADR-018).
 
 **db.schema** — DDL y bootstrapping:
 
@@ -83,6 +84,7 @@ from db.connection import (
     now_utc_iso,
     safe_pragma,
     set_db_path_override,
+    set_pg_test_url,
 )
 
 # Re-exportar desde db.schema
@@ -122,6 +124,7 @@ __all__ = [
     "now_utc_iso",
     "safe_pragma",
     "set_db_path_override",
+    "set_pg_test_url",
     # schema
     "SCHEMA",
     "init_db",

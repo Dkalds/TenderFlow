@@ -56,6 +56,25 @@ def now_utc_iso() -> str:
 # ---------------------------------------------------------------------------
 
 
+# URL de Postgres inyectada por la suite de tests (ver tests/conftest.py).
+# Tiene precedencia sobre _DB_PATH_OVERRIDE: cuando está puesta, los tests
+# corren contra el mismo motor que producción en vez de contra SQLite local.
+_PG_TEST_URL: str | None = None
+
+
+def set_pg_test_url(url: str | None) -> None:
+    """Fija (o limpia con None) la URL de Postgres para la suite de tests.
+
+    Existe porque la suite corría históricamente sobre SQLite mientras
+    producción es Postgres (ADR-016), de modo que ninguna diferencia de
+    dialecto —tipos, funciones de fecha, ``Decimal`` vs ``float``— quedaba
+    cubierta por los 2600 tests. Ver ADR-018.
+    """
+    global _PG_TEST_URL, _db_initialized
+    _PG_TEST_URL = url
+    _db_initialized = False
+
+
 def _database_url() -> str:
     """Devuelve DATABASE_URL del entorno o cadena vacía.
 
@@ -63,6 +82,8 @@ def _database_url() -> str:
     tests hacen ``monkeypatch.setattr(settings, "DATABASE_URL", "")`` con un
     ``str`` plano — se soportan ambas formas.
     """
+    if _PG_TEST_URL:
+        return _PG_TEST_URL
     env_val = os.environ.get("DATABASE_URL", "")
     if env_val:
         return env_val
@@ -75,12 +96,15 @@ def _database_url() -> str:
 def is_postgres_backend() -> bool:
     """True si DATABASE_URL está configurada y apunta a Postgres/Supabase.
 
-    Excepción: si hay un ``_DB_PATH_OVERRIDE`` activo (tests con tmp_db),
-    siempre devuelve False para que los tests usen SQLite local.
+    Con ``_PG_TEST_URL`` activa (suite corriendo contra Postgres real) siempre
+    es True. Si no, y hay un ``_DB_PATH_OVERRIDE`` activo (fixture ``tmp_db``
+    en modo SQLite), es False.
     """
+    if _PG_TEST_URL:
+        return True
     # Acceder via globals() para evitar forward-reference (definida más abajo)
     if globals().get("_DB_PATH_OVERRIDE") is not None:
-        return False  # tests siempre usan SQLite
+        return False  # fixture SQLite local
     url = _database_url()
     return bool(url and url.startswith(("postgresql://", "postgres://")))
 
@@ -213,12 +237,29 @@ _pg_pool: Any = None  # psycopg_pool.ConnectionPool | None
 _pg_pool_lock = threading.Lock()
 
 
-def _pg_connect_kwargs() -> dict[str, Any]:
+def _url_options(url: str) -> str:
+    """Devuelve el parámetro ``options`` embebido en la query string de ``url``.
+
+    ``psycopg_pool`` pasa ``kwargs`` **por encima** de lo que traiga la URL, así
+    que un ``options=...`` en la cadena de conexión se perdía en silencio al
+    aplicarse los timeouts. Se extrae aquí para poder fusionarlo en vez de
+    pisarlo (lo usa, por ejemplo, el ``search_path`` por test de la suite).
+    """
+    from urllib.parse import parse_qs, urlsplit
+
+    if not url:
+        return ""
+    values = parse_qs(urlsplit(url).query).get("options")
+    return values[-1] if values else ""
+
+
+def _pg_connect_kwargs(url: str = "") -> dict[str, Any]:
     """Parámetros libpq extra aplicados a cada conexión del pool Postgres.
 
     - ``options``: ``statement_timeout`` + ``idle_in_transaction_session_timeout``
       server-side. Evitan que una query descontrolada u hostil, o una transacción
       idle, claven una conexión del (pequeño) pool y lo saturen (DoS barato).
+      Se **fusionan** con los que traiga la URL, que de otro modo se perderían.
     - ``connect_timeout``: no colgar indefinidamente si el pooler no responde.
     - ``sslrootcert``: CA raíz para ``sslmode=verify-full`` (si está configurada).
     """
@@ -226,6 +267,9 @@ def _pg_connect_kwargs() -> dict[str, Any]:
     stmt_ms = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
     idle_ms = int(getattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000))
     opts: list[str] = []
+    from_url = _url_options(url)
+    if from_url:
+        opts.append(from_url)
     if stmt_ms > 0:
         opts.append(f"-c statement_timeout={stmt_ms}")
     if idle_ms > 0:
@@ -257,10 +301,11 @@ def _get_pg_pool() -> Any:
             ) from exc
 
         pool_size = getattr(settings, "DB_POOL_SIZE", 5)
-        conn_kwargs = _pg_connect_kwargs()
+        url = _database_url()
+        conn_kwargs = _pg_connect_kwargs(url)
         try:
             _pg_pool = ConnectionPool(
-                conninfo=_database_url(),
+                conninfo=url,
                 min_size=1,
                 max_size=max(pool_size, 2),
                 kwargs=conn_kwargs,
