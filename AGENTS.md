@@ -93,7 +93,18 @@ make api              # arranca FastAPI en :8080
 make web-dev          # arranca Next.js en :3000
 make scrape-daily     # corre scraper en modo daily
 make doctor           # verifica entorno (scripts/doctor.py)
+make status           # regenera docs/STATUS.md desde el código
+make job-parity       # verifica que todo job tiene plano de ejecución (ADR-012)
 ```
+
+**Estado derivado del código:** [docs/STATUS.md](docs/STATUS.md) se genera con
+`make status` y CI verifica que esté sincronizado. Contiene la paridad de jobs
+por plano, el conteo del ratchet TID251, el motor de la suite y la superficie de
+la API. **No lo edites a mano** — si un hecho se puede calcular, se calcula.
+
+**Motor de tests:** por defecto la suite corre sobre SQLite temporal; con
+`TEST_DATABASE_URL` apuntando a un Postgres corre contra el motor real
+(ADR-018), que es lo que hace CI. Si tocás SQL, comprobalo en ambos.
 
 Slash-commands de Claude Code (en `.claude/commands/`):
 - `/check` — lint + typecheck + test-unit

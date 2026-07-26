@@ -147,7 +147,6 @@ ignore = [
 "scheduler/concept_drift.py" = ["TID251"]
 "scheduler/drift_report.py" = ["TID251"]
 "scheduler/healthcheck.py" = ["TID251"]
-"scheduler/jobs/wal_checkpoint.py" = ["TID251"]
 "scheduler/kpi_precompute.py" = ["TID251"]
 "scheduler/retention.py" = ["TID251"]
 "scheduler/watchlist_rules_alerts.py" = ["TID251"]
