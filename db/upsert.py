@@ -21,10 +21,9 @@ from observability.runtime_metrics import upsert_rows_dropped_total
 _log = get_logger(__name__)
 
 
-# Constraint violations llegan como `sqlite3.IntegrityError` con sqlite3 stdlib
-# y como `ValueError` con el driver libsql (Turso). Ambos llevan el mismo
-# mensaje canónico de SQLite ("UNIQUE constraint failed: ...", etc.), así que
-# se pueden clasificar igual por el texto.
+# Constraint violations llegan como `sqlite3.IntegrityError` con sqlite3 stdlib.
+# Llevan el mensaje canónico de SQLite ("UNIQUE constraint failed: ...", etc.),
+# así que se pueden clasificar igual por el texto.
 def _constraint_exc_types() -> tuple[type[BaseException], ...]:
     """Excepciones que representan una violación de constraint, por driver.
 

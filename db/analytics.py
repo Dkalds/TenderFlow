@@ -3,7 +3,7 @@
 DuckDB se ATTACHa sobre el fichero SQLite de producción en modo lectura
 para ejecutar queries OLAP pesadas (group-by sobre millones de filas,
 window functions, joins múltiples) órdenes de magnitud más rápido que
-SQLite mientras la BD operacional sigue siendo SQLite/Turso.
+SQLite mientras la BD operacional sigue siendo el fichero SQLite local.
 
 Diseño (F2):
     * La conexión DuckDB es **opcional** — si DuckDB no está instalado, las

@@ -1,8 +1,8 @@
 """Long-running scheduler for Docker Compose deployments.
 
-GitHub Actions remains the preferred production scheduler for Turso-backed
-deployments. This loop is for local/self-hosted Docker stacks where Compose
-should keep one service alive and run periodic jobs against the shared DB.
+GitHub Actions remains the preferred production scheduler (ADR-012). This
+loop is for local/self-hosted Docker stacks where Compose should keep one
+service alive and run periodic jobs against the shared DB.
 """
 
 from __future__ import annotations

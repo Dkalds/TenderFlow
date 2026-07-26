@@ -30,7 +30,6 @@ from structlog.contextvars import (
 
 # ── Redacción de secretos ────────────────────────────────────────────────
 _SENSITIVE_ENV_VARS = (
-    "TURSO_AUTH_TOKEN",
     "DATABASE_URL",  # DSN Postgres/Supabase con user:pass embebidos (ADR-016)
     "DASHBOARD_PASSWORD",
     "DASHBOARD_PASSWORD_HASH",

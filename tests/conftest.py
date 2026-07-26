@@ -40,12 +40,12 @@ def _infer_marker(path: str, name: str) -> str:
     return "unit"
 
 
-# Ficheros cuyo objeto de prueba **es** la capa SQLite/libSQL: el schema SQLite
-# de db/schema.py, la detección de backend Turso y los helpers que evitan
-# emitir PRAGMA contra Hrana. No tiene sentido ejercitarlos contra Postgres
-# (ADR-018) — no son deuda de migración, son tests de otro motor. Se saltan por
-# token de nombre, misma convención que el auto-marking de arriba.
-_SQLITE_ONLY_TOKENS = ("schema_sqlite", "turso_")
+# Ficheros cuyo objeto de prueba **es** la capa SQLite local: el schema SQLite
+# de db/schema.py, db/migrations.py y los helpers PRAGMA-específicos. No tiene
+# sentido ejercitarlos contra Postgres (ADR-018/ADR-020) — no son deuda de
+# migración, son tests de otro motor. Se saltan por token de nombre, misma
+# convención que el auto-marking de arriba.
+_SQLITE_ONLY_TOKENS = ("schema_sqlite",)
 
 
 def _is_sqlite_only(path: str) -> bool:
@@ -78,8 +78,8 @@ def _isolate_database_url(monkeypatch):
     entorno del proceso -- limpiar solo ``os.environ`` (vía ``monkeypatch.delenv``)
     no alcanza porque ``_database_url()`` cae a ``settings.DATABASE_URL`` como
     fallback (ADR-016). Detectado en F3b (2026-07-05) al configurar Supabase:
-    varios tests de is_turso_backend/search_backend empezaron a fallar porque
-    ``.env`` ya trae un DATABASE_URL real. Blanquear solo el atributo de
+    varios tests de detección de backend/search_backend empezaron a fallar
+    porque ``.env`` ya trae un DATABASE_URL real. Blanquear solo el atributo de
     ``settings`` (no ``os.environ``) preserva el opt-in real de correr el test
     de paridad Postgres exportando la variable en el shell antes de pytest.
     """
@@ -289,8 +289,6 @@ def tmp_db(monkeypatch, tmp_path, request):
         return
 
     db_path = tmp_path / "test.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
 
     # Usar DI hook en vez de importlib.reload() masivo
     db_mod.close_pool()
@@ -317,8 +315,6 @@ def api_db(tmp_path, monkeypatch, request):
         return
 
     db_path = tmp_path / "test_api.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
 
     db_mod.close_pool()
     db_mod.set_db_path_override(str(db_path))

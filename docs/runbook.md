@@ -30,7 +30,6 @@ Los procedimientos detallados viven en `docs/runbooks/`.
 
 ## Rotaciones planificadas
 
-* `TURSO_AUTH_TOKEN`: cada 90 días.
 * `SIGNING_KEYS_JSON`: rotar la clave activa cada 180 días; mantener la
   anterior en el mapa durante 30 días como grace period
   (`shared/signing.py`).

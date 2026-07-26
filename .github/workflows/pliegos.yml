@@ -45,8 +45,6 @@ jobs:
           APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           LOG_FORMAT: json
         run: python -m scheduler.jobs.documentos_embeddings run
 
@@ -56,7 +54,5 @@ jobs:
           APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           LOG_FORMAT: json
         run: python -m scheduler.jobs.documentos_embeddings report

@@ -1,26 +1,30 @@
-"""Gestión del pool de conexiones SQLite / Turso (libSQL) y Postgres (psycopg3).
+"""Gestión del pool de conexiones SQLite (local) y Postgres (psycopg3).
 
 Este módulo centraliza toda la lógica de conexión: creación, pooling thread-safe,
 context managers ``connect()`` / ``connect_read()``, y helpers de diagnóstico.
 No contiene lógica de dominio ni DDL; esos residen en ``db.schema`` y ``db.upsert``.
 
-Backends soportados (ADR-016):
-- **SQLite local** (default dev): sin configuración adicional.
-- **Turso/libSQL** (producción legacy): via ``TURSO_DATABASE_URL`` + ``TURSO_AUTH_TOKEN``.
-- **Postgres / Supabase** (destino F3): via ``DATABASE_URL`` (postgresql://...).
-  Precedencia: DATABASE_URL > TURSO_* > SQLite local.
+Backends soportados (ADR-016, ADR-020):
+- **SQLite local** (dev/tests): sin configuración adicional. Es una
+  comodidad de desarrollo (ADR-018), no la referencia de producción.
+- **Postgres / Supabase** (producción): via ``DATABASE_URL`` (postgresql://...).
+  Precedencia: DATABASE_URL > SQLite local.
 
-Shim de paramstyle (F3a → F5):
+Turso/libSQL cloud (backend de producción legacy pre-ADR-016) se retiró en
+ADR-020, superada la ventana de rollback del cutover. ``libsql`` sigue siendo
+la librería usada para el fichero SQLite local — no tiene relación con Turso.
+
+Shim de paramstyle (F3a):
   El código existente usa ``?`` (qmark). psycopg3 usa ``%s``. El shim
   ``_translate_qmarks(sql)`` reescribe ``?``→``%s`` respetando literales y
   comentarios. Se activa automáticamente cuando el backend es Postgres.
-  F5 (refactor de repositories) convertirá los sitios a ``%s`` nativo.
+  Retirar el shim requeriría retirar también el backend SQLite local (ver
+  ADR-020, sección "Lo que queda deliberadamente fuera").
 """
 
 from __future__ import annotations
 
 import os
-import queue as _queue_mod
 import re
 import threading
 from collections.abc import Iterator
@@ -137,7 +141,7 @@ _SQL_TOKEN_RE = re.compile(
 def _translate_qmarks(sql: str, *, has_params: bool = True) -> str:
     """Reescribe ``?`` → ``%s`` en SQL respetando literales y comentarios.
 
-    Solo activo cuando el backend es Postgres. No-op en SQLite/Turso.
+    Solo activo cuando el backend es Postgres. No-op en SQLite local.
 
     Cuando la sentencia lleva parámetros, psycopg interpreta ``%`` como inicio
     de placeholder **también dentro de los literales**, así que un patrón como
@@ -401,7 +405,7 @@ def _close_pg_pool() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Estado global del pool SQLite/Turso
+# Estado global de la conexión SQLite local
 # ---------------------------------------------------------------------------
 
 _local = threading.local()
@@ -409,12 +413,6 @@ _local = threading.local()
 # Override para tests: si se setea, _get_conn() usa esta ruta en vez de settings.DB_PATH.
 # Esto evita el patrón frágil de importlib.reload() en los tests.
 _DB_PATH_OVERRIDE: str | None = None
-
-# Pool de conexiones Turso (Queue thread-safe). Sólo se usa cuando hay
-# TURSO_DATABASE_URL configurada (>1 conexión). Para SQLite local, thread-local basta.
-_pool: _queue_mod.Queue[Any] | None = None
-_pool_lock = threading.Lock()
-_pool_active: int = 0  # conexiones vivas (idle en queue + en uso)
 
 # Bandera de inicialización: evita ejecutar init_db() más de una vez por proceso.
 # db.schema.init_db() la pone a True; set_db_path_override() la resetea.
@@ -429,36 +427,17 @@ def set_db_path_override(path: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Heurísticas de backend SQLite/Turso
+# Heurísticas de backend SQLite/Postgres
 # ---------------------------------------------------------------------------
-
-
-def is_turso_backend() -> bool:
-    """Indica si la conexión activa apunta a Turso/Hrana (cloud o réplica).
-
-    Centraliza la heurística usada en múltiples puntos del módulo. Devuelve
-    ``False`` cuando hay un override de ruta de tests o cuando faltan
-    credenciales de Turso (en cuyo caso se usa SQLite local).
-
-    Importante: el protocolo Hrana no soporta sentencias ``PRAGMA``; usar
-    esta función para decidir si emitirlas o no.
-    """
-    if is_postgres_backend():
-        return False  # Postgres tiene precedencia
-    return bool(
-        not _DB_PATH_OVERRIDE
-        and settings.TURSO_DATABASE_URL
-        and settings.TURSO_AUTH_TOKEN.get_secret_value()
-    )
 
 
 def safe_pragma(conn: Any, stmt: str) -> None:
     """Ejecuta un ``PRAGMA`` solo si el backend lo soporta (SQLite local).
 
-    No-op en Turso/Hrana y en Postgres. Cualquier excepción se silencia
-    (defensive): los PRAGMAs son optimizaciones, no deben romper la operación.
+    No-op en Postgres. Cualquier excepción se silencia (defensive): los
+    PRAGMAs son optimizaciones, no deben romper la operación.
     """
-    if is_turso_backend() or is_postgres_backend():
+    if is_postgres_backend():
         return
     try:
         conn.execute(stmt)
@@ -480,9 +459,10 @@ def _validate_identifier(name: str) -> str:
 def get_table_columns(conn: Any, table: str) -> set[str]:
     """Devuelve el conjunto de nombres de columna de ``table``.
 
-    Funciona en SQLite local (``PRAGMA table_info``), Turso/Hrana (fallback a
-    ``SELECT * … LIMIT 0`` + ``cursor.description``) y Postgres (mismo fallback).
-    Devuelve conjunto vacío si la tabla no existe o no se puede inspeccionar.
+    Funciona en SQLite local (``PRAGMA table_info``, con fallback a
+    ``SELECT * … LIMIT 0`` + ``cursor.description``) y en Postgres
+    (``information_schema``, mismo fallback). Devuelve conjunto vacío si la
+    tabla no existe o no se puede inspeccionar.
 
     Raises:
         ValueError: si ``table`` contiene caracteres no válidos.
@@ -518,7 +498,7 @@ def get_table_columns(conn: Any, table: str) -> set[str]:
     except Exception:
         pass
 
-    # Intento 2: cursor.description (Turso/Hrana, o PRAGMA devolvió vacío)
+    # Intento 2: cursor.description (fallback si PRAGMA devolvió vacío)
     try:
         cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")
         if cur.description:
@@ -555,18 +535,13 @@ def _return_pg_connection(adapter: _PgConnAdapter) -> None:
 
 
 def _create_sqlite_connection() -> Any:
-    """Crea una nueva conexión a la BD SQLite/Turso según la configuración actual.
+    """Crea una nueva conexión al fichero SQLite local según la configuración actual.
 
     ``libsql`` (~15-25 MB RSS) se importa lazy aquí: en prod con backend
     Postgres (DATABASE_URL, precedencia máxima) esta función nunca se llama,
     así que el import no debe pagarse en cada arranque del proceso.
     """
     import libsql
-
-    if is_turso_backend():
-        return libsql.connect(
-            settings.TURSO_DATABASE_URL, auth_token=settings.TURSO_AUTH_TOKEN.get_secret_value()
-        )
 
     if (
         not _DB_PATH_OVERRIDE
@@ -575,8 +550,8 @@ def _create_sqlite_connection() -> Any:
         and not is_postgres_backend()
     ):
         raise RuntimeError(
-            "Faltan TURSO_DATABASE_URL / TURSO_AUTH_TOKEN / DATABASE_URL en el entorno CI. "
-            "Configura los secrets del repositorio antes de ejecutar el pipeline."
+            "Falta DATABASE_URL en el entorno CI. Configura el secret del "
+            "repositorio antes de ejecutar el pipeline."
         )
     db_path = _DB_PATH_OVERRIDE or str(settings.DB_PATH)
     conn = libsql.connect(db_path)
@@ -591,84 +566,15 @@ def _create_sqlite_connection() -> Any:
 _create_connection = _create_sqlite_connection
 
 
-def _health_check(conn: Any) -> bool:
-    """Verifica que una conexión sigue viva."""
-    try:
-        conn.execute("SELECT 1")
-        return True
-    except Exception:
-        return False
-
-
 def _get_conn() -> Any:
     """Devuelve una conexión reutilizada por hilo.
 
     Para Postgres: usa psycopg_pool (pool gestionado).
-    Para Turso cloud: pool interno con health-check.
     Para SQLite local: thread-local (1 conexión por hilo, WAL permite lecturas concurrentes).
     """
-    global _pool, _pool_active
-
     # ── Postgres (precedencia máxima) ─────────────────────────────────────
     if is_postgres_backend():
         return _create_pg_connection()
-
-    # ── Turso con pool_size > 1 ───────────────────────────────────────────
-    if is_turso_backend() and settings.DB_POOL_SIZE > 1:
-        if _pool is None:
-            with _pool_lock:
-                if _pool is None:
-                    _pool = _queue_mod.Queue(maxsize=settings.DB_POOL_SIZE)
-        # 1. Intentar obtener una conexión idle (no bloqueante)
-        try:
-            conn = _pool.get_nowait()
-            if _health_check(conn):
-                return conn
-            # Conexión muerta — descontar y crear nueva abajo
-            with _pool_lock:
-                _pool_active -= 1
-            try:
-                conn.close()
-            except Exception:
-                pass
-        except _queue_mod.Empty:
-            pass
-
-        # 2. Si no hay idle, intentar crear una nueva si no alcanzamos el límite
-        with _pool_lock:
-            if _pool_active < settings.DB_POOL_SIZE:
-                _pool_active += 1
-                create_new = True
-            else:
-                create_new = False
-
-        if create_new:
-            return _create_sqlite_connection()
-
-        # 3. Pool lleno — esperar a que alguien devuelva una conexión
-        acquire_timeout = getattr(settings, "DB_POOL_TIMEOUT", 10.0)
-        try:
-            conn = _pool.get(timeout=acquire_timeout)
-            if _health_check(conn):
-                return conn
-            try:
-                conn.close()
-            except Exception:
-                pass
-            return _create_sqlite_connection()
-        except _queue_mod.Empty:
-            log.warning(
-                "db_pool_acquire_timeout",
-                pool_size=settings.DB_POOL_SIZE,
-                timeout_s=acquire_timeout,
-            )
-            from observability.runtime_metrics import db_pool_acquire_timeout_total
-
-            db_pool_acquire_timeout_total.inc()
-            raise RuntimeError(
-                f"No se pudo obtener una conexión DB del pool en {acquire_timeout}s. "
-                "El pool está saturado. Considera aumentar DB_POOL_SIZE."
-            ) from None
 
     # ── SQLite local / tests: thread-local ────────────────────────────────
     conn = getattr(_local, "conn", None)
@@ -680,40 +586,14 @@ def _get_conn() -> Any:
 
 
 def _return_conn(conn: Any) -> None:
-    """Devuelve una conexión al pool (Turso/Postgres) o la mantiene en thread-local."""
-    global _pool_active
-
+    """Devuelve una conexión al pool Postgres, o no hace nada (SQLite local es thread-local)."""
     # Postgres: devolver al psycopg_pool
     if isinstance(conn, _PgConnAdapter):
         _return_pg_connection(conn)
-        return
-
-    if not (is_turso_backend() and settings.DB_POOL_SIZE > 1):
-        return
-    with _pool_lock:
-        pool = _pool
-    if pool is None:
-        # Pool fue cerrado por close_pool(); cerrar la conexión huérfana.
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return
-    try:
-        pool.put_nowait(conn)
-    except _queue_mod.Full:
-        with _pool_lock:
-            _pool_active -= 1
-        try:
-            conn.close()
-        except Exception:
-            pass
 
 
 def close_pool() -> None:
-    """Cierra la conexión del hilo actual y vacía el pool compartido."""
-    global _pool, _pool_active
-
+    """Cierra la conexión del hilo actual y el pool Postgres compartido."""
     # Postgres: cerrar el pool de psycopg_pool
     _close_pg_pool()
 
@@ -724,22 +604,6 @@ def close_pool() -> None:
         except Exception:
             log.debug("connection_close_failed")
         _local.conn = None
-
-    # Vaciar pool compartido (Turso) — swap-then-drain para evitar race condition.
-    # Adquirimos el lock solo para nullear _pool (impide nuevas conexiones),
-    # luego drenamos fuera del lock para evitar deadlock.
-    with _pool_lock:
-        pool = _pool
-        if pool is not None:
-            _pool = None
-            _pool_active = 0
-    if pool is not None:
-        while not pool.empty():
-            try:
-                c = pool.get_nowait()
-                c.close()
-            except Exception:
-                pass
 
 
 # ---------------------------------------------------------------------------
@@ -805,7 +669,6 @@ def connect_read() -> Iterator[Any]:
     """Context manager de SOLO LECTURA.
 
     Con Postgres: mismo pool + ``SET LOCAL default_transaction_read_only = on``.
-    Con Turso replica: conexión efímera a la réplica.
     Con SQLite local: delega en ``connect()`` con PRAGMA query_only.
     """
     if is_postgres_backend():
@@ -817,24 +680,6 @@ def connect_read() -> Iterator[Any]:
             _return_conn(conn)
         return
 
-    replica_url = settings.TURSO_REPLICA_URL
-    if replica_url:
-        try:
-            import libsql_experimental as libsql_exp
-
-            conn = libsql_exp.connect(
-                replica_url,
-                auth_token=settings.TURSO_AUTH_TOKEN.get_secret_value(),
-            )
-            try:
-                yield conn
-            finally:
-                conn.close()
-            return
-        except ImportError:
-            pass  # fallback to local connect
-
-    # Fallback: usar pool normal (sin pragma para Turso/Hrana)
     conn = _get_conn()
     try:
         safe_pragma(conn, "PRAGMA query_only = ON")

@@ -51,7 +51,7 @@ Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) 
 | `config/` | Settings, keywords, constants, secrets | `config/settings.py` | **typing strict** |
 | `shared/` | Utilidades cross-cutting (auth_core, dto, geo, i18n, schemas, signing) | — | **typing strict** |
 | `services/` | Lógica de dominio (licitaciones, classification, clusters, normalization, analytics) | `services/licitaciones.py` | Core; usa `db.repositories.*` |
-| `db/` | Persistencia (SQLite/Turso), upsert idempotente, migraciones alembic | `db/database.py` (fachada → `connection/schema/upsert`) | `db.database`, `db.users` **strict** |
+| `db/` | Persistencia (Postgres en producción, SQLite en desarrollo — ADR-020), upsert idempotente, migraciones alembic | `db/database.py` (fachada → `connection/schema/upsert`) | `db.database`, `db.users` **strict** |
 | `api/` | FastAPI REST | `api/app.py` (`uvicorn api.app:app`) | Rutas en `api/routes/` |
 | `web/` | Frontend Next.js | `web/` | Consume la API tipada generada desde OpenAPI |
 | `scraper/` | Pipeline PLACSP (ZIPs + ATOM), parser CODICE/UBL, clasificador ML | `scraper/pipeline.py` | `ml_*` con SQL manual (S608 suppressed) |

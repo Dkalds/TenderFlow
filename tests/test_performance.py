@@ -41,8 +41,6 @@ def perf_db(monkeypatch, tmp_path):
     import db.database as db_mod
 
     db_path = tmp_path / "perf.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
 
     db_mod.close_pool()
     db_mod.set_db_path_override(str(db_path))

@@ -22,16 +22,23 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [db/search_backend.py](../db/search_backend.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
 - **Riesgo:** bajo — el eval con golden set actúa de red; cualquier cambio se mide antes de mergear.
 
-### [P1] Cerrar el cutover: retirar Turso, borrar db/migrations.py y matar el shim de paramstyle
-- **Área:** db/, .github/workflows, render.yaml
-- **Problema:** Coexisten tres capas de persistencia superpuestas: el shim regex `?`→`%s` (`db/connection.py`) que reescribe **cada** sentencia SQL en runtime con una regex que intenta parsear SQL; dos drivers vivos (`libsql` y `psycopg3`) con `TURSO_*` todavía presente en 8 workflows y en `render.yaml`; y dos sistemas de migración (`db/migrations.py`, 1156 líneas ya deprecadas, + 46 revisiones Alembic). **Desbloqueado el 2026-07-26**: la suite ya corre contra Postgres real con el job `test-postgres` bloqueante y 0 fallos (ADR-018), así que el codemod `?`→`%s` deja de ser a ciegas — cualquier regresión la detecta CI.
-- **Acceptance criteria:**
-  - `TURSO_*` fuera de workflows, `render.yaml`, `.env.example` y `config/settings.py`; `is_turso_backend()` y las ramas libsql de `db/connection.py` eliminadas (gate humano §6: workflows + render.yaml).
-  - `db/migrations.py` borrado.
-  - Codemod `?`→`%s` sobre el SQL restante y `_translate_qmarks` + `_PgConnWrapper` eliminados.
+### [P1] Borrar `db/migrations.py`, matar el shim de paramstyle y colapsar el branching de dialecto — requiere decidir primero si se retira SQLite del todo
+- **Área:** db/, docker-compose.yml
+- **Problema:** Turso ya se retiró (ADR-020, 2026-07-26; ver _Cerrados_). Lo que queda del ítem original — borrar `db/migrations.py` (1156 líneas), el codemod `?`→`%s` sobre el SQL restante, eliminar `_translate_qmarks`/`_PgConnAdapter` de `db/connection.py`, y colapsar los ~32 `is_postgres_backend()` repartidos en 15 archivos — **no es seguro sin antes decidir explícitamente retirar SQLite como backend soportado**. `db/migrations.py::apply_pending()` sigue siendo el camino de esquema para el SQLite local de dev (ADR-018); el shim `?`→`%s` es lo único que permite que ese mismo código SQL sirva a ambos motores. Borrar cualquiera de los tres rompe SQLite, no solo Turso.
+- **Acceptance criteria (bloqueados hasta la decisión de retirar SQLite):**
+  - Añadir un servicio `postgres` a `docker-compose.yml` (hoy ausente) para que el flujo de dev no dependa de SQLite.
+  - Con eso resuelto: `db/migrations.py` borrado, codemod `?`→`%s` aplicado, `_translate_qmarks`/`_PgConnAdapter` eliminados, y las 32 ramas `is_postgres_backend()` colapsadas a mono-dialecto Postgres.
   - `make check` verde y `test-postgres` bloqueante en verde.
-- **Riesgo:** alto — toca todo el acceso a datos; mitigado por la suite Postgres, ya en verde y bloqueante.
+- **Riesgo:** alto — toca todo el acceso a datos; requiere autorización explícita del usuario antes de tocar el soporte SQLite (ADR-018 lo declaró conveniencia de dev intencional, no legado a eliminar sin más).
 
+### [P2] `db/analytics.py` asume que la BD operacional es siempre un fichero SQLite
+- **Área:** db/analytics.py
+- **Problema:** `get_connection()` resuelve `_sqlite_path()` y hace `ATTACH '{sqlite_file}' ... (TYPE SQLITE, READ_ONLY)` incondicionalmente — no comprueba `is_postgres_backend()`. Desde ADR-016 producción corre sobre Postgres; en ese entorno `_sqlite_path()` encuentra, como mucho, un fichero SQLite local residual de dev (vacío o desactualizado), así que `run_analytics_export`/`duckdb_query` devolverían datos vacíos o incorrectos en producción sin fallar de forma visible. No es un hallazgo de Turso (no menciona Turso en ningún sitio) — se detectó de pasada durante el barrido de comentarios de ADR-020 y se deja fuera de esa fase a propósito.
+- **Acceptance criteria:**
+  - Con Postgres activo, `get_connection()` usa el scanner `postgres_scanner` de DuckDB (`ATTACH ... (TYPE POSTGRES, READ_ONLY)`) contra `DATABASE_URL` en vez de asumir SQLite.
+  - Test de regresión que mockee `is_postgres_backend() = True` y verifique que no se llama a `_sqlite_path()`.
+- **Files de partida:** [db/analytics.py](../db/analytics.py)
+- **Riesgo:** medio — toca el único camino de exports OLAP a Parquet; sin test contra Postgres real (`postgres_scanner` no se ejercita en la suite hoy) el cambio va a ciegas hasta que exista cobertura.
 
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
 - **Área:** scraper/connectors/pscp.py, observability
@@ -51,7 +58,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - `DATABASE_ADMIN_URL` (rol dueño, solo para alembic) guardada como secret aparte.
   - `scripts/setup_pg_roles.sql` ejecutado contra Supabase; `DATABASE_URL` de runtime apuntando al rol `tenderflow_app`; verificado que puede DML pero no DDL.
   - Confirmado (`psql`) que `v52_rls_lockdown` está aplicada y `has_table_privilege('anon',…)` es false.
-  - Turso retirado una vez pasada la ventana de rollback ≥14 días.
+  - ~~Turso retirado una vez pasada la ventana de rollback ≥14 días.~~ **Hecho 2026-07-26 (ADR-020)** — pendiente solo la acción manual de revocar el token en el dashboard de Turso y borrar los GH Secrets `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` (código y workflows ya no los usan).
 - **Files de partida:** [docs/runbooks/migracion-persistencia.md](runbooks/migracion-persistencia.md) (Paso 9, checklist ejecutable), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md), [scripts/setup_pg_roles.sql](../scripts/setup_pg_roles.sql)
 - **Progreso 2026-07-13 (plan Pliegos+RAG, fases D1/D2 — CERRADAS del lado de código):**
   - `docs/runbooks/backup-restore.md`: sección "Backups Postgres cifrados" (alta del secret, verificación, descifrado, restore).
@@ -170,6 +177,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-07-26] **Retirada de Turso/libSQL como backend cloud (ADR-020)** — Turso dejó de estar dentro de la ventana de rollback tras el cutover a Supabase Postgres (ADR-016) y la migración de la suite a Postgres real (ADR-018, ver entrada de abajo). Retirado de código (`is_turso_backend()`, la rama libsql/`TURSO_REPLICA_URL` de `connect_read()`, el pool `Queue`-based de `_get_conn()`/`_return_conn()`/`close_pool()` en `db/connection.py`), config (`TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`/`TURSO_LOCAL_DB`/`TURSO_REPLICA_URL` y sus validators en `config/settings.py`), los 8 workflows de GitHub Actions, `render.yaml`, `.env.example`, `scripts/backup_db.py::backup_turso()` y `observability/logging.py` (`_SENSITIVE_ENV_VARS`). **Alcance decidido explícitamente más estrecho que el original**: el ítem de backlog pedía además borrar `db/migrations.py`, el shim `?`→`%s` y colapsar el branching de dialecto — se descartó porque eso equivale a retirar SQLite por completo (`db/migrations.py::apply_pending()` sigue siendo el camino de esquema del SQLite local de dev que ADR-018 declaró conveniencia intencional, no legado), decisión que requiere autorización explícita del usuario y un servicio Postgres en `docker-compose.yml` que hoy no existe; queda como ítem P1 separado arriba. **Bug de producción destapado**: `scraper/tech_classifier.py::train_from_db()` condicionaba en `is_turso_backend()`, que con Postgres activo devolvía siempre `False` ("Postgres tiene precedencia") — la función caía siempre al fallback `sqlite3.connect()` de un fichero local vacío en vez de leer Postgres. Corregido a `is_postgres_backend()`. Suite verde en ambos motores (SQLite: 2603 passed; Postgres: 2586 passed, 18 skipped por gating `_SQLITE_ONLY_TOKENS`). Hallazgo aparte, fuera de esta fase: `db/analytics.py` asume SQLite incondicionalmente para el ATTACH de DuckDB (ítem P2 nuevo arriba).
 - [2026-07-26] **Migración de la suite a Postgres completada — 218 fallos + 25 errores → 0** — El job `test-postgres` pasa a **bloqueante**. Diez bugs de producción destapados y corregidos, ninguno visible con la suite sobre SQLite: `_PgConnAdapter` sin `rowcount` (24 call-sites lanzando `AttributeError`), `lastrowid` devolviendo `rownumber` (ids inventados en `create_user`, webhooks y reglas de watchlist), el shim de paramstyle sin escapar `%` literal (toda query `LIKE '...%'` con parámetros fallaba — silenciando la alerta de fallos consecutivos del feed diario), `retention.py` sin savepoints (un fallo dejaba todas las tablas restantes sin purgar), `db/upsert.py` sin capturar `psycopg.IntegrityError` (una fila mala abortaba el lote entero), `_classify_integrity_error` sin la grafía `not-null` de Postgres, el healthcheck detectando tabla ausente por el mensaje de SQLite, `db/events.py` insertando texto en columna `INTEGER`, y tres columnas ausentes en Postgres (`users.deactivated_at`, `api_keys.scopes`, `api_keys.user_id` — migración `v60`) que rompían el listado/desactivación de usuarios y el borrado GDPR de claves. Tabla completa en ADR-018.
 
 

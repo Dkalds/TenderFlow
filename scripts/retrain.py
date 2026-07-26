@@ -101,7 +101,7 @@ print(f"Parsed {total_entries} entries in {elapsed:.1f}s")
 print(f"TI entries: {total_ti}, SAP (skipped): {skipped_sap}, Hard negatives: {len(rows)}")
 sys.stdout.flush()
 
-# Step 3: Insert into Turso DB using upsert_licitaciones (batched)
+# Step 3: Insert into DB using upsert_licitaciones (batched)
 init_db()
 from db.upsert import Licitacion as LicRow  # noqa: E402
 from db.upsert import upsert_licitaciones  # noqa: E402
@@ -119,7 +119,7 @@ for id_ext, titulo, desc, cpv, url in rows:
         )
     )
 
-print(f"Upserting {len(lic_objects)} licitaciones into Turso...")
+print(f"Upserting {len(lic_objects)} licitaciones...")
 sys.stdout.flush()
 t1 = time.time()
 nuevas, actualizadas = upsert_licitaciones(lic_objects)

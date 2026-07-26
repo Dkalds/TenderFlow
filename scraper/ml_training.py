@@ -496,7 +496,7 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
                 scores_inserted += 1
 
         # Persistir batch con queries parametrizadas (seguro contra SQL injection).
-        # executemany agrupa operaciones, minimizando round-trips HTTP a Turso.
+        # executemany agrupa operaciones, minimizando round-trips de red al backend remoto.
         with connect() as c:
             if force and delete_params:
                 c.executemany(

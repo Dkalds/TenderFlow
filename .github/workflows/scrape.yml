@@ -42,14 +42,11 @@ jobs:
         env:
           # ENV=prod activa los validators de datos (TLS de DATABASE_URL,
           # alertas); APP_PROFILE=scraper omite los secretos que solo necesita
-          # el proceso HTTP. La BD de producción es Supabase (ADR-016):
-          # DATABASE_URL tiene precedencia sobre TURSO_* en db/connection.py.
+          # el proceso HTTP. La BD de producción es Supabase (ADR-016).
           ENV: prod
           APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
@@ -79,8 +76,6 @@ jobs:
           APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}

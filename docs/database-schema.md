@@ -1,6 +1,7 @@
 # Database Schema — TenderFlow
 
-Documentación del esquema de base de datos SQLite/Turso del proyecto.
+Documentación del esquema de base de datos del proyecto: PostgreSQL en
+producción (ADR-016), SQLite como conveniencia de desarrollo local (ADR-018).
 
 ---
 

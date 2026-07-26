@@ -381,55 +381,6 @@ def test_database_url_verify_full_ok_in_prod():
 
 
 # ---------------------------------------------------------------------------
-# Turso URL scheme validator
-# ---------------------------------------------------------------------------
-
-
-def test_turso_valid_libsql_scheme():
-    from config.settings import Settings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        s = Settings(TURSO_DATABASE_URL="libsql://mydb.turso.io", TURSO_AUTH_TOKEN="tok")
-    assert s.TURSO_DATABASE_URL == "libsql://mydb.turso.io"
-
-
-def test_turso_valid_https_scheme():
-    from config.settings import Settings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        s = Settings(TURSO_DATABASE_URL="https://mydb.turso.io", TURSO_AUTH_TOKEN="tok")
-    assert s.TURSO_DATABASE_URL.startswith("https://")
-
-
-def test_turso_invalid_scheme_raises():
-    from config.settings import Settings
-
-    with pytest.raises(Exception, match="esquema no permitido"):
-        Settings(TURSO_DATABASE_URL="sqlite:///bad.db", TURSO_AUTH_TOKEN="tok")
-
-
-def test_turso_empty_url_ok():
-    from config.settings import Settings
-
-    s = Settings(TURSO_DATABASE_URL="", TURSO_AUTH_TOKEN="")
-    assert s.TURSO_DATABASE_URL == ""
-
-
-def test_turso_incomplete_pair_warns():
-    """URL sin token o token sin URL emite warning y resetea ambos."""
-    from config.settings import Settings
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        s = Settings(TURSO_DATABASE_URL="libsql://x.turso.io", TURSO_AUTH_TOKEN="")
-    assert s.TURSO_DATABASE_URL == ""
-    assert s.TURSO_AUTH_TOKEN.get_secret_value() == ""
-    assert any("Turso" in str(warning.message) for warning in w)
-
-
-# ---------------------------------------------------------------------------
 # APP_PROFILE — separación entorno de datos vs componentes arrancados
 # ---------------------------------------------------------------------------
 

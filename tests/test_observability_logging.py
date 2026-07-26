@@ -102,10 +102,10 @@ def test_redact_keys_with_sensitive_names(capsys):
 def test_redact_env_secret_value(capsys, monkeypatch):
     """Si un valor coincide con el contenido de una env var sensible, se redacta."""
     secret = "super-secret-token-xyz"
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", secret)
+    monkeypatch.setenv("API_HMAC_SECRET", secret)
     configure_logging(level="INFO", json_logs=True)
     log = get_logger("tests.redact")
-    log.info("conn_open", connection_string=f"libsql://db?token={secret}", host="example")
+    log.info("conn_open", connection_string=f"postgresql://db?token={secret}", host="example")
     out = capsys.readouterr().err + capsys.readouterr().out
     data = _find_event(out, "conn_open")
     assert secret not in data["connection_string"]

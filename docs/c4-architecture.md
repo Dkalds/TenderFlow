@@ -44,7 +44,7 @@ C4Container
         Container(api, "API REST", "FastAPI", "API pública v1 con auth por API-Key")
         Container(scraper, "Scraper", "Python", "CODICE bulk + Atom live")
         Container(sched, "Scheduler", "APScheduler", "KPI precompute, drift, retrain, alertas")
-        ContainerDb(db, "SQLite / Turso libSQL", "Database", "Datos operacionales")
+        ContainerDb(db, "PostgreSQL (Supabase)", "Database", "Datos operacionales (ADR-016); SQLite local para dev, ADR-018")
         ContainerDb(duckdb, "DuckDB (in-mem)", "Engine", "Queries OLAP sobre attach SQLite")
         ContainerDb(parquet, "Parquet snapshots", "FS", "Materializaciones históricas")
         Container(models, "Model registry + artefactos", "joblib", "Versiones, métricas, drift")

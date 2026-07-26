@@ -225,7 +225,7 @@ class Settings(BaseSettings):
     TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
 
     # ── Postgres / Supabase (ADR-016, F3) ────────────────────────────────
-    # Cuando DATABASE_URL está definida tiene precedencia sobre TURSO_* y SQLite.
+    # Cuando DATABASE_URL está definida tiene precedencia sobre SQLite local.
     # Formato: postgresql://user:pass@host:5432/db?sslmode=require  # pragma: allowlist secret
     # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
     # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
@@ -244,14 +244,6 @@ class Settings(BaseSettings):
     DB_IDLE_TX_TIMEOUT_MS: int = 60_000
     # Timeout (segundos) para establecer la conexión TCP/TLS al pooler.
     DB_CONNECT_TIMEOUT: int = 10
-
-    # ── Turso ────────────────────────────────────────────────────────────
-    TURSO_DATABASE_URL: str = ""
-    TURSO_AUTH_TOKEN: SecretStr = SecretStr("")
-    TURSO_LOCAL_DB: Path | None = None
-    # URL de la réplica de lectura Turso (opcional). Si se configura, las
-    # consultas SELECT se enrutan a la réplica para reducir latencia.
-    TURSO_REPLICA_URL: str = ""
 
     # ── Observabilidad ───────────────────────────────────────────────────
     LOG_FORMAT: str = ""
@@ -493,22 +485,6 @@ class Settings(BaseSettings):
             self.DB_PATH = self.DATA_DIR / "licitaciones.db"
         if self.DOWNLOADS_DIR is None:
             self.DOWNLOADS_DIR = self.DATA_DIR / "downloads"
-        if self.TURSO_LOCAL_DB is None:
-            self.TURSO_LOCAL_DB = self.DATA_DIR / "licitaciones_replica.db"
-        return self
-
-    @model_validator(mode="after")
-    def _validate_turso_pair(self) -> Settings:
-        url = self.TURSO_DATABASE_URL
-        token = self.TURSO_AUTH_TOKEN.get_secret_value()
-        if bool(url) ^ bool(token):
-            warnings.warn(
-                "Configuración Turso incompleta: se necesitan TURSO_DATABASE_URL y "
-                "TURSO_AUTH_TOKEN juntas. Se usará SQLite local como fallback.",
-                stacklevel=2,
-            )
-            self.TURSO_DATABASE_URL = ""
-            self.TURSO_AUTH_TOKEN = SecretStr("")
         return self
 
     # ── Helpers de gating de validators ──────────────────────────────────
@@ -681,7 +657,7 @@ class Settings(BaseSettings):
         """Rechaza esquemas peligrosos en DATABASE_URL.
 
         Solo se permiten ``postgresql://`` y ``postgres://``. Un valor vacío
-        indica que no se usa Postgres (fallback a Turso/SQLite), lo cual es
+        indica que no se usa Postgres (fallback a SQLite local), lo cual es
         válido. El chequeo de ``sslmode`` vive en ``_validate_prod_database_ssl``
         (model_validator) porque depende de ``self.ENV``, no disponible aún
         en un field_validator per-campo.
@@ -779,24 +755,6 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
         return self
-
-    @field_validator("TURSO_DATABASE_URL", mode="before")
-    @classmethod
-    def _validate_turso_url_scheme(cls, v: object) -> object:
-        """Rechaza esquemas peligrosos en TURSO_DATABASE_URL.
-
-        Solo se permiten ``libsql://`` y ``https://`` (embedded replica).
-        Un valor vacío indica que no se usa Turso, lo cual es válido.
-        """
-        if not isinstance(v, str) or not v:
-            return v
-        allowed = ("libsql://", "https://")
-        if not v.startswith(allowed):
-            raise ValueError(
-                f"TURSO_DATABASE_URL tiene un esquema no permitido. "
-                f"Se esperaba uno de {allowed}, se recibió: {v!r}"
-            )
-        return v
 
 
 def _load() -> Settings:

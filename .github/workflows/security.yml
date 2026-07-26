@@ -165,4 +165,4 @@ jobs:
 
       - name: Remind about credential rotation
         run: |
-          echo "::notice title=Rotación de credenciales::Recuerda rotar TURSO_AUTH_TOKEN cada 90 días. Última verificación: $(date -u +%Y-%m-%d). Doc: docs/SECURITY.md"
+          echo "::notice title=Rotación de credenciales::Recuerda rotar la password del rol de BD y API_HMAC_SECRET cada 90 días. Última verificación: $(date -u +%Y-%m-%d). Doc: docs/SECURITY.md"

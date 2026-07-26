@@ -17,8 +17,6 @@ from db.database import connect
 def _tmp_db(tmp_path, monkeypatch):
     """Set up a temp DB with job_locks table for each test."""
     db_path = tmp_path / "test.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
     db_mod.close_pool()
     db_mod.set_db_path_override(str(db_path))
     db_mod.init_db()

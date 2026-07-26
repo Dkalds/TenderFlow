@@ -10,7 +10,7 @@ Inteligencia de licitaciones del Sector Público español.
 |--------|-------------|
 | **Scraper** | Descarga ZIPs mensuales (bulk) y feed ATOM en vivo de PLACSP. Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
 | **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
-| **Base de datos** | SQLite local o Turso cloud (réplica embebida). Upsert idempotente, historial de cambios, DLQ |
+| **Base de datos** | Postgres/Supabase en producción, SQLite local en desarrollo. Upsert idempotente, historial de cambios, DLQ |
 | **Web frontend** | Next.js con interfaz principal para explorar la plataforma y consumir la API |
 | **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo) |
 | **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, alertas por nivel de severidad |
@@ -31,7 +31,7 @@ Inteligencia de licitaciones del Sector Público español.
                                              │  upsert idempotente
                                              ▼
                               ┌──────────────────────────┐
-                              │  SQLite local / Turso    │
+                              │  Postgres / SQLite local │
                               │  (historial de cambios)  │
                               └──────────┬───────────────┘
                                          │
@@ -74,7 +74,7 @@ tenderflow/
 │   ├── investigador/             #   Motor de búsqueda FTS5
 │   └── ...                       #   admin, auth, gdpr, health, security, watchlist
 ├── db/                           # Persistencia y acceso a datos
-│   ├── connection.py             #   Conexión SQLite/Turso con pool
+│   ├── connection.py             #   Conexión SQLite/Postgres con pool
 │   ├── database.py               #   Fachada principal (init, connect, upsert)
 │   ├── upsert.py                 #   Upsert idempotente con historial
 │   ├── migrations.py             #   Migraciones DDL caseras (v1–v20)
@@ -191,12 +191,12 @@ ENV=dev
 
 # ── Base de datos (elige una opción) ────────────────────
 
-# Opción A — SQLite local (por defecto, sin configuración adicional)
+# Opción A — SQLite local (por defecto, sin configuración adicional).
+# Es una comodidad de desarrollo, no la referencia de producción.
 # DB_PATH=data/licitaciones.db
 
-# Opción B — Turso cloud (réplica embebida local + sync automático)
-TURSO_DATABASE_URL=libsql://<tu-db>.turso.io
-TURSO_AUTH_TOKEN=<token-con-permisos-rw>
+# Opción B — Postgres / Supabase (producción)
+DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
 
 # ── OAuth Google (opcional) ──────────────────────────────
 GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com
@@ -305,9 +305,9 @@ healthchecks y despliegues automatizados.
 
 ### Rotación de credenciales
 
-Si el token de Turso se compromete:
-1. Panel Turso → tu base de datos → **Settings → Tokens** → Revocar
-2. Generar nuevo token → actualizar `.env` y secrets de GitHub
+Si una credencial de BD se compromete:
+1. Panel Supabase → tu proyecto → **Database → Roles** → rotar password
+2. Reconstruir `DATABASE_URL` con la password nueva → actualizar `.env` y secrets de GitHub
 
 ---
 
