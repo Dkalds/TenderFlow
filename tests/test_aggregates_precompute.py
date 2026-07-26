@@ -50,162 +50,6 @@ def _insert_licitaciones(db_mod: Any, rows: list[tuple[str, str, str]]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_compute_top_empresas_empty_db(tmp_db):
-    """Con BD vacía devuelve lista vacía."""
-    db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import _compute_top_empresas
-
-    with db_mod.connect() as conn:
-        result = _compute_top_empresas(conn)
-
-    assert result == []
-
-
-def test_compute_top_empresas_basic(tmp_db):
-    """Devuelve ranking ordenado por n_adj dentro de cada CCAA."""
-    db_mod, _ = tmp_db
-    _insert_adjudicaciones(
-        db_mod,
-        [
-            ("Andalucía", "Empresa A", 100.0),
-            ("Andalucía", "Empresa A", 200.0),
-            ("Andalucía", "Empresa B", 50.0),
-            ("Madrid", "Empresa C", 300.0),
-        ],
-    )
-
-    from scheduler.aggregates_precompute import _compute_top_empresas
-
-    with db_mod.connect() as conn:
-        result = _compute_top_empresas(conn)
-
-    ccaa_and = [r for r in result if r["ccaa"] == "Andalucía"]
-    # normalize_company uppercases the names
-    assert ccaa_and[0]["nombre_canon"] == "EMPRESA A"
-    assert ccaa_and[0]["rank"] == 1
-    assert ccaa_and[1]["nombre_canon"] == "EMPRESA B"
-    assert ccaa_and[1]["rank"] == 2
-
-    ccaa_mad = [r for r in result if r["ccaa"] == "Madrid"]
-    assert len(ccaa_mad) == 1
-    assert ccaa_mad[0]["rank"] == 1
-
-
-def test_compute_top_empresas_respects_top_n(tmp_db):
-    """No devuelve más de _TOP_N empresas por CCAA."""
-    db_mod, _ = tmp_db
-    for i in range(15):
-        _insert_adjudicaciones(db_mod, [("Cataluña", f"Empresa{i:02d}", float(i * 10))])
-
-    from scheduler.aggregates_precompute import _TOP_N, _compute_top_empresas
-
-    with db_mod.connect() as conn:
-        result = _compute_top_empresas(conn)
-
-    cat = [r for r in result if r["ccaa"] == "Cataluña"]
-    assert len(cat) == _TOP_N
-
-
-def test_compute_top_empresas_has_required_keys(tmp_db):
-    """Cada fila tiene las claves requeridas para INSERT."""
-    db_mod, _ = tmp_db
-    _insert_adjudicaciones(db_mod, [("Madrid", "Empresa X", 500.0)])
-
-    from scheduler.aggregates_precompute import _compute_top_empresas
-
-    with db_mod.connect() as conn:
-        result = _compute_top_empresas(conn)
-
-    row = result[0]
-    for key in ("ccaa", "rank", "nombre_canon", "n_adj", "importe_total", "updated_at"):
-        assert key in row, f"Falta clave: {key}"
-    assert row["nombre_canon"] == "EMPRESA X"
-
-
-# ---------------------------------------------------------------------------
-# _persist_top_empresas
-# ---------------------------------------------------------------------------
-
-
-def test_persist_top_empresas_inserts_rows(tmp_db):
-    """Inserta filas correctamente en mat_top_empresas_ccaa."""
-    db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import _persist_top_empresas
-
-    rows = [
-        {
-            "ccaa": "Madrid",
-            "rank": 1,
-            "nombre_canon": "Test Corp",
-            "n_adj": 5,
-            "importe_total": 1000.0,
-            "updated_at": "2026-01-01T00:00:00+00:00",
-        }
-    ]
-
-    with db_mod.connect() as conn:
-        _persist_top_empresas(conn, rows)
-        count = conn.execute("SELECT COUNT(*) FROM mat_top_empresas_ccaa").fetchone()[0]
-
-    assert count == 1
-
-
-def test_persist_top_empresas_replaces_atomically(tmp_db):
-    """Llamadas sucesivas reemplazan datos previos."""
-    db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import _persist_top_empresas
-
-    rows_first = [
-        {
-            "ccaa": "Andalucía",
-            "rank": 1,
-            "nombre_canon": "Vieja Empresa",
-            "n_adj": 1,
-            "importe_total": 100.0,
-            "updated_at": "2026-01-01T00:00:00+00:00",
-        }
-    ]
-    rows_second = [
-        {
-            "ccaa": "Andalucía",
-            "rank": 1,
-            "nombre_canon": "Nueva Empresa",
-            "n_adj": 10,
-            "importe_total": 5000.0,
-            "updated_at": "2026-06-01T00:00:00+00:00",
-        }
-    ]
-
-    with db_mod.connect() as conn:
-        _persist_top_empresas(conn, rows_first)
-        _persist_top_empresas(conn, rows_second)
-        row = conn.execute("SELECT nombre_canon FROM mat_top_empresas_ccaa").fetchone()
-
-    assert row[0] == "Nueva Empresa"
-
-
-def test_persist_top_empresas_empty_clears_table(tmp_db):
-    """Persistir lista vacía elimina todas las filas existentes."""
-    db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import _persist_top_empresas
-
-    rows = [
-        {
-            "ccaa": "Madrid",
-            "rank": 1,
-            "nombre_canon": "Corp",
-            "n_adj": 1,
-            "importe_total": 10.0,
-            "updated_at": "2026-01-01T00:00:00+00:00",
-        }
-    ]
-
-    with db_mod.connect() as conn:
-        _persist_top_empresas(conn, rows)
-        _persist_top_empresas(conn, [])
-        count = conn.execute("SELECT COUNT(*) FROM mat_top_empresas_ccaa").fetchone()[0]
-
-    assert count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -372,21 +216,17 @@ def test_run_aggregates_precompute_returns_ok_status(tmp_db):
     result = run_aggregates_precompute()
 
     assert result["status"] == "ok"
-    assert "n_empresas" in result
     assert "n_clusters" in result
 
 
-def test_run_aggregates_precompute_with_data(tmp_db):
-    """Con datos reales, n_empresas > 0."""
-    db_mod, _ = tmp_db
-    _insert_adjudicaciones(db_mod, [("Madrid", "Corp A", 1000.0), ("Madrid", "Corp B", 500.0)])
-
+def test_run_aggregates_precompute_no_longer_reports_empresas(tmp_db):
+    """``mat_top_empresas_ccaa`` se eliminó: no tenía lectores (ADR-017)."""
+    _db_mod, _ = tmp_db
     from scheduler.aggregates_precompute import run_aggregates_precompute
 
     result = run_aggregates_precompute()
 
-    assert result["status"] == "ok"
-    assert result["n_empresas"] >= 2
+    assert "n_empresas" not in result
 
 
 def test_run_aggregates_precompute_returns_error_on_exception():

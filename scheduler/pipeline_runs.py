@@ -137,7 +137,6 @@ def _run_aggregates_precompute() -> dict[str, Any]:
     result = run_aggregates_precompute()
     log.info(
         "pipeline_aggregates_precompute_completed",
-        n_empresas=result.get("n_empresas"),
         n_clusters=result.get("n_clusters"),
     )
     return result

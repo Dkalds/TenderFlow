@@ -1,7 +1,8 @@
 ---
 id: ADR-013
 title: "Jerarquía de materializaciones analíticas"
-status: accepted
+status: superseded
+superseded_by: ADR-017
 date: 2026-06-10
 deciders: "Daniel Kalitovics"
 related:
@@ -12,7 +13,13 @@ tags: [adr]
 
 # ADR-013 — Jerarquía de materializaciones analíticas
 
-* **Estado:** Aceptado
+> **Superseded por [[ADR-017-camino-lectura-analitico|ADR-017]] (2026-07-26).**
+> Este ADR asume SQLite como motor OLTP y el dashboard Streamlit como
+> consumidor. Ninguna de las dos premisas se sostiene tras el cutover a
+> Postgres (ADR-016) y la retirada de `dashboard/` (ADR-002). Se conserva como
+> registro histórico; el camino de lectura vigente está en ADR-017.
+
+* **Estado:** Superseded por [[ADR-017-camino-lectura-analitico|ADR-017]] (2026-07-26)
 * **Fecha:** 2026-06-10
 * **Deciders:** Daniel Kalitovics
 * **Relacionados:** [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso), [[ADR-012-plano-unico-orquestacion|ADR-012]] (pipeline canónica)
