@@ -28,11 +28,17 @@ function RouteProgressInner() {
         target.origin === window.location.origin &&
         target.pathname !== window.location.pathname
       ) {
-        NProgress.start();
+        // NProgress.start() inserta un nodo en <body> y fuerza un recálculo de
+        // layout síncrono. En páginas con árboles DOM grandes (tablas, charts)
+        // ese reflow corre dentro del propio handler de click y puede bloquear
+        // el hilo principal el tiempo suficiente para disparar warnings de INP.
+        // Lo difiere un frame para que no cuente como tiempo de procesamiento
+        // del input.
+        requestAnimationFrame(() => NProgress.start());
       }
     };
 
-    document.addEventListener("click", handleClick);
+    document.addEventListener("click", handleClick, { passive: true });
     return () => document.removeEventListener("click", handleClick);
   }, []);
 

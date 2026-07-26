@@ -9,21 +9,6 @@ import type { NextConfig } from "next";
  * de hidratación y recharts/Tailwind inyectan estilos inline) y se endurecerán en
  * una segunda fase guiada por los reportes recogidos.
  */
-const CSP_REPORT_ONLY = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://lh3.googleusercontent.com https://vercel.live https://vercel.com",
-  "font-src 'self' data:",
-  "connect-src 'self' https://vercel.live https://*.launchdarkly.com",
-  "frame-src 'self' https://vercel.live",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "report-uri /api/v1/security/csp-report",
-].join("; ");
-
 const nextConfig: NextConfig = {
   /**
    * Security headers applied to all routes.
@@ -43,14 +28,10 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },
-          { key: "X-DNS-Prefetch-Control", value: "on" },
+          { key: "X-DNS-Prefetch-Control", value: "off" },
           {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
-          },
-          {
-            key: "Content-Security-Policy-Report-Only",
-            value: CSP_REPORT_ONLY,
           },
         ],
       },

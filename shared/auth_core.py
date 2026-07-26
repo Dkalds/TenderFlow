@@ -275,6 +275,22 @@ def generate_oauth_state() -> str:
     return f"{payload}:{signature}"
 
 
+def oauth_state_nonce(state: str) -> str | None:
+    """Extract the OIDC nonce embedded in a state token without trusting it.
+
+    Callers must validate the state with :func:`verify_oauth_state` before
+    using this value.  The nonce is intentionally the same unpredictable value
+    used by the signed state so it is bound to one browser authorization flow.
+    """
+    parts = state.split(":")
+    if len(parts) != 3:
+        return None
+    nonce = parts[0]
+    if len(nonce) != 32 or any(char not in "0123456789abcdef" for char in nonce):
+        return None
+    return nonce
+
+
 def verify_oauth_state(
     state: str,
     max_age: int = _OAUTH_STATE_MAX_AGE_SECONDS,
@@ -396,6 +412,92 @@ def verify_pkce(code_verifier: str, code_challenge: str) -> bool:
 
 # Campos obligatorios de un id_token de Google según la especificación OpenID.
 _GOOGLE_ISS_VALUES = frozenset({"accounts.google.com", "https://accounts.google.com"})
+_GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+_google_jwks_cache: tuple[float, dict[str, dict[str, Any]]] | None = None
+
+
+def verify_google_id_token(
+    jwt_token: str, *, audience: str, expected_nonce: str | None = None
+) -> dict[str, Any] | None:
+    """Verifica firma RS256 de un ID token de Google y después sus claims.
+
+    La clave pública se obtiene exclusivamente del endpoint oficial de Google y
+    se mantiene en caché breve. Un fallo de red, formato o firma se rechaza:
+    nunca se aceptan claims simplemente decodificados desde el JWT.
+    """
+    global _google_jwks_cache
+
+    try:
+        import httpx
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+        encoded_header, encoded_claims, encoded_signature = jwt_token.split(".")
+        header = json_loads_b64url(encoded_header)
+        if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
+            return None
+
+        now = time.time()
+        if _google_jwks_cache is None or now >= _google_jwks_cache[0]:
+            response = httpx.get(_GOOGLE_JWKS_URL, timeout=5.0)
+            response.raise_for_status()
+            keys = response.json().get("keys", [])
+            parsed_keys = {
+                str(item["kid"]): item
+                for item in keys
+                if isinstance(item, dict) and item.get("kid") and item.get("x5c")
+            }
+            if not parsed_keys:
+                raise ValueError("Google JWKS response had no usable keys")
+            _google_jwks_cache = (now + 3600, parsed_keys)
+
+        jwk = _google_jwks_cache[1].get(header["kid"])
+        if jwk is None:
+            # Una rotación de clave puede ocurrir antes del TTL: refresco único.
+            response = httpx.get(_GOOGLE_JWKS_URL, timeout=5.0)
+            response.raise_for_status()
+            keys = response.json().get("keys", [])
+            refreshed = {
+                str(item["kid"]): item
+                for item in keys
+                if isinstance(item, dict) and item.get("kid") and item.get("x5c")
+            }
+            _google_jwks_cache = (now + 3600, refreshed)
+            jwk = refreshed.get(header["kid"])
+            if jwk is None:
+                raise ValueError("Google signing key not found")
+
+        certificate = x509.load_der_x509_certificate(_base64.b64decode(jwk["x5c"][0]))
+        public_key = certificate.public_key()
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            raise ValueError("Google signing certificate is not RSA")
+        public_key.verify(
+            _base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4)),
+            f"{encoded_header}.{encoded_claims}".encode("ascii"),
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+        claims = json_loads_b64url(encoded_claims)
+        return (
+            claims
+            if validate_google_id_token(claims, audience=audience, expected_nonce=expected_nonce)
+            else None
+        )
+    except Exception:
+        log.warning("google_id_token_signature_invalid", exc_info=True)
+        return None
+
+
+def json_loads_b64url(encoded: str) -> dict[str, Any]:
+    """Decodifica un fragmento JWT JSON de forma estricta."""
+    import json
+
+    decoded = _base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+    data = json.loads(decoded)
+    if not isinstance(data, dict):
+        raise ValueError("JWT JSON value must be an object")
+    return data
 
 
 def validate_google_id_token(
@@ -403,6 +505,7 @@ def validate_google_id_token(
     *,
     audience: str,
     require_email_verified: bool = True,
+    expected_nonce: str | None = None,
 ) -> bool:
     """Valida los claims de un id_token de Google ya decodificado.
 
@@ -437,6 +540,19 @@ def validate_google_id_token(
     if audience not in aud_values:
         log.warning("google_id_token_invalid_aud", aud=aud)
         return False
+    if len(aud_values) > 1 and str(id_token_claims.get("azp", "")) != audience:
+        log.warning("google_id_token_invalid_azp")
+        return False
+
+    if not str(id_token_claims.get("sub", "")):
+        log.warning("google_id_token_missing_sub")
+        return False
+
+    if expected_nonce is not None:
+        nonce = id_token_claims.get("nonce")
+        if not isinstance(nonce, str) or not hmac.compare_digest(nonce, expected_nonce):
+            log.warning("google_id_token_invalid_nonce")
+            return False
 
     exp = id_token_claims.get("exp")
     if exp is None:
@@ -452,7 +568,7 @@ def validate_google_id_token(
 
     if require_email_verified:
         email_verified = id_token_claims.get("email_verified")
-        if not email_verified:
+        if email_verified is not True and str(email_verified).lower() != "true":
             log.warning(
                 "google_id_token_email_not_verified",
                 email=id_token_claims.get("email", "unknown"),

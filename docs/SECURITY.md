@@ -20,6 +20,17 @@ periódica.
 
 ## Procedimiento de rotación
 
+### Controles nuevos (2026-07-26)
+
+- Configurar `AUDIT_HMAC_KEY` con al menos 32 caracteres, diferente de las claves de sesión/API. La aplicación no arranca en producción sin ella.
+- Configurar `AWS_ROLE_TO_ASSUME` y la trust policy OIDC de GitHub para el bucket de backups; el workflow ya no usa claves AWS estáticas.
+- Configurar `WEBHOOK_ALLOWED_HOSTS` como lista explícita de dominios aprobados. Sin esa lista, los webhooks salientes quedan deshabilitados en producción.
+- Mantener `DOCUMENT_ALLOWED_HOSTS` limitado a fuentes de contratación aprobadas. Las conexiones HTTP salientes fijan la IP validada, verifican TLS/SNI y rechazan redireccionamientos.
+- Configurar `BACKUP_ENCRYPTION_KEY` antes de ejecutar cualquier copia: los scripts cifran todas las copias con GPG/AES-256 y exigen la misma clave para restaurarlas.
+- Asociar o rotar las API keys heredadas sin `user_id`: producción y staging las rechazan para evitar que una clave sin propietario pueda actuar como administrador.
+- Conservar `DOCUMENT_EXTRACTION_TIMEOUT_SECONDS` positivo en producción: cada extracción de PDF corre en un proceso aislado y se termina al exceder ese presupuesto.
+- Ejecutar `python scripts/verify_audit_chain.py --db-path …` en el runbook de incidentes. La verificación requiere recorrer la cadena completa; `--limit` ya no es válido porque ocultaría roturas o borrados.
+
 ### Turso (`TURSO_AUTH_TOKEN`)
 
 1. Crear token nuevo: `turso db tokens create <db-name> --expiration 90d`.
@@ -51,6 +62,10 @@ Defensas activas (revisión de seguridad 2026-07, ADR-016):
 - **RLS defensiva** (`db/alembic/versions/v52_rls_lockdown.py`): RLS habilitada en
   todas las tablas de `public` + `REVOKE` a `anon`/`authenticated`, de modo que la
   Data API/PostgREST queda cerrada aunque se reactive (fail-closed).
+- **Funciones SECURITY DEFINER cerradas** (`v59`): revocado `EXECUTE` a
+  `PUBLIC` sobre `public.rls_auto_enable()` y sobre futuras funciones de
+  `public`, evitando que una función de administración de RLS sea invocable
+  desde roles no confiables.
 - **Data API desactivada**: confirmar en Supabase Dashboard → Settings → API que la
   Data API está deshabilitada (defensa primaria; la RLS es la de profundidad).
 - **Timeouts de pool**: `statement_timeout` / `idle_in_transaction_session_timeout`
@@ -58,12 +73,12 @@ Defensas activas (revisión de seguridad 2026-07, ADR-016):
 - **Redacción de DSN**: la password de `DATABASE_URL` se redacta en logs y en las
   rutas de error de conexión (`observability.logging.redact_dsn`).
 
-**Roadmap (pendiente, requiere coordinación con Supabase):** introducir un rol de
-aplicación de privilegios mínimos (`tenderflow_app`, solo DML) separado de un rol
-admin para migraciones (`DATABASE_ADMIN_URL`). ⚠️ Al hacerlo, como ese rol NO sería
-dueño de las tablas, **la migración RLS v52 lo dejaría sin acceso**: hay que añadir
-políticas RLS explícitas (o `GRANT` selectivos por tabla) para el rol app antes del
-cutover. Ver `docs/runbooks/migracion-persistencia.md`.
+**Cutover pendiente, requiere coordinación con Supabase:** el script
+`scripts/setup_pg_roles.sql` ya prepara `tenderflow_app` con solo DML,
+`NOINHERIT`, `NOBYPASSRLS` y sin `CREATE` en `public`; las políticas RLS
+explícitas están incluidas. Falta ejecutarlo con el rol administrador, guardar
+`DATABASE_ADMIN_URL` solo para Alembic y cambiar el runtime a ese rol. Ver
+`docs/runbooks/migracion-persistencia.md`.
 
 ## Workflow de recordatorio automatizado
 

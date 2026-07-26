@@ -6,8 +6,11 @@ POST /api/v1/security/leaked-key      — recibe notificaciones de GitHub Secret
 
 from __future__ import annotations
 
+import base64
+import time
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from api.auth import AuthContext, require_scope
@@ -18,6 +21,52 @@ from services.rate_limiting import get_rate_limiter
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/security", tags=["security"])
+_GITHUB_PARTNER_PUBLIC_KEYS_URL = (
+    "https://api.github.com/meta/public_keys/secret_scanning"
+)
+_github_keys_cache: tuple[float, dict[str, str]] | None = None
+
+
+def _github_public_key(identifier: str) -> str:
+    """Obtiene una clave ECDSA oficial de GitHub, con caché de una hora."""
+    global _github_keys_cache
+    now = time.monotonic()
+    if _github_keys_cache is None or now >= _github_keys_cache[0]:
+        response = httpx.get(_GITHUB_PARTNER_PUBLIC_KEYS_URL, timeout=5.0)
+        response.raise_for_status()
+        items = response.json().get("public_keys", [])
+        keys = {
+            str(item["key_identifier"]): str(item["key"])
+            for item in items
+            if isinstance(item, dict) and item.get("key_identifier") and item.get("key")
+        }
+        if not keys:
+            raise ValueError("GitHub returned no secret-scanning public keys")
+        _github_keys_cache = (now + 3600, keys)
+    key = _github_keys_cache[1].get(identifier)
+    if key is None:
+        raise ValueError("Unknown GitHub secret-scanning key identifier")
+    return key
+
+
+def _verify_github_signature(identifier: str | None, signature: str | None, body: bytes) -> None:
+    """Exige y verifica la firma ECDSA P-256 de GitHub Secret Scanning."""
+    if not identifier or not signature:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing GitHub signature")
+    try:
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        key = serialization.load_pem_public_key(_github_public_key(identifier).encode())
+        if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(key.curve, ec.SECP256R1):
+            raise ValueError("GitHub secret-scanning key must use ECDSA P-256")
+        raw_signature = base64.b64decode(signature, validate=True)
+        key.verify(raw_signature, body, ec.ECDSA(hashes.SHA256()))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.warning("leaked_key_invalid_signature", error=str(exc))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid GitHub signature") from exc
 
 
 # ── CSP report endpoint ───────────────────────────────────────────────────────
@@ -89,33 +138,18 @@ async def leaked_key_notification(
 
     Ref: https://docs.github.com/en/code-security/secret-scanning/
     """
-    import base64
-    import hashlib
-    import hmac
     import json
-
-    from config import settings
 
     body_bytes = await request.body()
 
     # Verificar firma GitHub (ECDSA P-256) — si API_HMAC_SECRET está configurado
     # se usa como fallback para tests. En producción se debería usar la clave pública
     # de GitHub descargada de https://api.github.com/meta/public_keys/secret_scanning
-    if settings.API_HMAC_SECRET.get_secret_value() and x_github_public_key_signature:
-        try:
-            expected = hmac.new(
-                settings.API_HMAC_SECRET.get_secret_value().encode(),
-                body_bytes,
-                hashlib.sha256,
-            ).hexdigest()
-            sig_hex = base64.b64decode(x_github_public_key_signature).hex()
-            if not hmac.compare_digest(expected, sig_hex):
-                log.warning("leaked_key_invalid_signature")
-                raise HTTPException(status_code=403, detail="Invalid signature")
-        except Exception as exc:
-            if isinstance(exc, HTTPException):
-                raise
-            log.warning("leaked_key_signature_verify_error", error=str(exc))
+    _verify_github_signature(
+        x_github_public_key_identifier,
+        x_github_public_key_signature,
+        body_bytes,
+    )
 
     try:
         tokens = json.loads(body_bytes)

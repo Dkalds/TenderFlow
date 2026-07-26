@@ -6,6 +6,8 @@ import gzip
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 
 class TestBackupSqlite:
     def test_crea_backup_comprimido(self, tmp_path):
@@ -47,7 +49,7 @@ class TestBackupSqlite:
         # Crear 5 archivos de backup falsos
         files = []
         for i in range(5):
-            f = backup_dir / f"licitaciones_200{i}0101_000000.db.gz"
+            f = backup_dir / f"licitaciones_200{i}0101_000000.db.gz.gpg"
             f.write_bytes(b"fake")
             time.sleep(0.01)  # Pequeño delay para diferencia en mtime
             files.append(f)
@@ -55,7 +57,7 @@ class TestBackupSqlite:
         pruned = prune_old_backups(backup_dir, keep=3)
 
         assert pruned == 2
-        remaining = list(backup_dir.glob("*.db.gz"))
+        remaining = list(backup_dir.glob("*.db.gz.gpg"))
         assert len(remaining) == 3
 
     def test_prune_noop_si_pocos_backups(self, tmp_path):
@@ -63,10 +65,23 @@ class TestBackupSqlite:
 
         backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
-        (backup_dir / "test.db.gz").write_bytes(b"fake")
+        (backup_dir / "test.db.gz.gpg").write_bytes(b"fake")
 
         pruned = prune_old_backups(backup_dir, keep=7)
         assert pruned == 0
+
+
+class TestBackupEncryption:
+    def test_refuses_to_leave_a_plaintext_backup_without_a_key(self, tmp_path, monkeypatch):
+        from scripts.backup_db import encrypt_backup_file
+
+        backup = tmp_path / "licitaciones.db.gz"
+        backup.write_bytes(b"sensitive backup")
+        monkeypatch.delenv("BACKUP_ENCRYPTION_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="BACKUP_ENCRYPTION_KEY"):
+            encrypt_backup_file(backup)
+        assert backup.exists()
 
 
 class TestRetentionCleanup:

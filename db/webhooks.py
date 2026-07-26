@@ -25,7 +25,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import urllib.parse
 from typing import Any, cast
 
 import requests
@@ -33,12 +32,19 @@ import requests
 from db.database import connect, now_utc_iso
 from observability.logging import get_logger
 from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
-from shared.ssrf import resolve_and_validate
+from shared.outbound_http import pinned_https_request
+from shared.ssrf import validate_outbound_url
 
 log = get_logger(__name__)
 
 _DELIVERY_TIMEOUT_S = 5.0
 _MAX_FAILURES_BEFORE_DISABLE = 10
+
+
+def _allowed_webhook_hosts() -> frozenset[str]:
+    from config.settings import settings
+
+    return frozenset(host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip())
 
 
 def _get_webhook_master_key() -> str:
@@ -105,7 +111,7 @@ def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int,
                 (secret, webhook_id),
             )
 
-    log.info("webhook_created", webhook_id=webhook_id, url=url, events=event_types)
+    log.info("webhook_created", webhook_id=webhook_id, events=event_types)
     return webhook_id, secret
 
 
@@ -151,7 +157,12 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
             continue
 
         try:
-            pinned_url = resolve_and_validate(url)
+            allowed_hosts = _allowed_webhook_hosts()
+            from config.settings import settings
+
+            if settings.ENV in ("prod", "staging") and not allowed_hosts:
+                raise ValueError("WEBHOOK_ALLOWED_HOSTS no está configurado")
+            validate_outbound_url(url, allowed_hosts=allowed_hosts or None)
         except ValueError as exc:
             log.warning("webhook_trigger_ssrf_blocked", webhook_id=wid, error=str(exc))
             _record_delivery(wid, 0, False)
@@ -159,23 +170,29 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
 
         secret = _resolve_secret(wid, stored_secret)
         signature = _sign(secret, body)
-        original_host = urllib.parse.urlparse(url).hostname or ""
         headers = {
             "Content-Type": "application/json",
             "X-Webhook-Signature": f"sha256={signature}",
             "X-Webhook-Event": event_type,
             "User-Agent": "licitaciones-sap-webhook/1.0",
-            "Host": original_host,
         }
         try:
-            resp = requests.post(
-                pinned_url, data=body, headers=headers, timeout=_DELIVERY_TIMEOUT_S
+            resp = pinned_https_request(
+                "POST",
+                url,
+                headers=headers,
+                body=body,
+                timeout_seconds=_DELIVERY_TIMEOUT_S,
+                allowed_hosts=allowed_hosts or None,
             )
-            ok = 200 <= resp.status_code < 300
-            _record_delivery(wid, resp.status_code, ok)
-            if ok:
-                successful += 1
-        except requests.RequestException as exc:
+            try:
+                ok = 200 <= resp.status_code < 300
+                _record_delivery(wid, resp.status_code, ok)
+                if ok:
+                    successful += 1
+            finally:
+                resp.close()
+        except (requests.RequestException, ValueError) as exc:
             log.warning("webhook_delivery_failed", webhook_id=wid, error=str(exc))
             _record_delivery(wid, 0, False)
 

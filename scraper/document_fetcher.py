@@ -14,15 +14,13 @@ from __future__ import annotations
 
 import hashlib
 import io
-import urllib.parse
+import multiprocessing
 from typing import Any
-
-import requests
 
 from config import USER_AGENT, settings
 from observability.logging import get_logger
 from scraper.resilience import http_retry, placsp_breaker
-from shared.ssrf import resolve_and_validate
+from shared.outbound_http import pinned_https_request
 
 log = get_logger(__name__)
 
@@ -47,16 +45,19 @@ def _download_bytes(uri: str) -> tuple[bytes, str | None]:
     ``scraper/bulk_downloader.py`` (Content-Length + contador de bytes en
     streaming, por si el header miente).
     """
-    pinned_url = resolve_and_validate(uri)
-    original_host = urllib.parse.urlparse(uri).hostname or ""
-    headers = {"User-Agent": USER_AGENT, "Host": original_host}
+    allowed_hosts = (
+        frozenset(host.strip() for host in settings.DOCUMENT_ALLOWED_HOSTS.split(",") if host.strip())
+        if settings.ENV in ("prod", "staging")
+        else frozenset()
+    )
+    headers = {"User-Agent": USER_AGENT}
 
-    with requests.get(
-        pinned_url,
+    with pinned_https_request(
+        "GET",
+        uri,
         headers=headers,
-        stream=True,
-        timeout=settings.REQUEST_TIMEOUT,
-        verify=True,
+        timeout_seconds=float(settings.REQUEST_TIMEOUT),
+        allowed_hosts=allowed_hosts or None,
     ) as r:
         r.raise_for_status()
         content_type = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower() or None
@@ -82,7 +83,7 @@ def _download_bytes(uri: str) -> tuple[bytes, str | None]:
     return b"".join(chunks), content_type
 
 
-def _extract_pdf_text(content: bytes) -> str:
+def _extract_pdf_text_local(content: bytes, *, max_pages: int, max_text_chars: int) -> str:
     """Extrae texto de un PDF con pypdf. Import diferido — [pliegos] es opcional."""
     try:
         from pypdf import PdfReader
@@ -93,7 +94,18 @@ def _extract_pdf_text(content: bytes) -> str:
         reader = PdfReader(io.BytesIO(content))
         if reader.is_encrypted:
             raise DocumentFetchError("PDF cifrado — extracción no soportada en v1")
-        pages_text = [page.extract_text() or "" for page in reader.pages]
+        if len(reader.pages) > max_pages:
+            raise DocumentFetchError(
+                f"PDF excede el máximo de {max_pages} páginas"
+            )
+        pages_text: list[str] = []
+        total_chars = 0
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            total_chars += len(page_text)
+            if total_chars > max_text_chars:
+                raise DocumentFetchError("PDF excede el máximo de texto extraíble permitido")
+            pages_text.append(page_text)
     except DocumentFetchError:
         raise
     except Exception as e:
@@ -107,10 +119,94 @@ def _extract_pdf_text(content: bytes) -> str:
     return texto
 
 
+def _pdf_extraction_worker(
+    content: bytes,
+    max_pages: int,
+    max_text_chars: int,
+    result_connection: Any,
+) -> None:
+    """Ejecuta el parser en un proceso aislado y devuelve solo texto o error.
+
+    pypdf procesa estructuras controladas por terceros. Aislarlo permite
+    terminar un parser bloqueado o excesivamente costoso sin comprometer al
+    worker que procesa el lote completo.
+    """
+    try:
+        result_connection.send(
+            ("ok", _extract_pdf_text_local(content, max_pages=max_pages, max_text_chars=max_text_chars))
+        )
+    except Exception as exc:  # El padre convierte el error en DocumentFetchError.
+        result_connection.send(("error", str(exc)))
+    finally:
+        result_connection.close()
+
+
+def _extract_pdf_text(content: bytes) -> str:
+    """Extrae texto de PDF con límites de recursos también en tiempo.
+
+    En producción y staging se usa un proceso desechable: si un PDF malicioso
+    bloquea el parser, se corta al vencer el presupuesto configurado. En local
+    se conserva la ejecución directa para que el ciclo de desarrollo y los
+    tests no dependan del mecanismo spawn de cada sistema operativo.
+    """
+    max_pages = settings.MAX_DOCUMENT_PAGES
+    max_text_chars = settings.MAX_DOCUMENT_TEXT_CHARS
+    timeout_seconds = float(settings.DOCUMENT_EXTRACTION_TIMEOUT_SECONDS)
+
+    if settings.ENV not in ("prod", "staging") or timeout_seconds <= 0:
+        return _extract_pdf_text_local(
+            content,
+            max_pages=max_pages,
+            max_text_chars=max_text_chars,
+        )
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_pdf_extraction_worker,
+        args=(content, max_pages, max_text_chars, send_connection),
+        daemon=True,
+    )
+
+    try:
+        process.start()
+        # El padre consume antes de hacer join: el texto puede ocupar varios MB
+        # y bloquear el pipe si se esperase a que el hijo terminase primero.
+        send_connection.close()
+        if not receive_connection.poll(timeout_seconds):
+            process.terminate()
+            process.join(timeout=1)
+            raise DocumentFetchError(
+                f"PDF excede el tiempo máximo de extracción ({timeout_seconds:g} segundos)"
+            )
+
+        try:
+            outcome, payload = receive_connection.recv()
+        except EOFError as exc:
+            raise DocumentFetchError("El proceso de extracción de PDF terminó inesperadamente") from exc
+
+        process.join(timeout=1)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1)
+
+        if outcome != "ok":
+            raise DocumentFetchError(str(payload))
+        return str(payload)
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1)
+        receive_connection.close()
+        send_connection.close()
+
+
 def _extract_text(content: bytes, content_type: str | None) -> str:
     """Despacha la extracción según content-type. v1: PDF + text/plain."""
     if content_type == "text/plain":
         texto = content.decode("utf-8", errors="replace").strip()
+        if len(texto) > settings.MAX_DOCUMENT_TEXT_CHARS:
+            raise DocumentFetchError("text/plain excede el máximo de texto permitido")
         if not texto:
             raise DocumentFetchError("text/plain vacío tras decodificar")
         return texto

@@ -138,8 +138,13 @@ class ResumenRequest(BaseModel):
 def _check_ask_scope(user: dict[str, Any]) -> None:
     """Scope check para auth por API key (usuarios de sesión siempre permitidos)."""
     if user.get("auth_method") == "api_key":
-        scopes_str = user.get("scopes", "")
-        scopes = frozenset(s.strip() for s in scopes_str.split(",") if s.strip())
+        raw_scopes = user.get("scopes", "")
+        if isinstance(raw_scopes, str):
+            scopes = frozenset(scope.strip() for scope in raw_scopes.split(",") if scope.strip())
+        elif isinstance(raw_scopes, (set, frozenset, list, tuple)):
+            scopes = frozenset(str(scope).strip() for scope in raw_scopes if str(scope).strip())
+        else:
+            scopes = frozenset()
         if "*" not in scopes and "ask:read" not in scopes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
@@ -412,3 +413,29 @@ class TestTryRedis:
             from shared.cache import _MemoryBackend
 
             assert isinstance(result, _MemoryBackend)
+
+
+class TestCacheResponseIdentity:
+    """Las respuestas personalizadas nunca comparten entrada entre usuarios."""
+
+    def test_private_principal_is_part_of_cache_key(self):
+        mod = _fresh_import()
+        calls = 0
+
+        @mod.cache_response(ttl=60, namespace="identity-regression")
+        def personalized(*, _user):
+            nonlocal calls
+            calls += 1
+            return {"principal": _user["user_key"], "call": calls}
+
+        async def invoke():
+            first = await personalized(_user={"user_key": "user-a"})
+            second = await personalized(_user={"user_key": "user-b"})
+            repeat = await personalized(_user={"user_key": "user-a"})
+            return first, second, repeat
+
+        first, second, repeat = asyncio.run(invoke())
+        assert first["principal"] == "user-a"
+        assert second["principal"] == "user-b"
+        assert first == repeat
+        assert calls == 2

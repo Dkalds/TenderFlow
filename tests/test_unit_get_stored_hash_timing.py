@@ -55,7 +55,7 @@ class TestApiAuthHandlesDbError:
         from api.auth import require_api_key
         from services.auth import ApiKeyRecord
 
-        mock_record = ApiKeyRecord(key_id=1, expires_at=None, scopes="*")
+        mock_record = ApiKeyRecord(key_id=1, user_id=None, expires_at=None, scopes="*")
 
         with (
             patch("api.auth.hash_api_key", return_value="fakehash"),
@@ -75,7 +75,7 @@ class TestApiAuthHandlesDbError:
         from api.auth import require_api_key
         from services.auth import ApiKeyRecord
 
-        mock_record = ApiKeyRecord(key_id=1, expires_at=None, scopes="*")
+        mock_record = ApiKeyRecord(key_id=1, user_id=None, expires_at=None, scopes="*")
 
         with (
             patch("api.auth.hash_api_key", return_value="fakehash"),

@@ -207,5 +207,8 @@ def log_access(
         c.execute(
             "INSERT INTO access_log (user_id, email, auth_method, logged_in_at) "
             "VALUES (?, ?, ?, ?)",
-            (user_id, email, auth_method, now_utc_iso()),
+            # Keep the API-compatible ``email`` argument out of new audit data:
+            # the users table already owns that PII and ``user_id`` is enough to
+            # reconstruct an authorized user's access history.
+            (user_id, None, auth_method, now_utc_iso()),
         )

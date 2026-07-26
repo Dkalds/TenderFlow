@@ -210,6 +210,7 @@ async def submit_feedback(
             nota=body.nota,
             tecnologia=body.tecnologia,
             tecnologias_secundarias=body.tecnologias_secundarias or None,
+            user_id=int(ctx["user_id"]),
         )
     except Exception as exc:
         log.error("feedback_store_error", expediente=body.expediente, error=str(exc))
@@ -230,7 +231,7 @@ async def submit_feedback(
 
     log_event(
         event_type="feedback.submitted",
-        user_key=ctx.get("key_hash", ctx.get("email", "session"))[:8],
+        user_key=str(ctx.get("user_key", "system"))[:8],
         resource=f"licitacion:{body.expediente}",
         detail={
             "relevante": body.relevante,

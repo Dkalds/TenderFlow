@@ -12,40 +12,74 @@ on:
 
 permissions:
   contents: read
+  id-token: write # credenciales temporales OIDC para el bucket de backup
 
 jobs:
   restore-drill:
     name: Verify latest backup restores
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+    services:
+      postgres:
+        # postgres:16 amd64 digest, refreshed by the dependency-update workflow.
+        image: postgres@sha256:da8cf245a60506e50a0a8cbb0f39c559ca622d92490605b67fcadc74ca1ea8e4
+        env:
+          POSTGRES_USER: tenderflow
+          POSTGRES_PASSWORD: tenderflow # contenedor efimero, no es un secreto
+          POSTGRES_DB: tenderflow_restore_drill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt boto3
+        run: pip install -r requirements.txt
+
+      - name: Validate restore-drill configuration
+        env:
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -eu
+          : "${AWS_ROLE_TO_ASSUME:?AWS_ROLE_TO_ASSUME es obligatorio para el restore drill}"
+          : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET es obligatorio para el restore drill}"
+          : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY es obligatorio para el restore drill}"
+
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-west-1' }}
 
       - name: Download latest backup from S3/R2
         id: download
         env:
           BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
           BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
         run: |
           if [ -z "$BACKUP_S3_BUCKET" ]; then
             echo "::warning::BACKUP_S3_BUCKET no configurado — drill omitido."
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
           fi
+          : "${AWS_ROLE_TO_ASSUME:?AWS_ROLE_TO_ASSUME es obligatorio para el restore drill}"
+          : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY es obligatorio para el restore drill}"
           mkdir -p data/backups
           python - <<'EOF'
           import os
@@ -59,9 +93,12 @@ jobs:
 
           s3 = boto3.client("s3", endpoint_url=endpoint)
           resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-          objs = [o for o in resp.get("Contents", []) if o["Key"].endswith(".db.gz")]
+          objs = [
+              o for o in resp.get("Contents", [])
+              if o["Key"].endswith((".db.gz.gpg", ".dump.gpg"))
+          ]
           if not objs:
-              print(f"::error::No hay backups .db.gz en s3://{bucket}/{prefix}")
+              print(f"::error::No hay backups cifrados en s3://{bucket}/{prefix}")
               sys.exit(1)
 
           latest = max(objs, key=lambda o: o["LastModified"])
@@ -69,8 +106,24 @@ jobs:
           s3.download_file(bucket, latest["Key"], dest)
           print(f"Descargado: {latest['Key']} -> {dest}")
           EOF
-          echo "skipped=false" >> "$GITHUB_OUTPUT"
+          ENCRYPTED=$(find data/backups -maxdepth 1 -type f -name '*.gpg' -print -quit)
+          test -n "$ENCRYPTED"
+          printf '%s' "$BACKUP_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --output "${ENCRYPTED%.gpg}" --decrypt "$ENCRYPTED"
+          rm -f "$ENCRYPTED"
 
       - name: Verify backup restores
-        if: steps.download.outputs.skipped != 'true'
-        run: python scripts/restore_db.py --verify
+        env:
+          PGPASSWORD: tenderflow
+        run: |
+          set -eo pipefail
+          DUMP=$(find data/backups -maxdepth 1 -type f -name '*.dump' -print -quit)
+          if [ -n "$DUMP" ]; then
+            pg_restore --list "$DUMP" >/dev/null
+            pg_restore --dbname=postgresql://tenderflow@localhost:5432/tenderflow_restore_drill \
+              --no-owner --no-acl "$DUMP"
+            psql --dbname=postgresql://tenderflow@localhost:5432/tenderflow_restore_drill \
+              --command='SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '\''public'\'';'
+          else
+            python scripts/restore_db.py --verify
+          fi

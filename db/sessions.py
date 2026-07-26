@@ -20,7 +20,8 @@ from typing import Any
 
 from db.database import connect, now_utc_iso
 
-_SESSION_TTL_HOURS = 24 * 7  # 7 días por defecto
+_SESSION_TTL_HOURS = 24
+_SESSION_IDLE_MINUTES = 30
 
 
 def _hash_token(token: str) -> str:
@@ -43,8 +44,8 @@ def create_session(
     with connect() as c:
         c.execute(
             "INSERT INTO sessions "
-            "(token_hash, user_id, created_at, expires_at, ip, user_agent, revoked) "
-            "VALUES (?, ?, ?, ?, ?, ?, 0)",
+            "(token_hash, user_id, created_at, expires_at, ip, user_agent, last_seen_at, revoked) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
             (
                 token_hash,
                 user_id,
@@ -52,6 +53,7 @@ def create_session(
                 expires.isoformat(),
                 ip,
                 (user_agent or "")[:512],
+                now.isoformat(),
             ),
         )
     return token
@@ -62,23 +64,53 @@ def validate_session(token: str) -> dict[str, Any] | None:
     token_hash = _hash_token(token)
     with connect() as c:
         row = c.execute(
-            "SELECT user_id, expires_at, revoked, ip FROM sessions WHERE token_hash = ?",
+            "SELECT user_id, created_at, expires_at, revoked, ip, last_seen_at, mfa_verified_at "
+            "FROM sessions WHERE token_hash = ?",
             (token_hash,),
         ).fetchone()
     if row is None:
         return None
-    user_id, expires_at, revoked, ip = row
+    user_id, created_at, expires_at, revoked, ip, last_seen_at, mfa_verified_at = row
     if revoked:
         return None
     try:
         exp = datetime.fromisoformat(expires_at)
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=UTC)
-        if datetime.now(UTC) > exp:
+        now = datetime.now(UTC)
+        if now > exp:
             return None
+        last_seen = datetime.fromisoformat(last_seen_at) if last_seen_at else None
+        if last_seen is not None:
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=UTC)
+            if now - last_seen > timedelta(minutes=_SESSION_IDLE_MINUTES):
+                revoke_session(token)
+                return None
     except Exception:
         return None
-    return {"user_id": user_id, "expires_at": expires_at, "ip": ip}
+    with connect() as c:
+        c.execute(
+            "UPDATE sessions SET last_seen_at = ? WHERE token_hash = ? AND revoked = 0",
+            (now.isoformat(), token_hash),
+        )
+    return {
+        "user_id": user_id,
+        "authenticated_at": created_at,
+        "expires_at": expires_at,
+        "ip": ip,
+        "mfa_verified_at": mfa_verified_at,
+    }
+
+
+def mark_session_mfa_verified(token: str) -> None:
+    """Eleva la sesión actual tras verificar un segundo factor."""
+    token_hash = _hash_token(token)
+    with connect() as c:
+        c.execute(
+            "UPDATE sessions SET mfa_verified_at = ? WHERE token_hash = ? AND revoked = 0",
+            (now_utc_iso(), token_hash),
+        )
 
 
 def revoke_session(token: str) -> None:

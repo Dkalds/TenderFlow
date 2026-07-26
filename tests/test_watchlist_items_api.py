@@ -77,8 +77,8 @@ def test_items_de_distintos_usuarios_no_se_mezclan(client, api_db):
     from api.auth import create_api_key
 
     _seed_licitaciones()
-    key_a = create_api_key("user-a")
-    key_b = create_api_key("user-b")
+    key_a = create_api_key("user-a", scopes="watchlist:read,watchlist:write")
+    key_b = create_api_key("user-b", scopes="watchlist:read,watchlist:write")
 
     client.post("/api/v1/watchlist/items", json={"id_externo": "L1"}, headers=_auth(key_a))
     client.post("/api/v1/watchlist/items", json={"id_externo": "L2"}, headers=_auth(key_b))

@@ -261,3 +261,34 @@ def test_list_recent_ordered_by_created_at_desc(tmp_db):
     result = list_recent()
     assert result[0]["action"] == "third"
     assert result[-1]["action"] == "first"
+
+
+def test_verify_hash_chain_detects_deleted_intermediate_entry(tmp_db):
+    """A deleted row breaks prev_hash continuity rather than silently passing."""
+    from db.audit import log_action, verify_hash_chain
+    from db.database import connect
+
+    log_action("u", "s", "first")
+    log_action("u", "s", "second")
+    log_action("u", "s", "third")
+    with connect() as connection:
+        connection.execute("DELETE FROM audit_log WHERE action = ?", ("second",))
+
+    result = verify_hash_chain()
+    assert result["valid"] is False
+    assert "interrumpida" in str(result["error"])
+
+
+def test_verify_hash_chain_detects_deleted_tail_via_signed_head(tmp_db):
+    """The signed state catches a tail deletion that continuity alone cannot."""
+    from db.audit import log_action, verify_hash_chain
+    from db.database import connect
+
+    log_action("u", "s", "first")
+    log_action("u", "s", "second")
+    with connect() as connection:
+        connection.execute("DELETE FROM audit_log WHERE action = ?", ("second",))
+
+    result = verify_hash_chain()
+    assert result["valid"] is False
+    assert "cabecera anclada" in str(result["error"])

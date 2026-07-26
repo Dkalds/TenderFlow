@@ -99,7 +99,10 @@ def test_logout_limpia_cookies(client):
     assert "session" in r_login.cookies
 
     # Logout
-    r_logout = client.post("/api/v1/auth/logout")
+    r_logout = client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": r_login.cookies["csrf_token"]},
+    )
     assert r_logout.status_code == 200
 
     # Verificar que /me ya no funciona (las cookies deben haberse eliminado

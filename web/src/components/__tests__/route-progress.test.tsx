@@ -20,24 +20,28 @@ describe("RouteProgress", () => {
     expect(done).toHaveBeenCalled();
   });
 
-  it("starts NProgress when navigating to a different internal path", () => {
+  it("starts NProgress when navigating to a different internal path", async () => {
     const start = vi.spyOn(NProgress, "start");
     render(<RouteProgress />);
     const a = document.createElement("a");
     a.href = `${window.location.origin}/otra-ruta`;
     document.body.appendChild(a);
     fireEvent.click(a);
+    // NProgress.start() se difiere a un requestAnimationFrame para no bloquear
+    // el hilo principal dentro del propio handler de click (evita INP largos).
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(start).toHaveBeenCalled();
     document.body.removeChild(a);
   });
 
-  it("does not start NProgress for same-path links", () => {
+  it("does not start NProgress for same-path links", async () => {
     const start = vi.spyOn(NProgress, "start");
     render(<RouteProgress />);
     const a = document.createElement("a");
     a.href = `${window.location.origin}${window.location.pathname}`;
     document.body.appendChild(a);
     fireEvent.click(a);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(start).not.toHaveBeenCalled();
     document.body.removeChild(a);
   });

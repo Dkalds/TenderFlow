@@ -195,8 +195,11 @@ def test_build_messages_with_docs_has_context_and_question() -> None:
     system, messages = build_messages("¿Cuál es el importe?", DOCS, ["SAP"])
     assert "[EXP-2024-001]" in system  # modo general con corpus
     assert messages[-1]["role"] == "user"
-    assert "CONTEXTO:" in messages[-1]["content"]
-    assert "PREGUNTA: ¿Cuál es el importe?" in messages[-1]["content"]
+    # El corpus externo se delimita para que sus instrucciones no prevalezcan
+    # sobre el prompt del sistema ni sobre la pregunta real del usuario.
+    assert "<fuentes_no_confiables>" in messages[-1]["content"]
+    assert "</fuentes_no_confiables>" in messages[-1]["content"]
+    assert "<pregunta_usuario>¿Cuál es el importe?</pregunta_usuario>" in messages[-1]["content"]
 
 
 def test_build_messages_without_docs_uses_no_corpus_prompt() -> None:

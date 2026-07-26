@@ -22,8 +22,22 @@ from db.models import metadata
 
 config = context.config
 
-# Leer DATABASE_URL directamente del entorno (evita ConfigParser que interpola %)
+# Leer DATABASE_URL directamente del entorno (evita ConfigParser que interpola %).
+# Si pydantic la obtuvo de `.env`, úsala también: Alembic debe migrar el mismo
+# destino que la aplicación, no caer por error en SQLite local.
 _database_url = os.environ.get("DATABASE_URL", "")
+if not _database_url:
+    try:
+        from config import settings
+
+        configured_url = settings.DATABASE_URL.get_secret_value()
+        # A mocked/malformed configuration must never become an SQLAlchemy URL.
+        _database_url = configured_url if isinstance(configured_url, str) else ""
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Could not load DATABASE_URL from config.settings; falling back to SQLite",
+            exc_info=True,
+        )
 _is_postgres = bool(_database_url and _database_url.startswith(("postgresql://", "postgres://")))
 
 # Solo configurar via set_main_option para SQLite (sin caracteres especiales)
@@ -72,7 +86,20 @@ def run_migrations_online() -> None:
             engine_url = "postgresql+psycopg://" + engine_url[len("postgresql://") :]
         elif engine_url.startswith("postgres://"):
             engine_url = "postgresql+psycopg://" + engine_url[len("postgres://") :]
-        connectable = create_engine(engine_url, poolclass=pool.NullPool)
+        from config import settings
+
+        connect_args: dict[str, object] = {}
+        ssl_root_cert = settings.DATABASE_SSL_ROOT_CERT.strip()
+        if ssl_root_cert:
+            connect_args["sslrootcert"] = ssl_root_cert
+        connect_timeout = int(settings.DB_CONNECT_TIMEOUT)
+        if connect_timeout > 0:
+            connect_args["connect_timeout"] = connect_timeout
+        connectable = create_engine(
+            engine_url,
+            poolclass=pool.NullPool,
+            connect_args=connect_args,
+        )
     else:
         connectable = engine_from_config(
             config.get_section(config.config_ini_section, {}),

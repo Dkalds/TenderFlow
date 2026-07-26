@@ -404,6 +404,7 @@ class TestValidateGoogleIdToken:
         claims = {
             "iss": "accounts.google.com",
             "aud": "myapp",
+            "sub": "google-subject-123",
             "exp": int(time.time()) + 600,
             "email_verified": True,
         }
@@ -415,6 +416,7 @@ class TestValidateGoogleIdToken:
         claims = {
             "iss": "https://accounts.google.com",
             "aud": "myapp",
+            "sub": "google-subject-123",
             "exp": int(time.time()) + 600,
             "email_verified": False,
         }
@@ -428,6 +430,8 @@ class TestValidateGoogleIdToken:
         claims = {
             "iss": "accounts.google.com",
             "aud": ["myapp", "other"],
+            "azp": "myapp",
+            "sub": "google-subject-123",
             "exp": int(time.time()) + 600,
             "email_verified": True,
         }

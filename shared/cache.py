@@ -332,7 +332,10 @@ def cache_response(
             key_parts = [func.__name__]
             for k, v in sorted(kwargs.items()):
                 if k.startswith("_"):
-                    # Skip private/internal args like _user dependency
+                    # Las dependencias de autenticación pueden alterar la respuesta.
+                    # Nunca deben compartir cache entre identidades.
+                    if isinstance(v, dict) and v.get("user_key"):
+                        key_parts.append(f"principal:{v['user_key']}")
                     continue
                 if isinstance(v, BaseModel):
                     key_parts.append(f"{k}:{v.model_dump_json(exclude_none=True)}")

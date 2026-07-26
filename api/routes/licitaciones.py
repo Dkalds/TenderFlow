@@ -27,6 +27,7 @@ from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from shared.export_safety import sanitize_spreadsheet_record
 
 log = get_logger(__name__)
 
@@ -649,7 +650,7 @@ async def bulk_get_licitaciones(
             writer = csv.DictWriter(output, fieldnames=list(items[0].keys()))
             writer.writeheader()
             for row in items:
-                writer.writerow(row)
+                writer.writerow(sanitize_spreadsheet_record(row))
             yield output.getvalue()
 
         response.headers["Content-Disposition"] = "attachment; filename=licitaciones_bulk.csv"

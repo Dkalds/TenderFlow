@@ -20,25 +20,44 @@ marca ``is_admin`` en ese caso).
 
 from __future__ import annotations
 
-import urllib.parse
+import hashlib
+import hmac
+import json
+import re
+import secrets
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
+from requests import RequestException
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from config.settings import settings
 from db.audit import log_event
 from db.repositories.webhooks import WebhookRepository
 from observability.logging import get_logger
-from shared.ssrf import is_ssrf_url as _is_ssrf_url
-from shared.ssrf import resolve_and_validate as _resolve_and_validate
+from shared.outbound_http import pinned_https_request
+from shared.ssrf import validate_outbound_url
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 _VALID_EVENTS = {"watchlist_match", "daily_summary", "watchlist_rule.matched", "*"}
+_IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
+def _allowed_webhook_hosts() -> frozenset[str]:
+    return frozenset(host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip())
+
+
+def _validate_webhook_url(url: str) -> str:
+    allowed_hosts = _allowed_webhook_hosts()
+    if settings.ENV in ("prod", "staging") and not allowed_hosts:
+        raise ValueError("Los webhooks salientes están deshabilitados: falta WEBHOOK_ALLOWED_HOSTS")
+    validate_outbound_url(url, allowed_hosts=allowed_hosts or None)
+    return url
 
 
 def _require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
@@ -50,7 +69,13 @@ def _require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str
 
 def _actor_key(ctx: dict[str, Any]) -> str:
     """Identificador corto para audit log — misma convención que feedback.py/me.py."""
-    return str(ctx.get("key_hash") or ctx.get("email") or "session")[:8]
+    material = str(ctx.get("user_key") or ctx.get("key_hash") or ctx.get("user_id") or "session")
+    return hashlib.sha256(material.encode()).hexdigest()[:16]
+
+
+def _idempotency_endpoint(ctx: dict[str, Any]) -> str:
+    """Namespace an idempotency key by its authenticated owner."""
+    return f"webhook.create:{_actor_key(ctx)}"
 
 
 # ── Modelos ──────────────────────────────────────────────────────────────────
@@ -67,13 +92,11 @@ class WebhookCreate(BaseModel):
     @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
-        if not v.startswith("https://") and not v.startswith("http://"):
-            raise ValueError("URL debe ser http(s)://...")
+        if not v.startswith("https://"):
+            raise ValueError("URL debe usar https://")
         if len(v) > 500:
             raise ValueError("URL demasiado larga (máx 500 chars)")
-        if _is_ssrf_url(v):
-            raise ValueError("URL no permitida: apunta a una red privada o no es accesible.")
-        return v
+        return _validate_webhook_url(v)
 
     @field_validator("event_types")
     @classmethod
@@ -82,6 +105,25 @@ class WebhookCreate(BaseModel):
         if invalid:
             raise ValueError(f"Eventos inválidos: {invalid}. Permitidos: {sorted(_VALID_EVENTS)}")
         return v
+
+
+def _request_fingerprint(body: WebhookCreate) -> str:
+    payload = json.dumps(body.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _post_pinned_webhook(url: str, payload: bytes, headers: dict[str, str]) -> int:
+    """Send one webhook delivery with DNS pinning, TLS verification and no redirects."""
+    allowed_hosts = _allowed_webhook_hosts()
+    with pinned_https_request(
+        "POST",
+        url,
+        body=payload,
+        headers=headers,
+        timeout_seconds=5.0,
+        allowed_hosts=allowed_hosts or None,
+    ) as response:
+        return response.status_code
 
 
 class WebhookUpdate(BaseModel):
@@ -95,13 +137,11 @@ class WebhookUpdate(BaseModel):
     def validate_url(cls, v: str | None) -> str | None:
         if v is None:
             return v
-        if not v.startswith("https://") and not v.startswith("http://"):
-            raise ValueError("URL debe ser http(s)://...")
+        if not v.startswith("https://"):
+            raise ValueError("URL debe usar https://")
         if len(v) > 500:
             raise ValueError("URL demasiado larga")
-        if _is_ssrf_url(v):
-            raise ValueError("URL no permitida: apunta a una red privada.")
-        return v
+        return _validate_webhook_url(v)
 
     @field_validator("event_types")
     @classmethod
@@ -143,6 +183,7 @@ _repo = WebhookRepository()
 )
 async def create(
     body: WebhookCreate,
+    response: Response,
     ctx: dict[str, Any] = Depends(_require_admin),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> WebhookCreateResponse:
@@ -151,16 +192,76 @@ async def create(
     Si se incluye ``Idempotency-Key``, una segunda request con la misma
     clave devuelve la respuesta original sin crear un duplicado.
     """
-    # -- Idempotency check --
-    if idempotency_key:
-        cached = await run_db(_repo.idempotency_get, idempotency_key, "webhook.create")
-        if cached is not None:
-            log.info("webhook_create_idempotent_hit", key=idempotency_key[:16])
-            return WebhookCreateResponse(**cached)
+    response.headers["Cache-Control"] = "no-store"
+    endpoint = _idempotency_endpoint(ctx)
+    fingerprint = _request_fingerprint(body)
+    reservation_token: str | None = None
 
-    webhook_id, secret = await run_db(
-        _repo.create, name=body.name, url=body.url, event_types=body.event_types
-    )
+    # -- Idempotency check/reservation --
+    if idempotency_key:
+        if not _IDEMPOTENCY_KEY_RE.fullmatch(idempotency_key):
+            raise HTTPException(status_code=400, detail="Invalid Idempotency-Key format.")
+        reservation_token = secrets.token_urlsafe(24)
+        owns_reservation, cached = await run_db(
+            _repo.idempotency_reserve,
+            idempotency_key,
+            endpoint,
+            fingerprint,
+            reservation_token,
+            settings.IDEMPOTENCY_TTL_SECONDS,
+        )
+        if not owns_reservation:
+            cached_fingerprint = str(cached.get("_request_fingerprint") or "")
+            if not hmac.compare_digest(cached_fingerprint, fingerprint):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Idempotency-Key was already used with a different request.",
+                )
+            if cached.get("_pending"):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="An identical request is still being processed.",
+                    headers={"Retry-After": "1"},
+                )
+            try:
+                webhook_id = int(cached["id"])
+                secret = await run_db(_repo.get_secret, webhook_id)
+                if not secret:
+                    raise ValueError("secret unavailable")
+                log.info(
+                    "webhook_create_idempotent_hit",
+                    idempotency_key_hash=hashlib.sha256(idempotency_key.encode()).hexdigest()[:12],
+                )
+                return WebhookCreateResponse(
+                    id=webhook_id,
+                    name=str(cached["name"]),
+                    url=str(cached["url"]),
+                    event_types=list(cached["event_types"]),
+                    secret=secret,
+                )
+            except (KeyError, TypeError, ValueError):
+                # Do not replay a legacy cache row that may contain a secret or
+                # lacks a request fingerprint; a caller must use a new key.
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Idempotency-Key cannot be safely replayed. Use a new key.",
+                ) from None
+
+    try:
+        webhook_id, secret = await run_db(
+            _repo.create, name=body.name, url=body.url, event_types=body.event_types
+        )
+    except Exception:
+        if idempotency_key and reservation_token:
+            await run_db(_repo.idempotency_release, idempotency_key, endpoint, reservation_token)
+        raise
+    if not secret:
+        if idempotency_key and reservation_token:
+            await run_db(_repo.idempotency_release, idempotency_key, endpoint, reservation_token)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook creation did not produce a signing secret.",
+        )
     log_event(
         event_type="webhook.created",
         user_key=_actor_key(ctx),
@@ -175,14 +276,23 @@ async def create(
         secret=secret,
     )
 
-    # -- Persist idempotency key --
-    if idempotency_key:
-        await run_db(
-            _repo.idempotency_store,
+    # -- Persist idempotency result without the webhook secret --
+    if idempotency_key and reservation_token:
+        finalized = await run_db(
+            _repo.idempotency_finalize,
             idempotency_key,
-            "webhook.create",
-            response_data.model_dump(),
+            endpoint,
+            reservation_token,
+            {
+                "id": webhook_id,
+                "name": body.name,
+                "url": body.url,
+                "event_types": body.event_types,
+                "_request_fingerprint": fingerprint,
+            },
         )
+        if not finalized:
+            log.error("webhook_idempotency_finalize_failed", webhook_id=webhook_id)
 
     return response_data
 
@@ -288,8 +398,6 @@ async def ping(
     import hmac as _hmac
     import json
 
-    import requests
-
     wh = _repo.get_by_id(webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
@@ -306,11 +414,9 @@ async def ping(
     ).encode()
     sig = _hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
 
-    # DNS pinning: resolve NOW, validate, pin IP to prevent rebinding
     url = str(wh["url"])
-    original_host = urllib.parse.urlparse(url).hostname or ""
     try:
-        pinned_url = _resolve_and_validate(url)
+        _validate_webhook_url(url)
     except ValueError as exc:
         log.warning("webhook_ping_ssrf_blocked", webhook_id=webhook_id, error=str(exc))
         return {"success": False, "error": f"SSRF blocked: {exc}"}
@@ -320,7 +426,6 @@ async def ping(
         "X-Webhook-Signature": f"sha256={sig}",
         "X-Webhook-Event": "ping",
         "User-Agent": "licitaciones-sap-webhook/1.0",
-        "Host": original_host,  # preserve original Host for TLS SNI / vhosts
     }
 
     # Retry with exponential backoff (max 2 retries)
@@ -328,24 +433,22 @@ async def ping(
     last_exc: Exception | None = None
     for attempt in range(max_attempts):
         try:
-            resp = await _asyncio.to_thread(
-                requests.post,
-                pinned_url,
-                data=payload,
-                headers=headers,
-                timeout=5.0,
-                verify=True,
+            status_code = await _asyncio.to_thread(
+                _post_pinned_webhook,
+                url,
+                payload,
+                headers,
             )
-            ok = 200 <= resp.status_code < 300
+            ok = 200 <= status_code < 300
             _repo.record_delivery(
                 webhook_id,
-                status_code=resp.status_code,
+                status_code=status_code,
                 success=ok,
                 event_type="ping",
                 payload_size=len(payload),
             )
-            return {"success": ok, "status_code": resp.status_code, "attempts": attempt + 1}
-        except requests.RequestException as exc:
+            return {"success": ok, "status_code": status_code, "attempts": attempt + 1}
+        except (RequestException, ValueError) as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
                 await _asyncio.sleep(0.5 * (2**attempt))  # 0.5s, 1s

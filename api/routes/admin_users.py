@@ -42,26 +42,52 @@ class DeactivateBody(BaseModel):
     action: str  # "deactivate" | "reactivate" | "anonymize"
 
 
+class AdminUserOut(BaseModel):
+    """Vista segura de usuario para administración; excluye credenciales."""
+
+    id: int
+    email: str | None = None
+    display_name: str | None = None
+    oauth_provider: str | None = None
+    is_admin: bool = False
+    created_at: str | None = None
+    deactivated_at: str | None = None
+    last_access: str | None = None
+
+
+def _safe_user(user: dict[str, Any]) -> AdminUserOut:
+    return AdminUserOut(
+        id=int(user["id"]),
+        email=user.get("email"),
+        display_name=user.get("display_name"),
+        oauth_provider=user.get("oauth_provider"),
+        is_admin=bool(user.get("is_admin")),
+        created_at=user.get("created_at"),
+        deactivated_at=user.get("deactivated_at"),
+        last_access=user.get("last_access"),
+    )
+
+
 @router.get("")
 def admin_list_users(
     include_deactivated: bool = False,
     limit: int = 200,
     admin: dict[str, Any] = Depends(_require_admin),
-) -> list[dict[str, Any]]:
+) -> list[AdminUserOut]:
     """Lista todos los usuarios (solo admin)."""
-    return list_users(limit=limit, include_deactivated=include_deactivated)
+    return [_safe_user(user) for user in list_users(limit=limit, include_deactivated=include_deactivated)]
 
 
 @router.get("/{user_id}")
 def admin_get_user(
     user_id: int,
     admin: dict[str, Any] = Depends(_require_admin),
-) -> dict[str, Any]:
+) -> AdminUserOut:
     """Detalle de un usuario (incluye desactivados)."""
     user = get_user_by_id(user_id, include_deactivated=True)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found.")
-    return user
+    return _safe_user(user)
 
 
 @router.put("/{user_id}/admin")

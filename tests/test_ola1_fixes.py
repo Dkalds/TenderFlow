@@ -42,8 +42,11 @@ def app_and_client(tmp_path, monkeypatch):
 def api_key(app_and_client):
     _, _client = app_and_client
     from api.auth import create_api_key
+    from db.users import create_user, set_admin
 
-    return create_api_key("test-ola1", scopes="*")
+    user_id = create_user(email="ola-admin@example.test", password_hash="not-used")
+    set_admin(user_id, True)
+    return create_api_key("test-ola1", scopes="*", user_id=user_id)
 
 
 # ── OLA 1.1: Idempotency-Key en POST /feedback ────────────────────────────────
@@ -94,10 +97,43 @@ def test_webhook_create_idempotency(app_and_client, api_key):
 
     # Misma respuesta cacheada — mismo id
     assert id1 == id2
+    assert r1.json()["secret"] == r2.json()["secret"]
 
     # Solo debe existir un webhook en total
     all_hooks = client.get("/api/v1/webhooks", headers={"X-API-Key": api_key}).json()
     assert len(all_hooks) == 1
+
+
+def test_webhook_idempotency_never_persists_secret_or_replays_different_body(
+    app_and_client, api_key, monkeypatch
+):
+    """The cache is actor-scoped, secret-free, and bound to the request body."""
+    from db.database import connect_read
+
+    monkeypatch.setattr("api.routes.webhooks.validate_outbound_url", lambda url, **_: url)
+    _, client = app_and_client
+    headers = {"X-API-Key": api_key, "Idempotency-Key": "test-idem-wh-secure-001"}
+    body = {"name": "secure-hook", "url": "https://example.com/hook", "event_types": ["*"]}
+
+    created = client.post("/api/v1/webhooks", json=body, headers=headers)
+    assert created.status_code == 201, created.text
+    secret = created.json()["secret"]
+
+    with connect_read() as connection:
+        row = connection.execute(
+            "SELECT response_json FROM idempotency_keys WHERE idem_key = ?",
+            (headers["Idempotency-Key"],),
+        ).fetchone()
+    assert row is not None
+    assert secret not in str(row[0])
+    assert '"secret"' not in str(row[0])
+
+    replay_with_other_body = client.post(
+        "/api/v1/webhooks",
+        json={**body, "name": "other-hook"},
+        headers=headers,
+    )
+    assert replay_with_other_body.status_code == 409
 
 
 # ── OLA 1.2: Cardinalidad de métricas ────────────────────────────────────────

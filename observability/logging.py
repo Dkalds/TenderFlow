@@ -73,6 +73,15 @@ _SENSITIVE_KEYS = frozenset(
     }
 )
 
+# Authentication and operational logs are broadly accessible during an
+# incident. They must not become a secondary database of personal data.
+_PERSONAL_KEYS = frozenset({"email", "recipient", "recipients"})
+_EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![\w.-])")
+_URL_QUERY_SECRET_RE = re.compile(
+    r"([?&](?:access_)?(?:token|api[_-]?key|secret|signature|sig|password|auth)=)[^&#\s]+",
+    re.IGNORECASE,
+)
+
 _REDACTED = "***REDACTED***"
 
 # Cache de valores sensibles — se actualiza una única vez en configure_logging().
@@ -109,6 +118,9 @@ def _redact_secrets(
         if key.lower() in _SENSITIVE_KEYS:
             event_dict[key] = _REDACTED
             continue
+        if key.lower() in _PERSONAL_KEYS:
+            event_dict[key] = _REDACTED
+            continue
         if not isinstance(value, str):
             continue
         if value in sensitive_values:
@@ -121,6 +133,10 @@ def _redact_secrets(
                 redacted = redacted.replace(sv, _REDACTED)
         # Redacta passwords en DSNs Postgres aunque no coincidan con un valor cacheado.
         redacted = redact_dsn(redacted)
+        # Errores de proveedores y URLs de callback pueden incluir tanto emails
+        # como tokens en query string; el log conserva el contexto no sensible.
+        redacted = _EMAIL_RE.sub("<email-redacted>", redacted)
+        redacted = _URL_QUERY_SECRET_RE.sub(r"\1" + _REDACTED, redacted)
         if redacted != value:
             event_dict[key] = redacted
     return event_dict

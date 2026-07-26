@@ -31,6 +31,7 @@ class ApiKeyRepository:
             select_parts = [
                 "id",
                 "expires_at" if "expires_at" in cols_info else "NULL AS expires_at",
+                "user_id" if "user_id" in cols_info else "NULL AS user_id",
             ]
             if "scopes" in cols_info:
                 select_parts.append("scopes")
@@ -46,7 +47,8 @@ class ApiKeyRepository:
         return {
             "id": row[0],
             "expires_at": row[1],
-            "scopes": row[2] if len(row) > 2 else "*",
+            "user_id": row[2],
+            "scopes": row[3] if len(row) > 3 else "*",
         }
 
     def get_stored_hash(self, key_id: int) -> str | None:

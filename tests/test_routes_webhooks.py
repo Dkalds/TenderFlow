@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from api.app import app
 from api.routes.dual_auth import require_any_auth
 
@@ -33,9 +35,17 @@ def _non_admin_session():
     return {"user_id": 2, "email": "user@test.com", "is_admin": False, "auth_method": "session"}
 
 
+@pytest.fixture(autouse=True)
+def _admin_principal():
+    """Las pruebas generales de webhooks se ejecutan como administrador explÃ­cito."""
+    app.dependency_overrides[require_any_auth] = _admin_session
+    yield
+    app.dependency_overrides.clear()
+
+
 def _create_webhook(client, auth, monkeypatch, *, name="hook", url=_WEBHOOK_URL):
     """Helper: crea un webhook saltándose la validación SSRF y devuelve el JSON de respuesta."""
-    monkeypatch.setattr("api.routes.webhooks._is_ssrf_url", lambda u: False)
+    monkeypatch.setattr("api.routes.webhooks.validate_outbound_url", lambda url, **_: url)
     r = client.post(
         "/api/v1/webhooks",
         json={"name": name, "url": url, "event_types": ["*"]},
@@ -76,7 +86,7 @@ def test_webhook_event_types_is_a_list_not_csv_string(client, auth, monkeypatch)
     r_get = client.get(f"/api/v1/webhooks/{wh_id}", headers=auth)
     assert isinstance(r_get.json()["event_types"], list)
 
-    monkeypatch.setattr("api.routes.webhooks._is_ssrf_url", lambda u: False)
+    monkeypatch.setattr("api.routes.webhooks.validate_outbound_url", lambda url, **_: url)
     r_multi = client.post(
         "/api/v1/webhooks",
         json={
@@ -165,13 +175,13 @@ def test_webhook_ping_exitoso(client, auth, monkeypatch):
     wh_id = created["id"]
 
     # Evitar resolución DNS real en el momento del ping
-    monkeypatch.setattr("api.routes.webhooks._resolve_and_validate", lambda url: url)
+    monkeypatch.setattr("api.routes.webhooks._validate_webhook_url", lambda url: url)
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.text = "ok"
 
-    with patch("requests.post", return_value=mock_resp):
+    with patch("api.routes.webhooks._post_pinned_webhook", return_value=mock_resp.status_code):
         r = client.post(f"/api/v1/webhooks/{wh_id}/ping", headers=auth)
 
     assert r.status_code == 200, r.text
@@ -205,13 +215,13 @@ def test_webhook_deliveries_tras_ping(client, auth, monkeypatch):
     created = _create_webhook(client, auth, monkeypatch)
     wh_id = created["id"]
 
-    monkeypatch.setattr("api.routes.webhooks._resolve_and_validate", lambda url: url)
+    monkeypatch.setattr("api.routes.webhooks._validate_webhook_url", lambda url: url)
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.text = "ok"
 
-    with patch("requests.post", return_value=mock_resp):
+    with patch("api.routes.webhooks._post_pinned_webhook", return_value=mock_resp.status_code):
         r_ping = client.post(f"/api/v1/webhooks/{wh_id}/ping", headers=auth)
     assert r_ping.status_code == 200
 
@@ -250,7 +260,7 @@ def test_session_admin_can_list(client, api_db):
 
 def test_session_admin_can_create_with_watchlist_rule_matched_event(client, api_db, monkeypatch):
     """F12·C2c: 'watchlist_rule.matched' es un event_type válido al crear."""
-    monkeypatch.setattr("api.routes.webhooks._is_ssrf_url", lambda u: False)
+    monkeypatch.setattr("api.routes.webhooks.validate_outbound_url", lambda url, **_: url)
     app.dependency_overrides[require_any_auth] = _admin_session
     try:
         resp = client.post(

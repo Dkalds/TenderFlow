@@ -24,14 +24,14 @@ import hashlib
 import io
 import json
 import zipfile
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from api.auth import AuthContext, create_api_key, require_api_key
-from api.routes.dual_auth import require_any_auth
+from api.auth import AuthContext, create_api_key, require_scope
+from api.routes.dual_auth import require_any_auth, require_recent_session
 from db.audit import log_event
 from db.database import now_utc_iso
 from db.repositories.api_keys import ApiKeyRepository
@@ -39,7 +39,6 @@ from db.sessions import revoke_all_sessions
 from observability.logging import get_logger
 from services.gdpr import (
     anonymize_user_data,
-    export_api_keys,
     export_audit_log,
     export_feedback,
     export_user_notifications,
@@ -49,7 +48,6 @@ from services.gdpr import (
     export_watchlist_rules,
     get_key_name_and_scopes,
     get_user_id_from_key_id,
-    list_user_keys,
     revoke_all_api_keys_for_user,
     set_key_expiry,
 )
@@ -59,6 +57,12 @@ log = get_logger(__name__)
 router = APIRouter(tags=["me"])
 
 _key_repo = ApiKeyRepository()
+
+
+class DeleteMyDataRequest(BaseModel):
+    """Explicit confirmation prevents a forged or accidental destructive call."""
+
+    confirmation: Literal["DELETE"]
 
 
 def _get_user_id_from_key_id(key_id: int) -> int | None:
@@ -71,6 +75,8 @@ def _user_key(ctx: dict[str, Any]) -> str:
 
     Misma convención que ``watchlist_rules``/``watchlist_items``/``competitive``.
     """
+    if ctx.get("user_key"):
+        return str(ctx["user_key"])
     seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
@@ -90,15 +96,8 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
     """
     user_key = _user_key(ctx)
-    is_api_key = ctx.get("auth_method") == "api_key"
-
-    if is_api_key:
-        key_hash = str(ctx["key_hash"])
-        api_keys_data = export_api_keys(key_hash)
-        key_name = _key_repo.get_name(key_hash) or key_hash[:8]
-    else:
-        api_keys_data = _key_repo.get_all_for_user(ctx["user_id"])
-        key_name = str(ctx.get("email") or ctx["user_id"])
+    api_keys_data = _key_repo.get_all_for_user(ctx["user_id"])
+    key_name = str(ctx.get("email") or ctx["user_id"])
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -123,7 +122,7 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
         notifications = export_user_notifications(user_key)
         zf.writestr("notificaciones.json", json.dumps(notifications, ensure_ascii=False, indent=2))
 
-        feedback = export_feedback()
+        feedback = export_feedback(int(ctx["user_id"]))
         zf.writestr("feedback.json", json.dumps(feedback, ensure_ascii=False, indent=2))
 
         audit = export_audit_log(_actor_key(ctx))
@@ -155,28 +154,28 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
     summary="GDPR — anonimizar y eliminar mis datos",
     status_code=200,
 )
-def delete_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+def delete_my_data(
+    body: DeleteMyDataRequest,
+    ctx: dict[str, Any] = Depends(require_recent_session()),
+) -> dict[str, Any]:
     """Anonimiza watchlist/reglas/perfil/notificaciones y revoca credenciales.
 
-    Con API key: revoca la key usada para autenticar esta request (igual que
-    antes). Con sesión OAuth: además anonimiza la cuenta (RGPD Art.17 —
+    Requiere una sesión de navegador autenticada recientemente; una API key
+    no puede ejecutar la operación.  Anonimiza la cuenta (RGPD Art.17 —
     ``db.users.anonymize_user``), revoca todas las sesiones activas y
     desactiva todas las API keys que el usuario tuviera creadas.
     """
     user_key = _user_key(ctx)
-    is_api_key = ctx.get("auth_method") == "api_key"
-    key_id = ctx["user_id"] if is_api_key else None
+    key_id = ctx.get("api_key_id")
+    user_id = int(ctx["user_id"])
+    anonymize_user_data(user_key, key_id, user_id=user_id)
 
-    anonymize_user_data(user_key, key_id)
+    from db.users import anonymize_user
 
-    resource = f"api_key:{key_id}" if is_api_key else f"user:{ctx.get('user_id')}"
-    if not is_api_key:
-        from db.users import anonymize_user
-
-        user_id = ctx["user_id"]
-        anonymize_user(user_id)
-        revoke_all_sessions(user_id)
-        revoke_all_api_keys_for_user(user_id)
+    resource = f"user:{user_id}"
+    anonymize_user(user_id)
+    revoke_all_sessions(user_id)
+    revoke_all_api_keys_for_user(user_id)
 
     log_event(
         event_type="gdpr.delete",
@@ -195,10 +194,7 @@ def delete_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str,
 )
 def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
     """Revoca todas las sesiones server-side del usuario."""
-    if ctx.get("auth_method") == "session":
-        user_id = ctx["user_id"]
-    else:
-        user_id = _get_user_id_from_key_id(ctx["user_id"])
+    user_id = int(ctx["user_id"])
     if user_id:
         n = revoke_all_sessions(user_id)
         log_event(
@@ -224,9 +220,7 @@ def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[dict[s
     El ``prefix`` (primeros 8 chars del token original) permite identificar
     la key en logs/soporte sin exponer el secreto completo.
     """
-    if ctx.get("auth_method") == "session":
-        return _key_repo.get_all_for_user(ctx["user_id"])
-    return list_user_keys(ctx["user_id"])
+    return _key_repo.get_all_for_user(ctx["user_id"])
 
 
 @router.post(
@@ -239,8 +233,8 @@ def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[dict[s
     },
 )
 def rotate_my_key(
-    ctx: AuthContext = Depends(require_api_key),
-    grace_days: int = 7,
+    ctx: AuthContext = Depends(require_scope("api_keys:rotate")),
+    grace_days: int = Query(7, ge=0, le=30),
 ) -> dict[str, Any]:
     """Genera una nueva API key con los mismos scopes que la actual.
 
@@ -269,7 +263,7 @@ def rotate_my_key(
     new_raw = create_api_key(
         name=f"{name} (rotated)",
         scopes=scopes,
-        user_id=_get_user_id_from_key_id(ctx.key_id),
+        user_id=ctx.user_id,
     )
 
     log_event(

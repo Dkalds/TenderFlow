@@ -204,10 +204,7 @@ def scoring(
     Cuando el usuario tiene un perfil (Feature B), aplica sus pesos y keywords
     personalizados. Sin perfil, usa los settings globales.
     """
-    import hashlib
-
-    seed = str(_user.get("email") or _user.get("key_hash") or "")
-    user_key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16] if seed else None
+    user_key = str(_user.get("user_key") or "") or None
     id_list = [i for i in ids.split(",") if i] if ids else None
     filters = ScoringFilters(
         min_score=min_score,

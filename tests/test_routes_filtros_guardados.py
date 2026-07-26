@@ -109,7 +109,7 @@ def test_filtros_delete_ajeno(client, auth, api_db):
     filter_id = items[0]["id"]
 
     # Segunda key para usuario distinto
-    otra_key = create_api_key("otro-usuario")
+    otra_key = create_api_key("otro-usuario", scopes="saved_filters:write")
     otro_auth = {"X-API-Key": otra_key}
 
     r = client.delete(f"/api/v1/saved-filters/{filter_id}", headers=otro_auth)

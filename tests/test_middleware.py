@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from unittest.mock import MagicMock, patch
 
 from starlette.applications import Starlette
@@ -145,14 +144,13 @@ class TestTrustedClientIp:
 
 
 class TestClientKey:
-    def test_api_key_is_hashed(self):
+    def test_api_key_does_not_create_a_separate_rate_limit_bucket(self):
         settings_mock = MagicMock()
         settings_mock.FORWARDED_ALLOW_IPS = "127.0.0.1"
         with patch.dict("sys.modules", {"config": MagicMock(settings=settings_mock)}):
             req = _fake_request(headers={"X-API-Key": "my-secret-key"})
             key = _client_key(req)
-            expected_hash = hashlib.sha256(b"my-secret-key").hexdigest()[:16]
-            assert key == f"ak:{expected_hash}"
+            assert key == "ip:1.2.3.4"
 
     def test_ip_fallback(self):
         settings_mock = MagicMock()

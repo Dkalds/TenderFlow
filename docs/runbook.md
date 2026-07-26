@@ -88,8 +88,8 @@ docker compose exec scheduler python -c \
 * F7: capa `services/` como dominio compartido (ver [[ADR-007-services-domain-layer|ADR-007]]).
   `services/normalization.py` y `services/classification.py` concentran
   la lógica reutilizable consumida por API y frontend web.
-* F7: `scripts/verify_audit_chain.py` valida la cadena de hashes del
-  `audit_log` (SHA-256 encadenado con genesis).
+* F7: `scripts/verify_audit_chain.py` valida íntegramente la cadena de
+  `audit_log`: continuidad, HMAC por registro y cabecera final firmada.
 * F7: `scripts/check_coverage_per_module.py` aplica umbrales de coverage
   diferenciados por capa (scraper 75 %, services 70 %, web 40 %).
 * F7: PKCE (RFC 7636) + validación de Google ID token en
@@ -104,7 +104,7 @@ docker compose exec scheduler python -c \
 ### Cadena de auditoría íntegra
 ```bash
 python scripts/verify_audit_chain.py --db-path data/licitaciones.db
-# Salida esperada: "0 filas corruptas"; exit-code 0
+# Salida esperada: "Estado: ÍNTEGRA"; exit-code 0
 ```
 
 ### Coverage por módulo bajo umbrales

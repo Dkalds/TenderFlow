@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { startTransition, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -471,7 +471,9 @@ export default function RedOrganoEmpresaPage() {
       </Card>
 
       {/* Drill-down de arista: licitaciones que sustentan la relación */}
-      <Sheet open={!!edge} onOpenChange={(o) => !o && setEdge(null)}>
+      {/* startTransition: cerrar diferido evita bloquear el hilo principal en
+          el propio clic del overlay (INP). */}
+      <Sheet open={!!edge} onOpenChange={(o) => !o && startTransition(() => setEdge(null))}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
           <SheetHeader>
             <SheetTitle>Licitaciones de la relación</SheetTitle>

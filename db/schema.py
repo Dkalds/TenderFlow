@@ -287,12 +287,13 @@ CREATE TABLE IF NOT EXISTS ml_feedback (
     tecnologia               TEXT,
     tecnologias_secundarias  TEXT,
     model_version            INTEGER,
+    user_id                  INTEGER REFERENCES users(id),
     created_at               TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ml_feedback_expediente ON ml_feedback(expediente);
 CREATE INDEX IF NOT EXISTS idx_ml_feedback_created_at ON ml_feedback(created_at);
--- NOTA: idx_ml_feedback_tecnologia se crea en _ensure_ml_feedback_columns (no aquí)
--- para no fallar en BDs legacy donde ml_feedback existe sin la columna tecnologia.
+-- NOTA: los índices de columnas introducidas posteriormente se crean en
+-- _ensure_ml_feedback_columns para no fallar en BDs legacy.
 
 CREATE TABLE IF NOT EXISTS webhooks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -351,6 +352,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at  TEXT NOT NULL,
     ip          TEXT,
     user_agent  TEXT,
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+    mfa_verified_at TEXT,
     revoked     INTEGER NOT NULL DEFAULT 0,
     revoked_at  TEXT
 );
@@ -511,6 +514,8 @@ def init_db() -> None:
         _ensure_licitaciones_columns(c)
         _ensure_adjudicaciones_columns(c)
         _ensure_ml_feedback_columns(c)
+        _ensure_session_security_columns(c)
+        _ensure_audit_security_columns(c)
     _conn_module._db_initialized = True
 
 
@@ -596,6 +601,7 @@ def _ensure_ml_feedback_columns(conn: Any) -> None:
         ("tecnologia", "TEXT"),
         ("tecnologias_secundarias", "TEXT"),
         ("model_version", "INTEGER"),
+        ("user_id", "INTEGER REFERENCES users(id)"),
     ):
         if col not in existing:
             try:
@@ -604,3 +610,28 @@ def _ensure_ml_feedback_columns(conn: Any) -> None:
             except Exception:
                 log.debug("ensure_column_skip", column=col)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ml_feedback_tecnologia ON ml_feedback(tecnologia)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ml_feedback_user_id ON ml_feedback(user_id)")
+
+
+def _ensure_session_security_columns(conn: Any) -> None:
+    """Compatibilidad SQLite/Turso de sesiones revocables y elevación MFA."""
+    existing = get_table_columns(conn, "sessions")
+    if not existing:
+        return
+    for col, sql_type in (("last_seen_at", "TEXT"), ("mfa_verified_at", "TEXT")):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE sessions ADD COLUMN {col} {sql_type}")
+    conn.execute("UPDATE sessions SET last_seen_at = created_at WHERE last_seen_at IS NULL")
+
+
+def _ensure_audit_security_columns(conn: Any) -> None:
+    """Asegura versionado y cabecera firmada de la cadena de auditoría."""
+    existing = get_table_columns(conn, "audit_log")
+    if existing and "hash_version" not in existing:
+        conn.execute("ALTER TABLE audit_log ADD COLUMN hash_version TEXT")
+    if existing:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS audit_chain_state ("
+            "chain_name TEXT PRIMARY KEY, head_hash TEXT NOT NULL, "
+            "entry_count INTEGER NOT NULL, state_hmac TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )

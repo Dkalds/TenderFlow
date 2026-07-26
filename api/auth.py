@@ -25,9 +25,10 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import BackgroundTasks, Depends, HTTPException, Security, status
+from fastapi import BackgroundTasks, Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 
+from api.scopes import has_scope, required_scope_for_request
 from db.database import now_utc_iso
 from observability.logging import get_logger
 from services import auth as auth_service
@@ -50,10 +51,11 @@ class AuthContext:
     key_hash: str
     key_id: int
     scopes: frozenset[str]
+    user_id: int | None = None
 
     def has_scope(self, scope: str) -> bool:
         """True si el contexto tiene el scope o es wildcard."""
-        return "*" in self.scopes or scope in self.scopes
+        return has_scope(self.scopes, scope)
 
 
 # ── Hashing ──────────────────────────────────────────────────────────────────
@@ -87,9 +89,15 @@ _FORBIDDEN = HTTPException(
 )
 
 
+async def _current_request(request: Request) -> Request:
+    """Expose the request through a dependency without breaking direct unit calls."""
+    return request
+
+
 async def require_api_key(
     api_key_raw: str | None = Security(_API_KEY_HEADER),
     background_tasks: BackgroundTasks = BackgroundTasks(),
+    request: Any = Depends(_current_request),
 ) -> AuthContext:
     """Dependencia FastAPI que valida la API Key.
 
@@ -117,6 +125,12 @@ async def require_api_key(
     if record is None:
         # Comparación dummy para mantener tiempo constante ante timing attacks
         hmac.compare_digest(key_hash, "0" * len(key_hash))
+        raise _UNAUTHORIZED
+
+    from config import settings
+
+    if record.user_id is None and settings.ENV in ("prod", "staging"):
+        log.warning("unbound_api_key_rejected", key_id=record.key_id)
         raise _UNAUTHORIZED
 
     key_id = record.key_id
@@ -148,7 +162,22 @@ async def require_api_key(
     background_tasks.add_task(_update_last_used, key_id)
 
     scopes = frozenset(s.strip() for s in scopes_str.split(",") if s.strip())
-    return AuthContext(key_hash=key_hash, key_id=key_id, scopes=scopes)
+    if isinstance(request, Request):
+        required_scope = required_scope_for_request(request.method, request.url.path)
+        if not has_scope(scopes, required_scope):
+            log.warning(
+                "api_key_scope_denied",
+                key_id=key_id,
+                required=required_scope,
+                available=sorted(scopes),
+            )
+            raise _FORBIDDEN
+    return AuthContext(
+        key_hash=key_hash,
+        key_id=key_id,
+        scopes=scopes,
+        user_id=record.user_id,
+    )
 
 
 def _update_last_used(key_id: int) -> None:
@@ -186,7 +215,7 @@ def require_scope(scope: str) -> Callable[..., Coroutine[Any, Any, AuthContext]]
 
 def create_api_key(
     name: str,
-    scopes: str = "*",
+    scopes: str | None = None,
     user_id: int | None = None,
     expires_days: int | None = None,
 ) -> str:
@@ -196,23 +225,36 @@ def create_api_key(
 
     Args:
         name: Nombre descriptivo de la key (p.ej. nombre del integrador).
-        scopes: Scopes autorizados, separados por coma. ``"*"`` = todos.
+        scopes: Scopes autorizados, separados por coma. Si se omite usa el
+            mínimo ``API_KEY_DEFAULT_SCOPES`` configurado.
         user_id: FK opcional a la tabla de usuarios/admin (para GDPR export).
-        expires_days: Si se especifica, la key expira en N días. None = sin expiración.
+        expires_days: Si se omite, usa ``API_KEY_DEFAULT_TTL_DAYS``. ``None``
+            ya no crea credenciales perpetuas por defecto.
     """
+    from config import settings
+
+    if user_id is None and settings.ENV in ("prod", "staging"):
+        raise ValueError("Production API keys must be bound to a user_id")
+    effective_scopes = scopes if scopes is not None else settings.API_KEY_DEFAULT_SCOPES
+    effective_ttl_days = (
+        expires_days if expires_days is not None else settings.API_KEY_DEFAULT_TTL_DAYS
+    )
+    if effective_ttl_days < 1 or effective_ttl_days > settings.API_KEY_MAX_TTL_DAYS:
+        raise ValueError("API key expiration is outside the configured allowed range")
+
     raw = secrets.token_urlsafe(32)
     key_hash = hash_api_key(raw)
     prefix = raw[:8]  # Primeros 8 chars — suficiente para identificar sin exponer
     expires_at: str | None = None
-    if expires_days is not None:
+    if effective_ttl_days is not None:
         from datetime import UTC, datetime, timedelta
 
-        expires_at = (datetime.now(UTC) + timedelta(days=expires_days)).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(days=effective_ttl_days)).isoformat()
 
     auth_service.insert_api_key(
         key_hash=key_hash,
         name=name,
-        scopes=scopes,
+        scopes=effective_scopes,
         prefix=prefix,
         user_id=user_id,
         expires_at=expires_at,

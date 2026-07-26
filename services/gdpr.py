@@ -84,9 +84,9 @@ def export_user_notifications(user_key: str) -> list[dict[str, Any]]:
     return get_user_alerts(user_key, limit=5000)
 
 
-def export_feedback() -> list[dict[str, Any]]:
+def export_feedback(user_id: int) -> list[dict[str, Any]]:
     """Exporta todo el ML feedback (anónimo, sin FK a usuario)."""
-    return _feedback_repo.export_all()
+    return _feedback_repo.export_for_user(user_id)
 
 
 def export_audit_log(key_hash: str) -> list[dict[str, Any]]:
@@ -94,7 +94,9 @@ def export_audit_log(key_hash: str) -> list[dict[str, Any]]:
     return _audit_repo.export_by_user_key(key_hash)
 
 
-def anonymize_user_data(user_key: str, key_id: int | None = None) -> None:
+def anonymize_user_data(
+    user_key: str, key_id: int | None = None, *, user_id: int | None = None
+) -> None:
     """Anonimiza/borra los datos personales del usuario (RGPD Art. 17).
 
     Cubre watchlist (empresa/CPV), favoritos, reglas de watchlist por criterio,
@@ -109,6 +111,8 @@ def anonymize_user_data(user_key: str, key_id: int | None = None) -> None:
     delete_all_for_user(user_key)
     delete_user_profile(user_key)
     delete_all_alerts(user_key)
+    if user_id is not None:
+        _feedback_repo.delete_for_user(user_id)
     if key_id is not None:
         _api_key_repo.deactivate_by_id(key_id)
 

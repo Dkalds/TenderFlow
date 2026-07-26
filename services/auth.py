@@ -24,6 +24,7 @@ class ApiKeyRecord:
     """Datos públicos de una API key autenticada."""
 
     key_id: int
+    user_id: int | None
     expires_at: str | None
     scopes: str
 
@@ -35,6 +36,7 @@ def lookup_active_key(key_hash: str) -> ApiKeyRecord | None:
         return None
     return ApiKeyRecord(
         key_id=int(row["id"]),
+        user_id=int(row["user_id"]) if row.get("user_id") is not None else None,
         expires_at=row.get("expires_at"),
         scopes=str(row.get("scopes") or "*"),
     )

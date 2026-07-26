@@ -6,7 +6,7 @@ Uso:
     python scripts/backup_db.py --keep 7        # retener últimos N backups (default: 7)
     python scripts/backup_db.py --s3            # subir a S3/R2 después del backup local
 
-El backup se guarda en data/backups/ con timestamp en el nombre.
+El backup se cifra con GPG/AES-256 en data/backups/ con timestamp en el nombre.
 Los backups más antiguos que --keep se eliminan automáticamente.
 
 Variables de entorno para upload S3/R2:
@@ -117,6 +117,40 @@ def backup_turso(backup_dir: Path) -> Path | None:
     size_kb = gz_dest.stat().st_size // 1024
     print(f"[backup] Turso → {gz_dest} ({size_kb} KB)")
     return gz_dest
+
+
+def encrypt_backup_file(file_path: Path) -> Path:
+    """Cifra un backup antes de cualquier salida del runner (fail closed)."""
+    import os
+
+    passphrase = os.environ.get("BACKUP_ENCRYPTION_KEY", "")
+    if not passphrase:
+        raise RuntimeError("BACKUP_ENCRYPTION_KEY is required; refusing plaintext backup")
+    encrypted = file_path.with_suffix(file_path.suffix + ".gpg")
+    gpg_bin = shutil.which("gpg")
+    if not gpg_bin:
+        raise RuntimeError("gpg is required to encrypt backups")
+    subprocess.run(
+        [
+            gpg_bin,
+            "--batch",
+            "--yes",
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase-fd",
+            "0",
+            "--symmetric",
+            "--cipher-algo",
+            "AES256",
+            "--output",
+            str(encrypted),
+            str(file_path),
+        ],
+        check=True,
+        input=passphrase.encode(),
+    )
+    file_path.unlink()
+    return encrypted
 
 
 def upload_to_s3(file_path: Path) -> bool:
@@ -249,7 +283,7 @@ def upload_to_azure(file_path: Path) -> bool:
 
 def prune_old_backups(backup_dir: Path, keep: int) -> int:
     """Elimina los backups más antiguos, manteniendo los últimos ``keep``."""
-    backups = sorted(backup_dir.glob("*.db.gz"), key=lambda p: p.stat().st_mtime)
+    backups = sorted(backup_dir.glob("*.db.gz.gpg"), key=lambda p: p.stat().st_mtime)
     to_delete = backups[: max(0, len(backups) - keep)]
     for f in to_delete:
         f.unlink()
@@ -320,18 +354,28 @@ def main() -> int:
             print(f"[backup] ERROR backup Turso: {exc}", file=sys.stderr)
             errors += 1
 
+    encrypted_backups: list[Path] = []
+    for f in uploaded:
+        try:
+            encrypted_backups.append(encrypt_backup_file(f))
+        except Exception as exc:
+            print(f"[backup] ERROR encrypting backup: {exc}", file=sys.stderr)
+            f.unlink(missing_ok=True)
+            errors += 1
+    uploaded = encrypted_backups
+
     if args.s3:
         s3_prefix = __import__("os").environ.get("BACKUP_S3_PREFIX", "backups/")
-        for f in uploaded:
-            if not upload_to_s3(f):
+        for encrypted in uploaded:
+            if not upload_to_s3(encrypted):
                 errors += 1
         pruned_s3 = prune_s3_backups(args.keep_s3, prefix=s3_prefix)
         if pruned_s3:
             print(f"[backup] {pruned_s3} backup(s) S3 antiguos eliminados.")
 
     if args.azure:
-        for f in uploaded:
-            if not upload_to_azure(f):
+        for encrypted in uploaded:
+            if not upload_to_azure(encrypted):
                 errors += 1
 
     pruned = prune_old_backups(backup_dir, args.keep)

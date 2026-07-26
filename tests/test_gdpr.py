@@ -86,15 +86,16 @@ def test_export_api_keys_empty_for_unknown_hash(tmp_db):
 
 
 def test_export_feedback(tmp_db):
-    _db_mod, _ = tmp_db
+    db_mod, _ = tmp_db
+    _seed_user_and_key(db_mod, user_id=7, key_id=70, key_hash="feedback-key")
     with connect() as c:
         c.execute(
-            "INSERT INTO ml_feedback (expediente, relevante, nota, created_at) VALUES (?, ?, ?, ?)",
-            ("EXP-001", 1, "good", now_utc_iso()),
+            "INSERT INTO ml_feedback (expediente, relevante, nota, user_id, created_at) VALUES (?, ?, ?, ?, ?)",
+            ("EXP-001", 1, "good", 7, now_utc_iso()),
         )
     from services.gdpr import export_feedback
 
-    rows = export_feedback()
+    rows = export_feedback(7)
     assert len(rows) == 1
     assert rows[0]["expediente"] == "EXP-001"
 

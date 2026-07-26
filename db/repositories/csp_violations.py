@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from db.database import connect, now_utc_iso
+from db.database import connect, get_table_columns, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -23,13 +23,7 @@ class CspViolationRepository:
         try:
             now = now_utc_iso()
             with connect() as c:
-                tables = {
-                    r[0]
-                    for r in c.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    ).fetchall()
-                }
-                if "csp_violations" in tables:
+                if get_table_columns(c, "csp_violations"):
                     c.execute(
                         "INSERT INTO csp_violations "
                         "(blocked_uri, violated_directive, document_uri, source_file, created_at) "

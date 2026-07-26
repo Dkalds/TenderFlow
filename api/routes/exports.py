@@ -18,8 +18,9 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import Response, StreamingResponse
 
 from api.auth import AuthContext, require_api_key
@@ -305,6 +306,24 @@ def _ics_fold(line: str) -> str:
     return "\r\n ".join(result)
 
 
+def _safe_ics_url(value: object) -> str | None:
+    """Return an HTTPS URI suitable for a URL property, never a new ICS line."""
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate or any(ord(char) < 32 or ord(char) == 127 for char in candidate):
+        return None
+    parsed = urlsplit(candidate)
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return candidate
+
+
 def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> str:
     """Genera contenido ICS (iCalendar) para una lista de eventos.
 
@@ -324,7 +343,7 @@ def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> 
         dtstart = str(item.get("dtstart", "")).replace("-", "").replace(":", "")[:8]
         summary = _ics_escape(str(item.get("summary", "")))
         description = _ics_escape(str(item.get("description", "")))
-        url = str(item.get("url", ""))
+        url = _safe_ics_url(item.get("url"))
 
         lines += [
             "BEGIN:VEVENT",
@@ -335,7 +354,7 @@ def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> 
         ]
         if description:
             lines.append(f"DESCRIPTION:{description}")
-        if url:
+        if url is not None:
             lines.append(f"URL:{url}")
         lines.append("END:VEVENT")
 
@@ -362,10 +381,13 @@ async def calendario_ics(
     Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
       ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
     """
-    import hashlib
+    from db.users import get_user_by_id
+    from shared.identity import user_key_from_email
 
-    seed = str(ctx.key_hash or "anon")
-    user_key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+    owner = get_user_by_id(ctx.user_id) if ctx.user_id is not None else None
+    if owner is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable")
+    user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
     from db.database import connect_read
 

@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read  # solo lectura sobre el repo
+  id-token: write # credenciales temporales OIDC para el bucket de backup
 
 jobs:
   backup:
@@ -31,19 +32,35 @@ jobs:
     # disponible en su propio `if`). Vacío si el secret no está definido.
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt boto3
+        run: pip install -r requirements.txt
+
+      - name: Validate backup configuration
+        run: |
+          set -eu
+          : "${AWS_ROLE_TO_ASSUME:?AWS_ROLE_TO_ASSUME es obligatorio para backups remotos}"
+          : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET es obligatorio para backups remotos}"
+          : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY es obligatorio para cifrar backups}"
+
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-west-1' }}
 
       # ── Rama Postgres (post-cutover F3d) ─────────────────────────────
       - name: Backup Postgres with pg_dump (when DATABASE_URL is set)
@@ -53,14 +70,12 @@ jobs:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
           BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
         run: |
           set -eo pipefail
           mkdir -p data/backups
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          BACKUP_FILE="data/backups/tenderflow_pg_${TIMESTAMP}.dump"
+          BACKUP_FILE="data/backups/tenderflow_pg_${TIMESTAMP}.dump.gpg"
           # Password fuera de la línea de comandos (evita /proc/<pid>/cmdline y ps):
           # se parsea DATABASE_URL a variables PG* y la password viaja por PGPASSWORD.
           eval "$(python -c '
@@ -75,24 +90,19 @@ jobs:
           print("export PGSSLMODE=%s" % shlex.quote(ssl))
           print("export PGPASSWORD=%s" % shlex.quote(unquote(u.password or "")))
           ')"
-          echo "Backup Postgres → $BACKUP_FILE (host=$PGHOST db=$PGDATABASE ssl=$PGSSLMODE)"
-          pg_dump --format=custom --no-owner --no-acl --file="$BACKUP_FILE"
+          echo "Backup Postgres cifrado → $BACKUP_FILE (host=$PGHOST db=$PGDATABASE ssl=$PGSSLMODE)"
+          # Cifra el stream de pg_dump: nunca se escribe un dump plano en el runner.
+          # Sin BACKUP_ENCRYPTION_KEY el job falla: nunca sube ni conserva un dump plano.
+          : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY es obligatorio}"
+          pg_dump --format=custom --no-owner --no-acl | \
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --symmetric \
+              --cipher-algo AES256 --output "$BACKUP_FILE" 3< <(printf '%s' "$BACKUP_ENCRYPTION_KEY")
           unset PGPASSWORD
           echo "Backup completado: $(du -sh "$BACKUP_FILE" | cut -f1)"
-          # Cifrar el dump (contiene PII + hashes de api_keys/totp_secrets) antes de subirlo.
-          # Sin BACKUP_ENCRYPTION_KEY: se sube a S3 privado pero NUNCA como artefacto de
-          # GitHub (el glob del artefacto es solo *.dump.gpg).
           UPLOAD_FILE="$BACKUP_FILE"
-          if [ -n "${BACKUP_ENCRYPTION_KEY:-}" ]; then
-          gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$BACKUP_ENCRYPTION_KEY" --output "${BACKUP_FILE}.gpg" "$BACKUP_FILE"
-          rm -f "$BACKUP_FILE"
-          UPLOAD_FILE="${BACKUP_FILE}.gpg"
           echo "Dump cifrado → $UPLOAD_FILE"
-          else
-          echo "::warning::BACKUP_ENCRYPTION_KEY no definido — el dump NO se cifra; se sube a S3 privado pero no como artefacto de GitHub."
-          fi
           # Subir a S3/R2 si está configurado (bucket privado). Solo el fichero resultante.
-          if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+          : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET es obligatorio}"
           UPLOAD_FILE="$UPLOAD_FILE" python -c "
           import boto3, os, pathlib
           s3 = boto3.client('s3', endpoint_url=os.environ.get('AWS_ENDPOINT_URL') or None)
@@ -101,7 +111,6 @@ jobs:
           s3.upload_file(str(f), os.environ['BACKUP_S3_BUCKET'], key)
           print('Uploaded to s3://%s/%s' % (os.environ['BACKUP_S3_BUCKET'], key))
           "
-          fi
 
       # ── Rama SQLite legacy (pre-cutover) ──────────────────────────────
       - name: Download latest SQLite DB
@@ -126,8 +135,7 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
           BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
           DATABASE_PATH: ${{ secrets.DATABASE_PATH || '' }}
           DATABASE_URL: ""
@@ -142,12 +150,12 @@ jobs:
         # Sube el backup como artefacto de GitHub Actions si el upload S3 falla.
         # Los artefactos se retienen 90 días. SOLO ficheros cifrados/comprimidos:
         # nunca un dump PG en claro (*.dump) — contiene PII + hashes de secretos.
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: db-backup-${{ github.run_id }}
           path: |
-            data/backups/*.db.gz
+            data/backups/*.db.gz.gpg
             data/backups/*.dump.gpg
           retention-days: 90
           if-no-files-found: warn

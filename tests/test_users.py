@@ -342,7 +342,7 @@ def test_log_access_oauth(tmp_db):
     cols = [d[0] for d in c.execute("SELECT * FROM access_log LIMIT 0").description]
     row = dict(zip(cols, rows[0], strict=False))
     assert row["auth_method"] == "oauth"
-    assert row["email"] == "log@example.com"
+    assert row["email"] is None
     assert row["logged_in_at"] is not None
 
 

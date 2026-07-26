@@ -6,6 +6,8 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # exports.py
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -210,33 +212,29 @@ class TestMeEndpoints:
     @patch("api.routes.me.export_audit_log", return_value=[])
     @patch("api.routes.me.export_feedback", return_value=[])
     @patch("api.routes.me.export_watchlist", return_value=[])
-    @patch("api.routes.me.export_api_keys", return_value=[])
     @patch("api.routes.me._key_repo")
     @patch("api.routes.me.log_event")
     def test_export_my_data(
         self,
         mock_log_event,
         mock_repo,
-        mock_keys,
         mock_watchlist,
         mock_feedback,
         mock_audit,
         client,
         auth,
     ):
-        mock_repo.get_name.return_value = "test-key"
+        mock_repo.get_all_for_user.return_value = []
         resp = client.get("/api/v1/me/data", headers=auth)
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/zip"
 
     @patch("api.routes.me.anonymize_user_data")
     @patch("api.routes.me.log_event")
-    def test_delete_my_data(self, mock_log_event, mock_anon, client, auth):
+    def test_delete_my_data_rejects_api_key(self, mock_log_event, mock_anon, client, auth):
         resp = client.delete("/api/v1/me", headers=auth)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "ok"
-        mock_anon.assert_called_once()
+        assert resp.status_code == 403
+        mock_anon.assert_not_called()
 
     @patch("api.routes.me.revoke_all_sessions", return_value=3)
     @patch("api.routes.me._get_user_id_from_key_id", return_value=42)
@@ -253,8 +251,9 @@ class TestMeEndpoints:
         assert resp.status_code == 200
         assert resp.json()["sessions_revoked"] == 0
 
-    @patch("api.routes.me.list_user_keys", return_value=[{"id": 1, "prefix": "abc"}])
-    def test_list_my_keys(self, mock_list, client, auth):
+    @patch("api.routes.me._key_repo")
+    def test_list_my_keys(self, mock_repo, client, auth):
+        mock_repo.get_all_for_user.return_value = [{"id": 1, "prefix": "abc"}]
         resp = client.get("/api/v1/me/keys", headers=auth)
         assert resp.status_code == 200
         assert len(resp.json()) == 1
@@ -286,6 +285,10 @@ class TestMeEndpoints:
 
 class TestSecurityEndpoints:
     """Cover security.py uncovered lines."""
+
+    @pytest.fixture(autouse=True)
+    def _verified_github_request(self, monkeypatch):
+        monkeypatch.setattr("api.routes.security._verify_github_signature", lambda *_args: None)
 
     @patch("services.security.store_csp_violation")
     @patch("api.routes.security.get_rate_limiter")

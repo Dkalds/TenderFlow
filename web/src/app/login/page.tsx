@@ -11,6 +11,7 @@ import { LogIn, UserPlus, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { ParticleField } from "@/components/layout/particle-field";
 import { cn } from "@/lib/utils";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 type Mode = "login" | "register";
 
@@ -45,7 +46,7 @@ function LoginPageContent() {
 
     try {
       await apiMutate("POST", "/api/v1/auth/login", { email, password });
-      const redirect = searchParams.get("redirect") ?? "/resumen";
+      const redirect = safeRedirectPath(searchParams.get("redirect"));
       window.location.href = redirect;
     } catch (err) {
       if (err instanceof ApiError) {

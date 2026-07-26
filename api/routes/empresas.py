@@ -25,6 +25,13 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/empresas", tags=["empresas"])
 
 
+def _require_review_admin(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+    """Human entity-resolution reviews mutate global canonical data."""
+    if not ctx.get("is_admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
+    return ctx
+
+
 def _list_empresas(q: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
     sql = (
         "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, "
@@ -133,7 +140,7 @@ class ReviewDecision(BaseModel):
 async def resolve_review(
     review_id: int,
     body: ReviewDecision,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(_require_review_admin),
 ) -> dict[str, Any]:
     """Acepta o rechaza un match dudoso y vincula sus adjudicaciones pendientes."""
     resolved_by = str(ctx.get("email") or ctx.get("key_hash") or "api")[:64]

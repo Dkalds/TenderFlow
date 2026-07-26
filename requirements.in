@@ -66,3 +66,5 @@ brotli-asgi>=1.4.0,<2
 # F3: Postgres/Supabase (ADR-016) — activo cuando DATABASE_URL apunta a postgres
 psycopg[binary]>=3.2,<4
 psycopg-pool>=3.2,<4
+# Backups S3/R2: instalada y bloqueada con el resto del entorno de producción.
+boto3>=1.43.56,<1.44

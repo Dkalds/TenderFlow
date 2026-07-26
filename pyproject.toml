@@ -36,6 +36,7 @@ dependencies = [
     # apunta a postgres. Sin este extra, db/connection.py opera sobre SQLite/Turso.
     "psycopg[binary]>=3.2,<4",
     "psycopg-pool>=3.2,<4",
+    "boto3>=1.43.56,<1.44",
 ]
 
 [project.optional-dependencies]

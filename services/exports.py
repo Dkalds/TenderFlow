@@ -9,6 +9,7 @@ from typing import Literal
 import pandas as pd
 
 from observability.logging import get_logger
+from shared.export_safety import sanitize_spreadsheet_record
 
 logger = get_logger(__name__)
 
@@ -33,7 +34,7 @@ def generate_csv(
 ) -> bytes:
     """Generate CSV bytes with UTF-8 BOM and semicolon delimiter for Excel compat."""
     cols = columns or _DEFAULT_COLUMNS
-    df = pd.DataFrame(records)
+    df = pd.DataFrame([sanitize_spreadsheet_record(record) for record in records])
     # Keep only requested columns that exist
     available = [c for c in cols if c in df.columns]
     if available:
@@ -51,7 +52,7 @@ def generate_excel(
 ) -> bytes:
     """Generate .xlsx bytes using openpyxl engine via pandas."""
     cols = columns or _DEFAULT_COLUMNS
-    df = pd.DataFrame(records)
+    df = pd.DataFrame([sanitize_spreadsheet_record(record) for record in records])
     available = [c for c in cols if c in df.columns]
     if available:
         df = df[available]

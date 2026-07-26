@@ -67,7 +67,12 @@ def check_rate_limit_db(
         return False
 
 
-def record_failed_login(client_key: str) -> int:
+def record_failed_login(
+    client_key: str,
+    *,
+    bucket: str = "login_fail",
+    window_seconds: float = 300.0,
+) -> int:
     """Registra un intento de login fallido y devuelve el conteo en la ventana.
 
     Args:
@@ -76,9 +81,9 @@ def record_failed_login(client_key: str) -> int:
     Returns:
         Número de intentos fallidos en los últimos 5 minutos.
     """
-    key = f"login_fail:{client_key}"
+    key = f"{bucket}:{client_key}"
     now = time.time()
-    window = 300.0  # 5 minutos
+    window = window_seconds
     cutoff = now - window
 
     try:
@@ -95,7 +100,13 @@ def record_failed_login(client_key: str) -> int:
         return 0
 
 
-def is_login_locked_out(client_key: str, max_attempts: int = 5) -> tuple[bool, float]:
+def is_login_locked_out(
+    client_key: str,
+    max_attempts: int = 5,
+    *,
+    bucket: str = "login_fail",
+    window_seconds: float = 300.0,
+) -> tuple[bool, float]:
     """Comprueba si un cliente está bloqueado por intentos fallidos.
 
     Args:
@@ -105,8 +116,8 @@ def is_login_locked_out(client_key: str, max_attempts: int = 5) -> tuple[bool, f
     Returns:
         (bloqueado, segundos_restantes) — segundos_restantes=0.0 si no bloqueado.
     """
-    key = f"login_fail:{client_key}"
-    window = 300.0  # 5 minutos
+    key = f"{bucket}:{client_key}"
+    window = window_seconds
     now = time.time()
     cutoff = now - window
 
@@ -128,18 +139,46 @@ def is_login_locked_out(client_key: str, max_attempts: int = 5) -> tuple[bool, f
                 return False, 0.0
             return True, remaining
     except Exception:
-        log.debug("is_login_locked_out_db_error", client_key=client_key, exc_info=True)
-        return False, 0.0
+        # No permitir una caída de la tabla de límites como bypass de fuerza bruta.
+        log.warning("is_login_lockout_db_error", client_key=client_key, exc_info=True)
+        return True, window
 
 
-def clear_login_attempts(client_key: str) -> None:
+def clear_login_attempts(client_key: str, *, bucket: str = "login_fail") -> None:
     """Limpia los intentos fallidos de un cliente (tras login exitoso)."""
-    key = f"login_fail:{client_key}"
+    key = f"{bucket}:{client_key}"
     try:
         with _connect() as conn:
             conn.execute("DELETE FROM rate_limits WHERE key = ?", [key])
     except Exception:
         log.warning("clear_login_attempts_db_error", client_key=client_key)
+
+
+def record_failed_mfa(user_id: int, *, window_seconds: float = 300.0) -> int:
+    """Registra un fallo MFA por cuenta, compartido por todas sus sesiones."""
+    return record_failed_login(
+        f"user:{user_id}", bucket="mfa_fail", window_seconds=window_seconds
+    )
+
+
+def is_mfa_locked_out(
+    user_id: int,
+    *,
+    max_attempts: int = 5,
+    window_seconds: float = 300.0,
+) -> tuple[bool, float]:
+    """Comprueba el lockout MFA por cuenta y falla cerrado ante errores de BD."""
+    return is_login_locked_out(
+        f"user:{user_id}",
+        max_attempts=max_attempts,
+        bucket="mfa_fail",
+        window_seconds=window_seconds,
+    )
+
+
+def clear_mfa_attempts(user_id: int) -> None:
+    """Limpia fallos MFA solo después de una verificación satisfactoria."""
+    clear_login_attempts(f"user:{user_id}", bucket="mfa_fail")
 
 
 def cleanup_expired(window_seconds: float = 86_400.0) -> int:

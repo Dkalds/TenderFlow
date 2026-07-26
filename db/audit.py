@@ -16,6 +16,7 @@ Acciones estándar:
 
 from __future__ import annotations
 
+import hmac
 from typing import Any
 
 from db.database import connect, now_utc_iso
@@ -23,6 +24,63 @@ from db.database import get_table_columns as _get_cols
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+_CHAIN_NAME = "audit_log"
+
+
+def _audit_hmac(value: str) -> str:
+    """Firma la cadena con una clave fuera de la base de datos."""
+    import hashlib
+    import hmac
+
+    from config import settings
+
+    key = settings.AUDIT_HMAC_KEY.get_secret_value()
+    if not key and settings.ENV == "dev":
+        key = "development-only-audit-key"
+    if not key:
+        raise RuntimeError("AUDIT_HMAC_KEY is not configured")
+    return hmac.new(key.encode(), value.encode(), hashlib.sha256).hexdigest()
+
+
+def _state_hmac(head_hash: str, entry_count: int) -> str:
+    """Sign the independently persisted chain head and cardinality."""
+    return _audit_hmac(f"audit-chain-state-v1:{head_hash}:{entry_count}")
+
+
+def _serialize_audit_chain_write(connection: Any) -> None:
+    """Serialize appends on Postgres so concurrent writers cannot fork a chain."""
+    from db.connection import is_postgres_backend
+
+    if is_postgres_backend():
+        connection.execute("SELECT pg_advisory_xact_lock(hashtext('tenderflow.audit_log.chain.v1'))")
+
+
+def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
+    """Return a verified ``(head_hash, count, state_exists)`` tuple."""
+    state_row = connection.execute(
+        "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state WHERE chain_name = ?",
+        (_CHAIN_NAME,),
+    ).fetchone()
+    tail_row = connection.execute(
+        "SELECT this_hash FROM audit_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    count_row = connection.execute("SELECT COUNT(*) FROM audit_log").fetchone()
+    current_head = str(tail_row[0]) if tail_row and tail_row[0] else "genesis"
+    current_count = int(count_row[0]) if count_row else 0
+    if state_row is None:
+        return current_head, current_count, False
+
+    stored_head, stored_count, stored_signature = (
+        str(state_row[0]),
+        int(state_row[1]),
+        str(state_row[2]),
+    )
+    if not hmac.compare_digest(stored_signature, _state_hmac(stored_head, stored_count)):
+        raise RuntimeError("audit chain state signature mismatch")
+    if stored_head != current_head or stored_count != current_count:
+        raise RuntimeError("audit chain head/state does not match audit_log")
+    return stored_head, stored_count, True
 
 
 def log_action(
@@ -42,7 +100,6 @@ def log_action(
         action: Nombre de la acción (ver módulo docstring).
         detail: Información adicional en texto libre (sin PII).
     """
-    import hashlib
     import json
 
     try:
@@ -51,13 +108,20 @@ def log_action(
             # Detectar si la tabla tiene columnas de hash chain (migración 26)
             cols_info = _get_cols(c, "audit_log")
             has_hash_chain = "prev_hash" in cols_info and "this_hash" in cols_info
+            has_hash_version = "hash_version" in cols_info
+            has_chain_state = bool(_get_cols(c, "audit_chain_state"))
 
             if has_hash_chain:
-                # Obtener el hash del último registro
-                prev_row = c.execute(
-                    "SELECT this_hash FROM audit_log ORDER BY id DESC LIMIT 1"
-                ).fetchone()
-                prev_hash = str(prev_row[0]) if prev_row and prev_row[0] else "genesis"
+                _serialize_audit_chain_write(c)
+                if has_chain_state:
+                    prev_hash, entry_count, state_exists = _assert_or_bootstrap_chain_state(c)
+                else:
+                    prev_row = c.execute(
+                        "SELECT this_hash FROM audit_log ORDER BY id DESC LIMIT 1"
+                    ).fetchone()
+                    prev_hash = str(prev_row[0]) if prev_row and prev_row[0] else "genesis"
+                    entry_count = 0
+                    state_exists = False
 
                 # Calcular this_hash
                 row_json = json.dumps(
@@ -71,14 +135,37 @@ def log_action(
                     ensure_ascii=False,
                     sort_keys=True,
                 )
-                this_hash = hashlib.sha256(f"{prev_hash}{row_json}".encode()).hexdigest()
-
-                c.execute(
-                    "INSERT INTO audit_log "
-                    "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (user_key, session_hash, action, detail, now, prev_hash, this_hash),
-                )
+                this_hash = _audit_hmac(f"{prev_hash}{row_json}")
+                if has_hash_version:
+                    c.execute(
+                        "INSERT INTO audit_log "
+                        "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash, hash_version) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, 'hmac-sha256-v1')",
+                        (user_key, session_hash, action, detail, now, prev_hash, this_hash),
+                    )
+                else:
+                    c.execute(
+                        "INSERT INTO audit_log "
+                        "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (user_key, session_hash, action, detail, now, prev_hash, this_hash),
+                    )
+                if has_chain_state:
+                    next_count = entry_count + 1
+                    next_signature = _state_hmac(this_hash, next_count)
+                    if state_exists:
+                        c.execute(
+                            "UPDATE audit_chain_state SET head_hash = ?, entry_count = ?, "
+                            "state_hmac = ?, updated_at = ? WHERE chain_name = ?",
+                            (this_hash, next_count, next_signature, now, _CHAIN_NAME),
+                        )
+                    else:
+                        c.execute(
+                            "INSERT INTO audit_chain_state "
+                            "(chain_name, head_hash, entry_count, state_hmac, updated_at) "
+                            "VALUES (?, ?, ?, ?, ?)",
+                            (_CHAIN_NAME, this_hash, next_count, next_signature, now),
+                        )
             else:
                 c.execute(
                     "INSERT INTO audit_log (user_key, session_hash, action, detail, created_at) "
@@ -192,7 +279,6 @@ def verify_hash_chain() -> dict[str, object]:
         dict con ``valid`` (bool), ``checked`` (int filas), ``first_tampered_id``
         (int o None) y ``error`` (str o None).
     """
-    import hashlib
     import json
 
     from db.database import connect_read
@@ -208,18 +294,59 @@ def verify_hash_chain() -> dict[str, object]:
                     "error": "Hash chain no disponible (migración 26 pendiente)",
                 }
 
+            has_hash_version = "hash_version" in cols_info
+            has_chain_state = bool(_get_cols(c, "audit_chain_state"))
+            version_column = ", hash_version" if has_hash_version else ""
             rows = c.execute(
-                "SELECT id, user_key, session_hash, action, detail, created_at, prev_hash, this_hash "
-                "FROM audit_log ORDER BY id ASC"
+                "SELECT id, user_key, session_hash, action, detail, created_at, prev_hash, this_hash"
+                + version_column
+                + " FROM audit_log ORDER BY id ASC"
             ).fetchall()
+            total_row = c.execute("SELECT COUNT(*) FROM audit_log").fetchone()
+            state_row = None
+            if has_chain_state:
+                state_row = c.execute(
+                    "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state "
+                    "WHERE chain_name = ?",
+                    (_CHAIN_NAME,),
+                ).fetchone()
 
         if not rows:
+            if state_row is not None:
+                state_head, state_count, state_signature = (
+                    str(state_row[0]),
+                    int(state_row[1]),
+                    str(state_row[2]),
+                )
+                if (
+                    not hmac.compare_digest(state_signature, _state_hmac(state_head, state_count))
+                    or state_head != "genesis"
+                    or state_count != 0
+                ):
+                    return {
+                        "valid": False,
+                        "checked": 0,
+                        "first_tampered_id": None,
+                        "error": "La cabecera anclada no coincide con audit_log",
+                    }
             return {"valid": True, "checked": 0, "first_tampered_id": None, "error": None}
 
+        expected_prev = "genesis"
+        checked = 0
         for row in rows:
-            row_id, u_key, s_hash, action, detail, created_at, prev_hash, stored_hash = row
+            row_id, u_key, s_hash, action, detail, created_at, prev_hash, stored_hash = row[:8]
+            hash_version = row[8] if has_hash_version else None
             if stored_hash is None:
                 continue  # Filas anteriores a migración 26 — skip
+
+            actual_prev = str(prev_hash or "genesis")
+            if actual_prev != expected_prev:
+                return {
+                    "valid": False,
+                    "checked": checked,
+                    "first_tampered_id": row_id,
+                    "error": f"Cadena interrumpida en fila id={row_id}",
+                }
 
             row_json = json.dumps(
                 {
@@ -232,7 +359,13 @@ def verify_hash_chain() -> dict[str, object]:
                 ensure_ascii=False,
                 sort_keys=True,
             )
-            expected = hashlib.sha256(f"{prev_hash or 'genesis'}{row_json}".encode()).hexdigest()
+            chain_data = f"{actual_prev}{row_json}"
+            if hash_version == "hmac-sha256-v1":
+                expected = _audit_hmac(chain_data)
+            else:
+                import hashlib
+
+                expected = hashlib.sha256(chain_data.encode()).hexdigest()
 
             if expected != stored_hash:
                 return {
@@ -241,8 +374,32 @@ def verify_hash_chain() -> dict[str, object]:
                     "first_tampered_id": row_id,
                     "error": f"Hash no coincide en fila id={row_id}",
                 }
+            expected_prev = str(stored_hash)
+            checked += 1
 
-        return {"valid": True, "checked": len(rows), "first_tampered_id": None, "error": None}
+        if state_row is not None:
+            state_head, state_count, state_signature = (
+                str(state_row[0]),
+                int(state_row[1]),
+                str(state_row[2]),
+            )
+            if not hmac.compare_digest(state_signature, _state_hmac(state_head, state_count)):
+                return {
+                    "valid": False,
+                    "checked": checked,
+                    "first_tampered_id": None,
+                    "error": "Firma del estado de la cadena de auditoría no coincide",
+                }
+            total_count = int(total_row[0]) if total_row else 0
+            if state_head != expected_prev or state_count != total_count:
+                return {
+                    "valid": False,
+                    "checked": checked,
+                    "first_tampered_id": None,
+                    "error": "La cabecera anclada no coincide con audit_log",
+                }
+
+        return {"valid": True, "checked": checked, "first_tampered_id": None, "error": None}
 
     except Exception as exc:
         return {"valid": None, "checked": 0, "first_tampered_id": None, "error": str(exc)}

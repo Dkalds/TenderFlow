@@ -29,16 +29,16 @@ _repo = WatchlistRepository()
 
 def _user_key(ctx: dict[str, Any]) -> str:
     """Clave opaca y estable por usuario (email de sesión o hash de API key)."""
+    if ctx.get("user_key"):
+        return str(ctx["user_key"])
     seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
 def _user_id(ctx: dict[str, Any]) -> int | None:
-    """``user_id`` solo cuando la autenticación es por sesión (usuarios reales)."""
-    if ctx.get("auth_method") == "session":
-        raw = ctx.get("user_id")
-        return int(raw) if raw is not None else None
-    return None
+    """Devuelve el propietario humano, también para API keys vinculadas."""
+    raw = ctx.get("user_id")
+    return int(raw) if raw is not None else None
 
 
 class WatchlistItemBody(BaseModel):

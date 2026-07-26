@@ -237,9 +237,11 @@ def test_prod_valid_config():
             # (ver _isolate_database_url en conftest.py: solo cubre el singleton
             # `settings`, no instancias de Settings() construidas directamente).
             DATABASE_URL="",
+            GOOGLE_CLIENT_ID="",
             GF_SECURITY_ADMIN_PASSWORD="",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,
+            AUDIT_HMAC_KEY="z" * 32,
             REDIS_URL="redis://localhost:6379/0",
             REDIS_PASSWORD="prod-redis-password",
         )
@@ -290,8 +292,10 @@ def test_database_url_without_sslmode_raises_in_prod():
         Settings(
             ENV="prod",
             DATABASE_URL="postgresql://user:pass@host:5432/db",  # pragma: allowlist secret
+            GOOGLE_CLIENT_ID="",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,
+            AUDIT_HMAC_KEY="z" * 32,
             REDIS_URL="redis://localhost:6379/0",
             REDIS_PASSWORD="prod-redis-password",
             GF_SECURITY_ADMIN_PASSWORD="",
@@ -307,8 +311,10 @@ def test_database_url_with_sslmode_ok_in_prod():
         s = Settings(
             ENV="prod",
             DATABASE_URL="postgresql://user:pass@host:5432/db?sslmode=require",  # pragma: allowlist secret
+            GOOGLE_CLIENT_ID="",
             SIGNING_KEY="x" * 32,
             API_HMAC_SECRET="y" * 32,
+            AUDIT_HMAC_KEY="z" * 32,
             REDIS_URL="redis://localhost:6379/0",
             REDIS_PASSWORD="prod-redis-password",
             GF_SECURITY_ADMIN_PASSWORD="",
@@ -323,8 +329,10 @@ def _prod_db_settings(url: str):
     return Settings(
         ENV="prod",
         DATABASE_URL=url,
+        GOOGLE_CLIENT_ID="",
         SIGNING_KEY="x" * 32,
         API_HMAC_SECRET="y" * 32,
+        AUDIT_HMAC_KEY="z" * 32,
         REDIS_URL="redis://localhost:6379/0",
         REDIS_PASSWORD="prod-redis-password",
         GF_SECURITY_ADMIN_PASSWORD="",

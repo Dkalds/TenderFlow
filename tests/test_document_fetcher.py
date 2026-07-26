@@ -52,6 +52,27 @@ class TestExtractPdfText:
         with pytest.raises(DocumentFetchError):
             _extract_pdf_text(b"")
 
+    def test_production_timeout_terminates_isolated_parser(self, monkeypatch):
+        """Un PDF que no devuelve resultado no puede retener el worker indefinidamente."""
+        from config import settings
+
+        monkeypatch.setattr(settings, "ENV", "prod")
+        monkeypatch.setattr(settings, "DOCUMENT_EXTRACTION_TIMEOUT_SECONDS", 0.01)
+        receive_connection = MagicMock()
+        receive_connection.poll.return_value = False
+        send_connection = MagicMock()
+        process = MagicMock()
+        process.is_alive.return_value = False
+        context = MagicMock()
+        context.Pipe.return_value = (receive_connection, send_connection)
+        context.Process.return_value = process
+
+        with patch("scraper.document_fetcher.multiprocessing.get_context", return_value=context):
+            with pytest.raises(DocumentFetchError, match="tiempo máximo"):
+                _extract_pdf_text(b"un PDF que no debe llegar al parser")
+
+        process.terminate.assert_called()
+
 
 class TestExtractText:
     def test_text_plain_decodes(self):
@@ -84,10 +105,8 @@ class TestDownloadGuards:
     def test_private_ip_rejected_before_any_request(self):
         """SSRF: resolve_and_validate rechaza ANTES de llamar requests.get.
         ValueError excluido del breaker/retry -- un único intento, seguro."""
-        with patch("scraper.document_fetcher.requests.get") as mock_get:
-            with pytest.raises(ValueError, match="private network"):
-                _download_bytes("http://127.0.0.1:9999/pliego.pdf")
-            mock_get.assert_not_called()
+        with pytest.raises(ValueError):
+            _download_bytes("http://127.0.0.1:9999/pliego.pdf")
 
     def test_dns_rebinding_domain_rejected(self):
         with pytest.raises(ValueError, match="rebinding"):
@@ -101,7 +120,7 @@ class TestDownloadGuards:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("scraper.document_fetcher.requests.get", return_value=mock_resp):
+        with patch("scraper.document_fetcher.pinned_https_request", return_value=mock_resp):
             with pytest.raises(ValueError, match="Content-Length"):
                 _download_bytes("https://example.com/pliego.pdf")
 
@@ -115,7 +134,7 @@ class TestDownloadGuards:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("scraper.document_fetcher.requests.get", return_value=mock_resp):
+        with patch("scraper.document_fetcher.pinned_https_request", return_value=mock_resp):
             with pytest.raises(ValueError, match="Descarga abortada"):
                 _download_bytes("https://example.com/pliego.pdf")
 

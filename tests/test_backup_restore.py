@@ -117,8 +117,8 @@ def test_latest_backup_picks_newest(tmp_path: Path) -> None:
     # granularidad de segundos, así que se fija el mtime explícitamente).
     import os
 
-    first = backup_dir / "licitaciones_20260101_000000.db.gz"
-    second = backup_dir / "licitaciones_20260102_000000.db.gz"
+    first = backup_dir / "licitaciones_20260101_000000.db.gz.gpg"
+    second = backup_dir / "licitaciones_20260102_000000.db.gz.gpg"
     first.write_bytes(b"a")
     second.write_bytes(b"b")
     os.utime(first, (1_000_000, 1_000_000))

@@ -9,11 +9,18 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def fb_client(api_db, api_key):
+def fb_client(api_db):
     from api.app import app
+    from api.auth import create_api_key
+    from db.users import create_user
 
     client = TestClient(app, raise_server_exceptions=True)
-    client._api_key = api_key
+    user_id = create_user(email="feedback-writer@example.test", password_hash="not-used")
+    client._api_key = create_api_key(
+        "feedback-writer",
+        scopes="feedback:write",
+        user_id=user_id,
+    )
     return client
 
 

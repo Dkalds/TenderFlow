@@ -38,6 +38,8 @@ router = APIRouter(prefix="/watchlist/rules", tags=["watchlist"])
 
 def _user_key(ctx: dict[str, Any]) -> str:
     """Clave opaca y estable por usuario (email de sesion o hash de API key)."""
+    if ctx.get("user_key"):
+        return str(ctx["user_key"])
     seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
@@ -145,7 +147,7 @@ async def post_rule(
     rule = body.to_rule()
 
     def _create() -> int:
-        rule_id = create_rule(user_key, rule)
+        rule_id = create_rule(user_key, rule, user_id=int(ctx["user_id"]))
         if email is not None:
             with connect() as c:
                 c.execute(

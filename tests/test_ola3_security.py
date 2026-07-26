@@ -237,31 +237,31 @@ def test_migration_28_adds_tier_column_to_api_keys(tmp_path, monkeypatch):
 
 def test_ssrf_blocks_nip_io():
     """_is_ssrf_url debe bloquear dominios *.nip.io."""
-    from api.routes.webhooks import _is_ssrf_url
+    from shared.ssrf import is_ssrf_url
 
-    assert _is_ssrf_url("http://192.168.1.1.nip.io/hook") is True
+    assert is_ssrf_url("http://192.168.1.1.nip.io/hook") is True
 
 
 def test_ssrf_blocks_sslip_io():
     """_is_ssrf_url debe bloquear dominios *.sslip.io."""
-    from api.routes.webhooks import _is_ssrf_url
+    from shared.ssrf import is_ssrf_url
 
-    assert _is_ssrf_url("https://10.0.0.1.sslip.io/callback") is True
+    assert is_ssrf_url("https://10.0.0.1.sslip.io/callback") is True
 
 
 def test_ssrf_blocks_xip_io():
     """_is_ssrf_url debe bloquear dominios *.xip.io."""
-    from api.routes.webhooks import _is_ssrf_url
+    from shared.ssrf import is_ssrf_url
 
-    assert _is_ssrf_url("https://172.16.0.1.xip.io/") is True
+    assert is_ssrf_url("https://172.16.0.1.xip.io/") is True
 
 
 def test_ssrf_allows_public_url():
     """_is_ssrf_url debe permitir URLs públicas legítimas."""
-    from api.routes.webhooks import _is_ssrf_url
+    from shared.ssrf import is_ssrf_url
 
     # example.com es un dominio público real — no debe bloquearse
-    result = _is_ssrf_url("https://example.com/webhook")
+    result = is_ssrf_url("https://example.com/webhook")
     assert result is False
 
 

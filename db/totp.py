@@ -64,6 +64,27 @@ def verify_totp(secret: str, code: str) -> bool:
         totp = pyotp.TOTP(secret)
         return bool(totp.verify(code, valid_window=1))
     except ImportError:
+        # RFC 6238 fallback: the optional ``pyotp`` dependency must not make
+        # MFA unusable in a minimal deployment.
+        import base64
+        import hashlib
+        import hmac
+        import time
+
+        if len(code) != 6 or not code.isdecimal():
+            return False
+        try:
+            key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8), casefold=True)
+        except Exception:
+            return False
+        counter = int(time.time() // 30)
+        for candidate in (counter - 1, counter, counter + 1):
+            digest = hmac.new(key, candidate.to_bytes(8, "big"), hashlib.sha1).digest()
+            offset = digest[-1] & 0x0F
+            value = int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFF_FFFF
+            expected = f"{value % 1_000_000:06d}"
+            if hmac.compare_digest(expected, code):
+                return True
         return False
 
 

@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import zlib
@@ -58,6 +60,41 @@ def _decompress_to(gz_path: Path, dest: Path) -> None:
         shutil.copyfileobj(f_in, f_out)
 
 
+def _materialize_compressed_backup(backup: Path, temp_dir: Path) -> Path:
+    """Return a .db.gz path, decrypting GPG backups only into a temp directory."""
+    if backup.suffix != ".gpg":
+        return backup
+    passphrase = os.environ.get("BACKUP_ENCRYPTION_KEY", "")
+    if not passphrase:
+        raise OSError("BACKUP_ENCRYPTION_KEY is required for encrypted backup restore")
+    gpg_bin = shutil.which("gpg")
+    if not gpg_bin:
+        raise OSError("gpg is required for encrypted backup restore")
+    decrypted = temp_dir / backup.with_suffix("").name
+    try:
+        subprocess.run(
+            [
+                gpg_bin,
+                "--batch",
+                "--yes",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase-fd",
+                "0",
+                "--output",
+                str(decrypted),
+                "--decrypt",
+                str(backup),
+            ],
+            check=True,
+            capture_output=True,
+            input=passphrase.encode(),
+        )
+    except subprocess.CalledProcessError as exc:
+        raise OSError("could not decrypt backup") from exc
+    return decrypted
+
+
 def verify_backup(gz_path: Path) -> VerifyResult:
     """Descomprime y valida un backup ``.db.gz``: integridad + query de humo.
 
@@ -67,9 +104,10 @@ def verify_backup(gz_path: Path) -> VerifyResult:
     """
     name = gz_path.name
     with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
         tmp_db = Path(tmp) / "restored.db"
         try:
-            _decompress_to(gz_path, tmp_db)
+            _decompress_to(_materialize_compressed_backup(gz_path, tmp_dir), tmp_db)
         except (OSError, EOFError, gzip.BadGzipFile, zlib.error) as exc:
             return VerifyResult(name, False, "n/a", 0, 0, error=f"descompresión: {exc}")
 
@@ -95,7 +133,10 @@ def verify_backup(gz_path: Path) -> VerifyResult:
 
 def latest_backup(backup_dir: Path) -> Path | None:
     """El backup ``.db.gz`` más reciente por mtime, o None si no hay."""
-    backups = sorted(backup_dir.glob("*.db.gz"), key=lambda p: p.stat().st_mtime)
+    backups = sorted(
+        [*backup_dir.glob("*.db.gz"), *backup_dir.glob("*.db.gz.gpg")],
+        key=lambda p: p.stat().st_mtime,
+    )
     return backups[-1] if backups else None
 
 
@@ -116,7 +157,9 @@ def restore_backup(gz_path: Path, target: Path, *, backup_current: bool = True) 
         bak.unlink(missing_ok=True)
         target.replace(bak)
 
-    _decompress_to(gz_path, target)
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _materialize_compressed_backup(gz_path, Path(tmp))
+        _decompress_to(source, target)
     return target
 
 

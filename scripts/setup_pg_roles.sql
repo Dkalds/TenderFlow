@@ -48,10 +48,15 @@ END $$;
 -- retenga locks o conexiones del pool indefinidamente.
 ALTER ROLE tenderflow_app SET statement_timeout = '30s';
 ALTER ROLE tenderflow_app SET idle_in_transaction_session_timeout = '60s';
+ALTER ROLE tenderflow_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+-- Resolve built-ins before public objects and make schema creation an explicit
+-- migration-admin capability, never a leaked runtime credential capability.
+ALTER ROLE tenderflow_app SET search_path = pg_catalog, public;
 
 -- ── 2. Privilegios DML (sin DDL, sin ownership) ─────────────────────────────
 
 GRANT USAGE ON SCHEMA public TO tenderflow_app;
+REVOKE CREATE ON SCHEMA public FROM tenderflow_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO tenderflow_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO tenderflow_app;
 

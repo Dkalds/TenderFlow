@@ -223,3 +223,27 @@ def test_verify_oauth_state_empty():
 
     assert verify_oauth_state("") is False
     assert verify_oauth_state("bad:format") is False
+
+
+def test_oauth_state_nonce_is_extractable_only_from_expected_format():
+    from shared.auth_core import generate_oauth_state, oauth_state_nonce
+
+    nonce = oauth_state_nonce(generate_oauth_state())
+    assert nonce is not None
+    assert len(nonce) == 32
+    assert oauth_state_nonce("not:a:nonce") is None
+
+
+def test_google_id_token_nonce_must_match_authorization_flow():
+    from shared.auth_core import validate_google_id_token
+
+    claims: dict[str, object] = {
+        "iss": "https://accounts.google.com",
+        "aud": "client-id",
+        "sub": "google-subject",
+        "exp": int(time.time()) + 300,
+        "email_verified": True,
+        "nonce": "expected-nonce",
+    }
+    assert validate_google_id_token(claims, audience="client-id", expected_nonce="expected-nonce")
+    assert not validate_google_id_token(claims, audience="client-id", expected_nonce="other-nonce")

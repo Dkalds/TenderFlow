@@ -159,10 +159,16 @@ def api_db(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def api_key(api_db):
-    """Crea una API Key en la DB de test y devuelve el token en bruto."""
+    """Crea una API key de pruebas con autorización explícita total.
+
+    Los tests que verifican denegaciones por scope emiten sus propias claves
+    restringidas.  La fixture genérica representa un cliente ya autorizado,
+    para que las pruebas de validación, respuesta y dominio no dependan de la
+    taxonomía concreta de scopes de cada ruta.
+    """
     from api.auth import create_api_key
 
-    return create_api_key("test-key")
+    return create_api_key("test-key", scopes="*")
 
 
 @pytest.fixture()

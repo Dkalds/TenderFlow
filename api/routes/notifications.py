@@ -31,6 +31,8 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 def _user_key(ctx: dict[str, Any]) -> str:
     """Clave para la bandeja in-app (consistente con watchlist_rules y scoring)."""
+    if ctx.get("user_key"):
+        return str(ctx["user_key"])
     import hashlib
 
     seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")

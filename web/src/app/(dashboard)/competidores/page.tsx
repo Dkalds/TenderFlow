@@ -1,7 +1,7 @@
 "use client";
 import { EmptyState } from "@/components/ui/empty-state";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { startTransition, useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
@@ -954,7 +954,13 @@ export default function CompetidoresPage() {
       </Card>
 
       {/* Drill-down Sheet */}
-      <Sheet open={!!drillDownCompany} onOpenChange={(open) => !open && setDrillDownCompany(null)}>
+      <Sheet
+        open={!!drillDownCompany}
+        // startTransition: cerrar este Sheet desmonta el dossier de empresa
+        // (charts + tablas) — diferirlo evita bloquear el hilo principal en
+        // el propio evento de clic del overlay (INP).
+        onOpenChange={(open) => !open && startTransition(() => setDrillDownCompany(null))}
+      >
         <SheetContent className="flex flex-col overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl">
           {drillDownCompany && drillDownCompanyId != null ? (
             <CompanyQuickView

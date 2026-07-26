@@ -11,6 +11,23 @@ from fastapi.testclient import TestClient
 # Fixtures api_db, api_key, client, auth se heredan de conftest.py
 
 
+@pytest.fixture()
+def admin_auth(api_db) -> dict[str, str]:
+    """Credencial administrativa explícita para probar la validación de webhooks."""
+    from api.auth import create_api_key
+    from db.users import create_user, set_admin
+
+    user_id = create_user(email="webhook-validation-admin@example.test", password_hash="not-used")
+    set_admin(user_id, True)
+    return {
+        "X-API-Key": create_api_key(
+            "webhook-validation-admin",
+            scopes="*",
+            user_id=user_id,
+        )
+    }
+
+
 # ---------------------------------------------------------------------------
 # Fase 1.1: SSRF en webhook URL
 # ---------------------------------------------------------------------------
@@ -27,51 +44,51 @@ class TestWebhookSSRFValidation:
         "http://169.254.169.254/latest/meta-data",  # AWS metadata
     ]
 
-    def test_reject_localhost(self, client, auth):
+    def test_reject_localhost(self, client, admin_auth):
         resp = client.post(
             "/api/v1/webhooks",
             json={"name": "evil", "url": "http://localhost/steal", "event_types": ["*"]},
-            headers=auth,
+            headers=admin_auth,
         )
         assert resp.status_code == 422, f"Expected 422 for localhost, got {resp.status_code}"
 
-    def test_reject_127_0_0_1(self, client, auth):
+    def test_reject_127_0_0_1(self, client, admin_auth):
         resp = client.post(
             "/api/v1/webhooks",
             json={"name": "evil", "url": "http://127.0.0.1/steal", "event_types": ["*"]},
-            headers=auth,
+            headers=admin_auth,
         )
         assert resp.status_code == 422
 
-    def test_reject_private_network(self, client, auth):
+    def test_reject_private_network(self, client, admin_auth):
         resp = client.post(
             "/api/v1/webhooks",
             json={"name": "evil", "url": "http://192.168.1.1/internal", "event_types": ["*"]},
-            headers=auth,
+            headers=admin_auth,
         )
         assert resp.status_code == 422
 
-    def test_reject_link_local(self, client, auth):
+    def test_reject_link_local(self, client, admin_auth):
         resp = client.post(
             "/api/v1/webhooks",
             json={"name": "evil", "url": "http://169.254.169.254/meta-data", "event_types": ["*"]},
-            headers=auth,
+            headers=admin_auth,
         )
         assert resp.status_code == 422
 
-    def test_reject_no_scheme(self, client, auth):
+    def test_reject_no_scheme(self, client, admin_auth):
         resp = client.post(
             "/api/v1/webhooks",
             json={"name": "ok", "url": "ftp://example.com/hook", "event_types": ["*"]},
-            headers=auth,
+            headers=admin_auth,
         )
         assert resp.status_code == 422
 
-    def test_reject_invalid_event_type(self, client, auth):
+    def test_reject_invalid_event_type(self, client, admin_auth):
         resp = client.post(
             "/api/v1/webhooks",
             json={"name": "ok", "url": "https://httpbin.org/post", "event_types": ["INVALID"]},
-            headers=auth,
+            headers=admin_auth,
         )
         assert resp.status_code == 422
 
@@ -82,9 +99,12 @@ class TestWebhookSSRFValidation:
 
 
 class TestApiKeyScopes:
-    def test_wildcard_scope_allows_all(self, client, api_key):
+    def test_wildcard_scope_allows_all(self, api_db, client):
         """Key con scope '*' puede acceder a todos los endpoints."""
-        resp = client.get("/api/v1/licitaciones", headers={"X-API-Key": api_key})
+        from api.auth import create_api_key
+
+        wildcard_key = create_api_key("wildcard-reader", scopes="*")
+        resp = client.get("/api/v1/licitaciones", headers={"X-API-Key": wildcard_key})
         assert resp.status_code == 200
 
     def test_restricted_scope_key_cannot_write_webhooks(self, api_db, client):

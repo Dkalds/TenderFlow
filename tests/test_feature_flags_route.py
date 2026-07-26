@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 
-def test_feature_flags_get_returns_backend_list(client, auth):
+def test_feature_flags_get_returns_backend_list(client, api_db):
     """GET expone TODOS los flags del backend (incl. los que no están en ningún hardcode)."""
+    from api.auth import create_api_key
     from db.feature_flags import set_flag
 
     set_flag(
@@ -14,7 +15,8 @@ def test_feature_flags_get_returns_backend_list(client, auth):
         description="solo backend",
     )
 
-    res = client.get("/api/v1/feature-flags", headers=auth)
+    reader_key = create_api_key("feature-flags-reader", scopes="feature_flags:read")
+    res = client.get("/api/v1/feature-flags", headers={"X-API-Key": reader_key})
     assert res.status_code == 200
     flags = res.json()
     by_name = {f["flag"]: f for f in flags}

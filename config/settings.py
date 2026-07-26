@@ -204,8 +204,24 @@ class Settings(BaseSettings):
     # Secreto HMAC para hashear API keys (32+ chars). Si vacío usa SHA-256 plain.
     # Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"
     API_HMAC_SECRET: SecretStr = SecretStr("")
+    # Las API keys nuevas son de mínimo privilegio y tienen caducidad. La
+    # creación de una key con ``*`` debe ser una decisión explícita de un admin.
+    API_KEY_DEFAULT_SCOPES: str = "data:read"
+    API_KEY_DEFAULT_TTL_DAYS: int = 90
+    API_KEY_MAX_TTL_DAYS: int = 365
+    # Operaciones irreversibles requieren autenticación reciente; si la cuenta
+    # usa MFA también se exige una elevación reciente de segundo factor.
+    SENSITIVE_ACTION_MAX_AGE_SECONDS: int = 900
+    MFA_STEP_UP_MAX_AGE_SECONDS: int = 900
+    MFA_MAX_FAILURES: int = 5
+    MFA_FAILURE_WINDOW_SECONDS: int = 300
+    # Las claves de idempotencia son datos de corta vida: no deben convertirse
+    # en una caché permanente de respuestas ni secretos de integración.
+    IDEMPOTENCY_TTL_SECONDS: int = 86_400
 
     SIGNING_KEY: SecretStr = SecretStr("")
+    # Firma independiente de la cadena de auditoría. No compartir con tokens.
+    AUDIT_HMAC_KEY: SecretStr = SecretStr("")
 
     # Clave maestra para derivar secretos de webhook (HMAC-SHA256).
     # Si vacío, se deriva de SIGNING_KEY como fallback.
@@ -282,6 +298,14 @@ class Settings(BaseSettings):
     # Mucho más chico que MAX_DOWNLOAD_SIZE_BYTES (pensado para ZIPs mensuales
     # con miles de entries) — un PDF de pliego legítimo rara vez supera 50 MB.
     MAX_DOCUMENT_SIZE_BYTES: int = 50 * 1024 * 1024
+    MAX_DOCUMENT_PAGES: int = 250
+    MAX_DOCUMENT_TEXT_CHARS: int = 2_000_000
+    # In production PDF parsing runs in a disposable child process. A malformed
+    # document cannot monopolize the scheduler process indefinitely.
+    DOCUMENT_EXTRACTION_TIMEOUT_SECONDS: int = 30
+    DOCUMENT_ALLOWED_HOSTS: str = "contrataciondelestado.es,*.contrataciondelestado.es"
+    WEBHOOK_ALLOWED_HOSTS: str = ""
+    ALLOW_SELF_REGISTRATION: bool = False
 
     # ── Conectores autonómicos / TACRC (RFC 20260611-1, Fase 5) ─────────
     # Dataset Socrata de publicaciones de la PSCP en el portal de
@@ -527,6 +551,16 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_prod_egress_allowlists(self) -> Settings:
+        """Exige allowlists para salidas que procesan contenido no confiable."""
+        if self.ENV in ("prod", "staging"):
+            if not self.DOCUMENT_ALLOWED_HOSTS:
+                raise ValueError("DOCUMENT_ALLOWED_HOSTS es obligatorio en producción")
+            if "*" in {host.strip() for host in self.WEBHOOK_ALLOWED_HOSTS.split(",")}:
+                raise ValueError("WEBHOOK_ALLOWED_HOSTS no puede contener el comodín global '*'")
+        return self
+
+    @model_validator(mode="after")
     def _validate_prod_api_hmac_secret(self) -> Settings:
         """En producción, exigir HMAC secret robusto para API keys."""
         if self.ENV in ("prod", "staging"):
@@ -541,6 +575,12 @@ class Settings(BaseSettings):
                     "API_HMAC_SECRET demasiado corto. Usa al menos 32 caracteres "
                     "(recomendado: secrets.token_hex(32))."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_audit_hmac_secret(self) -> Settings:
+        if self.ENV in ("prod", "staging") and len(self.AUDIT_HMAC_KEY.get_secret_value()) < 32:
+            raise ValueError("AUDIT_HMAC_KEY (32+ caracteres) es obligatorio en producción")
         return self
 
     @model_validator(mode="after")
@@ -631,11 +671,9 @@ class Settings(BaseSettings):
             and not self.OAUTH_ALLOWED_DOMAINS
             and not self.OAUTH_ALLOWED_EMAILS
         ):
-            warnings.warn(
-                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
-                "OAuth habilitado en ENV=prod. Cualquier cuenta Google podrá acceder. "
-                "Configura al menos uno de ellos para restringir el acceso.",
-                stacklevel=2,
+            raise ValueError(
+                "OAUTH_ALLOWED_DOMAINS u OAUTH_ALLOWED_EMAILS es obligatorio "
+                "cuando OAuth está habilitado en producción."
             )
         return self
 

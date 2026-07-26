@@ -1,7 +1,7 @@
 "use client";
 import { EmptyState } from "@/components/ui/empty-state";
 
-import { useMemo, useState } from "react";
+import { startTransition, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -444,7 +444,10 @@ export default function OrganosPage() {
       {/* Drill-down Sheet */}
       <Sheet
         open={!!selectedOrgano}
-        onOpenChange={(open) => !open && setSelectedOrgano(null)}
+        // startTransition: cerrar este Sheet desmonta/oculta charts pesados
+        // (Recharts) — diferirlo evita bloquear el hilo principal en el
+        // propio evento de clic del overlay (INP).
+        onOpenChange={(open) => !open && startTransition(() => setSelectedOrgano(null))}
       >
         <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader>

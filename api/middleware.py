@@ -114,6 +114,8 @@ def _trusted_client_ip(request: Request) -> str:
         IP del cliente (string). Nunca lanza — devuelve "unknown" ante errores.
     """
     try:
+        import ipaddress
+
         from config import settings
 
         allowed_proxies: set[str] = {
@@ -123,12 +125,28 @@ def _trusted_client_ip(request: Request) -> str:
         }
         direct_ip = request.client.host if request.client else None
 
-        if direct_ip and direct_ip in allowed_proxies:
+        def _is_trusted_proxy(ip: str) -> bool:
+            if "*" in allowed_proxies:
+                return False
+            try:
+                candidate = ipaddress.ip_address(ip)
+                return any(
+                    candidate in ipaddress.ip_network(value, strict=False)
+                    for value in allowed_proxies
+                )
+            except ValueError:
+                return ip in allowed_proxies
+
+        if direct_ip and _is_trusted_proxy(direct_ip):
             # Petición viene de un proxy de confianza — honrar XFF
             forwarded = request.headers.get("X-Forwarded-For", "")
             if forwarded:
-                # Tomar la IP más a la izquierda (cliente original)
-                return forwarded.split(",")[0].strip() or direct_ip
+                # Recorremos la cadena desde el proxy más cercano. Solo las
+                # IPs de proxies configurados son fiables; la primera no
+                # confiable es el cliente visto por nuestra infraestructura.
+                for hop in reversed([part.strip() for part in forwarded.split(",")]):
+                    if hop and not _is_trusted_proxy(hop):
+                        return hop
         return direct_ip or "unknown"
     except Exception:
         return "unknown"
@@ -141,10 +159,6 @@ def _client_key(request: Request) -> str:
     La IP se obtiene a través de ``_trusted_client_ip`` que solo honra
     ``X-Forwarded-For`` si la petición viene de un proxy de confianza.
     """
-    api_key = request.headers.get("X-API-Key")
-    if api_key:
-        return "ak:" + hashlib.sha256(api_key.encode()).hexdigest()[:16]
-    # Fallback: IP verificada del cliente
     ip = _trusted_client_ip(request)
     return f"ip:{ip}"
 
@@ -207,11 +221,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client = _client_key(request)
-        # Usar route template (e.g. "/api/v1/licitaciones/{id}") en lugar del path
-        # literal para evitar que un atacante eluda el rate limit variando path params.
-        route = request.scope.get("route")
-        rate_path = getattr(route, "path", None) or path
-        rate_key = f"api:{client}:{rate_path}"
+        # BaseHTTPMiddleware se ejecuta antes del routing: un bucket global
+        # por cliente evita el bypass por path params variables.
+        rate_path = path
+        rate_key = f"api:{client}"
         # Endpoints pesados (ML inference, exports) tienen límite inferior.
         effective_max = _HEAVY_ENDPOINT_LIMITS.get(rate_path, self._max)
         allowed = get_rate_limiter().check(
@@ -370,6 +383,12 @@ class ETagMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         response = await call_next(request)
+
+        # Una respuesta solicitada con cookie o API key puede contener estado
+        # personalizado; ningún cache compartido debe conservarla.
+        if request.headers.get("cookie") or request.headers.get("x-api-key"):
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
 
         if response.status_code != 200:
             return response

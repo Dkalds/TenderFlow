@@ -99,6 +99,21 @@ def test_redact_keys_with_sensitive_names(capsys):
     assert data["user"] == "alice"  # no sensible
 
 
+def test_redact_personal_data_and_tokens_embedded_in_urls(capsys):
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.redact")
+    log.info(
+        "callback_failed",
+        email="person@example.com",
+        error="delivery to person@example.com failed at https://x.example/cb?token=abc123",
+    )
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "callback_failed")
+    assert data["email"] == "***REDACTED***"
+    assert "person@example.com" not in data["error"]
+    assert "abc123" not in data["error"]
+
+
 def test_redact_env_secret_value(capsys, monkeypatch):
     """Si un valor coincide con el contenido de una env var sensible, se redacta."""
     secret = "super-secret-token-xyz"

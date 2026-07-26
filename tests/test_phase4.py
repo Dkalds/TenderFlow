@@ -257,14 +257,14 @@ class TestSSEStream:
         assert event_data["total_nuevas"] == 1
 
     def test_cache_control_headers(self, client, auth):
-        """Respuesta debe tener Cache-Control: no-cache."""
+        """El stream autenticado no debe quedar almacenado en cachés compartidas."""
         with (
             patch("shared.cache_signal.check_cache_signal", return_value=False),
             patch("api.routes.stream._MAX_DURATION_SECONDS", 0),
         ):
             resp = client.get("/api/v1/licitaciones/stream", headers=auth)
 
-        assert resp.headers.get("cache-control") == "no-cache"
+        assert resp.headers.get("cache-control") == "private, no-store"
 
     def test_last_event_id_header_accepted(self, client, auth):
         """El header Last-Event-ID debe ser aceptado sin error."""

@@ -1,35 +1,13 @@
-"""Validación SSRF/DNS-rebinding compartida para entregas HTTP salientes.
-
-Extraído de ``api/routes/webhooks.py`` (RFC llm-dependencia-gestionada §C3.0):
-antes solo el ping manual (``POST /webhooks/{id}/ping``) resolvía DNS al
-momento de la entrega y pinneaba la IP; ``db/webhooks.py::trigger_event``
-(el camino real de notificaciones) confiaba en la validación de *creación*
-del webhook, dejando una ventana TOCTOU — un dominio válido al crear el
-webhook puede re-resolver a una IP privada por DNS rebinding en el momento
-del envío real.
-
-Un solo punto de verdad para ambos llamadores.
-"""
+"""Validación estricta de URLs salientes para prevenir SSRF y DNS rebinding."""
 
 from __future__ import annotations
 
 import ipaddress
 import socket
 import urllib.parse
+from collections.abc import Iterable
+from dataclasses import dataclass
 
-# Rangos de red privada / reservada para bloquear SSRF
-PRIVATE_NETWORKS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),  # link-local
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("fe80::/10"),
-]
-
-# Dominios usados en DNS rebinding — resuelven a IPs arbitrarias controladas por el atacante
 DNS_REBINDING_SUFFIXES = (
     ".nip.io",
     ".xip.io",
@@ -40,86 +18,132 @@ DNS_REBINDING_SUFFIXES = (
 )
 
 
-def is_ssrf_url(url: str) -> bool:
-    """Devuelve True si la URL apunta a una red privada/reservada o dominio de rebinding (SSRF risk)."""
+@dataclass(frozen=True)
+class PinnedHttpsTarget:
+    """A validated HTTPS destination with one DNS answer selected for dialing."""
+
+    hostname: str
+    address: str
+    port: int
+    request_uri: str
+
+
+def _is_public_address(raw: str) -> bool:
+    """Acepta exclusivamente direcciones globales, normalizando IPv4-mapped IPv6."""
     try:
-        parsed = urllib.parse.urlparse(url)
-        host = parsed.hostname or ""
-        if not host:
-            return True
-
-        # Bloquear dominios de DNS rebinding por sufijo (antes de resolver DNS)
-        host_lower = host.lower()
-        if any(host_lower.endswith(suffix) for suffix in DNS_REBINDING_SUFFIXES):
-            return True
-
-        # Resolver DNS y verificar la IP final
-        try:
-            addrs = socket.getaddrinfo(host, None)
-        except socket.gaierror:
-            # No resuelve — bloquear por defecto
-            return True
-        for info in addrs:
-            try:
-                addr = ipaddress.ip_address(info[4][0])
-                for net in PRIVATE_NETWORKS:
-                    if addr in net:
-                        return True
-            except ValueError:
-                pass
+        address = ipaddress.ip_address(raw)
+    except ValueError:
         return False
-    except Exception:
-        return True  # cualquier error → bloquear
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return address.is_global
 
 
-def resolve_and_validate(url: str) -> str:
-    """Resolve DNS at delivery time and return the IP-pinned URL.
+def validate_outbound_url(
+    url: str,
+    *,
+    allowed_hosts: Iterable[str] | None = None,
+    allowed_schemes: frozenset[str] = frozenset({"https"}),
+) -> str:
+    """Valida una URL sin reemplazar el host y por tanto sin romper TLS/SNI.
 
-    Prevents DNS rebinding (TOCTOU): resolves the hostname NOW,
-    validates against private networks, and returns a URL with the
-    IP address substituted so ``requests.post`` doesn't re-resolve.
-
-    Raises:
-        ValueError: if the URL resolves to a private/reserved IP.
+    El consumidor debe prohibir redirecciones o validar de nuevo cada salto.
+    Una sola respuesta DNS no global invalida por completo el destino.
     """
     parsed = urllib.parse.urlparse(url)
-    host = parsed.hostname or ""
+    if parsed.scheme.lower() not in allowed_schemes:
+        raise ValueError("Esquema URL no permitido")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise ValueError("URL con credenciales o fragmento no permitida")
+    host = parsed.hostname
     if not host:
         raise ValueError("URL sin hostname")
+    if parsed.port not in (None, 443):
+        raise ValueError("Puerto URL no permitido")
+    host_l = host.lower()
+    if any(host_l.endswith(suffix) for suffix in DNS_REBINDING_SUFFIXES):
+        raise ValueError("Dominio de DNS rebinding bloqueado")
 
-    # Re-check rebinding suffixes at delivery time
-    host_lower = host.lower()
-    if any(host_lower.endswith(suffix) for suffix in DNS_REBINDING_SUFFIXES):
-        raise ValueError(f"Dominio de DNS rebinding bloqueado: {host}")
+    rules = tuple(rule.strip().lower() for rule in (allowed_hosts or ()) if rule.strip())
+    if rules and not any(
+        host_l == rule.lstrip("*.") or (rule.startswith("*.") and host_l.endswith(rule[1:]))
+        for rule in rules
+    ):
+        raise ValueError("Host no incluido en la allowlist")
 
     try:
         addrs = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        raise ValueError(f"DNS resolution failed for {host}: {exc}") from exc
+        raise ValueError(f"DNS resolution failed for {host}") from exc
+    if not addrs or any(not _is_public_address(str(info[4][0])) for info in addrs):
+        raise ValueError("Host resuelve a una dirección no global")
+    return url
 
-    if not addrs:
-        raise ValueError(f"No DNS records for {host}")
 
-    # Pick first resolved IP and validate
-    resolved_ip = str(addrs[0][4][0])
+def resolve_pinned_https_target(
+    url: str,
+    *,
+    allowed_hosts: Iterable[str] | None = None,
+) -> PinnedHttpsTarget:
+    """Resolve a public HTTPS destination once for a pinned TLS connection.
+
+    The returned address is validated immediately before it is used. Callers
+    must dial that address while retaining ``hostname`` for HTTP Host, TLS SNI
+    and certificate verification; that prevents a later DNS lookup from
+    redirecting the connection to an internal address.
+    """
+    validate_outbound_url(url, allowed_hosts=allowed_hosts)
+    parsed = urllib.parse.urlparse(url)
+    hostname = parsed.hostname
+    if hostname is None:  # Defensive: validate_outbound_url already checks this.
+        raise ValueError("URL sin hostname")
     try:
-        addr = ipaddress.ip_address(resolved_ip)
-    except ValueError as exc:
-        raise ValueError(f"Invalid resolved IP {resolved_ip}") from exc
-
-    for net in PRIVATE_NETWORKS:
-        if addr in net:
-            raise ValueError(f"Resolved IP {resolved_ip} is in private network {net}")
-
-    # Build IP-pinned URL: replace hostname with resolved IP, pass original
-    # Host header via requests so TLS SNI and virtual hosts still work.
-    port = parsed.port
-    if ":" in resolved_ip:  # IPv6
-        netloc = f"[{resolved_ip}]:{port}" if port else f"[{resolved_ip}]"
-    else:
-        netloc = f"{resolved_ip}:{port}" if port else resolved_ip
-
-    pinned_url = urllib.parse.urlunparse(
-        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+        answers = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError(f"DNS resolution failed for {hostname}") from exc
+    addresses = tuple(dict.fromkeys(str(answer[4][0]) for answer in answers))
+    if not addresses or any(not _is_public_address(address) for address in addresses):
+        raise ValueError("Host resuelve a una direcciÃ³n no global")
+    request_uri = parsed.path or "/"
+    if parsed.params:
+        request_uri += f";{parsed.params}"
+    if parsed.query:
+        request_uri += f"?{parsed.query}"
+    return PinnedHttpsTarget(
+        hostname=hostname,
+        address=addresses[0],
+        port=parsed.port or 443,
+        request_uri=request_uri,
     )
-    return pinned_url
+
+
+def is_ssrf_url(url: str) -> bool:
+    """True cuando una URL HTTP(S) no puede usarse de forma segura."""
+    try:
+        validate_outbound_url(url, allowed_schemes=frozenset({"http", "https"}))
+        return False
+    except ValueError:
+        return True
+
+
+def resolve_and_validate(url: str) -> str:
+    """Compatibilidad para callers legacy que necesitan fijar una IP.
+
+    Solo debe usarse para HTTP no-TLS. Para HTTPS, usar
+    :func:`validate_outbound_url` con una allowlist, ya que reemplazar el host
+    por una IP rompe la validación SNI/certificado.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme.lower() != "http":
+        raise ValueError("DNS pinning por IP solo permitido para HTTP interno controlado")
+    validate_outbound_url(url, allowed_schemes=frozenset({"http"}))
+    host = parsed.hostname or ""
+    addrs = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    resolved_ip = str(addrs[0][4][0])
+    port = parsed.port
+    netloc = f"[{resolved_ip}]" if ":" in resolved_ip else resolved_ip
+    if port:
+        netloc = f"{netloc}:{port}"
+    return urllib.parse.urlunparse(
+        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, "")
+    )

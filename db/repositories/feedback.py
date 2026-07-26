@@ -18,6 +18,7 @@ class FeedbackRepository:
         tecnologia: str | None = None,
         tecnologias_secundarias: list[str] | None = None,
         model_version: int | None = None,
+        user_id: int | None = None,
     ) -> str:
         """Inserta feedback y devuelve el timestamp de creación."""
         import json
@@ -31,9 +32,18 @@ class FeedbackRepository:
         with connect() as c:
             c.execute(
                 "INSERT INTO ml_feedback "
-                "(expediente, relevante, nota, tecnologia, tecnologias_secundarias, model_version, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (expediente, 1 if relevante else 0, nota, tecnologia, ts_json, model_version, now),
+                "(expediente, relevante, nota, tecnologia, tecnologias_secundarias, model_version, user_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    expediente,
+                    1 if relevante else 0,
+                    nota,
+                    tecnologia,
+                    ts_json,
+                    model_version,
+                    user_id,
+                    now,
+                ),
             )
         return now
 
@@ -94,3 +104,17 @@ class FeedbackRepository:
         with connect_read() as c:
             cur = c.execute("SELECT * FROM ml_feedback LIMIT ?", (limit,))
             return rows_to_dicts(cur)
+
+    def export_for_user(self, user_id: int, limit: int = 10_000) -> list[dict[str, Any]]:
+        """Exporta exclusivamente el feedback atribuible a un usuario."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT * FROM ml_feedback WHERE user_id = ? LIMIT ?", (user_id, limit)
+            )
+            return rows_to_dicts(cur)
+
+    def delete_for_user(self, user_id: int) -> int:
+        """Elimina el feedback personal como parte del derecho de supresión."""
+        with connect() as c:
+            cur = c.execute("DELETE FROM ml_feedback WHERE user_id = ?", (user_id,))
+            return int(cur.rowcount or 0)

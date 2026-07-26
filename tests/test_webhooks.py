@@ -87,7 +87,7 @@ class TestDeleteWebhook:
 
 
 class TestTriggerEvent:
-    @patch("db.webhooks.requests.post")
+    @patch("db.webhooks.pinned_https_request")
     def test_successful_delivery(self, mock_post, tmp_db):
         db_mod, _ = tmp_db
         _create_sample(db_mod)
@@ -103,7 +103,7 @@ class TestTriggerEvent:
         headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
         assert "X-Webhook-Signature" in headers
 
-    @patch("db.webhooks.requests.post")
+    @patch("db.webhooks.pinned_https_request")
     def test_filters_by_event_type(self, mock_post, tmp_db):
         db_mod, _ = tmp_db
         # Webhook subscribed to watchlist_match only
@@ -115,7 +115,7 @@ class TestTriggerEvent:
         assert count == 0
         mock_post.assert_not_called()
 
-    @patch("db.webhooks.requests.post")
+    @patch("db.webhooks.pinned_https_request")
     def test_wildcard_event_type(self, mock_post, tmp_db):
         _db_mod, _ = tmp_db
         wh_mod.create_webhook(name="catch-all", url="https://example.com/all", event_types=["*"])
@@ -123,7 +123,7 @@ class TestTriggerEvent:
         count = wh_mod.trigger_event("any_event", {})
         assert count == 1
 
-    @patch("db.webhooks.requests.post")
+    @patch("db.webhooks.pinned_https_request")
     def test_derived_secret_produces_valid_signature(self, mock_post, tmp_db):
         """Verify that derived secrets produce consistent HMAC signatures."""
         db_mod, _ = tmp_db
@@ -139,11 +139,11 @@ class TestTriggerEvent:
         assert sig_header.startswith("sha256=")
 
         # Verify the signature matches what the user would compute with their secret
-        body = call_kwargs.kwargs.get("data") or call_kwargs[1].get("data", b"")
+        body = call_kwargs.kwargs.get("body") or call_kwargs[1].get("body", b"")
         expected_sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
         assert sig_header == f"sha256={expected_sig}"
 
-    @patch("db.webhooks.requests.post")
+    @patch("db.webhooks.pinned_https_request")
     def test_private_ip_rejected_at_delivery_time(self, mock_post, tmp_db):
         """RFC llm-dependencia-gestionada §C3.0: DNS-pinning también en el envío
         real (no solo en el ping manual). Un webhook apuntando a una IP privada
@@ -163,7 +163,7 @@ class TestTriggerEvent:
         hook = next(r for r in rows if r["url"] == "http://127.0.0.1:9999/hook")
         assert hook["failure_count"] == 1
 
-    @patch("db.webhooks.requests.post")
+    @patch("db.webhooks.pinned_https_request")
     def test_dns_rebinding_domain_rejected_at_delivery_time(self, mock_post, tmp_db):
         """Sufijo de dominio de rebinding conocido también bloqueado en trigger_event."""
         _db_mod, _ = tmp_db

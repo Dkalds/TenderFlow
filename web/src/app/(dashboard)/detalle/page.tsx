@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { startTransition, useMemo, useState, useCallback, useEffect } from "react";
 import { parseAsString, useQueryState } from "nuqs";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -695,7 +695,10 @@ export default function DetallePage() {
       {detailId && detailWithScore && (
         <DetailPanel
           licitacion={detailWithScore}
-          onClose={() => setDetailId(null, { history: "replace" })}
+          // startTransition: cerrar este panel desmonta bloques pesados (IA,
+          // documentos, eventos) — diferirlo evita bloquear el hilo
+          // principal en el propio clic del overlay (INP).
+          onClose={() => startTransition(() => setDetailId(null, { history: "replace" }))}
         />
       )}
 
@@ -721,7 +724,7 @@ export default function DetallePage() {
             descripcion: null,
             score: r.score,
           }))}
-          onClose={() => setShowComparator(false)}
+          onClose={() => startTransition(() => setShowComparator(false))}
         />
       )}
     </div>

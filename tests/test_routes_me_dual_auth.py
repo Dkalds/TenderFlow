@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import zipfile
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -34,6 +35,7 @@ def _session_ctx(user_id: int = 7, email: str = "session-user@test.com"):
         "display_name": "Session User",
         "is_admin": False,
         "auth_method": "session",
+        "authenticated_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -116,30 +118,29 @@ def test_delete_my_data_session_anonymizes_account_and_revokes_everything(client
         patch("api.routes.me.revoke_all_sessions", return_value=2) as mock_revoke_sessions,
         patch("api.routes.me.revoke_all_api_keys_for_user", return_value=1) as mock_revoke_keys,
     ):
-        resp = client.delete("/api/v1/me")
+        resp = client.request("DELETE", "/api/v1/me", json={"confirmation": "DELETE"})
     assert resp.status_code == 200, resp.text
     mock_anon_user.assert_called_once_with(42)
     mock_revoke_sessions.assert_called_once_with(42)
     mock_revoke_keys.assert_called_once_with(42)
 
 
-def test_delete_my_data_api_key_does_not_touch_account(client, auth, api_db):
-    """Con API key, el borrado NO debe anonimizar cuenta/revocar sesiones (comportamiento previo)."""
+def test_delete_my_data_rejects_api_key_even_with_explicit_confirmation(client, auth, api_db):
+    """Una credencial de automatización no puede borrar una cuenta humana."""
     with (
         patch("db.users.anonymize_user") as mock_anon_user,
         patch("api.routes.me.revoke_all_sessions") as mock_revoke_sessions,
         patch("api.routes.me.revoke_all_api_keys_for_user") as mock_revoke_keys,
         patch("api.routes.me.anonymize_user_data") as mock_anon_data,
     ):
-        resp = client.delete("/api/v1/me", headers=auth)
-    assert resp.status_code == 200, resp.text
+        resp = client.request(
+            "DELETE", "/api/v1/me", headers=auth, json={"confirmation": "DELETE"}
+        )
+    assert resp.status_code == 403, resp.text
     mock_anon_user.assert_not_called()
     mock_revoke_sessions.assert_not_called()
     mock_revoke_keys.assert_not_called()
-    mock_anon_data.assert_called_once()
-    # key_id (segundo posicional) debe venir informado para revocar la key usada
-    _args, _kwargs = mock_anon_data.call_args
-    assert _args[1] is not None
+    mock_anon_data.assert_not_called()
 
 
 def test_delete_my_data_session_deletes_watchlist_rule(client, api_db):
@@ -153,7 +154,7 @@ def test_delete_my_data_session_deletes_watchlist_rule(client, api_db):
     assert len(list_rules(user_key)) == 1
 
     app.dependency_overrides[require_any_auth] = lambda: ctx
-    resp = client.delete("/api/v1/me")
+    resp = client.request("DELETE", "/api/v1/me", json={"confirmation": "DELETE"})
     assert resp.status_code == 200, resp.text
     assert list_rules(user_key) == []
 

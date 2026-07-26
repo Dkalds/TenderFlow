@@ -22,6 +22,8 @@ def _fresh_settings(**overrides):
         "TURSO_AUTH_TOKEN": "",
         "SIGNING_KEY": "",
         "API_HMAC_SECRET": "",
+        "AUDIT_HMAC_KEY": "x" * 32,
+        "GOOGLE_CLIENT_ID": "",
         "GF_SECURITY_ADMIN_PASSWORD": "",
         "ALERT_EMAIL_TO": "",
         "ALERT_SMTP_PASSWORD": "",

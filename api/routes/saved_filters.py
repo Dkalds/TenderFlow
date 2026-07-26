@@ -32,6 +32,8 @@ _MAX_FILTERS_JSON = 8_000
 
 def _user_key(ctx: dict[str, Any]) -> str:
     """Clave opaca y estable por usuario (email de sesión o hash de API key)."""
+    if ctx.get("user_key"):
+        return str(ctx["user_key"])
     seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 

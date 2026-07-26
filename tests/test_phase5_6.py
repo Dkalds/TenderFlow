@@ -86,8 +86,8 @@ class TestTrustedClientIp:
         assert ip == "8.8.8.8"
         assert ip != "1.2.3.4"
 
-    def test_honors_xff_when_from_trusted_proxy(self):
-        """If direct connection is from a trusted proxy, use XFF."""
+    def test_honors_only_the_trusted_suffix_of_xff(self):
+        """No confía en hops anteriores a un proxy no incluido en la allowlist."""
         from api.middleware import _trusted_client_ip
 
         req = self._make_request(
@@ -98,7 +98,7 @@ class TestTrustedClientIp:
             mock_settings.FORWARDED_ALLOW_IPS = "127.0.0.1"
             ip = _trusted_client_ip(req)
 
-        assert ip == "10.0.0.5"
+        assert ip == "172.16.0.1"
 
     def test_falls_back_to_direct_when_xff_empty(self):
         """Even from trusted proxy, if XFF is empty, use direct IP."""

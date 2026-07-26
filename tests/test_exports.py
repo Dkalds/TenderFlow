@@ -11,6 +11,7 @@ from datetime import datetime
 import openpyxl
 import pandas as pd
 
+from api.routes.exports import _generate_ics
 from services.exports import generate_csv, generate_excel, get_export_filename
 
 
@@ -114,6 +115,32 @@ def test_generate_excel_records_vacios():
     data = generate_excel([])
     wb = openpyxl.load_workbook(io.BytesIO(data))
     assert wb.active is not None
+
+
+def test_spreadsheet_exports_neutralize_formula_cells():
+    records = [{"id_externo": "L1", "titulo": "=HYPERLINK(\"https://evil.example\")"}]
+
+    csv_data = generate_csv(records, columns=["id_externo", "titulo"]).decode("utf-8-sig")
+    assert "'=HYPERLINK" in csv_data
+
+    xlsx_data = generate_excel(records, columns=["id_externo", "titulo"])
+    workbook = openpyxl.load_workbook(io.BytesIO(xlsx_data), data_only=False)
+    assert workbook.active.cell(row=2, column=2).value.startswith("'=")
+
+
+def test_ics_url_rejects_newline_property_injection():
+    content = _generate_ics(
+        [
+            {
+                "uid": "id-1",
+                "dtstart": "2026-07-26",
+                "summary": "Prueba",
+                "url": "https://example.com/ok\r\nATTENDEE:mailto:attacker@example.com",
+            }
+        ]
+    )
+    assert "ATTENDEE:" not in content
+    assert "URL:" not in content
 
 
 # ── get_export_filename ─────────────────────────────────────────────────────

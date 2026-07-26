@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from db.database import connect, connect_read, now_utc_iso
@@ -186,31 +187,130 @@ class WebhookRepository:
             except Exception:
                 return []
 
-    def idempotency_get(self, key: str, endpoint: str = "webhooks") -> dict[str, Any] | None:
+    @staticmethod
+    def _idempotency_is_expired(created_at: object, max_age_seconds: int) -> bool:
+        """Return whether an idempotency reservation is no longer usable."""
+        if max_age_seconds <= 0 or not isinstance(created_at, str):
+            return True
+        try:
+            created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - created.astimezone(UTC)).total_seconds() > max_age_seconds
+
+    def idempotency_reserve(
+        self,
+        key: str,
+        endpoint: str,
+        request_fingerprint: str,
+        reservation_token: str,
+        max_age_seconds: int,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Atomically claim a scoped idempotency key.
+
+        A pending reservation deliberately makes concurrent retries fail closed
+        instead of creating a second webhook. The caller finalizes it only
+        after the webhook has been created successfully.
+        """
         import json
 
-        with connect_read() as c:
+        pending = {
+            "_pending": True,
+            "_request_fingerprint": request_fingerprint,
+            "_reservation_token": reservation_token,
+        }
+        with connect() as c:
+            row = c.execute(
+                "SELECT response_json, created_at FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                (key, endpoint),
+            ).fetchone()
+            if row is not None and self._idempotency_is_expired(row[1], max_age_seconds):
+                c.execute(
+                    "DELETE FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                    (key, endpoint),
+                )
+                row = None
+            if row is None:
+                inserted = c.execute(
+                    "INSERT INTO idempotency_keys (idem_key, endpoint, response_json, created_at) "
+                    "VALUES (?, ?, ?, ?) ON CONFLICT(idem_key, endpoint) DO NOTHING",
+                    (key, endpoint, json.dumps(pending, ensure_ascii=False), now_utc_iso()),
+                )
+                if inserted.rowcount > 0:
+                    return True, pending
+                # Otro proceso ganó la carrera entre nuestro SELECT e INSERT.
+                # Releer la fila evita un 500 por violación de unicidad y deja
+                # la petición concurrente en estado pendiente (fail closed).
+                row = c.execute(
+                    "SELECT response_json, created_at FROM idempotency_keys "
+                    "WHERE idem_key = ? AND endpoint = ?",
+                    (key, endpoint),
+                ).fetchone()
+                if row is None:
+                    return False, {}
+                try:
+                    inserted_value = cast(dict[str, Any], json.loads(row[0]))
+                except Exception:
+                    inserted_value = {}
+                # Algunos adaptadores no informan rowcount de INSERT de forma
+                # uniforme. El token aleatorio identifica inequívocamente
+                # nuestra propia reserva también en ese caso.
+                if inserted_value.get("_reservation_token") == reservation_token:
+                    return True, pending
+        try:
+            return False, cast(dict[str, Any], json.loads(row[0]))
+        except Exception:
+            # A malformed legacy cache entry is not trusted and never returned.
+            return False, {}
+
+    def idempotency_finalize(
+        self,
+        key: str,
+        endpoint: str,
+        reservation_token: str,
+        response: dict[str, Any],
+    ) -> bool:
+        """Replace our pending reservation with a secret-free response."""
+        import json
+
+        with connect() as c:
             row = c.execute(
                 "SELECT response_json FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
                 (key, endpoint),
             ).fetchone()
-        if not row:
-            return None
-        try:
-            return cast(dict[str, Any], json.loads(row[0]))
-        except Exception:
-            return None
+            if row is None:
+                return False
+            try:
+                pending = cast(dict[str, Any], json.loads(row[0]))
+            except Exception:
+                return False
+            if pending.get("_reservation_token") != reservation_token:
+                return False
+            c.execute(
+                "UPDATE idempotency_keys SET response_json = ? WHERE idem_key = ? AND endpoint = ?",
+                (json.dumps(response, ensure_ascii=False), key, endpoint),
+            )
+        return True
 
-    def idempotency_store(
-        self, key: str, endpoint: str = "webhooks", response: dict[str, Any] | None = None
-    ) -> None:
+    def idempotency_release(self, key: str, endpoint: str, reservation_token: str) -> None:
+        """Release only our own pending reservation after a failed create."""
         import json
 
-        if response is None:
-            response = {}
         with connect() as c:
-            c.execute(
-                "INSERT INTO idempotency_keys (idem_key, endpoint, response_json, created_at) "
-                "VALUES (?, ?, ?, ?) ON CONFLICT(idem_key, endpoint) DO NOTHING",
-                (key, endpoint, json.dumps(response, ensure_ascii=False), now_utc_iso()),
-            )
+            row = c.execute(
+                "SELECT response_json FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                (key, endpoint),
+            ).fetchone()
+            if row is None:
+                return
+            try:
+                pending = cast(dict[str, Any], json.loads(row[0]))
+            except Exception:
+                return
+            if pending.get("_pending") and pending.get("_reservation_token") == reservation_token:
+                c.execute(
+                    "DELETE FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                    (key, endpoint),
+                )

@@ -501,11 +501,22 @@ try:
             key_authenticated = False
             if api_key_raw:
                 from api.auth import hash_api_key
+                from db.connection import now_utc_iso
                 from services import auth as auth_service
 
                 key_hash = hash_api_key(api_key_raw)
-                scopes = auth_service.get_active_scopes(key_hash)
-                if scopes is not None and ("*" in scopes or "metrics:read" in scopes):
+                record = auth_service.lookup_active_key(key_hash)
+                scopes = record.scopes if record is not None else ""
+                scope_set = frozenset(scope.strip() for scope in scopes.split(",") if scope.strip())
+                is_bound = record is not None and record.user_id is not None
+                is_unexpired = record is not None and (
+                    record.expires_at is None or now_utc_iso() <= record.expires_at
+                )
+                if (
+                    is_unexpired
+                    and (settings.ENV == "dev" or is_bound)
+                    and ("*" in scope_set or "metrics:read" in scope_set)
+                ):
                     key_authenticated = True
 
             # En prod/staging: requiere API key siempre (IP allowlist es condición adicional, no suficiente)

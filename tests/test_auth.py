@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 
+import pytest
+
 # ── hash_api_key ─────────────────────────────────────────────────────────────
 
 
@@ -121,3 +123,13 @@ def test_create_api_key_with_expiry(api_db):
     token = create_api_key("expiry-test", expires_days=30)
     assert isinstance(token, str)
     assert len(token) > 10
+
+
+def test_create_api_key_requires_owner_outside_dev(api_db, monkeypatch):
+    """Una clave nueva en producción no puede quedar sin propietario."""
+    import config as _cfg
+    from api.auth import create_api_key
+
+    monkeypatch.setattr(_cfg.settings, "ENV", "prod")
+    with pytest.raises(ValueError, match="must be bound"):
+        create_api_key("unbound-production-key")
