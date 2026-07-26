@@ -99,34 +99,71 @@ def flush_events() -> None:
 
     try:
         # Import lazy para evitar ciclo de imports al arrancar.
-        import libsql
+        from db.connection import is_postgres_backend
 
-        from config import settings
-
-        db_path = settings.DB_PATH
-        if db_path is None:
-            db_path = settings.DATA_DIR / "licitaciones.db"
-
-        # Conexion directa sin pool -- timeout corto para no agravar la contention.
-        conn = libsql.connect(str(db_path))
-        try:
-            conn.execute("PRAGMA busy_timeout = 250")
-            conn.executemany(
-                "INSERT INTO ops_events (ts, event_type, value, plane, pid, detail) "
-                "VALUES (:ts, :event_type, :value, :plane, :pid, :detail)",
-                rows,
-            )
-            conn.commit()
-        except Exception:
-            # Si la tabla no existe o hay cualquier error, descartamos en silencio.
-            pass
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        if is_postgres_backend():
+            _flush_postgres(rows)
+        else:
+            _flush_sqlite(rows)
     except Exception:
         pass
+
+
+def _flush_postgres(rows: list[dict[str, Any]]) -> None:
+    """Escribe el buffer en Postgres con una conexion efimera propia.
+
+    Antes esta funcion escribia SIEMPRE con ``libsql`` contra un fichero SQLite
+    local, incluso con el backend en Postgres (ADR-016). En los jobs de GitHub
+    Actions eso significaba volcar los eventos a un fichero del runner efimero
+    que se descarta al terminar, mientras ``scheduler/healthcheck.py`` los
+    buscaba en Supabase y siempre los veia vacios -- es decir, los tripwires de
+    persistencia llevaban sin señal desde el cutover. Como ``flush_events``
+    traga todos los errores, el fallo era invisible.
+    """
+    import psycopg
+
+    from db.connection import _database_url
+
+    # Conexion directa sin pool: flush_events puede llamarse desde atexit,
+    # cuando el pool ya esta cerrado.
+    with psycopg.connect(_database_url(), connect_timeout=5) as conn:
+        conn.execute("SET statement_timeout = 2000")
+        conn.cursor().executemany(
+            "INSERT INTO ops_events (ts, event_type, value, plane, pid, detail) "
+            "VALUES (%(ts)s, %(event_type)s, %(value)s, %(plane)s, %(pid)s, %(detail)s)",
+            rows,
+        )
+        conn.commit()
+
+
+def _flush_sqlite(rows: list[dict[str, Any]]) -> None:
+    """Escribe el buffer en SQLite local (desarrollo y tests)."""
+    import libsql
+
+    from config import settings
+
+    db_path = settings.DB_PATH
+    if db_path is None:
+        db_path = settings.DATA_DIR / "licitaciones.db"
+
+    # Conexion directa sin pool -- timeout corto para no agravar la contention.
+    conn = libsql.connect(str(db_path))
+    try:
+        conn.execute("PRAGMA busy_timeout = 250")
+        conn.executemany(
+            "INSERT INTO ops_events (ts, event_type, value, plane, pid, detail) "
+            "VALUES (:ts, :event_type, :value, :plane, :pid, :detail)",
+            rows,
+        )
+        conn.commit()
+    except Exception:
+        # Si la tabla no existe o hay cualquier error, descartamos en silencio.
+        pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def _piggyback_flush() -> None:

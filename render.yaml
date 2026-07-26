@@ -44,3 +44,55 @@ services:
         sync: false
       - key: FORWARDED_ALLOW_IPS
         value: "*"
+      # Sentry: observability/sentry.py es opt-in por SENTRY_DSN. Sin esta
+      # variable, configure_sentry() en api/app.py es un no-op y producción
+      # corre sin captura de errores ni trazas.
+      - key: SENTRY_DSN
+        sync: false
+
+  # ── Observabilidad (ADR-019) ────────────────────────────────────────────
+  # El código expone /metrics desde siempre, pero hasta ahora nadie lo
+  # scrapeaba: el único Prometheus vivía en docker-compose.yml apuntando a
+  # hostnames de compose local. Resultado: 5 de los 6 SLOs de docs/sli-slo.md
+  # no tenían medición y el error budget no era computable.
+  #
+  # Prometheus es un servicio privado (no expuesto a internet); Grafana es web
+  # porque hay que abrirlo desde el navegador y trae su propia autenticación.
+  - type: pserv
+    name: tenderflow-prometheus
+    runtime: image
+    image:
+      url: docker.io/prom/prometheus:v2.53.0
+    plan: starter
+    region: frankfurt
+    dockerCommand: >-
+      --config.file=/etc/prometheus/prometheus.yml
+      --storage.tsdb.path=/prometheus
+      --storage.tsdb.retention.time=30d
+      --web.enable-lifecycle
+    disk:
+      name: prometheus-data
+      mountPath: /prometheus
+      sizeGB: 10
+
+  - type: web
+    name: tenderflow-grafana
+    runtime: image
+    image:
+      url: docker.io/grafana/grafana-oss:11.1.0
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /api/health
+    disk:
+      name: grafana-data
+      mountPath: /var/lib/grafana
+      sizeGB: 1
+    envVars:
+      # Contraseña fuerte obligatoria: config/settings.py la valida con
+      # check_password_strength (mínimo 16 caracteres) en ENV=prod.
+      - key: GF_SECURITY_ADMIN_PASSWORD
+        sync: false
+      - key: GF_USERS_ALLOW_SIGN_UP
+        value: "false"
+      - key: GF_SERVER_ROOT_URL
+        sync: false

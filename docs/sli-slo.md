@@ -6,14 +6,37 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 
 ## Resumen ejecutivo
 
-| Servicio | SLO | Periodo de medición |
-|----------|-----|---------------------|
-| Disponibilidad del frontend web | ≥ 99% | 30 días |
-| Frescura de datos | ≤ 36h sin scrape exitoso | 7 días |
-| Latencia de carga del frontend web | P95 < 3 s | 7 días |
-| Tasa de éxito del pipeline | ≥ 95% de runs | 30 días |
-| Cobertura de datos (importe presente) | ≥ 80% | 30 días |
-| Tiempo de respuesta API REST | P99 < 500 ms | 7 días |
+| Servicio | SLO | Periodo | Medido por |
+|----------|-----|---------|------------|
+| Disponibilidad del frontend web | ≥ 99% | 30 días | `up{service="api"}` (Prometheus) |
+| Frescura de datos | ≤ 36h sin scrape exitoso | 7 días | `scheduler/healthcheck.py` (cada 6h) |
+| Latencia de carga del frontend web | P95 < 3 s | 7 días | ⚠️ **sin medición** — ver nota |
+| Tasa de éxito del pipeline | ≥ 95% de runs | 30 días | `extraction_runs` vía healthcheck |
+| Cobertura de datos (importe presente) | ≥ 80% | 30 días | `extraction_runs` vía healthcheck |
+| Tiempo de respuesta API REST | P99 < 500 ms | 7 días | `http_request_duration_seconds` (Prometheus) |
+
+### Nota sobre la medición real (2026-07-26)
+
+Hasta esta fecha **cinco de los seis SLOs no tenían medición alguna**: el
+código expone `/metrics` desde siempre, pero el único Prometheus definido
+vivía en `docker-compose.yml` apuntando a hostnames de compose local
+(`api:8080`, `scheduler:9091`). En producción nadie scrapeaba nada, así que
+el error budget no era computable y las reglas de `observability/alert_rules.yml`
+no se evaluaban.
+
+Con el despliegue de Prometheus + Grafana en Render (ADR-019) pasan a medirse
+los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
+
+- **Latencia del frontend web**: el frontend se sirve fuera de este
+  despliegue, así que Prometheus no lo ve. Requiere RUM (Web Vitals desde el
+  navegador) o un probe sintético; hasta entonces el SLO no es medible y está
+  marcado como tal en vez de fingir cobertura.
+- **Planos efímeros** (scraper, ML y pliegos en GitHub Actions): no son
+  scrapeables — el proceso muere al terminar el job y exponer un Pushgateway
+  público sería superficie de ataque sin autenticación. Siguen reportando por
+  la tabla `ops_events`, que lee `scheduler/healthcheck.py`. Ese canal estaba
+  **roto desde el cutover a Postgres** (escribía con `libsql` a un fichero
+  local del runner) y se corrigió junto con este cambio.
 
 ---
 
