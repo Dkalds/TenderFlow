@@ -18,12 +18,15 @@ def test_append_event_with_actor(tmp_db):
 
     from db.events import append_event
 
-    append_event("login", "user1", "user", {}, actor_id="user1")
+    # actor_id es el id numérico del usuario: domain_events.actor_id es INTEGER
+    # en ambos motores. Antes el test pasaba "user1" y funcionaba solo porque
+    # SQLite no aplica tipos estrictos (ADR-018).
+    append_event("login", "user1", "user", {}, actor_id=42)
 
     with db_mod.connect_read() as c:
         rows = c.execute("SELECT actor_id FROM domain_events").fetchall()
 
-    assert rows[0][0] == "user1"
+    assert rows[0][0] == 42
 
 
 def test_get_events_returns_appended_events(tmp_db):

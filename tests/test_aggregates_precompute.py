@@ -24,7 +24,7 @@ def _insert_licitaciones(db_mod: Any, rows: list[tuple[str, str, str]]) -> None:
     with db_mod.connect() as conn:
         for id_ext, titulo, desc in rows:
             conn.execute(
-                "INSERT OR IGNORE INTO licitaciones (id_externo, titulo, descripcion, fecha_extraccion) "
+                "INSERT INTO licitaciones (id_externo, titulo, descripcion, fecha_extraccion) "
                 "VALUES (?, ?, ?, ?)",
                 (id_ext, titulo, desc, "2026-01-01"),
             )

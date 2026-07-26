@@ -74,10 +74,10 @@ def seeded_client(api_db, api_key, monkeypatch):
 
     with connect() as c:
         c.execute(
-            "INSERT OR IGNORE INTO licitaciones "
+            "INSERT INTO licitaciones "
             "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
             " fecha_publicacion, ccaa, cpv, url, tecnologia, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             [
                 "LIC-001",
                 "Sistema SAP ERP para AEAT",
@@ -94,10 +94,10 @@ def seeded_client(api_db, api_key, monkeypatch):
             ],
         )
         c.execute(
-            "INSERT OR IGNORE INTO licitaciones "
+            "INSERT INTO licitaciones "
             "(id_externo, titulo, organo_contratacion, importe, estado, "
             " fecha_publicacion, ccaa, tecnologia, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             [
                 "LIC-002",
                 "Mantenimiento SAP Barcelona",

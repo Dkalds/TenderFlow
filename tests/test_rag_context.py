@@ -32,7 +32,7 @@ def _insert_licitacion(id_externo: str, titulo: str = "Contrato de prueba") -> N
             "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
             " fuente, fecha_extraccion) "
             "VALUES (?, ?, 'Descripción del anuncio', 'Ayuntamiento', 100000.0, 'PUB', "
-            "'placsp', datetime('now'))",
+            "'placsp', CURRENT_TIMESTAMP)",
             (id_externo, titulo),
         )
 

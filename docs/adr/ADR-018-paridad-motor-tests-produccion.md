@@ -86,9 +86,31 @@ diferencia aceptable.
 - La suite es más lenta: crear un schema por test cuesta del orden de medio
   segundo. Si se vuelve un problema, la vía es agrupar por módulo y truncar
   entre tests en vez de recrear el schema.
-- **La migración no está completa.** Al activar el motor real afloran fallos
-  preexistentes que hasta ahora nadie veía. El job de CI que corre la suite
-  contra Postgres arranca como **no bloqueante** y se promueve a bloqueante
-  cuando el conteo llegue a cero; cada fallo debe diagnosticarse
-  individualmente, porque la corrección casi siempre va en el código de
-  producción, no en el test.
+- El job `test-postgres` es **bloqueante** desde el 2026-07-26: la migración
+  se completó (218 fallos + 25 errores → 0). Los ficheros cuyo objeto de prueba
+  *es* la capa SQLite/libSQL (`test_documentos_schema_sqlite.py`,
+  `test_turso_*.py`) se saltan por convención de nombre — no son deuda de
+  migración, son tests de otro motor.
+
+## Bugs de producción que destapó la migración
+
+Ninguno era visible con la suite sobre SQLite. Todos estaban activos en
+producción:
+
+| Bug | Efecto en producción |
+|---|---|
+| `_PgConnAdapter` sin `rowcount` | 24 call-sites (`webhooks`, `api_keys`, `watchlist_rules`, `job_locks`, DLQ, notificaciones…) lanzaban `AttributeError` |
+| `_PgConnAdapter.lastrowid` devolvía `rownumber` | `create_user`, alta de webhooks y de reglas de watchlist devolvían un id inventado |
+| Shim de paramstyle sin escapar `%` literal | Toda query con `LIKE '...%'` **y** parámetros fallaba. Caso real: la alerta de fallos consecutivos del feed diario, silenciada por un `except: return []` |
+| `scheduler/retention.py` sin savepoints | Un fallo en la primera tabla abortaba la transacción y dejaba **todas** las demás sin purgar |
+| `db/upsert.py` no capturaba `psycopg.IntegrityError` | Una fila inválida abortaba el lote entero de la licitación en vez de irse a la DLQ |
+| `_classify_integrity_error` sin `not-null` | Postgres escribe `not-null` con guion: sus violaciones se clasificaban como `other` |
+| `healthcheck` detectaba tabla ausente por `no such table` | Mensaje de SQLite; en Postgres el check nunca se activaba |
+| `db/events.py` insertaba `str(actor_id)` en columna `INTEGER` | `InvalidTextRepresentation` con cualquier actor no numérico |
+| `users.deactivated_at`, `api_keys.scopes`, `api_keys.user_id` ausentes en Postgres | Listar/desactivar usuarios y el borrado GDPR de claves rotos (migración `v60`) |
+| Seis `CHECK` de formato de fecha ausentes | Fechas malformadas aceptadas en columnas indexadas (migración `v59`) |
+
+Además, una diferencia de **calidad** medida, no un bug: el backend de búsqueda
+de producción (`tsvector` + `ts_rank_cd`) recupera igual de bien que FTS5
+(`hit_rate@5 = 1.000` en ambos) pero ordena peor (MRR 0.689 vs ≈0.78). El eval
+RAG ratchea ahora por motor en vez de asumir FTS5.

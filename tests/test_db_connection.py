@@ -93,8 +93,8 @@ def test_connect_read_after_write(tmp_db):
     # Escribir algo — incluye created_at (NOT NULL) para evitar INSERT silencioso
     with db_mod.connect() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO api_keys(name, key_hash, created_at, is_active) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO api_keys(name, key_hash, created_at, is_active) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
             ("test-read", "hash-abc", now_utc_iso(), 1),
         )
 
@@ -405,3 +405,52 @@ def test_get_pg_pool_wraps_connection_error_without_leaking_dsn(monkeypatch):
     msg = str(exc_info.value)
     assert "s3cr3tpw" not in msg
     assert "No se pudo crear el pool Postgres" in msg
+
+
+# ---------------------------------------------------------------------------
+# Shim de paramstyle: escape de `%` literal (ADR-018)
+# ---------------------------------------------------------------------------
+
+
+def test_translate_qmarks_escapes_literal_percent_with_params(monkeypatch):
+    """Un `%` dentro de un literal es dato, no placeholder.
+
+    psycopg interpreta `%` como inicio de placeholder cuando la sentencia lleva
+    parámetros, así que `LIKE 'daily|%'` reventaba con "only '%s', '%b', '%t'
+    are allowed as placeholders". Era el caso de
+    ExtractionRunRepository.load_recent_daily_statuses, que además captura la
+    excepción y devuelve [] — la alerta de fallos consecutivos del feed diario
+    nunca se disparaba en producción.
+    """
+    import db.connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+
+    sql = "SELECT status FROM extraction_runs WHERE notas LIKE 'daily|%' LIMIT ?"
+    out = conn_mod._translate_qmarks(sql, has_params=True)
+
+    assert "'daily|%%'" in out
+    assert out.endswith("LIMIT %s")
+
+
+def test_translate_qmarks_leaves_percent_alone_without_params(monkeypatch):
+    """Sin parámetros psycopg no interpreta `%`: doblarlo corrompería el dato."""
+    import db.connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+
+    sql = "SELECT * FROM t WHERE c LIKE 'x%'"
+    assert conn_mod._translate_qmarks(sql, has_params=False) == sql
+
+
+def test_translate_qmarks_does_not_touch_comments(monkeypatch):
+    """El `%` de un comentario no llega al motor: no debe doblarse."""
+    import db.connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+
+    sql = "SELECT 1 -- 100% seguro\nWHERE a = ?"
+    out = conn_mod._translate_qmarks(sql, has_params=True)
+
+    assert "-- 100% seguro" in out
+    assert "a = %s" in out

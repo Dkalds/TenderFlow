@@ -70,12 +70,12 @@ def test_feedbacks_since_last_train(tmp_db):
         )
         c.execute(
             "INSERT INTO ml_feedback (expediente, relevante, created_at) "
-            "VALUES (?, ?, datetime('now'))",
+            "VALUES (?, ?, CURRENT_TIMESTAMP)",
             ("EXP-001", 1),
         )
         c.execute(
             "INSERT INTO ml_feedback (expediente, relevante, created_at) "
-            "VALUES (?, ?, datetime('now'))",
+            "VALUES (?, ?, CURRENT_TIMESTAMP)",
             ("EXP-002", 0),
         )
     count = feedbacks_since_last_train("sap_classifier")

@@ -71,7 +71,7 @@ Generado: 2026-07-26
 
 ## Motor de la suite de tests (ADR-018)
 
-⚠️ job `test-postgres` presente pero **no bloqueante** (ADR-018)
+✅ la suite corre contra Postgres y el job es bloqueante
 
 ## Superficie de la API
 

@@ -129,18 +129,18 @@ def _sembrar_par_calibracion(lic_id, importe, baja_realizada, p10, p50, p90):
             "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
             " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
             "VALUES (?, 'Lic', 'Organo A', '72000000', 'Madrid', ?, 'Servicios', "
-            " 'placsp', '2026-01-01', datetime('now'))",
+            " 'placsp', '2026-01-01', CURRENT_TIMESTAMP)",
             (lic_id, importe),
         )
         c.execute(
             "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
             " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
-            "VALUES (?, 'Empresa X', ?, '2026-03-01', 3, datetime('now'))",
+            "VALUES (?, 'Empresa X', ?, '2026-03-01', 3, CURRENT_TIMESTAMP)",
             (lic_id, importe * (1 - baja_realizada)),
         )
         c.execute(
             "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
-            " computed_at) VALUES (?, ?, ?, ?, 1, datetime('now'))",
+            " computed_at) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)",
             (lic_id, p10, p50, p90),
         )
 

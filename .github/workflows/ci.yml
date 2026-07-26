@@ -270,12 +270,10 @@ jobs:
           pip install -e ".[pliegos]"
 
       - name: Run suite against Postgres
-        # NO BLOQUEANTE todavia. Activar el motor real destapa fallos
-        # preexistentes que la suite SQLite nunca pudo ver; cada uno necesita
-        # diagnostico propio y la correccion suele ir en el codigo de
-        # produccion, no en el test. Se promueve a bloqueante (quitando esta
-        # linea) cuando el conteo de fallos llegue a cero -- ver ADR-018.
-        continue-on-error: true
+        # BLOQUEANTE desde 2026-07-26: la migracion de la suite al motor real
+        # esta completa (0 fallos). Los tests especificos del backend
+        # SQLite/libSQL se saltan por convencion de nombre en conftest.py --
+        # no son deuda, son tests de otro motor. Ver ADR-018.
         env:
           ENV: dev
           TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret

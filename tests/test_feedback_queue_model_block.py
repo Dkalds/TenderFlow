@@ -12,11 +12,11 @@ def seeded_db(api_db, api_key):
 
     with connect() as c:
         c.execute(
-            "INSERT OR IGNORE INTO licitaciones "
+            "INSERT INTO licitaciones "
             "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
             "fecha_publicacion, ccaa, cpv, url, tecnologia, ml_tecnologias, "
             "ml_proba_max, ml_tech_principal, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             [
                 "Q-001",
                 "Sistema SAP ERP para AEAT",
@@ -36,11 +36,11 @@ def seeded_db(api_db, api_key):
             ],
         )
         c.execute(
-            "INSERT OR IGNORE INTO licitaciones "
+            "INSERT INTO licitaciones "
             "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
             "fecha_publicacion, ccaa, cpv, url, tecnologia, ml_tecnologias, "
             "ml_proba_max, ml_tech_principal, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             [
                 "Q-002",
                 "CRM Salesforce para Comunidad de Madrid",

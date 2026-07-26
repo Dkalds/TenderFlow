@@ -40,8 +40,29 @@ def _infer_marker(path: str, name: str) -> str:
     return "unit"
 
 
+# Ficheros cuyo objeto de prueba **es** la capa SQLite/libSQL: el schema SQLite
+# de db/schema.py, la detección de backend Turso y los helpers que evitan
+# emitir PRAGMA contra Hrana. No tiene sentido ejercitarlos contra Postgres
+# (ADR-018) — no son deuda de migración, son tests de otro motor. Se saltan por
+# token de nombre, misma convención que el auto-marking de arriba.
+_SQLITE_ONLY_TOKENS = ("schema_sqlite", "turso_")
+
+
+def _is_sqlite_only(path: str) -> bool:
+    p = path.lower().replace("\\", "/")
+    return any(token in p for token in _SQLITE_ONLY_TOKENS)
+
+
 def pytest_collection_modifyitems(config, items):
+    skip_sqlite_only = pytest.mark.skip(
+        reason="Test específico del backend SQLite/libSQL; la suite corre contra Postgres (ADR-018)"
+    )
+    running_on_pg = bool(os.environ.get("TEST_DATABASE_URL"))
+
     for item in items:
+        if running_on_pg and _is_sqlite_only(str(item.fspath)):
+            item.add_marker(skip_sqlite_only)
+
         marks_existing = {m.name for m in item.iter_markers()}
         if marks_existing & {"unit", "integration", "e2e", "property", "load"}:
             continue
@@ -157,6 +178,8 @@ def _pg_schema_ddl():
     """
     import subprocess
 
+    import psycopg
+
     url = _pg_test_url()
     if not url:
         pytest.skip("TEST_DATABASE_URL no configurada")
@@ -175,6 +198,22 @@ def _pg_schema_ddl():
         capture_output=True,
         text=True,
     ).stdout
+
+    # Capturado el DDL, se vacían las tablas de `public`. El search_path de cada
+    # test es `<schema_del_test>, public`, así que si `public` conserva las
+    # tablas de alembic actúa de red de seguridad silenciosa: un test que borre
+    # o altere una tabla en su schema seguiría viendo la de `public` y pasaría
+    # sin ejercitar nada. `public` debe aportar solo los objetos de extensión
+    # (tipos de pgvector, operadores de pg_trgm), nunca datos ni tablas.
+    with psycopg.connect(url, autocommit=True) as conn:
+        tablas = [
+            r[0]
+            for r in conn.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            ).fetchall()
+        ]
+        for t in tablas:
+            conn.execute(f'DROP TABLE IF EXISTS public."{t}" CASCADE')
 
     # pg_dump cualifica todo como `public.`; se reproyecta al schema del test.
     # Se descartan: sentencias de extensión (son globales a la base), las de

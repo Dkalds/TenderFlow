@@ -134,19 +134,43 @@ _SQL_TOKEN_RE = re.compile(
 )
 
 
-def _translate_qmarks(sql: str) -> str:
+def _translate_qmarks(sql: str, *, has_params: bool = True) -> str:
     """Reescribe ``?`` → ``%s`` en SQL respetando literales y comentarios.
 
     Solo activo cuando el backend es Postgres. No-op en SQLite/Turso.
+
+    Cuando la sentencia lleva parámetros, psycopg interpreta ``%`` como inicio
+    de placeholder **también dentro de los literales**, así que un patrón como
+    ``LIKE 'daily|%'`` revienta con ``only '%s', '%b', '%t' are allowed as
+    placeholders``. Hay que doblarlo a ``%%``.
+
+    Sin este escape, cualquier query que combine un ``LIKE`` con comodín y
+    parámetros fallaba en Postgres. El caso real:
+    ``ExtractionRunRepository.load_recent_daily_statuses`` —
+    ``WHERE notas LIKE 'daily|%' ... LIMIT ?`` — que además captura la
+    excepción y devuelve ``[]``, de modo que la alerta de fallos consecutivos
+    del feed diario nunca se disparaba en producción. La suite no lo veía
+    porque corría sobre SQLite (ADR-018).
+
+    Args:
+        sql: Sentencia en dialecto qmark.
+        has_params: Si la sentencia se ejecuta con parámetros. Si es False,
+            psycopg no interpreta ``%`` y doblarlo corrompería el literal.
     """
     if not is_postgres_backend():
         return sql
 
     def _replace(m: re.Match[str]) -> str:
-        # Grupos 1-4: strings/comentarios — preservar tal cual
-        if m.group(5) is None:
-            return m.group(0)
-        return "%s"
+        # Grupo 5: el placeholder qmark.
+        if m.group(5) is not None:
+            return "%s"
+        # Grupos 1-2: literales de string/identificador. El `%` que contengan
+        # es dato, no placeholder: se dobla para que psycopg no lo tome como tal.
+        token = m.group(0)
+        if has_params and (m.group(1) is not None or m.group(2) is not None):
+            return token.replace("%", "%%")
+        # Grupos 3-4: comentarios — preservar tal cual.
+        return token
 
     return _SQL_TOKEN_RE.sub(_replace, sql)
 
@@ -175,7 +199,7 @@ class _PgConnAdapter:
         self._cur: Any = None
 
     def execute(self, sql: str, params: Any = None) -> _PgConnAdapter:
-        translated = _translate_qmarks(sql)
+        translated = _translate_qmarks(sql, has_params=params is not None)
         self._cur = self._conn.cursor()
         if params is None:
             self._cur.execute(translated)
@@ -184,7 +208,7 @@ class _PgConnAdapter:
         return self
 
     def executemany(self, sql: str, seq: Any) -> None:
-        translated = _translate_qmarks(sql)
+        translated = _translate_qmarks(sql, has_params=True)
         with self._conn.cursor() as cur:
             cur.executemany(translated, seq)
 
@@ -203,10 +227,45 @@ class _PgConnAdapter:
         return self._cur.description if self._cur else None
 
     @property
+    def rowcount(self) -> int:
+        """Filas afectadas por la última sentencia.
+
+        24 call-sites de producción lo usan para saber si un UPDATE/DELETE tuvo
+        efecto (``db/webhooks.py``, ``db/repositories/api_keys.py``,
+        ``services/watchlist_rules.py``, ``services/job_locks.py``…). Faltaba en
+        este adaptador, así que **todos** lanzaban ``AttributeError`` con backend
+        Postgres. La suite no lo detectaba porque corría sobre SQLite (ADR-018).
+        """
+        if self._cur is None:
+            return -1
+        return int(self._cur.rowcount)
+
+    @property
     def lastrowid(self) -> Any:
+        """Id autogenerado por el último INSERT.
+
+        psycopg3 no expone ``lastrowid``. Antes esta propiedad devolvía
+        ``self._cur.rownumber``, que es la **posición del cursor en el
+        resultado**, no un id: ``db/users.py::create_user`` y
+        ``db/webhooks.py`` devolvían un identificador inventado (típicamente 0)
+        en producción.
+
+        ``lastval()`` devuelve el último valor generado por una secuencia en la
+        sesión actual, que es el equivalente correcto tras un INSERT sobre una
+        PK serial/identity. Si el INSERT no tocó ninguna secuencia, Postgres
+        lanza ``ObjectNotInPrerequisiteState``; se devuelve None, que los
+        call-sites ya tratan (``int(cur.lastrowid or 0)``).
+        """
         if self._cur is None:
             return None
-        return self._cur.rownumber  # psycopg3 no expone lastrowid directamente
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute("SELECT lastval()")
+                row = cur.fetchone()
+                return row[0] if row else None
+        except Exception:
+            log.debug("pg_lastrowid_unavailable")
+            return None
 
     def commit(self) -> None:
         self._conn.commit()

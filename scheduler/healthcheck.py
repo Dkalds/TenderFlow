@@ -208,7 +208,18 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
 
         except Exception as exc:
             exc_msg = str(exc).lower()
-            if "no such table" in exc_msg or "no existe" in exc_msg:
+            # Cada motor redacta el error a su manera: SQLite dice "no such
+            # table", Postgres dice 'relation "ops_events" does not exist'.
+            # Sin la variante de Postgres, este check nunca se activaba en
+            # producción tras el cutover (ADR-016): el error se clasificaba
+            # como genérico y la tabla ausente pasaba desapercibida.
+            tabla_ausente = (
+                "no such table" in exc_msg
+                or "no existe" in exc_msg
+                or "does not exist" in exc_msg
+                or "undefinedtable" in exc_msg
+            )
+            if tabla_ausente:
                 info["ops_events_missing"] = True
                 checks.append({"name": "ops_events_busy", "ok": True})
                 checks.append({"name": "ops_events_write_slow", "ok": True})

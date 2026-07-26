@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import sqlite3
 from pathlib import Path
+from uuid import uuid4
 
 
 class TestBackupSqlite:
@@ -77,8 +78,8 @@ class TestRetentionCleanup:
         # Insertar datos de test en extraction_runs
         with db_mod.connect() as c:
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status) VALUES (?, ?)",
-                ("2000-01-01T00:00:00", "ok"),
+                "INSERT INTO extraction_runs (run_id, started_at, status) VALUES (?, ?, ?)",
+                (f"run-{uuid4()}", "2000-01-01T00:00:00", "ok"),
             )
 
         import sys
@@ -111,8 +112,8 @@ class TestRetentionCleanup:
 
         with db_mod.connect() as c:
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status) VALUES (?, ?)",
-                ("2000-01-01T00:00:00", "ok"),
+                "INSERT INTO extraction_runs (run_id, started_at, status) VALUES (?, ?, ?)",
+                (f"run-{uuid4()}", "2000-01-01T00:00:00", "ok"),
             )
 
         from scripts.retention_cleanup import run_retention
@@ -143,8 +144,8 @@ class TestRetentionCleanup:
         recent_ts = datetime.now(UTC).isoformat()
         with db_mod.connect() as c:
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status) VALUES (?, ?)",
-                (recent_ts, "ok"),
+                "INSERT INTO extraction_runs (run_id, started_at, status) VALUES (?, ?, ?)",
+                (f"run-{uuid4()}", recent_ts, "ok"),
             )
 
         from scripts.retention_cleanup import run_retention

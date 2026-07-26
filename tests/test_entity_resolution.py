@@ -50,12 +50,19 @@ def setup_lic(db, lic_id="LIC-001"):
 
 
 def test_v35_tables_exist(db):
-    from db.database import connect
+    from db.database import connect, is_postgres_backend
+
+    # sqlite_master no existe en Postgres; information_schema no existe en
+    # SQLite. Se consulta el catálogo de cada motor (ADR-018).
+    if is_postgres_backend():
+        sql = (
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()"
+        )
+    else:
+        sql = "SELECT name FROM sqlite_master WHERE type='table'"
 
     with connect() as c:
-        tables = {
-            r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        }
+        tables = {r[0] for r in c.execute(sql).fetchall()}
     assert {
         "empresas",
         "empresa_aliases",
@@ -66,10 +73,10 @@ def test_v35_tables_exist(db):
 
 
 def test_v35_adjudicaciones_has_empresa_id(db):
-    from db.database import connect
+    from db.database import connect, get_table_columns
 
     with connect() as c:
-        cols = {r[1] for r in c.execute("PRAGMA table_info(adjudicaciones)").fetchall()}
+        cols = set(get_table_columns(c, "adjudicaciones"))
     assert "empresa_id" in cols
 
 

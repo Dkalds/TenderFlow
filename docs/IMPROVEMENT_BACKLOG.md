@@ -13,37 +13,24 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-### [P1] Terminar la migración de la suite a Postgres (218 fallos + 25 errores)
-- **Área:** tests/, db/, services/, scheduler/
-- **Problema:** ADR-018 dejó la suite corriendo contra Postgres real, pero activar el motor de producción destapó 243 tests que fallan y que la suite SQLite nunca pudo ver. El job de CI `test-postgres` arranca **no bloqueante** precisamente por esto. Reparto medido de causas (2026-07-26, `--tb=line` sobre 2588 tests):
-
-  | Causa | Nº | Lectura |
-  |---|---|---|
-  | `psycopg.errors.UndefinedFunction` | 224 | Funciones SQLite invocadas contra Postgres: `date()`, `strftime()`, `julianday()`, `GLOB`. **Cada una es un camino de producción que revienta si se alcanza.** |
-  | `AttributeError` | 84 | Mayormente lado test (mocks que asumen la API de libsql) |
-  | `psycopg.errors.UndefinedColumn` | 56 | Drift de schema entre `db/schema.py` (SQLite) y el schema Postgres |
-  | `psycopg.errors.SyntaxError` | 33 | SQL que no parsea en Postgres (`INSERT OR IGNORE`, etc.) |
-  | `AssertionError` | 15 | Diferencias de comportamiento: tipos, orden, `Decimal` vs `float` |
-  | Resto (`NotNull`, `Check`, `Unique`, `TypeError`…) | 31 | Mezcla |
-
+### [P2] El ranking de retrieval de producción es peor que el de FTS5
+- **Área:** db/search_backend.py, services/licitaciones.py
+- **Problema:** Medido al migrar el eval RAG al motor real (ADR-018) sobre el golden set de 15 preguntas: SQLite/FTS5 da MRR ≈0.78 y Postgres/`tsvector`+`ts_rank_cd` da **0.689**. El `hit_rate@5` es **1.000 en ambos** — producción encuentra siempre el documento esperado dentro del top-5, pero lo ordena peor. No es una regresión de la migración: es la calidad real que ven los usuarios de `/ask` hoy, que nadie medía porque el eval corría sobre FTS5. El eval ya ratchea por motor (`MRR_MIN_POSTGRES = 0.65`), así que una regresión adicional salta.
 - **Acceptance criteria:**
-  - `UndefinedFunction` a 0: cada llamada a función SQLite en código de producción, o bien pasa por `services/sql_fragments.py` con rama Postgres, o bien se reescribe en SQL estándar.
-  - `UndefinedColumn` a 0: el schema Postgres y `db/schema.py` convergen (probablemente vía migración de reconciliación, como hizo `v57` con `users.is_admin`).
-  - `test-postgres` pasa a bloqueante (quitar `continue-on-error` de `ci.yml`).
-- **Nota de método:** la corrección va **casi siempre en el código de producción, no en el test**. Un test que se "arregla" para aceptar el comportamiento Postgres actual puede estar consagrando un bug — es el caso de los `CHECK` de fecha, donde el test tenía razón y producción estaba mal.
-- **Files de partida:** [services/sql_fragments.py](../services/sql_fragments.py), [db/schema.py](../db/schema.py), [tests/conftest.py](../tests/conftest.py)
-- **Riesgo:** medio-alto — toca caminos de datos; mitigado porque cada fallo es un test que ya existe y ya afirma el comportamiento correcto.
-- **ADR:** [ADR-018](adr/ADR-018-paridad-motor-tests-produccion.md)
+  - MRR en Postgres ≥ 0.75 (paridad con FTS5) subiendo `MRR_MIN_POSTGRES` al valor alcanzado.
+  - Vías a explorar: pesos por campo en el `tsvector` (`setweight` para dar más peso a `titulo` que a `descripcion`), `ts_rank_cd` con normalización distinta, o combinar con similitud `pg_trgm`.
+- **Files de partida:** [db/search_backend.py](../db/search_backend.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
+- **Riesgo:** bajo — el eval con golden set actúa de red; cualquier cambio se mide antes de mergear.
 
 ### [P1] Cerrar el cutover: retirar Turso, borrar db/migrations.py y matar el shim de paramstyle
 - **Área:** db/, .github/workflows, render.yaml
-- **Problema:** Coexisten tres capas de persistencia superpuestas: el shim regex `?`→`%s` (`db/connection.py`) que reescribe **cada** sentencia SQL en runtime con una regex que intenta parsear SQL; dos drivers vivos (`libsql` y `psycopg3`) con `TURSO_*` todavía presente en 8 workflows y en `render.yaml`; y dos sistemas de migración (`db/migrations.py`, 1156 líneas ya deprecadas, + 46 revisiones Alembic). **Bloqueado por el ítem anterior**: el shim es hoy lo único que sostiene la suite en dialecto SQLite contra la producción Postgres, así que borrarlo antes de terminar la migración de tests sería a ciegas.
+- **Problema:** Coexisten tres capas de persistencia superpuestas: el shim regex `?`→`%s` (`db/connection.py`) que reescribe **cada** sentencia SQL en runtime con una regex que intenta parsear SQL; dos drivers vivos (`libsql` y `psycopg3`) con `TURSO_*` todavía presente en 8 workflows y en `render.yaml`; y dos sistemas de migración (`db/migrations.py`, 1156 líneas ya deprecadas, + 46 revisiones Alembic). **Desbloqueado el 2026-07-26**: la suite ya corre contra Postgres real con el job `test-postgres` bloqueante y 0 fallos (ADR-018), así que el codemod `?`→`%s` deja de ser a ciegas — cualquier regresión la detecta CI.
 - **Acceptance criteria:**
   - `TURSO_*` fuera de workflows, `render.yaml`, `.env.example` y `config/settings.py`; `is_turso_backend()` y las ramas libsql de `db/connection.py` eliminadas (gate humano §6: workflows + render.yaml).
   - `db/migrations.py` borrado.
   - Codemod `?`→`%s` sobre el SQL restante y `_translate_qmarks` + `_PgConnWrapper` eliminados.
   - `make check` verde y `test-postgres` bloqueante en verde.
-- **Riesgo:** alto — toca todo el acceso a datos; mitigado por la suite Postgres del ítem anterior, que es su prerrequisito.
+- **Riesgo:** alto — toca todo el acceso a datos; mitigado por la suite Postgres, ya en verde y bloqueante.
 
 
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
@@ -182,6 +169,9 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-07-26] **Migración de la suite a Postgres completada — 218 fallos + 25 errores → 0** — El job `test-postgres` pasa a **bloqueante**. Diez bugs de producción destapados y corregidos, ninguno visible con la suite sobre SQLite: `_PgConnAdapter` sin `rowcount` (24 call-sites lanzando `AttributeError`), `lastrowid` devolviendo `rownumber` (ids inventados en `create_user`, webhooks y reglas de watchlist), el shim de paramstyle sin escapar `%` literal (toda query `LIKE '...%'` con parámetros fallaba — silenciando la alerta de fallos consecutivos del feed diario), `retention.py` sin savepoints (un fallo dejaba todas las tablas restantes sin purgar), `db/upsert.py` sin capturar `psycopg.IntegrityError` (una fila mala abortaba el lote entero), `_classify_integrity_error` sin la grafía `not-null` de Postgres, el healthcheck detectando tabla ausente por el mensaje de SQLite, `db/events.py` insertando texto en columna `INTEGER`, y tres columnas ausentes en Postgres (`users.deactivated_at`, `api_keys.scopes`, `api_keys.user_id` — migración `v60`) que rompían el listado/desactivación de usuarios y el borrado GDPR de claves. Tabla completa en ADR-018.
+
 
 - [2026-07-26] **Los digests diarios y semanales de watchlist nunca se enviaban** — `check_and_notify()` acumulaba las coincidencias de las entradas con `frequency` daily/weekly en `pending_digests`, pero `send_pending_digests()` solo estaba registrado en el plano APScheduler, que no es el activo en producción (ADR-012). Nadie drenaba la tabla: quien elegía digest diario o semanal no recibía email. Corregido añadiendo el paso `digests` a `CANONICAL_STEPS`, con `_run_periodic()` (lock con TTL = periodo) para que un digest "diario" no se envíe seis veces al día — la pipeline corre cada 4h. En la misma pasada se cablearon `retention_cleanup`, `ml_retrain` y `drift_checks`, que tampoco corrían en ningún plano activo, y se borró `wal_checkpoint` (`PRAGMA wal_checkpoint` es SQLite-only). Para que la brecha no se reabra, `ScheduledJob` gana `plane`/`module` y `scripts/check_job_parity.py` lo verifica en CI. Commit `f768920`.
 
