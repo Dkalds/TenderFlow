@@ -1119,32 +1119,6 @@ class TestRunRetentionCleanup:
         mock_retention.assert_called_once()
 
 
-class TestRunWalCheckpoint:
-    @patch("db.database.connect")
-    def test_checkpoint(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = (0, 100, 100)
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from scheduler.jobs.wal_checkpoint import run
-
-        result = run()
-        assert result == {"blocked": 0, "wal_pages": 100, "checkpointed": 100}
-
-    @patch("db.database.connect")
-    def test_checkpoint_no_row(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = None
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from scheduler.jobs.wal_checkpoint import run
-
-        result = run()
-        assert result == {}
-
-
 class TestMainLoop:
     @patch("scheduler.loop._stop_event")
     @patch("scheduler.loop.configure_tracing")

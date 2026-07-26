@@ -53,6 +53,15 @@ jobs:
       - name: Verify requirements.txt is in sync with requirements.in
         run: python scripts/check_requirements_sync.py
 
+      # Convierte ADR-012 ("un solo plano de orquestación") en invariante
+      # verificado. Sin esto, un job puede quedar registrado pero sin ningún
+      # plano que lo ejecute — el fallo que dejó los digests diarios sin
+      # enviar y la retención sin purgar durante meses.
+      - name: Verify scheduler job parity (ADR-012)
+        env:
+          ENV: dev
+        run: python scripts/check_job_parity.py
+
       - uses: pre-commit/action@v3.0.1
 
   # ── Tests: multiplataforma, independiente ──────────────────────────
