@@ -65,7 +65,7 @@ def _get_from_azure(name: str) -> str | None:
 def _get_from_aws(name: str) -> str | None:
     """Lee el secreto desde AWS Secrets Manager."""
     try:
-        import boto3  # type: ignore[import-not-found]
+        import boto3  # type: ignore[import-untyped]  # boto3 no distribuye stubs ni py.typed
 
         client = boto3.client("secretsmanager", region_name=_AWS_REGION)
         secret_id = f"{_AWS_SECRET_PREFIX}{name}"
