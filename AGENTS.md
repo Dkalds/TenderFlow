@@ -49,14 +49,14 @@ Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) 
 | Paquete | Propósito | Entry point | Notas |
 |---|---|---|---|
 | `config/` | Settings, keywords, constants, secrets | `config/settings.py` | **typing strict** |
-| `shared/` | Utilidades cross-cutting (auth_core, dto, geo, i18n, schemas, signing) | — | **typing strict** |
-| `services/` | Lógica de dominio (licitaciones, classification, clusters, normalization, analytics) | `services/licitaciones.py` | Core; usa `db.repositories.*` |
-| `db/` | Persistencia (SQLite/Turso), upsert idempotente, migraciones alembic | `db/database.py` (fachada → `connection/schema/upsert`) | `db.database`, `db.users` **strict** |
-| `api/` | FastAPI REST | `api/app.py` (`uvicorn api.app:app`) | Rutas en `api/routes/` |
-| `web/` | Frontend Next.js | `web/` | Consume la API tipada generada desde OpenAPI |
-| `scraper/` | Pipeline PLACSP (ZIPs + ATOM), parser CODICE/UBL, clasificador ML | `scraper/pipeline.py` | `ml_*` con SQL manual (S608 suppressed) |
-| `scheduler/` | Jobs (run_update, kpi_precompute), loop | `scheduler/loop.py` | Cron de GitHub Actions |
-| `llm/` | Cliente LLM y providers | `llm/client.py` | Opcional |
+| `shared/` | Utilidades cross-cutting (auth_core, dto, geo, i18n, schemas, signing, ssrf, csrf) | — | **typing strict** |
+| `services/` | Lógica de dominio (licitaciones, classification, clusters, normalization, `analytics/`, `competitive/`, `investigador/`, `ml/`, `rag/`) | `services/licitaciones.py` | Core; usa `db.repositories.*` |
+| `db/` | Persistencia — **Postgres/Supabase en producción** (ADR-016, psycopg3), SQLite/Turso en dev/legacy. Upsert idempotente, migraciones alembic | `db/database.py` (fachada → `connection/schema/upsert/search_backend`) | `db.database`, `db.users` **strict** |
+| `api/` | FastAPI REST | `api/app.py` (`uvicorn api.app:app`) | Rutas en `api/routes/` (incl. `ask.py` RAG, `analytics.py`, `competitive.py`) |
+| `web/` | Frontend Next.js 16 | `web/` | Consume la API tipada generada desde OpenAPI |
+| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED — ADR-009), parser CODICE/UBL, clasificador ML | `scraper/pipeline.py` | `ml_*` con SQL manual (S608 suppressed) |
+| `scheduler/` | Jobs (run_update, kpi_precompute, aggregates_precompute, drift, alertas), loop | `scheduler/loop.py` | Cron de GitHub Actions |
+| `llm/` | Cliente LLM, presupuesto/circuit-breaker (`budget.py`) y providers (NVIDIA NIM/OpenAI/Anthropic) | `llm/client.py` | Opcional; usado por `api/routes/ask.py` |
 | `observability/` | structlog, Prometheus, healthcheck, Grafana dashboards | `observability/logging.py` | — |
 | `tests/` | pytest con auto-marking por nombre | `tests/conftest.py` | Markers: unit/integration/e2e/property/load/slow |
 
@@ -84,6 +84,7 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 Fuente única: [Makefile](Makefile). Targets clave:
 
 ```bash
+make check            # lint + typecheck + test-unit (equivale a /check)
 make test-unit        # rápido (unit, no slow) — usá esto durante desarrollo
 make test             # full suite excepto integration_e2e
 make test-integration # tests con BD real
@@ -91,8 +92,14 @@ make lint             # ruff check
 make typecheck        # mypy .
 make api              # arranca FastAPI en :8080
 make web-dev          # arranca Next.js en :3000
+make web-lint         # ESLint del frontend
+make web-typecheck    # tsc --noEmit del frontend
+make web-test-e2e     # Playwright
 make scrape-daily     # corre scraper en modo daily
+make migrate-alembic  # aplica migraciones Alembic pendientes (sistema canónico)
+make seed             # datos de ejemplo en BD local
 make doctor           # verifica entorno (scripts/doctor.py)
+make check-frontend-invariants  # integridad analítica del frontend (ADR-014, modo aviso)
 ```
 
 Slash-commands de Claude Code (en `.claude/commands/`):
@@ -154,6 +161,7 @@ Para todo lo demás (editar código de feature, añadir tests, refactor local), 
 
 - Arquitectura C4: [docs/c4-architecture.md](docs/c4-architecture.md)
 - Schema DB: [docs/database-schema.md](docs/database-schema.md)
+- Diseño de la API REST: [docs/api-design.md](docs/api-design.md)
 - ADRs: [docs/adr/](docs/adr/)
 - Runbooks (incident, DLQ, backup, disaster recovery): [docs/runbooks/](docs/runbooks/)
 - SLI/SLO: [docs/sli-slo.md](docs/sli-slo.md)

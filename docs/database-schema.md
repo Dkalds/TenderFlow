@@ -1,6 +1,14 @@
 # Database Schema — TenderFlow
 
-Documentación del esquema de base de datos SQLite/Turso del proyecto.
+Documentación del esquema de base de datos del proyecto. El schema lógico
+(tablas/columnas de este documento) es portable; el backend físico en
+**producción es Postgres/Supabase** (psycopg3 + pool gestionado, ver
+[ADR-016](adr/ADR-016-destino-persistencia-supabase.md)), con SQLite local o
+Turso como alternativa de desarrollo/legacy. La abstracción de búsqueda
+(`db/search_backend.py`) resuelve la diferencia FTS5 (SQLite) vs.
+`tsvector`+GIN (Postgres) de forma transparente al código llamador. Las
+migraciones canónicas viven en `db/alembic/`; `db/migrations.py` es el sistema
+casero legacy (v1–v32), mantenido solo para BDs SQLite existentes.
 
 ---
 
