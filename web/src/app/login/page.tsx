@@ -15,6 +15,12 @@ import { safeRedirectPath } from "@/lib/safe-redirect";
 
 type Mode = "login" | "register";
 
+const OAUTH_ERROR_KEYS: Record<string, string> = {
+  invalid_state: "auth.oauthInvalidState",
+  oauth_failed: "auth.oauthFailed",
+  email_not_allowed: "auth.oauthEmailNotAllowed",
+};
+
 export default function LoginPage() {
   return (
     <Suspense>
@@ -31,7 +37,10 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    const oauthError = searchParams.get("error");
+    return oauthError ? t(OAUTH_ERROR_KEYS[oauthError] ?? "auth.oauthFailed") : null;
+  });
   const [loading, setLoading] = useState(false);
 
   function switchMode(next: Mode) {

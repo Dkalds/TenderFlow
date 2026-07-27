@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from config import settings
@@ -591,6 +592,20 @@ async def google_authorize(response: Response) -> dict[str, str]:
     return {"authorization_url": authorization_url}
 
 
+def _oauth_error_redirect(frontend_url: str, error: str) -> Response:
+    """Redirige a /login con un slug de error en vez de servir JSON crudo.
+
+    Google entrega este callback mediante una navegación de nivel superior del
+    navegador (no una llamada fetch del SPA), así que cualquier HTTPException
+    lanzada aquí se le muestra al usuario tal cual — un blob JSON en blanco en
+    vez de la pantalla de login. Redirigimos siempre a /login?error=<slug> para
+    que el usuario vea un mensaje entendible y pueda reintentar.
+    """
+    redirect = RedirectResponse(url=f"{frontend_url}/login?error={error}", status_code=302)
+    redirect.delete_cookie(_OAUTH_PKCE_COOKIE, path="/api/v1/auth/oauth/google")
+    return redirect
+
+
 @router.get("/oauth/google/callback", response_model=None)
 async def google_callback(
     code: str,
@@ -600,15 +615,18 @@ async def google_callback(
     pkce_verifier: str | None = Cookie(default=None, alias=_OAUTH_PKCE_COOKIE),
 ) -> UserInfo | Response:
     """Handle Google OAuth callback: exchange code, validate, set session."""
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
     if not verify_oauth_state(state):
         log.warning("oauth_callback_invalid_state", reason="nonce_or_timestamp")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state")
+        return _oauth_error_redirect(frontend_url, "invalid_state")
     oidc_nonce = oauth_state_nonce(state)
     if oidc_nonce is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state")
+        return _oauth_error_redirect(frontend_url, "invalid_state")
 
     if not pkce_verifier:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing PKCE verifier")
+        log.warning("oauth_callback_missing_pkce_verifier")
+        return _oauth_error_redirect(frontend_url, "invalid_state")
 
     # Exchange code for tokens
     try:
@@ -626,19 +644,16 @@ async def google_callback(
             )
     except httpx.HTTPError as exc:
         log.warning("oauth_token_exchange_network_error", error_type=type(exc).__name__)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="Token exchange failed"
-        ) from exc
+        return _oauth_error_redirect(frontend_url, "oauth_failed")
     if token_resp.status_code != 200:
         log.warning("oauth_token_exchange_failed", status=token_resp.status_code)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Token exchange failed")
+        return _oauth_error_redirect(frontend_url, "oauth_failed")
 
     tokens = token_resp.json()
     id_token_raw: str | None = tokens.get("id_token")
     if not id_token_raw:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="No id_token in response"
-        )
+        log.warning("oauth_token_exchange_missing_id_token")
+        return _oauth_error_redirect(frontend_url, "oauth_failed")
 
     claims = await to_thread(
         verify_google_id_token,
@@ -647,14 +662,12 @@ async def google_callback(
         expected_nonce=oidc_nonce,
     )
     if claims is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid id_token claims"
-        )
+        return _oauth_error_redirect(frontend_url, "oauth_failed")
 
     email: str = str(claims.get("email", ""))
     if not email or not oauth_email_allowed(email):
         log.warning("oauth_email_not_allowed")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email not allowed")
+        return _oauth_error_redirect(frontend_url, "email_not_allowed")
 
     # Get or create user
     user_id = get_or_create_oauth_user(
@@ -674,9 +687,6 @@ async def google_callback(
     log.info("oauth_login_success", user_id=user_id)
 
     # Redirect to frontend dashboard with session cookie
-    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-    from fastapi.responses import RedirectResponse
-
     redirect = RedirectResponse(url=f"{frontend_url}/resumen", status_code=302)
     redirect.delete_cookie(_OAUTH_PKCE_COOKIE, path="/api/v1/auth/oauth/google")
     _set_session_cookie(redirect, user_id, request)
