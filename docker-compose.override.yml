@@ -10,9 +10,9 @@
 # - Redis desactivado por defecto; activar con: docker compose --profile redis up
 #   (Upstash en producción; fallbacks de memoria en dev local)
 # - Prometheus/Grafana opcionales: docker compose --profile monitoring up
-# - Postgres local (F4d): postgres:17-alpine con healthcheck pg_isready
-#   Activo por defecto en dev; la API lee DATABASE_URL del entorno si está
-#   definida, si no usa SQLite local (comportamiento legacy).
+# - Postgres es el único motor (ADR-021): el servicio `postgres` de
+#   docker-compose.yml arranca por defecto y la API/scheduler dependen de su
+#   healthcheck. Ya no hay fallback a SQLite local.
 
 services:
   api:
@@ -21,7 +21,6 @@ services:
       dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
-      - tenderflow_data:/data
       - ./api:/app/api:ro
       - ./shared:/app/shared:ro
       - ./config:/app/config:ro
@@ -32,9 +31,6 @@ services:
     environment:
       ENV: dev
       LOG_FORMAT: console
-      # Apuntar a postgres local cuando F3 esté completo.
-      # Descomentar tras ejecutar F3a (fundaciones Postgres):
-      # DATABASE_URL: "postgresql://tenderflow:tenderflow@postgres:5432/tenderflow"
     mem_limit: "0"
 
   scheduler:
@@ -43,7 +39,6 @@ services:
       dockerfile: docker/Dockerfile.api
       target: runtime
     volumes:
-      - tenderflow_data:/data
       - ./scheduler:/app/scheduler:ro
       - ./scraper:/app/scraper:ro
       - ./shared:/app/shared:ro

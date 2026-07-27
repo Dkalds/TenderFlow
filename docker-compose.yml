@@ -39,14 +39,17 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
-    volumes:
-      - tenderflow_data:/data
     env_file:
       - .env
     environment:
-      DB_PATH: /data/tenderflow.db
+      # Motor único Postgres (ADR-021). El servicio `postgres` de este mismo
+      # compose es el default; .env puede sobrescribirlo.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://tenderflow:tenderflow@postgres:5432/tenderflow?sslmode=disable}  # pragma: allowlist secret -- contenedor local de dev, no es una credencial real
       # Redis es opt-in: configura REDIS_URL en .env para activar cache compartido.
-      # Sin Redis, el API opera con fallbacks (rate limit sqlite, cache memoria).
+      # Sin Redis, el API opera con fallbacks (rate limit en BD, cache memoria).
+    depends_on:
+      postgres:
+        condition: service_healthy
     mem_limit: 256m
     security_opt:
       - no-new-privileges:true
@@ -71,12 +74,10 @@ services:
     container_name: tenderflow-scheduler
     restart: unless-stopped
     # El scheduler no expone puerto — solo escribe en la BD compartida
-    volumes:
-      - tenderflow_data:/data
     env_file:
       - .env
     environment:
-      DB_PATH: /data/tenderflow.db
+      DATABASE_URL: ${DATABASE_URL:-postgresql://tenderflow:tenderflow@postgres:5432/tenderflow?sslmode=disable}  # pragma: allowlist secret -- contenedor local de dev, no es una credencial real
       SCHEDULER_DAILY_INTERVAL_MINUTES: ${SCHEDULER_DAILY_INTERVAL_MINUTES:-240}
       SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
       SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}
@@ -90,15 +91,52 @@ services:
     tmpfs:
       - /tmp
     healthcheck:
+      # libsql se retiró en ADR-020 y DB_PATH en ADR-021; el check va contra
+      # Postgres, que es el único motor.
       test: ["CMD", "python", "-c",
-             "import libsql, os; libsql.connect(os.environ['DB_PATH']).execute('SELECT 1').fetchone()"]
+             "import os, psycopg; psycopg.connect(os.environ['DATABASE_URL']).execute('SELECT 1').fetchone()"]
       interval: 60s
       timeout: 10s
       retries: 3
       start_period: 30s
     depends_on:
+      postgres:
+        condition: service_healthy
       api:
         condition: service_healthy
+
+  # ── Postgres (motor único — ADR-021) ─────────────────────────────────────
+  # SQLite dejó de ser un backend soportado: dev, CI y producción corren sobre
+  # Postgres. Imagen pgvector/pgvector porque la migración v56 hace
+  # `CREATE EXTENSION vector` (misma imagen que los jobs de CI).
+  #
+  #   docker compose up -d postgres && make migrate-alembic && make seed
+  #
+  # DATABASE_URL para dev local (ver .env.example):
+  #   postgresql://tenderflow:tenderflow@localhost:5432/tenderflow?sslmode=disable
+  # `sslmode=disable` sólo es aceptable aquí porque el host es local y no hay
+  # red externa que interceptar; config/settings.py rechaza sslmode inseguro
+  # contra cualquier host remoto, independientemente de ENV.
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: tenderflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tenderflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tenderflow}
+      POSTGRES_DB: ${POSTGRES_DB:-tenderflow}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tenderflow} -d ${POSTGRES_DB:-tenderflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
 
   # ── Redis (cache compartido, opt-in) ─────────────────────────────────────
   # Para desarrollo local con Redis: añadir --profile redis
@@ -178,7 +216,7 @@ services:
         condition: service_healthy
 
 volumes:
-  tenderflow_data:
+  postgres_data:
     driver: local
   redis_data:
     driver: local
