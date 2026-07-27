@@ -429,12 +429,33 @@ def test_non_api_profiles_skip_http_secrets(env, profile):
     assert resultado == {"env": env, "perfil": profile}
 
 
+@pytest.mark.parametrize("profile", ["scraper", "worker"])
+def test_non_api_profiles_do_not_require_audit_hmac_key(profile):
+    """Regresión: db/audit.py solo lo usa el proceso api (login, exports,
+    acciones admin) — scraper/scheduler nunca llaman a log_action/log_event.
+
+    Antes de este fix, _validate_prod_audit_hmac_secret exigía AUDIT_HMAC_KEY
+    sin mirar APP_PROFILE, así que el cron diario de scraping (ENV=prod,
+    APP_PROFILE=scraper) fallaba al construir Settings() antes de ejecutar
+    ni una línea de scraping — visto en producción como el job
+    "Run daily scraper" fallando en <1s con "AUDIT_HMAC_KEY ... obligatorio".
+    """
+    from config.settings import Settings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(ENV="prod", APP_PROFILE=profile, DATABASE_URL="", AUDIT_HMAC_KEY="")
+
+    assert s.AUDIT_HMAC_KEY.get_secret_value() == ""
+
+
 @pytest.mark.parametrize(
     ("missing", "match"),
     [
         ("SIGNING_KEY", "SIGNING_KEY es obligatorio"),
         ("API_HMAC_SECRET", "API_HMAC_SECRET es obligatorio"),
         ("REDIS_URL", "REDIS_URL es obligatorio"),
+        ("AUDIT_HMAC_KEY", "AUDIT_HMAC_KEY"),
     ],
 )
 def test_api_profile_still_requires_http_secrets(missing, match):

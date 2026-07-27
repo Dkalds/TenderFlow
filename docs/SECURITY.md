@@ -23,7 +23,7 @@ y `TURSO_DATABASE_URL` ya no existen como secretos gestionados.
 
 ### Controles nuevos (2026-07-26)
 
-- Configurar `AUDIT_HMAC_KEY` con al menos 32 caracteres, diferente de las claves de sesión/API. La aplicación no arranca en producción sin ella.
+- Configurar `AUDIT_HMAC_KEY` con al menos 32 caracteres, diferente de las claves de sesión/API. El proceso API (`APP_PROFILE=api`) no arranca en producción sin ella; scraper/worker no la usan (`db/audit.py` solo lo llama código del servidor HTTP) y no la exigen.
 - Configurar `AWS_ROLE_TO_ASSUME` y la trust policy OIDC de GitHub para el bucket de backups; el workflow ya no usa claves AWS estáticas.
 - Configurar `WEBHOOK_ALLOWED_HOSTS` como lista explícita de dominios aprobados. Sin esa lista, los webhooks salientes quedan deshabilitados en producción.
 - Mantener `DOCUMENT_ALLOWED_HOSTS` limitado a fuentes de contratación aprobadas. Las conexiones HTTP salientes fijan la IP validada, verifican TLS/SNI y rechazan redireccionamientos.

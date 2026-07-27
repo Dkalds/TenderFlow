@@ -579,7 +579,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_audit_hmac_secret(self) -> Settings:
-        if self.ENV in ("prod", "staging") and len(self.AUDIT_HMAC_KEY.get_secret_value()) < 32:
+        """db/audit.py solo lo usa el proceso API (login, exports, acciones admin) —
+        el scraper/scheduler nunca llama a log_action/log_event, así que este
+        validator debe seguir el mismo gating que sus hermanos (_serves_http).
+        Sin esto, el job diario de scraping (APP_PROFILE=scraper) no arranca."""
+        if self._is_prod_data and self._serves_http and len(self.AUDIT_HMAC_KEY.get_secret_value()) < 32:
             raise ValueError("AUDIT_HMAC_KEY (32+ caracteres) es obligatorio en producción")
         return self
 
