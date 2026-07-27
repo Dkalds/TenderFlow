@@ -664,16 +664,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_oauth_domains(self) -> Settings:
-        """En producción, alertar si no hay restricción de dominios/emails OAuth."""
+        """En producción, alertar (sin bloquear) si OAuth no restringe dominios/emails."""
         if (
             self.ENV in ("prod", "staging")
             and self.GOOGLE_CLIENT_ID
             and not self.OAUTH_ALLOWED_DOMAINS
             and not self.OAUTH_ALLOWED_EMAILS
         ):
-            raise ValueError(
-                "OAUTH_ALLOWED_DOMAINS u OAUTH_ALLOWED_EMAILS es obligatorio "
-                "cuando OAuth está habilitado en producción."
+            warnings.warn(
+                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos: cualquier "
+                "cuenta de Google podrá iniciar sesión. Configura uno de los dos si "
+                "querés restringir el acceso.",
+                stacklevel=2,
             )
         return self
 
