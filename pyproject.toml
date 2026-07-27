@@ -212,7 +212,9 @@ quote-style = "double"
 indent-style = "space"
 # Las migraciones Alembic ya publicadas son append-only: se siguen analizando
 # con Ruff, pero no se reescriben mecánicamente mediante el formateador.
-exclude = ["db/alembic/versions/v58_security_identity_hardening.py"]
+# La documentación (incluidos ejemplos de skills) no es código ejecutable y
+# no debe ser reescrita por un formateador Python al actualizar Ruff.
+exclude = ["db/alembic/versions/v58_security_identity_hardening.py", "*.md"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 # RATCHET TID251: acceso directo a BD solo vía db/repositories/* (AGENTS.md §3.10).

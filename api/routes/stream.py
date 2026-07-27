@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -61,6 +62,15 @@ def _sse_event(event: str, data: Any) -> str:
     """Formatea un evento SSE como string."""
     payload = json.dumps(data, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _parse_last_event_id(value: str) -> float:
+    """Parsea el cursor SSE y descarta números no finitos."""
+    try:
+        timestamp = float(value) if value else 0.0
+    except (ValueError, OverflowError):
+        return 0.0
+    return timestamp if math.isfinite(timestamp) else 0.0
 
 
 def _fetch_recent(since_ts: float, limit: int) -> list[dict[str, Any]]:
@@ -161,16 +171,7 @@ async def licitaciones_stream(
     """Endpoint SSE para notificaciones push de nuevas licitaciones."""
     # Soporte para reconexión: Last-Event-ID contiene el timestamp del último evento
     last_event_id_header = request.headers.get("Last-Event-ID", "")
-    try:
-        _ts = (
-            float(last_event_id_header) if last_event_id_header else 0.0
-        )  # nosemgrep: python.django.security.nan-injection.nan-injection -- rejected below unless finite
-        # Guard contra NaN/Inf inyectados vía header (Semgrep: nan-injection)
-        import math
-
-        last_event_ts = _ts if math.isfinite(_ts) else 0.0
-    except (ValueError, OverflowError):
-        last_event_ts = 0.0
+    last_event_ts = _parse_last_event_id(last_event_id_header)
 
     # batch desde query param con límite
     try:
