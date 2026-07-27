@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
@@ -47,11 +48,17 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // El middleware fija este header por request (ver web/src/middleware.ts). Sin
+  // el nonce, el script de next-themes (theme-setting inline script, evita FOUC)
+  // se renderiza sin `nonce` y `strict-dynamic` lo bloquea: no lo inyecta Next.js,
+  // así que el nonce-stamping automático de Next no lo alcanza.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="es"
@@ -62,7 +69,7 @@ export default function RootLayout({
         <a href="#main-content" className="skip-link">
           Saltar al contenido principal
         </a>
-        <Providers>
+        <Providers nonce={nonce}>
           <RouteProgress />
           {children}
         </Providers>

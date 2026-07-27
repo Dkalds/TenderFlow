@@ -18,7 +18,13 @@ import {
   type QueryFeedbackMeta,
 } from "@/lib/query-feedback";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  nonce,
+}: {
+  children: React.ReactNode;
+  nonce?: string;
+}) {
   const [queryClient] = React.useState(
     () =>
       new QueryClient({
@@ -47,6 +53,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         defaultTheme="dark"
         enableSystem={false}
         disableTransitionOnChange
+        nonce={nonce}
       >
         <SessionProvider>
           <TooltipProvider>
