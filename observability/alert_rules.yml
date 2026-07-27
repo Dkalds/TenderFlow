@@ -1,9 +1,13 @@
 # Reglas de alerta de Prometheus.
 #
-# NOTA: estas reglas NO se evaluan en produccion porque no hay Prometheus
-# scrapeando el endpoint /metrics del API de Render, y los counters son
-# por-proceso (el writer principal, scheduler.run_update en GH Actions,
-# muere al terminar cada run).
+# ESTADO (2026-07-26, ADR-019): estas reglas SI se evaluan en produccion desde
+# que Prometheus corre como servicio en Render y scrapea /metrics del API
+# (observability/prometheus.render.yml).
+#
+# Salvedad: los counters de los planos EFIMEROS (scraper/ML/pliegos en GH
+# Actions) siguen sin ser scrapeables -- el proceso muere al terminar el job.
+# Esos siguen reportando via la tabla ops_events, que lee
+# scheduler/healthcheck.py cada 6h.
 #
 # Los umbrales de estas reglas se espejan en scheduler/healthcheck.py
 # (check "ops_events_*"), que lee la tabla ops_events de la BD -- la unica

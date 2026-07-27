@@ -35,7 +35,6 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.jobs.ml_predicciones import run_scoring as run_ml_scoring
     from scheduler.jobs.recent_bulk import run as run_recent_bulk
     from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
-    from scheduler.jobs.wal_checkpoint import run as run_wal_checkpoint
     from scheduler.jobs.watchlist_rules import run as run_watchlist_rules
     from scheduler.watchlist_alerts import send_pending_digests
 
@@ -43,6 +42,8 @@ def build_default_registry() -> list[ScheduledJob]:
         # ── Heavy jobs (ProcessPoolExecutor) ──────────────────────────
         ScheduledJob(
             name="daily_atom",
+            plane="actions",
+            module="scheduler.run_update",
             fn=run_daily_atom,
             interval_env="SCHEDULER_DAILY_INTERVAL_MINUTES",
             default_interval_minutes=240,
@@ -51,6 +52,8 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="recent_bulk",
+            plane="actions",
+            module="scheduler.run_update",
             fn=run_recent_bulk,
             interval_env="SCHEDULER_BULK_INTERVAL_MINUTES",
             default_interval_minutes=1440,
@@ -59,6 +62,7 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="retention_cleanup",
+            plane="pipeline",
             fn=run_retention_cleanup,
             interval_env="SCHEDULER_RETENTION_INTERVAL_HOURS",
             default_interval_minutes=1440,  # 24h
@@ -67,6 +71,8 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="ml_scoring_baja",
+            plane="actions",
+            module="scheduler.jobs.ml_predicciones",
             fn=run_ml_scoring,
             interval_env="SCHEDULER_ML_SCORING_INTERVAL_MINUTES",
             default_interval_minutes=1440,  # nocturno
@@ -75,6 +81,7 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="ml_retrain_baja",
+            plane="pipeline",
             fn=run_ml_retrain,
             interval_env="SCHEDULER_ML_RETRAIN_INTERVAL_MINUTES",
             default_interval_minutes=43_200,  # mensual
@@ -83,6 +90,8 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="documentos_embeddings",
+            plane="actions",
+            module="scheduler.jobs.documentos_embeddings",
             fn=run_documentos_embeddings,
             interval_env="SCHEDULER_DOCUMENTOS_EMBEDDINGS_INTERVAL_MINUTES",
             default_interval_minutes=1440,  # nocturno
@@ -92,6 +101,7 @@ def build_default_registry() -> list[ScheduledJob]:
         # ── Light jobs (daemon threads) ───────────────────────────────
         ScheduledJob(
             name="dlq_retry",
+            plane="pipeline",
             fn=retry_failed_extractions,
             interval_env="SCHEDULER_DLQ_RETRY_INTERVAL_MINUTES",
             default_interval_minutes=720,
@@ -99,6 +109,7 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="digest_daily",
+            plane="pipeline",
             fn=lambda: send_pending_digests("daily"),
             interval_env="SCHEDULER_DIGEST_INTERVAL_MINUTES",
             default_interval_minutes=1440,
@@ -106,6 +117,7 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="watchlist_rules",
+            plane="pipeline",
             fn=run_watchlist_rules,
             interval_env="SCHEDULER_WATCHLIST_RULES_INTERVAL_MINUTES",
             default_interval_minutes=240,  # mismo cadencia que daily_atom
@@ -113,6 +125,7 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="anomaly_checks",
+            plane="pipeline",
             fn=run_anomaly_checks,
             interval_env="SCHEDULER_ANOMALY_INTERVAL_MINUTES",
             default_interval_minutes=1440,
@@ -120,16 +133,10 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             name="drift_report",
+            plane="pipeline",
             fn=run_drift_report,
             interval_env="SCHEDULER_DRIFT_INTERVAL_MINUTES",
             default_interval_minutes=10080,  # weekly
             initial_offset_minutes=360,  # 6h after start
-        ),
-        ScheduledJob(
-            name="wal_checkpoint",
-            fn=run_wal_checkpoint,
-            interval_env="SCHEDULER_WAL_CHECKPOINT_INTERVAL_HOURS",
-            default_interval_minutes=360,  # 6h
-            initial_offset_minutes=60,
         ),
     ]

@@ -35,16 +35,16 @@ jobs:
 
       - name: Run daily scraper
         env:
-          # ENV=dev omite los validators de prod que requieren secrets de la
-          # aplicación (SIGNING_KEY, API_HMAC_SECRET, REDIS_URL). El scraper no
-          # usa ninguno de esos componentes. La BD de producción es Supabase
-          # (ADR-016): DATABASE_URL tiene precedencia sobre TURSO_* en
-          # db/connection.py. TURSO_* queda como fallback legacy.
-          ENV: dev
+          # ENV=prod: este job escribe en la BD de producción, así que los
+          # validators de datos (TLS de DATABASE_URL, alertas) deben estar
+          # activos. APP_PROFILE=scraper omite los secretos que solo necesita
+          # el proceso HTTP (SIGNING_KEY, API_HMAC_SECRET, REDIS_URL): "qué
+          # datos toco" y "qué componentes arranco" son ejes independientes.
+          # La BD de producción es Supabase (ADR-016).
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
@@ -64,11 +64,10 @@ jobs:
         # timeout del job (30 min) si la API pública se degrada.
         timeout-minutes: 10
         env:
-          ENV: dev
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           LOG_FORMAT: json
         run: python -m scraper.connectors.ted
 
@@ -83,11 +82,10 @@ jobs:
         # y dejar sin correr al step de TACRC que viene después.
         timeout-minutes: 10
         env:
-          ENV: dev
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
           PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
           LOG_FORMAT: json
@@ -98,11 +96,10 @@ jobs:
         continue-on-error: true
         timeout-minutes: 10
         env:
-          ENV: dev
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           TACRC_INDEX_URL: ${{ vars.TACRC_INDEX_URL }}
           LOG_FORMAT: json
         run: python -m scraper.connectors.tacrc

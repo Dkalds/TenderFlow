@@ -21,21 +21,45 @@ from observability.runtime_metrics import upsert_rows_dropped_total
 _log = get_logger(__name__)
 
 
-# Constraint violations llegan como `sqlite3.IntegrityError` con sqlite3 stdlib
-# y como `ValueError` con el driver libsql (Turso). Ambos llevan el mismo
-# mensaje canónico de SQLite ("UNIQUE constraint failed: ...", etc.), así que
-# se pueden clasificar igual por el texto.
-_CONSTRAINT_EXC: tuple[type[BaseException], ...] = (sqlite3.IntegrityError, ValueError)
+# Constraint violations llegan como `sqlite3.IntegrityError` con sqlite3 stdlib.
+# Llevan el mensaje canónico de SQLite ("UNIQUE constraint failed: ...", etc.),
+# así que se pueden clasificar igual por el texto.
+def _constraint_exc_types() -> tuple[type[BaseException], ...]:
+    """Excepciones que representan una violación de constraint, por driver.
+
+    psycopg3 señala las violaciones con ``psycopg.errors.IntegrityError``, que
+    **no** deriva de ``ValueError``. Sin incluirla, el ``except`` de
+    ``replace_adjudicaciones`` no la capturaba y una sola fila inválida
+    abortaba el lote entero de la licitación en vez de irse a la DLQ — con la
+    transacción ya envenenada por Postgres. La suite no lo veía porque corría
+    sobre SQLite (ADR-018).
+    """
+    types: list[type[BaseException]] = [sqlite3.IntegrityError, ValueError]
+    try:
+        import psycopg
+
+        types.append(psycopg.errors.IntegrityError)
+    except ImportError:  # pragma: no cover - psycopg es dependencia dura
+        pass
+    return tuple(types)
+
+
+_CONSTRAINT_EXC: tuple[type[BaseException], ...] = _constraint_exc_types()
 
 
 def _classify_integrity_error(exc: BaseException) -> str:
-    """Clasifica una constraint violation de SQLite/libsql por el mensaje.
+    """Clasifica una constraint violation por el mensaje del motor.
 
     Returns "unique" | "check" | "fk" | "notnull" | "other".
 
-    Los mensajes de SQLite son estables y forman parte de su contrato público.
     Se usa para distinguir un dedup intra-XML legítimo (UNIQUE) de una pérdida
     real de datos (CHECK/FK/NOT NULL) que debe ir a la DLQ.
+
+    Los mensajes de SQLite y de Postgres son estables y parte de su contrato
+    público, pero **no coinciden**: donde SQLite dice ``NOT NULL constraint
+    failed``, Postgres dice ``violates not-null constraint`` (con guion). Sin
+    contemplar ambas grafías, una violación de NOT NULL en Postgres se
+    clasificaba como ``other``.
     """
     msg = str(exc).lower()
     if "unique" in msg:
@@ -44,7 +68,7 @@ def _classify_integrity_error(exc: BaseException) -> str:
         return "check"
     if "foreign key" in msg:
         return "fk"
-    if "not null" in msg:
+    if "not null" in msg or "not-null" in msg:
         return "notnull"
     return "other"
 

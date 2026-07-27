@@ -100,3 +100,54 @@ def run() -> dict[str, Any]:
     embed_result = _run_embed_phase()
     log.info("documentos_embeddings_job_done", fetch=fetch_result, embed=embed_result)
     return {"fetch": fetch_result, "embed": embed_result}
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+#
+# Invocado por .github/workflows/pliegos.yml. La lógica vive aquí y no en un
+# heredoc del YAML para que pase por ruff/mypy/tests como el resto del código.
+
+
+def run_cli() -> int:
+    """Corre el job y falla solo si el lote entero de fetch se cayó.
+
+    Un PDF corrupto suelto es normal y esperado; que **todos** los documentos
+    del lote fallen sin ninguno extraído señala un problema sistémico
+    (SSRF/red/breaker abierto) que sí debe romper el workflow.
+    """
+    from db.database import init_db
+
+    init_db()
+    resumen = run()
+
+    fetch = resumen["fetch"]
+    if fetch.get("error") and not fetch.get("extracted"):
+        log.error("documentos_embeddings_cli_batch_failed", fetch=fetch)
+        return 1
+    return 0
+
+
+def report_cli() -> int:
+    """Informa del estado de ``documentos``/``documento_chunks``."""
+    from db.repositories.documentos import DocumentosRepository
+
+    counts = DocumentosRepository().status_counts()
+    log.info("documentos_estado", **counts)
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    _cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
+    if _cmd == "run":
+        sys.exit(run_cli())
+    elif _cmd == "report":
+        sys.exit(report_cli())
+    else:
+        log.error(
+            "documentos_embeddings_unknown_command",
+            cmd=_cmd,
+            usage="python -m scheduler.jobs.documentos_embeddings [run|report]",
+        )
+        sys.exit(2)

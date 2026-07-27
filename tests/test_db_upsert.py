@@ -338,9 +338,13 @@ def test_replace_adjudicaciones_check_violation_routes_to_dlq(db):
     assert payload_ref == "TEST-001:B99999999:1000.0"
     assert fuente == "placsp"
     assert run_id == "run-test-1"
-    # SQLite stdlib lanza sqlite3.IntegrityError; libsql mapea a ValueError.
-    # Aceptamos cualquiera porque el RFC clasifica por mensaje, no por tipo.
-    assert error_type in ("IntegrityError", "ValueError")
+    # Cada driver nombra su excepción a su manera: sqlite3 stdlib lanza
+    # IntegrityError, libsql mapea a ValueError y psycopg usa las subclases
+    # concretas de IntegrityError (CheckViolation, NotNullViolation...). El RFC
+    # clasifica por mensaje, no por tipo, así que basta con que se haya
+    # registrado alguno — el dato que importa (constraint=check) ya se afirma
+    # arriba vía `dropped`.
+    assert error_type in ("IntegrityError", "ValueError") or error_type.endswith("Violation")
 
 
 def test_replace_adjudicaciones_unique_dedup_does_not_hit_dlq(db):

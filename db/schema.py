@@ -1,4 +1,4 @@
-"""DDL del esquema SQLite / Turso y lógica de inicialización.
+"""DDL del esquema SQLite y lógica de inicialización.
 
 Contiene la constante ``SCHEMA`` con todas las sentencias ``CREATE TABLE``
 e índices, más ``init_db()`` que aplica el schema y las migraciones pendientes.
@@ -522,10 +522,12 @@ def init_db() -> None:
 def _ensure_licitaciones_columns(conn: Any) -> None:
     """Asegura que todas las columnas del dataclass Licitacion existen en la tabla.
 
-    Defence-in-depth: en Turso/Hrana, ``PRAGMA table_info`` y ``sqlite_master``
-    pueden comportarse diferente al SQLite local, causando que migraciones
-    programáticas salten sentencias ``ALTER TABLE`` silenciosamente.
-    Esta función añade las columnas faltantes directamente.
+    Defence-in-depth: en el protocolo Hrana (Turso, retirado — ADR-020),
+    ``PRAGMA table_info`` y ``sqlite_master`` podían comportarse distinto al
+    SQLite local, causando que migraciones programáticas saltaran sentencias
+    ``ALTER TABLE`` silenciosamente. BDs SQLite locales creadas en esa época
+    pueden seguir arrastrando el gap. Esta función añade las columnas
+    faltantes directamente.
     """
     # Importación diferida para evitar ciclo: upsert → schema → upsert
     from db.upsert import Licitacion
@@ -587,8 +589,9 @@ def _ensure_adjudicaciones_columns(conn: Any) -> None:
 def _ensure_ml_feedback_columns(conn: Any) -> None:
     """Asegura las columnas multi-tecnología de ml_feedback (v44 Alembic).
 
-    En BDs legacy (Turso/Hrana) la tabla ``ml_feedback`` puede existir sin las
-    columnas ``tecnologia`` / ``tecnologias_secundarias`` / ``model_version``,
+    En BDs legacy (creadas antes de la retirada de Turso, ADR-020) la tabla
+    ``ml_feedback`` puede existir sin las columnas ``tecnologia`` /
+    ``tecnologias_secundarias`` / ``model_version``,
     porque ``CREATE TABLE IF NOT EXISTS`` en SCHEMA es no-op y la migración
     Alembic v44 no corre en el path de ``init_db()``. Las añadimos aquí y el
     índice se crea después, para no fallar en SCHEMA cuando la tabla existe sin

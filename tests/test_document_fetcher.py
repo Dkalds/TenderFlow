@@ -156,7 +156,7 @@ def _seed_documento(repo, licitacion_id: str = "EXP-FETCH-1") -> dict:
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
-            "VALUES (?, ?, 'placsp', datetime('now'))",
+            "VALUES (?, ?, 'placsp', CURRENT_TIMESTAMP)",
             (licitacion_id, f"Contrato {licitacion_id}"),
         )
     repo.upsert_meta(

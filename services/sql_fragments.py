@@ -30,7 +30,7 @@ VALID_PAIR = (
 # duracion_valor es REAL y el modificador de date() exige entero. Asume
 # alias ``l`` (licitaciones) y ``a`` (adjudicaciones).
 #
-# Backend-dependiente (ADR-016): SQLite/Turso usa date(); Postgres no tiene
+# Backend-dependiente (ADR-016): SQLite usa date(); Postgres no tiene
 # esa función, así que la rama Postgres usa aritmética de INTERVAL y
 # to_char() para devolver el mismo formato TEXT 'YYYY-MM-DD' en ambos casos
 # (necesario para que las comparaciones lexicográficas con date('now') /

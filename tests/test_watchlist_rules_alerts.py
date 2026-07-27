@@ -20,7 +20,7 @@ def _insert_lic(c, lic_id, *, titulo="Lic", cpv=None, importe=None, ccaa=None, f
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, cpv, importe, ccaa, fuente, "
         "fecha_publicacion, fecha_extraccion) "
-        "VALUES (?, ?, ?, ?, ?, 'placsp', ?, datetime('now'))",
+        "VALUES (?, ?, ?, ?, ?, 'placsp', ?, CURRENT_TIMESTAMP)",
         (lic_id, titulo, cpv, importe, ccaa, fecha or _recent(5)),
     )
 

@@ -33,7 +33,7 @@ def _insert_lic(c, id_externo, *, fuente, organo, cpv, fecha_pub, extraccion):
 def _insert_adj(c, lic_id, nombre, importe):
     c.execute(
         "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
-        " fecha_adjudicacion, fecha_extraccion) VALUES (?, ?, ?, ?, datetime('now'))",
+        " fecha_adjudicacion, fecha_extraccion) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
         (lic_id, nombre, importe, "2026-05-01"),
     )
 

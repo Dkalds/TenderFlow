@@ -223,11 +223,18 @@ prepara el script/validator, la ejecución contra Supabase la hace el mantenedor
 - [ ] **7. Backups cifrados** — `BACKUP_ENCRYPTION_KEY` (GitHub Secret). Ver
       `docs/runbooks/backup-restore.md` § "Backups Postgres cifrados" para el
       procedimiento completo (generación, verificación, descifrado).
-- [ ] **8. Retirar Turso** — una vez pasada la ventana de rollback (**≥14
-      días** desde el cutover, ver cabecera de este runbook) y confirmada la
-      estabilidad en Postgres: borrar `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`
-      de GitHub Secrets y del `.env` de despliegue; el código ya trata Turso
-      como fallback opcional (`db/connection.py`), no requiere cambio de código.
+- [x] **8. Retirar Turso** — **completado 2026-07-26 (ADR-020)**, pasada la
+      ventana de rollback (**≥14 días** desde el cutover) y confirmada la
+      estabilidad en Postgres. Se retiró tanto la configuración
+      (`TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` de workflows, `render.yaml`,
+      `.env.example`) como el código (`is_turso_backend()`, el pool Queue y
+      la réplica de lectura Turso en `db/connection.py`). El backend SQLite
+      local (fichero, vía `libsql`) se conserva como comodidad de desarrollo
+      (ADR-018) — no tiene relación con Turso cloud.
+      Acción manual pendiente del maintainer: revocar el token en el panel de
+      Turso y borrar los secrets `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` de
+      GitHub Secrets (el código ya no los lee, pero conviene no dejarlos
+      colgando).
 
 ## Roadmap F3d+ — Rol de privilegios mínimos
 

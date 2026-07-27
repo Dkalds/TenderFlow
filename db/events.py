@@ -35,9 +35,17 @@ def append_event(
     aggregate_type: str,
     payload: dict[str, Any],
     *,
-    actor_id: str | int | None = None,
+    actor_id: int | None = None,
 ) -> int:
-    """Añade un evento al log. Devuelve el ID del evento creado."""
+    """Añade un evento al log. Devuelve el ID del evento creado.
+
+    ``actor_id`` es el id numérico del usuario que origina el evento:
+    ``domain_events.actor_id`` es ``INTEGER`` tanto en el schema SQLite
+    (``db/schema.py``) como en Postgres. Antes se insertaba
+    ``str(actor_id)``, lo que SQLite acepta por afinidad de tipos pero
+    Postgres rechaza con ``InvalidTextRepresentation`` en cuanto el valor no
+    es numérico. Detectado al correr la suite contra el motor real (ADR-018).
+    """
     payload_json = json.dumps(payload, ensure_ascii=False, default=str)
     with connect() as c:
         cur = c.execute(
@@ -49,7 +57,7 @@ def append_event(
                 str(aggregate_id),
                 aggregate_type,
                 payload_json,
-                str(actor_id) if actor_id is not None else None,
+                int(actor_id) if actor_id is not None else None,
                 now_utc_iso(),
             ),
         )

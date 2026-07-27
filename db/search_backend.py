@@ -100,7 +100,7 @@ class SearchBackend(Protocol):
 
 
 class Fts5Backend:
-    """Implementación FTS5 para SQLite/Turso.
+    """Implementación FTS5 para SQLite.
 
     Replica el comportamiento actual de ``db/upsert.py:search_fts`` y de
     ``services/investigador/search_engine.py:fts5_search`` sin cambiar la

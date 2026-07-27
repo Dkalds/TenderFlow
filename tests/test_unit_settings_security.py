@@ -18,8 +18,6 @@ def _fresh_settings(**overrides):
 
     base_env = {
         "ENV": "dev",
-        "TURSO_DATABASE_URL": "",
-        "TURSO_AUTH_TOKEN": "",
         "SIGNING_KEY": "",
         "API_HMAC_SECRET": "",
         "AUDIT_HMAC_KEY": "x" * 32,

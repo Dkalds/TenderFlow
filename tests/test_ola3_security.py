@@ -107,8 +107,10 @@ def test_log_action_writes_hash_chain(tmp_path, monkeypatch):
     log_action("user1", "sess1", "test_action", "detail A")
     log_action("user1", "sess1", "test_action2", "detail B")
 
+    from db.database import get_table_columns
+
     with db_mod.connect_read() as c:
-        cols = {r[1] for r in c.execute("PRAGMA table_info(audit_log)").fetchall()}
+        cols = set(get_table_columns(c, "audit_log"))
         has_chain = "prev_hash" in cols and "this_hash" in cols
         rows = c.execute("SELECT prev_hash, this_hash FROM audit_log ORDER BY id ASC").fetchall()
 

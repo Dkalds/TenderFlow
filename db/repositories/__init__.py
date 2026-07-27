@@ -12,6 +12,7 @@ from db.repositories.csp_violations import CspViolationRepository
 from db.repositories.extraction_runs import ExtractionRunRepository
 from db.repositories.feedback import FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
+from db.repositories.predicciones import PrediccionesRepository
 from db.repositories.watchlist import WatchlistRepository
 from db.repositories.webhooks import WebhookRepository
 
@@ -24,6 +25,7 @@ __all__ = [
     "ExtractionRunRepository",
     "FeedbackRepository",
     "LicitacionRepository",
+    "PrediccionesRepository",
     "WatchlistRepository",
     "WebhookRepository",
 ]

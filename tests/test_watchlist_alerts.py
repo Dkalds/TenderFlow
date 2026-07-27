@@ -263,7 +263,7 @@ def test_store_pending_digests_inserts_rows(tmp_db):
             "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
             "VALUES ('testkey', '48', NULL, NULL, NULL, 'u@example.com', 'daily', '2024-01-01')"
         )
-        entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        entry_id = c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0]
 
     entry = {"id": entry_id, "cpv_prefix": "48", "keyword": None, "min_importe": None, "ccaa": None}
     lic = {"id_externo": "LIC-STORE-01", "titulo": "T"}
@@ -291,7 +291,7 @@ def test_store_pending_digests_idempotent(tmp_db):
             "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
             "VALUES ('testkey2', '48', NULL, NULL, NULL, 'u2@example.com', 'daily', '2024-01-01')"
         )
-        entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        entry_id = c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0]
 
     entry = {"id": entry_id, "cpv_prefix": "48", "keyword": None, "min_importe": None, "ccaa": None}
     lic = {"id_externo": "LIC-DUP-01", "titulo": "T"}
@@ -348,7 +348,7 @@ def test_send_pending_digests_sends_and_marks_sent(tmp_db):
             "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
             "VALUES ('uk1', '48', NULL, NULL, NULL, 'dest@example.com', 'daily', '2024-01-01')"
         )
-        entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        entry_id = c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0]
         c.execute(
             "INSERT INTO pending_digests "
             "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
@@ -383,7 +383,7 @@ def test_send_pending_digests_multiple_recipients(tmp_db):
                 "VALUES (?, '48', NULL, NULL, NULL, ?, 'daily', '2024-01-01')",
                 (f"uk{i}", email),
             )
-            entry_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+            entry_id = c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0]
             c.execute(
                 "INSERT INTO pending_digests "
                 "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "

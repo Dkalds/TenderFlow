@@ -125,7 +125,7 @@ def test_link_estimado_genera_evento_recurso(db):
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, fuente, "
-            " fecha_extraccion) VALUES (?, ?, ?, 'placsp', datetime('now'))",
+            " fecha_extraccion) VALUES (?, ?, ?, 'placsp', CURRENT_TIMESTAMP)",
             ("EXP-2026-42", "Contrato recurrido", "DEPARTAMENT DE SALUT"),
         )
     upsert_resoluciones([_resolucion_estimada()])
@@ -162,7 +162,7 @@ def test_link_desestimado_no_genera_evento(db):
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, fuente, "
-            " fecha_extraccion) VALUES (?, ?, ?, 'placsp', datetime('now'))",
+            " fecha_extraccion) VALUES (?, ?, ?, 'placsp', CURRENT_TIMESTAMP)",
             ("EXP-7", "Contrato", "Organo Z"),
         )
     upsert_resoluciones(

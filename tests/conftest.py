@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import itertools
+import os
+import sys
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -36,8 +40,29 @@ def _infer_marker(path: str, name: str) -> str:
     return "unit"
 
 
+# Ficheros cuyo objeto de prueba **es** la capa SQLite local: el schema SQLite
+# de db/schema.py, db/migrations.py y los helpers PRAGMA-específicos. No tiene
+# sentido ejercitarlos contra Postgres (ADR-018/ADR-020) — no son deuda de
+# migración, son tests de otro motor. Se saltan por token de nombre, misma
+# convención que el auto-marking de arriba.
+_SQLITE_ONLY_TOKENS = ("schema_sqlite",)
+
+
+def _is_sqlite_only(path: str) -> bool:
+    p = path.lower().replace("\\", "/")
+    return any(token in p for token in _SQLITE_ONLY_TOKENS)
+
+
 def pytest_collection_modifyitems(config, items):
+    skip_sqlite_only = pytest.mark.skip(
+        reason="Test específico del backend SQLite/libSQL; la suite corre contra Postgres (ADR-018)"
+    )
+    running_on_pg = bool(os.environ.get("TEST_DATABASE_URL"))
+
     for item in items:
+        if running_on_pg and _is_sqlite_only(str(item.fspath)):
+            item.add_marker(skip_sqlite_only)
+
         marks_existing = {m.name for m in item.iter_markers()}
         if marks_existing & {"unit", "integration", "e2e", "property", "load"}:
             continue
@@ -53,8 +78,8 @@ def _isolate_database_url(monkeypatch):
     entorno del proceso -- limpiar solo ``os.environ`` (vía ``monkeypatch.delenv``)
     no alcanza porque ``_database_url()`` cae a ``settings.DATABASE_URL`` como
     fallback (ADR-016). Detectado en F3b (2026-07-05) al configurar Supabase:
-    varios tests de is_turso_backend/search_backend empezaron a fallar porque
-    ``.env`` ya trae un DATABASE_URL real. Blanquear solo el atributo de
+    varios tests de detección de backend/search_backend empezaron a fallar
+    porque ``.env`` ya trae un DATABASE_URL real. Blanquear solo el atributo de
     ``settings`` (no ``os.environ``) preserva el opt-in real de correr el test
     de paridad Postgres exportando la variable en el shell antes de pytest.
     """
@@ -118,14 +143,152 @@ def _clear_service_data_caches():
     clear_scoring_signals_cache()
 
 
+# ── Backend de la suite: Postgres real u ondemand SQLite ────────────────────
+#
+# Históricamente los ~2600 tests corrían sobre ficheros SQLite temporales
+# mientras producción es Supabase Postgres (ADR-016). Toda diferencia de
+# dialecto —funciones de fecha, afinidad de tipos, Decimal vs float— quedaba
+# sin cubrir: el bug de `round()` documentado en services/sql_fragments.py
+# llegó al frontend por esa vía. Ver ADR-018.
+#
+# Con ``TEST_DATABASE_URL`` apuntando a un Postgres, las fixtures ``tmp_db`` y
+# ``api_db`` crean un **schema aislado por test** sobre esa instancia. Sin la
+# variable, se mantiene el camino SQLite para no romper el flujo local de
+# quien no tenga Postgres a mano.
+
+_PG_SCHEMA_SEQ = itertools.count()
+
+
+def _pg_test_url() -> str:
+    return os.environ.get("TEST_DATABASE_URL", "")
+
+
+@pytest.fixture(scope="session")
+def _pg_schema_ddl():
+    """DDL completo del schema, materializado una vez por sesión.
+
+    Aplicar ``alembic upgrade head`` por test (≈50 tablas + índices) sería
+    inviable en tiempo. Se aplica una vez sobre ``public`` y se vuelca su DDL
+    con ``pg_dump --schema-only``; cada test lo reproyecta sobre su propio
+    schema, que es un par de órdenes de magnitud más barato.
+
+    Returns:
+        Tupla ``(url_base, plantilla_ddl)``. La plantilla lleva
+        ``__TF_SCHEMA__`` donde va el nombre del schema destino.
+    """
+    import subprocess
+
+    import psycopg
+
+    url = _pg_test_url()
+    if not url:
+        pytest.skip("TEST_DATABASE_URL no configurada")
+
+    env = {**os.environ, "DATABASE_URL": url, "ENV": "dev", "APP_PROFILE": "scraper"}
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        check=True,
+        env=env,
+        capture_output=True,
+    )
+
+    dump = subprocess.run(
+        ["pg_dump", "--schema-only", "--no-owner", "--no-privileges", "--schema=public", url],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    # Capturado el DDL, se vacían las tablas de `public`. El search_path de cada
+    # test es `<schema_del_test>, public`, así que si `public` conserva las
+    # tablas de alembic actúa de red de seguridad silenciosa: un test que borre
+    # o altere una tabla en su schema seguiría viendo la de `public` y pasaría
+    # sin ejercitar nada. `public` debe aportar solo los objetos de extensión
+    # (tipos de pgvector, operadores de pg_trgm), nunca datos ni tablas.
+    with psycopg.connect(url, autocommit=True) as conn:
+        tablas = [
+            r[0]
+            for r in conn.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            ).fetchall()
+        ]
+        for t in tablas:
+            conn.execute(f'DROP TABLE IF EXISTS public."{t}" CASCADE')
+
+    # pg_dump cualifica todo como `public.`; se reproyecta al schema del test.
+    # Se descartan: sentencias de extensión (son globales a la base), las de
+    # search_path (lo fija la propia conexión) y los meta-comandos de psql
+    # (`\restrict` / `\unrestrict`, que pg_dump >= 16.10 emite y psycopg no
+    # entiende porque no son SQL).
+    lines = [
+        ln
+        for ln in dump.splitlines()
+        if not ln.startswith(
+            (
+                "SET ",
+                "SELECT pg_catalog.set_config",
+                "CREATE EXTENSION",
+                "COMMENT ON EXTENSION",
+                "CREATE SCHEMA",
+                "COMMENT ON SCHEMA",
+                "\\",
+            )
+        )
+    ]
+    # Se **elimina** la cualificación `public.` en vez de reescribirla al
+    # schema del test: así los objetos propios (tablas, índices) se crean sin
+    # cualificar —y caen en el primer schema del search_path, el del test—
+    # mientras que los que aporta una extensión y viven en `public`
+    # (`vector` de pgvector, `gin_trgm_ops` de pg_trgm) siguen resolviéndose
+    # por el search_path sin necesidad de enumerarlos uno a uno.
+    ddl = "\n".join(lines).replace("public.", "")
+    return url, ddl
+
+
 @pytest.fixture()
-def tmp_db(monkeypatch, tmp_path):
-    """BD SQLite temporal con migraciones aplicadas. Aislada por test."""
+def _pg_schema(_pg_schema_ddl):
+    """Schema Postgres limpio y aislado para un único test."""
+    import psycopg
+
+    base_url, ddl = _pg_schema_ddl
+    schema = f"tf_test_{os.getpid()}_{next(_PG_SCHEMA_SEQ)}"
+
+    with psycopg.connect(base_url, autocommit=True) as conn:
+        conn.execute(f'CREATE SCHEMA "{schema}"')
+        conn.execute(f'SET search_path TO "{schema}", public')
+        conn.execute(ddl)
+
+    sep = "&" if "?" in base_url else "?"
+    scoped_url = f"{base_url}{sep}options=-csearch_path%3D{schema}%2Cpublic"
+
     import db.database as db_mod
 
+    db_mod.close_pool()
+    db_mod.set_pg_test_url(scoped_url)
+    yield scoped_url
+    db_mod.close_pool()
+    db_mod.set_pg_test_url(None)
+
+    with psycopg.connect(base_url, autocommit=True) as conn:
+        conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+@pytest.fixture()
+def tmp_db(monkeypatch, tmp_path, request):
+    """BD temporal con migraciones aplicadas. Aislada por test.
+
+    Postgres real si ``TEST_DATABASE_URL`` está definida (mismo motor que
+    producción); si no, fichero SQLite temporal.
+    """
+    import db.database as db_mod
+
+    if _pg_test_url():
+        request.getfixturevalue("_pg_schema")
+        db_mod.init_db()
+        yield db_mod, tmp_path
+        return
+
     db_path = tmp_path / "test.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
 
     # Usar DI hook en vez de importlib.reload() masivo
     db_mod.close_pool()
@@ -141,13 +304,17 @@ def tmp_db(monkeypatch, tmp_path):
 
 
 @pytest.fixture()
-def api_db(tmp_path, monkeypatch):
+def api_db(tmp_path, monkeypatch, request):
     """BD temporal con todas las migraciones, para tests de API."""
     import db.database as db_mod
 
+    if _pg_test_url():
+        request.getfixturevalue("_pg_schema")
+        db_mod.init_db()
+        yield tmp_path / "unused.db"
+        return
+
     db_path = tmp_path / "test_api.db"
-    monkeypatch.setenv("TURSO_DATABASE_URL", "")
-    monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
 
     db_mod.close_pool()
     db_mod.set_db_path_override(str(db_path))

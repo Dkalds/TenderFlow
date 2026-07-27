@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import sqlite3
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -84,20 +85,6 @@ class TestBackupEncryption:
         assert backup.exists()
 
 
-class TestTursoBackup:
-    def test_rejects_tainted_database_name_before_subprocess(self, tmp_path, monkeypatch):
-        """El nombre derivado de entorno nunca llega al CLI sin allowlist."""
-        from unittest.mock import patch
-
-        from scripts.backup_db import backup_turso
-
-        monkeypatch.setenv("TURSO_DATABASE_URL", "libsql://tenant.turso.io/prod;rm-rf")
-        with patch("scripts.backup_db.subprocess.run") as run:
-            assert backup_turso(tmp_path) is None
-
-        run.assert_not_called()
-
-
 class TestRetentionCleanup:
     def test_dry_run_no_borra_nada(self, tmp_db):
         """dry_run=False ejecuta pero no aplica — en este caso apply=False."""
@@ -106,8 +93,8 @@ class TestRetentionCleanup:
         # Insertar datos de test en extraction_runs
         with db_mod.connect() as c:
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status) VALUES (?, ?)",
-                ("2000-01-01T00:00:00", "ok"),
+                "INSERT INTO extraction_runs (run_id, started_at, status) VALUES (?, ?, ?)",
+                (f"run-{uuid4()}", "2000-01-01T00:00:00", "ok"),
             )
 
         import sys
@@ -140,8 +127,8 @@ class TestRetentionCleanup:
 
         with db_mod.connect() as c:
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status) VALUES (?, ?)",
-                ("2000-01-01T00:00:00", "ok"),
+                "INSERT INTO extraction_runs (run_id, started_at, status) VALUES (?, ?, ?)",
+                (f"run-{uuid4()}", "2000-01-01T00:00:00", "ok"),
             )
 
         from scripts.retention_cleanup import run_retention
@@ -172,8 +159,8 @@ class TestRetentionCleanup:
         recent_ts = datetime.now(UTC).isoformat()
         with db_mod.connect() as c:
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status) VALUES (?, ?)",
-                (recent_ts, "ok"),
+                "INSERT INTO extraction_runs (run_id, started_at, status) VALUES (?, ?, ?)",
+                (f"run-{uuid4()}", recent_ts, "ok"),
             )
 
         from scripts.retention_cleanup import run_retention

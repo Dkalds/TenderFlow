@@ -34,21 +34,15 @@ jobs:
 
       - name: Train model
         env:
+          # ENV=prod porque este job lee y escribe en la BD de producción, así
+          # que los validators de datos (TLS de DATABASE_URL) deben estar
+          # activos. APP_PROFILE=scraper omite los secretos del proceso HTTP.
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           LOG_FORMAT: json
-        run: |
-          python -c "
-          from scraper.ml_training import seed_negatives, train_from_db, precompute_ml_proba
-          seed_negatives()
-          metrics = train_from_db()
-          print(f'Metrics: {metrics}')
-          if 'error' in metrics:
-              raise SystemExit(f'Training failed: {metrics}')
-          precompute_ml_proba(force=False)
-          "
+        run: python -m scheduler.jobs.ml_training_run
 
       - name: Verify model artifact
         run: |

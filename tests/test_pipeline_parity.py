@@ -109,8 +109,12 @@ class TestCanonicalPipelineSteps:
                 "aggregates_precompute"
             ),
             "scheduler.pipeline_runs._run_watchlist_notify": _make_mock("watchlist_notify"),
+            "scheduler.pipeline_runs._run_digests": _make_mock("digests"),
             "scheduler.pipeline_runs._run_dlq_retry": _make_mock("dlq_retry"),
             "scheduler.pipeline_runs._run_anomaly_checks": _make_mock("anomaly_checks"),
+            "scheduler.pipeline_runs._run_retention_cleanup": _make_mock("retention_cleanup"),
+            "scheduler.pipeline_runs._run_ml_retrain": _make_mock("ml_retrain"),
+            "scheduler.pipeline_runs._run_drift_checks": _make_mock("drift_checks"),
         }
 
         with patch.multiple(
@@ -135,8 +139,12 @@ class TestCanonicalPipelineSteps:
             patch("scheduler.pipeline_runs._run_kpi_precompute"),
             patch("scheduler.pipeline_runs._run_aggregates_precompute"),
             patch("scheduler.pipeline_runs._run_watchlist_notify"),
+            patch("scheduler.pipeline_runs._run_digests"),
             patch("scheduler.pipeline_runs._run_dlq_retry"),
             patch("scheduler.pipeline_runs._run_anomaly_checks"),
+            patch("scheduler.pipeline_runs._run_retention_cleanup"),
+            patch("scheduler.pipeline_runs._run_ml_retrain"),
+            patch("scheduler.pipeline_runs._run_drift_checks"),
         ):
             results = _run_post_ingestion_steps()
 

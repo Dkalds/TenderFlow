@@ -6,11 +6,6 @@ on:
     - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
-      include_turso:
-        description: "Incluir backup de Turso (requiere CLI instalado en runner)"
-        required: false
-        default: false
-        type: boolean
       keep_s3:
         description: "Número de backups a retener en S3/R2"
         required: false
@@ -113,38 +108,19 @@ jobs:
           "
 
       # ── Rama SQLite legacy (pre-cutover) ──────────────────────────────
-      - name: Download latest SQLite DB
-        if: ${{ env.DATABASE_URL == '' }}
-        run: |
-          mkdir -p data
-          if [ -n "$TURSO_DATABASE_URL" ]; then
-            echo "Turso configurado — la DB será descargada en tiempo de ejecución por el script"
-          else
-            echo "Sin Turso configurado — solo se respalda la DB local si existe."
-          fi
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL || '' }}
-
       - name: Run SQLite backup
         if: ${{ env.DATABASE_URL == '' }}
         env:
-          ENV: dev
+          ENV: prod
+          APP_PROFILE: scraper
           KEEP_S3_INPUT: ${{ inputs.keep_s3 || '30' }}
-          INCLUDE_TURSO: ${{ inputs.include_turso }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
           BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
           DATABASE_PATH: ${{ secrets.DATABASE_PATH || '' }}
           DATABASE_URL: ""
-        run: |
-          EXTRA=""
-          if [ "$INCLUDE_TURSO" = "true" ]; then
-            EXTRA="--turso"
-          fi
-          python scripts/backup_db.py --s3 --keep 3 --keep-s3 "${KEEP_S3_INPUT}" ${EXTRA}
+        run: python scripts/backup_db.py --s3 --keep 3 --keep-s3 "${KEEP_S3_INPUT}"
 
       - name: Upload backup artifact (fallback)
         # Sube el backup como artefacto de GitHub Actions si el upload S3 falla.

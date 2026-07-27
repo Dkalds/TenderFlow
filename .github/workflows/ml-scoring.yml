@@ -36,46 +36,22 @@ jobs:
 
       - name: Run scoring batch
         env:
-          # ENV=dev omite los validators de prod que requieren secrets de la
-          # aplicación (mismo criterio que scrape.yml). La BD de producción
-          # es Supabase (ADR-016): DATABASE_URL tiene precedencia sobre
-          # TURSO_* en db/connection.py.
-          ENV: dev
+          # ENV=prod porque este job escribe en la BD de producción, así que
+          # los validators de datos (TLS de DATABASE_URL, alertas) deben estar
+          # activos. APP_PROFILE=scraper omite los secretos que solo necesita
+          # el proceso HTTP (SIGNING_KEY, REDIS_URL, CORS): son ejes distintos.
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           LOG_FORMAT: json
-        run: |
-          python -c "
-          import json
-          from db.database import init_db
-          from scheduler.jobs.ml_predicciones import run_scoring
-
-          init_db()
-          resumen = run_scoring()
-          print(json.dumps(resumen, default=str, indent=2))
-          baja = resumen['baja']
-          if baja.get('status') not in ('ok', 'sin_abiertas'):
-              raise SystemExit(f'Scoring baja falló: {baja}')
-          "
+        run: python -m scheduler.jobs.ml_predicciones scoring
 
       - name: Verify predicciones materialized
         env:
-          ENV: dev
+          ENV: prod
+          APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: |
-          python -c "
-          from db.database import connect_read
-
-          with connect_read() as c:
-              n, ultimo = c.execute(
-                  'SELECT COUNT(*), MAX(computed_at) FROM predicciones_baja'
-              ).fetchone()
-          print(f'predicciones_baja: {n} filas · computed_at max: {ultimo}')
-          if not n:
-              raise SystemExit('predicciones_baja sigue vacía tras el scoring')
-          "
+          LOG_FORMAT: json
+        run: python -m scheduler.jobs.ml_predicciones verify

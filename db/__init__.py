@@ -1,4 +1,4 @@
-"""Paquete db — capa de persistencia SQLite/Turso.
+"""Paquete db — capa de persistencia SQLite/Postgres.
 
 Re-exports de conveniencia para los consumers más frecuentes.
 """

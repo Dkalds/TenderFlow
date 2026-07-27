@@ -58,7 +58,15 @@ class Settings(BaseSettings):
     )
 
     # ── Entorno ──────────────────────────────────────────────────────────
+    # ENV describe **qué datos** toca el proceso (dev/staging/prod).
+    # APP_PROFILE describe **qué componentes** arranca. Son ejes ortogonales:
+    # el scraper del cron toca datos de producción (ENV=prod) pero no sirve
+    # HTTP, así que no necesita SIGNING_KEY ni REDIS_URL. Antes ambos ejes
+    # viajaban en ENV, lo que obligaba al cron a declarar ENV=dev contra la BD
+    # de producción y desactivaba de paso validators que sí le aplicaban
+    # (ver el fix de sslmode en _validate_prod_database_ssl).
     ENV: Literal["dev", "staging", "prod"] = "prod"
+    APP_PROFILE: Literal["api", "worker", "scraper"] = "api"
 
     # ── Rutas ────────────────────────────────────────────────────────────
     DATA_DIR: Path = _DEFAULT_DATA_DIR
@@ -233,7 +241,7 @@ class Settings(BaseSettings):
     TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
 
     # ── Postgres / Supabase (ADR-016, F3) ────────────────────────────────
-    # Cuando DATABASE_URL está definida tiene precedencia sobre TURSO_* y SQLite.
+    # Cuando DATABASE_URL está definida tiene precedencia sobre SQLite local.
     # Formato: postgresql://user:pass@host:5432/db?sslmode=require  # pragma: allowlist secret
     # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
     # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
@@ -252,14 +260,6 @@ class Settings(BaseSettings):
     DB_IDLE_TX_TIMEOUT_MS: int = 60_000
     # Timeout (segundos) para establecer la conexión TCP/TLS al pooler.
     DB_CONNECT_TIMEOUT: int = 10
-
-    # ── Turso ────────────────────────────────────────────────────────────
-    TURSO_DATABASE_URL: str = ""
-    TURSO_AUTH_TOKEN: SecretStr = SecretStr("")
-    TURSO_LOCAL_DB: Path | None = None
-    # URL de la réplica de lectura Turso (opcional). Si se configura, las
-    # consultas SELECT se enrutan a la réplica para reducir latencia.
-    TURSO_REPLICA_URL: str = ""
 
     # ── Observabilidad ───────────────────────────────────────────────────
     LOG_FORMAT: str = ""
@@ -509,29 +509,29 @@ class Settings(BaseSettings):
             self.DB_PATH = self.DATA_DIR / "licitaciones.db"
         if self.DOWNLOADS_DIR is None:
             self.DOWNLOADS_DIR = self.DATA_DIR / "downloads"
-        if self.TURSO_LOCAL_DB is None:
-            self.TURSO_LOCAL_DB = self.DATA_DIR / "licitaciones_replica.db"
         return self
 
-    @model_validator(mode="after")
-    def _validate_turso_pair(self) -> Settings:
-        url = self.TURSO_DATABASE_URL
-        token = self.TURSO_AUTH_TOKEN.get_secret_value()
-        if bool(url) ^ bool(token):
-            warnings.warn(
-                "Configuración Turso incompleta: se necesitan TURSO_DATABASE_URL y "
-                "TURSO_AUTH_TOKEN juntas. Se usará SQLite local como fallback.",
-                stacklevel=2,
-            )
-            self.TURSO_DATABASE_URL = ""
-            self.TURSO_AUTH_TOKEN = SecretStr("")
-        return self
+    # ── Helpers de gating de validators ──────────────────────────────────
+    # Regla: los validators se agrupan por *lo que el proceso hace*, no por
+    # el entorno. `_serves_http` marca los secretos que solo tienen sentido
+    # cuando el proceso expone la API (CSRF, API keys, CORS, caché Redis).
+    # Los validators de BD, alertas y contraseñas aplican a todos los perfiles.
+
+    @property
+    def _is_prod_data(self) -> bool:
+        """True si el proceso toca datos de producción o staging."""
+        return self.ENV in ("prod", "staging")
+
+    @property
+    def _serves_http(self) -> bool:
+        """True si el proceso expone la API HTTP (perfil ``api``)."""
+        return self.APP_PROFILE == "api"
 
     @model_validator(mode="after")
     def _validate_prod_signing_key(self) -> Settings:
-        if self.ENV in ("prod", "staging") and not self.SIGNING_KEY.get_secret_value():
+        if self._is_prod_data and self._serves_http and not self.SIGNING_KEY.get_secret_value():
             raise ValueError(
-                "SIGNING_KEY es obligatorio en ENV=prod para firmar tokens CSRF/OAuth. "
+                "SIGNING_KEY es obligatorio en ENV=prod con APP_PROFILE=api para firmar tokens CSRF/OAuth. "
                 'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return self
@@ -539,13 +539,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_webhook_signing_key(self) -> Settings:
         """En producción, exigir WEBHOOK_SIGNING_KEY o SIGNING_KEY como fallback."""
-        if self.ENV in ("prod", "staging"):
+        if self._is_prod_data and self._serves_http:
             wk = self.WEBHOOK_SIGNING_KEY.get_secret_value()
             sk = self.SIGNING_KEY.get_secret_value()
             if not wk and not sk:
                 raise ValueError(
                     "WEBHOOK_SIGNING_KEY (o SIGNING_KEY como fallback) es obligatorio "
-                    "en ENV=prod para derivar secretos de webhook. "
+                    "en ENV=prod con APP_PROFILE=api para derivar secretos de webhook. "
                     'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
                 )
         return self
@@ -563,11 +563,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_api_hmac_secret(self) -> Settings:
         """En producción, exigir HMAC secret robusto para API keys."""
-        if self.ENV in ("prod", "staging"):
+        if self._is_prod_data and self._serves_http:
             secret = self.API_HMAC_SECRET.get_secret_value()
             if not secret:
                 raise ValueError(
-                    "API_HMAC_SECRET es obligatorio en ENV=prod para hashear API keys con HMAC. "
+                    "API_HMAC_SECRET es obligatorio en ENV=prod con APP_PROFILE=api para hashear API keys con HMAC. "
                     'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
                 )
             if len(secret) < 32:
@@ -586,7 +586,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_signing_key_strength(self) -> Settings:
         """En producción, exigir SIGNING_KEY con longitud mínima de 32 chars."""
-        if self.ENV in ("prod", "staging"):
+        if self._is_prod_data and self._serves_http:
             key = self.SIGNING_KEY.get_secret_value()
             if key and len(key) < 32:
                 raise ValueError(
@@ -597,8 +597,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_password_not_weak(self) -> Settings:
-        """En producción, rechazar contraseñas débiles conocidas."""
-        if self.ENV not in ("prod", "staging"):
+        """En producción, rechazar contraseñas débiles conocidas.
+
+        Aplica a todos los perfiles: cualquier proceso puede exponer Grafana.
+        """
+        if not self._is_prod_data:
             return self
         from shared.password_policy import check_password_strength
 
@@ -619,9 +622,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_smtp_password(self) -> Settings:
-        """En producción, exigir SMTP password si hay destinatarios de alertas."""
+        """En producción, exigir SMTP password si hay destinatarios de alertas.
+
+        Aplica a todos los perfiles: el scraper y los workers también notifican.
+        """
         if (
-            self.ENV in ("prod", "staging")
+            self._is_prod_data
             and self.ALERT_EMAIL_TO
             and not self.ALERT_SMTP_PASSWORD.get_secret_value()
         ):
@@ -634,7 +640,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_prod_cors_origins(self) -> Settings:
         """En producción, alertar si CORS_ALLOWED_ORIGINS está vacío."""
-        if self.ENV in ("prod", "staging") and not self.CORS_ALLOWED_ORIGINS:
+        if self._is_prod_data and self._serves_http and not self.CORS_ALLOWED_ORIGINS:
             warnings.warn(
                 "CORS_ALLOWED_ORIGINS está vacío en ENV=prod. Todas las solicitudes "
                 "cross-origin serán bloqueadas. Configura los orígenes permitidos: "
@@ -645,19 +651,24 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_redis(self) -> Settings:
-        """En producción, exigir REDIS_URL para cache compartido."""
-        if self.ENV in ("prod", "staging") and not self.REDIS_URL:
+        """En producción, exigir REDIS_URL para cache compartido.
+
+        Solo aplica al perfil ``api``: la caché de respuestas y los rate limits
+        viven en el proceso HTTP. El scraper y los workers no la usan.
+        """
+        if self._is_prod_data and self._serves_http and not self.REDIS_URL:
             raise ValueError(
-                "REDIS_URL es obligatorio en ENV=prod/staging para cache compartido entre "
-                "procesos. Formato: redis://[:password@]host[:port][/db]"
+                "REDIS_URL es obligatorio en ENV=prod/staging con APP_PROFILE=api para cache "
+                "compartido entre procesos. Formato: redis://[:password@]host[:port][/db]"
             )
         if (
-            self.ENV in ("prod", "staging")
+            self._is_prod_data
+            and self._serves_http
             and self.REDIS_URL
             and not self.REDIS_PASSWORD.get_secret_value()
         ):
             raise ValueError(
-                "REDIS_PASSWORD es obligatorio en ENV=prod. "
+                "REDIS_PASSWORD es obligatorio en ENV=prod con APP_PROFILE=api. "
                 'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return self
@@ -666,7 +677,8 @@ class Settings(BaseSettings):
     def _validate_prod_oauth_domains(self) -> Settings:
         """En producción, alertar (sin bloquear) si OAuth no restringe dominios/emails."""
         if (
-            self.ENV in ("prod", "staging")
+            self._is_prod_data
+            and self._serves_http
             and self.GOOGLE_CLIENT_ID
             and not self.OAUTH_ALLOWED_DOMAINS
             and not self.OAUTH_ALLOWED_EMAILS
@@ -685,7 +697,7 @@ class Settings(BaseSettings):
         """Rechaza esquemas peligrosos en DATABASE_URL.
 
         Solo se permiten ``postgresql://`` y ``postgres://``. Un valor vacío
-        indica que no se usa Postgres (fallback a Turso/SQLite), lo cual es
+        indica que no se usa Postgres (fallback a SQLite local), lo cual es
         válido. El chequeo de ``sslmode`` vive en ``_validate_prod_database_ssl``
         (model_validator) porque depende de ``self.ENV``, no disponible aún
         en un field_validator per-campo.
@@ -783,24 +795,6 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
         return self
-
-    @field_validator("TURSO_DATABASE_URL", mode="before")
-    @classmethod
-    def _validate_turso_url_scheme(cls, v: object) -> object:
-        """Rechaza esquemas peligrosos en TURSO_DATABASE_URL.
-
-        Solo se permiten ``libsql://`` y ``https://`` (embedded replica).
-        Un valor vacío indica que no se usa Turso, lo cual es válido.
-        """
-        if not isinstance(v, str) or not v:
-            return v
-        allowed = ("libsql://", "https://")
-        if not v.startswith(allowed):
-            raise ValueError(
-                f"TURSO_DATABASE_URL tiene un esquema no permitido. "
-                f"Se esperaba uno de {allowed}, se recibió: {v!r}"
-            )
-        return v
 
 
 def _load() -> Settings:

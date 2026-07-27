@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from pydantic import SecretStr
 
@@ -253,8 +254,9 @@ def test_check_consecutive_failures_sends_alert(tmp_db):
     with db_mod.connect() as c:
         for i in range(_DAILY_MAX_CONSECUTIVE_FAILURES):
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status, notas) VALUES (?, ?, ?)",
-                (f"2024-01-0{i + 1}T00:00:00", "error", "daily|test"),
+                "INSERT INTO extraction_runs (run_id, started_at, status, notas) "
+                "VALUES (?, ?, ?, ?)",
+                (f"run-{uuid4()}", f"2024-01-0{i + 1}T00:00:00", "error", "daily|test"),
             )
 
     with patch("observability.alerts.notify") as mock_notify:
@@ -272,13 +274,14 @@ def test_check_consecutive_failures_mixed_status_no_alert(tmp_db):
 
     with db_mod.connect() as c:
         c.execute(
-            "INSERT INTO extraction_runs (started_at, status, notas) VALUES (?, ?, ?)",
-            ("2024-01-01T00:00:00", "ok", "daily|test"),
+            "INSERT INTO extraction_runs (run_id, started_at, status, notas) VALUES (?, ?, ?, ?)",
+            (f"run-{uuid4()}", "2024-01-01T00:00:00", "ok", "daily|test"),
         )
         for i in range(_DAILY_MAX_CONSECUTIVE_FAILURES - 1):
             c.execute(
-                "INSERT INTO extraction_runs (started_at, status, notas) VALUES (?, ?, ?)",
-                (f"2024-01-0{i + 2}T00:00:00", "error", "daily|test"),
+                "INSERT INTO extraction_runs (run_id, started_at, status, notas) "
+                "VALUES (?, ?, ?, ?)",
+                (f"run-{uuid4()}", f"2024-01-0{i + 2}T00:00:00", "error", "daily|test"),
             )
 
     with patch("observability.alerts.notify") as mock_notify:

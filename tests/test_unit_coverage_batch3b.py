@@ -732,9 +732,9 @@ class TestTechnologyClassifierTrain:
 class TestTechTrainFromDb:
     @patch("scraper.tech_classifier.TechnologyClassifier")
     @patch("db.connection.connect_read")
-    @patch("db.connection.is_turso_backend", return_value=True)
-    def test_turso_backend(
-        self, mock_turso: MagicMock, mock_conn_read: MagicMock, mock_cls: MagicMock
+    @patch("db.connection.is_postgres_backend", return_value=True)
+    def test_postgres_backend(
+        self, mock_pg: MagicMock, mock_conn_read: MagicMock, mock_cls: MagicMock
     ) -> None:
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchall.return_value = [
@@ -753,8 +753,8 @@ class TestTechTrainFromDb:
         mock_instance.save.assert_called_once()
 
     @patch("scraper.tech_classifier.TechnologyClassifier")
-    @patch("db.connection.is_turso_backend", return_value=False)
-    def test_sqlite_backend(self, mock_turso: MagicMock, mock_cls: MagicMock) -> None:
+    @patch("db.connection.is_postgres_backend", return_value=False)
+    def test_sqlite_backend(self, mock_pg: MagicMock, mock_cls: MagicMock) -> None:
         mock_instance = MagicMock()
         mock_instance.train.return_value = {"error": "no_ml_techs"}
         mock_cls.return_value = mock_instance
@@ -1117,32 +1117,6 @@ class TestRunRetentionCleanup:
         result = run()
         assert result == {"deleted": 10}
         mock_retention.assert_called_once()
-
-
-class TestRunWalCheckpoint:
-    @patch("db.database.connect")
-    def test_checkpoint(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = (0, 100, 100)
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from scheduler.jobs.wal_checkpoint import run
-
-        result = run()
-        assert result == {"blocked": 0, "wal_pages": 100, "checkpointed": 100}
-
-    @patch("db.database.connect")
-    def test_checkpoint_no_row(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = None
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from scheduler.jobs.wal_checkpoint import run
-
-        result = run()
-        assert result == {}
 
 
 class TestMainLoop:

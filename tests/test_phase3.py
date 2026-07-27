@@ -42,7 +42,7 @@ def _make_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             expediente TEXT,
             relevante INTEGER,
-            created_at TEXT DEFAULT (datetime('now'))
+            created_at TEXT DEFAULT (CURRENT_TIMESTAMP)
         )
         """
     )

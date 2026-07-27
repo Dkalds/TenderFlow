@@ -23,7 +23,7 @@ def _seed_licitaciones() -> None:
             c.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, cpv, importe, fuente, "
                 " fecha_publicacion, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, 'placsp', '2026-01-01', datetime('now'))",
+                "VALUES (?, ?, ?, ?, 'placsp', '2026-01-01', CURRENT_TIMESTAMP)",
                 (lic_id, titulo, cpv, importe),
             )
 

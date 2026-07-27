@@ -53,6 +53,24 @@ jobs:
       - name: Verify requirements.txt is in sync with requirements.in
         run: python scripts/check_requirements_sync.py
 
+      # Convierte ADR-012 ("un solo plano de orquestación") en invariante
+      # verificado. Sin esto, un job puede quedar registrado pero sin ningún
+      # plano que lo ejecute — el fallo que dejó los digests diarios sin
+      # enviar y la retención sin purgar durante meses.
+      - name: Verify scheduler job parity (ADR-012)
+        env:
+          ENV: dev
+        run: python scripts/check_job_parity.py
+
+      # docs/STATUS.md se deriva del código: paridad de jobs, ratchet TID251,
+      # motor de la suite, superficie de la API. Si un hecho se puede calcular,
+      # no se escribe a mano — es lo que evitaba que el backlog siguiera
+      # marcando como pendiente trabajo ya integrado.
+      - name: Verify docs/STATUS.md is in sync with the code
+        env:
+          ENV: dev
+        run: python scripts/gen_status.py --check
+
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
 
   # ── Tests: multiplataforma, independiente ──────────────────────────
@@ -210,6 +228,56 @@ jobs:
           ENV: dev
           DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_ci  # pragma: allowlist secret
         run: alembic downgrade base
+
+  # ── Tests contra el motor de produccion (ADR-018) ───────────────────
+  # El job `test` de arriba corre sobre ficheros SQLite temporales mientras
+  # produccion es Postgres: ninguna diferencia de dialecto queda cubierta.
+  # Asi llegaron a produccion el bug de `round()` devolviendo Decimal y la
+  # ausencia de los seis CHECK de formato de fecha (`GLOB` es SQLite-only).
+  # Este job corre la MISMA suite contra Postgres real.
+  test-postgres:
+    name: Tests (Postgres real, ADR-018)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        # pgvector/pgvector:pg16 por el mismo motivo que en el job de
+        # migraciones: v56 hace `CREATE EXTENSION vector`.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: tenderflow
+          POSTGRES_PASSWORD: tenderflow  # pragma: allowlist secret -- contenedor efímero local, no es un secreto real
+          POSTGRES_DB: tenderflow_suite
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e ".[pliegos]"
+
+      - name: Run suite against Postgres
+        # BLOQUEANTE desde 2026-07-26: la migracion de la suite al motor real
+        # esta completa (0 fallos). Los tests especificos del backend
+        # SQLite/libSQL se saltan por convencion de nombre en conftest.py --
+        # no son deuda, son tests de otro motor. Ver ADR-018.
+        env:
+          ENV: dev
+          TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret
+        run: pytest -q -m "unit and not slow" --no-cov
 
   # ── Security audit (independiente) ──────────────────────────────────
   audit:

@@ -10,7 +10,7 @@ Inteligencia de licitaciones del Sector Público español.
 |--------|-------------|
 | **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (ZIPs mensuales bulk + feed ATOM en vivo), PSCP y TACRC (activos en el cron diario) y TED (implementado, pendiente de cablear). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
 | **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
-| **Base de datos** | **Postgres/Supabase en producción** ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md), psycopg3 + pool gestionado). SQLite local o Turso cloud como alternativa de desarrollo. Upsert idempotente, historial de cambios, DLQ |
+| **Base de datos** | **Postgres/Supabase en producción** ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md), psycopg3 + pool gestionado). SQLite local como alternativa de desarrollo ([ADR-018](docs/adr/ADR-018-paridad-motor-tests-produccion.md); Turso retirado, [ADR-020](docs/adr/ADR-020-retirada-turso.md)). Upsert idempotente, historial de cambios, DLQ |
 | **Web frontend** | Next.js 16 con dashboard analítico (KPIs, pipeline, competidores, tendencias), búsqueda y administración |
 | **Asistente RAG (`/api/v1/ask`)** | Preguntas en lenguaje natural sobre licitaciones vía LLM (NVIDIA NIM/DeepSeek por defecto; OpenAI/Anthropic opcionales), streaming SSE, presupuesto/circuit-breaker de gasto |
 | **Analítica competitiva** | Detección de bajas anómalas, análisis de mercado, renovaciones y riesgo de cambio de proveedor (`services/competitive/`) |
@@ -34,7 +34,7 @@ Inteligencia de licitaciones del Sector Público español.
                                                    ▼
                               ┌────────────────────────────────────┐
                               │  Postgres / Supabase (producción)   │
-                              │  SQLite local / Turso (desarrollo)  │
+                              │  SQLite local (desarrollo, ADR-018) │
                               │  (historial de cambios, DLQ)        │
                               └──────────┬───────────────────────────┘
                                          │
@@ -86,7 +86,7 @@ tenderflow/
 │   ├── rag/                      #   Chunking + construcción de contexto para `/ask`
 │   └── ...                       #   admin, auth, gdpr, health, security, watchlist
 ├── db/                           # Persistencia y acceso a datos
-│   ├── connection.py             #   Pool de conexión (Postgres/psycopg3, SQLite o Turso)
+│   ├── connection.py             #   Pool de conexión (Postgres/psycopg3, SQLite local)
 │   ├── database.py               #   Fachada principal (init, connect, upsert)
 │   ├── search_backend.py         #   Abstracción FTS: FTS5 (SQLite) / tsvector+GIN (Postgres)
 │   ├── upsert.py                 #   Upsert idempotente con historial
@@ -225,17 +225,14 @@ ENV=dev
 
 # ── Base de datos (elige una opción) ────────────────────
 
-# Opción A — SQLite local (por defecto, sin configuración adicional)
-# DB_PATH=data/tenderflow.db
+# Opción A — SQLite local (por defecto, sin configuración adicional).
+# Es una comodidad de desarrollo (ADR-018), no la referencia de producción.
+# DB_PATH=data/licitaciones.db
 
-# Opción B — Turso cloud (legacy, réplica embebida local + sync automático)
-# TURSO_DATABASE_URL=libsql://<tu-db>.turso.io
-# TURSO_AUTH_TOKEN=<token-con-permisos-rw>
-
-# Opción C — Postgres / Supabase (ADR-016) — PRECEDENCIA sobre TURSO_* y SQLite.
+# Opción B — Postgres / Supabase (ADR-016, producción) — PRECEDENCIA sobre SQLite.
 # Usar el Supavisor session pooler (puerto 5432, IPv4). En prod/staging exigir
 # sslmode=verify-full + DATABASE_SSL_ROOT_CERT (CA de Supabase).
-# DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
+DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
 
 # ── OAuth Google (opcional) ──────────────────────────────
 GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com
@@ -367,15 +364,11 @@ directamente.
 ### Rotación de credenciales
 
 Matriz completa (qué rotar, cuándo, quién y dónde) en
-[docs/SECURITY.md](docs/SECURITY.md). Resumen de las dos más comunes:
+[docs/SECURITY.md](docs/SECURITY.md). Si una credencial de BD se compromete:
 
 **Postgres/Supabase** (`DATABASE_URL` comprometida):
 1. Supabase Dashboard → Project → Database → **Reset database password**.
 2. Reconstruir `DATABASE_URL` con la nueva password → actualizar `.env` y secrets de GitHub/Render.
-
-**Turso** (legacy, si el token se compromete):
-1. Panel Turso → tu base de datos → **Settings → Tokens** → Revocar
-2. Generar nuevo token → actualizar `.env` y secrets de GitHub
 
 ---
 

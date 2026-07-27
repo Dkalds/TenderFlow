@@ -122,12 +122,14 @@ class TestJobRegistry:
         assert "digest_daily" in names
         assert "anomaly_checks" in names
         assert "drift_report" in names
-        assert "wal_checkpoint" in names
+        # wal_checkpoint se eliminó: `PRAGMA wal_checkpoint` es SQLite-only y
+        # el backend de producción es Postgres (ADR-016).
+        assert "wal_checkpoint" not in names
         assert "ml_scoring_baja" in names
         assert "ml_retrain_baja" in names
         assert "documentos_embeddings" in names
         assert "watchlist_rules" in names
-        assert len(registry) == 12
+        assert len(registry) == 11
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry

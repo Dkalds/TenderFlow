@@ -252,10 +252,10 @@ class TestLicitacionesSearch:
 
         with connect() as c:
             c.execute(
-                "INSERT OR IGNORE INTO licitaciones "
+                "INSERT INTO licitaciones "
                 "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
                 "fecha_publicacion, ccaa, cpv, url, tecnologia, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 [
                     "S-001",
                     "SAP ERP AEAT",
@@ -272,10 +272,10 @@ class TestLicitacionesSearch:
                 ],
             )
             c.execute(
-                "INSERT OR IGNORE INTO licitaciones "
+                "INSERT INTO licitaciones "
                 "(id_externo, titulo, organo_contratacion, importe, estado, "
                 "fecha_publicacion, ccaa, tecnologia, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 [
                     "S-002",
                     "Oracle Database Cataluña",
@@ -333,9 +333,9 @@ class TestETagCaching:
 
         with connect() as c:
             c.execute(
-                "INSERT OR IGNORE INTO licitaciones "
+                "INSERT INTO licitaciones "
                 "(id_externo, titulo, estado, ccaa, tecnologia, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 ["ETAG-001", "SAP Test", "PUB", "Madrid", "SAP", "2025-01-01"],
             )
         from api.app import app

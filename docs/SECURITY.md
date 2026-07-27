@@ -2,7 +2,7 @@
 
 Este documento centraliza las prácticas de seguridad del proyecto. La mayoría
 de las defensas están verificadas por tests automatizados (ver
-`tests/test_security.py`). Aquí registramos las que requieren acción humana
+`tests/test_config_settings.py`). Aquí registramos las que requieren acción humana
 periódica.
 
 ## Secretos gestionados
@@ -12,11 +12,12 @@ periódica.
 | `DATABASE_URL`             | Credenciales Postgres/Supabase (user:pass embebidos) | Tras cutover + 90 días | Maintainer | GitHub Secrets + Render env + `.env` |
 | `DATABASE_SSL_ROOT_CERT`   | Ruta a la CA de Supabase (cert público, no secreto)  | Al rotar CA Supabase   | Maintainer | Repo/volumen |
 | `BACKUP_ENCRYPTION_KEY`    | Passphrase para cifrar dumps de `pg_dump` (backup.yml) | 180 días | Maintainer | GitHub Secrets |
-| `TURSO_AUTH_TOKEN`         | Acceso a la BD remota Turso       | 90 días  | Maintainer  | GitHub Secrets + `.env`     |
-| `TURSO_DATABASE_URL`       | URL libSQL de la BD remota        | Al migrar| Maintainer  | GitHub Secrets + `.env`     |
 | `ALERT_EMAIL_TO`           | Destinatario de alertas por email | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_USER`          | Cuenta remitente Gmail            | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_PASSWORD`      | App Password de Gmail (16 chars)  | 90 días              | Maintainer | GitHub Secrets + `.env` |
+
+Turso/libSQL se retiró como backend (ADR-020, 2026-07-26); `TURSO_AUTH_TOKEN`
+y `TURSO_DATABASE_URL` ya no existen como secretos gestionados.
 
 ## Procedimiento de rotación
 
@@ -30,14 +31,6 @@ periódica.
 - Asociar o rotar las API keys heredadas sin `user_id`: producción y staging las rechazan para evitar que una clave sin propietario pueda actuar como administrador.
 - Conservar `DOCUMENT_EXTRACTION_TIMEOUT_SECONDS` positivo en producción: cada extracción de PDF corre en un proceso aislado y se termina al exceder ese presupuesto.
 - Ejecutar `python scripts/verify_audit_chain.py --db-path …` en el runbook de incidentes. La verificación requiere recorrer la cadena completa; `--limit` ya no es válido porque ocultaría roturas o borrados.
-
-### Turso (`TURSO_AUTH_TOKEN`)
-
-1. Crear token nuevo: `turso db tokens create <db-name> --expiration 90d`.
-2. Actualizar `TURSO_AUTH_TOKEN` en **GitHub → Settings → Secrets → Actions**.
-3. Actualizar el `.env` local de cada maintainer.
-4. Ejecutar `python -m scheduler.healthcheck` para verificar conectividad.
-5. Revocar el token viejo: `turso db tokens invalidate <db-name> <old-token>`.
 
 ### Postgres / Supabase (`DATABASE_URL`)
 

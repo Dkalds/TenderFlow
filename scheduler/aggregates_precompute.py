@@ -1,14 +1,11 @@
 """Job de pre-cálculo de agregados materializados.
 
-Calcula en el scheduler dos tipos de resultados costosos:
+Calcula la asignación de cada licitación a su cluster semántico via KMeans
+sobre embeddings TF-IDF (fallback) o sentence-transformers si disponible.
+Resultado → ``mat_clusters``, que lee ``services/clustering_engine.py``.
 
-* **Clusters**: asignación de cada licitación a su cluster semántico via KMeans
-  sobre embeddings TF-IDF (fallback) o sentence-transformers si disponible.
-  Resultado → ``mat_clusters``.
-
-* **Top empresas por CCAA**: ranking top-10 de empresas por número de
-  adjudicaciones y volumen de importe, agrupadas por comunidad autónoma.
-  Resultado → ``mat_top_empresas_ccaa``.
+El ranking ``mat_top_empresas_ccaa`` se eliminó (2026-07): se recomputaba en
+cada pasada de la pipeline y no lo leía ningún consumidor.
 
 Uso:
     python -m scheduler.aggregates_precompute
@@ -27,74 +24,15 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-_TOP_N = 10  # empresas por CCAA
-_N_CLUSTERS = 8  # número de clusters semánticos
-
-
-# ── Top empresas por CCAA ─────────────────────────────────────────────────────
-
-
-def _compute_top_empresas(conn: Any) -> list[dict[str, Any]]:
-    """Agrupa adjudicatarios por CCAA y devuelve el top-N de cada comunidad."""
-    rows = conn.execute(
-        """
-        SELECT
-            a.ccaa,
-            a.nombre               AS nombre_raw,
-            COUNT(*)               AS n_adj,
-            SUM(COALESCE(a.importe_adjudicado, 0)) AS importe_total
-        FROM adjudicaciones a
-        WHERE a.ccaa IS NOT NULL
-          AND a.nombre IS NOT NULL
-          AND a.nombre != ''
-        GROUP BY a.ccaa, a.nombre
-        ORDER BY a.ccaa, n_adj DESC, importe_total DESC
-        """
-    ).fetchall()
-
-    # Normalizar en Python para agrupar nombres equivalentes
-    try:
-        from services.normalization import normalize_company
-    except Exception:
-
-        def normalize_company(s: str) -> str:  # type: ignore[misc]
-            return s.upper().strip()
-
-    now = datetime.now(UTC).isoformat()
-    result: list[dict[str, Any]] = []
-    ccaa_rank: dict[str, int] = {}
-    for ccaa, nombre_raw, n_adj, importe_total in rows:
-        nombre_canon = normalize_company(nombre_raw) if nombre_raw else ""
-        if not nombre_canon:
-            continue
-        rank = ccaa_rank.get(ccaa, 0) + 1
-        if rank > _TOP_N:
-            continue
-        ccaa_rank[ccaa] = rank
-        result.append(
-            {
-                "ccaa": ccaa,
-                "rank": rank,
-                "nombre_canon": nombre_canon,
-                "n_adj": n_adj,
-                "importe_total": float(importe_total or 0.0),
-                "updated_at": now,
-            }
-        )
-    return result
-
-
-_INSERT_CHUNK = 150  # filas por sentencia -- acota round-trips contra Turso remoto
-# 150 filas x 6 columnas (la tabla más ancha) = 900 params, bajo el límite
-# conservador de SQLITE_MAX_VARIABLE_NUMBER (999 en builds antiguos).
+_INSERT_CHUNK = 500  # filas por INSERT multi-fila
 
 
 def _insert_batched(conn: Any, sql_prefix: str, columns: int, rows: list[tuple[Any, ...]]) -> None:
     """Inserta ``rows`` en bloques de ``_INSERT_CHUNK`` con VALUES multi-fila.
 
     ``executemany`` emite una sentencia (y por tanto un round-trip de red) por
-    fila contra el backend Turso remoto -- a ~270ms/fila, miles de filas se
-    traducen en minutos de latencia acumulada aunque el cómputo en sí sea
+    fila contra un backend remoto -- a cientos de ms por fila, miles de filas
+    se traducen en minutos de latencia acumulada aunque el cómputo en sí sea
     instantáneo. Agrupar en un único INSERT multi-fila por bloque reduce esos
     round-trips de N a N/``_INSERT_CHUNK``.
     """
@@ -105,27 +43,7 @@ def _insert_batched(conn: Any, sql_prefix: str, columns: int, rows: list[tuple[A
         conn.execute(f"{sql_prefix} VALUES {placeholders}", values)
 
 
-def _persist_top_empresas(conn: Any, rows: list[dict[str, Any]]) -> None:
-    """Reemplaza atómicamente la tabla mat_top_empresas_ccaa."""
-    conn.execute("DELETE FROM mat_top_empresas_ccaa")
-    if rows:
-        _insert_batched(
-            conn,
-            "INSERT INTO mat_top_empresas_ccaa "
-            "(ccaa, rank, nombre_canon, n_adj, importe_total, updated_at)",
-            6,
-            [
-                (
-                    r["ccaa"],
-                    r["rank"],
-                    r["nombre_canon"],
-                    r["n_adj"],
-                    r["importe_total"],
-                    r["updated_at"],
-                )
-                for r in rows
-            ],
-        )
+_N_CLUSTERS = 8  # número de clusters semánticos
 
 
 # ── Clusters semánticos ───────────────────────────────────────────────────────
@@ -222,21 +140,13 @@ def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
 
 
 def run_aggregates_precompute() -> dict[str, Any]:
-    """Ejecuta ambos cálculos y persiste los resultados.
+    """Calcula los clusters semánticos y persiste ``mat_clusters``.
 
     Returns:
-        Dict con ``n_empresas``, ``n_clusters``, ``status``.
+        Dict con ``n_clusters`` y ``status``.
     """
     try:
-        with connect() as conn:
-            empresas = _compute_top_empresas(conn)
-            _persist_top_empresas(conn, empresas)
-            log.info(
-                "aggregates_precompute.top_empresas_done",
-                n=len(empresas),
-            )
-
-        # Cómputo de clusters fuera de la transacción principal
+        # Cómputo de clusters fuera de la transacción de escritura
         with connect_read() as read_conn:
             clustering_data = _load_clustering_data(read_conn)
 
@@ -252,7 +162,6 @@ def run_aggregates_precompute() -> dict[str, Any]:
 
         return {
             "status": "ok",
-            "n_empresas": len(empresas),
             "n_clusters": len(clusters),
         }
     except Exception as exc:

@@ -1,7 +1,7 @@
 """v58: identidad vinculada, sesiones revocables y feedback atribuible.
 
 Revision ID: v58_security_identity_hardening
-Revises: v57_pg_users_is_admin
+Revises: v58_drop_mat_top_empresas_ccaa
 Create Date: 2026-07-26
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 from alembic import op
 
 revision: str = "v58_security_identity_hardening"
-down_revision: str | None = "v57_pg_users_is_admin"
+down_revision: str | None = "v58_drop_mat_top_empresas_ccaa"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | tuple[str, ...] | None = None
 

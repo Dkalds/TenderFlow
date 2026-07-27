@@ -527,28 +527,36 @@ class TechnologyClassifier:
 
 
 def train_from_db(*, db_path: Path | None = None) -> dict[str, Any]:
-    """Carga ``licitaciones`` desde la BD activa (Turso o SQLite local) y
+    """Carga ``licitaciones`` desde la BD activa (Postgres o SQLite local) y
     entrena el ``TechnologyClassifier``.
 
     Persiste el modelo en ``data/models/tech_classifier.pkl`` si tiene al
     menos un tier ML entrenado.
 
-    ``db_path`` se ignora cuando el proyecto usa Turso como backend: en ese
+    ``db_path`` se ignora cuando el proyecto usa Postgres como backend: en ese
     caso se usa ``db.connection.connect_read`` para garantizar que se lee de
     la fuente correcta.
+
+    Antes de ADR-020 la condición era ``is_turso_backend()``, que devolvía
+    ``False`` con Postgres activo ("Postgres tiene precedencia" — ver la
+    función retirada). Con Postgres en producción, esta función caía siempre
+    al fallback ``sqlite3.connect()`` de más abajo, leyendo un fichero SQLite
+    local vacío en vez de los datos reales. Ningún test lo detectó porque
+    ambos caminos se ejercitaban solo mockeando la condición, nunca contra un
+    backend real (ADR-018).
     """
     import pandas as pd
 
-    from db.connection import connect_read, is_turso_backend
+    from db.connection import connect_read, is_postgres_backend
 
-    if db_path is None and is_turso_backend():
-        # Leer desde Turso vía el pool del proyecto
+    if db_path is None and is_postgres_backend():
+        # Leer desde Postgres vía el pool del proyecto
         with connect_read() as conn:
             cols = conn.execute(
                 "SELECT id_externo, titulo, descripcion, cpv, importe, "
                 "fecha_publicacion, tecnologia, raw_keywords FROM licitaciones"
             ).fetchall()
-        # conn.description puede no estar disponible en el cliente libsql;
+        # conn.description puede no estar disponible en todos los drivers;
         # forzamos nombres de columnas explícitos en el mismo orden que la query.
         _col_names = [
             "id_externo",

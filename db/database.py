@@ -1,4 +1,4 @@
-"""Fachada de persistencia SQLite / Turso (libSQL) para licitaciones.
+"""Fachada de persistencia SQLite / Postgres para licitaciones.
 
 Este módulo es el **punto de entrada único** al subsistema de base de datos.
 Re-exporta todos los símbolos públicos de los tres submódulos especializados,
@@ -16,15 +16,14 @@ Submódulos y símbolos reexportados
 nivel:
 
 - ``connect()``             — context manager de escritura (commit/rollback).
-- ``connect_read()``        — context manager de solo lectura; usa réplica
-                              Turso si ``TURSO_REPLICA_URL`` está configurado.
-- ``close_pool()``          — cierra conexiones del hilo actual y vacía el pool.
-- ``get_table_columns()``   — inspección de columnas (PRAGMA + fallback Hrana).
-- ``is_turso_backend()``    — True si la conexión activa es Turso/libSQL cloud.
+- ``connect_read()``        — context manager de solo lectura.
+- ``close_pool()``          — cierra conexiones del hilo actual y el pool Postgres.
+- ``get_table_columns()``   — inspección de columnas (PRAGMA/information_schema).
 - ``now_utc()``             — datetime UTC aware (reemplaza datetime.utcnow()).
 - ``now_utc_iso()``         — ISO 8601 del instante actual en UTC.
 - ``safe_pragma()``         — ejecuta PRAGMA solo si el backend lo soporta.
 - ``set_db_path_override()``— override de ruta para tests (evita reload).
+- ``set_pg_test_url()``     — apunta la suite a un Postgres real (ADR-018).
 
 **db.schema** — DDL y bootstrapping:
 
@@ -78,11 +77,11 @@ from db.connection import (
     connect_read,
     get_table_columns,
     is_postgres_backend,
-    is_turso_backend,
     now_utc,
     now_utc_iso,
     safe_pragma,
     set_db_path_override,
+    set_pg_test_url,
 )
 
 # Re-exportar desde db.schema
@@ -117,11 +116,11 @@ __all__ = [
     "close_pool",
     "get_table_columns",
     "is_postgres_backend",
-    "is_turso_backend",
     "now_utc",
     "now_utc_iso",
     "safe_pragma",
     "set_db_path_override",
+    "set_pg_test_url",
     # schema
     "SCHEMA",
     "init_db",

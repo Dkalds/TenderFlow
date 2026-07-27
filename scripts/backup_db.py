@@ -1,8 +1,7 @@
-"""Backup de la base de datos SQLite local y Turso.
+"""Backup de la base de datos SQLite local.
 
 Uso:
     python scripts/backup_db.py                 # SQLite local
-    python scripts/backup_db.py --turso         # Turso (requiere turso CLI)
     python scripts/backup_db.py --keep 7        # retener últimos N backups (default: 7)
     python scripts/backup_db.py --s3            # subir a S3/R2 después del backup local
 
@@ -58,65 +57,6 @@ def backup_sqlite(db_path: Path, backup_dir: Path) -> Path:
 
     size_kb = gz_dest.stat().st_size // 1024
     print(f"[backup] SQLite → {gz_dest} ({size_kb} KB)")
-    return gz_dest
-
-
-def backup_turso(backup_dir: Path) -> Path | None:
-    """Backup de Turso usando el CLI oficial.
-
-    Requiere: turso CLI instalado y autenticado (``turso auth login``).
-    Lee TURSO_DATABASE_URL del entorno para determinar el nombre de la BD.
-    """
-    import os
-
-    turso_url = os.environ.get("TURSO_DATABASE_URL", "")
-    if not turso_url:
-        print(
-            "[backup] TURSO_DATABASE_URL no configurada — omitiendo backup Turso.", file=sys.stderr
-        )
-        return None
-
-    db_name = turso_url.rstrip("/").split("/")[-1]
-    # Validar que el nombre de BD es un identificador seguro (Semgrep: subprocess-tainted-env)
-    import re
-
-    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}", db_name):
-        print(
-            f"[backup] Nombre de BD Turso inválido: {db_name!r}. Verifica TURSO_DATABASE_URL.",
-            file=sys.stderr,
-        )
-        return None
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    dest = backup_dir / f"turso_{db_name}_{_timestamp()}.db"
-
-    turso_bin = shutil.which("turso") or "turso"
-    try:
-        with open(dest, "w") as stdout_file:
-            # ``db_name`` passed through the strict allowlist above; shell=False.
-            subprocess.run(
-                [turso_bin, "db", "shell", db_name, ".dump"],  # nosemgrep
-                check=True,
-                stdout=stdout_file,
-                text=True,
-            )
-    except FileNotFoundError:
-        print(
-            "[backup] turso CLI no encontrado. Instala: https://docs.turso.tech/cli/introduction",
-            file=sys.stderr,
-        )
-        return None
-    except subprocess.CalledProcessError as exc:
-        print(f"[backup] Error ejecutando turso CLI: {exc}", file=sys.stderr)
-        return None
-
-    # Comprimir
-    gz_dest = Path(str(dest) + ".gz")
-    with open(dest, "rb") as f_in, gzip.open(gz_dest, "wb") as f_out:
-        shutil.copyfileobj(f_in, f_out)
-    dest.unlink()
-
-    size_kb = gz_dest.stat().st_size // 1024
-    print(f"[backup] Turso → {gz_dest} ({size_kb} KB)")
     return gz_dest
 
 
@@ -295,9 +235,6 @@ def prune_old_backups(backup_dir: Path, keep: int) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Backup de la base de datos")
     parser.add_argument(
-        "--turso", action="store_true", help="Hacer backup de Turso además de SQLite local"
-    )
-    parser.add_argument(
         "--keep", type=int, default=7, help="Número de backups a retener localmente (default: 7)"
     )
     parser.add_argument(
@@ -323,8 +260,6 @@ def main() -> int:
 
     if args.dry_run:
         print(f"[dry-run] Backup SQLite: {db_path} → {backup_dir}")
-        if args.turso:
-            print("[dry-run] Backup Turso habilitado")
         if args.s3:
             import os
 
@@ -345,15 +280,6 @@ def main() -> int:
             errors += 1
     else:
         print(f"[backup] SQLite no encontrada en {db_path}", file=sys.stderr)
-
-    if args.turso:
-        try:
-            gz = backup_turso(backup_dir)
-            if gz:
-                uploaded.append(gz)
-        except Exception as exc:
-            print(f"[backup] ERROR backup Turso: {exc}", file=sys.stderr)
-            errors += 1
 
     encrypted_backups: list[Path] = []
     for f in uploaded:

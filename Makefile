@@ -1,4 +1,4 @@
-.PHONY: install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status job-parity install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -150,6 +150,12 @@ migrate-history:  ## Muestra el historial de migraciones Alembic
 # ── Doctor: verifica entorno antes de despliegue ─────────────────────────
 doctor:  ## Verifica entorno antes de despliegue
 	python scripts/doctor.py
+
+status:  ## Regenera docs/STATUS.md desde el código (paridad de jobs, ratchet, endpoints)
+	python scripts/gen_status.py
+
+job-parity:  ## Verifica que todo job del registry tiene plano de ejecución (ADR-012)
+	python scripts/check_job_parity.py
 
 # ── Seed: datos de desarrollo ────────────────────────────────────────────
 seed:  ## Inserta datos de ejemplo en la BD local (licitaciones + usuario demo)

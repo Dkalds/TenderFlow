@@ -93,8 +93,8 @@ def test_connect_read_after_write(tmp_db):
     # Escribir algo — incluye created_at (NOT NULL) para evitar INSERT silencioso
     with db_mod.connect() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO api_keys(name, key_hash, created_at, is_active) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO api_keys(name, key_hash, created_at, is_active) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
             ("test-read", "hash-abc", now_utc_iso(), 1),
         )
 
@@ -103,17 +103,6 @@ def test_connect_read_after_write(tmp_db):
         row = conn.execute("SELECT name FROM api_keys WHERE key_hash = ?", ("hash-abc",)).fetchone()
         assert row is not None
         assert row[0] == "test-read"
-
-
-# ── is_turso_backend ─────────────────────────────────────────────────────────
-
-
-def test_is_turso_backend_false_without_url(tmp_db):
-    """Con _DB_PATH_OVERRIDE activo (tmp_db), is_turso_backend devuelve False."""
-    from db.connection import is_turso_backend
-
-    # tmp_db setea _DB_PATH_OVERRIDE → not _DB_PATH_OVERRIDE es False → retorna False
-    assert is_turso_backend() is False
 
 
 # ── close_pool thread-safety ─────────────────────────────────────────────────
@@ -132,81 +121,6 @@ def test_unit_close_pool_clears_thread_local(tmp_db):
     # Now close_pool should clear it
     db_mod.close_pool()
     assert getattr(conn_mod._local, "conn", None) is None
-
-
-def test_unit_close_pool_nullifies_pool_under_lock(tmp_db):
-    """close_pool() sets _pool to None atomically under _pool_lock."""
-    import queue as _queue_mod
-
-    from db import connection as conn_mod
-
-    # Simulate a pool existing (even in SQLite-local mode for test purposes)
-    fake_pool: _queue_mod.Queue[object] = _queue_mod.Queue(maxsize=4)
-    original_pool = conn_mod._pool
-    original_active = conn_mod._pool_active
-    try:
-        conn_mod._pool = fake_pool  # type: ignore[assignment]
-        conn_mod._pool_active = 0
-
-        conn_mod.close_pool()
-
-        assert conn_mod._pool is None
-        assert conn_mod._pool_active == 0
-    finally:
-        conn_mod._pool = original_pool
-        conn_mod._pool_active = original_active
-
-
-def test_unit_close_pool_drains_queued_connections(tmp_db):
-    """close_pool() drains and closes all connections in the pool."""
-    import queue as _queue_mod
-    from unittest.mock import MagicMock
-
-    from db import connection as conn_mod
-
-    fake_pool: _queue_mod.Queue[object] = _queue_mod.Queue(maxsize=4)
-    mock_conn1 = MagicMock()
-    mock_conn2 = MagicMock()
-    fake_pool.put(mock_conn1)
-    fake_pool.put(mock_conn2)
-
-    original_pool = conn_mod._pool
-    original_active = conn_mod._pool_active
-    try:
-        conn_mod._pool = fake_pool  # type: ignore[assignment]
-        conn_mod._pool_active = 2
-
-        conn_mod.close_pool()
-
-        mock_conn1.close.assert_called_once()
-        mock_conn2.close.assert_called_once()
-        assert conn_mod._pool is None
-        assert conn_mod._pool_active == 0
-    finally:
-        conn_mod._pool = original_pool
-        conn_mod._pool_active = original_active
-
-
-def test_unit_return_conn_closes_orphan_when_pool_none(tmp_db):
-    """_return_conn closes the connection if _pool was already nullified."""
-    from unittest.mock import MagicMock, patch
-
-    from db import connection as conn_mod
-
-    mock_conn = MagicMock()
-
-    original_pool = conn_mod._pool
-    try:
-        conn_mod._pool = None
-
-        # Patch is_turso_backend to return True so _return_conn enters pool path
-        with patch.object(conn_mod, "is_turso_backend", return_value=True):
-            with patch.object(conn_mod.settings, "DB_POOL_SIZE", 4):
-                conn_mod._return_conn(mock_conn)
-
-        mock_conn.close.assert_called_once()
-    finally:
-        conn_mod._pool = original_pool
 
 
 # ── _translate_qmarks (shim qmark -> %s, ADR-016) ────────────────────────────
@@ -405,3 +319,52 @@ def test_get_pg_pool_wraps_connection_error_without_leaking_dsn(monkeypatch):
     msg = str(exc_info.value)
     assert "s3cr3tpw" not in msg
     assert "No se pudo crear el pool Postgres" in msg
+
+
+# ---------------------------------------------------------------------------
+# Shim de paramstyle: escape de `%` literal (ADR-018)
+# ---------------------------------------------------------------------------
+
+
+def test_translate_qmarks_escapes_literal_percent_with_params(monkeypatch):
+    """Un `%` dentro de un literal es dato, no placeholder.
+
+    psycopg interpreta `%` como inicio de placeholder cuando la sentencia lleva
+    parámetros, así que `LIKE 'daily|%'` reventaba con "only '%s', '%b', '%t'
+    are allowed as placeholders". Era el caso de
+    ExtractionRunRepository.load_recent_daily_statuses, que además captura la
+    excepción y devuelve [] — la alerta de fallos consecutivos del feed diario
+    nunca se disparaba en producción.
+    """
+    import db.connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+
+    sql = "SELECT status FROM extraction_runs WHERE notas LIKE 'daily|%' LIMIT ?"
+    out = conn_mod._translate_qmarks(sql, has_params=True)
+
+    assert "'daily|%%'" in out
+    assert out.endswith("LIMIT %s")
+
+
+def test_translate_qmarks_leaves_percent_alone_without_params(monkeypatch):
+    """Sin parámetros psycopg no interpreta `%`: doblarlo corrompería el dato."""
+    import db.connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+
+    sql = "SELECT * FROM t WHERE c LIKE 'x%'"
+    assert conn_mod._translate_qmarks(sql, has_params=False) == sql
+
+
+def test_translate_qmarks_does_not_touch_comments(monkeypatch):
+    """El `%` de un comentario no llega al motor: no debe doblarse."""
+    import db.connection as conn_mod
+
+    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
+
+    sql = "SELECT 1 -- 100% seguro\nWHERE a = ?"
+    out = conn_mod._translate_qmarks(sql, has_params=True)
+
+    assert "-- 100% seguro" in out
+    assert "a = %s" in out

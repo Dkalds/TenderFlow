@@ -7,7 +7,14 @@ en estas funciones para garantizar paridad.
 Secuencia canónica::
 
     ingesta → ML scoring → analytics export → KPI precompute
-            → aggregates precompute → watchlist notify → DLQ retry → anomaly checks
+            → aggregates precompute → watchlist notify → digests
+            → DLQ retry → anomaly checks → retention cleanup
+            → ML retrain → drift checks
+
+``digests``, ``retention_cleanup`` y ``drift_checks`` tienen **cadencia
+propia** (ver ``_run_periodic``): la pipeline corre cada 4h, pero un digest
+diario debe enviarse una vez al día y la retención purgar una vez al día,
+no seis.
 """
 
 from __future__ import annotations
@@ -32,9 +39,51 @@ CANONICAL_STEPS: list[str] = [
     "kpi_precompute",
     "aggregates_precompute",
     "watchlist_notify",
+    "digests",
     "dlq_retry",
     "anomaly_checks",
+    "retention_cleanup",
+    "ml_retrain",
+    "drift_checks",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Pasos periódicos (cadencia propia dentro de la pipeline de 4h)
+# ---------------------------------------------------------------------------
+
+_SEGUNDOS_DIA = 24 * 60 * 60
+_SEGUNDOS_SEMANA = 7 * _SEGUNDOS_DIA
+_SEGUNDOS_MES = 30 * _SEGUNDOS_DIA
+
+
+def _run_periodic(name: str, ttl_seconds: int, fn: Any) -> str:
+    """Ejecuta ``fn`` como mucho una vez cada ``ttl_seconds``.
+
+    La pipeline canónica corre cada 4h, pero algunos pasos tienen cadencia
+    propia (un digest "diario" enviado 6 veces al día no es diario). Se
+    reutiliza ``services.job_locks`` con el periodo como TTL: el lock **no se
+    libera** al terminar bien, así que actúa de ventana temporal — las
+    siguientes pasadas dentro del periodo no lo adquieren y se saltan el paso.
+
+    Si ``fn`` falla se libera el lock para que la siguiente pasada (4h más
+    tarde) reintente, en vez de perder la ventana entera.
+
+    Returns:
+        ``"ok"`` si se ejecutó, ``"skipped"`` si aún no tocaba.
+    """
+    from services.job_locks import acquire, release
+
+    if not acquire(name, ttl_seconds=ttl_seconds, holder="pipeline_runs"):
+        log.debug("pipeline_periodic_skipped", step=name)
+        return "skipped"
+
+    try:
+        fn()
+    except Exception:
+        release(name)
+        raise
+    return "ok"
 
 
 def _run_ml_scoring() -> None:
@@ -88,7 +137,6 @@ def _run_aggregates_precompute() -> dict[str, Any]:
     result = run_aggregates_precompute()
     log.info(
         "pipeline_aggregates_precompute_completed",
-        n_empresas=result.get("n_empresas"),
         n_clusters=result.get("n_clusters"),
     )
     return result
@@ -112,6 +160,68 @@ def _run_watchlist_notify() -> None:
         check_rules_and_notify()
     except Exception as e:
         log.warning("watchlist_rules_alerts_failed", error=str(e))
+
+
+def _run_digests() -> dict[str, str]:
+    """Drena ``pending_digests`` para las frecuencias daily y weekly.
+
+    ``_run_watchlist_notify`` (arriba) **acumula** las coincidencias de las
+    entradas con ``frequency`` daily/weekly en ``pending_digests``, pero hasta
+    ahora nada las vaciaba en producción: ``send_pending_digests`` solo estaba
+    registrado en el plano APScheduler, que no es el plano activo (ADR-012).
+    El resultado era que quien elegía digest diario o semanal no recibía nunca
+    el email. Este paso cierra ese camino.
+    """
+    from scheduler.watchlist_alerts import send_pending_digests
+
+    return {
+        "daily": _run_periodic(
+            "digest_daily", _SEGUNDOS_DIA, lambda: send_pending_digests("daily")
+        ),
+        "weekly": _run_periodic(
+            "digest_weekly", _SEGUNDOS_SEMANA, lambda: send_pending_digests("weekly")
+        ),
+    }
+
+
+def _run_retention_cleanup() -> str:
+    """Purga histórico según la política de retención (una vez al día)."""
+    from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
+
+    return _run_periodic("retention_cleanup", _SEGUNDOS_DIA, run_retention_cleanup)
+
+
+def _run_ml_retrain() -> str:
+    """Re-entrena los modelos de baja/retención (una vez al mes).
+
+    ``train-model.yml`` cubre el clasificador SAP, no estos: hasta ahora
+    ``run_retrain`` solo estaba en el registry del loop, que no es el plano
+    activo, así que los modelos predictivos nunca se re-entrenaban en
+    producción. La activación de la versión nueva sigue siendo decisión
+    humana vía model_registry (no la cambia este paso).
+    """
+    from scheduler.jobs.ml_predicciones import run_retrain
+
+    return _run_periodic("ml_retrain", _SEGUNDOS_MES, run_retrain)
+
+
+def _run_drift_checks() -> str:
+    """Informe de drift + monitor con alertas (una vez por semana).
+
+    Dos piezas complementarias que hasta ahora no corrían en ningún plano
+    activo: ``run_drift_report`` deja el informe de drift de features, y
+    ``drift_monitor.run_once`` calcula PSI + caída de F1 y **notifica** si
+    superan umbral — la única detección de degradación de modelo del sistema.
+    """
+
+    def _both() -> None:
+        from scheduler.drift_monitor import run_once
+        from scheduler.drift_report import run_drift_report
+
+        run_drift_report()
+        run_once()
+
+    return _run_periodic("drift_checks", _SEGUNDOS_SEMANA, _both)
 
 
 def _run_dlq_retry() -> None:
@@ -144,8 +254,12 @@ def _run_post_ingestion_steps() -> dict[str, str]:
         ("kpi_precompute", _run_kpi_precompute),
         ("aggregates_precompute", _run_aggregates_precompute),
         ("watchlist_notify", _run_watchlist_notify),
+        ("digests", _run_digests),
         ("dlq_retry", _run_dlq_retry),
         ("anomaly_checks", _run_anomaly_checks),
+        ("retention_cleanup", _run_retention_cleanup),
+        ("ml_retrain", _run_ml_retrain),
+        ("drift_checks", _run_drift_checks),
     ]
 
     results: dict[str, str] = {}
