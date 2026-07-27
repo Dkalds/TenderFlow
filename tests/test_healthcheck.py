@@ -131,7 +131,7 @@ def test_healthcheck_counts_pending_review_as_covered(tmp_db):
             "INSERT INTO empresa_review_queue "
             "(nombre_original, alias_normalizado, nif, score, status, created_at) "
             "VALUES ('Empresa Candidata S.L.', 'EMPRESA CANDIDATA', "
-            "'B12345678', 0.95, 'pending', ?)",
+            "'B12345678', 0.95, 'pending', ?)",  # pragma: allowlist secret -- NIF sintético
             (now,),
         )
 
