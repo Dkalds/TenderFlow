@@ -1,6 +1,10 @@
 # Diseño de la API REST
 
-Convenciones y contratos de la API REST de licitaciones-sap.
+Convenciones y contratos de la API REST de TenderFlow. Nota: los identificadores
+`type` de RFC 7807 usan el namespace histórico `licitaciones-sap` (ver ejemplo
+más abajo) — es un URI opaco, no una URL real, y no se ha renombrado porque
+requeriría coordinar a los consumidores de la API (ver
+[ADR-015](adr/ADR-015-identidad-tenderflow.md)).
 
 ## Base URL
 
@@ -103,20 +107,34 @@ Respuesta:
 
 ## Rutas disponibles
 
-| Módulo           | Prefijo              | Descripción                          |
-|------------------|----------------------|--------------------------------------|
-| `licitaciones`   | `/licitaciones`      | CRUD y búsqueda de licitaciones      |
-| `webhooks`       | `/webhooks`          | Gestión de webhooks                  |
-| `exports`        | `/exports`           | Exportación asíncrona (jobs)         |
-| `feedback`       | `/feedback`          | Feedback de clasificación ML         |
-| `health`         | `/health`            | Health, liveness, readiness          |
-| `me`             | `/me`                | Perfil y keys del usuario autenticado|
-| `meta`           | `/meta`              | Metadata del sistema                 |
-| `models`         | `/models`            | Versiones de modelos ML              |
-| `search`         | `/search`            | Búsqueda semántica                   |
-| `security`       | `/security`          | TOTP, CSRF, auditoría                |
-| `stream`         | `/stream`            | SSE streaming                        |
-| `watchlist_feed` | `/watchlist`         | Feed de watchlist                    |
+| Módulo             | Prefijo                    | Descripción                                    |
+|--------------------|-----------------------------|-------------------------------------------------|
+| `licitaciones`     | `/licitaciones`             | CRUD, búsqueda y cursor de licitaciones          |
+| `ask`              | `/ask`                      | Asistente RAG — pregunta en NL, resumen, modelos disponibles (SSE) |
+| `analytics`        | `/analytics`                | KPIs, pipeline, tendencias, scoring, forecast    |
+| `competitive`      | `/competitive`              | Bajas anómalas, cuota de mercado, renovaciones   |
+| `empresas`         | `/empresas`                 | Perfil y ficha de empresas licitadoras           |
+| `eventos`          | `/licitaciones/{id}/eventos`, `/eventos` | Eventos/hitos de contratos              |
+| `predicciones`     | `/licitaciones/{id}/prediccion-baja`, `/predicciones/calibracion` | Predicción de baja anómala y calibración |
+| `resoluciones`     | `/resoluciones`             | Resoluciones de recursos contractuales (TACRC)   |
+| `auth`             | `/auth`                     | Login password/OAuth, sesión, logout             |
+| `admin_users`      | `/admin/users`              | Administración de usuarios (scope `admin`)       |
+| `feature_flags`    | `/feature-flags`            | Feature flags                                    |
+| `saved_filters`    | `/saved-filters`            | Filtros de búsqueda guardados                    |
+| `webhooks`         | `/webhooks`                 | Gestión de webhooks                              |
+| `exports`          | `/exports`                  | Exportación asíncrona (jobs)                     |
+| `feedback`         | `/feedback`                 | Feedback de clasificación ML                     |
+| `notifications`    | `/notifications`            | Notificaciones in-app del usuario                |
+| `health`           | `/health`                   | Health, liveness, readiness                      |
+| `me`               | `/me`, `/me/profile`        | Perfil, API keys y export/delete GDPR del usuario autenticado |
+| `meta`             | `/meta`                     | Metadata del sistema (opciones de filtros)       |
+| `models`           | `/models`                   | Versiones de modelos ML, rollback (`admin`)      |
+| `search`           | `/search`                   | Búsqueda full-text (FTS5/tsvector) y semántica    |
+| `security`         | `/security`                 | TOTP, CSRF, auditoría                            |
+| `stream`           | `/stream`                   | SSE streaming genérico                           |
+| `watchlist_feed`   | `/watchlist`                | Feed de watchlist                                |
+| `watchlist_items`  | `/watchlist/items`          | CRUD de items de watchlist                       |
+| `watchlist_rules`  | `/watchlist/rules`          | Reglas de alertas de watchlist                   |
 
 ## Convenciones de naming
 

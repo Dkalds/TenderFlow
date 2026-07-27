@@ -1,4 +1,4 @@
-# SLI/SLO — Licitaciones SAP
+# SLI/SLO — TenderFlow
 
 Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del sistema.
 

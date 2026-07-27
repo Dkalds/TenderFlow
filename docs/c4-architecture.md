@@ -10,22 +10,24 @@ niveles: Contexto, Contenedores y Componentes.
 ```mermaid
 %%{init: {'theme': 'neutral'}}%%
 C4Context
-    title Licitaciones SAP — Contexto
+    title TenderFlow — Contexto
 
     Person(user, "Analista comercial", "Equipo SAP que busca licitaciones del sector público")
     Person(admin, "Administrador", "Gestiona usuarios, modelos y configuración")
 
-    System(licitaciones, "Licitaciones SAP", "Detecta, analiza y alerta sobre licitaciones SAP")
+    System(licitaciones, "TenderFlow", "Detecta, analiza y alerta sobre licitaciones del sector público")
 
-    System_Ext(plataforma, "Plataforma de Contratación del SP", "Fuente oficial CODICE + Atom")
+    System_Ext(fuentes, "Fuentes de contratación (PLACSP, PSCP, TACRC, TED)", "CODICE/UBL + Atom, vía scraper/connectors (ADR-009)")
     System_Ext(oauth, "Google OAuth", "Identidad federada")
+    System_Ext(llm, "Proveedor LLM (NVIDIA NIM / OpenAI / Anthropic)", "Síntesis RAG para /api/v1/ask")
     System_Ext(otlp, "OTLP collector", "Trazas + métricas")
     System_Ext(slack, "Slack / Email", "Canal de alertas")
 
-    Rel(user, licitaciones, "Consulta el frontend web, exporta informes")
+    Rel(user, licitaciones, "Consulta el frontend web, pregunta al asistente, exporta informes")
     Rel(admin, licitaciones, "Administra modelos, flags y usuarios")
-    Rel(licitaciones, plataforma, "Descarga diaria CODICE + Atom live", "HTTPS")
+    Rel(licitaciones, fuentes, "Descarga bulk + feeds en vivo (cada 4h)", "HTTPS")
     Rel(licitaciones, oauth, "Login federado")
+    Rel(licitaciones, llm, "Genera respuestas del asistente RAG", "HTTPS, con presupuesto/circuit-breaker")
     Rel(licitaciones, otlp, "Tracing/metrics", "OTLP/HTTP")
     Rel(licitaciones, slack, "Alertas y digestos", "Webhook")
 ```
@@ -35,31 +37,33 @@ C4Context
 ```mermaid
 %%{init: {'theme': 'neutral'}}%%
 C4Container
-    title Licitaciones SAP — Contenedores
+    title TenderFlow — Contenedores
 
     Person(user, "Analista comercial")
 
-    System_Boundary(s1, "Licitaciones SAP") {
-        Container(web, "Web frontend", "Next.js", "UI analítica y exploración")
-        Container(api, "API REST", "FastAPI", "API pública v1 con auth por API-Key")
-        Container(scraper, "Scraper", "Python", "CODICE bulk + Atom live")
-        Container(sched, "Scheduler", "APScheduler", "KPI precompute, drift, retrain, alertas")
-        ContainerDb(db, "SQLite / Turso libSQL", "Database", "Datos operacionales")
-        ContainerDb(duckdb, "DuckDB (in-mem)", "Engine", "Queries OLAP sobre attach SQLite")
+    System_Boundary(s1, "TenderFlow") {
+        Container(web, "Web frontend", "Next.js 16", "UI analítica y exploración")
+        Container(api, "API REST", "FastAPI", "API pública v1 con auth por API-Key, incl. /ask (RAG)")
+        Container(scraper, "Scraper", "Python", "connectors/: PLACSP bulk+Atom, PSCP, TACRC, TED")
+        Container(sched, "Scheduler", "APScheduler", "KPI/aggregates precompute, drift, retrain, alertas")
+        ContainerDb(db, "Postgres / Supabase", "Database", "Datos operacionales (prod). SQLite/Turso en dev/legacy — ADR-016")
+        ContainerDb(duckdb, "DuckDB (in-mem)", "Engine", "Queries OLAP sobre attach de la BD operacional")
         ContainerDb(parquet, "Parquet snapshots", "FS", "Materializaciones históricas")
         Container(models, "Model registry + artefactos", "joblib", "Versiones, métricas, drift")
     }
 
-    System_Ext(plataforma, "Plataforma SP")
+    System_Ext(fuentes, "Fuentes de contratación")
+    System_Ext(llm, "Proveedor LLM")
     System_Ext(otlp, "OTLP")
 
     Rel(user, web, "HTTPS")
     Rel(user, api, "HTTPS + X-API-Key")
     Rel(web, api, "Consume API REST")
-    Rel(api, db, "SQL")
-    Rel(scraper, plataforma, "HTTPS")
-    Rel(scraper, db, "INSERT/UPDATE")
-    Rel(sched, db, "Pre-compute KPI / drift")
+    Rel(api, db, "SQL (psycopg3 / libsql / sqlite3)")
+    Rel(api, llm, "Síntesis RAG para /ask", "HTTPS")
+    Rel(scraper, fuentes, "HTTPS")
+    Rel(scraper, db, "INSERT/UPDATE (upsert idempotente)")
+    Rel(sched, db, "Pre-compute KPI / agregados / drift")
     Rel(sched, duckdb, "Materialize Parquet")
     Rel(sched, models, "Re-entrena y publica versión")
     Rel(api, models, "Lee versión activa")
@@ -81,7 +85,10 @@ C4Component
         Component(routes_meta, "routes/meta.py", "Router", "Opciones de filtros")
         Component(routes_models, "routes/models.py", "Router", "/v1/models — registry")
         Component(routes_webhooks, "routes/webhooks.py", "Router", "Suscripciones de eventos")
+        Component(routes_ask, "routes/ask.py", "Router", "/ask — RAG, streaming SSE")
         Component(services_lic, "services/licitaciones.py", "Service", "Reglas y agregaciones")
+        Component(services_rag, "services/rag/*.py", "Service", "Chunking + construcción de contexto")
+        Component(llm_client, "llm/client.py", "Client", "Cliente unificado + presupuesto (llm/budget.py)")
         Component(repos, "db/repositories/*.py", "Repo", "Persistencia SQL")
     }
 
@@ -91,8 +98,12 @@ C4Component
     Rel(app, routes_meta, "mount")
     Rel(app, routes_models, "mount")
     Rel(app, routes_webhooks, "mount")
+    Rel(app, routes_ask, "mount")
     Rel(routes_lic, services_lic, "usa")
     Rel(services_lic, repos, "consulta")
+    Rel(routes_ask, services_rag, "usa")
+    Rel(services_rag, repos, "consulta contexto")
+    Rel(routes_ask, llm_client, "usa")
 ```
 
 ## Capas lógicas

@@ -8,40 +8,46 @@ Inteligencia de licitaciones del Sector Público español.
 
 | Módulo | Descripción |
 |--------|-------------|
-| **Scraper** | Descarga ZIPs mensuales (bulk) y feed ATOM en vivo de PLACSP. Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
+| **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (ZIPs mensuales bulk + feed ATOM en vivo), PSCP y TACRC (activos en el cron diario) y TED (implementado, pendiente de cablear). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
 | **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
-| **Base de datos** | SQLite local o Turso cloud (réplica embebida). Upsert idempotente, historial de cambios, DLQ |
-| **Web frontend** | Next.js con interfaz principal para explorar la plataforma y consumir la API |
-| **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo) |
-| **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, alertas por nivel de severidad |
-| **Autenticación** | Password con rate limiting + Google OAuth 2.0, HMAC-signed CSRF state |
-| **Búsqueda semántica** | sentence-transformers + FAISS para similitud de licitaciones (opcional, ver deps) |
+| **Base de datos** | **Postgres/Supabase en producción** ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md), psycopg3 + pool gestionado). SQLite local o Turso cloud como alternativa de desarrollo. Upsert idempotente, historial de cambios, DLQ |
+| **Web frontend** | Next.js 16 con dashboard analítico (KPIs, pipeline, competidores, tendencias), búsqueda y administración |
+| **Asistente RAG (`/api/v1/ask`)** | Preguntas en lenguaje natural sobre licitaciones vía LLM (NVIDIA NIM/DeepSeek por defecto; OpenAI/Anthropic opcionales), streaming SSE, presupuesto/circuit-breaker de gasto |
+| **Analítica competitiva** | Detección de bajas anómalas, análisis de mercado, renovaciones y riesgo de cambio de proveedor (`services/competitive/`) |
+| **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo), alertas de competidores y de concept drift del modelo ML |
+| **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, tracing OTLP opcional, alertas por nivel de severidad, dashboards Grafana |
+| **Autenticación** | Password con rate limiting + Google OAuth 2.0, HMAC-signed CSRF state, TOTP (2FA) |
+| **Búsqueda** | Full-text nativo (FTS5 en SQLite / `tsvector`+GIN en Postgres, vía `db/search_backend.py`) + búsqueda semántica opcional con sentence-transformers |
 
 ---
 
 ## Arquitectura
 
 ```
-┌─────────────────────────┐       ┌──────────────────────┐
-│ PLACSP open data        │──────▶│  scraper/pipeline    │
-│ - ZIPs mensuales (bulk) │       │  - descarga + parse  │
-│ - Feed ATOM en vivo     │       │  - filtro keywords   │
-└─────────────────────────┘       │  - clasificador ML   │
-                                  └──────────┬───────────┘
-                                             │  upsert idempotente
-                                             ▼
-                              ┌──────────────────────────┐
-                              │  SQLite local / Turso    │
-                              │  (historial de cambios)  │
-                              └──────────┬───────────────┘
+┌───────────────────────────────┐       ┌──────────────────────────┐
+│ Fuentes (multi-conector)      │──────▶│  scraper/connectors      │
+│ - PLACSP: ZIPs + ATOM en vivo │       │  - descarga + parse      │
+│ - PSCP, TACRC, TED            │       │  - filtro keywords       │
+└───────────────────────────────┘       │  - clasificador ML       │
+                                        └──────────┬───────────────┘
+                                                   │  upsert idempotente
+                                                   ▼
+                              ┌────────────────────────────────────┐
+                              │  Postgres / Supabase (producción)   │
+                              │  SQLite local / Turso (desarrollo)  │
+                              │  (historial de cambios, DLQ)        │
+                              └──────────┬───────────────────────────┘
                                          │
-                          ┌──────────────┼──────────────┐
-                          ▼              ▼              ▼
-              ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-              │ GitHub       │  │  Next.js UI  │  │ Alertas      │
-              │ Actions cron │  │ KPIs+gráficos│  │ email/SMTP   │
-              └──────────────┘  └──────────────┘  └──────────────┘
+                     ┌───────────────────┼──────────────────┬──────────────┐
+                     ▼                   ▼                  ▼              ▼
+          ┌──────────────┐   ┌────────────────────┐  ┌──────────────┐ ┌────────────┐
+          │ GitHub       │   │  API FastAPI ◀──▶   │  │ Alertas      │ │ LLM /ask   │
+          │ Actions cron │   │  Next.js UI (KPIs)  │  │ email/SMTP   │ │ (RAG, SSE) │
+          └──────────────┘   └────────────────────┘  └──────────────┘ └────────────┘
 ```
+
+Diagramas C4 completos (contexto, contenedores, componentes) en
+[docs/c4-architecture.md](docs/c4-architecture.md).
 
 ---
 
@@ -61,8 +67,10 @@ tenderflow/
 │   ├── i18n.py                   #   Internacionalización (es/en)
 │   ├── schemas.py                #   Esquemas pandera para validación de DataFrames
 │   ├── signing.py                #   Rotación de claves de firma (kid/JWKS)
-│   ├── types.py                  #   TypedDicts y alias compartidos
-│   └── cache_signal.py           #   Señal de invalidación scraper → frontend
+│   ├── csrf.py                   #   HMAC-signed CSRF state
+│   ├── ssrf.py                   #   Validación de URLs salientes (documentos, webhooks)
+│   ├── cache_signal.py           #   Señal de invalidación scraper → frontend
+│   └── ...                       #   cache, crypto, dates, export_safety, identity, password_policy
 ├── services/                     # Capa de dominio (lógica de negocio pura)
 │   ├── licitaciones.py           #   Reglas y agregaciones de licitaciones
 │   ├── normalization.py          #   Normalización de empresas y NIFs
@@ -71,15 +79,21 @@ tenderflow/
 │   ├── analytics_engine.py       #   Motor analítico DuckDB
 │   ├── rate_limiting.py          #   Rate limiting (SQLite backend)
 │   ├── rate_limit_redis.py       #   Rate limiting (Redis backend, opcional)
-│   ├── investigador/             #   Motor de búsqueda FTS5
+│   ├── analytics/                #   Overview, pipeline, scoring, forecast, tendencias, geografía
+│   ├── competitive/               #   Bajas anómalas, análisis de mercado, renovaciones
+│   ├── investigador/             #   Motor de búsqueda FTS5/tsvector
+│   ├── ml/                       #   Modelos de scoring/baja/retención, calibración, drift
+│   ├── rag/                      #   Chunking + construcción de contexto para `/ask`
 │   └── ...                       #   admin, auth, gdpr, health, security, watchlist
 ├── db/                           # Persistencia y acceso a datos
-│   ├── connection.py             #   Conexión SQLite/Turso con pool
+│   ├── connection.py             #   Pool de conexión (Postgres/psycopg3, SQLite o Turso)
 │   ├── database.py               #   Fachada principal (init, connect, upsert)
+│   ├── search_backend.py         #   Abstracción FTS: FTS5 (SQLite) / tsvector+GIN (Postgres)
 │   ├── upsert.py                 #   Upsert idempotente con historial
-│   ├── migrations.py             #   Migraciones DDL caseras (v1–v20)
+│   ├── migrations.py             #   Migraciones DDL caseras (legacy, v1–v32)
 │   ├── repositories/             #   Patrón Repository (licitaciones, adjudicaciones, ...)
-│   ├── alembic/                  #   Migraciones Alembic (DDL versionadas)
+│   ├── alembic/                  #   Migraciones Alembic (sistema canónico, DDL versionadas)
+│   ├── certs/                    #   CA de Supabase para `sslmode=verify-full`
 │   ├── watchlist.py              #   Persistencia de watchlist
 │   ├── dlq.py                    #   Dead Letter Queue
 │   ├── rate_limits.py            #   Rate limiting persistente en BD
@@ -91,12 +105,15 @@ tenderflow/
 │   ├── app.py                    #   Composición de routers + middlewares
 │   ├── auth.py                   #   Autenticación por X-API-Key + scopes
 │   ├── middleware.py             #   CSP/HSTS, rate-limit, cost, access log
-│   └── routes/                   #   Endpoints: licitaciones, meta, models, webhooks, ...
+│   ├── errors.py                 #   Errores RFC 7807 (Problem Details)
+│   └── routes/                   #   licitaciones, ask (RAG), analytics, competitive, search, ...
 ├── scraper/                      # Pipeline de extracción de datos
 │   ├── pipeline.py               #   Orquestador principal (bulk + daily)
+│   ├── connectors/                #   Framework multi-fuente (ADR-009): placsp, pscp, tacrc, ted
 │   ├── bulk_downloader.py        #   Descarga ZIPs mensuales de PLACSP
 │   ├── codice_parser.py          #   Parser ATOM/CODICE (formato UBL)
 │   ├── atom_live.py              #   Feed ATOM en vivo (cada 4h)
+│   ├── document_fetcher.py       #   Descarga de pliegos/documentos anexos
 │   ├── filters.py                #   Detección de keywords por tecnología
 │   ├── ml_classifier.py          #   Clasificador ML TF-IDF + LogisticRegression
 │   ├── ml_training.py            #   Entrenamiento y re-cómputo de ml_proba
@@ -105,11 +122,15 @@ tenderflow/
 ├── scheduler/                    # Tareas programadas
 │   ├── loop.py                   #   Bucle principal del scheduler (Docker)
 │   ├── run_update.py             #   Entry point para cron / GitHub Actions
+│   ├── jobs/                      #   Definición de jobs individuales
 │   ├── kpi_precompute.py         #   Pre-cómputo de KPIs pesados
+│   ├── aggregates_precompute.py  #   Pre-cómputo de agregados analíticos
 │   ├── watchlist_alerts.py       #   Alertas por watchlist (batch optimizado)
+│   ├── competitor_alerts.py      #   Alertas de competidores/renovaciones
 │   ├── drift_monitor.py          #   Detección de concept drift + alertas
 │   ├── anomaly_alerts.py         #   Alertas de anomalías (frescura, cobertura)
 │   ├── healthcheck.py            #   Verificación de frescura de datos
+│   ├── retention.py              #   Retención/purga de datos según política
 │   └── dlq_retry.py              #   Reintento automático de DLQ
 ├── observability/                # Logging, métricas, trazas
 │   ├── logging.py                #   Structlog (JSON/consola), redacción de secretos
@@ -119,20 +140,27 @@ tenderflow/
 │   ├── tracing.py                #   OpenTelemetry (OTLP, opcional)
 │   ├── sentry.py                 #   Sentry (opt-in)
 │   └── grafana/                  #   Dashboards Grafana (RED, SLO)
-├── llm/                          # Integración con LLMs (opcional)
+├── llm/                          # Integración con LLMs (opcional, endpoint /ask)
 │   ├── client.py                 #   Cliente unificado
-│   └── providers/                #   OpenAI, Anthropic
+│   ├── budget.py                 #   Presupuesto/circuit-breaker de gasto
+│   ├── prompts.py                #   Plantillas de prompts RAG
+│   └── providers/                #   NVIDIA NIM (OpenAI-compatible), OpenAI, Anthropic
 ├── scripts/                      # Scripts de mantenimiento
 │   ├── doctor.py                 #   Verificación de entorno
-│   ├── backup_db.py              #   Backup de la BD
+│   ├── backup_db.py              #   Backup de la BD (cifrado GPG/AES-256)
 │   ├── retrain.py                #   Reentrenamiento del modelo ML
 │   ├── rotate_api_keys.py        #   Rotación de API keys
-│   └── ...                       #   dedupe, retention, coverage
+│   ├── migrate_sqlite_to_pg.py   #   ETL de migración a Postgres/Supabase
+│   ├── verify_pg_parity.py       #   Verificación de paridad tras el cutover
+│   ├── check_frontend_invariants.py  # Integridad analítica del frontend (ADR-014)
+│   └── ...                       #   dedupe, retention, coverage, eval_rag_generation
 ├── docs/                         # Documentación técnica
-│   ├── adr/                      #   Architecture Decision Records (ADR-001..007)
-│   ├── runbooks/                 #   Playbooks operativos (backup, DLQ, DR, ...)
+│   ├── adr/                      #   Architecture Decision Records (ADR-001..016)
+│   ├── runbooks/                 #   Playbooks operativos (backup, DLQ, DR, migración, ...)
 │   ├── c4-architecture.md        #   Diagramas C4 (Mermaid)
 │   ├── database-schema.md        #   Esquema ER + tablas + queries
+│   ├── api-design.md             #   Convenciones y contratos de la API REST
+│   ├── testing.md                #   Auto-marking, fixtures, cobertura
 │   ├── sli-slo.md                #   SLIs/SLOs del sistema
 │   └── SECURITY.md               #   Prácticas de seguridad y rotación
 ├── tests/                        # Tests (unit, integration, e2e, property, load)
@@ -140,12 +168,16 @@ tenderflow/
 │   ├── ci.yml                    #   Lint, tipos, tests, pre-commit, audit, docker build
 │   ├── security.yml              #   Semgrep SAST + Trivy + rotation reminder
 │   ├── scrape.yml                #   Bulk mensual (diario 06:00 UTC)
-│   ├── scrape-daily.yml          #   Feed ATOM en vivo (cada 4h)
+│   ├── scrape-daily.yml          #   Feed ATOM/conectores en vivo (cada 4h)
 │   ├── healthcheck.yml           #   Healthcheck (cada 6h)
 │   ├── train-model.yml           #   Entrenamiento programado del clasificador
 │   └── ...                       #   backup, changelog, release, release-sdk
-├── Dockerfile                    # Multi-stage build (deps + runtime)
-├── docker-compose.yml            # web + api + scheduler (+ monitoring opcional)
+├── docker/                       # Dockerfiles (multi-stage) + entrypoints
+│   ├── Dockerfile.api            #   Imagen de la API/scheduler
+│   └── Dockerfile.web            #   Imagen del frontend Next.js
+├── docker-compose.yml            # web + api + scheduler (+ profile monitoring opcional)
+├── docker-compose.override.yml   # Overrides locales (no versionar cambios sensibles)
+├── render.yaml                   # Despliegue declarativo en Render.com (alternativa a Docker propio)
 └── data/                         # BD SQLite + modelos + métricas (gitignored)
 ```
 
@@ -183,20 +215,27 @@ El scheduler ejecuta actualizaciones automáticamente en el mismo stack.
 
 ## Configuración
 
-Crea un archivo `.env` en la raíz del proyecto:
+Copia `.env.example` a `.env` y rellena los valores (`cp .env.example .env`).
+Extracto de las variables más relevantes para empezar:
 
 ```dotenv
 # ── Entorno ─────────────────────────────────────────────
+# Default: prod (fail-safe). Usar dev solo en local.
 ENV=dev
 
 # ── Base de datos (elige una opción) ────────────────────
 
 # Opción A — SQLite local (por defecto, sin configuración adicional)
-# DB_PATH=data/licitaciones.db
+# DB_PATH=data/tenderflow.db
 
-# Opción B — Turso cloud (réplica embebida local + sync automático)
-TURSO_DATABASE_URL=libsql://<tu-db>.turso.io
-TURSO_AUTH_TOKEN=<token-con-permisos-rw>
+# Opción B — Turso cloud (legacy, réplica embebida local + sync automático)
+# TURSO_DATABASE_URL=libsql://<tu-db>.turso.io
+# TURSO_AUTH_TOKEN=<token-con-permisos-rw>
+
+# Opción C — Postgres / Supabase (ADR-016) — PRECEDENCIA sobre TURSO_* y SQLite.
+# Usar el Supavisor session pooler (puerto 5432, IPv4). En prod/staging exigir
+# sslmode=verify-full + DATABASE_SSL_ROOT_CERT (CA de Supabase).
+# DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
 
 # ── OAuth Google (opcional) ──────────────────────────────
 GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com
@@ -209,11 +248,20 @@ OAUTH_ADMIN_EMAILS=admin@empresa.com
 # python -c "import secrets; print(secrets.token_hex(32))"
 SIGNING_KEY=<clave-aleatoria-32-chars>
 
+# ── Asistente RAG /api/v1/ask (opcional) ─────────────────
+# Proveedor por defecto: NVIDIA NIM (API compatible con OpenAI, modelo deepseek).
+# NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Alternativos: OPENAI_API_KEY, ANTHROPIC_API_KEY
+
 # ── Alertas por email (opcional) ─────────────────────────
 ALERT_EMAIL_TO=destino@ejemplo.com
 ALERT_SMTP_USER=remitente@gmail.com
 ALERT_SMTP_PASSWORD=<app-password-gmail>
 ```
+
+`config/settings.py` declara muchas más variables (Redis, rate limiting,
+TOTP/2FA, webhooks, auditoría, CORS, tracing OTLP, tuning de ML/anomalías) con
+defaults seguros — consulta `.env.example` para la lista completa comentada.
 
 > **Importante:** `.env` está en `.gitignore`. Nunca lo commitees.
 
@@ -265,13 +313,15 @@ docker compose up -d
 ```
 
 El `docker-compose.yml` levanta tres servicios principales que comparten el mismo
-volumen de datos: `web` (Next.js), `api` (FastAPI REST) y `scheduler`
-(cron de scraping). Opcionalmente, con `--profile monitoring`, también
-Prometheus y Grafana.
+volumen de datos: `web` (`docker/Dockerfile.web`), `api` (`docker/Dockerfile.api`)
+y `scheduler` (mismo build que `api`, cron de scraping). Opcionalmente, con
+`--profile monitoring`, también Prometheus y Grafana. `docker-compose.override.yml`
+permite overrides locales sin tocar el compose base.
 
 Variables recomendadas para despliegue Docker:
 
 ```dotenv
+DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
 API_HMAC_SECRET=<secreto-hmac-32+-chars>
 FORWARDED_ALLOW_IPS=<ip-o-rango-del-reverse-proxy>
 GF_SECURITY_ADMIN_PASSWORD=<password-admin-grafana>
@@ -279,6 +329,14 @@ GF_SECURITY_ADMIN_PASSWORD=<password-admin-grafana>
 
 Los workflows de `.github/workflows/` siguen disponibles para scraping,
 healthchecks y despliegues automatizados.
+
+### Render.com (PaaS, alternativa a Docker propio)
+
+`render.yaml` define el servicio `tenderflow-api` (build vía
+`docker/Dockerfile.api`) con las variables de entorno de producción declaradas
+como `sync: false` (se configuran en el dashboard de Render, nunca en el repo).
+Conectá el repositorio en Render y usa "Blueprint" para aplicar `render.yaml`
+directamente.
 
 ---
 
@@ -290,22 +348,32 @@ healthchecks y despliegues automatizados.
 |-----------|-------------|
 | Password | Comparación con `hmac.compare_digest`. Rate limiting progresivo (bloqueo `2^n` segundos tras 3 intentos). Timeout de sesión 8h |
 | Google OAuth | HMAC-SHA256 state con nonce + timestamp. Clave de firma independiente (`SIGNING_KEY`) del client secret |
+| TOTP (2FA) | Secretos cifrados con Fernet (`TOTP_ENCRYPTION_KEY`), obligatorio en `ENV=prod` |
 
 ### Protecciones generales
 
 | Área | Medida |
 |------|--------|
-| Inyección SQL | Queries parametrizadas con `?`; columnas derivadas de dataclass fields (constantes internas) |
+| Inyección SQL | Queries parametrizadas (shim qmark→`%s` en Postgres, ver [ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md)); acceso a BD solo vía `db/repositories/*` |
 | XSS | HTML dinámico escapado con `html.escape()` |
-| Validación de URLs | `safe_url()` rechaza esquemas `javascript:` |
+| SSRF | `shared/ssrf.py` valida URLs salientes (documentos, webhooks); `WEBHOOK_ALLOWED_HOSTS`/`DOCUMENT_ALLOWED_HOSTS` como allowlist |
 | XXE (XML) | Parser lxml con `resolve_entities=False`, `no_network=True` |
 | Tamaño de descarga | ZIP ≤ 200 MB, XML ≤ 150 MB por fichero |
 | Serialización ML | `joblib` en lugar de `pickle` para el clasificador |
 | Secretos en logs | Structlog redacta automáticamente tokens, passwords y API keys |
+| Auditoría | Log de eventos encadenado con SHA-256 (`db/audit.py`), verificable con `scripts/verify_audit_chain.py` |
+| TLS a BD | `DATABASE_URL` exige `sslmode=verify-full` en prod/staging contra hosts remotos (`config/settings.py`) |
 
 ### Rotación de credenciales
 
-Si el token de Turso se compromete:
+Matriz completa (qué rotar, cuándo, quién y dónde) en
+[docs/SECURITY.md](docs/SECURITY.md). Resumen de las dos más comunes:
+
+**Postgres/Supabase** (`DATABASE_URL` comprometida):
+1. Supabase Dashboard → Project → Database → **Reset database password**.
+2. Reconstruir `DATABASE_URL` con la nueva password → actualizar `.env` y secrets de GitHub/Render.
+
+**Turso** (legacy, si el token se compromete):
 1. Panel Turso → tu base de datos → **Settings → Tokens** → Revocar
 2. Generar nuevo token → actualizar `.env` y secrets de GitHub
 
@@ -329,21 +397,34 @@ Para añadir una tecnología nueva, añade una entrada al dict `TECHNOLOGY_KEYWO
 ruff check .
 ruff format .
 
-# Tipos
-mypy scraper/ db/ scheduler/ observability/ config/ api/ shared/
+# Tipos (todo el repo)
+mypy .
 
-# Tests con cobertura (umbral: 50%)
+# Tests con cobertura (umbral: 70%, branch coverage activado)
 pytest
 
 # Pre-commit hooks
 pre-commit run --all-files
 
 # Auditoría de dependencias
-pip-audit -r requirements.txt
+pip-audit --strict --desc
 ```
 
-El pipeline de CI incluye además un job de `docker build` que verifica
-que la imagen compila correctamente en cada push.
+O simplemente `make check` (lint + typecheck + tests unitarios) —
+también disponible como slash-command `/check` en Claude Code.
+
+Para cambios en `web/`, además:
+
+```bash
+make web-lint        # ESLint
+make web-typecheck   # tsc --noEmit
+npm --prefix web run test          # Vitest (thresholds en vitest.config.ts)
+make web-test-e2e    # Playwright
+```
+
+El pipeline de CI (`.github/workflows/ci.yml`) incluye además un job de
+`docker build` que verifica que la imagen compila correctamente en cada push,
+y `security.yml` corre Semgrep SAST + Trivy sobre la imagen.
 
 ---
 
@@ -371,5 +452,7 @@ para fines de análisis estadístico e inteligencia comercial.
   se loggean y se omiten sin interrumpir el proceso.
 - Los datos de meses recientes pueden tardar en publicarse
   (el ZIP del mes M suele aparecer a mediados del mes M+1).
-- La búsqueda semántica (FAISS) requiere instalar el extra `[ml]`
-  y genera embeddings en la primera carga (~30 s con GPU, ~5 min sin GPU).
+- La búsqueda de texto (`/search`) usa FTS5/BM25 (SQLite) o `tsvector`+GIN
+  (Postgres) por defecto; `faiss-cpu` se eliminó en Fase 3 (2026-07-04).
+  La similitud semántica basada en embeddings (sentence-transformers) requiere
+  instalar el extra `[ml]` y sigue en uso en clasificación/clustering.

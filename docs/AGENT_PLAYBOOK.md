@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Guía operativa completa para agentes trabajando en `licitaciones-sap`. Complementa [AGENTS.md](../AGENTS.md) (que es el doc breve siempre-en-contexto) con detalle accionable: mapa de paquetes, workflows típicos, patterns por área y glosario del dominio.
+Guía operativa completa para agentes trabajando en TenderFlow (nombre histórico del paquete: `licitaciones-sap`, ver [ADR-015](adr/ADR-015-identidad-tenderflow.md)). Complementa [AGENTS.md](../AGENTS.md) (que es el doc breve siempre-en-contexto) con detalle accionable: mapa de paquetes, workflows típicos, patterns por área y glosario del dominio.
 
 ---
 
