@@ -124,7 +124,7 @@ def test_healthcheck_counts_pending_review_as_covered(tmp_db):
         c.execute(
             "INSERT INTO adjudicaciones "
             "(licitacion_id, nombre, nif, fecha_extraccion) "
-            "VALUES ('LIC-001', 'Empresa Candidata S.L.', 'B12345678', ?)",
+            "VALUES ('LIC-001', 'Empresa Candidata S.L.', 'B12345678', ?)",  # pragma: allowlist secret -- NIF sintético
             (now,),
         )
         c.execute(

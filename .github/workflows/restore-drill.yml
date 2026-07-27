@@ -27,7 +27,7 @@ jobs:
         image: postgres@sha256:da8cf245a60506e50a0a8cbb0f39c559ca622d92490605b67fcadc74ca1ea8e4
         env:
           POSTGRES_USER: tenderflow
-          POSTGRES_PASSWORD: tenderflow # contenedor efimero, no es un secreto
+          POSTGRES_PASSWORD: tenderflow # pragma: allowlist secret -- contenedor efímero, no es un secreto
           POSTGRES_DB: tenderflow_restore_drill
         ports:
           - 5432:5432

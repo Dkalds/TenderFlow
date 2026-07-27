@@ -20,7 +20,7 @@ def _current_totp(secret: str) -> str:
 
 
 def test_totp_confirmation_requires_a_second_factor_before_access(client):
-    password = "Teal47!Orbit"
+    password = "Teal47!Orbit"  # pragma: allowlist secret -- contraseña ficticia de test
     registered = client.post(
         "/api/v1/auth/register",
         json={"email": "mfa@example.com", "password": password},

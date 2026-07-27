@@ -23,7 +23,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        // Sustituye a un skeleton de carga (cambio de estado ocasional):
+        // Sustituye a un skeleton de carga (cambio de estado esporádico):
         // fade-in para evitar que el contenido aparezca de golpe.
         "flex flex-col items-center justify-center gap-3 py-12 text-center animate-in fade-in-0",
         className,
