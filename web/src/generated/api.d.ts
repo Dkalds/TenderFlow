@@ -780,7 +780,7 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Clear session and CSRF cookies.
+         * @description Revoca la sesión server-side y borra sus cookies.
          */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
@@ -841,8 +841,8 @@ export interface paths {
          * @description Redirect URL for Google OAuth with PKCE.
          *
          *     Returns JSON with ``authorization_url`` so the SPA can redirect the user.
-         *     The PKCE verifier is embedded in the signed state parameter to avoid
-         *     cross-domain cookie issues when the frontend and API are on different origins.
+         *     The verifier remains in a short-lived HttpOnly cookie scoped to the OAuth
+         *     callback; the signed state contains no credential material.
          */
         get: operations["google_authorize_api_v1_auth_oauth_google_authorize_get"];
         put?: never;
@@ -891,6 +891,86 @@ export interface paths {
          *     abierto: cualquier email válido puede crear cuenta.
          */
         post: operations["register_api_v1_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Totp
+         * @description Desactiva MFA solo desde una sesión que ya superó MFA.
+         */
+        delete: operations["remove_totp_api_v1_auth_totp_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Totp
+         * @description Confirma el primer código TOTP y entrega recovery codes una sola vez.
+         */
+        post: operations["confirm_totp_api_v1_auth_totp_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Setup Totp
+         * @description Inicia el alta de TOTP; el secreto solo se revela en esta respuesta.
+         */
+        post: operations["setup_totp_api_v1_auth_totp_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Totp Login
+         * @description Eleva una sesión pendiente tras verificar TOTP o un recovery code.
+         */
+        post: operations["verify_totp_login_api_v1_auth_totp_verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1752,8 +1832,8 @@ export interface paths {
          * GDPR — anonimizar y eliminar mis datos
          * @description Anonimiza watchlist/reglas/perfil/notificaciones y revoca credenciales.
          *
-         *     Con API key: revoca la key usada para autenticar esta request (igual que
-         *     antes). Con sesión OAuth: además anonimiza la cuenta (RGPD Art.17 —
+         *     Requiere una sesión de navegador autenticada recientemente; una API key
+         *     no puede ejecutar la operación.  Anonimiza la cuenta (RGPD Art.17 —
          *     ``db.users.anonymize_user``), revoca todas las sesiones activas y
          *     desactiva todas las API keys que el usuario tuviera creadas.
          */
@@ -2397,6 +2477,31 @@ export interface components {
             nif?: string | null;
             /** Nombre */
             nombre: string;
+        };
+        /**
+         * AdminUserOut
+         * @description Vista segura de usuario para administración; excluye credenciales.
+         */
+        AdminUserOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Deactivated At */
+            deactivated_at?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Is Admin
+             * @default false
+             */
+            is_admin: boolean;
+            /** Last Access */
+            last_access?: string | null;
+            /** Oauth Provider */
+            oauth_provider?: string | null;
         };
         /** AlertItem */
         AlertItem: {
@@ -3150,6 +3255,17 @@ export interface components {
         DeactivateBody: {
             /** Action */
             action: string;
+        };
+        /**
+         * DeleteMyDataRequest
+         * @description Explicit confirmation prevents a forged or accidental destructive call.
+         */
+        DeleteMyDataRequest: {
+            /**
+             * Confirmation
+             * @constant
+             */
+            confirmation: "DELETE";
         };
         /**
          * EdgeDetailResult
@@ -4853,6 +4969,11 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /** TotpCodeRequest */
+        TotpCodeRequest: {
+            /** Code */
+            code: string;
+        };
         /**
          * TreemapItem
          * @description Single cell in the organo → tipo_contrato treemap breakdown.
@@ -5049,6 +5170,11 @@ export interface components {
              * @default false
              */
             is_admin: boolean;
+            /**
+             * Mfa Required
+             * @default false
+             */
+            mfa_required: boolean;
             /** User Id */
             user_id: number;
         };
@@ -5271,7 +5397,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -5310,7 +5438,9 @@ export interface operations {
                 include_deactivated?: boolean;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -5324,9 +5454,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["AdminUserOut"][];
                 };
             };
             /** @description Validation Error */
@@ -5343,7 +5471,9 @@ export interface operations {
     admin_get_user_api_v1_admin_users__user_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 user_id: number;
             };
@@ -5359,9 +5489,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AdminUserOut"];
                 };
             };
             /** @description Validation Error */
@@ -5378,7 +5506,9 @@ export interface operations {
     admin_set_admin_api_v1_admin_users__user_id__admin_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 user_id: number;
             };
@@ -5417,7 +5547,9 @@ export interface operations {
     admin_deactivate_user_api_v1_admin_users__user_id__deactivate_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 user_id: number;
             };
@@ -6602,7 +6734,9 @@ export interface operations {
     ask_question_api_v1_ask_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -6656,7 +6790,9 @@ export interface operations {
     list_ask_models_api_v1_ask_models_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -6740,9 +6876,13 @@ export interface operations {
     logout_api_v1_auth_logout_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6757,12 +6897,23 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     logout_all_api_v1_auth_logout_all_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -6853,7 +7004,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oauth_pkce?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6910,6 +7063,154 @@ export interface operations {
             };
         };
     };
+    remove_totp_api_v1_auth_totp_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_totp_api_v1_auth_totp_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_totp_api_v1_auth_totp_setup_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_totp_login_api_v1_auth_totp_verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_bajas_api_v1_competitive_bajas_get: {
         parameters: {
             query?: {
@@ -6920,7 +7221,9 @@ export interface operations {
                 ccaa?: string | null;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -6956,7 +7259,9 @@ export interface operations {
                 organo?: string | null;
                 cpv?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -6994,7 +7299,9 @@ export interface operations {
                 desde?: string | null;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7041,7 +7348,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 empresa_id: number;
             };
@@ -7083,7 +7392,9 @@ export interface operations {
                 tecnologia?: string | null;
                 importe_min?: number | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 empresa_id: number;
             };
@@ -7119,7 +7430,9 @@ export interface operations {
                 segment_by?: string;
                 min_contratos?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7162,7 +7475,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7199,7 +7514,9 @@ export interface operations {
                 /** @description Tecnología(s) separadas por comas (filtro global) */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7232,7 +7549,9 @@ export interface operations {
     get_watchlist_api_v1_competitive_watchlist_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7265,7 +7584,9 @@ export interface operations {
     post_watchlist_api_v1_competitive_watchlist_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7302,7 +7623,9 @@ export interface operations {
     delete_watchlist_api_v1_competitive_watchlist__empresa_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 empresa_id: number;
             };
@@ -7342,7 +7665,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7377,7 +7702,9 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7410,7 +7737,9 @@ export interface operations {
     resolve_review_api_v1_empresas_reviews__review_id__post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 review_id: number;
             };
@@ -7456,7 +7785,9 @@ export interface operations {
     empresas_stats_api_v1_empresas_stats_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7489,7 +7820,9 @@ export interface operations {
     get_empresa_api_v1_empresas__empresa_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 empresa_id: number;
             };
@@ -7536,7 +7869,9 @@ export interface operations {
                 dias?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7730,7 +8065,9 @@ export interface operations {
     get_feature_flags_api_v1_feature_flags_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7761,7 +8098,9 @@ export interface operations {
     set_feature_flags_api_v1_feature_flags_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7800,6 +8139,7 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
+                "X-CSRF-Token"?: string | null;
             };
             path?: never;
             cookie?: {
@@ -7840,7 +8180,9 @@ export interface operations {
     feedback_model_info_api_v1_feedback_model_info_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7884,7 +8226,9 @@ export interface operations {
                 strategy?: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -7924,7 +8268,9 @@ export interface operations {
     feedback_stats_api_v1_feedback_stats_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8049,7 +8395,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8175,7 +8523,9 @@ export interface operations {
     search_licitaciones_api_v1_licitaciones_search_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8215,7 +8565,9 @@ export interface operations {
     licitaciones_stream_api_v1_licitaciones_stream_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8246,7 +8598,9 @@ export interface operations {
     get_licitacion_api_v1_licitaciones__id_externo__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
@@ -8300,7 +8654,9 @@ export interface operations {
     get_documentos_api_v1_licitaciones__id_externo__documentos_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
@@ -8398,7 +8754,9 @@ export interface operations {
     resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
@@ -8508,7 +8866,9 @@ export interface operations {
     get_timeline_api_v1_licitaciones__licitacion_id__eventos_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 licitacion_id: string;
             };
@@ -8550,7 +8910,9 @@ export interface operations {
     get_prediccion_baja_api_v1_licitaciones__licitacion_id__prediccion_baja_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 licitacion_id: string;
             };
@@ -8592,13 +8954,19 @@ export interface operations {
     delete_my_data_api_v1_me_delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteMyDataRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -8625,7 +8993,9 @@ export interface operations {
     export_my_data_api_v1_me_data_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8657,7 +9027,9 @@ export interface operations {
     list_my_keys_api_v1_me_keys_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8737,7 +9109,9 @@ export interface operations {
     get_profile_api_v1_me_profile_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8768,7 +9142,9 @@ export interface operations {
     put_profile_api_v1_me_profile_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8805,7 +9181,9 @@ export interface operations {
     delete_profile_api_v1_me_profile_delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8838,7 +9216,9 @@ export interface operations {
     get_filter_options_api_v1_meta_filters_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8878,7 +9258,9 @@ export interface operations {
     get_last_extraction_api_v1_meta_last_extraction_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9020,7 +9402,9 @@ export interface operations {
     get_notifications_api_v1_notifications_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9051,7 +9435,9 @@ export interface operations {
     post_mark_alerts_read_api_v1_notifications_alerts_read_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9088,7 +9474,9 @@ export interface operations {
     post_mark_read_api_v1_notifications_read_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9125,7 +9513,9 @@ export interface operations {
     get_calibracion_baja_api_v1_predicciones_calibracion_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9166,7 +9556,9 @@ export interface operations {
                 licitacion_id?: string | null;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9199,7 +9591,9 @@ export interface operations {
     get_saved_filters_api_v1_saved_filters_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9232,7 +9626,9 @@ export interface operations {
     post_saved_filter_api_v1_saved_filters_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9269,7 +9665,9 @@ export interface operations {
     delete_saved_filter_route_api_v1_saved_filters__filter_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 filter_id: number;
             };
@@ -9304,7 +9702,9 @@ export interface operations {
     semantic_search_api_v1_search_semantic_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9408,7 +9808,9 @@ export interface operations {
     get_items_api_v1_watchlist_items_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9443,7 +9845,9 @@ export interface operations {
     post_item_api_v1_watchlist_items_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9480,7 +9884,9 @@ export interface operations {
     delete_item_api_v1_watchlist_items__id_externo__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
@@ -9511,7 +9917,9 @@ export interface operations {
     get_rules_api_v1_watchlist_rules_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9544,7 +9952,9 @@ export interface operations {
     post_rule_api_v1_watchlist_rules_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9581,7 +9991,9 @@ export interface operations {
     preview_matches_api_v1_watchlist_rules_preview_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9618,7 +10030,9 @@ export interface operations {
     put_rule_api_v1_watchlist_rules__rule_id__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 rule_id: number;
             };
@@ -9657,7 +10071,9 @@ export interface operations {
     delete_rule_route_api_v1_watchlist_rules__rule_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 rule_id: number;
             };
@@ -9694,7 +10110,9 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 rule_id: number;
             };
@@ -9729,7 +10147,9 @@ export interface operations {
     list_all_api_v1_webhooks_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9771,6 +10191,7 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
+                "X-CSRF-Token"?: string | null;
             };
             path?: never;
             cookie?: {
@@ -9827,7 +10248,9 @@ export interface operations {
     get_one_api_v1_webhooks__webhook_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 webhook_id: number;
             };
@@ -9876,7 +10299,9 @@ export interface operations {
     delete_api_v1_webhooks__webhook_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 webhook_id: number;
             };
@@ -9928,7 +10353,9 @@ export interface operations {
     update_api_v1_webhooks__webhook_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 webhook_id: number;
             };
@@ -9990,7 +10417,9 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 webhook_id: number;
             };
@@ -10039,7 +10468,9 @@ export interface operations {
     ping_api_v1_webhooks__webhook_id__ping_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 webhook_id: number;
             };

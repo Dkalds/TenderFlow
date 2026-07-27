@@ -94,6 +94,24 @@ class TestStreamSSE:
             )
         assert resp.status_code == 200
 
+    @pytest.mark.parametrize("last_event_id", ["NaN", "inf", "-inf"])
+    def test_stream_non_finite_last_event_id_falls_back(self, stream_client, last_event_id):
+        """Valores no finitos nunca llegan al generador SSE."""
+        seen: dict[str, float] = {}
+
+        async def _capture_gen(request, event_id, batch):
+            seen["event_id"] = event_id
+            yield 'event: close\ndata: {"reason": "test"}\n\n'
+
+        with patch("api.routes.stream._event_generator", _capture_gen):
+            resp = stream_client.get(
+                "/api/v1/licitaciones/stream",
+                headers={"Last-Event-ID": last_event_id},
+            )
+
+        assert resp.status_code == 200
+        assert seen["event_id"] == 0.0
+
     def test_stream_batch_param_respected(self, stream_client):
         """?batch= es aceptado sin error."""
         with _patch_fast_stream():

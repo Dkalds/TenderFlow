@@ -52,7 +52,7 @@ def is_enabled(name: str, user_email: str | None = None) -> bool:
     if pct > 0 and user_email:
         import hashlib
 
-        digest = int(hashlib.md5(f"{name}:{user_email}".encode()).hexdigest(), 16)  # noqa: S324
+        digest = int(hashlib.sha256(f"{name}:{user_email}".encode()).hexdigest(), 16)
         return (digest % 100) < pct
 
     return pct >= 100

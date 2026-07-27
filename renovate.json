@@ -15,6 +15,7 @@
   "packageRules": [
     {
       "groupName": "all non-major (minor + patch)",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["pip-compile", "pip_requirements", "github-actions", "dockerfile"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
@@ -22,6 +23,7 @@
     },
     {
       "groupName": "all major updates",
+      "minimumReleaseAge": "7 days",
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "prPriority": -1,
@@ -29,6 +31,7 @@
     },
     {
       "groupName": "Python ML & Data",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackageNames": [
         "scikit-learn",
@@ -42,6 +45,7 @@
     },
     {
       "groupName": "FastAPI ecosystem",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackageNames": [
         "fastapi",
@@ -54,6 +58,7 @@
     },
     {
       "groupName": "Data & analytics",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackageNames": [
         "plotly",
@@ -64,6 +69,7 @@
     },
     {
       "groupName": "Observability",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackageNames": [
         "opentelemetry-sdk",
@@ -75,6 +81,7 @@
     },
     {
       "groupName": "Security & auth",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackageNames": [
         "argon2-cffi",
@@ -86,17 +93,20 @@
     },
     {
       "groupName": "Dev & CI tools",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["pip-compile", "pip_requirements"],
       "matchPackagePatterns": ["^pytest", "^bandit", "^ruff", "^mypy"],
       "automerge": true
     },
     {
       "groupName": "GitHub Actions",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["github-actions"],
       "automerge": true
     },
     {
       "groupName": "Docker base images",
+      "minimumReleaseAge": "7 days",
       "matchManagers": ["dockerfile"],
       "automerge": false
     }

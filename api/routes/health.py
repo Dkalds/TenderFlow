@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from services.health import check_db
+from shared.outbound_http import pinned_https_request
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -70,7 +71,6 @@ def _check_redis() -> str:
             return "unconfigured"
 
         import urllib.parse
-        import urllib.request
 
         parsed = urllib.parse.urlparse(redis_url)
         host = parsed.hostname or ""
@@ -80,15 +80,15 @@ def _check_redis() -> str:
             # Prioridad: variable REDIS_REST_TOKEN; si no, la contraseña de la URL.
             token = getattr(settings, "REDIS_REST_TOKEN", "") or parsed.password or ""
             rest_url = f"https://{host}/PING"
-            # Garantizamos esquema https:// antes de abrir la URL (S310).
-            if not rest_url.startswith("https://"):
-                return "degraded"
-            req = urllib.request.Request(  # noqa: S310
+            with pinned_https_request(
+                "GET",
                 rest_url,
                 headers={"Authorization": f"Bearer {token}"},
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-                body = resp.read().decode()
+                timeout_seconds=5,
+                allowed_hosts=frozenset({host}),
+            ) as response:
+                response.raise_for_status()
+                body = b"".join(response.iter_content()).decode()
                 # La REST API devuelve {"result":"PONG"}
                 if "PONG" in body:
                     return "ok"

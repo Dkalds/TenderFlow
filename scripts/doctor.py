@@ -200,16 +200,23 @@ def check_redis() -> bool:
         return True
     try:
         import urllib.parse
-        import urllib.request
+
+        from shared.outbound_http import pinned_https_request
 
         parsed = urllib.parse.urlparse(redis_url)
         host = parsed.hostname or ""
         if host.endswith(".upstash.io"):
             token = parsed.password or ""
             url = f"https://{host}/PING"
-            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})  # noqa: S310
-            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-                body = resp.read().decode()
+            with pinned_https_request(
+                "GET",
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout_seconds=5,
+                allowed_hosts=frozenset({host}),
+            ) as response:
+                response.raise_for_status()
+                body = b"".join(response.iter_content()).decode()
             if "PONG" in body:
                 _ok(f"Redis (Upstash) responde en {host}")
                 return True

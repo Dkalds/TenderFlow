@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from unittest.mock import patch
 
 import pytest
 
@@ -59,3 +60,15 @@ def test_load_pin_detects_tampered_model(tmp_path, monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="ML_MODEL_SHA256"):
         SAPClassifier.load(model_path)
+
+
+def test_ensure_downloaded_rejects_non_github_repository(tmp_path) -> None:
+    """El repositorio no puede inyectar rutas ni consultas en la GitHub API."""
+    with patch("scraper.ml_classifier.pinned_https_request") as request:
+        downloaded = SAPClassifier.ensure_downloaded(
+            path=tmp_path / "model.pkl",
+            repo="Dkalds/TenderFlow?redirect=https://internal.example",
+        )
+
+    assert downloaded is False
+    request.assert_not_called()

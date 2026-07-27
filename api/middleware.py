@@ -410,7 +410,7 @@ class ETagMiddleware(BaseHTTPMiddleware):
                     media_type=response.media_type,
                 )
 
-        etag = 'W/"' + hashlib.sha1(body).hexdigest()[:24] + '"'  # noqa: S324 - sha1 for ETag only
+        etag = 'W/"' + hashlib.sha256(body).hexdigest()[:24] + '"'
         if_none_match = request.headers.get("if-none-match", "")
         # RFC 7232: If-None-Match can contain multiple ETags separated by commas
         if if_none_match and etag in {t.strip() for t in if_none_match.split(",")}:

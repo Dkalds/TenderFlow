@@ -36,6 +36,7 @@ Uso:
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -50,6 +51,7 @@ from scraper.ml_pipeline import (
     _make_pipeline_with_embeddings,
     _tune_pipeline,
 )
+from shared.outbound_http import pinned_https_request
 
 if TYPE_CHECKING:
     import numpy as np
@@ -60,6 +62,7 @@ log = get_logger(__name__)
 
 # Ruta del modelo serializado (formato joblib, extensión .pkl por compatibilidad)
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pkl"
+_GITHUB_REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
 # Número mínimo de ejemplos para entrenar
 MIN_TRAIN_SAMPLES = 50
@@ -669,12 +672,14 @@ class SAPClassifier:
         """
         import json
         import os
-        import urllib.request
-
         target = path or _MODEL_PATH
         if target.exists():
             log.info("ml_classifier.model_already_local", path=str(target))
             return True
+
+        if not _GITHUB_REPO_RE.fullmatch(repo):
+            log.warning("ml_classifier.invalid_release_repository", repository=repo)
+            return False
 
         github_token = os.environ.get("GITHUB_TOKEN", "")
         auth_header = {"Authorization": f"Bearer {github_token}"} if github_token else {}
@@ -682,24 +687,37 @@ class SAPClassifier:
         # Obtener la URL del asset desde la GitHub API
         api_url = f"https://api.github.com/repos/{repo}/releases/latest"
         try:
-            req = urllib.request.Request(  # noqa: S310
+            with pinned_https_request(
+                "GET",
                 api_url,
                 headers={
                     "Accept": "application/vnd.github+json",
                     "User-Agent": "tenderflow",
                     **auth_header,
                 },
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
-                release = json.loads(resp.read())
+                timeout_seconds=15,
+                allowed_hosts=frozenset({"api.github.com"}),
+            ) as response:
+                response.raise_for_status()
+                release = json.loads(b"".join(response.iter_content()))
         except Exception as e:
             log.warning("ml_classifier.release_fetch_failed", error=str(e))
             return False
 
-        asset_id = None
-        for asset in release.get("assets", []):
-            if asset["name"] == asset_name:
-                asset_id = asset["id"]
+        if not isinstance(release, dict):
+            log.warning("ml_classifier.invalid_release_response")
+            return False
+        assets = release.get("assets", [])
+        if not isinstance(assets, list):
+            log.warning("ml_classifier.invalid_release_assets")
+            return False
+
+        asset_id: int | None = None
+        for asset in assets:
+            if isinstance(asset, dict) and asset.get("name") == asset_name:
+                candidate = asset.get("id")
+                if isinstance(candidate, int) and candidate > 0:
+                    asset_id = candidate
                 break
 
         if not asset_id:
@@ -713,16 +731,19 @@ class SAPClassifier:
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
             log.info("ml_classifier.downloading_model", asset_id=asset_id, dest=str(target))
-            dl_req = urllib.request.Request(  # noqa: S310
+            with pinned_https_request(
+                "GET",
                 download_url,
                 headers={
                     "Accept": "application/octet-stream",
                     "User-Agent": "tenderflow",
                     **auth_header,
                 },
-            )
-            with urllib.request.urlopen(dl_req, timeout=60) as resp:  # noqa: S310
-                target.write_bytes(resp.read())
+                timeout_seconds=60,
+                allowed_hosts=frozenset({"api.github.com"}),
+            ) as response:
+                response.raise_for_status()
+                target.write_bytes(b"".join(response.iter_content()))
             # Verificar el pin out-of-band si está configurado: no confiar en un
             # modelo descargado cuyo hash no coincide con ML_MODEL_SHA256.
             pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()

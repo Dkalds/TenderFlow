@@ -73,20 +73,19 @@ jobs:
 
       - name: Run bandit
         run: |
-          bandit -r api/ db/ scraper/ scheduler/ config/ shared/ \
-            -x tests/ \
+          bandit -c pyproject.toml -r api/ db/ scraper/ scheduler/ config/ shared/ \
             --severity-level medium \
             --confidence-level medium \
-            -f sarif \
-            -o bandit.sarif
+            -f json \
+            -o bandit-report.json
 
-      - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@3b0bd1d116c0bde30213346b22d4f634d96a2fb0 # v3
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         continue-on-error: true
         with:
-          sarif_file: bandit.sarif
-          category: bandit
+          name: bandit-report
+          path: bandit-report.json
 
   pip-audit:
     name: Dependency vulnerability scan

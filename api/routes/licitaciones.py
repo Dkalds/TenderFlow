@@ -166,9 +166,9 @@ def _decode_cursor(cursor: str) -> tuple[str, str]:
 
 
 def _make_etag(data: dict[str, Any]) -> str:
-    """Genera un ETag débil basado en hash MD5 del contenido."""
+    """Genera un ETag débil basado en SHA-256 del contenido."""
     content = str(sorted(data.items()))
-    return f'W/"{hashlib.md5(content.encode()).hexdigest()}"'  # noqa: S324
+    return f'W/"{hashlib.sha256(content.encode()).hexdigest()}"'
 
 
 def _check_etag(request: Request, etag: str) -> bool:

@@ -103,7 +103,7 @@ def _checksum_table(conn: Any, table: str, key_col: str, *, is_pg: bool) -> str:
             )
         rows = cur.fetchall()
         content = "|".join(str(r[0]) for r in rows)
-        return hashlib.md5(content.encode()).hexdigest()  # noqa: S324 -- checksum no criptográfico
+        return hashlib.sha256(content.encode()).hexdigest()
     except Exception as exc:
         return f"error:{exc}"
 

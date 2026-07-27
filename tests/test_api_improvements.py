@@ -182,6 +182,30 @@ class TestHealthEndpoints:
         assert resp.status_code == 200
         assert resp.json()["db"] == "ok"
 
+    def test_upstash_healthcheck_uses_pinned_https_transport(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        from api.routes.health import _check_redis
+        from config import settings
+
+        monkeypatch.setattr(settings, "REDIS_URL", "rediss://:token@tenant.upstash.io:6379/0")
+        monkeypatch.setattr(settings, "REDIS_REST_TOKEN", "")
+        response = MagicMock()
+        response.iter_content.return_value = iter([b'{"result":"PONG"}'])
+
+        with patch("api.routes.health.pinned_https_request") as request:
+            request.return_value.__enter__.return_value = response
+            assert _check_redis() == "ok"
+
+        request.assert_called_once_with(
+            "GET",
+            "https://tenant.upstash.io/PING",
+            headers={"Authorization": "Bearer token"},
+            timeout_seconds=5,
+            allowed_hosts=frozenset({"tenant.upstash.io"}),
+        )
+        response.raise_for_status.assert_called_once()
+
     def test_health_alias_works(self, client):
         resp = client.get("/api/v1/health")
         assert resp.status_code == 200

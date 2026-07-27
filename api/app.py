@@ -251,24 +251,19 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 _cors_origins: list[str]
-if settings.ENV in ("prod", "staging"):
-    if settings.CORS_ALLOWED_ORIGINS:
-        _cors_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
-    else:
-        _cors_origins = []
-        log.warning(
-            "cors_no_origins_configured",
-            env=settings.ENV,
-            hint="CORS_ALLOWED_ORIGINS is empty — no cross-origin requests will be allowed.",
-        )
-else:
-    # dev only — fail-closed: wildcard never reaches prod/staging
-    _cors_origins = ["*"]
+if settings.CORS_ALLOWED_ORIGINS:
+    _cors_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+elif settings.ENV in ("prod", "staging"):
+    _cors_origins = []
     log.warning(
-        "cors_wildcard_enabled",
+        "cors_no_origins_configured",
         env=settings.ENV,
-        hint="CORS allow_origins=['*'] is active because ENV=dev. Set ENV=prod to restrict.",
+        hint="CORS_ALLOWED_ORIGINS is empty — no cross-origin requests will be allowed.",
     )
+else:
+    # Desarrollo local explícito: no usar wildcard con cookies de sesión.
+    _cors_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    log.info("cors_local_origins_enabled", env=settings.ENV, origins=_cors_origins)
 
 app.add_middleware(
     CORSMiddleware,

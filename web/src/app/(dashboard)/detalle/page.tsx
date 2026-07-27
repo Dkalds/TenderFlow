@@ -698,7 +698,11 @@ export default function DetallePage() {
           // startTransition: cerrar este panel desmonta bloques pesados (IA,
           // documentos, eventos) — diferirlo evita bloquear el hilo
           // principal en el propio clic del overlay (INP).
-          onClose={() => startTransition(() => setDetailId(null, { history: "replace" }))}
+          onClose={() => {
+            startTransition(() => {
+              void setDetailId(null, { history: "replace" });
+            });
+          }}
         />
       )}
 
