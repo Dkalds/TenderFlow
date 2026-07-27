@@ -704,3 +704,126 @@ def test_replace_adjudicaciones_idempotent_replay(db):
             "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = 'TEST-001'"
         ).fetchone()[0]
     assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# Escritura batcheada (round trips) — regresión del camino de ingesta
+# ---------------------------------------------------------------------------
+
+
+def test_replace_adjudicaciones_null_nif_not_deduped(db):
+    """Dos adjudicaciones sin NIF con el mismo importe persisten ambas.
+
+    La dedup intra-lote replica `UNIQUE(licitacion_id, nif, importe_adjudicado)`,
+    y SQL trata NULL como distinto de NULL: esa clave nunca conflictúa. Si la
+    dedup en memoria comparase con la igualdad de Python (None == None) se
+    perderían adjudicaciones que la BD sí acepta.
+    """
+    from db.database import connect
+    from db.upsert import replace_adjudicaciones, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    a = _make_adj(nif=None, importe_adjudicado=500.0, nombre="SIN NIF A")
+    b = _make_adj(nif=None, importe_adjudicado=500.0, nombre="SIN NIF B")
+
+    persisted, dropped = replace_adjudicaciones("TEST-001", [a, b])
+
+    assert persisted == 2
+    assert dropped == 0
+    with connect() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = 'TEST-001'"
+        ).fetchone()[0]
+    assert count == 2
+
+
+def test_replace_adjudicaciones_batch_dedups_across_licitaciones(db):
+    """La dedup intra-lote es por licitación, no global: mismo NIF e importe en
+    dos licitaciones distintas son filas legítimas y deben persistir ambas."""
+    from db.database import connect
+    from db.upsert import replace_adjudicaciones_batch, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="LIC-A"), make_licitacion(id_externo="LIC-B")])
+    batch = {
+        "LIC-A": [
+            _make_adj(licitacion_id="LIC-A", nif="B1", importe_adjudicado=100.0),
+            _make_adj(licitacion_id="LIC-A", nif="B1", importe_adjudicado=100.0),  # dup
+        ],
+        "LIC-B": [_make_adj(licitacion_id="LIC-B", nif="B1", importe_adjudicado=100.0)],
+    }
+
+    persisted, dropped, failed = replace_adjudicaciones_batch(batch)
+
+    assert persisted == 2  # el duplicado de LIC-A se descarta, LIC-B sobrevive
+    assert dropped == 0
+    assert failed == 0
+    with connect() as c:
+        count = c.execute("SELECT COUNT(*) FROM adjudicaciones").fetchone()[0]
+    assert count == 2
+
+
+def test_ingesta_no_hace_un_round_trip_por_fila(db, monkeypatch):
+    """Guarda de regresión del hallazgo H1: el camino de ingesta debe agrupar.
+
+    Cuenta las sentencias enviadas a la conexión (cada una es un viaje de red
+    contra una BD remota). Antes de batchear, un lote de 50 licitaciones con 2
+    adjudicaciones cada una costaba >300 viajes; agrupado son unas pocas
+    decenas. El umbral es deliberadamente holgado: sólo detecta la vuelta al
+    patrón fila-a-fila, no fluctuaciones menores.
+    """
+    import db.upsert as up
+
+    n_lic, n_adj = 50, 2
+    stats = {"trips": 0}
+    real_connect = up.connect
+
+    class _Proxy:
+        """Delega en la conexión real contando sentencias.
+
+        Es un proxy y no un monkeypatch de atributos porque
+        ``sqlite3.Connection`` es un tipo C: sus métodos son de sólo lectura.
+        """
+
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, params=None):
+            stats["trips"] += 1
+            return (
+                self._conn.execute(sql, params) if params is not None else self._conn.execute(sql)
+            )
+
+        def executemany(self, sql, seq):
+            stats["trips"] += 1
+            return self._conn.executemany(sql, seq)
+
+        def __getattr__(self, name):
+            return getattr(self._conn, name)
+
+    class _Counting:
+        def __enter__(self):
+            self._cm = real_connect()
+            return _Proxy(self._cm.__enter__())
+
+        def __exit__(self, *a):
+            return self._cm.__exit__(*a)
+
+    monkeypatch.setattr(up, "connect", lambda: _Counting())
+
+    lics = [make_licitacion(id_externo=f"RT-{i}") for i in range(n_lic)]
+    adjs = {
+        f"RT-{i}": [
+            _make_adj(licitacion_id=f"RT-{i}", nif=f"B{i}{j}", importe_adjudicado=100.0 + j)
+            for j in range(n_adj)
+        ]
+        for i in range(n_lic)
+    }
+
+    up.upsert_licitaciones_with_history(lics, source="test")
+    up.replace_adjudicaciones_batch(adjs)
+
+    filas = n_lic + n_lic * n_adj
+    assert stats["trips"] < filas / 4, (
+        f"{stats['trips']} viajes para {filas} filas — el camino de ingesta "
+        "volvió a hacer un round trip por fila (ver H1)"
+    )

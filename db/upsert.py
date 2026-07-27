@@ -213,6 +213,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
             ).fetchall()
             existing_pub.update((row[0], row[1]) for row in rows)
 
+        lic_rows: list[list[Any]] = []
         for lic in batch:
             data = asdict(lic)
             if lic.id_externo in existing_pub:
@@ -221,18 +222,126 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
-            vals = [data[k] for k in _LIC_KEYS]
-            # Column names come from dataclass fields (controlled code) — safe
-            c.execute(
+            lic_rows.append([data[k] for k in _LIC_KEYS])
+
+        # Un único executemany en vez de un execute por fila: contra una BD
+        # remota lo que domina es el round trip, no el coste del INSERT
+        # (psycopg3 agrupa el executemany en un solo viaje). Column names come
+        # from dataclass fields (controlled code) — safe.
+        if lic_rows:
+            c.executemany(
                 f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
                 f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
-                vals,
+                lic_rows,
             )
 
     existing_ids = set(existing_pub)
     nuevas = sum(1 for lic in batch if lic.id_externo not in existing_ids)
     actualizadas = len(batch) - nuevas
     return nuevas, actualizadas
+
+
+def _dedup_adj_rows(
+    licitacion_id: str, adjs: Iterable[Adjudicacion]
+) -> list[tuple[Adjudicacion, list[Any]]]:
+    """Deduplica en memoria por ``UNIQUE(licitacion_id, nif, importe_adjudicado)``.
+
+    ``replace_*`` borra antes todas las filas de la licitación, así que el único
+    conflicto UNIQUE posible es **intra-lote**: deduplicar aquí es equivalente a
+    dejar que lo rechace el motor, y permite contar ``persisted`` sin depender
+    del ``rowcount`` de ``executemany`` (poco fiable entre drivers).
+
+    SQL trata NULL como distinto de NULL, así que una clave con cualquier
+    componente NULL nunca conflictúa: esas filas **no** se deduplican, o se
+    perderían adjudicaciones sin NIF que la BD sí acepta.
+    """
+    seen: set[tuple[Any, ...]] = set()
+    out: list[tuple[Adjudicacion, list[Any]]] = []
+    for adj in adjs:
+        data = asdict(adj)
+        key = (data["licitacion_id"], data["nif"], data["importe_adjudicado"])
+        if None not in key:
+            if key in seen:
+                _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
+                continue
+            seen.add(key)
+        out.append((adj, [data[k] for k in _ADJ_KEYS]))
+    return out
+
+
+def _insert_adj_rowwise(
+    c: Any,
+    licitacion_id: str,
+    rows: list[tuple[Adjudicacion, list[Any]]],
+    failures: list[tuple[BaseException, str]],
+) -> tuple[int, int]:
+    """Inserta fila a fila aislando cada intento. Devuelve ``(persisted, dropped)``.
+
+    Camino lento: sólo se recorre cuando el ``executemany`` del lote falló por
+    una violación real de constraint, para identificar **qué** fila la causó y
+    enrutarla a la DLQ. Un fallo no-constraint se propaga.
+    """
+    persisted = 0
+    dropped = 0
+    for adj, vals in rows:
+        # SAVEPOINT por fila: Postgres invalida la transacción al primer fallo
+        # de constraint, así que el INSERT directo tumbaría el resto del lote.
+        c.execute("SAVEPOINT adj_sp")
+        try:
+            c.execute(
+                f"INSERT INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
+                vals,
+            )
+            c.execute("RELEASE SAVEPOINT adj_sp")
+            persisted += 1
+        except _CONSTRAINT_EXC as exc:
+            c.execute("ROLLBACK TO SAVEPOINT adj_sp")
+            c.execute("RELEASE SAVEPOINT adj_sp")
+            # libsql mapea constraint violations a ValueError; descartamos
+            # cualquier ValueError que no sea de constraint para no
+            # tragarnos bugs genuinos.
+            if "constraint" not in str(exc).lower():
+                raise
+            kind = _classify_integrity_error(exc)
+            if kind == "unique":
+                _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
+            else:
+                dropped += 1
+                upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
+                _log.warning(
+                    "upsert_row_dropped",
+                    table="adjudicaciones",
+                    licitacion_id=licitacion_id,
+                    nif=adj.nif,
+                    constraint=kind,
+                )
+                failures.append((exc, f"{licitacion_id}:{adj.nif}:{adj.importe_adjudicado}"))
+    return persisted, dropped
+
+
+def _try_insert_adj_batch(c: Any, rows: list[list[Any]]) -> bool:
+    """Intenta insertar todas las filas en un solo ``executemany``.
+
+    Devuelve ``True`` si el lote entró limpio. Si alguna fila viola una
+    constraint, deshace el intento (``ROLLBACK TO SAVEPOINT``, que conserva el
+    ``DELETE`` previo) y devuelve ``False`` para que el llamador recorra el
+    camino fila a fila y aísle la culpable.
+    """
+    if not rows:
+        return True
+    c.execute("SAVEPOINT adj_batch")
+    try:
+        c.executemany(
+            f"INSERT INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS}) "
+            "ON CONFLICT DO NOTHING",
+            rows,
+        )
+    except _CONSTRAINT_EXC:
+        c.execute("ROLLBACK TO SAVEPOINT adj_batch")
+        c.execute("RELEASE SAVEPOINT adj_batch")
+        return False
+    c.execute("RELEASE SAVEPOINT adj_batch")
+    return True
 
 
 def replace_adjudicaciones(
@@ -244,65 +353,28 @@ def replace_adjudicaciones(
 ) -> tuple[int, int]:
     """Reemplaza todas las adjudicaciones de una licitación (idempotente).
 
-    Cada fila se inserta dentro de su propio try/except. Una violación real
-    de integridad (CHECK/FK/NOT NULL) NO aborta el resto del batch: la fila
-    se enruta a la DLQ vía record_failure con scope="adjudicacion" y
+    El lote entra con un único ``executemany``. Si alguna fila viola una
+    constraint real (CHECK/FK/NOT NULL) el intento se deshace y se reintenta
+    fila a fila para aislar la culpable: esa fila NO aborta el resto, se enruta
+    a la DLQ vía record_failure con scope="adjudicacion" y
     payload_ref="{licitacion_id}:{nif}:{importe_adjudicado}" para replay
-    dirigido por dlq_retry.py. Un UNIQUE conflict (duplicado intra-XML sobre
-    UNIQUE(licitacion_id, nif, importe_adjudicado)) se ignora como dedup
-    benigno, sin DLQ ni métrica.
+    dirigido por dlq_retry.py. Un duplicado intra-lote sobre
+    UNIQUE(licitacion_id, nif, importe_adjudicado) se deduplica antes de
+    escribir, sin DLQ ni métrica.
 
     Returns:
         Tuple of (persisted, dropped) — persistidas realmente y violaciones
         enrutadas a la DLQ. Los dedups UNIQUE NO se cuentan en dropped
         (son intencionales del patrón DELETE-then-insert).
     """
-    items_list = list(items)
-    persisted = 0
-    dropped = 0
     failures: list[tuple[BaseException, str]] = []
     with connect() as c:
         c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = ?", [licitacion_id])
-        for adj in items_list:
-            data = asdict(adj)
-            vals = [data[k] for k in _ADJ_KEYS]
-            # SAVEPOINT por fila: libsql/SQLite invalidan la transacción al
-            # primer fallo de constraint, por lo que el INSERT directo
-            # tumbaría todo el lote. El SAVEPOINT aísla cada intento.
-            c.execute("SAVEPOINT adj_sp")
-            try:
-                c.execute(
-                    f"INSERT INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
-                    vals,
-                )
-                c.execute("RELEASE SAVEPOINT adj_sp")
-                persisted += 1
-            except _CONSTRAINT_EXC as exc:
-                c.execute("ROLLBACK TO SAVEPOINT adj_sp")
-                c.execute("RELEASE SAVEPOINT adj_sp")
-                # libsql mapea constraint violations a ValueError; descartamos
-                # cualquier ValueError que no sea de constraint para no
-                # tragarnos bugs genuinos.
-                if "constraint" not in str(exc).lower():
-                    raise
-                kind = _classify_integrity_error(exc)
-                if kind == "unique":
-                    _log.debug(
-                        "adj_dedup_unique",
-                        licitacion_id=licitacion_id,
-                        nif=adj.nif,
-                    )
-                else:
-                    dropped += 1
-                    upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
-                    _log.warning(
-                        "upsert_row_dropped",
-                        table="adjudicaciones",
-                        licitacion_id=licitacion_id,
-                        nif=adj.nif,
-                        constraint=kind,
-                    )
-                    failures.append((exc, f"{licitacion_id}:{adj.nif}:{adj.importe_adjudicado}"))
+        rows = _dedup_adj_rows(licitacion_id, items)
+        if _try_insert_adj_batch(c, [vals for _, vals in rows]):
+            persisted, dropped = len(rows), 0
+        else:
+            persisted, dropped = _insert_adj_rowwise(c, licitacion_id, rows, failures)
     # Persistir failures fuera de la transacción del upsert para no
     # interferir con su lock; record_failure es best-effort.
     for caught_exc, payload_ref in failures:
@@ -318,14 +390,16 @@ def replace_adjudicaciones_batch(
 ) -> tuple[int, int, int]:
     """Reemplaza adjudicaciones para múltiples licitaciones en una sola transacción.
 
-    Agrupa todos los DELETEs y INSERTs en un único ``connect()`` context
-    (transacción), reduciendo la contención del lock de SQLite vs. el
-    patrón N+1 de llamar ``replace_adjudicaciones`` por cada licitación.
+    Camino rápido: un ``DELETE`` por chunk de licitaciones y **un solo
+    ``executemany``** para todas las filas del lote, sin importar cuántas
+    licitaciones traiga. Contra una BD remota lo que domina es el round trip,
+    así que el coste pasa de O(filas) viajes a O(1).
 
-    Cada INSERT está envuelto en su propio try/except: una violación de
-    constraint NO aborta el resto del batch. Los UNIQUE se ignoran como
-    dedup; las violaciones reales se enrutan a la DLQ con
-    scope="adjudicacion".
+    Si el lote choca con una constraint real se deshace y se reprocesa
+    licitación a licitación (y dentro de cada una, fila a fila) para aislar la
+    culpable: sólo se paga el coste del camino lento cuando hay algo que
+    aislar. Los duplicados intra-lote se deduplican antes de escribir; las
+    violaciones reales se enrutan a la DLQ con scope="adjudicacion".
 
     Returns:
         Tuple of (persisted, dropped, failed) — inserciones reales,
@@ -338,50 +412,31 @@ def replace_adjudicaciones_batch(
     failed = 0
     failures: list[tuple[BaseException, str]] = []
     with connect() as c:
-        for lic_id, adjs in adj_por_lic.items():
-            try:
-                c.execute(
-                    "DELETE FROM adjudicaciones WHERE licitacion_id = ?",
-                    [lic_id],
-                )
-                for adj in adjs:
-                    data = asdict(adj)
-                    vals = [data[k] for k in _ADJ_KEYS]
-                    # SAVEPOINT por fila: necesario para que un fallo de
-                    # constraint no tumbe el resto del batch en libsql.
-                    c.execute("SAVEPOINT adj_sp")
-                    try:
-                        c.execute(
-                            f"INSERT INTO adjudicaciones ({_ADJ_COLS}) VALUES ({_ADJ_PLACEHOLDERS})",
-                            vals,
-                        )
-                        c.execute("RELEASE SAVEPOINT adj_sp")
-                        persisted += 1
-                    except _CONSTRAINT_EXC as exc:
-                        c.execute("ROLLBACK TO SAVEPOINT adj_sp")
-                        c.execute("RELEASE SAVEPOINT adj_sp")
-                        if "constraint" not in str(exc).lower():
-                            raise
-                        kind = _classify_integrity_error(exc)
-                        if kind == "unique":
-                            _log.debug(
-                                "adj_dedup_unique",
-                                licitacion_id=lic_id,
-                                nif=adj.nif,
-                            )
-                        else:
-                            dropped += 1
-                            upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
-                            _log.warning(
-                                "upsert_row_dropped",
-                                table="adjudicaciones",
-                                licitacion_id=lic_id,
-                                nif=adj.nif,
-                                constraint=kind,
-                            )
-                            failures.append((exc, f"{lic_id}:{adj.nif}:{adj.importe_adjudicado}"))
-            except Exception:
-                failed += 1
+        lic_ids = list(adj_por_lic)
+        # DELETE agrupado, particionado para respetar el límite de parámetros
+        # por sentencia (SQLITE_MAX_VARIABLE_NUMBER).
+        _CHUNK = 500
+        for i in range(0, len(lic_ids), _CHUNK):
+            id_chunk = lic_ids[i : i + _CHUNK]
+            placeholders = ", ".join("?" for _ in id_chunk)
+            c.execute(
+                f"DELETE FROM adjudicaciones WHERE licitacion_id IN ({placeholders})",
+                id_chunk,
+            )
+
+        grupos = [(lic_id, _dedup_adj_rows(lic_id, adjs)) for lic_id, adjs in adj_por_lic.items()]
+        todas = [vals for _, rows in grupos for _, vals in rows]
+
+        if _try_insert_adj_batch(c, todas):
+            persisted = len(todas)
+        else:
+            for lic_id, rows in grupos:
+                try:
+                    p, d = _insert_adj_rowwise(c, lic_id, rows, failures)
+                    persisted += p
+                    dropped += d
+                except Exception:
+                    failed += 1
     # Persistir failures fuera de la transacción del upsert (best-effort).
     for caught_exc, payload_ref in failures:
         record_failure(run_id, fuente, caught_exc, scope="adjudicacion", payload_ref=payload_ref)
@@ -509,6 +564,9 @@ def _upsert_chunk(
         }
         existing_pub: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
 
+        lic_rows: list[list[Any]] = []
+        history_rows: list[tuple[str, str, str, str, str]] = []
+
         for lic in chunk:
             data = asdict(lic)
             if lic.id_externo in existing_pub:
@@ -517,7 +575,7 @@ def _upsert_chunk(
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
-            vals = [data[k] for k in _LIC_KEYS]
+            lic_rows.append([data[k] for k in _LIC_KEYS])
             old_record = existing.get(lic.id_externo)
 
             if old_record is not None:
@@ -531,17 +589,14 @@ def _upsert_chunk(
                     snapshot = json.dumps(old_record, ensure_ascii=False, default=str)
                     if len(snapshot) > 50_000:
                         snapshot = snapshot[:50_000] + "...(truncado)"
-                    c.execute(
-                        "INSERT INTO licitaciones_history "
-                        "(id_externo, captured_at, source, snapshot_json, changed_fields) "
-                        "VALUES (?, ?, ?, ?, ?)",
+                    history_rows.append(
                         (
                             lic.id_externo,
                             now_utc_iso(),
                             source,
                             snapshot,
                             ",".join(changed),
-                        ),
+                        )
                     )
                     result.modified.append(lic.id_externo)
                 else:
@@ -549,10 +604,22 @@ def _upsert_chunk(
             else:
                 result.inserted.append(lic.id_externo)
 
-            c.execute(
+        # Dos executemany (historial + licitaciones) en vez de hasta 2N execute.
+        # El orden importa: el snapshot de historial debe escribirse con el
+        # estado *anterior*, que se leyó arriba en `existing`, así que basta con
+        # que ambos vayan en la misma transacción.
+        if history_rows:
+            c.executemany(
+                "INSERT INTO licitaciones_history "
+                "(id_externo, captured_at, source, snapshot_json, changed_fields) "
+                "VALUES (?, ?, ?, ?, ?)",
+                history_rows,
+            )
+        if lic_rows:
+            c.executemany(
                 f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
                 f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
-                vals,
+                lic_rows,
             )
 
     return result
