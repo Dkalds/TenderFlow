@@ -247,3 +247,77 @@ def test_google_id_token_nonce_must_match_authorization_flow():
     }
     assert validate_google_id_token(claims, audience="client-id", expected_nonce="expected-nonce")
     assert not validate_google_id_token(claims, audience="client-id", expected_nonce="other-nonce")
+
+
+def test_verify_google_id_token_accepts_real_jwks_shape_without_x5c():
+    """Regresión: el JWKS v3 real de Google trae RSA n/e, nunca x5c.
+
+    Antes de este fix, verify_google_id_token exigía "x5c" (cadena de
+    certificados X.509) en cada entrada del JWKS — un campo que el endpoint
+    real de Google jamás incluye — así que ninguna clave pasaba el filtro y
+    *todo* login con Google fallaba con "Google JWKS response had no usable
+    keys" (visto en producción como 'google_id_token_signature_invalid').
+    """
+    import base64
+    import json
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+    import shared.auth_core as auth_core
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_numbers = private_key.public_key().public_numbers()
+
+    def _b64url_uint(value: int) -> str:
+        length = (value.bit_length() + 7) // 8
+        return base64.urlsafe_b64encode(value.to_bytes(length, "big")).rstrip(b"=").decode()
+
+    def _b64url_json(obj: dict) -> str:
+        data = json.dumps(obj, separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    kid = "test-kid-1"
+    encoded_header = _b64url_json({"alg": "RS256", "kid": kid})
+    encoded_claims = _b64url_json(
+        {
+            "iss": "https://accounts.google.com",
+            "aud": "client-id",
+            "sub": "google-subject",
+            "exp": int(time.time()) + 300,
+            "email_verified": True,
+            "nonce": "expected-nonce",
+        }
+    )
+    signing_input = f"{encoded_header}.{encoded_claims}".encode("ascii")
+    signature = private_key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    encoded_signature = base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
+    jwt_token = f"{encoded_header}.{encoded_claims}.{encoded_signature}"
+
+    jwks_response = {
+        "keys": [
+            {
+                "kty": "RSA",
+                "use": "sig",
+                "alg": "RS256",
+                "kid": kid,
+                "n": _b64url_uint(public_numbers.n),
+                "e": _b64url_uint(public_numbers.e),
+                # Deliberadamente sin "x5c": el endpoint v3 real de Google no lo trae.
+            }
+        ]
+    }
+    mock_response = MagicMock()
+    mock_response.json.return_value = jwks_response
+    mock_response.raise_for_status.return_value = None
+
+    auth_core._google_jwks_cache = None
+    try:
+        with patch("httpx.get", return_value=mock_response):
+            result = auth_core.verify_google_id_token(
+                jwt_token, audience="client-id", expected_nonce="expected-nonce"
+            )
+        assert result is not None
+        assert result["sub"] == "google-subject"
+    finally:
+        auth_core._google_jwks_cache = None

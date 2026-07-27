@@ -23,9 +23,12 @@ import hashlib
 import hmac
 import os
 import time
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from observability.logging import get_logger
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
 log = get_logger(__name__)
 
@@ -416,6 +419,21 @@ _GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 _google_jwks_cache: tuple[float, dict[str, dict[str, Any]]] | None = None
 
 
+def _rsa_public_key_from_jwk(jwk: dict[str, Any]) -> RSAPublicKey:
+    """Reconstruye una clave pública RSA a partir de los campos JWK ``n``/``e``.
+
+    El endpoint v3 de Google devuelve JWK Set estándar (RFC 7517): cada clave
+    trae el módulo (``n``) y el exponente (``e``) en base64url, no una cadena
+    de certificados X.509 (``x5c`` es opcional y Google no lo incluye aquí).
+    """
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    def _b64url_uint(value: str) -> int:
+        return int.from_bytes(_base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)), "big")
+
+    return rsa.RSAPublicNumbers(e=_b64url_uint(jwk["e"]), n=_b64url_uint(jwk["n"])).public_key()
+
+
 def verify_google_id_token(
     jwt_token: str, *, audience: str, expected_nonce: str | None = None
 ) -> dict[str, Any] | None:
@@ -429,9 +447,8 @@ def verify_google_id_token(
 
     try:
         import httpx
-        from cryptography import x509
         from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import padding, rsa
+        from cryptography.hazmat.primitives.asymmetric import padding
 
         encoded_header, encoded_claims, encoded_signature = jwt_token.split(".")
         header = json_loads_b64url(encoded_header)
@@ -446,7 +463,7 @@ def verify_google_id_token(
             parsed_keys = {
                 str(item["kid"]): item
                 for item in keys
-                if isinstance(item, dict) and item.get("kid") and item.get("x5c")
+                if isinstance(item, dict) and item.get("kid") and item.get("n") and item.get("e")
             }
             if not parsed_keys:
                 raise ValueError("Google JWKS response had no usable keys")
@@ -461,17 +478,14 @@ def verify_google_id_token(
             refreshed = {
                 str(item["kid"]): item
                 for item in keys
-                if isinstance(item, dict) and item.get("kid") and item.get("x5c")
+                if isinstance(item, dict) and item.get("kid") and item.get("n") and item.get("e")
             }
             _google_jwks_cache = (now + 3600, refreshed)
             jwk = refreshed.get(header["kid"])
             if jwk is None:
                 raise ValueError("Google signing key not found")
 
-        certificate = x509.load_der_x509_certificate(_base64.b64decode(jwk["x5c"][0]))
-        public_key = certificate.public_key()
-        if not isinstance(public_key, rsa.RSAPublicKey):
-            raise ValueError("Google signing certificate is not RSA")
+        public_key = _rsa_public_key_from_jwk(jwk)
         public_key.verify(
             _base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4)),
             f"{encoded_header}.{encoded_claims}".encode("ascii"),
