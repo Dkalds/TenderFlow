@@ -9,6 +9,8 @@ services:
     envVars:
       - key: ENV
         value: prod
+
+      # ── Base de datos ────────────────────────────────────────────────
       # Postgres/Supabase (ADR-016, F3) — tiene precedencia sobre TURSO_* y SQLite.
       # Usar Supavisor session pooler (puerto 5432). TLS: se recomienda
       # ?sslmode=verify-full + DATABASE_SSL_ROOT_CERT (CA de Supabase) para
@@ -23,16 +25,57 @@ services:
         sync: false
       - key: TURSO_AUTH_TOKEN
         sync: false
+
+      # ── Redis (cache compartido + rate limiting) — OBLIGATORIO en prod ──
+      # Formato: redis://[:password@]host[:port][/db]
+      - key: REDIS_URL
+        sync: false
+      # Debe coincidir con --requirepass del servidor Redis. Obligatorio si REDIS_URL está definida.
+      - key: REDIS_PASSWORD
+        sync: false
+
+      # ── OAuth Google (opcional) ─────────────────────────────────────
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: OAUTH_REDIRECT_URI
         sync: false
+      # Si GOOGLE_CLIENT_ID está definido, al menos uno de estos dos es obligatorio.
+      - key: OAUTH_ALLOWED_DOMAINS
+        sync: false
+      - key: OAUTH_ALLOWED_EMAILS
+        sync: false
+      - key: OAUTH_ADMIN_EMAILS
+        sync: false
+
+      # ── Secretos de firma — independientes entre sí, 32+ caracteres ──
+      # Genera cada uno con: python -c "import secrets; print(secrets.token_hex(32))"
       - key: SIGNING_KEY
         sync: false
       - key: API_HMAC_SECRET
         sync: false
+      # Firma de la cadena de auditoría (db/audit.py). Obligatorio en prod;
+      # sin versionado/rotación — configúralo una vez y no lo cambies.
+      - key: AUDIT_HMAC_KEY
+        sync: false
+      # Firma de webhooks salientes. Opcional: cae a SIGNING_KEY si está vacío.
+      - key: WEBHOOK_SIGNING_KEY
+        sync: false
+      # Allowlist de destinos de webhooks salientes (dominios separados por
+      # coma). Sin ella, los webhooks quedan deshabilitados en prod. No uses '*'.
+      - key: WEBHOOK_ALLOWED_HOSTS
+        sync: false
+      # Cifrado de secretos TOTP (2FA). Clave Fernet, no un hex normal:
+      # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: TOTP_ENCRYPTION_KEY
+        sync: false
+
+      # ── Asistente RAG /api/v1/ask (opcional) ─────────────────────────
+      # Proveedor por defecto: NVIDIA NIM. Alternativos: OPENAI_API_KEY, ANTHROPIC_API_KEY.
+      - key: NVIDIA_API_KEY
+        sync: false
+
       - key: CORS_ALLOWED_ORIGINS
         sync: false
       - key: FRONTEND_URL
