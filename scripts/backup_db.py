@@ -93,8 +93,8 @@ def backup_turso(backup_dir: Path) -> Path | None:
     try:
         with open(dest, "w") as stdout_file:
             # ``db_name`` passed through the strict allowlist above; shell=False.
-            subprocess.run(  # nosemgrep
-                [turso_bin, "db", "shell", db_name, ".dump"],
+            subprocess.run(
+                [turso_bin, "db", "shell", db_name, ".dump"],  # nosemgrep
                 check=True,
                 stdout=stdout_file,
                 text=True,
