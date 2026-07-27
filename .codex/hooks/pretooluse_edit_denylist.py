@@ -4,7 +4,9 @@ import sys
 
 try:
     d = json.load(sys.stdin)
-    fp = (d.get("tool_input") or d).get("file_path", "") or (d.get("tool_input") or d).get("new_path", "")
+    fp = (d.get("tool_input") or d).get("file_path", "") or (d.get("tool_input") or d).get(
+        "new_path", ""
+    )
 except Exception:
     fp = ""
 

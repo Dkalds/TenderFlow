@@ -44,7 +44,9 @@ _MAX_FAILURES_BEFORE_DISABLE = 10
 def _allowed_webhook_hosts() -> frozenset[str]:
     from config.settings import settings
 
-    return frozenset(host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip())
+    return frozenset(
+        host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip()
+    )
 
 
 def _get_webhook_master_key() -> str:

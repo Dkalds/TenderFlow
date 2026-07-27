@@ -21,9 +21,7 @@ from services.rate_limiting import get_rate_limiter
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/security", tags=["security"])
-_GITHUB_PARTNER_PUBLIC_KEYS_URL = (
-    "https://api.github.com/meta/public_keys/secret_scanning"
-)
+_GITHUB_PARTNER_PUBLIC_KEYS_URL = "https://api.github.com/meta/public_keys/secret_scanning"
 _github_keys_cache: tuple[float, dict[str, str]] | None = None
 
 
@@ -52,13 +50,17 @@ def _github_public_key(identifier: str) -> str:
 def _verify_github_signature(identifier: str | None, signature: str | None, body: bytes) -> None:
     """Exige y verifica la firma ECDSA P-256 de GitHub Secret Scanning."""
     if not identifier or not signature:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing GitHub signature")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Missing GitHub signature"
+        )
     try:
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import ec
 
         key = serialization.load_pem_public_key(_github_public_key(identifier).encode())
-        if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(key.curve, ec.SECP256R1):
+        if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(
+            key.curve, ec.SECP256R1
+        ):
             raise ValueError("GitHub secret-scanning key must use ECDSA P-256")
         raw_signature = base64.b64decode(signature, validate=True)
         key.verify(raw_signature, body, ec.ECDSA(hashes.SHA256()))
@@ -66,7 +68,9 @@ def _verify_github_signature(identifier: str | None, signature: str | None, body
         raise
     except Exception as exc:
         log.warning("leaked_key_invalid_signature", error=str(exc))
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid GitHub signature") from exc
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid GitHub signature"
+        ) from exc
 
 
 # ── CSP report endpoint ───────────────────────────────────────────────────────

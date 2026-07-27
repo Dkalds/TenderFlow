@@ -386,7 +386,9 @@ async def calendario_ics(
 
     owner = get_user_by_id(ctx.user_id) if ctx.user_id is not None else None
     if owner is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
+        )
     user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
     from db.database import connect_read

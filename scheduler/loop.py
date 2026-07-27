@@ -177,12 +177,14 @@ def _run_job(name: str, fn: Callable[[], Any], *, heavy: bool = False) -> bool:
     if exc_holder:
         _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
         failures = _consecutive_failures[name]
-        log.exception(
+        exc = exc_holder[0]
+        log.error(
             "scheduler_loop_job_failed",
             job=name,
             consecutive_failures=failures,
+            exc_info=(type(exc), exc, exc.__traceback__),
         )
-        notify(AlertLevel.ERROR, f"Scheduler job fallo: {name}", body=str(exc_holder[0]))
+        notify(AlertLevel.ERROR, f"Scheduler job fallo: {name}", body=str(exc))
         scheduler_job_total.labels(job=name, status="error").inc()
         scheduler_job_duration_seconds.labels(job=name).observe(elapsed_s)
         return False

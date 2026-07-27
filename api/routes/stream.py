@@ -162,9 +162,9 @@ async def licitaciones_stream(
     # Soporte para reconexión: Last-Event-ID contiene el timestamp del último evento
     last_event_id_header = request.headers.get("Last-Event-ID", "")
     try:
-        # nosemgrep: python.django.security.nan-injection.nan-injection
-        # The value is rejected immediately below unless it is finite.
-        _ts = float(last_event_id_header) if last_event_id_header else 0.0
+        _ts = (
+            float(last_event_id_header) if last_event_id_header else 0.0
+        )  # nosemgrep: python.django.security.nan-injection.nan-injection -- rejected below unless finite
         # Guard contra NaN/Inf inyectados vía header (Semgrep: nan-injection)
         import math
 

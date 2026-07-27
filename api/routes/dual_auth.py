@@ -49,7 +49,9 @@ async def require_any_auth(
         if request.method.upper() in _UNSAFE_METHODS:
             expected = str(session_user.get("csrf") or "")
             if not x_csrf_token or not hmac.compare_digest(x_csrf_token, expected):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token mismatch")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token mismatch"
+                )
         session_user["auth_method"] = "session"
         session_user["user_key"] = user_key_from_email(
             session_user.get("email"), int(session_user["user_id"])
@@ -71,14 +73,18 @@ async def require_any_auth(
             if user_id is None:
                 if settings.ENV in ("prod", "staging"):
                     log.warning("unbound_api_key_rejected", key_id=record.key_id)
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key not bound")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED, detail="API key not bound"
+                    )
                 # Compatibilidad temporal exclusiva de desarrollo/tests.
                 user_id = record.key_id
                 owner: dict[str, Any] | None = None
             else:
                 owner = get_user_by_id(user_id)
                 if owner is None:
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner inactive")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner inactive"
+                    )
 
             scopes = frozenset(s.strip() for s in record.scopes.split(",") if s.strip())
             required_scope = required_scope_for_request(request.method, request.url.path)
@@ -99,7 +105,8 @@ async def require_any_auth(
                 "api_key_id": record.key_id,
                 "email": email,
                 "display_name": owner.get("display_name") if owner is not None else None,
-                "is_admin": bool(owner and owner.get("is_admin")) and ("*" in scopes or "admin" in scopes),
+                "is_admin": bool(owner and owner.get("is_admin"))
+                and ("*" in scopes or "admin" in scopes),
                 "auth_method": "api_key",
                 "key_hash": key_hash,
                 "scopes": scopes,
@@ -139,7 +146,10 @@ def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
 
         now = datetime.now(UTC)
         authenticated_at = _parse_timestamp(ctx.get("authenticated_at"))
-        if authenticated_at is None or (now - authenticated_at).total_seconds() > settings.SENSITIVE_ACTION_MAX_AGE_SECONDS:
+        if (
+            authenticated_at is None
+            or (now - authenticated_at).total_seconds() > settings.SENSITIVE_ACTION_MAX_AGE_SECONDS
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Reauthenticate before performing this sensitive operation.",
@@ -147,7 +157,10 @@ def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
 
         if ctx.get("mfa_required"):
             verified_at = _parse_timestamp(ctx.get("mfa_verified_at"))
-            if verified_at is None or (now - verified_at).total_seconds() > settings.MFA_STEP_UP_MAX_AGE_SECONDS:
+            if (
+                verified_at is None
+                or (now - verified_at).total_seconds() > settings.MFA_STEP_UP_MAX_AGE_SECONDS
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Verify MFA again before performing this sensitive operation.",

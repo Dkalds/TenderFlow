@@ -84,6 +84,20 @@ class TestBackupEncryption:
         assert backup.exists()
 
 
+class TestTursoBackup:
+    def test_rejects_tainted_database_name_before_subprocess(self, tmp_path, monkeypatch):
+        """El nombre derivado de entorno nunca llega al CLI sin allowlist."""
+        from unittest.mock import patch
+
+        from scripts.backup_db import backup_turso
+
+        monkeypatch.setenv("TURSO_DATABASE_URL", "libsql://tenant.turso.io/prod;rm-rf")
+        with patch("scripts.backup_db.subprocess.run") as run:
+            assert backup_turso(tmp_path) is None
+
+        run.assert_not_called()
+
+
 class TestRetentionCleanup:
     def test_dry_run_no_borra_nada(self, tmp_db):
         """dry_run=False ejecuta pero no aplica — en este caso apply=False."""

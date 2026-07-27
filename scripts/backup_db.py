@@ -92,9 +92,7 @@ def backup_turso(backup_dir: Path) -> Path | None:
     turso_bin = shutil.which("turso") or "turso"
     try:
         with open(dest, "w") as stdout_file:
-            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
-            # ``db_name`` passed through the strict allowlist above; shell=False.
-            subprocess.run(
+            subprocess.run(  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args -- db_name passed through strict allowlist; shell=False
                 [turso_bin, "db", "shell", db_name, ".dump"],
                 check=True,
                 stdout=stdout_file,

@@ -108,9 +108,7 @@ class FeedbackRepository:
     def export_for_user(self, user_id: int, limit: int = 10_000) -> list[dict[str, Any]]:
         """Exporta exclusivamente el feedback atribuible a un usuario."""
         with connect_read() as c:
-            cur = c.execute(
-                "SELECT * FROM ml_feedback WHERE user_id = ? LIMIT ?", (user_id, limit)
-            )
+            cur = c.execute("SELECT * FROM ml_feedback WHERE user_id = ? LIMIT ?", (user_id, limit))
             return rows_to_dicts(cur)
 
     def delete_for_user(self, user_id: int) -> int:

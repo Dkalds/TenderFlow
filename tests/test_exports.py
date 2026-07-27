@@ -118,7 +118,7 @@ def test_generate_excel_records_vacios():
 
 
 def test_spreadsheet_exports_neutralize_formula_cells():
-    records = [{"id_externo": "L1", "titulo": "=HYPERLINK(\"https://evil.example\")"}]
+    records = [{"id_externo": "L1", "titulo": '=HYPERLINK("https://evil.example")'}]
 
     csv_data = generate_csv(records, columns=["id_externo", "titulo"]).decode("utf-8-sig")
     assert "'=HYPERLINK" in csv_data

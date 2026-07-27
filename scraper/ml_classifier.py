@@ -672,6 +672,7 @@ class SAPClassifier:
         """
         import json
         import os
+
         target = path or _MODEL_PATH
         if target.exists():
             log.info("ml_classifier.model_already_local", path=str(target))

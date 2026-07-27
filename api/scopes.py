@@ -49,11 +49,13 @@ def required_scope_for_request(method: str, path: str) -> str:
 
     # Shared operational resources require an admin-capable key in addition to
     # the database role check performed by their endpoints.
-    if normalized_path.startswith((
-        "/api/v1/admin",
-        "/api/v1/security",
-        "/api/v1/webhooks",
-    )):
+    if normalized_path.startswith(
+        (
+            "/api/v1/admin",
+            "/api/v1/security",
+            "/api/v1/webhooks",
+        )
+    ):
         return "admin"
 
     if normalized_path.startswith("/api/v1/ask"):

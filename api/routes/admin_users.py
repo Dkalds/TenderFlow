@@ -75,7 +75,10 @@ def admin_list_users(
     admin: dict[str, Any] = Depends(_require_admin),
 ) -> list[AdminUserOut]:
     """Lista todos los usuarios (solo admin)."""
-    return [_safe_user(user) for user in list_users(limit=limit, include_deactivated=include_deactivated)]
+    return [
+        _safe_user(user)
+        for user in list_users(limit=limit, include_deactivated=include_deactivated)
+    ]
 
 
 @router.get("/{user_id}")

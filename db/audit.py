@@ -53,7 +53,9 @@ def _serialize_audit_chain_write(connection: Any) -> None:
     from db.connection import is_postgres_backend
 
     if is_postgres_backend():
-        connection.execute("SELECT pg_advisory_xact_lock(hashtext('tenderflow.audit_log.chain.v1'))")
+        connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('tenderflow.audit_log.chain.v1'))"
+        )
 
 
 def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:

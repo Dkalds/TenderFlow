@@ -26,5 +26,8 @@ def test_v58_postgres_upgrade_adds_key_ownership_and_scopes(monkeypatch) -> None
     migration.upgrade()
 
     assert "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS user_id INTEGER" in fake_op.statements
-    assert "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS scopes TEXT NOT NULL DEFAULT '*'" in fake_op.statements
+    assert (
+        "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS scopes TEXT NOT NULL DEFAULT '*'"
+        in fake_op.statements
+    )
     assert any("api_keys_user_id_fkey" in statement for statement in fake_op.statements)

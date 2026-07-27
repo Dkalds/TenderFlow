@@ -133,9 +133,7 @@ def test_delete_my_data_rejects_api_key_even_with_explicit_confirmation(client, 
         patch("api.routes.me.revoke_all_api_keys_for_user") as mock_revoke_keys,
         patch("api.routes.me.anonymize_user_data") as mock_anon_data,
     ):
-        resp = client.request(
-            "DELETE", "/api/v1/me", headers=auth, json={"confirmation": "DELETE"}
-        )
+        resp = client.request("DELETE", "/api/v1/me", headers=auth, json={"confirmation": "DELETE"})
     assert resp.status_code == 403, resp.text
     mock_anon_user.assert_not_called()
     mock_revoke_sessions.assert_not_called()

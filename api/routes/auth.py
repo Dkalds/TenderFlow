@@ -528,7 +528,9 @@ async def remove_totp(
 ) -> dict[str, str]:
     """Desactiva MFA solo desde una sesión que ya superó MFA."""
     if user.get("mfa_required") and not user.get("mfa_verified_at"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Verify MFA before disabling it")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Verify MFA before disabling it"
+        )
     from db.totp import delete_totp
 
     delete_totp(int(user["user_id"]))

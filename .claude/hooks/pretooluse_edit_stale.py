@@ -10,10 +10,19 @@ except Exception:
     fp = ""
 
 try:
-    skip = any(x in fp for x in (
-        ".venv", "graphify-out", ".mypy_cache", ".pytest_cache",
-        ".ruff_cache", "__pycache__", "htmlcov", "node_modules",
-    ))
+    skip = any(
+        x in fp
+        for x in (
+            ".venv",
+            "graphify-out",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            "__pycache__",
+            "htmlcov",
+            "node_modules",
+        )
+    )
     ok = fp.endswith(".py") and not skip and os.path.isdir("graphify-out")
     if ok:
         pathlib.Path("graphify-out/.graph_stale").touch()

@@ -156,9 +156,7 @@ def clear_login_attempts(client_key: str, *, bucket: str = "login_fail") -> None
 
 def record_failed_mfa(user_id: int, *, window_seconds: float = 300.0) -> int:
     """Registra un fallo MFA por cuenta, compartido por todas sus sesiones."""
-    return record_failed_login(
-        f"user:{user_id}", bucket="mfa_fail", window_seconds=window_seconds
-    )
+    return record_failed_login(f"user:{user_id}", bucket="mfa_fail", window_seconds=window_seconds)
 
 
 def is_mfa_locked_out(

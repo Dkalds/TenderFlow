@@ -495,7 +495,7 @@ def backfill(start_year: int, start_month: int) -> list[dict[str, Any]]:
                 except Exception:
                     log.exception("backfill_month_error", year=y, month=m)
                     results.append({"year": y, "month": m, "status": "error"})
-            # Nota: las conexiones DB de cada worker se cierran en process_month via finally.
+                # Nota: las conexiones DB de cada worker se cierran en process_month via finally.
                 _resolve_empresas_post_ingestion("placsp_backfill")
         _summarize(results, metrics)
     return results

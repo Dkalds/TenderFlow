@@ -49,7 +49,9 @@ _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 def _allowed_webhook_hosts() -> frozenset[str]:
-    return frozenset(host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip())
+    return frozenset(
+        host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip()
+    )
 
 
 def _validate_webhook_url(url: str) -> str:

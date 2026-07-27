@@ -53,9 +53,11 @@ class TestRunJob:
         from scheduler.loop import _run_job
 
         fn = MagicMock(side_effect=RuntimeError("boom"))
-        with patch("scheduler.loop.log"), patch("scheduler.loop.notify") as mock_notify:
+        with patch("scheduler.loop.log") as mock_log, patch("scheduler.loop.notify") as mock_notify:
             _run_job("test_job", fn)  # should not raise
         mock_notify.assert_called_once()
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["exc_info"][1].args == ("boom",)
 
     def test_heavy_flag_delegates_to_run_heavy_job(self):
         from scheduler.loop import _run_job

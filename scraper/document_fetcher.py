@@ -46,7 +46,9 @@ def _download_bytes(uri: str) -> tuple[bytes, str | None]:
     streaming, por si el header miente).
     """
     allowed_hosts = (
-        frozenset(host.strip() for host in settings.DOCUMENT_ALLOWED_HOSTS.split(",") if host.strip())
+        frozenset(
+            host.strip() for host in settings.DOCUMENT_ALLOWED_HOSTS.split(",") if host.strip()
+        )
         if settings.ENV in ("prod", "staging")
         else frozenset()
     )
@@ -95,9 +97,7 @@ def _extract_pdf_text_local(content: bytes, *, max_pages: int, max_text_chars: i
         if reader.is_encrypted:
             raise DocumentFetchError("PDF cifrado — extracción no soportada en v1")
         if len(reader.pages) > max_pages:
-            raise DocumentFetchError(
-                f"PDF excede el máximo de {max_pages} páginas"
-            )
+            raise DocumentFetchError(f"PDF excede el máximo de {max_pages} páginas")
         pages_text: list[str] = []
         total_chars = 0
         for page in reader.pages:
@@ -133,7 +133,12 @@ def _pdf_extraction_worker(
     """
     try:
         result_connection.send(
-            ("ok", _extract_pdf_text_local(content, max_pages=max_pages, max_text_chars=max_text_chars))
+            (
+                "ok",
+                _extract_pdf_text_local(
+                    content, max_pages=max_pages, max_text_chars=max_text_chars
+                ),
+            )
         )
     except Exception as exc:  # El padre convierte el error en DocumentFetchError.
         result_connection.send(("error", str(exc)))
@@ -183,7 +188,9 @@ def _extract_pdf_text(content: bytes) -> str:
         try:
             outcome, payload = receive_connection.recv()
         except EOFError as exc:
-            raise DocumentFetchError("El proceso de extracción de PDF terminó inesperadamente") from exc
+            raise DocumentFetchError(
+                "El proceso de extracción de PDF terminó inesperadamente"
+            ) from exc
 
         process.join(timeout=1)
         if process.is_alive():
