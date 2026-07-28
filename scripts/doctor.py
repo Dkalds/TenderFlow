@@ -9,7 +9,7 @@ Checks disponibles:
   - Python >= 3.11
   - Paquetes core instalados
   - .env presente
-  - DATABASE_URL alcanzable (Postgres) o SQLite accesible (legacy)
+  - DATABASE_URL alcanzable (Postgres — único motor, ADR-021)
   - alembic current == head (warn si hay migraciones pendientes)
   - predicciones_baja no vacía (warn → make seed --with-predicciones)
   - REDIS_URL ping (warn si no responde, nunca error bloqueante)
@@ -23,7 +23,6 @@ from __future__ import annotations
 import importlib
 import os
 import socket
-import sqlite3
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -91,43 +90,33 @@ def check_env_file() -> bool:
 
 
 def check_database() -> bool:
-    """Verifica DATABASE_URL (Postgres) o la BD SQLite legacy."""
+    """Verifica que ``DATABASE_URL`` apunta a un Postgres alcanzable."""
     database_url = os.environ.get("DATABASE_URL", "")
-    if database_url:
-        # Postgres / Supabase
-        try:
-            import importlib.util
+    if not database_url:
+        _err(
+            "DATABASE_URL no configurada. Postgres es el único motor (ADR-021): "
+            "levantá el de dev con `docker compose up -d postgres`."
+        )
+        return False
 
-            if importlib.util.find_spec("psycopg") is None:
-                _warn("DATABASE_URL definida pero psycopg no instalado (F3 pendiente)")
-                return True
-            import psycopg  # type: ignore[import-not-found]
+    try:
+        import importlib.util
 
-            with psycopg.connect(database_url, connect_timeout=5) as conn:
-                conn.execute("SELECT 1").fetchone()
-            # No mostrar el DSN crudo: user:pass viajarían en claro al output
-            # (terminal, logs de CI, capturas compartidas). Solo host/puerto/db.
-            parsed = urlsplit(database_url)
-            safe_target = f"{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
-            _ok(f"DATABASE_URL alcanzable ({safe_target})")
-        except Exception as exc:
-            _err(f"DATABASE_URL no alcanzable: {exc}")
+        if importlib.util.find_spec("psycopg") is None:
+            _err("psycopg no instalado. Ejecutá: pip install -r requirements.txt")
             return False
-    else:
-        # SQLite legacy
-        db_path = os.environ.get("DB_PATH", "data/licitaciones_replica.db")
-        p = Path(db_path)
-        if not p.exists():
-            _warn(f"DB no existe en {db_path} (se creará al arrancar o con `make seed`)")
-            return True
-        try:
-            with sqlite3.connect(db_path) as c:
-                c.execute("SELECT 1").fetchone()
-            size_mb = p.stat().st_size / (1024 * 1024)
-            _ok(f"DB SQLite accesible en {db_path} ({size_mb:.1f} MB)")
-        except sqlite3.Error as exc:
-            _err(f"Error abriendo DB {db_path}: {exc}")
-            return False
+        import psycopg  # type: ignore[import-not-found]
+
+        with psycopg.connect(database_url, connect_timeout=5) as conn:
+            conn.execute("SELECT 1").fetchone()
+        # No mostrar el DSN crudo: user:pass viajarían en claro al output
+        # (terminal, logs de CI, capturas compartidas). Solo host/puerto/db.
+        parsed = urlsplit(database_url)
+        safe_target = f"{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
+        _ok(f"DATABASE_URL alcanzable ({safe_target})")
+    except Exception as exc:
+        _err(f"DATABASE_URL no alcanzable: {exc}")
+        return False
     return True
 
 
@@ -160,25 +149,19 @@ def check_alembic_head() -> bool:
 def check_predicciones_baja() -> bool:
     """Verifica que predicciones_baja tiene filas (warn si vacía)."""
     database_url = os.environ.get("DATABASE_URL", "")
-    db_path = os.environ.get("DB_PATH", "data/licitaciones_replica.db")
+    if not database_url:
+        return True  # check_database ya reportó el error
 
     try:
-        if database_url:
-            import importlib.util
+        import importlib.util
 
-            if importlib.util.find_spec("psycopg") is None:
-                return True  # no podemos verificar sin psycopg
-            import psycopg  # type: ignore[import-not-found]
+        if importlib.util.find_spec("psycopg") is None:
+            return True  # no podemos verificar sin psycopg
+        import psycopg  # type: ignore[import-not-found]
 
-            with psycopg.connect(database_url, connect_timeout=5) as conn:
-                row = conn.execute("SELECT COUNT(*) FROM predicciones_baja").fetchone()
-                count = int(row[0]) if row else 0
-        else:
-            if not Path(db_path).exists():
-                return True  # DB no creada aún
-            with sqlite3.connect(db_path) as c:
-                row = c.execute("SELECT COUNT(*) FROM predicciones_baja").fetchone()
-                count = int(row[0]) if row else 0
+        with psycopg.connect(database_url, connect_timeout=5) as conn:
+            row = conn.execute("SELECT COUNT(*) FROM predicciones_baja").fetchone()
+            count = int(row[0]) if row else 0
 
         if count == 0:
             _warn(

@@ -526,63 +526,41 @@ class TechnologyClassifier:
 # ── Entrenamiento desde la BD ─────────────────────────────────────────────
 
 
-def train_from_db(*, db_path: Path | None = None) -> dict[str, Any]:
-    """Carga ``licitaciones`` desde la BD activa (Postgres o SQLite local) y
-    entrena el ``TechnologyClassifier``.
+def train_from_db() -> dict[str, Any]:
+    """Carga ``licitaciones`` desde la BD y entrena el ``TechnologyClassifier``.
 
     Persiste el modelo en ``data/models/tech_classifier.pkl`` si tiene al
     menos un tier ML entrenado.
 
-    ``db_path`` se ignora cuando el proyecto usa Postgres como backend: en ese
-    caso se usa ``db.connection.connect_read`` para garantizar que se lee de
-    la fuente correcta.
-
-    Antes de ADR-020 la condición era ``is_turso_backend()``, que devolvía
-    ``False`` con Postgres activo ("Postgres tiene precedencia" — ver la
-    función retirada). Con Postgres en producción, esta función caía siempre
-    al fallback ``sqlite3.connect()`` de más abajo, leyendo un fichero SQLite
-    local vacío en vez de los datos reales. Ningún test lo detectó porque
-    ambos caminos se ejercitaban solo mockeando la condición, nunca contra un
-    backend real (ADR-018).
+    El parámetro ``db_path`` y el fallback ``sqlite3.connect()`` se retiraron
+    con ADR-021: ningún llamador pasaba una ruta, y ese fallback fue el
+    vehículo de un bug real —hasta ADR-020 la condición era
+    ``is_turso_backend()``, que devolvía ``False`` con Postgres activo, así que
+    la función leía siempre un fichero SQLite local vacío en vez de los datos
+    reales. Con un solo motor la clase de bug desaparece.
     """
     import pandas as pd
 
-    from db.connection import connect_read, is_postgres_backend
+    from db.connection import connect_read
 
-    if db_path is None and is_postgres_backend():
-        # Leer desde Postgres vía el pool del proyecto
-        with connect_read() as conn:
-            cols = conn.execute(
-                "SELECT id_externo, titulo, descripcion, cpv, importe, "
-                "fecha_publicacion, tecnologia, raw_keywords FROM licitaciones"
-            ).fetchall()
-        # conn.description puede no estar disponible en todos los drivers;
-        # forzamos nombres de columnas explícitos en el mismo orden que la query.
-        _col_names = [
-            "id_externo",
-            "titulo",
-            "descripcion",
-            "cpv",
-            "importe",
-            "fecha_publicacion",
-            "tecnologia",
-            "raw_keywords",
-        ]
-        df = pd.DataFrame([dict(zip(_col_names, row, strict=False)) for row in cols])
-    else:
-        import sqlite3
-
-        from config import settings as _settings
-
-        db_file = str(db_path or _settings.DB_PATH)
-        with sqlite3.connect(db_file) as conn:
-            conn.row_factory = sqlite3.Row
-            df = pd.read_sql_query(
-                "SELECT id_externo, titulo, descripcion, cpv, importe, "
-                "       fecha_publicacion, tecnologia, raw_keywords "
-                "FROM licitaciones",
-                conn,
-            )
+    with connect_read() as conn:
+        cols = conn.execute(
+            "SELECT id_externo, titulo, descripcion, cpv, importe, "
+            "fecha_publicacion, tecnologia, raw_keywords FROM licitaciones"
+        ).fetchall()
+    # conn.description puede no estar disponible en todos los drivers;
+    # forzamos nombres de columnas explícitos en el mismo orden que la query.
+    _col_names = [
+        "id_externo",
+        "titulo",
+        "descripcion",
+        "cpv",
+        "importe",
+        "fecha_publicacion",
+        "tecnologia",
+        "raw_keywords",
+    ]
+    df = pd.DataFrame([dict(zip(_col_names, row, strict=False)) for row in cols])
 
     log.info("tech_classifier.train_from_db.loaded", n_rows=len(df))
     clf = TechnologyClassifier()

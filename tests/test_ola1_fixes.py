@@ -19,23 +19,14 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def app_and_client(tmp_path, monkeypatch):
-    """App con DB temporal aislada."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "test.db")
+def app_and_client(api_db, monkeypatch):
+    """App sobre el schema Postgres aislado del test."""
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
 
     from api.app import app
 
     with TestClient(app, raise_server_exceptions=True) as client:
         yield app, client
-
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
 
 
 @pytest.fixture()
@@ -247,19 +238,28 @@ def test_require_api_key_uses_connect_read(monkeypatch):
 # ── OLA 1.7: create_api_key acepta user_id ───────────────────────────────────
 
 
-def test_create_api_key_accepts_user_id(tmp_path, monkeypatch):
-    """create_api_key debe persistir user_id cuando se proporciona."""
+def test_create_api_key_accepts_user_id(api_db, monkeypatch):
+    """create_api_key debe persistir user_id cuando se proporciona.
+
+    El usuario se crea de verdad: ``api_keys.user_id`` tiene FK contra
+    ``users``. El test usaba un 42 inventado y pasaba sólo porque corría sobre
+    SQLite, que no estaba aplicando la FK — otra divergencia que ADR-021
+    cierra.
+    """
     import db.database as db_mod
 
-    db_path = str(tmp_path / "auth_test.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
 
     from api.auth import create_api_key
+    from db.users import create_user
 
-    raw = create_api_key("test-uid", scopes="read:*", user_id=42)
+    user_id = create_user(
+        email="apikey-owner@example.com",
+        password_hash="hash",  # pragma: allowlist secret -- valor sintético de test
+        display_name="Owner",
+    )
+
+    raw = create_api_key("test-uid", scopes="read:*", user_id=user_id)
     assert raw  # token generado
 
     with db_mod.connect_read() as c:
@@ -270,46 +270,26 @@ def test_create_api_key_accepts_user_id(tmp_path, monkeypatch):
     assert row is not None
     assert row[0] == "test-uid"
     assert row[1] == "read:*"
-    # user_id puede ser None si la columna no existe aún (migración pendiente) — aceptable
-    # pero si existe la columna debe ser 42
-    if row[2] is not None:
-        assert row[2] == 42
-
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
+    assert row[2] == user_id
 
 
-def test_create_api_key_backward_compat_no_user_id(tmp_path, monkeypatch):
+def test_create_api_key_backward_compat_no_user_id(api_db, monkeypatch):
     """create_api_key sigue funcionando sin user_id (backward compat)."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "auth_compat.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
 
     from api.auth import create_api_key
 
     raw = create_api_key("compat-key")
     assert raw
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
-
 
 # ── OLA 1.6: retention_cleanup cubre nuevas tablas ───────────────────────────
 
 
-def test_retention_cleanup_purges_idempotency_keys(tmp_path, monkeypatch):
+def test_retention_cleanup_purges_idempotency_keys(tmp_db, monkeypatch):
     """run_retention debe purgar idempotency_keys > 1 día."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "retention.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
+    db_mod, _ = tmp_db
 
     # Insertar una idempotency key antigua (2 días atrás)
     from datetime import UTC, datetime, timedelta
@@ -343,9 +323,6 @@ def test_retention_cleanup_purges_idempotency_keys(tmp_path, monkeypatch):
             "SELECT COUNT(*) FROM idempotency_keys WHERE idem_key = 'old-key'"
         ).fetchone()
     assert row[0] == 0
-
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
 
 
 # ── OLA 1.8: Graceful shutdown ────────────────────────────────────────────────

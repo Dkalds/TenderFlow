@@ -102,7 +102,7 @@ docker compose exec scheduler python -c \
 
 ### Cadena de auditoría íntegra
 ```bash
-python scripts/verify_audit_chain.py --db-path data/licitaciones.db
+python scripts/verify_audit_chain.py
 # Salida esperada: "Estado: ÍNTEGRA"; exit-code 0
 ```
 

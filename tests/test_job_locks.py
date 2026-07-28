@@ -9,20 +9,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-import db.database as db_mod
 from db.database import connect
 
 
 @pytest.fixture(autouse=True)
-def _tmp_db(tmp_path, monkeypatch):
-    """Set up a temp DB with job_locks table for each test."""
-    db_path = tmp_path / "test.db"
-    db_mod.close_pool()
-    db_mod.set_db_path_override(str(db_path))
-    db_mod.init_db()
-    yield
-    db_mod.close_pool()
-    db_mod.set_db_path_override(None)
+def _tmp_db(tmp_db):
+    """Schema Postgres aislado por test (incluye ``job_locks``)."""
 
 
 class TestJobLockAcquire:

@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from db.database import connect, connect_read, is_postgres_backend
+from db.database import connect, connect_read
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -103,12 +103,7 @@ def _load_clustering_data(conn: Any) -> list[tuple[str, str, str]]:
     # Cargar licitaciones de los últimos 12 meses o un máximo de 50,000 para evitar cómputos excesivos.
     # Asume que 'fecha_publicacion' es el campo adecuado para el filtrado.
     # Si no, se podría usar 'id' o 'rowid' con un LIMIT fijo.
-    if is_postgres_backend():
-        cutoff_sql = (
-            "fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '12 months', 'YYYY-MM-DD')"
-        )
-    else:
-        cutoff_sql = "fecha_publicacion >= date('now', '-12 months')"
+    cutoff_sql = "fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '12 months', 'YYYY-MM-DD')"
     return cast(
         "list[tuple[str, str, str]]",
         conn.execute(

@@ -73,15 +73,35 @@ jobs:
 
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
 
-  # ── Tests: multiplataforma, independiente ──────────────────────────
+  # ── Tests contra el motor de producción (ADR-018, ADR-021) ─────────
+  # Hubo un job `test` sobre SQLite y otro `test-postgres` sobre el motor
+  # real. Con SQLite retirado (ADR-021) eran el mismo job, así que se
+  # consolidaron: esta es la única suite y corre contra Postgres.
   test:
-    name: Tests
+    name: Tests (Postgres)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
+    # Postgres es el único motor desde ADR-021: la suite ya no tiene camino
+    # SQLite, así que este job necesita una instancia real. Imagen pgvector
+    # porque la migración v56 hace `CREATE EXTENSION vector`.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: tenderflow
+          POSTGRES_PASSWORD: tenderflow  # pragma: allowlist secret -- contenedor efímero de CI, no es un secreto real
+          POSTGRES_DB: tenderflow_suite
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -103,6 +123,7 @@ jobs:
       - name: Run tests with coverage
         env:
           ENV: dev
+          TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret
         run: pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=78
 
       - name: Upload coverage XML
@@ -136,9 +157,9 @@ jobs:
           path: diff-cover.html
 
   # ── Cola con dramatiq real ──────────────────────────────────────────
-  # ── Schema: merged dry-run + rollback tests ────────────────────────
+  # ── Schema: dry-run de compilación de migraciones ──────────────────
   schema-migrations:
-    name: Schema migrations (dry-run + rollback)
+    name: Schema migrations (dry-run)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -164,18 +185,13 @@ jobs:
           head -n 200 /tmp/migrations.sql
           test -s /tmp/migrations.sql
 
-      - name: Run migration rollback tests
-        env:
-          ENV: dev
-        run: pytest tests/test_rollback_alembic_migrations.py tests/test_rollback_legacy_migrations.py -v --no-cov
-
   # ── Schema: online apply real contra Postgres (no solo --sql dry-run) ──
   # `--sql` (job de arriba) solo valida que alembic compile SQL contra
   # SQLite; nunca detecta DDL escrita para SQLite que rompe en Postgres real
   # (AUTOINCREMENT, datetime('now'), sqlite_master...) -- exactamente la
   # clase de bug de v51/v53/v54/v55. Este job corre `alembic upgrade head`
-  # online contra un Postgres real, más `downgrade base` para verificar
-  # reversibilidad.
+  # online contra un Postgres real, más el downgrade/re-upgrade que
+  # verifica reversibilidad.
   schema-migrations-postgres:
     name: Schema migrations (online apply, Postgres)
     runs-on: ubuntu-latest
@@ -219,65 +235,26 @@ jobs:
           DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_ci  # pragma: allowlist secret
         run: alembic upgrade head
 
-      - name: Downgrade to base (verifica reversibilidad)
-        # No bloqueante todavia: la cadena v14-v50 nunca se ejercitó en
-        # downgrade contra Postgres real; puede haber problemas de orden de
-        # FKs preexistentes sin relación con baseline002/v53/v54/v55.
-        continue-on-error: true
+      # BLOQUEANTE desde ADR-021. Antes no lo era porque la cadena nunca se
+      # había ejercitado en downgrade contra Postgres real; se verificó que sí
+      # lo es. El destino es `baseline002`, no `base`: `baseline001` lanza a
+      # propósito ("No se puede revertir el baseline"), así que `downgrade base`
+      # no puede terminar nunca en verde y no sirve de gate.
+      #
+      # Sustituye a tests/test_rollback_alembic_migrations.py, que verificaba lo
+      # mismo sellando Alembic sobre el schema SQLite de db/schema.py — un motor
+      # que ya no existe (ADR-021). Esto lo comprueba contra el real.
+      - name: Downgrade a baseline (verifica reversibilidad de v14..head)
         env:
           ENV: dev
           DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_ci  # pragma: allowlist secret
-        run: alembic downgrade base
+        run: alembic downgrade baseline002
 
-  # ── Tests contra el motor de produccion (ADR-018) ───────────────────
-  # El job `test` de arriba corre sobre ficheros SQLite temporales mientras
-  # produccion es Postgres: ninguna diferencia de dialecto queda cubierta.
-  # Asi llegaron a produccion el bug de `round()` devolviendo Decimal y la
-  # ausencia de los seis CHECK de formato de fecha (`GLOB` es SQLite-only).
-  # Este job corre la MISMA suite contra Postgres real.
-  test-postgres:
-    name: Tests (Postgres real, ADR-018)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    services:
-      postgres:
-        # pgvector/pgvector:pg16 por el mismo motivo que en el job de
-        # migraciones: v56 hace `CREATE EXTENSION vector`.
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: tenderflow
-          POSTGRES_PASSWORD: tenderflow  # pragma: allowlist secret -- contenedor efímero local, no es un secreto real
-          POSTGRES_DB: tenderflow_suite
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-          cache: pip
-
-      - name: Install dev dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
-          pip install -e ".[pliegos]"
-
-      - name: Run suite against Postgres
-        # BLOQUEANTE desde 2026-07-26: la migracion de la suite al motor real
-        # esta completa (0 fallos). Los tests especificos del backend
-        # SQLite/libSQL se saltan por convencion de nombre en conftest.py --
-        # no son deuda, son tests de otro motor. Ver ADR-018.
+      - name: Re-upgrade a head (verifica el round-trip completo)
         env:
           ENV: dev
-          TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret
-        run: pytest -q -m "unit and not slow" --no-cov
+          DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_ci  # pragma: allowlist secret
+        run: alembic upgrade head
 
   # ── Security audit (independiente) ──────────────────────────────────
   audit:

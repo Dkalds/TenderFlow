@@ -40,29 +40,8 @@ def _infer_marker(path: str, name: str) -> str:
     return "unit"
 
 
-# Ficheros cuyo objeto de prueba **es** la capa SQLite local: el schema SQLite
-# de db/schema.py, db/migrations.py y los helpers PRAGMA-específicos. No tiene
-# sentido ejercitarlos contra Postgres (ADR-018/ADR-020) — no son deuda de
-# migración, son tests de otro motor. Se saltan por token de nombre, misma
-# convención que el auto-marking de arriba.
-_SQLITE_ONLY_TOKENS = ("schema_sqlite",)
-
-
-def _is_sqlite_only(path: str) -> bool:
-    p = path.lower().replace("\\", "/")
-    return any(token in p for token in _SQLITE_ONLY_TOKENS)
-
-
 def pytest_collection_modifyitems(config, items):
-    skip_sqlite_only = pytest.mark.skip(
-        reason="Test específico del backend SQLite/libSQL; la suite corre contra Postgres (ADR-018)"
-    )
-    running_on_pg = bool(os.environ.get("TEST_DATABASE_URL"))
-
     for item in items:
-        if running_on_pg and _is_sqlite_only(str(item.fspath)):
-            item.add_marker(skip_sqlite_only)
-
         marks_existing = {m.name for m in item.iter_markers()}
         if marks_existing & {"unit", "integration", "e2e", "property", "load"}:
             continue
@@ -143,18 +122,17 @@ def _clear_service_data_caches():
     clear_scoring_signals_cache()
 
 
-# ── Backend de la suite: Postgres real u ondemand SQLite ────────────────────
+# ── Backend de la suite: Postgres (único motor, ADR-021) ────────────────────
 #
-# Históricamente los ~2600 tests corrían sobre ficheros SQLite temporales
-# mientras producción es Supabase Postgres (ADR-016). Toda diferencia de
-# dialecto —funciones de fecha, afinidad de tipos, Decimal vs float— quedaba
-# sin cubrir: el bug de `round()` documentado en services/sql_fragments.py
-# llegó al frontend por esa vía. Ver ADR-018.
+# ``TEST_DATABASE_URL`` es **obligatoria**: las fixtures ``tmp_db`` y ``api_db``
+# crean un schema aislado por test sobre esa instancia. Levantá el Postgres de
+# dev con ``docker compose up -d postgres``.
 #
-# Con ``TEST_DATABASE_URL`` apuntando a un Postgres, las fixtures ``tmp_db`` y
-# ``api_db`` crean un **schema aislado por test** sobre esa instancia. Sin la
-# variable, se mantiene el camino SQLite para no romper el flujo local de
-# quien no tenga Postgres a mano.
+# Históricamente la suite corría sobre ficheros SQLite temporales mientras
+# producción era Postgres (ADR-016), y toda diferencia de dialecto quedaba sin
+# cubrir — el bug de ``round()`` documentado en services/sql_fragments.py llegó
+# al frontend por esa vía. ADR-018 construyó esta infraestructura; ADR-021
+# retiró el otro camino.
 
 _PG_SCHEMA_SEQ = itertools.count()
 
@@ -182,7 +160,12 @@ def _pg_schema_ddl():
 
     url = _pg_test_url()
     if not url:
-        pytest.skip("TEST_DATABASE_URL no configurada")
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL no configurada. Postgres es el único motor "
+            "soportado (ADR-021): levantá el de dev con "
+            "`docker compose up -d postgres` y exportá "
+            "TEST_DATABASE_URL=postgresql://tenderflow:tenderflow@localhost:5432/tenderflow"  # pragma: allowlist secret -- contenedor local de dev
+        )
 
     env = {**os.environ, "DATABASE_URL": url, "ENV": "dev", "APP_PROFILE": "scraper"}
     subprocess.run(
@@ -194,6 +177,27 @@ def _pg_schema_ddl():
 
     dump = subprocess.run(
         ["pg_dump", "--schema-only", "--no-owner", "--no-privileges", "--schema=public", url],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    # Datos semilla que insertan las propias migraciones (p. ej. las tres filas
+    # de `api_key_tiers` en v28). Con `--schema-only` se perdían: cada test
+    # veía la tabla vacía y cualquier aserción sobre ellos fallaba, o peor,
+    # pasaba vacunada. Recién migrada, la BD no contiene más datos que esos
+    # seeds, así que volcarlos enteros es seguro. `--inserts` evita el COPY,
+    # que psycopg no ejecuta desde `conn.execute`.
+    dump += subprocess.run(
+        [
+            "pg_dump",
+            "--data-only",
+            "--inserts",
+            "--no-owner",
+            "--no-privileges",
+            "--schema=public",
+            url,
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -274,54 +278,30 @@ def _pg_schema(_pg_schema_ddl):
 
 
 @pytest.fixture()
-def tmp_db(monkeypatch, tmp_path, request):
-    """BD temporal con migraciones aplicadas. Aislada por test.
+def tmp_db(tmp_path, request):
+    """Schema Postgres aislado por test, con las migraciones aplicadas.
 
-    Postgres real si ``TEST_DATABASE_URL`` está definida (mismo motor que
-    producción); si no, fichero SQLite temporal.
+    ``tmp_path`` se sigue devolviendo porque muchos tests lo usan para
+    artefactos de fichero (modelos, exports), no para la BD.
     """
     import db.database as db_mod
 
-    if _pg_test_url():
-        request.getfixturevalue("_pg_schema")
-        db_mod.init_db()
-        yield db_mod, tmp_path
-        return
-
-    db_path = tmp_path / "test.db"
-
-    # Usar DI hook en vez de importlib.reload() masivo
-    db_mod.close_pool()
-    db_mod.set_db_path_override(str(db_path))
-
+    request.getfixturevalue("_pg_schema")
     db_mod.init_db()
     yield db_mod, tmp_path
-    db_mod.close_pool()
-    db_mod.set_db_path_override(None)
 
 
 # ── Fixtures compartidos para tests de la API REST ───────────────────────
 
 
 @pytest.fixture()
-def api_db(tmp_path, monkeypatch, request):
-    """BD temporal con todas las migraciones, para tests de API."""
+def api_db(tmp_path, request):
+    """Schema Postgres aislado por test, para tests de la API."""
     import db.database as db_mod
 
-    if _pg_test_url():
-        request.getfixturevalue("_pg_schema")
-        db_mod.init_db()
-        yield tmp_path / "unused.db"
-        return
-
-    db_path = tmp_path / "test_api.db"
-
-    db_mod.close_pool()
-    db_mod.set_db_path_override(str(db_path))
+    request.getfixturevalue("_pg_schema")
     db_mod.init_db()
-    yield db_path
-    db_mod.close_pool()
-    db_mod.set_db_path_override(None)
+    yield tmp_path
 
 
 @pytest.fixture()

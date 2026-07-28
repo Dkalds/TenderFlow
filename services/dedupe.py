@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from db.database import connect, connect_read, get_cursor, is_postgres_backend, set_cursor
+from db.database import connect, connect_read, get_cursor, set_cursor
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
@@ -227,9 +227,9 @@ def review_pending(limit: int = 100) -> list[dict[str, Any]]:
 
 def resolve_pending(licitacion_id: str, *, accept: bool, resolved_by: str = "") -> bool:
     """Resuelve un match pendiente: aceptar lo confirma, rechazarlo lo descarta."""
-    # resolved_at es TEXT en ambos backends (v39_licitaciones_duplicados) — castear
-    # explícitamente evita el error de asignación timestamp→text en Postgres.
-    resolved_at_sql = "NOW()::text" if is_postgres_backend() else "datetime('now')"
+    # resolved_at es TEXT (v39_licitaciones_duplicados) — castear explícitamente
+    # evita el error de asignación timestamp→text.
+    resolved_at_sql = "NOW()::text"
     with connect() as c:
         cur = c.execute(
             "UPDATE licitaciones_duplicados "  # noqa: S608 — resolved_at_sql es un fragmento constante

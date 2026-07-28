@@ -1,12 +1,15 @@
-"""Verifica íntegramente la cadena de auditoría de una base SQLite.
+"""Verifica íntegramente la cadena de auditoría de la base de datos activa.
 
 La comprobación delega en db.audit.verify_hash_chain: valida continuidad,
 HMAC de cada registro moderno y la cabecera firmada (hash final y número de
 filas). Esta última es la que hace detectables borrados al final de la cadena.
 
+Verifica la BD a la que apunta ``DATABASE_URL``. Desde ADR-021 Postgres es el
+único motor, así que ya no hay ``--db-path``: apuntá ``DATABASE_URL`` a la
+instancia que quieras verificar.
+
 Uso:
-    python scripts/verify_audit_chain.py
-    python scripts/verify_audit_chain.py --db-path data/licitaciones.db
+    DATABASE_URL=postgresql://... python scripts/verify_audit_chain.py
 
 No admite verificaciones parciales: omitir filas invalidaría la comprobación
 de continuidad y de la cabecera firmada.
@@ -23,25 +26,19 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def verify_chain(db_path: Path) -> int:
-    """Verifica una base SQLite sin modificarla y devuelve un código de salida."""
-    if not db_path.is_file():
-        print(f"[ERROR] Base de datos no encontrada: {db_path}")
-        return 2
+def verify_chain() -> int:
+    """Verifica la BD activa sin modificarla y devuelve un código de salida."""
+    from db.database import close_pool
 
-    from db.database import close_pool, set_db_path_override
-
-    # El override fuerza SQLite incluso si el entorno de quien ejecuta el
-    # runbook contiene un DATABASE_URL de producción.
-    close_pool()
-    set_db_path_override(str(db_path.resolve()))
     try:
         from db.audit import verify_hash_chain
 
         result = verify_hash_chain()
+    except Exception as exc:  # BD inaccesible, tabla ausente, credenciales…
+        print(f"[ERROR] No se pudo verificar la cadena: {exc}")
+        return 2
     finally:
         close_pool()
-        set_db_path_override(None)
 
     valid = result.get("valid")
     checked = int(result.get("checked") or 0)
@@ -69,12 +66,6 @@ def verify_chain(db_path: Path) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--db-path",
-        type=Path,
-        default=Path("data/licitaciones.db"),
-        help="Ruta a la base de datos SQLite (default: data/licitaciones.db)",
-    )
-    parser.add_argument(
         "--limit",
         type=int,
         default=None,
@@ -84,7 +75,7 @@ def main() -> None:
     if args.limit is not None:
         print("[ERROR] --limit no es compatible con una verificación de integridad completa.")
         sys.exit(2)
-    sys.exit(verify_chain(args.db_path))
+    sys.exit(verify_chain())
 
 
 if __name__ == "__main__":

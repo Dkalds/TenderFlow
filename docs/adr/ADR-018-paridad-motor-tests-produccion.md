@@ -1,16 +1,25 @@
 ---
 id: ADR-018
 title: "Paridad de motor entre la suite de tests y producción"
-status: accepted
+status: superseded
+superseded_by: ADR-021
 date: 2026-07-26
 deciders: "Daniel Kalitovics"
 related:
   - "[[ADR-016-destino-persistencia-supabase]]"
   - "[[ADR-003-migraciones-caseras-plus-alembic]]"
+  - "[[ADR-021-retirada-sqlite]]"
 tags: [adr, testing, postgres, persistence]
 ---
 
 # ADR-018 — Paridad de motor entre la suite de tests y producción
+
+> **Superseded por [[ADR-021-retirada-sqlite|ADR-021]] (2026-07-28)** en su
+> parte de "el SQLite local sigue siendo una conveniencia de dev intencional".
+> La infraestructura de tests sobre Postgres que esta ADR construyó **sigue
+> vigente y es la única**: `TEST_DATABASE_URL` pasó de opcional a obligatoria y
+> el camino SQLite se borró. El diagnóstico de esta ADR (diez bugs que la suite
+> sobre SQLite no podía ver) es lo que justificó el retiro completo.
 
 * **Estado:** Aceptado
 * **Fecha:** 2026-07-26

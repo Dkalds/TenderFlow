@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
 import time
 import xml.etree.ElementTree as ET
 
@@ -68,39 +66,28 @@ class TestBulkUpsertPerformance:
     """Benchmark: bulk upsert of synthetic licitaciones."""
 
     @pytest.mark.parametrize("n", [100, 500])
-    def test_upsert_throughput(self, n: int) -> None:
-        from db.database import Licitacion, init_db, set_db_path_override
+    def test_upsert_throughput(self, n: int, tmp_db) -> None:
+        from db.database import Licitacion
         from db.upsert import upsert_licitaciones
 
-        fd, tmp = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        set_db_path_override(tmp)
-        try:
-            init_db()
-            lics = [
-                Licitacion(
-                    id_externo=f"BULK-{i:05d}",
-                    titulo=f"Bulk test {i}",
-                    organo_contratacion=f"Organo {i}",
-                    estado="En plazo",
-                    fecha_publicacion="2026-01-15",
-                    importe=100000.0 + i,
-                    cpv="72000000",
-                    url=f"https://example.com/{i}",
-                )
-                for i in range(n)
-            ]
+        lics = [
+            Licitacion(
+                id_externo=f"BULK-{i:05d}",
+                titulo=f"Bulk test {i}",
+                organo_contratacion=f"Organo {i}",
+                estado="En plazo",
+                fecha_publicacion="2026-01-15",
+                importe=100000.0 + i,
+                cpv="72000000",
+                url=f"https://example.com/{i}",
+            )
+            for i in range(n)
+        ]
 
-            t0 = time.perf_counter()
-            inserted, updated = upsert_licitaciones(lics)
-            elapsed = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        inserted, updated = upsert_licitaciones(lics)
+        elapsed = time.perf_counter() - t0
 
-            assert inserted + updated == n
-            throughput = n / elapsed if elapsed > 0 else float("inf")
-            assert throughput > 200, f"Upsert too slow: {throughput:.0f} lic/s"
-        finally:
-            set_db_path_override("")
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+        assert inserted + updated == n
+        throughput = n / elapsed if elapsed > 0 else float("inf")
+        assert throughput > 200, f"Upsert too slow: {throughput:.0f} lic/s"

@@ -83,20 +83,10 @@ class TestFlagOnHybridActivation:
 
 
 class TestTryHybridSearchGating:
-    def test_returns_none_on_non_postgres_backend(self, monkeypatch):
-        from services.licitaciones import _try_hybrid_search
-
-        with patch("db.connection.is_postgres_backend", return_value=False):
-            result = _try_hybrid_search("q", 5, ccaa=None, tecnologia=None)
-        assert result is None
-
     def test_returns_none_when_embeddings_unavailable(self):
         from services.licitaciones import _try_hybrid_search
 
-        with (
-            patch("db.connection.is_postgres_backend", return_value=True),
-            patch("services.embeddings.embeddings_available", return_value=False),
-        ):
+        with patch("services.embeddings.embeddings_available", return_value=False):
             result = _try_hybrid_search("q", 5, ccaa=None, tecnologia=None)
         assert result is None
 
@@ -104,7 +94,6 @@ class TestTryHybridSearchGating:
         from services.licitaciones import _try_hybrid_search
 
         with (
-            patch("db.connection.is_postgres_backend", return_value=True),
             patch("services.embeddings.embeddings_available", return_value=True),
             patch("services.embeddings.encode_texts", side_effect=RuntimeError("no model")),
         ):
@@ -121,7 +110,6 @@ class TestTryHybridSearchGating:
                 return fake_embedding_row if idx == 0 else super().__getitem__(idx)
 
         with (
-            patch("db.connection.is_postgres_backend", return_value=True),
             patch("services.embeddings.embeddings_available", return_value=True),
             patch("services.embeddings.encode_texts", return_value=_FakeArr([None])),
             patch("db.database.connect_read"),

@@ -366,13 +366,8 @@ def _try_hybrid_search(
     ccaa: str | None,
     tecnologia: str | None,
 ) -> list[dict[str, Any]] | None:
-    """Intenta el retrieval híbrido; ``None`` si no aplica (no-Postgres, sin
-    modelo de embeddings, o error) — el llamador cae al FTS puro."""
-    from db.connection import is_postgres_backend
-
-    if not is_postgres_backend():
-        return None
-
+    """Intenta el retrieval híbrido; ``None`` si no aplica (sin modelo de
+    embeddings, o error) — el llamador cae al FTS puro."""
     from services.embeddings import embeddings_available, encode_texts
 
     if not embeddings_available():

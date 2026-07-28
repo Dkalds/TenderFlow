@@ -110,13 +110,21 @@ def _run_ml_tecnologias() -> None:
 
 
 def _run_analytics_export() -> None:
-    """Snapshot Parquet + manifest de linaje (RFC-086). Best-effort."""
+    """Snapshot Parquet + manifest de linaje (RFC-086). Best-effort.
+
+    ``db.analytics`` sigue adjuntando un fichero SQLite con el
+    ``sqlite_scanner`` de DuckDB, que tras ADR-021 ya no existe: este paso
+    falla de forma esperada hasta que se migre a ``postgres_scanner`` (ítem
+    P2 del backlog). Se registra a **warning**, no a debug: un paso que no
+    hace nada tiene que verse en los logs, que es exactamente el modo de
+    fallo silencioso que ADR-021 vino a eliminar.
+    """
     try:
         from db.analytics import run_analytics_export
 
         run_analytics_export()
-    except Exception:
-        log.debug("pipeline_analytics_export_failed")
+    except Exception as exc:
+        log.warning("pipeline_analytics_export_failed", error=str(exc))
 
 
 def _run_kpi_precompute() -> dict[str, Any]:

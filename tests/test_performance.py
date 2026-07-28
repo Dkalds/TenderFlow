@@ -36,18 +36,10 @@ def _generate_xml_entries(n: int) -> bytes:
 
 
 @pytest.fixture()
-def perf_db(monkeypatch, tmp_path):
-    """BD temporal para tests de rendimiento."""
-    import db.database as db_mod
-
-    db_path = tmp_path / "perf.db"
-
-    db_mod.close_pool()
-    db_mod.set_db_path_override(str(db_path))
-    db_mod.init_db()
+def perf_db(tmp_db):
+    """Schema Postgres aislado para tests de rendimiento."""
+    db_mod, _ = tmp_db
     yield db_mod
-    db_mod.close_pool()
-    db_mod.set_db_path_override(None)
 
 
 class TestUpsertPerformance:

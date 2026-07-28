@@ -70,6 +70,11 @@ class Settings(BaseSettings):
 
     # ── Rutas ────────────────────────────────────────────────────────────
     DATA_DIR: Path = _DEFAULT_DATA_DIR
+    # VESTIGIAL (ADR-021): ya no apunta a ninguna BD — SQLite se retiró y el
+    # único motor es Postgres vía DATABASE_URL. Sobrevive porque lo leen los
+    # caminos DuckDB/backup pendientes de migrar (`db/analytics.py`,
+    # `services/analytics_engine.py`, `scripts/restore_db.py`), documentados
+    # como ítems abiertos del backlog. **No usar en código nuevo.**
     DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None
 
@@ -583,7 +588,11 @@ class Settings(BaseSettings):
         el scraper/scheduler nunca llama a log_action/log_event, así que este
         validator debe seguir el mismo gating que sus hermanos (_serves_http).
         Sin esto, el job diario de scraping (APP_PROFILE=scraper) no arranca."""
-        if self._is_prod_data and self._serves_http and len(self.AUDIT_HMAC_KEY.get_secret_value()) < 32:
+        if (
+            self._is_prod_data
+            and self._serves_http
+            and len(self.AUDIT_HMAC_KEY.get_secret_value()) < 32
+        ):
             raise ValueError("AUDIT_HMAC_KEY (32+ caracteres) es obligatorio en producción")
         return self
 

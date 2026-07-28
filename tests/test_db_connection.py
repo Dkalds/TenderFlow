@@ -38,29 +38,6 @@ def test_now_utc_iso_is_recent():
     assert before <= parsed <= after
 
 
-# ── safe_pragma ───────────────────────────────────────────────────────────────
-
-
-def test_safe_pragma_does_not_raise_on_valid_stmt(tmp_db):
-    """safe_pragma ejecuta sin error un PRAGMA válido."""
-    db_mod, _ = tmp_db
-    from db.connection import safe_pragma
-
-    with db_mod.connect() as conn:
-        # No debe lanzar ninguna excepción
-        safe_pragma(conn, "PRAGMA journal_mode")
-
-
-def test_safe_pragma_silences_invalid_stmt(tmp_db):
-    """safe_pragma absorbe errores de PRAGMAs inválidos."""
-    db_mod, _ = tmp_db
-    from db.connection import safe_pragma
-
-    with db_mod.connect() as conn:
-        # Un PRAGMA inexistente no debe propagar excepción
-        safe_pragma(conn, "PRAGMA this_does_not_exist_xyz = 42")
-
-
 # ── connect / connect_read ────────────────────────────────────────────────────
 
 
@@ -108,19 +85,26 @@ def test_connect_read_after_write(tmp_db):
 # ── close_pool thread-safety ─────────────────────────────────────────────────
 
 
-def test_unit_close_pool_clears_thread_local(tmp_db):
-    """close_pool() cierra la conexión thread-local y la limpia."""
+def test_unit_close_pool_closes_pg_pool(tmp_db):
+    """close_pool() cierra el pool Postgres compartido y permite reabrirlo.
+
+    Antes verificaba que se limpiaba una conexión thread-local: ese camino era
+    del backend SQLite y desapareció con ADR-021.
+    """
     db_mod, _ = tmp_db
 
     from db import connection as conn_mod
 
-    # Ensure a thread-local connection exists
     with db_mod.connect() as c:
         c.execute("SELECT 1")
+    assert conn_mod._pg_pool is not None
 
-    # Now close_pool should clear it
     db_mod.close_pool()
-    assert getattr(conn_mod._local, "conn", None) is None
+    assert conn_mod._pg_pool is None
+
+    # El pool se recrea de forma transparente en el siguiente uso.
+    with db_mod.connect() as c:
+        assert c.execute("SELECT 1").fetchone()[0] == 1
 
 
 # ── _translate_qmarks (shim qmark -> %s, ADR-016) ────────────────────────────
@@ -134,36 +118,25 @@ def test_unit_close_pool_clears_thread_local(tmp_db):
 # recien al ejecutar contra Postgres real.
 
 
-def test_translate_qmarks_noop_when_not_postgres(monkeypatch):
+def test_translate_qmarks_basic_replacement():
     from db import connection as conn_mod
 
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: False)
-    sql = "SELECT * FROM t WHERE a = ? AND b = ?"
-    assert conn_mod._translate_qmarks(sql) == sql
-
-
-def test_translate_qmarks_basic_replacement(monkeypatch):
-    from db import connection as conn_mod
-
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
     sql = "SELECT * FROM t WHERE a = ? AND b = ?"
     assert conn_mod._translate_qmarks(sql) == "SELECT * FROM t WHERE a = %s AND b = %s"
 
 
-def test_translate_qmarks_ignores_placeholder_inside_single_quoted_string(monkeypatch):
+def test_translate_qmarks_ignores_placeholder_inside_single_quoted_string():
     from db import connection as conn_mod
 
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
     sql = "SELECT * FROM t WHERE a = ? AND b = 'literal ? not a placeholder'"
     result = conn_mod._translate_qmarks(sql)
     assert result == "SELECT * FROM t WHERE a = %s AND b = 'literal ? not a placeholder'"
 
 
-def test_translate_qmarks_handles_doubled_quote_escape(monkeypatch):
+def test_translate_qmarks_handles_doubled_quote_escape():
     """SQL estándar escapa una comilla dentro de un string doblándola (''), no con \\'."""
     from db import connection as conn_mod
 
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
     sql = "SELECT * FROM t WHERE name = 'it''s a ? test' AND id = ?"
     result = conn_mod._translate_qmarks(sql)
     assert result == "SELECT * FROM t WHERE name = 'it''s a ? test' AND id = %s"
@@ -182,7 +155,6 @@ def test_translate_qmarks_escape_backslash_clause_does_not_swallow_later_placeho
     """
     from db import connection as conn_mod
 
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
     sql = (
         "SELECT id_externo FROM licitaciones "
         "WHERE titulo ILIKE ? ESCAPE '\\' OR descripcion ILIKE ? ESCAPE '\\' "
@@ -193,20 +165,18 @@ def test_translate_qmarks_escape_backslash_clause_does_not_swallow_later_placeho
     assert "?" not in result
 
 
-def test_translate_qmarks_ignores_line_comment(monkeypatch):
+def test_translate_qmarks_ignores_line_comment():
     from db import connection as conn_mod
 
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
     sql = "SELECT * FROM t WHERE a = ? -- this is a ? in a comment\n"
     result = conn_mod._translate_qmarks(sql)
     # El placeholder real se traduce; el "?" dentro del comentario queda intacto.
     assert result == "SELECT * FROM t WHERE a = %s -- this is a ? in a comment\n"
 
 
-def test_translate_qmarks_ignores_block_comment(monkeypatch):
+def test_translate_qmarks_ignores_block_comment():
     from db import connection as conn_mod
 
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
     sql = "SELECT * FROM t /* a ? in a block comment */ WHERE a = ?"
     result = conn_mod._translate_qmarks(sql)
     assert result.count("%s") == 1
@@ -326,7 +296,7 @@ def test_get_pg_pool_wraps_connection_error_without_leaking_dsn(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_translate_qmarks_escapes_literal_percent_with_params(monkeypatch):
+def test_translate_qmarks_escapes_literal_percent_with_params():
     """Un `%` dentro de un literal es dato, no placeholder.
 
     psycopg interpreta `%` como inicio de placeholder cuando la sentencia lleva
@@ -338,8 +308,6 @@ def test_translate_qmarks_escapes_literal_percent_with_params(monkeypatch):
     """
     import db.connection as conn_mod
 
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
-
     sql = "SELECT status FROM extraction_runs WHERE notas LIKE 'daily|%' LIMIT ?"
     out = conn_mod._translate_qmarks(sql, has_params=True)
 
@@ -347,21 +315,17 @@ def test_translate_qmarks_escapes_literal_percent_with_params(monkeypatch):
     assert out.endswith("LIMIT %s")
 
 
-def test_translate_qmarks_leaves_percent_alone_without_params(monkeypatch):
+def test_translate_qmarks_leaves_percent_alone_without_params():
     """Sin parámetros psycopg no interpreta `%`: doblarlo corrompería el dato."""
     import db.connection as conn_mod
-
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
 
     sql = "SELECT * FROM t WHERE c LIKE 'x%'"
     assert conn_mod._translate_qmarks(sql, has_params=False) == sql
 
 
-def test_translate_qmarks_does_not_touch_comments(monkeypatch):
+def test_translate_qmarks_does_not_touch_comments():
     """El `%` de un comentario no llega al motor: no debe doblarse."""
     import db.connection as conn_mod
-
-    monkeypatch.setattr(conn_mod, "is_postgres_backend", lambda: True)
 
     sql = "SELECT 1 -- 100% seguro\nWHERE a = ?"
     out = conn_mod._translate_qmarks(sql, has_params=True)

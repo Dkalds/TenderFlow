@@ -47,8 +47,6 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
     # --- Métricas de infraestructura ---
     from config import settings
 
-    db_path = settings.DB_PATH or (settings.DATA_DIR / "licitaciones.db")
-    info["db_size_bytes"] = db_path.stat().st_size if db_path.exists() else 0
     data_dir = Path(settings.DATA_DIR)
     try:
         info["data_dir_free_bytes"] = shutil.disk_usage(data_dir).free
@@ -56,6 +54,15 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
         info["data_dir_free_bytes"] = None
 
     with connect() as c:
+        # Tamaño real de la BD. Antes se leía el tamaño del fichero SQLite
+        # local, que con Postgres en producción era siempre 0 (ADR-021).
+        try:
+            info["db_size_bytes"] = int(
+                c.execute("SELECT pg_database_size(current_database())").fetchone()[0]
+            )
+        except Exception:
+            info["db_size_bytes"] = 0
+
         t0 = time.monotonic()
         total = c.execute("SELECT COUNT(*) FROM licitaciones").fetchone()[0]
         info["last_query_ms"] = round((time.monotonic() - t0) * 1000, 2)

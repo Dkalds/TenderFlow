@@ -98,13 +98,7 @@ def flush_events() -> None:
         return
 
     try:
-        # Import lazy para evitar ciclo de imports al arrancar.
-        from db.connection import is_postgres_backend
-
-        if is_postgres_backend():
-            _flush_postgres(rows)
-        else:
-            _flush_sqlite(rows)
+        _flush_postgres(rows)
     except Exception:
         pass
 
@@ -134,36 +128,6 @@ def _flush_postgres(rows: list[dict[str, Any]]) -> None:
             rows,
         )
         conn.commit()
-
-
-def _flush_sqlite(rows: list[dict[str, Any]]) -> None:
-    """Escribe el buffer en SQLite local (desarrollo y tests)."""
-    import libsql
-
-    from config import settings
-
-    db_path = settings.DB_PATH
-    if db_path is None:
-        db_path = settings.DATA_DIR / "licitaciones.db"
-
-    # Conexion directa sin pool -- timeout corto para no agravar la contention.
-    conn = libsql.connect(str(db_path))
-    try:
-        conn.execute("PRAGMA busy_timeout = 250")
-        conn.executemany(
-            "INSERT INTO ops_events (ts, event_type, value, plane, pid, detail) "
-            "VALUES (:ts, :event_type, :value, :plane, :pid, :detail)",
-            rows,
-        )
-        conn.commit()
-    except Exception:
-        # Si la tabla no existe o hay cualquier error, descartamos en silencio.
-        pass
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
 
 
 def _piggyback_flush() -> None:

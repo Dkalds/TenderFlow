@@ -30,7 +30,7 @@ y `TURSO_DATABASE_URL` ya no existen como secretos gestionados.
 - Configurar `BACKUP_ENCRYPTION_KEY` antes de ejecutar cualquier copia: los scripts cifran todas las copias con GPG/AES-256 y exigen la misma clave para restaurarlas.
 - Asociar o rotar las API keys heredadas sin `user_id`: producción y staging las rechazan para evitar que una clave sin propietario pueda actuar como administrador.
 - Conservar `DOCUMENT_EXTRACTION_TIMEOUT_SECONDS` positivo en producción: cada extracción de PDF corre en un proceso aislado y se termina al exceder ese presupuesto.
-- Ejecutar `python scripts/verify_audit_chain.py --db-path …` en el runbook de incidentes. La verificación requiere recorrer la cadena completa; `--limit` ya no es válido porque ocultaría roturas o borrados.
+- Ejecutar `python scripts/verify_audit_chain.py` en el runbook de incidentes (verifica la BD de `DATABASE_URL`; `--db-path` se retiró con SQLite, ADR-021). La verificación requiere recorrer la cadena completa; `--limit` ya no es válido porque ocultaría roturas o borrados.
 
 ### Postgres / Supabase (`DATABASE_URL`)
 

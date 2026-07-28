@@ -17,22 +17,14 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def app_and_client(tmp_path, monkeypatch):
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "test.db")
+def app_and_client(api_db, monkeypatch):
+    """App sobre el schema Postgres aislado del test."""
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
 
     from api.app import app
 
     with TestClient(app, raise_server_exceptions=True) as client:
         yield app, client
-
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
 
 
 @pytest.fixture()
@@ -177,25 +169,24 @@ def test_bulk_get_csv_format(app_and_client, api_key):
 # ── OLA 2.4: Migración 24 ────────────────────────────────────────────────────
 
 
-def test_migration_24_creates_cursor_index(tmp_path, monkeypatch):
-    """Migración 24 debe crear el índice idx_lic_fecha_id."""
-    import db.database as db_mod
+def test_cursor_pagination_index_exists(tmp_db):
+    """Debe existir el índice compuesto que sostiene la cursor pagination.
 
-    db_path = str(tmp_path / "migration24.db")
-    monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
+    Se llama ``idx_lic_cursor`` sobre ``(fecha_publicacion DESC, id_externo)``,
+    creado por la migración Alembic v21 (v24 es un no-op que lo documenta). El
+    test asertaba antes ``idx_lic_fecha_id``, que era el nombre que le daba el
+    sistema de migraciones casero de SQLite: nunca existió en Postgres, y el
+    test pasaba porque corría sobre el otro motor. Justo la clase de
+    divergencia que ADR-021 elimina.
+    """
+    db_mod, _ = tmp_db
 
     with db_mod.connect_read() as c:
         row = c.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_lic_fecha_id'"
+            "SELECT indexname FROM pg_indexes WHERE indexname = 'idx_lic_cursor'"
         ).fetchone()
 
-    assert row is not None, "Índice idx_lic_fecha_id no encontrado tras migración 24"
-
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
+    assert row is not None, "Índice idx_lic_cursor no encontrado"
 
 
 # ── OLA 2.5: Bulkhead run_ml ─────────────────────────────────────────────────

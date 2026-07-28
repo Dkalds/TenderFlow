@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy import Select, and_, func, or_, select, text
 
-from db.database import connect_read, fts_available, is_postgres_backend
+from db.database import connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import rows_to_dicts
 
@@ -290,26 +290,9 @@ class LicitacionRepository:
 
         extra_where = " AND ".join(extra_conditions)
         col_list = ", ".join(f"l.{c.key}" for c in _SUMMARY_COLS)
-        if is_postgres_backend():
-            match_clause = "l.search_vector @@ websearch_to_tsquery('spanish', ?)"
-            base_sql = (
-                f"SELECT {col_list} FROM licitaciones l WHERE {match_clause} AND {extra_where}"
-            )
-            count_sql = (
-                f"SELECT COUNT(*) FROM licitaciones l WHERE {match_clause} AND {extra_where}"
-            )
-        else:
-            base_sql = (
-                f"SELECT {col_list} "
-                "FROM licitaciones l "
-                "JOIN licitaciones_fts f ON l.rowid = f.rowid "
-                f"WHERE licitaciones_fts MATCH ? AND {extra_where}"
-            )
-            count_sql = (
-                "SELECT COUNT(*) FROM licitaciones l "
-                "JOIN licitaciones_fts f ON l.rowid = f.rowid "
-                f"WHERE licitaciones_fts MATCH ? AND {extra_where}"
-            )
+        match_clause = "l.search_vector @@ websearch_to_tsquery('spanish', ?)"
+        base_sql = f"SELECT {col_list} FROM licitaciones l WHERE {match_clause} AND {extra_where}"
+        count_sql = f"SELECT COUNT(*) FROM licitaciones l WHERE {match_clause} AND {extra_where}"
 
         with connect_read() as c:
             total = -1
@@ -593,23 +576,13 @@ class LicitacionRepository:
             return None
         try:
             with connect_read() as c:
-                if is_postgres_backend():
-                    cur = c.execute(
-                        "SELECT id_externo FROM licitaciones "
-                        "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
-                        "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) DESC "
-                        "LIMIT ?",
-                        [query, query, limit],
-                    )
-                else:
-                    from services.investigador.search_engine import escape_fts5
-
-                    fts_query = escape_fts5(query)
-                    cur = c.execute(
-                        "SELECT f.id_externo FROM licitaciones_fts f "
-                        "WHERE licitaciones_fts MATCH ? ORDER BY rank LIMIT ?",
-                        [fts_query, limit],
-                    )
+                cur = c.execute(
+                    "SELECT id_externo FROM licitaciones "
+                    "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
+                    "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) DESC "
+                    "LIMIT ?",
+                    [query, query, limit],
+                )
                 return [row[0] for row in cur.fetchall()]
         except Exception:
             return None
@@ -664,7 +637,7 @@ class LicitacionRepository:
             conditions.append("estado = ?")
             params.append(estado)
         if q:
-            like_op = "ILIKE" if is_postgres_backend() else "LIKE"
+            like_op = "ILIKE"
             conditions.append(
                 f"(titulo {like_op} ? ESCAPE '\\' OR descripcion {like_op} ? ESCAPE '\\')"
             )
@@ -688,18 +661,9 @@ class LicitacionRepository:
         tecnologia: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Búsqueda FTS5/search_vector con metadatos completos (para RAG endpoint)."""
-        is_pg = is_postgres_backend()
-        conditions: list[str]
-        params: list[Any]
-        if is_pg:
-            conditions = ["l.search_vector @@ websearch_to_tsquery('spanish', ?)"]
-            params = [query]
-        else:
-            from services.investigador.search_engine import escape_fts5
-
-            conditions = ["licitaciones_fts MATCH ?"]
-            params = [escape_fts5(query)]
+        """Búsqueda por ``search_vector`` con metadatos completos (para RAG endpoint)."""
+        conditions: list[str] = ["l.search_vector @@ websearch_to_tsquery('spanish', ?)"]
+        params: list[Any] = [query]
         if ccaa:
             conditions.append("l.ccaa = ?")
             params.append(ccaa)
@@ -712,47 +676,32 @@ class LicitacionRepository:
             "l.descripcion, l.url, l.fecha_publicacion, l.ccaa, l.estado, l.tecnologia"
         )
         with connect_read() as c:
-            if is_pg:
-                cur = c.execute(
-                    f"SELECT {cols} FROM licitaciones l "
-                    f"WHERE {where} "
-                    "ORDER BY ts_rank_cd(l.search_vector, websearch_to_tsquery('spanish', ?)) DESC "
-                    "LIMIT ?",
-                    [*params, query, limit],
-                )
-            else:
-                cur = c.execute(
-                    f"SELECT {cols} FROM licitaciones l "
-                    "JOIN licitaciones_fts f ON l.rowid = f.rowid "
-                    f"WHERE {where} ORDER BY rank LIMIT ?",
-                    [*params, limit],
-                )
+            cur = c.execute(
+                f"SELECT {cols} FROM licitaciones l "
+                f"WHERE {where} "
+                "ORDER BY ts_rank_cd(l.search_vector, websearch_to_tsquery('spanish', ?)) DESC "
+                "LIMIT ?",
+                [*params, query, limit],
+            )
             return rows_to_dicts(cur)
 
     def fts5_bm25_search(self, query: str, top_k: int) -> list[tuple[str, float]]:
-        """Búsqueda FTS5/BM25 (o ts_rank_cd en Postgres) normalizada para search_engine."""
+        """Búsqueda por ``ts_rank_cd`` normalizada para search_engine.
+
+        Conserva el nombre histórico (``fts5_bm25``) porque es el contrato que
+        consumen ``services/investigador/search_engine.py`` y sus tests; el
+        motor detrás es Postgres desde ADR-021.
+        """
         try:
             with connect_read() as c:
-                if is_postgres_backend():
-                    cur = c.execute(
-                        "SELECT id_externo, "
-                        "ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) AS score "
-                        "FROM licitaciones "
-                        "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
-                        f"ORDER BY score DESC LIMIT {top_k * 2}",
-                        [query, query],
-                    )
-                else:
-                    from services.investigador.search_engine import escape_fts5
-
-                    escaped = escape_fts5(query)
-                    cur = c.execute(
-                        "SELECT l.id_externo, bm25(licitaciones_fts) AS bm25_score "
-                        "FROM licitaciones_fts fts "
-                        "JOIN licitaciones l ON l.id_externo = fts.id_externo "
-                        f"WHERE licitaciones_fts MATCH ? ORDER BY bm25_score LIMIT {top_k * 2}",
-                        [escaped],
-                    )
+                cur = c.execute(
+                    "SELECT id_externo, "
+                    "ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) AS score "
+                    "FROM licitaciones "
+                    "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
+                    f"ORDER BY score DESC LIMIT {top_k * 2}",
+                    [query, query],
+                )
                 rows = cur.fetchall()
         except Exception:
             return []
@@ -771,9 +720,8 @@ class LicitacionRepository:
         )
         if not token:
             return []
-        # SQLite LIKE es case-insensitive (ASCII) por defecto; Postgres LIKE es
-        # case-sensitive -- usar ILIKE ahi para mantener el mismo comportamiento.
-        like_op = "ILIKE" if is_postgres_backend() else "LIKE"
+        # Postgres LIKE es case-sensitive: ILIKE para búsqueda insensible.
+        like_op = "ILIKE"
         try:
             with connect_read() as c:
                 cur = c.execute(
@@ -841,7 +789,7 @@ class LicitacionRepository:
             words = [w for w in question.split() if len(w) > 3][:5]
         if not words:
             return []
-        like_op = "ILIKE" if is_postgres_backend() else "LIKE"
+        like_op = "ILIKE"
         like_clauses = " OR ".join(
             f"titulo {like_op} ? ESCAPE '\\' OR descripcion {like_op} ? ESCAPE '\\'" for _ in words
         )

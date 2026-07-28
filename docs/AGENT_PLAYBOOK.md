@@ -11,7 +11,7 @@ Guía operativa completa para agentes trabajando en TenderFlow (nombre históric
 | `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | Sí | [ADR-004](adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md) |
 | `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, schemas (pandera), signing (JWKS), types | `shared/dto.py`, `shared/schemas.py` | Sí | [SECURITY.md](SECURITY.md) |
 | `services/` | Lógica de dominio pura: licitaciones, normalization, classification, clusters, analytics_engine (DuckDB), rate_limiting, investigador (FTS5) | `services/licitaciones.py` | Sí (core) | [ADR-007](adr/[[ADR-007-services-domain-layer|ADR-007]]-services-domain-layer.md), [ADR-005](adr/[[ADR-005-clustering-ctfidf-minibatch|ADR-005]]-clustering-ctfidf-minibatch.md) |
-| `db/` | Postgres (producción) / SQLite (desarrollo), upsert idempotente, alembic migraciones, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | Solo `db.database`, `db.users` | [database-schema.md](database-schema.md), [ADR-001](adr/[[ADR-001-sql-crudo-vs-orm|ADR-001]]-sql-crudo-vs-orm.md), [ADR-003](adr/[[ADR-003-migraciones-caseras-plus-alembic|ADR-003]]-migraciones-caseras-plus-alembic.md), [ADR-020](adr/ADR-020-retirada-turso.md) |
+| `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | Solo `db.database`, `db.users` | [database-schema.md](database-schema.md), [ADR-001](adr/[[ADR-001-sql-crudo-vs-orm|ADR-001]]-sql-crudo-vs-orm.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
 | `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; rutas en `api/routes/{health,licitaciones,search,exports,me,meta,feedback,webhooks,...}.py` | No (overrides activos) | [ADR-006](adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md) |
 | `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | — | — |
 | `scraper/` | Pipeline PLACSP: descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py` (SQL manual, S608 suppressed) | Selectivo | — |
@@ -82,7 +82,7 @@ Guía operativa completa para agentes trabajando en TenderFlow (nombre históric
 | ¿Cómo añado settings? | Campo nuevo en `config/settings.py` con `Field(...)` + default seguro + entry en `.env.example`. Nunca leer `os.environ` directo. |
 | ¿Cómo añado un test slow? | Nombrá el archivo con token `performance` o `load`, o marca explícito con `@pytest.mark.slow`. `make test` excluye `integration_e2e` por defecto. |
 | ¿Cómo validar un DataFrame? | Schema `pandera` en `shared/schemas.py`. No `assert` manuales. |
-| ¿Rate limit? | `services/rate_limiting.py` (SQLite) o `services/rate_limit_redis.py` (Redis, opcional). No reinventar. |
+| ¿Rate limit? | `services/rate_limiting.py` (en BD) o `services/rate_limit_redis.py` (Redis, opcional). No reinventar. |
 | ¿Auth en endpoint nuevo? | `Depends(get_api_key)` + scope si aplica (ver `api/routes/webhooks.py` como referencia). |
 
 ---
@@ -102,7 +102,7 @@ Guía operativa completa para agentes trabajando en TenderFlow (nombre históric
 | **KPI precompute** | Job batch que pre-calcula métricas para el dashboard (evita queries pesadas en runtime). Ver `scheduler/kpi_precompute.py`. |
 | **Watchlist** | Suscripción de usuario a criterios (CPV, keyword, CCAA, importe mínimo) → email automático. |
 | **FAISS** | Índice vectorial para similitud semántica entre licitaciones (sentence-transformers + faiss-cpu, opcional). |
-| **FTS5** | Full-text search de SQLite, usado por `services/investigador/`. |
+| **FTS** | Full-text search con `tsvector`/`ts_rank_cd` de Postgres, usado por `services/investigador/` (el nombre `fts5_*` sobrevive en algunas firmas por compatibilidad de contrato). |
 | **Concept drift** | Detección de cambios en distribución de keywords/labels — `scheduler/concept_drift.py`. |
 | **ETag** | Header HTTP para cache de exports PDF (ver [ADR-006](adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md)). |
 

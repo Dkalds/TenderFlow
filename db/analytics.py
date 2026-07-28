@@ -1,9 +1,22 @@
 """Motor analítico opcional basado en DuckDB.
 
-DuckDB se ATTACHa sobre el fichero SQLite de producción en modo lectura
-para ejecutar queries OLAP pesadas (group-by sobre millones de filas,
-window functions, joins múltiples) órdenes de magnitud más rápido que
-SQLite mientras la BD operacional sigue siendo el fichero SQLite local.
+.. warning::
+   **Este módulo está roto desde ADR-021 y sus funciones fallan de forma
+   esperada.** ``get_connection()`` hace ``ATTACH ... (TYPE SQLITE, READ_ONLY)``
+   sobre un fichero SQLite operacional que ya no existe: ``_sqlite_path()``
+   lanza ``FileNotFoundError``.
+
+   Se conserva —fallando ruidosamente, no en silencio— en vez de borrarse
+   porque el camino de exports OLAP a Parquet (``run_analytics_export``,
+   consumido por ``scheduler/pipeline_runs.py``) sigue siendo deseable; lo que
+   falta es reescribirlo sobre el ``postgres_scanner`` de DuckDB
+   (``ATTACH ... (TYPE POSTGRES, READ_ONLY)`` contra ``DATABASE_URL``). Es un
+   ítem P2 del backlog y requiere verificación contra un Postgres real con la
+   extensión instalada, así que no se hizo a ciegas dentro de ADR-021.
+
+DuckDB se ATTACHa sobre la BD operacional en modo lectura para ejecutar
+queries OLAP pesadas (group-by sobre millones de filas, window functions,
+joins múltiples) órdenes de magnitud más rápido que el motor transaccional.
 
 Diseño (F2):
     * La conexión DuckDB es **opcional** — si DuckDB no está instalado, las

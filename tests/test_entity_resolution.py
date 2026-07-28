@@ -50,16 +50,9 @@ def setup_lic(db, lic_id="LIC-001"):
 
 
 def test_v35_tables_exist(db):
-    from db.database import connect, is_postgres_backend
+    from db.database import connect
 
-    # sqlite_master no existe en Postgres; information_schema no existe en
-    # SQLite. Se consulta el catálogo de cada motor (ADR-018).
-    if is_postgres_backend():
-        sql = (
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()"
-        )
-    else:
-        sql = "SELECT name FROM sqlite_master WHERE type='table'"
+    sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()"
 
     with connect() as c:
         tables = {r[0] for r in c.execute(sql).fetchall()}

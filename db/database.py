@@ -18,17 +18,15 @@ nivel:
 - ``connect()``             — context manager de escritura (commit/rollback).
 - ``connect_read()``        — context manager de solo lectura.
 - ``close_pool()``          — cierra conexiones del hilo actual y el pool Postgres.
-- ``get_table_columns()``   — inspección de columnas (PRAGMA/information_schema).
+- ``get_table_columns()``   — inspección de columnas (information_schema).
 - ``now_utc()``             — datetime UTC aware (reemplaza datetime.utcnow()).
 - ``now_utc_iso()``         — ISO 8601 del instante actual en UTC.
-- ``safe_pragma()``         — ejecuta PRAGMA solo si el backend lo soporta.
-- ``set_db_path_override()``— override de ruta para tests (evita reload).
-- ``set_pg_test_url()``     — apunta la suite a un Postgres real (ADR-018).
+- ``set_pg_test_url()``     — apunta la suite al Postgres de tests (ADR-018).
 
-**db.schema** — DDL y bootstrapping:
+**db.schema** — bootstrapping:
 
-- ``SCHEMA``    — string con todos los ``CREATE TABLE`` e índices del proyecto.
-- ``init_db()`` — aplica el schema y migraciones pendientes; idempotente.
+- ``init_db()`` — marca la BD como inicializada; idempotente. El esquema lo
+  gestiona Alembic (ADR-021).
 
 **db.upsert** — dataclasses de dominio y operaciones de escritura:
 
@@ -76,19 +74,13 @@ from db.connection import (
     connect,
     connect_read,
     get_table_columns,
-    is_postgres_backend,
     now_utc,
     now_utc_iso,
-    safe_pragma,
-    set_db_path_override,
     set_pg_test_url,
 )
 
 # Re-exportar desde db.schema
-from db.schema import (
-    SCHEMA,
-    init_db,
-)
+from db.schema import init_db
 
 # Re-exportar desde db.upsert
 from db.upsert import (
@@ -115,14 +107,10 @@ __all__ = [
     "connect_read",
     "close_pool",
     "get_table_columns",
-    "is_postgres_backend",
     "now_utc",
     "now_utc_iso",
-    "safe_pragma",
-    "set_db_path_override",
     "set_pg_test_url",
     # schema
-    "SCHEMA",
     "init_db",
     # upsert
     "Adjudicacion",

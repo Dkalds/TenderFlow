@@ -732,10 +732,7 @@ class TestTechnologyClassifierTrain:
 class TestTechTrainFromDb:
     @patch("scraper.tech_classifier.TechnologyClassifier")
     @patch("db.connection.connect_read")
-    @patch("db.connection.is_postgres_backend", return_value=True)
-    def test_postgres_backend(
-        self, mock_pg: MagicMock, mock_conn_read: MagicMock, mock_cls: MagicMock
-    ) -> None:
+    def test_reads_from_database(self, mock_conn_read: MagicMock, mock_cls: MagicMock) -> None:
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchall.return_value = [
             ("id1", "titulo", "desc", "48000000", 1000, "2024-01-01", "SAP", "sap"),
@@ -751,28 +748,6 @@ class TestTechTrainFromDb:
 
         result = train_from_db()
         mock_instance.save.assert_called_once()
-
-    @patch("scraper.tech_classifier.TechnologyClassifier")
-    @patch("db.connection.is_postgres_backend", return_value=False)
-    def test_sqlite_backend(self, mock_pg: MagicMock, mock_cls: MagicMock) -> None:
-        mock_instance = MagicMock()
-        mock_instance.train.return_value = {"error": "no_ml_techs"}
-        mock_cls.return_value = mock_instance
-
-        with patch("sqlite3.connect") as mock_sqlite:
-            mock_conn = MagicMock()
-            mock_sqlite.return_value.__enter__ = MagicMock(return_value=mock_conn)
-            mock_sqlite.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("pandas.read_sql_query") as mock_read:
-                import pandas as pd
-
-                mock_read.return_value = pd.DataFrame()
-
-                from scraper.tech_classifier import train_from_db
-
-                result = train_from_db()
-        mock_instance.save.assert_not_called()
-        assert "error" in result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

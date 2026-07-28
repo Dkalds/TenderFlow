@@ -30,28 +30,23 @@ from unittest.mock import patch
 _FIXTURE = Path(__file__).parent / "fixtures" / "eval_rag.jsonl"
 
 HIT_RATE_MIN = 0.85
-MRR_MIN = 0.75
 TOP_K = 5
 
-# Ratchet específico del motor de búsqueda (ADR-018).
-#
-# El backend de búsqueda **no es el mismo** en cada motor: SQLite usa FTS5 con
-# ranking bm25, Postgres usa `tsvector` + `ts_rank_cd` con el diccionario
-# español (`db/search_backend.py`). Producen ordenaciones distintas, así que un
-# único umbral mide cosas distintas según dónde corra.
+# Ratchet del motor de búsqueda de producción (`tsvector` + `ts_rank_cd` con el
+# diccionario español, ver `db/search_backend.py`).
 #
 # Medido el 2026-07-26 sobre el golden set de 15 preguntas:
-#   SQLite/FTS5   → hit_rate@5 = 1.000 · MRR ≈ 0.78
-#   Postgres/tsv  → hit_rate@5 = 1.000 · MRR ≈ 0.689
+#   Postgres/tsvector → hit_rate@5 = 1.000 · MRR ≈ 0.689
+#   (SQLite/FTS5, retirado en ADR-021, daba MRR ≈ 0.78)
 #
-# Es decir: el motor de producción **recupera igual de bien** (encuentra el
-# documento esperado en el top-5 en los 15 casos) pero lo **ordena algo peor**.
-# No es un bug de esta migración: es la calidad real de retrieval que ven los
-# usuarios hoy, que hasta ahora nadie medía porque el eval corría sobre FTS5.
-# Se ratchea al valor medido en vez de relajar el umbral común, para que una
-# regresión futura en cualquiera de los dos motores siga saltando.
-# Mejorar el ranking de producción queda como ítem de backlog.
-MRR_MIN_POSTGRES = 0.65
+# Es decir: producción **recupera igual de bien** —encuentra el documento
+# esperado dentro del top-5 en los 15 casos— pero lo **ordena algo peor** que
+# el motor de desarrollo que se retiró. No era un bug de la migración: es la
+# calidad real de retrieval que ven los usuarios, que nadie medía porque el
+# eval corría sobre el otro motor. Se ratchea al valor medido en vez de relajar
+# el umbral, para que una regresión futura salte. Mejorar el ranking es un ítem
+# de backlog abierto.
+MRR_MIN = 0.65
 
 # Licitaciones "ruido": vocabulario genérico que se solapa con el golden set
 # (SAP, ERP, cloud, IA...) para que el eval no sea trivial — sin ruido,
@@ -165,10 +160,7 @@ def test_retrieval_hit_rate_and_mrr_meet_ratchet(tmp_db):
         f"hit_rate@{TOP_K} {hit_rate:.3f} < {HIT_RATE_MIN} — el contexto recuperado "
         f"para /ask se rompió. Fallos: {misses}"
     )
-    from db.database import is_postgres_backend
-
-    mrr_min = MRR_MIN_POSTGRES if is_postgres_backend() else MRR_MIN
-    assert mrr >= mrr_min, f"MRR {mrr:.3f} < {mrr_min} — el ranking de retrieval empeoró."
+    assert mrr >= MRR_MIN, f"MRR {mrr:.3f} < {MRR_MIN} — el ranking de retrieval empeoró."
 
 
 def test_retrieval_respects_ccaa_filter_without_losing_target(tmp_db):

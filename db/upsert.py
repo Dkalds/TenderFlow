@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 from config import HISTORY_TRACKED_FIELDS
-from db.connection import connect, is_postgres_backend, now_utc_iso
+from db.connection import connect, now_utc_iso
 from db.dlq import record_failure
 from observability.logging import get_logger
 from observability.runtime_metrics import upsert_rows_dropped_total
@@ -675,55 +675,36 @@ def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
 
 
 def fts_available() -> bool:
-    """True si la búsqueda de texto completo está disponible (FTS5 o search_vector)."""
+    """True si la columna ``search_vector`` existe (búsqueda de texto completo)."""
     with connect() as c:
-        if is_postgres_backend():
-            row = c.execute(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='licitaciones' AND column_name='search_vector' LIMIT 1"
-            ).fetchone()
-        else:
-            row = c.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='licitaciones_fts'"
-            ).fetchone()
+        row = c.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='licitaciones' AND column_name='search_vector' LIMIT 1"
+        ).fetchone()
         return row is not None
 
 
 def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
-    """Busca licitaciones usando FTS5/search_vector. Devuelve (rows, total)."""
+    """Busca licitaciones usando ``search_vector``. Devuelve (rows, total)."""
     query = query.strip()
     if not query:
         return [], 0
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
     with connect() as c:
-        if is_postgres_backend():
-            count_row = c.execute(
-                "SELECT COUNT(*) FROM licitaciones "
-                "WHERE search_vector @@ websearch_to_tsquery('spanish', ?)",
-                [query],
-            ).fetchone()
-            total = int(count_row[0])
-            cur = c.execute(
-                "SELECT * FROM licitaciones "
-                "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
-                "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) DESC "
-                "LIMIT ? OFFSET ?",
-                [query, query, limit, offset],
-            )
-        else:
-            count_row = c.execute(
-                "SELECT COUNT(*) FROM licitaciones_fts WHERE licitaciones_fts MATCH ?",
-                [query],
-            ).fetchone()
-            total = int(count_row[0])
-            cur = c.execute(
-                "SELECT l.* FROM licitaciones l "
-                "JOIN licitaciones_fts f ON l.rowid = f.rowid "
-                "WHERE licitaciones_fts MATCH ? "
-                "ORDER BY rank LIMIT ? OFFSET ?",
-                [query, limit, offset],
-            )
+        count_row = c.execute(
+            "SELECT COUNT(*) FROM licitaciones "
+            "WHERE search_vector @@ websearch_to_tsquery('spanish', ?)",
+            [query],
+        ).fetchone()
+        total = int(count_row[0])
+        cur = c.execute(
+            "SELECT * FROM licitaciones "
+            "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
+            "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) DESC "
+            "LIMIT ? OFFSET ?",
+            [query, query, limit, offset],
+        )
         cols = [d[0] for d in cur.description]
         rows = [
             {k: v for k, v in zip(cols, r, strict=False) if k != "search_vector"}

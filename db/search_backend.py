@@ -1,21 +1,15 @@
-"""Abstracción de búsqueda full-text multi-backend (ADR-016, F3a).
+"""Abstracción de búsqueda full-text (ADR-016, ADR-021).
 
-Define el protocolo ``SearchBackend`` y dos implementaciones:
+Define el protocolo ``SearchBackend`` y su única implementación:
 
-- ``Fts5Backend``: FTS5 de SQLite (comportamiento actual, código verbatim).
-- ``PgTsBackend``: ``tsvector``/``tsquery`` de Postgres con pg_trgm fallback.
+- ``PgTsBackend``: ``tsvector``/``ts_rank_cd`` de Postgres, con fallback
+  ``pg_trgm`` y búsqueda híbrida (RRF sobre ``pg_trgm`` + pgvector).
 
-El módulo expone ``get_search_backend()`` que detecta el backend activo y
-devuelve la instancia correcta. Los call-sites en:
-  - ``db/repositories/licitaciones.py``
-  - ``db/upsert.py`` (``fts_available()``)
-  - ``services/investigador/search_engine.py``
-  - ``api/routes/ask.py`` y ``api/routes/search.py``
-…se recablearán a este módulo en F3b.
+``Fts5Backend`` (SQLite) se retiró en ADR-021 junto con el motor. El protocolo
+se conserva: sigue siendo el punto de extensión si algún día entra otro motor
+de búsqueda, y es lo que permite testear los call-sites con un doble.
 
-Durante F3a el backend activo es siempre FTS5 (SQLite); PgTsBackend se
-instancia pero no se expone en producción hasta que DATABASE_URL apunte a
-Postgres y la migración v50 haya creado search_vector + índice GIN.
+El módulo expone ``get_search_backend()``.
 """
 
 from __future__ import annotations
@@ -95,81 +89,7 @@ class SearchBackend(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Backend FTS5 (SQLite — actual)
-# ---------------------------------------------------------------------------
-
-
-class Fts5Backend:
-    """Implementación FTS5 para SQLite.
-
-    Replica el comportamiento actual de ``db/upsert.py:search_fts`` y de
-    ``services/investigador/search_engine.py:fts5_search`` sin cambiar la
-    semántica. Los call-sites que ya usan esas funciones no cambian para el
-    cutover; este backend es el envoltorio formal para la abstracción.
-    """
-
-    def available(self) -> bool:
-        """True si la tabla FTS5 ``licitaciones_fts`` existe."""
-        try:
-            from db.database import fts_available
-
-            return fts_available()
-        except Exception:
-            return False
-
-    def search_ids(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[str]:
-        from db.database import search_fts
-
-        rows, _ = search_fts(query, limit=limit, offset=offset)
-        return [r["id_externo"] for r in rows]
-
-    def search_docs(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[dict[str, Any]]:
-        from db.database import search_fts
-
-        rows, _ = search_fts(query, limit=limit, offset=offset)
-        return list(rows)
-
-    def ranked_search(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-    ) -> list[tuple[str, float]]:
-        """FTS5 bm25 rank (valores negativos = más relevante)."""
-        try:
-            from db.connection import _translate_qmarks
-
-            sql = _translate_qmarks(
-                "SELECT l.id_externo, bm25(licitaciones_fts) AS score "
-                "FROM licitaciones_fts "
-                "JOIN licitaciones l ON l.id_externo = licitaciones_fts.id_externo "
-                "WHERE licitaciones_fts MATCH ? "
-                "ORDER BY score "
-                "LIMIT ?"
-            )
-            rows = conn.execute(sql, (query, limit)).fetchall()
-            return [(r[0], float(r[1])) for r in rows]
-        except Exception:
-            return []
-
-
-# ---------------------------------------------------------------------------
-# Backend PgTs (Postgres — destino F3)
+# Backend PgTs (Postgres — único desde ADR-021)
 # ---------------------------------------------------------------------------
 
 
@@ -196,11 +116,7 @@ class PgTsBackend:
     _LANG = "spanish"
 
     def available(self) -> bool:
-        """True si Postgres está activo y la columna search_vector existe."""
-        from db.connection import is_postgres_backend
-
-        if not is_postgres_backend():
-            return False
+        """True si la columna ``search_vector`` existe."""
         try:
             from db.database import connect_read
 
@@ -423,19 +339,10 @@ _BACKEND: SearchBackend | None = None
 
 
 def get_search_backend() -> SearchBackend:
-    """Devuelve el backend de búsqueda activo.
+    """Devuelve el backend de búsqueda.
 
-    - Postgres con search_vector → ``PgTsBackend``
-    - SQLite con FTS5 → ``Fts5Backend``
-    - Fallback → ``Fts5Backend`` (puede devolver listas vacías si FTS no está disponible)
+    Siempre ``PgTsBackend`` desde ADR-021. Si ``search_vector`` todavía no
+    existe (BD anterior a la migración v50), ``search_ids`` cae al fallback
+    ``pg_trgm``, así que devolverlo igualmente es correcto.
     """
-    from db.connection import is_postgres_backend
-
-    if is_postgres_backend():
-        pg = PgTsBackend()
-        if pg.available():
-            return pg
-        # Postgres activo pero sin search_vector aún (antes de v50)
-        return pg  # pg.search_ids usará el fallback pg_trgm
-
-    return Fts5Backend()
+    return PgTsBackend()

@@ -26,15 +26,6 @@ def _to_pg_vector_literal(vec: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
 
 
-def _to_sqlite_blob(vec: Sequence[float]) -> bytes:
-    """BLOB float32 crudo — solo para tests unitarios con ``tmp_db`` (F8);
-    SQLite no tiene tipo vectorial ni operador de distancia, el embedding
-    ahí no es consultable, solo almacenable."""
-    import numpy as np
-
-    return np.asarray(vec, dtype="float32").tobytes()
-
-
 class DocumentosRepository:
     """Acceso a la tabla ``documentos`` (TID251: SQL nuevo solo aquí)."""
 
@@ -177,39 +168,25 @@ class DocumentosRepository:
         a reintentos, cumple el mismo contrato que pedía comparar por sha256
         sin necesitar una columna nueva en el schema).
         """
-        from db.connection import is_postgres_backend
-
         if len(chunks) != len(embeddings):
             raise ValueError(
                 f"chunks ({len(chunks)}) y embeddings ({len(embeddings)}) "
                 "deben tener la misma longitud"
             )
 
-        is_pg = is_postgres_backend()
         with connect() as c:
             c.execute("DELETE FROM documento_chunks WHERE documento_id = ?", (documento_id,))
             if not chunks:
                 return 0
-            if is_pg:
-                pg_rows = [
-                    (documento_id, i, texto, _to_pg_vector_literal(emb))
-                    for i, (texto, emb) in enumerate(zip(chunks, embeddings, strict=True))
-                ]
-                c.executemany(
-                    "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
-                    "VALUES (?, ?, ?, ?::vector)",
-                    pg_rows,
-                )
-            else:
-                sqlite_rows = [
-                    (documento_id, i, texto, _to_sqlite_blob(emb))
-                    for i, (texto, emb) in enumerate(zip(chunks, embeddings, strict=True))
-                ]
-                c.executemany(
-                    "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
-                    "VALUES (?, ?, ?, ?)",
-                    sqlite_rows,
-                )
+            rows = [
+                (documento_id, i, texto, _to_pg_vector_literal(emb))
+                for i, (texto, emb) in enumerate(zip(chunks, embeddings, strict=True))
+            ]
+            c.executemany(
+                "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
+                "VALUES (?, ?, ?, ?::vector)",
+                rows,
+            )
         return len(chunks)
 
     # ── Lectura para el contexto LLM (resumen IA + chat contextualizado) ─

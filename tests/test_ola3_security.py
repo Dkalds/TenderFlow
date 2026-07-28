@@ -19,34 +19,20 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "ola3.db")
+def client(api_db, monkeypatch):
+    """Cliente sobre el schema Postgres aislado del test."""
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
 
     from api.app import app
 
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
-
 
 @pytest.fixture()
-def admin_key(tmp_path, monkeypatch):
+def admin_key(api_db, monkeypatch):
     """Devuelve (raw_key, client) con scope '*' para tests que requieren auth."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "ola3_auth.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
 
     from api.app import app
     from api.auth import create_api_key
@@ -56,22 +42,15 @@ def admin_key(tmp_path, monkeypatch):
     with TestClient(app, raise_server_exceptions=True) as c:
         yield raw, c
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
-
 
 # ── 3.2 — API key prefix ──────────────────────────────────────────────────────
 
 
-def test_create_api_key_stores_prefix(tmp_path, monkeypatch):
+def test_create_api_key_stores_prefix(api_db, monkeypatch):
     """create_api_key debe guardar los primeros 8 chars como prefix."""
     import db.database as db_mod
 
-    db_path = str(tmp_path / "prefix.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
 
     from api.auth import create_api_key
 
@@ -85,22 +64,14 @@ def test_create_api_key_stores_prefix(tmp_path, monkeypatch):
 
     assert row is not None, f"Prefix {expected_prefix!r} no guardado en api_keys"
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
-
 
 # ── 3.3 — Audit hash chain ────────────────────────────────────────────────────
 
 
-def test_log_action_writes_hash_chain(tmp_path, monkeypatch):
+def test_log_action_writes_hash_chain(tmp_db, monkeypatch):
     """log_action debe calcular y persistir prev_hash + this_hash en audit_log."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "hashchain.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
+    db_mod, _ = tmp_db
 
     from db.audit import log_action
 
@@ -129,19 +100,11 @@ def test_log_action_writes_hash_chain(tmp_path, monkeypatch):
         "prev_hash de segunda fila debe igualar this_hash de la primera"
     )
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
 
-
-def test_verify_hash_chain_valid(tmp_path, monkeypatch):
+def test_verify_hash_chain_valid(tmp_db, monkeypatch):
     """verify_hash_chain debe retornar valid=True para un log sin tamper."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "verify_ok.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
+    _ = tmp_db
 
     from db.audit import log_action, verify_hash_chain
 
@@ -153,19 +116,11 @@ def test_verify_hash_chain_valid(tmp_path, monkeypatch):
     assert result["checked"] == 5
     assert result["first_tampered_id"] is None
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
 
-
-def test_verify_hash_chain_detects_tamper(tmp_path, monkeypatch):
+def test_verify_hash_chain_detects_tamper(tmp_db, monkeypatch):
     """verify_hash_chain debe detectar una fila modificada."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "verify_tamper.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
+    _ = tmp_db
 
     from db.audit import log_action, verify_hash_chain
     from db.database import connect
@@ -181,22 +136,14 @@ def test_verify_hash_chain_detects_tamper(tmp_path, monkeypatch):
     assert result["valid"] is False
     assert result["first_tampered_id"] == 1
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
-
 
 # ── 3.4 — api_key_tiers migración ────────────────────────────────────────────
 
 
-def test_migration_28_creates_api_key_tiers(tmp_path, monkeypatch):
+def test_migration_28_creates_api_key_tiers(tmp_db, monkeypatch):
     """Migración 28 debe crear la tabla api_key_tiers con 3 filas por defecto."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "tiers.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
+    db_mod, _ = tmp_db
 
     with db_mod.connect_read() as c:
         rows = c.execute("SELECT tier FROM api_key_tiers ORDER BY tier").fetchall()
@@ -206,19 +153,11 @@ def test_migration_28_creates_api_key_tiers(tmp_path, monkeypatch):
     assert "pro" in tiers
     assert "enterprise" in tiers
 
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
 
-
-def test_migration_28_adds_tier_column_to_api_keys(tmp_path, monkeypatch):
+def test_migration_28_adds_tier_column_to_api_keys(tmp_db, monkeypatch):
     """Migración 28 debe añadir columna tier en api_keys con default 'free'."""
-    import db.database as db_mod
-
-    db_path = str(tmp_path / "tier_col.db")
     monkeypatch.setenv("ENV", "dev")
-    db_mod.set_db_path_override(db_path)
-    db_mod.close_pool()
-    db_mod.init_db()
+    db_mod, _ = tmp_db
 
     from api.auth import create_api_key
 
@@ -229,9 +168,6 @@ def test_migration_28_adds_tier_column_to_api_keys(tmp_path, monkeypatch):
 
     assert row is not None
     assert row[0] == "free", f"Tier default esperado 'free', got {row[0]!r}"
-
-    db_mod.set_db_path_override(None)
-    db_mod.close_pool()
 
 
 # ── 3.5 — SSRF DNS rebinding blocklist ───────────────────────────────────────

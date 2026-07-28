@@ -49,13 +49,8 @@ def _state_hmac(head_hash: str, entry_count: int) -> str:
 
 
 def _serialize_audit_chain_write(connection: Any) -> None:
-    """Serialize appends on Postgres so concurrent writers cannot fork a chain."""
-    from db.connection import is_postgres_backend
-
-    if is_postgres_backend():
-        connection.execute(
-            "SELECT pg_advisory_xact_lock(hashtext('tenderflow.audit_log.chain.v1'))"
-        )
+    """Serialize appends so concurrent writers cannot fork a chain."""
+    connection.execute("SELECT pg_advisory_xact_lock(hashtext('tenderflow.audit_log.chain.v1'))")
 
 
 def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:

@@ -1,25 +1,20 @@
-"""Gestión del pool de conexiones SQLite (local) y Postgres (psycopg3).
+"""Gestión del pool de conexiones Postgres (psycopg3).
 
-Este módulo centraliza toda la lógica de conexión: creación, pooling thread-safe,
+Este módulo centraliza toda la lógica de conexión: creación, pooling,
 context managers ``connect()`` / ``connect_read()``, y helpers de diagnóstico.
 No contiene lógica de dominio ni DDL; esos residen en ``db.schema`` y ``db.upsert``.
 
-Backends soportados (ADR-016, ADR-020):
-- **SQLite local** (dev/tests): sin configuración adicional. Es una
-  comodidad de desarrollo (ADR-018), no la referencia de producción.
-- **Postgres / Supabase** (producción): via ``DATABASE_URL`` (postgresql://...).
-  Precedencia: DATABASE_URL > SQLite local.
+**Postgres es el único motor soportado** (ADR-021), en producción, CI y
+desarrollo local, via ``DATABASE_URL`` (postgresql://...). Turso/libSQL se
+retiró en ADR-020 y SQLite en ADR-021; el schema lo gestiona exclusivamente
+Alembic.
 
-Turso/libSQL cloud (backend de producción legacy pre-ADR-016) se retiró en
-ADR-020, superada la ventana de rollback del cutover. ``libsql`` sigue siendo
-la librería usada para el fichero SQLite local — no tiene relación con Turso.
-
-Shim de paramstyle (F3a):
-  El código existente usa ``?`` (qmark). psycopg3 usa ``%s``. El shim
-  ``_translate_qmarks(sql)`` reescribe ``?``→``%s`` respetando literales y
-  comentarios. Se activa automáticamente cuando el backend es Postgres.
-  Retirar el shim requeriría retirar también el backend SQLite local (ver
-  ADR-020, sección "Lo que queda deliberadamente fuera").
+Shim de paramstyle:
+  El SQL del proyecto se escribe en dialecto ``?`` (qmark) y ``_translate_qmarks``
+  lo reescribe a ``%s`` para psycopg3, respetando literales y comentarios.
+  Desde ADR-021 esto ya **no** es un hack de compatibilidad entre motores sino
+  una convención de estilo: queda como deuda acotada y su retirada (1123
+  ocurrencias en 57 archivos) es un ítem de backlog separado.
 """
 
 from __future__ import annotations
@@ -69,10 +64,9 @@ _PG_TEST_URL: str | None = None
 def set_pg_test_url(url: str | None) -> None:
     """Fija (o limpia con None) la URL de Postgres para la suite de tests.
 
-    Existe porque la suite corría históricamente sobre SQLite mientras
-    producción es Postgres (ADR-016), de modo que ninguna diferencia de
-    dialecto —tipos, funciones de fecha, ``Decimal`` vs ``float``— quedaba
-    cubierta por los 2600 tests. Ver ADR-018.
+    Cada test recibe un schema aislado dentro del mismo Postgres (ver
+    ``tests/conftest.py::_pg_schema``), por lo que la URL lleva un
+    ``options=-csearch_path`` propio.
     """
     global _PG_TEST_URL, _db_initialized
     _PG_TEST_URL = url
@@ -95,22 +89,6 @@ def _database_url() -> str:
     if isinstance(attr_val, SecretStr):
         return attr_val.get_secret_value()
     return attr_val or ""
-
-
-def is_postgres_backend() -> bool:
-    """True si DATABASE_URL está configurada y apunta a Postgres/Supabase.
-
-    Con ``_PG_TEST_URL`` activa (suite corriendo contra Postgres real) siempre
-    es True. Si no, y hay un ``_DB_PATH_OVERRIDE`` activo (fixture ``tmp_db``
-    en modo SQLite), es False.
-    """
-    if _PG_TEST_URL:
-        return True
-    # Acceder via globals() para evitar forward-reference (definida más abajo)
-    if globals().get("_DB_PATH_OVERRIDE") is not None:
-        return False  # fixture SQLite local
-    url = _database_url()
-    return bool(url and url.startswith(("postgresql://", "postgres://")))
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +119,8 @@ _SQL_TOKEN_RE = re.compile(
 def _translate_qmarks(sql: str, *, has_params: bool = True) -> str:
     """Reescribe ``?`` → ``%s`` en SQL respetando literales y comentarios.
 
-    Solo activo cuando el backend es Postgres. No-op en SQLite local.
+    Se invoca siempre desde ``_PgConnAdapter``, que es el único camino a la BD
+    desde ADR-021 (Postgres es el único motor).
 
     Cuando la sentencia lleva parámetros, psycopg interpreta ``%`` como inicio
     de placeholder **también dentro de los literales**, así que un patrón como
@@ -161,8 +140,6 @@ def _translate_qmarks(sql: str, *, has_params: bool = True) -> str:
         has_params: Si la sentencia se ejecuta con parámetros. Si es False,
             psycopg no interpreta ``%`` y doblarlo corrompería el literal.
     """
-    if not is_postgres_backend():
-        return sql
 
     def _replace(m: re.Match[str]) -> str:
         # Grupo 5: el placeholder qmark.
@@ -405,44 +382,12 @@ def _close_pg_pool() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Estado global de la conexión SQLite local
+# Estado global
 # ---------------------------------------------------------------------------
-
-_local = threading.local()
-
-# Override para tests: si se setea, _get_conn() usa esta ruta en vez de settings.DB_PATH.
-# Esto evita el patrón frágil de importlib.reload() en los tests.
-_DB_PATH_OVERRIDE: str | None = None
 
 # Bandera de inicialización: evita ejecutar init_db() más de una vez por proceso.
-# db.schema.init_db() la pone a True; set_db_path_override() la resetea.
+# db.schema.init_db() la pone a True; set_pg_test_url() la resetea.
 _db_initialized = False
-
-
-def set_db_path_override(path: str | None) -> None:
-    """Establece (o limpia con None) el override de ruta de BD para tests."""
-    global _DB_PATH_OVERRIDE, _db_initialized
-    _DB_PATH_OVERRIDE = path
-    _db_initialized = False  # fuerza re-init en la nueva ruta
-
-
-# ---------------------------------------------------------------------------
-# Heurísticas de backend SQLite/Postgres
-# ---------------------------------------------------------------------------
-
-
-def safe_pragma(conn: Any, stmt: str) -> None:
-    """Ejecuta un ``PRAGMA`` solo si el backend lo soporta (SQLite local).
-
-    No-op en Postgres. Cualquier excepción se silencia (defensive): los
-    PRAGMAs son optimizaciones, no deben romper la operación.
-    """
-    if is_postgres_backend():
-        return
-    try:
-        conn.execute(stmt)
-    except Exception:
-        log.debug("safe_pragma_failed", extra={"stmt": stmt})
 
 
 # Whitelist de identificadores SQL válidos: solo alfanuméricos y guiones bajos.
@@ -459,53 +404,32 @@ def _validate_identifier(name: str) -> str:
 def get_table_columns(conn: Any, table: str) -> set[str]:
     """Devuelve el conjunto de nombres de columna de ``table``.
 
-    Funciona en SQLite local (``PRAGMA table_info``, con fallback a
-    ``SELECT * … LIMIT 0`` + ``cursor.description``) y en Postgres
-    (``information_schema``, mismo fallback). Devuelve conjunto vacío si la
-    tabla no existe o no se puede inspeccionar.
+    Consulta ``information_schema``, con fallback a ``SELECT * … LIMIT 0`` +
+    ``cursor.description``. Devuelve conjunto vacío si la tabla no existe o no
+    se puede inspeccionar.
 
     Raises:
         ValueError: si ``table`` contiene caracteres no válidos.
     """
     _validate_identifier(table)
 
-    if is_postgres_backend():
-        # En Postgres usamos information_schema (más fiable que PRAGMA)
-        try:
-            cur = conn.execute(
-                "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
-                (table,),
-            )
-            rows = cur.fetchall()
-            if rows:
-                return {r[0] for r in rows}
-        except Exception:
-            pass
-        # Fallback: SELECT * LIMIT 0
-        try:
-            cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")
-            if cur.description:
-                return {d[0] for d in cur.description}
-        except Exception:
-            pass
-        return set()
-
-    # Intento 1: PRAGMA table_info (rápido en SQLite local)
     try:
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        cur = conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+            (table,),
+        )
+        rows = cur.fetchall()
         if rows:
-            return {r[1] for r in rows}
+            return {r[0] for r in rows}
     except Exception:
         pass
-
-    # Intento 2: cursor.description (fallback si PRAGMA devolvió vacío)
+    # Fallback: SELECT * LIMIT 0
     try:
         cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")
         if cur.description:
             return {d[0] for d in cur.description}
     except Exception:
         pass
-
     return set()
 
 
@@ -534,76 +458,27 @@ def _return_pg_connection(adapter: _PgConnAdapter) -> None:
                 pass
 
 
-def _create_sqlite_connection() -> Any:
-    """Crea una nueva conexión al fichero SQLite local según la configuración actual.
-
-    ``libsql`` (~15-25 MB RSS) se importa lazy aquí: en prod con backend
-    Postgres (DATABASE_URL, precedencia máxima) esta función nunca se llama,
-    así que el import no debe pagarse en cada arranque del proceso.
-    """
-    import libsql
-
-    if (
-        not _DB_PATH_OVERRIDE
-        and os.environ.get("CI", "").lower() in ("1", "true", "yes")
-        and not os.environ.get("PYTEST_CURRENT_TEST")
-        and not is_postgres_backend()
-    ):
-        raise RuntimeError(
-            "Falta DATABASE_URL en el entorno CI. Configura el secret del "
-            "repositorio antes de ejecutar el pipeline."
-        )
-    db_path = _DB_PATH_OVERRIDE or str(settings.DB_PATH)
-    conn = libsql.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.commit()
-    return conn
-
-
-# Alias para compatibilidad con el código existente
-_create_connection = _create_sqlite_connection
-
-
 def _get_conn() -> Any:
-    """Devuelve una conexión reutilizada por hilo.
-
-    Para Postgres: usa psycopg_pool (pool gestionado).
-    Para SQLite local: thread-local (1 conexión por hilo, WAL permite lecturas concurrentes).
-    """
-    # ── Postgres (precedencia máxima) ─────────────────────────────────────
-    if is_postgres_backend():
-        return _create_pg_connection()
-
-    # ── SQLite local / tests: thread-local ────────────────────────────────
-    conn = getattr(_local, "conn", None)
-    if conn is not None:
-        return conn
-    conn = _create_sqlite_connection()
-    _local.conn = conn
-    return conn
+    """Devuelve una conexión del pool Postgres gestionado (psycopg_pool)."""
+    if not _database_url():
+        raise RuntimeError(
+            "DATABASE_URL no está configurada. Postgres es el único motor "
+            "soportado desde ADR-021: levantá el servicio con "
+            "`docker compose up -d postgres` o apuntá DATABASE_URL a tu "
+            "instancia."
+        )
+    return _create_pg_connection()
 
 
 def _return_conn(conn: Any) -> None:
-    """Devuelve una conexión al pool Postgres, o no hace nada (SQLite local es thread-local)."""
-    # Postgres: devolver al psycopg_pool
+    """Devuelve la conexión al pool Postgres."""
     if isinstance(conn, _PgConnAdapter):
         _return_pg_connection(conn)
 
 
 def close_pool() -> None:
-    """Cierra la conexión del hilo actual y el pool Postgres compartido."""
-    # Postgres: cerrar el pool de psycopg_pool
+    """Cierra el pool Postgres compartido."""
     _close_pg_pool()
-
-    conn = getattr(_local, "conn", None)
-    if conn is not None:
-        try:
-            conn.close()
-        except Exception:
-            log.debug("connection_close_failed")
-        _local.conn = None
 
 
 # ---------------------------------------------------------------------------
@@ -668,22 +543,11 @@ def connect() -> Iterator[Any]:
 def connect_read() -> Iterator[Any]:
     """Context manager de SOLO LECTURA.
 
-    Con Postgres: mismo pool + ``SET LOCAL default_transaction_read_only = on``.
-    Con SQLite local: delega en ``connect()`` con PRAGMA query_only.
+    Mismo pool que ``connect()`` + ``SET LOCAL default_transaction_read_only``.
     """
-    if is_postgres_backend():
-        conn = _get_conn()
-        try:
-            conn.execute("SET LOCAL default_transaction_read_only = on")
-            yield conn
-        finally:
-            _return_conn(conn)
-        return
-
     conn = _get_conn()
     try:
-        safe_pragma(conn, "PRAGMA query_only = ON")
+        conn.execute("SET LOCAL default_transaction_read_only = on")
         yield conn
     finally:
-        safe_pragma(conn, "PRAGMA query_only = OFF")
         _return_conn(conn)

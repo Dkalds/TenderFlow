@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect_read, is_postgres_backend
+from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
 
@@ -26,23 +26,18 @@ from services.sql_fragments import FECHA_FIN_SQL, fecha_fin_sql  # noqa: F401
 def _rango_vencimiento_sql() -> str:
     """``BETWEEN`` de vencimiento: hoy y hoy + N meses (parámetro ``?``).
 
-    Backend-dependiente (ADR-016): SQLite usa date('now', ...); Postgres no
-    tiene esa función, usa CURRENT_DATE + INTERVAL. Ambas ramas producen TEXT
-    'YYYY-MM-DD' para comparar contra fecha_fin_sql() (mismo formato).
+    Produce TEXT 'YYYY-MM-DD' para comparar contra ``fecha_fin_sql()``, que
+    usa el mismo formato.
     """
-    if is_postgres_backend():
-        return (
-            "BETWEEN to_char(CURRENT_DATE, 'YYYY-MM-DD') "
-            "AND to_char(CURRENT_DATE + (? * INTERVAL '1 month'), 'YYYY-MM-DD')"
-        )
-    return "BETWEEN date('now') AND date('now', '+' || ? || ' months')"
+    return (
+        "BETWEEN to_char(CURRENT_DATE, 'YYYY-MM-DD') "
+        "AND to_char(CURRENT_DATE + (? * INTERVAL '1 month'), 'YYYY-MM-DD')"
+    )
 
 
 def _dias_restantes_sql(fecha_fin_expr: str) -> str:
     """Días restantes hasta el vencimiento, como entero."""
-    if is_postgres_backend():
-        return f"(({fecha_fin_expr})::date - CURRENT_DATE)"
-    return f"CAST(julianday({fecha_fin_expr}) - julianday('now') AS INTEGER)"
+    return f"(({fecha_fin_expr})::date - CURRENT_DATE)"
 
 
 def proximas_renovaciones(

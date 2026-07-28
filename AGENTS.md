@@ -51,7 +51,7 @@ Lee archivos raw solo cuando: (a) vas a modificar/depurar código concreto, (b) 
 | `config/` | Settings, keywords, constants, secrets | `config/settings.py` | **typing strict** |
 | `shared/` | Utilidades cross-cutting (auth_core, dto, geo, i18n, schemas, signing, ssrf, csrf) | — | **typing strict** |
 | `services/` | Lógica de dominio (licitaciones, classification, clusters, normalization, `analytics/`, `competitive/`, `investigador/`, `ml/`, `rag/`) | `services/licitaciones.py` | Core; usa `db.repositories.*` |
-| `db/` | Persistencia — **Postgres/Supabase en producción** (ADR-016, psycopg3), SQLite local de dev (ADR-018; Turso retirado, ADR-020). Upsert idempotente, migraciones alembic | `db/database.py` (fachada → `connection/schema/upsert/search_backend`) | `db.database`, `db.users` **strict** |
+| `db/` | Persistencia — **Postgres es el único motor** (ADR-016 producción, ADR-021 dev/CI; psycopg3. Turso retirado ADR-020, SQLite ADR-021). Upsert batcheado e idempotente, migraciones solo Alembic | `db/database.py` (fachada → `connection/schema/upsert/search_backend`) | `db.database`, `db.users` **strict** |
 | `api/` | FastAPI REST | `api/app.py` (`uvicorn api.app:app`) | Rutas en `api/routes/` (incl. `ask.py` RAG, `analytics.py`, `competitive.py`) |
 | `web/` | Frontend Next.js 16 | `web/` | Consume la API tipada generada desde OpenAPI |
 | `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED — ADR-009), parser CODICE/UBL, clasificador ML | `scraper/pipeline.py` | `ml_*` con SQL manual (S608 suppressed) |
@@ -109,9 +109,10 @@ make job-parity       # verifica que todo job tiene plano de ejecución (ADR-012
 por plano, el conteo del ratchet TID251, el motor de la suite y la superficie de
 la API. **No lo edites a mano** — si un hecho se puede calcular, se calcula.
 
-**Motor de tests:** por defecto la suite corre sobre SQLite temporal; con
-`TEST_DATABASE_URL` apuntando a un Postgres corre contra el motor real
-(ADR-018), que es lo que hace CI. Si tocás SQL, comprobalo en ambos.
+**Motor de tests:** Postgres, siempre (ADR-021). `TEST_DATABASE_URL` es
+**obligatoria** — la suite falla al arrancar sin ella. Levantá el Postgres de
+dev con `docker compose up -d postgres`. Cada test recibe un schema aislado
+sobre esa instancia (`tests/conftest.py::_pg_schema`).
 
 Slash-commands de Claude Code (en `.claude/commands/`):
 - `/check` — lint + typecheck + test-unit

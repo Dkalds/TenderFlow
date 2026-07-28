@@ -30,7 +30,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from db.database import connect, connect_read, get_cursor, is_postgres_backend, set_cursor
+from db.database import connect, connect_read, get_cursor, set_cursor
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
 
@@ -258,10 +258,7 @@ def eventos_recientes(
     *, tipos: tuple[str, ...] | None = None, dias: int = 30, limit: int = 100
 ) -> list[dict[str, Any]]:
     """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard."""
-    if is_postgres_backend():
-        cutoff_expr = "to_char(CURRENT_DATE - (? * INTERVAL '1 day'), 'YYYY-MM-DD')"
-    else:
-        cutoff_expr = "date('now', '-' || ? || ' days')"
+    cutoff_expr = "to_char(CURRENT_DATE - (? * INTERVAL '1 day'), 'YYYY-MM-DD')"
     sql = (
         "SELECT ev.licitacion_id, ev.tipo, ev.fecha, ev.detalle, ev.importe_delta, "  # noqa: S608
         "       l.titulo, l.organo_contratacion, l.fuente "

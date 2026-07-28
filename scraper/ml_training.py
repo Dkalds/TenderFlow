@@ -235,9 +235,9 @@ def seed_negatives(
     inserted = 0
     already_exists = 0
     if rows_to_insert:
-        from db.database import connect, get_table_columns, is_postgres_backend
+        from db.database import connect, get_table_columns
 
-        now_sql = "NOW()" if is_postgres_backend() else "datetime('now')"
+        now_sql = "NOW()"
         try:
             with connect() as _conn:
                 existing_cols = set(get_table_columns(_conn, "licitaciones"))
@@ -440,9 +440,9 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         log.error("precompute_ml_tecnologias.load_failed", error=str(exc))
         return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
 
-    from db.database import connect, is_postgres_backend
+    from db.database import connect
 
-    now_sql = "NOW()" if is_postgres_backend() else "datetime('now')"
+    now_sql = "NOW()"
     where = "" if force else "WHERE ml_proba_max IS NULL"
     with connect() as c:
         rows = c.execute(

@@ -10,14 +10,14 @@ Inteligencia de licitaciones del Sector Público español.
 |--------|-------------|
 | **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (ZIPs mensuales bulk + feed ATOM en vivo), PSCP y TACRC (activos en el cron diario) y TED (implementado, pendiente de cablear). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
 | **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
-| **Base de datos** | **Postgres/Supabase en producción** ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md), psycopg3 + pool gestionado). SQLite local como alternativa de desarrollo ([ADR-018](docs/adr/ADR-018-paridad-motor-tests-produccion.md); Turso retirado, [ADR-020](docs/adr/ADR-020-retirada-turso.md)). Upsert idempotente, historial de cambios, DLQ |
+| **Base de datos** | **Postgres** en producción, CI y desarrollo — motor único ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md) Supabase, psycopg3 + pool gestionado; Turso retirado en [ADR-020](docs/adr/ADR-020-retirada-turso.md) y SQLite en [ADR-021](docs/adr/ADR-021-retirada-sqlite.md)). Upsert batcheado e idempotente, historial de cambios, DLQ |
 | **Web frontend** | Next.js 16 con dashboard analítico (KPIs, pipeline, competidores, tendencias), búsqueda y administración |
 | **Asistente RAG (`/api/v1/ask`)** | Preguntas en lenguaje natural sobre licitaciones vía LLM (NVIDIA NIM/DeepSeek por defecto; OpenAI/Anthropic opcionales), streaming SSE, presupuesto/circuit-breaker de gasto |
 | **Analítica competitiva** | Detección de bajas anómalas, análisis de mercado, renovaciones y riesgo de cambio de proveedor (`services/competitive/`) |
 | **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo), alertas de competidores y de concept drift del modelo ML |
 | **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, tracing OTLP opcional, alertas por nivel de severidad, dashboards Grafana |
 | **Autenticación** | Password con rate limiting + Google OAuth 2.0, HMAC-signed CSRF state, TOTP (2FA) |
-| **Búsqueda** | Full-text nativo (FTS5 en SQLite / `tsvector`+GIN en Postgres, vía `db/search_backend.py`) + búsqueda semántica opcional con sentence-transformers |
+| **Búsqueda** | Full-text nativo (`tsvector`+GIN, vía `db/search_backend.py`) + búsqueda semántica opcional con sentence-transformers |
 
 ---
 
@@ -33,8 +33,8 @@ Inteligencia de licitaciones del Sector Público español.
                                                    │  upsert idempotente
                                                    ▼
                               ┌────────────────────────────────────┐
-                              │  Postgres / Supabase (producción)   │
-                              │  SQLite local (desarrollo, ADR-018) │
+                              │  Postgres / Supabase (ADR-016)      │
+                              │  motor único (ADR-021)              │
                               │  (historial de cambios, DLQ)        │
                               └──────────┬───────────────────────────┘
                                          │
@@ -77,7 +77,7 @@ tenderflow/
 │   ├── classification.py         #   Clasificación por CPV, módulos, tecnología
 │   ├── clusters.py               #   Clustering de licitaciones
 │   ├── analytics_engine.py       #   Motor analítico DuckDB
-│   ├── rate_limiting.py          #   Rate limiting (SQLite backend)
+│   ├── rate_limiting.py          #   Rate limiting (backend en BD)
 │   ├── rate_limit_redis.py       #   Rate limiting (Redis backend, opcional)
 │   ├── analytics/                #   Overview, pipeline, scoring, forecast, tendencias, geografía
 │   ├── competitive/               #   Bajas anómalas, análisis de mercado, renovaciones
@@ -86,9 +86,9 @@ tenderflow/
 │   ├── rag/                      #   Chunking + construcción de contexto para `/ask`
 │   └── ...                       #   admin, auth, gdpr, health, security, watchlist
 ├── db/                           # Persistencia y acceso a datos
-│   ├── connection.py             #   Pool de conexión (Postgres/psycopg3, SQLite local)
+│   ├── connection.py             #   Pool de conexión (Postgres/psycopg3)
 │   ├── database.py               #   Fachada principal (init, connect, upsert)
-│   ├── search_backend.py         #   Abstracción FTS: FTS5 (SQLite) / tsvector+GIN (Postgres)
+│   ├── search_backend.py         #   Abstracción FTS: tsvector+GIN (Postgres)
 │   ├── upsert.py                 #   Upsert idempotente con historial
 │   ├── migrations.py             #   Migraciones DDL caseras (legacy, v1–v32)
 │   ├── repositories/             #   Patrón Repository (licitaciones, adjudicaciones, ...)
@@ -178,7 +178,7 @@ tenderflow/
 ├── docker-compose.yml            # web + api + scheduler (+ profile monitoring opcional)
 ├── docker-compose.override.yml   # Overrides locales (no versionar cambios sensibles)
 ├── render.yaml                   # Despliegue declarativo en Render.com (alternativa a Docker propio)
-└── data/                         # BD SQLite + modelos + métricas (gitignored)
+└── data/                         # Modelos + métricas + exports (gitignored)
 ```
 
 ---
@@ -223,15 +223,14 @@ Extracto de las variables más relevantes para empezar:
 # Default: prod (fail-safe). Usar dev solo en local.
 ENV=dev
 
-# ── Base de datos (elige una opción) ────────────────────
+# ── Base de datos — Postgres es el único motor (ADR-021) ─
 
-# Opción A — SQLite local (por defecto, sin configuración adicional).
-# Es una comodidad de desarrollo (ADR-018), no la referencia de producción.
-# DB_PATH=data/licitaciones.db
+# Dev local: `docker compose up -d postgres` levanta el servicio del compose.
+#   DATABASE_URL=postgresql://tenderflow:tenderflow@localhost:5432/tenderflow?sslmode=disable  # pragma: allowlist secret
+# (sslmode=disable solo vale contra localhost; se rechaza para hosts remotos.)
 
-# Opción B — Postgres / Supabase (ADR-016, producción) — PRECEDENCIA sobre SQLite.
-# Usar el Supavisor session pooler (puerto 5432, IPv4). En prod/staging exigir
-# sslmode=verify-full + DATABASE_SSL_ROOT_CERT (CA de Supabase).
+# Producción — Supabase (ADR-016). Usar el Supavisor session pooler (5432,
+# IPv4). En prod/staging exigir sslmode=verify-full + DATABASE_SSL_ROOT_CERT.
 DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
 
 # ── OAuth Google (opcional) ──────────────────────────────
@@ -445,7 +444,7 @@ para fines de análisis estadístico e inteligencia comercial.
   se loggean y se omiten sin interrumpir el proceso.
 - Los datos de meses recientes pueden tardar en publicarse
   (el ZIP del mes M suele aparecer a mediados del mes M+1).
-- La búsqueda de texto (`/search`) usa FTS5/BM25 (SQLite) o `tsvector`+GIN
+- La búsqueda de texto (`/search`) usa `tsvector`+GIN
   (Postgres) por defecto; `faiss-cpu` se eliminó en Fase 3 (2026-07-04).
   La similitud semántica basada en embeddings (sentence-transformers) requiere
   instalar el extra `[ml]` y sigue en uso en clasificación/clustering.
