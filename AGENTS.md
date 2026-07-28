@@ -70,7 +70,7 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 2. **Upsert idempotente**: cualquier escritura desde scraper debe poder re-ejecutarse sin duplicar (ver `db/upsert.py`).
 3. **Migraciones append-only**: nunca modificar migraciones alembic ya commiteadas. Siempre nueva revisión.
 4. **Auto-marking de tests**: `tests/conftest.py` aplica markers (unit/integration/e2e/property/load) por nombre de archivo. **No marcar a mano** — renombrar el test si necesitás otro marker.
-5. **DTOs Pydantic v2** son el contrato API↔web (`shared/dto.py`). Cambios a campos requieren migración consciente.
+5. **DTOs Pydantic v2** son el contrato API↔web (`shared/dto.py`). Cambios a campos requieren migración consciente. Una ruta nueva **nace tipada**: `dict[str, Any]` genera `{ [key: string]: unknown }` en el cliente y obliga al frontend a duplicar la forma a mano. `scripts/check_openapi_contract.py` es un ratchet con allowlist decreciente — **no se le añaden entradas**.
 6. **HMAC-signed CSRF + argon2/bcrypt** para auth (`shared/auth_core.py`). No reemplazar por algo más débil.
 7. **Pre-commit obligatorio**: ruff + mypy + bandit + gitleaks + detect-secrets corren en cada commit. No bypassear con `--no-verify`.
 8. **Frontend siempre vía API**: `web/` no accede a `db.*` ni a la capa Python de servicios de forma directa; consume `api/` mediante HTTP/OpenAPI y contratos tipados. Código nuevo **debe** respetar este invariante.
@@ -100,6 +100,7 @@ make migrate-alembic  # aplica migraciones Alembic pendientes (sistema canónico
 make seed             # datos de ejemplo en BD local
 make doctor           # verifica entorno (scripts/doctor.py)
 make check-frontend-invariants  # integridad analítica del frontend (ADR-014, bloqueante)
+make check-api-contract         # ratchet del contrato API↔web (ninguna operación nueva opaca)
 make status           # regenera docs/STATUS.md desde el código
 make job-parity       # verifica que todo job tiene plano de ejecución (ADR-012)
 ```

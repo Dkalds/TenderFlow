@@ -2649,6 +2649,22 @@ export interface components {
             sesgo_p50?: number | null;
         };
         /**
+         * CarteraEmpresa
+         * @description Cartera en juego de una empresa dentro de la ventana.
+         */
+        CarteraEmpresa: {
+            /** Contratos Venciendo */
+            contratos_venciendo: number;
+            /** Empresa */
+            empresa: string | null;
+            /** Empresa Id */
+            empresa_id: number | null;
+            /** Importe En Juego */
+            importe_en_juego: number;
+            /** Proximo Vencimiento */
+            proximo_vencimiento: string | null;
+        };
+        /**
          * ChatMessageDTO
          * @description Mensaje del historial de conversación (multi-turno).
          */
@@ -4437,6 +4453,87 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * Renovacion
+         * @description Un contrato-adjudicatario con fecha de fin dentro de la ventana.
+         *
+         *     Los campos **no llevan default**: la query siempre devuelve todas las
+         *     columnas, así que la clave está siempre presente aunque el valor sea
+         *     ``None``. Ponerles default los marcaría opcionales en el OpenAPI y el
+         *     cliente generado tendría que tratar `undefined` en sitios donde nunca
+         *     ocurre.
+         */
+        Renovacion: {
+            /** Ccaa */
+            ccaa: string | null;
+            /** Cpv */
+            cpv: string | null;
+            /** Dias Restantes */
+            dias_restantes: number | null;
+            /** Duracion Unidad */
+            duracion_unidad: string | null;
+            /** Duracion Valor */
+            duracion_valor: number | null;
+            /** Empresa */
+            empresa: string | null;
+            /** Empresa Id */
+            empresa_id: number | null;
+            /** Es Ute */
+            es_ute: number | null;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion: string | null;
+            /** Fecha Fin Efectiva */
+            fecha_fin_efectiva: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Organo Contratacion */
+            organo_contratacion: string | null;
+            /** Retencion Model Version */
+            retencion_model_version: number | null;
+            /** Riesgo Cambio */
+            riesgo_cambio: number | null;
+            /** Titulo */
+            titulo: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * RenovacionesResult
+         * @description Respuesta de ``GET /competitive/renovaciones``.
+         */
+        RenovacionesResult: {
+            /** Items */
+            items?: components["schemas"]["Renovacion"][];
+            /** Months Ahead */
+            months_ahead: number;
+        };
+        /**
+         * RenovacionesResumenResult
+         * @description Respuesta de ``GET /competitive/renovaciones/resumen``.
+         */
+        RenovacionesResumenResult: {
+            /** Items */
+            items?: components["schemas"]["CarteraEmpresa"][];
+            /** Months Ahead */
+            months_ahead: number;
+            totales: components["schemas"]["RenovacionesTotales"];
+        };
+        /**
+         * RenovacionesTotales
+         * @description Totales sobre el dataset completo (no sobre la página servida).
+         */
+        RenovacionesTotales: {
+            /** Calientes */
+            calientes: number;
+            /** Contratos Venciendo */
+            contratos_venciendo: number;
+            /** Importe Alto Riesgo */
+            importe_alto_riesgo: number;
+            /** Importe En Juego */
+            importe_en_juego: number;
         };
         /** ResumenHoyResult */
         ResumenHoyResult: {
@@ -7517,9 +7614,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RenovacionesResult"];
                 };
             };
             /** @description Validation Error */
@@ -7556,9 +7651,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RenovacionesResumenResult"];
                 };
             };
             /** @description Validation Error */

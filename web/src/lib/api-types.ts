@@ -30,3 +30,12 @@ export type NotificationsResult = Schemas["NotificationsResult"];
 export type AlertItem = Schemas["AlertItem"];
 export type EventosFeedResult = Schemas["EventosFeedResult"];
 export type EventoFeedItem = Schemas["EventoFeedItem"];
+
+// Renovaciones — primera ola del tipado del contrato (ADR/backlog H2).
+// Estas páginas declaraban la forma a mano porque la ruta devolvía
+// `dict[str, Any]`; ahora viene del OpenAPI.
+export type Renovacion = Schemas["Renovacion"];
+export type RenovacionesResult = Schemas["RenovacionesResult"];
+export type CarteraEmpresa = Schemas["CarteraEmpresa"];
+export type RenovacionesTotales = Schemas["RenovacionesTotales"];
+export type RenovacionesResumenResult = Schemas["RenovacionesResumenResult"];

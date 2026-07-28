@@ -411,6 +411,14 @@ jobs:
       - name: Fail on drift (regenerar con `make openapi` y commitear)
         run: git diff --exit-code api/openapi.json web/src/generated/api.d.ts
 
+      # El gate de arriba verifica que el artefacto está SINCRONIZADO, no que
+      # el contrato DIGA algo: una ruta que devuelve `dict[str, Any]` lo pasa
+      # y genera `{ [key: string]: unknown }` en el cliente. Este ratchet
+      # (allowlist que sólo puede encoger, patrón TID251) impide que la
+      # superficie opaca crezca.
+      - name: API contract ratchet (no new opaque responses)
+        run: python scripts/check_openapi_contract.py
+
   # ── Frontend: typecheck, lint, unit tests, build ────────────────────
   frontend:
     name: Frontend (typecheck · lint · test · build)

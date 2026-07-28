@@ -59,3 +59,48 @@ def test_export_openapi_is_deterministic(tmp_path):
     mod.export_openapi(a)
     mod.export_openapi(b)
     assert a.read_bytes() == b.read_bytes()
+
+
+# ── Ratchet del contrato (H2) ─────────────────────────────────────────────
+
+
+def test_contract_ratchet_matches_current_spec():
+    """La allowlist de operaciones opacas coincide con el schema exportado.
+
+    Es la mitad del ratchet que no puede comprobar el gate de drift: ese
+    verifica que `api.d.ts` está sincronizado, no que el contrato tenga
+    contenido. Si alguien tipa una ruta y olvida encoger la allowlist, o
+    añade una ruta con `dict[str, Any]`, este test lo dice.
+    """
+    import importlib.util
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec_path = root / "scripts" / "check_openapi_contract.py"
+    spec = importlib.util.spec_from_file_location("check_openapi_contract", spec_path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    schema = json.loads((root / "api" / "openapi.json").read_text())
+    opaque = set(mod.find_opaque(schema))
+
+    sin_tipar = sorted(opaque - mod.ALLOWED_OPAQUE)
+    assert not sin_tipar, f"Operaciones nuevas con respuesta opaca: {sin_tipar}"
+
+    ya_tipadas = sorted(mod.ALLOWED_OPAQUE - opaque)
+    assert not ya_tipadas, (
+        f"Ya tipadas pero aún en la allowlist (el ratchet solo encoge): {ya_tipadas}"
+    )
+
+
+def test_renovaciones_response_is_typed():
+    """Regresión de la primera ola: /competitive/renovaciones no es opaca."""
+    import json
+    from pathlib import Path
+
+    schema = json.loads((Path(__file__).resolve().parents[1] / "api" / "openapi.json").read_text())
+    for path in ("/api/v1/competitive/renovaciones", "/api/v1/competitive/renovaciones/resumen"):
+        content = schema["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]
+        assert "$ref" in content["schema"], f"{path} volvió a respuesta opaca"

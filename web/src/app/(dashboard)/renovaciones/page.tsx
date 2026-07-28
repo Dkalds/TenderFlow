@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { TableVirtuoso, type TableComponents } from "react-virtuoso";
 import { fetchWithAuth } from "@/lib/api-client";
+import type {
+  Renovacion,
+  RenovacionesResult,
+  RenovacionesResumenResult,
+} from "@/lib/api-types";
 import { useFilters } from "@/lib/filters";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
@@ -44,48 +49,10 @@ import {
   YAxis,
 } from "recharts";
 
-interface Renovacion {
-  licitacion_id: string;
-  titulo: string | null;
-  organo_contratacion: string | null;
-  cpv: string | null;
-  ccaa: string | null;
-  url: string | null;
-  empresa_id: number | null;
-  empresa: string | null;
-  es_ute: number | null;
-  importe_adjudicado: number | null;
-  fecha_adjudicacion: string | null;
-  fecha_fin_efectiva: string | null;
-  dias_restantes: number | null;
-  riesgo_cambio: number | null;
-  retencion_model_version: number | null;
-}
-
-interface ResumenEmpresa {
-  empresa_id: number | null;
-  empresa: string | null;
-  contratos_venciendo: number;
-  importe_en_juego: number;
-  proximo_vencimiento: string | null;
-}
-
-/**
- * Totales del dataset completo, calculados en el backend
- * (`services/competitive/renovaciones.py::totales_renovaciones`).
- *
- * Antes se derivaban en el cliente sumando `data.items`, que viene topado a
- * `limit=1000`: con más contratos que ese tope las cifras salían
- * silenciosamente bajas y se presentaban como totales (patrón nº2 de
- * ADR-014). Los umbrales de "alto riesgo" y "caliente" viven ahora en el
- * servidor (`RIESGO_ALTO`, `DIAS_CALIENTE`), en un solo sitio.
- */
-interface RenovacionesTotales {
-  contratos_venciendo: number;
-  importe_en_juego: number;
-  importe_alto_riesgo: number;
-  calientes: number;
-}
+// Las formas de renovaciones vienen del contrato OpenAPI
+// (`services/competitive/renovaciones.py`), no se declaran aquí: estas
+// interfaces existían a mano porque las rutas devolvían `dict[str, Any]`.
+// Ver scripts/check_openapi_contract.py.
 
 const HORIZONTES = [
   { value: "3", label: "3 meses" },
@@ -166,7 +133,7 @@ export default function RenovacionesPage() {
     ? `&tecnologia=${encodeURIComponent(tecnologiaParam)}`
     : "";
 
-  const { data, isLoading, error } = useQuery<{ items: Renovacion[] }>({
+  const { data, isLoading, error } = useQuery<RenovacionesResult>({
     queryKey: ["renovaciones", meses, tecnologiaParam],
     queryFn: () =>
       fetchWithAuth(
@@ -182,10 +149,7 @@ export default function RenovacionesPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: resumen } = useQuery<{
-    items: ResumenEmpresa[];
-    totales?: RenovacionesTotales;
-  }>({
+  const { data: resumen } = useQuery<RenovacionesResumenResult>({
     queryKey: ["renovaciones-resumen", meses, tecnologiaParam],
     queryFn: () =>
       fetchWithAuth(

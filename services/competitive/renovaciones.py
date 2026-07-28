@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
@@ -28,6 +30,76 @@ from services.sql_fragments import FECHA_FIN_SQL, fecha_fin_sql  # noqa: F401
 # usuario es el del dataset completo y hay un solo sitio donde cambiarla.
 RIESGO_ALTO = 0.6
 DIAS_CALIENTE = 30
+
+
+# ── DTOs de respuesta ─────────────────────────────────────────────────────
+# El contrato API↔web (AGENTS §3.5) exige que la forma viaje en el OpenAPI:
+# sin esto las rutas devuelven `dict[str, Any]`, el cliente generado las tipa
+# como `{ [key: string]: unknown }` y el frontend reescribe la forma a mano.
+# Ver scripts/check_openapi_contract.py.
+
+
+class Renovacion(BaseModel):
+    """Un contrato-adjudicatario con fecha de fin dentro de la ventana.
+
+    Los campos **no llevan default**: la query siempre devuelve todas las
+    columnas, así que la clave está siempre presente aunque el valor sea
+    ``None``. Ponerles default los marcaría opcionales en el OpenAPI y el
+    cliente generado tendría que tratar `undefined` en sitios donde nunca
+    ocurre.
+    """
+
+    licitacion_id: str
+    titulo: str | None
+    organo_contratacion: str | None
+    cpv: str | None
+    ccaa: str | None
+    url: str | None
+    empresa_id: int | None
+    empresa: str | None
+    es_ute: int | None
+    importe_adjudicado: float | None
+    fecha_adjudicacion: str | None
+    duracion_valor: float | None
+    duracion_unidad: str | None
+    fecha_fin_efectiva: str | None
+    dias_restantes: int | None
+    riesgo_cambio: float | None
+    retencion_model_version: int | None
+
+
+class RenovacionesResult(BaseModel):
+    """Respuesta de ``GET /competitive/renovaciones``."""
+
+    items: list[Renovacion] = Field(default_factory=list)
+    months_ahead: int
+
+
+class CarteraEmpresa(BaseModel):
+    """Cartera en juego de una empresa dentro de la ventana."""
+
+    empresa_id: int | None
+    empresa: str | None
+    contratos_venciendo: int
+    importe_en_juego: float
+    proximo_vencimiento: str | None
+
+
+class RenovacionesTotales(BaseModel):
+    """Totales sobre el dataset completo (no sobre la página servida)."""
+
+    contratos_venciendo: int
+    importe_en_juego: float
+    importe_alto_riesgo: float
+    calientes: int
+
+
+class RenovacionesResumenResult(BaseModel):
+    """Respuesta de ``GET /competitive/renovaciones/resumen``."""
+
+    items: list[CarteraEmpresa] = Field(default_factory=list)
+    months_ahead: int
+    totales: RenovacionesTotales
 
 
 def _rango_vencimiento_sql() -> str:

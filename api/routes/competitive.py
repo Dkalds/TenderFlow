@@ -30,6 +30,8 @@ from services.competitive.mercado import (
     perfil_empresa,
 )
 from services.competitive.renovaciones import (
+    RenovacionesResult,
+    RenovacionesResumenResult,
     proximas_renovaciones,
     resumen_renovaciones,
     totales_renovaciones,
@@ -84,7 +86,7 @@ async def get_renovaciones(
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> RenovacionesResult:
     """Pipeline de renovaciones: cada fila es un contrato-adjudicatario con
     fecha de fin efectiva (explícita o calculada con la duración CODICE)."""
     tecnologias = [t.strip() for t in (tecnologia or "").split(",") if t.strip()]
@@ -98,7 +100,7 @@ async def get_renovaciones(
         limit=limit,
         offset=offset,
     )
-    return {"items": items, "months_ahead": months}
+    return RenovacionesResult.model_validate({"items": items, "months_ahead": months})
 
 
 @router.get("/renovaciones/resumen", summary="Cartera en juego por empresa")
@@ -110,7 +112,7 @@ async def get_renovaciones_resumen(
         description="Tecnología(s) separadas por comas (filtro global)",
     ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> RenovacionesResumenResult:
     tecnologias = [t.strip() for t in (tecnologia or "").split(",") if t.strip()]
     items = await run_db(
         resumen_renovaciones,
@@ -122,7 +124,9 @@ async def get_renovaciones_resumen(
         months_ahead=months,
         tecnologias=tecnologias or None,
     )
-    return {"items": items, "months_ahead": months, "totales": totales}
+    return RenovacionesResumenResult.model_validate(
+        {"items": items, "months_ahead": months, "totales": totales}
+    )
 
 
 # ── Bajas ─────────────────────────────────────────────────────────────────
