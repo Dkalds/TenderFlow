@@ -1280,7 +1280,23 @@ export interface paths {
         put?: never;
         /**
          * Create Export
+         * @deprecated
          * @description Crea un job de exportación PDF asíncrono.
+         *
+         *     .. deprecated::
+         *        Usá ``GET /exports/download?format=pdf``, que devuelve el PDF en la
+         *        propia respuesta.
+         *
+         *        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
+         *        Eso sólo funciona con una única instancia que además no se reinicie: en
+         *        el plan actual de Render la instancia se recicla por inactividad, así
+         *        que un job aceptado con 202 desaparece y el sondeo devuelve 404 sin que
+         *        nada lo registre como fallo; y al escalar a dos instancias el poll cae
+         *        en la equivocada y responde 404 o 403 de forma no determinista.
+         *
+         *        Se mantiene funcionando —retirarlo es un cambio breaking del contrato
+         *        público y requiere RFC (AGENTS §5)— pero no debe usarse en clientes
+         *        nuevos.
          *
          *     Devuelve ``{id, status}`` inmediatamente (202 Accepted).
          *     Sondea ``GET /exports/{id}`` para obtener el PDF cuando ``status=done``.
@@ -1326,7 +1342,11 @@ export interface paths {
         };
         /**
          * Download Export
-         * @description Synchronous CSV or Excel download with current filters.
+         * @description Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
+         *
+         *     ``format=pdf`` es el camino recomendado para exportar a PDF: devuelve el
+         *     documento en la propia respuesta, sin la máquina de estados 202+poll de
+         *     ``POST /exports`` (ver la nota de deprecación de ese endpoint).
          */
         get: operations["download_export_api_v1_exports_download_get"];
         put?: never;
@@ -1346,14 +1366,20 @@ export interface paths {
         };
         /**
          * Get Export
+         * @deprecated
          * @description Sondea el estado del job. Devuelve el PDF cuando ``status=done``.
+         *
+         *     .. deprecated:: Ver ``POST /exports``.
          */
         get: operations["get_export_api_v1_exports__job_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Export
+         * @deprecated
          * @description Elimina un job de exportación de la memoria.
+         *
+         *     .. deprecated:: Ver ``POST /exports``.
          */
         delete: operations["delete_export_api_v1_exports__job_id__delete"];
         options?: never;
@@ -7965,7 +7991,7 @@ export interface operations {
     download_export_api_v1_exports_download_get: {
         parameters: {
             query?: {
-                format?: "csv" | "excel";
+                format?: "csv" | "excel" | "pdf";
                 q?: string | null;
                 estado?: string | null;
                 ccaa?: string | null;

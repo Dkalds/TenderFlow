@@ -32,9 +32,11 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/exports", tags=["exports"])
 
 # ── Almacén en memoria (proceso) ─────────────────────────────────────────────
-# TTLCache con maxsize para evitar crecimiento ilimitado.
-# Suficiente para un servicio de instancia única. Para multi-instancia,
-# usar Redis/DB. TTL = 15 min, max 100 jobs concurrentes.
+# Sólo lo usan los endpoints de job asíncrono, ya deprecados en favor de
+# `GET /exports/download?format=pdf` (ver la nota en `create_export`). La
+# premisa "instancia única que no se reinicia" que lo hacía aceptable no se
+# sostiene en el despliegue real, y por eso el camino síncrono es el
+# recomendado. TTL = 15 min, max 100 jobs concurrentes.
 
 _TTL_SECONDS = 900
 _MAX_JOBS = 100
@@ -155,7 +157,7 @@ def _run_export(job_id: str, filters: dict[str, Any]) -> None:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-@router.post("", status_code=202)
+@router.post("", status_code=202, deprecated=True)
 def create_export(
     background_tasks: BackgroundTasks,
     ccaa: str | None = None,
@@ -164,6 +166,21 @@ def create_export(
     ctx: AuthContext = Depends(require_api_key),
 ) -> dict[str, str]:
     """Crea un job de exportación PDF asíncrono.
+
+    .. deprecated::
+       Usá ``GET /exports/download?format=pdf``, que devuelve el PDF en la
+       propia respuesta.
+
+       El job vive en un dict **de proceso** con los bytes del PDF en memoria.
+       Eso sólo funciona con una única instancia que además no se reinicie: en
+       el plan actual de Render la instancia se recicla por inactividad, así
+       que un job aceptado con 202 desaparece y el sondeo devuelve 404 sin que
+       nada lo registre como fallo; y al escalar a dos instancias el poll cae
+       en la equivocada y responde 404 o 403 de forma no determinista.
+
+       Se mantiene funcionando —retirarlo es un cambio breaking del contrato
+       público y requiere RFC (AGENTS §5)— pero no debe usarse en clientes
+       nuevos.
 
     Devuelve ``{id, status}`` inmediatamente (202 Accepted).
     Sondea ``GET /exports/{id}`` para obtener el PDF cuando ``status=done``.
@@ -184,12 +201,15 @@ def create_export(
     return {"id": job_id, "status": "pending"}
 
 
-@router.get("/{job_id}")
+@router.get("/{job_id}", deprecated=True)
 def get_export(
     job_id: str,
     ctx: AuthContext = Depends(require_api_key),
 ) -> Response:
-    """Sondea el estado del job. Devuelve el PDF cuando ``status=done``."""
+    """Sondea el estado del job. Devuelve el PDF cuando ``status=done``.
+
+    .. deprecated:: Ver ``POST /exports``.
+    """
     job = _store.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job no encontrado o expirado.")
@@ -215,12 +235,15 @@ def get_export(
     return JSONResponse({"id": job_id, "status": job["status"]}, status_code=202)
 
 
-@router.delete("/{job_id}", status_code=204)
+@router.delete("/{job_id}", status_code=204, deprecated=True)
 def delete_export(
     job_id: str,
     ctx: AuthContext = Depends(require_api_key),
 ) -> None:
-    """Elimina un job de exportación de la memoria."""
+    """Elimina un job de exportación de la memoria.
+
+    .. deprecated:: Ver ``POST /exports``.
+    """
     job = _store.get(job_id)
     if job is None:
         return
@@ -237,7 +260,7 @@ __all__ = ["router"]
 
 @router.get("/download")
 async def download_export(
-    format: Literal["csv", "excel"] = Query("csv"),
+    format: Literal["csv", "excel", "pdf"] = Query("csv"),
     q: str | None = Query(None),
     estado: str | None = Query(None),
     ccaa: str | None = Query(None),
@@ -247,7 +270,12 @@ async def download_export(
     limit: int = Query(10000, ge=1, le=50000),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> StreamingResponse:
-    """Synchronous CSV or Excel download with current filters."""
+    """Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
+
+    ``format=pdf`` es el camino recomendado para exportar a PDF: devuelve el
+    documento en la propia respuesta, sin la máquina de estados 202+poll de
+    ``POST /exports`` (ver la nota de deprecación de ese endpoint).
+    """
     from services.exports import generate_csv, generate_excel, get_export_filename
     from services.licitaciones import fetch_for_pdf
 
@@ -265,6 +293,12 @@ async def download_export(
     if format == "excel":
         content = generate_excel(rows)
         media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    elif format == "pdf":
+        title = "Licitaciones SAP — Exportación"
+        if ccaa:
+            title += f" ({ccaa})"
+        content = _build_pdf(rows, title)
+        media_type = "application/pdf"
     else:
         content = generate_csv(rows)
         media_type = "text/csv; charset=utf-8"

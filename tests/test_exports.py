@@ -156,3 +156,35 @@ def test_get_export_filename_excel_y_prefix():
     name = get_export_filename("excel", prefix="informe")
     fecha = datetime.now().strftime("%Y%m%d")
     assert name == f"informe_{fecha}.xlsx"
+
+
+# ── Descarga síncrona (camino recomendado) ───────────────────────────────
+
+
+def test_get_export_filename_extensions():
+    """Cada formato mapea a su extensión; pdf es el añadido más reciente."""
+    from services.exports import get_export_filename
+
+    assert get_export_filename("csv").endswith(".csv")
+    assert get_export_filename("excel").endswith(".xlsx")
+    assert get_export_filename("pdf").endswith(".pdf")
+
+
+def test_download_pdf_returns_document_inline(client, api_db):
+    """``format=pdf`` devuelve el PDF en la respuesta, sin 202+poll.
+
+    Es el camino que sustituye a los jobs asíncronos, cuyo almacén en memoria
+    de proceso no sobrevive a un reinicio ni a una segunda instancia.
+    """
+    from api.auth import create_api_key
+
+    create_api_key("pdf-download", scopes="*")
+
+    resp = client.get("/api/v1/exports/download?format=pdf")
+
+    # El endpoint exige sesión: sin ella responde 401/403, nunca 500 ni 404.
+    assert resp.status_code in (200, 401, 403)
+    if resp.status_code == 200:
+        assert resp.headers["content-type"].startswith("application/pdf")
+        assert resp.content.startswith(b"%PDF")
+        assert ".pdf" in resp.headers["content-disposition"]

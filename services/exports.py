@@ -13,7 +13,7 @@ from shared.export_safety import sanitize_spreadsheet_record
 
 logger = get_logger(__name__)
 
-ExportFormat = Literal["csv", "excel"]
+ExportFormat = Literal["csv", "excel", "pdf"]
 
 _DEFAULT_COLUMNS = [
     "id_externo",
@@ -77,8 +77,10 @@ def generate_excel(
     return buf.getvalue()
 
 
+_EXTENSIONS: dict[str, str] = {"csv": "csv", "excel": "xlsx", "pdf": "pdf"}
+
+
 def get_export_filename(format: ExportFormat, prefix: str = "licitaciones") -> str:
     """Return a filename like ``licitaciones_20260529.csv``."""
     date_str = datetime.now().strftime("%Y%m%d")
-    ext = "csv" if format == "csv" else "xlsx"
-    return f"{prefix}_{date_str}.{ext}"
+    return f"{prefix}_{date_str}.{_EXTENSIONS.get(format, 'csv')}"

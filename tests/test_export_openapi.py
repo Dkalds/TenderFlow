@@ -42,6 +42,15 @@ def test_export_openapi_produces_nonempty_paths(tmp_path):
     retendering_path = on_disk["paths"]["/api/v1/analytics/forecast/retendering"]
     assert retendering_path["get"]["deprecated"] is True
 
+    # Jobs de export asíncronos: deprecados en favor de
+    # GET /exports/download?format=pdf, porque su almacén vive en memoria del
+    # proceso y no sobrevive ni a un reinicio ni a una segunda instancia.
+    # Retirarlos sería breaking y requiere RFC, así que el flag es el contrato.
+    assert on_disk["paths"]["/api/v1/exports"]["post"]["deprecated"] is True
+    job_path = on_disk["paths"]["/api/v1/exports/{job_id}"]
+    assert job_path["get"]["deprecated"] is True
+    assert job_path["delete"]["deprecated"] is True
+
 
 def test_export_openapi_is_deterministic(tmp_path):
     mod = _load_export_module()

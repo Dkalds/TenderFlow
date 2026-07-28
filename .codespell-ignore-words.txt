@@ -127,3 +127,4 @@ foto
 interpolar
 sme
 extensiones
+registre
