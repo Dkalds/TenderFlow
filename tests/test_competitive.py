@@ -598,3 +598,49 @@ def test_competitor_alerts_sin_entradas(db):
     from scheduler.competitor_alerts import check_and_notify
 
     assert check_and_notify() == 0
+
+
+def test_totales_renovaciones_incluye_kpis_de_riesgo(db):
+    """Los cuatro KPIs del panel se calculan en servidor sobre el dataset completo.
+
+    Antes `importe_alto_riesgo` y `calientes` se derivaban en el cliente sumando
+    la lista paginada (`limit=1000`) y se presentaban como totales: con más
+    contratos que el tope, las cifras salían silenciosamente bajas (patrón nº2
+    de ADR-014).
+    """
+    from db.database import connect
+    from services.competitive.renovaciones import (
+        DIAS_CALIENTE,
+        RIESGO_ALTO,
+        totales_renovaciones,
+    )
+
+    # Alto riesgo y vence pronto → cuenta como "caliente".
+    insert_contract(db, "R-K1", "Alpha SL", nif="B10000001", fecha_fin=_date(10), adjudicado=50000)
+    # Alto riesgo pero lejos → suma a importe_alto_riesgo, no a calientes.
+    insert_contract(db, "R-K2", "Beta SL", nif="B10000002", fecha_fin=_date(120), adjudicado=30000)
+    # Riesgo bajo → no suma a ninguno de los dos.
+    insert_contract(db, "R-K3", "Gamma SL", nif="B10000003", fecha_fin=_date(15), adjudicado=20000)
+    resolve(db)
+
+    with connect() as c:
+        for lic_id, riesgo in (
+            ("R-K1", RIESGO_ALTO + 0.1),
+            ("R-K2", RIESGO_ALTO + 0.1),
+            ("R-K3", RIESGO_ALTO - 0.3),
+        ):
+            c.execute(
+                "INSERT INTO predicciones_retencion "
+                "(licitacion_id, prob_retencion, riesgo_cambio) VALUES (?, ?, ?)",
+                (lic_id, 1.0 - riesgo, riesgo),
+            )
+
+    totales = totales_renovaciones(months_ahead=6)
+
+    assert totales["contratos_venciendo"] == 3
+    assert totales["importe_en_juego"] == 100000
+    # Solo K1 y K2 superan el umbral de riesgo.
+    assert totales["importe_alto_riesgo"] == 80000
+    # Solo K1 supera el umbral Y vence dentro de la ventana caliente.
+    assert totales["calientes"] == 1
+    assert DIAS_CALIENTE == 30

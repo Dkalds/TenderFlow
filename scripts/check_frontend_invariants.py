@@ -13,10 +13,11 @@ Categorías detectadas (denylist de alto valor / bajo falso-positivo):
   large-limit         ``?limit=500|1000`` (agregación cliente sobre sample parcial)
   synthetic-graph     aristas de grafo derivadas de co-ocurrencia por CCAA
 
-Modo por defecto: **warning** (exit 0) — reporta sin bloquear, para endurecer
-categoría a categoría a medida que las páginas se migran (igual que el lint
-progresivo del repo). Con ``--strict`` falla (exit 1) ante cualquier hallazgo no
-permitido; ``--error-category CAT`` falla solo en esas categorías.
+Modo por defecto: **warning** (exit 0) — reporta sin bloquear. CI y
+``make check-frontend-invariants`` lo invocan con ``--strict`` (exit 1 ante
+cualquier hallazgo no permitido), bloqueante desde 2026-07-28: las cinco
+categorías están a cero. ``--error-category CAT`` falla solo en esas
+categorías.
 
 Allowlist por línea: añadí ``fdi-allow`` (o ``fdi-allow:categoria``) en un
 comentario de la línea para justificar y excluir un hallazgo concreto.

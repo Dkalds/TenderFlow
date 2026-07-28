@@ -99,7 +99,7 @@ make scrape-daily     # corre scraper en modo daily
 make migrate-alembic  # aplica migraciones Alembic pendientes (sistema canónico)
 make seed             # datos de ejemplo en BD local
 make doctor           # verifica entorno (scripts/doctor.py)
-make check-frontend-invariants  # integridad analítica del frontend (ADR-014, modo aviso)
+make check-frontend-invariants  # integridad analítica del frontend (ADR-014, bloqueante)
 make status           # regenera docs/STATUS.md desde el código
 make job-parity       # verifica que todo job tiene plano de ejecución (ADR-012)
 ```

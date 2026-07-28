@@ -57,6 +57,15 @@ jobs:
       # verificado. Sin esto, un job puede quedar registrado pero sin ningún
       # plano que lo ejecute — el fallo que dejó los digests diarios sin
       # enviar y la retención sin purgar durante meses.
+      # ADR-014 — integridad analítica del frontend. Bloqueante desde
+      # 2026-07-28: los cinco patrones sistémicos que diagnosticó la ADR están
+      # a cero, así que el gate pasa de "modo aviso" (que nadie ejecutaba, ni
+      # siquiera en CI) a invariante ejecutable. Un hallazgo nuevo se justifica
+      # en su línea con `fdi-allow:<categoria>` o se corrige. Vive en este job
+      # y no en `frontend` porque el checker es Python y `frontend` es Node.
+      - name: Verify frontend analytical integrity (ADR-014)
+        run: python scripts/check_frontend_invariants.py --strict
+
       - name: Verify scheduler job parity (ADR-012)
         env:
           ENV: dev

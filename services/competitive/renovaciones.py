@@ -18,9 +18,16 @@ from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
 
-# FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos (asume
-# SQLite). Código nuevo debe usar fecha_fin_sql() (backend-aware, ADR-016).
+# FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos.
 from services.sql_fragments import FECHA_FIN_SQL, fecha_fin_sql  # noqa: F401
+
+# ── Umbrales de "contrato caliente" ───────────────────────────────────────
+# Definición canónica y única (ADR-014): vivía duplicada en el cliente
+# (`renovaciones/page.tsx` la calculaba sobre una lista truncada a 1000 filas y
+# la presentaba como total del dataset). Al vivir aquí, el número que ve el
+# usuario es el del dataset completo y hay un solo sitio donde cambiarla.
+RIESGO_ALTO = 0.6
+DIAS_CALIENTE = 30
 
 
 def _rango_vencimiento_sql() -> str:
@@ -150,20 +157,35 @@ def totales_renovaciones(
 ) -> dict[str, Any]:
     """Totales agregados (sin GROUP BY) de contratos que vencen en la ventana.
 
-    Pensado para banners/resúmenes que necesitan un par de cifras del dataset
-    completo, sin traer ni truncar la lista de contratos en el cliente.
+    Devuelve las cuatro cifras del panel de renovaciones calculadas sobre el
+    **dataset completo**: número de contratos, importe en juego, importe en
+    riesgo alto y contratos "calientes" (riesgo alto venciendo en menos de
+    ``DIAS_CALIENTE`` días).
+
+    Las dos últimas se computaban en el cliente sumando la lista paginada
+    (`limit=1000`) y se presentaban como totales, que es el patrón nº2 de
+    ADR-014: si hay más contratos que el tope, el usuario ve cifras
+    silenciosamente bajas.
     """
     months_ahead = max(1, min(int(months_ahead), 60))
     fecha_fin = fecha_fin_sql()
+    dias_restantes = _dias_restantes_sql(fecha_fin)
     sql = f"""
         SELECT COUNT(*) AS contratos_venciendo,
-               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego
+               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
+               COALESCE(
+                   SUM(a.importe_adjudicado) FILTER (WHERE pr.riesgo_cambio >= ?), 0
+               ) AS importe_alto_riesgo,
+               COUNT(*) FILTER (
+                   WHERE pr.riesgo_cambio >= ? AND {dias_restantes} <= ?
+               ) AS calientes
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
         WHERE {fecha_fin} {_rango_vencimiento_sql()}
           AND {exclude_duplicados_sql()}
     """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
-    params: list[Any] = [months_ahead]
+    params: list[Any] = [RIESGO_ALTO, RIESGO_ALTO, DIAS_CALIENTE, months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
         placeholders = ",".join("?" for _ in tecnologias)
@@ -171,4 +193,11 @@ def totales_renovaciones(
         params.extend(tecnologias)
     with connect_read() as c:
         rows = rows_to_dicts(c.execute(sql, params))
-    return rows[0] if rows else {"contratos_venciendo": 0, "importe_en_juego": 0}
+    if not rows:
+        return {
+            "contratos_venciendo": 0,
+            "importe_en_juego": 0,
+            "importe_alto_riesgo": 0,
+            "calientes": 0,
+        }
+    return rows[0]

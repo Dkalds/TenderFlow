@@ -36,8 +36,8 @@ check:  ## Lint + typecheck + tests unitarios (ideal para desarrollo)
 	mypy .
 	pytest tests/ -m "unit and not slow" -q
 
-check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, modo aviso)
-	python scripts/check_frontend_invariants.py
+check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloqueante)
+	python scripts/check_frontend_invariants.py --strict
 
 # ── Tests ────────────────────────────────────────────────────────────────
 test:  ## Suite de tests estándar (excluye integration_e2e)

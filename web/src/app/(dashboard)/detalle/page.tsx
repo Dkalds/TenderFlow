@@ -83,6 +83,10 @@ function getLastViewed(): number {
 }
 
 function getWatchlist(): string[] {
+  // No es estado de usuario viviendo en el cliente: es el lado lector de la
+  // migración one-shot a servidor de más abajo, que vacía la clave tras
+  // subirla. Corrige el patrón ADR-014 §2, no es una instancia de él.
+  // fdi-allow:client-state
   return getJSON<string[]>(WATCHLIST_KEY, []);
 }
 

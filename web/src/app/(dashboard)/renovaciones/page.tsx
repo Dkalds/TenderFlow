@@ -70,6 +70,23 @@ interface ResumenEmpresa {
   proximo_vencimiento: string | null;
 }
 
+/**
+ * Totales del dataset completo, calculados en el backend
+ * (`services/competitive/renovaciones.py::totales_renovaciones`).
+ *
+ * Antes se derivaban en el cliente sumando `data.items`, que viene topado a
+ * `limit=1000`: con más contratos que ese tope las cifras salían
+ * silenciosamente bajas y se presentaban como totales (patrón nº2 de
+ * ADR-014). Los umbrales de "alto riesgo" y "caliente" viven ahora en el
+ * servidor (`RIESGO_ALTO`, `DIAS_CALIENTE`), en un solo sitio.
+ */
+interface RenovacionesTotales {
+  contratos_venciendo: number;
+  importe_en_juego: number;
+  importe_alto_riesgo: number;
+  calientes: number;
+}
+
 const HORIZONTES = [
   { value: "3", label: "3 meses" },
   { value: "6", label: "6 meses" },
@@ -153,12 +170,22 @@ export default function RenovacionesPage() {
     queryKey: ["renovaciones", meses, tecnologiaParam],
     queryFn: () =>
       fetchWithAuth(
+        // Esta lista alimenta **solo la tabla virtualizada**; los KPIs de
+        // arriba son totales del servidor sobre el dataset completo. Residual
+        // conocido: la tabla se reordena en cliente por score de oportunidad,
+        // así que con más de 1000 contratos en la ventana el "top" mostrado
+        // sería el top de las 1000 primeras por fecha de fin, no del dataset.
+        // Ordenar por score en el servidor es un ítem de backlog abierto.
+        // fdi-allow:large-limit
         `/api/v1/competitive/renovaciones?months=${meses}&limit=1000${tecnologiaQs}`,
       ),
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: resumen } = useQuery<{ items: ResumenEmpresa[] }>({
+  const { data: resumen } = useQuery<{
+    items: ResumenEmpresa[];
+    totales?: RenovacionesTotales;
+  }>({
     queryKey: ["renovaciones-resumen", meses, tecnologiaParam],
     queryFn: () =>
       fetchWithAuth(
@@ -198,19 +225,9 @@ export default function RenovacionesPage() {
     [items],
   );
 
-  // Umbral de "alto riesgo de cambio" (alineado con el badge de la tabla).
-  const ALTO_RIESGO = 0.6;
-  const kpis = useMemo(() => {
-    const all = data?.items ?? [];
-    const importe = all.reduce((acc, r) => acc + (r.importe_adjudicado ?? 0), 0);
-    const importeAltoRiesgo = all
-      .filter((r) => (r.riesgo_cambio ?? 0) >= ALTO_RIESGO)
-      .reduce((acc, r) => acc + (r.importe_adjudicado ?? 0), 0);
-    const calientes = all.filter(
-      (r) => (r.riesgo_cambio ?? 0) >= ALTO_RIESGO && (r.dias_restantes ?? 9999) <= 30,
-    ).length;
-    return { contratos: all.length, importe, importeAltoRiesgo, calientes };
-  }, [data]);
+  // Los KPIs son totales del dataset completo servidos por el backend, no una
+  // agregación sobre la página cargada (ADR-014 §2).
+  const totales = resumen?.totales;
 
   const topCartera = useMemo(
     () =>
@@ -266,24 +283,24 @@ export default function RenovacionesPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           title="Contratos venciendo"
-          value={isLoading ? "…" : formatNumber(kpis.contratos)}
+          value={totales ? formatNumber(totales.contratos_venciendo) : "…"}
           icon={CalendarClock}
         />
         <KpiCard
           title="Importe en juego"
-          value={isLoading ? "…" : formatCurrency(kpis.importe)}
+          value={totales ? formatCurrency(totales.importe_en_juego) : "…"}
           icon={Euro}
         />
         <KpiCard
           title="Importe en alto riesgo"
           subtitle="Riesgo de cambio ≥ 60%"
-          value={isLoading ? "…" : formatCurrency(kpis.importeAltoRiesgo)}
+          value={totales ? formatCurrency(totales.importe_alto_riesgo) : "…"}
           icon={TrendingUp}
         />
         <KpiCard
           title="Oportunidades calientes"
           subtitle="Alto riesgo y ≤ 30 días"
-          value={isLoading ? "…" : formatNumber(kpis.calientes)}
+          value={totales ? formatNumber(totales.calientes) : "…"}
           icon={Flame}
         />
       </div>
