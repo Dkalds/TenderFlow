@@ -75,7 +75,7 @@ Detalle completo (con docs relacionados por paquete) en [docs/AGENT_PLAYBOOK.md]
 7. **Pre-commit obligatorio**: ruff + mypy + bandit + gitleaks + detect-secrets corren en cada commit. No bypassear con `--no-verify`.
 8. **Frontend siempre vía API**: `web/` no accede a `db.*` ni a la capa Python de servicios de forma directa; consume `api/` mediante HTTP/OpenAPI y contratos tipados. Código nuevo **debe** respetar este invariante.
 9. **Un solo plano de orquestación por entorno**: los planos GitHub Actions y APScheduler nunca corren activos contra la misma BD (ADR-012). Variable `SCHEDULER_PLANE` declara el dueño.
-10. **Acceso a BD solo vía `db/repositories/*`** (TID251, whitelist decreciente): el acceso directo a `db.connection.connect` / `db.connection.connect_read` / `db.database.connect` / `db.database.connect_read` está baneado por ruff fuera de la whitelist declarada en `pyproject.toml`. La whitelist se congela en el estado actual y **solo se puede encoger** — nunca añadir archivos nuevos.
+10. **Todo el SQL vive en `db/`** (ADR-022). `db/repositories/*` (clases) y `db/*.py` (funciones de módulo) son **el mismo estrato** — la diferencia es estilística, no arquitectónica, y ninguno se migra al otro. Lo que sí es violación es SQL fuera de `db/`: `services/`, `api/`, `scheduler/`, `scraper/` y `scripts/` no escriben SQL. El ratchet TID251 (whitelist decreciente en `pyproject.toml`, hoy 44 entradas, 18 de ellas en `services/`) lo sostiene prohibiendo importar `db.connection.connect`/`connect_read` fuera de la whitelist — **la whitelist sólo puede encoger, nunca añadir archivos**. Excepción acotada: `services/sql_fragments.py` expone fragmentos SQL constantes pero no ejecuta nada.
 
 ---
 
