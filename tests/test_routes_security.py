@@ -130,7 +130,7 @@ class TestSecurityEndpoints:
 
         from config import settings
 
-        secret = "test-secret"
+        secret = "test-secret"  # pragma: allowlist secret
         old = settings.API_HMAC_SECRET
         settings.API_HMAC_SECRET = SecretStr(secret)
         try:

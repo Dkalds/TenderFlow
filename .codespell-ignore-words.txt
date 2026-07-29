@@ -30,6 +30,7 @@ accesible
 identificable
 serie
 avance
+controle
 controles
 posible
 vie
