@@ -663,25 +663,29 @@ class TestTechnologyClassifierPersistence:
         sha_path = target.with_suffix(".sha256")
         sha_path.write_text("wrong_hash", encoding="utf-8")
 
-        with pytest.raises(ValueError, match="Checksum"):
+        with pytest.raises(RuntimeError, match="checksum co-ubicado"):
             TechnologyClassifier.load(path=target)
 
-    def test_load_wrong_type(self, tmp_path: Path) -> None:
+    def test_load_wrong_type(self, tmp_path: Path, monkeypatch) -> None:
+        from config import settings
         from scraper.tech_classifier import TechnologyClassifier
 
         target = tmp_path / "model.pkl"
         target.write_bytes(b"fake")
-        # No sha file so checksum check is skipped
+        # No sha file so checksum check is skipped (ENV=dev: no fallo duro)
+        monkeypatch.setattr(settings, "ENV", "dev")
 
         with patch("joblib.load", return_value="not_a_classifier"):
             with pytest.raises(TypeError, match="no contiene"):
                 TechnologyClassifier.load(path=target)
 
-    def test_load_valid_no_sha(self, tmp_path: Path) -> None:
+    def test_load_valid_no_sha(self, tmp_path: Path, monkeypatch) -> None:
+        from config import settings
         from scraper.tech_classifier import TechnologyClassifier
 
         target = tmp_path / "model.pkl"
         target.write_bytes(b"fake")
+        monkeypatch.setattr(settings, "ENV", "dev")
 
         mock_clf = MagicMock(spec=TechnologyClassifier)
         type(mock_clf).__name__ = "TechnologyClassifier"
@@ -689,6 +693,43 @@ class TestTechnologyClassifierPersistence:
         with patch("joblib.load", return_value=mock_clf):
             result = TechnologyClassifier.load(path=target)
         assert result is mock_clf
+
+    def test_load_pin_detects_tampered_model(self, tmp_path: Path, monkeypatch) -> None:
+        """El pin out-of-band ML_TECH_MODEL_SHA256 detecta un .pkl manipulado
+        incluso si el .sha256 co-ubicado se regeneró junto con él (release
+        comprometido)."""
+        import hashlib
+
+        from config import settings
+        from scraper.tech_classifier import TechnologyClassifier
+
+        target = tmp_path / "model.pkl"
+        target.write_bytes(b"modelo original")
+        original_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+        monkeypatch.setattr(settings, "ML_TECH_MODEL_SHA256", original_hash)
+
+        target.write_bytes(b"contenido manipulado")
+        tampered_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+        target.with_suffix(".sha256").write_text(tampered_hash, encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="ML_TECH_MODEL_SHA256"):
+            TechnologyClassifier.load(path=target)
+
+    def test_load_prod_without_pin_or_checksum_raises(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """En ENV=prod, sin pin ni checksum co-ubicado, load() falla duro."""
+        from config import settings
+        from scraper.tech_classifier import TechnologyClassifier
+
+        target = tmp_path / "model.pkl"
+        target.write_bytes(b"fake model")
+        # Sin .sha256 co-ubicado y sin pin.
+        monkeypatch.setattr(settings, "ML_TECH_MODEL_SHA256", "")
+        monkeypatch.setattr(settings, "ENV", "prod")
+
+        with pytest.raises(RuntimeError, match="Sin verificación de integridad"):
+            TechnologyClassifier.load(path=target)
 
     def test_is_available(self, tmp_path: Path) -> None:
         from scraper.tech_classifier import TechnologyClassifier

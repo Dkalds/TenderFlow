@@ -164,6 +164,19 @@ class Settings(BaseSettings):
     # .pkl y .sha256 podrían sustituirse a la vez, y joblib.load ejecuta código
     # arbitrario). Vacío = sin pin. Ver scraper/ml_classifier.SAPClassifier.load.
     ML_MODEL_SHA256: str = ""
+    # Hash SHA256 fijado (out-of-band) para el TechnologyClassifier
+    # (data/models/tech_classifier.pkl). Mismo propósito y semántica que
+    # ML_MODEL_SHA256. Vacío = sin pin. Ver
+    # scraper.tech_classifier.TechnologyClassifier.load.
+    ML_TECH_MODEL_SHA256: str = ""
+    # Hash SHA256 fijado (out-of-band) para BajaModel
+    # (data/models/baja_model.pkl). Vacío = sin pin. Ver
+    # services.ml.baja_model.BajaModel.load.
+    ML_BAJA_MODEL_SHA256: str = ""
+    # Hash SHA256 fijado (out-of-band) para RetencionModel
+    # (data/models/retencion_model.pkl). Vacío = sin pin. Ver
+    # services.ml.retencion_model.RetencionModel.load.
+    ML_RETENCION_MODEL_SHA256: str = ""
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
     # Si True, el re-entrenamiento mensual activa la versión nueva

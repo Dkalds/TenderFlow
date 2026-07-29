@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 import services.ml.retencion_model as retencion_model_mod
+from config import settings
 from services.ml.drift import _psi, comprobar_drift_baja
 from services.ml.retencion_labels import (
     construir_pares,
     features_para_vencimientos,
     muestra_auditoria,
 )
-from services.ml.retencion_model import MODEL_NAME, entrenar
+from services.ml.retencion_model import MODEL_NAME, RetencionModel, entrenar
 from services.ml.scoring import score_predicciones_retencion
 
 
@@ -50,6 +53,63 @@ def _contrato(
         "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
         (lic_id, f"Empresa {empresa_id}", adjudicado, fecha_adj, empresa_id),
     )
+
+
+# ---------------------------------------------------------------------------
+# Integridad del modelo serializado (pin out-of-band + checksum co-ubicado)
+# ---------------------------------------------------------------------------
+
+
+def _save_untrained(tmp_path):
+    modelo = RetencionModel(clf=None, metadata={})
+    model_path = tmp_path / "ret.pkl"
+    modelo.save(model_path)  # escribe .pkl + .sha256 co-ubicado
+    return model_path
+
+
+def test_load_rejects_when_pin_mismatch(tmp_path, monkeypatch) -> None:
+    model_path = _save_untrained(tmp_path)
+    monkeypatch.setattr(settings, "ML_RETENCION_MODEL_SHA256", "de" * 32)  # no coincide
+    with pytest.raises(RuntimeError, match="ML_RETENCION_MODEL_SHA256"):
+        RetencionModel.load(model_path)
+
+
+def test_load_accepts_when_pin_matches(tmp_path, monkeypatch) -> None:
+    model_path = _save_untrained(tmp_path)
+    correct = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    monkeypatch.setattr(settings, "ML_RETENCION_MODEL_SHA256", correct)
+    assert RetencionModel.load(model_path) is not None
+
+
+def test_load_pin_detects_tampered_model(tmp_path, monkeypatch) -> None:
+    """Pin del modelo original; luego se manipula el .pkl y su .sha256
+    co-ubicado (simula un release comprometido). El pin debe detectarlo."""
+    model_path = _save_untrained(tmp_path)
+    original_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    monkeypatch.setattr(settings, "ML_RETENCION_MODEL_SHA256", original_hash)
+
+    model_path.write_bytes(b"contenido manipulado")
+    tampered_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    model_path.with_suffix(".sha256").write_text(tampered_hash, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="ML_RETENCION_MODEL_SHA256"):
+        RetencionModel.load(model_path)
+
+
+def test_load_prod_without_pin_or_checksum_raises(tmp_path, monkeypatch) -> None:
+    """En ENV=prod, sin pin ni checksum co-ubicado, load() falla duro."""
+    model_path = _save_untrained(tmp_path)
+    model_path.with_suffix(".sha256").unlink()
+    monkeypatch.setattr(settings, "ML_RETENCION_MODEL_SHA256", "")
+    monkeypatch.setattr(settings, "ENV", "prod")
+    with pytest.raises(RuntimeError, match="Sin verificación de integridad"):
+        RetencionModel.load(model_path)
+
+
+def test_load_no_pin_uses_colocated_checksum(tmp_path, monkeypatch) -> None:
+    model_path = _save_untrained(tmp_path)
+    monkeypatch.setattr(settings, "ML_RETENCION_MODEL_SHA256", "")
+    assert RetencionModel.load(model_path) is not None
 
 
 # ---------------------------------------------------------------------------
