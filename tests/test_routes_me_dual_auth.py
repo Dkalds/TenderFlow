@@ -24,11 +24,19 @@ from api.app import app
 from api.routes.dual_auth import require_any_auth
 from api.routes.me import _user_key
 from api.routes.watchlist_rules import _user_key as _watchlist_rules_user_key
+from shared.identity import user_key_from_email
 
 # Fixtures client, auth, api_db se heredan de conftest.py
 
 
 def _session_ctx(user_id: int = 7, email: str = "session-user@test.com"):
+    """Simula el ctx que ``require_any_auth`` produce para una sesión OAuth.
+
+    Incluye ``user_key`` igual que la dependencia real (que lo adjunta en
+    TODAS las ramas, sesión y API key, vía
+    ``shared.identity.user_key_from_email``) — un ctx sin él no puede ocurrir
+    en producción y no debe simularse aquí.
+    """
     return {
         "user_id": user_id,
         "email": email,
@@ -36,6 +44,7 @@ def _session_ctx(user_id: int = 7, email: str = "session-user@test.com"):
         "is_admin": False,
         "auth_method": "session",
         "authenticated_at": datetime.now(UTC).isoformat(),
+        "user_key": user_key_from_email(email, user_id),
     }
 
 

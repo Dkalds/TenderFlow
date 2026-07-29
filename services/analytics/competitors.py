@@ -8,7 +8,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from observability.logging import get_logger
-from services.adjudicaciones import load_raw_adjudicaciones
+from services.adjudicaciones import load_for_competitors
 from services.normalization import normalize_company, normalize_nif
 
 log = get_logger(__name__)
@@ -348,9 +348,22 @@ def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
     return summary.drop(columns=["master_nifs"])
 
 
-def _load_df(ccaa: str | None) -> pd.DataFrame:
-    ccaa_filter = (ccaa,) if ccaa else None
-    rows = load_raw_adjudicaciones(ccaa_filter=ccaa_filter)
+def _load_df(filters: CompetitorFilters) -> pd.DataFrame:
+    """Carga adjudicaciones ya filtradas+proyectadas en SQL (ver ``_apply_filters``:
+
+    se mantiene como red de seguridad redundante — corre sobre un dataset que
+    Postgres ya filtró, así que es un no-op en la práctica, pero garantiza que
+    ningún cambio futuro en el SQL puede filtrar de más/menos sin que los
+    tests existentes (que mockean la carga con filas SIN filtrar) lo detecten.
+    """
+    rows = load_for_competitors(
+        ccaa=filters.ccaa,
+        tecnologia=filters.tecnologia,
+        estado=filters.estado,
+        fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
+        fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
+        importe_min=filters.importe_min,
+    )
     df = pd.DataFrame(rows)
     if not df.empty:
         if "fecha_adjudicacion" in df.columns:
@@ -404,7 +417,7 @@ def _compute_hhi(shares: pd.Series) -> float:
 def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     """Compute competitor rankings, HHI, and single-bid percentage."""
     log.info("analytics_competitors_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df(filters.ccaa)
+    df = _load_df(filters)
     df = _apply_filters(df, filters)
 
     if df.empty or "empresa" not in df.columns:

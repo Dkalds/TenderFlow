@@ -95,3 +95,74 @@ def test_licitacion_schema_valid():
     # Si pandera está disponible, debe validar sin error
     result = LicitacionSchema.validate(df, lazy=True)
     assert len(result) == 2
+
+
+def test_pandera_installed_flag_is_bool():
+    from shared.schemas import _pandera_installed
+
+    assert isinstance(_pandera_installed(), bool)
+
+
+def test_validate_licitaciones_returns_df_lazy():
+    import pandas as pd
+
+    from shared.schemas import validate_licitaciones
+
+    df = pd.DataFrame(
+        {
+            "id_externo": ["1"],
+            "titulo": ["T"],
+            "organo_contratacion": ["O"],
+            "importe": [1.0],
+            "estado": ["P"],
+            "fecha_publicacion": [pd.Timestamp.now()],
+            "ccaa": ["M"],
+            "tecnologia": ["S"],
+            "tipo_contrato": ["S"],
+        }
+    )
+    result = validate_licitaciones(df, lazy=True)
+    assert len(result) == 1
+
+
+def test_validate_adjudicaciones_returns_df_lazy():
+    import pandas as pd
+
+    from shared.schemas import validate_adjudicaciones
+
+    df = pd.DataFrame(
+        {
+            "licitacion_id": ["1"],
+            "nombre": ["N"],
+            "importe_adjudicado": [1.0],
+            "fecha_adjudicacion": [pd.Timestamp.now()],
+        }
+    )
+    result = validate_adjudicaciones(df, lazy=True)
+    assert len(result) == 1
+
+
+def test_noop_schema_when_pandera_missing():
+    import pandas as pd
+
+    from shared.schemas import _NoOpSchema
+
+    df = pd.DataFrame({"a": [1]})
+    result = _NoOpSchema.validate(df)
+    assert result is df
+
+
+def test_kpi_snapshot_schema_validates():
+    import pandas as pd
+
+    from shared.schemas import KpiSnapshotSchema
+
+    df = pd.DataFrame(
+        {
+            "metric_name": ["total"],
+            "metric_value": [42.0],
+            "computed_at": ["2024-01-01"],
+        }
+    )
+    result = KpiSnapshotSchema.validate(df, lazy=True)
+    assert len(result) == 1

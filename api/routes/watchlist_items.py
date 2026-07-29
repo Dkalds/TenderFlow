@@ -9,7 +9,6 @@ one-shot).
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -28,11 +27,16 @@ _repo = WatchlistRepository()
 
 
 def _user_key(ctx: dict[str, Any]) -> str:
-    """Clave opaca y estable por usuario (email de sesión o hash de API key)."""
-    if ctx.get("user_key"):
-        return str(ctx["user_key"])
-    seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+    """Clave opaca y estable por usuario.
+
+    ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
+    contexto vía ``shared.identity.user_key_from_email`` — es la única
+    derivación canónica. Antes esta función tenía un fallback local con una
+    fórmula distinta (sin ``.strip().lower()``, usando ``key_hash`` en vez de
+    ``user_id`` como semilla alternativa) que nunca se ejercitaba en la
+    práctica pero podía divergir silenciosamente si algún día lo hiciera.
+    """
+    return str(ctx["user_key"])
 
 
 def _user_id(ctx: dict[str, Any]) -> int | None:

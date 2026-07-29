@@ -91,6 +91,72 @@ class AdjudicacionRepository:
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
 
+    # ── Columnas usadas por services/analytics/competitors.py ────────────
+    _COMPETITOR_COLS = (
+        "a.licitacion_id, a.nombre, a.nif, a.empresa_id, a.es_pyme, "
+        "a.importe_adjudicado, a.fecha_adjudicacion, a.ccaa, a.n_ofertas_recibidas, "
+        "l.organo_contratacion, l.tecnologia, l.estado, l.importe AS importe_licitacion, "
+        "e.nombre_canonico AS empresa_nombre_master, "
+        "e.nif_canonico AS empresa_nif_master, "
+        "e.grupo_id AS empresa_grupo_id, "
+        "g.nombre AS empresa_grupo_master"
+    )
+
+    def load_for_competitors(
+        self,
+        *,
+        ccaa: str | None = None,
+        tecnologia: str | None = None,
+        estado: str | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+        importe_min: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Carga la proyección/filtro necesarios para ``services.analytics.competitors``.
+
+        Recorte de ``load_raw_with_licitaciones`` (misma unión adjudicaciones
+        + licitaciones + maestro de empresas) con dos optimizaciones: solo las
+        columnas que consume la resolución de identidad + las 16
+        agregaciones posteriores (no ``a.*``), y los 4 filtros que antes se
+        aplicaban en pandas DESPUÉS de cargar todo (``tecnologia``, ``estado``,
+        rango de fechas, ``importe_min`` sobre ``importe_licitacion``) ahora
+        también en el ``WHERE``. La resolución de identidad (union-find sobre
+        NIF/nombre normalizados) y las agregaciones siguen en pandas — no son
+        reducibles a un ``GROUP BY`` plano (ver informe de la tarea).
+        """
+        sql = (
+            "SELECT " + self._COMPETITOR_COLS + " "
+            "FROM adjudicaciones a "
+            "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+            "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
+            "LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
+        )
+        conditions: list[str] = []
+        params: list[Any] = []
+        if ccaa:
+            conditions.append("a.ccaa = ?")
+            params.append(ccaa)
+        if tecnologia:
+            conditions.append("l.tecnologia = ?")
+            params.append(tecnologia)
+        if estado:
+            conditions.append("l.estado = ?")
+            params.append(estado)
+        if fecha_desde and _DATE_RE.match(fecha_desde):
+            conditions.append("a.fecha_adjudicacion >= ?")
+            params.append(fecha_desde)
+        if fecha_hasta and _DATE_RE.match(fecha_hasta):
+            conditions.append("a.fecha_adjudicacion <= ?")
+            params.append(fecha_hasta)
+        if importe_min is not None:
+            conditions.append("l.importe >= ?")
+            params.append(importe_min)
+        if conditions:
+            sql += "WHERE " + " AND ".join(conditions) + " "
+        sql += "ORDER BY a.fecha_adjudicacion DESC"
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
     def load_licitadores(
         self,
         *,

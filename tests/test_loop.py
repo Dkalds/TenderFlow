@@ -38,6 +38,29 @@ class TestEnvInt:
         with patch.dict(os.environ, {"TEST_VAR_XYZ": "-5"}):
             assert _env_int("TEST_VAR_XYZ", 10, min_value=1) == 1
 
+    def test_default(self) -> None:
+        from scheduler.loop import _env_int
+
+        assert _env_int("NONEXISTENT_VAR_12345", 99) == 99
+
+    def test_from_env(self) -> None:
+        from scheduler.loop import _env_int
+
+        with patch.dict("os.environ", {"TEST_INT_VAR": "42"}):
+            assert _env_int("TEST_INT_VAR", 10) == 42
+
+    def test_invalid_value(self) -> None:
+        from scheduler.loop import _env_int
+
+        with patch.dict("os.environ", {"TEST_INT_VAR": "abc"}):
+            assert _env_int("TEST_INT_VAR", 10) == 10
+
+    def test_min_value(self) -> None:
+        from scheduler.loop import _env_int
+
+        with patch.dict("os.environ", {"TEST_INT_VAR": "0"}):
+            assert _env_int("TEST_INT_VAR", 10, min_value=5) == 5
+
 
 class TestRunJob:
     def test_calls_function_and_logs(self):
@@ -70,6 +93,42 @@ class TestRunJob:
             result = _run_job("test_heavy", fn, heavy=True)
         mock_heavy.assert_called_once_with("test_heavy", fn)
         assert result is True
+
+    @patch("observability.runtime_metrics.scheduler_job_duration_seconds")
+    @patch("observability.runtime_metrics.scheduler_job_total")
+    def test_success_records_metrics(self, mock_total: MagicMock, mock_dur: MagicMock) -> None:
+        from scheduler.loop import _consecutive_failures, _run_job
+
+        _consecutive_failures.pop("test_light", None)
+        result = _run_job("test_light", lambda: "ok")
+        assert result is True
+
+    @patch("observability.runtime_metrics.scheduler_job_duration_seconds")
+    @patch("observability.runtime_metrics.scheduler_job_total")
+    @patch("scheduler.loop.notify")
+    def test_failure_records_metrics(
+        self, mock_notify: MagicMock, mock_dur: MagicMock, mock_total: MagicMock
+    ) -> None:
+        from scheduler.loop import _consecutive_failures, _run_job
+
+        def _fail():
+            raise RuntimeError("boom")
+
+        result = _run_job("test_fail_job", _fail)
+        assert result is False
+        assert _consecutive_failures.get("test_fail_job", 0) >= 1
+        _consecutive_failures.pop("test_fail_job", None)
+
+    def test_overlap_skipped(self) -> None:
+        from scheduler.loop import _active_jobs, _run_job
+
+        fake_thread = MagicMock()
+        fake_thread.is_alive.return_value = True
+        _active_jobs["test_overlap"] = fake_thread
+
+        result = _run_job("test_overlap", lambda: None)
+        assert result is False
+        del _active_jobs["test_overlap"]
 
 
 class TestBackoff:
@@ -106,6 +165,35 @@ class TestBackoff:
         # MAX_BACKOFF_MULTIPLIER = 8
         assert result == timedelta(minutes=480)
         _consecutive_failures.pop("test_cap", None)
+
+    def test_no_failures(self) -> None:
+        from datetime import timedelta
+
+        from scheduler.loop import _backoff_interval, _consecutive_failures
+
+        _consecutive_failures.pop("test_job", None)
+        result = _backoff_interval("test_job", timedelta(minutes=10))
+        assert result == timedelta(minutes=10)
+
+    def test_with_failures(self) -> None:
+        from datetime import timedelta
+
+        from scheduler.loop import _backoff_interval, _consecutive_failures
+
+        _consecutive_failures["test_job_bo"] = 2
+        result = _backoff_interval("test_job_bo", timedelta(minutes=10))
+        assert result == timedelta(minutes=40)
+        _consecutive_failures.pop("test_job_bo", None)
+
+    def test_max_backoff(self) -> None:
+        from datetime import timedelta
+
+        from scheduler.loop import _backoff_interval, _consecutive_failures
+
+        _consecutive_failures["test_job_max"] = 100
+        result = _backoff_interval("test_job_max", timedelta(minutes=10))
+        assert result == timedelta(minutes=80)
+        _consecutive_failures.pop("test_job_max", None)
 
 
 class TestJobRegistry:
@@ -248,4 +336,19 @@ class TestMain:
                 _stop_event.clear()
 
         assert call_count["n"] >= 1
+        assert result == 0
+
+    @patch("scheduler.loop._stop_event")
+    @patch("scheduler.loop.configure_tracing")
+    @patch("scheduler.loop.configure_logging")
+    def test_immediate_stop(
+        self, mock_log_cfg: MagicMock, mock_trace: MagicMock, mock_stop: MagicMock
+    ) -> None:
+        from scheduler.loop import main
+
+        mock_stop.wait.return_value = True
+
+        with patch("scheduler.loop._run_job", return_value=True):
+            result = main()
+
         assert result == 0

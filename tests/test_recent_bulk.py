@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -138,3 +138,39 @@ def test_run_update_returns_1_on_degraded():
 
     assert code == 1
     mock_notify.assert_not_called()  # sin alerta CRITICAL "error fatal"
+
+
+# ── Camino legacy de run_bulk_pipeline() (PLACSP_CONNECTOR_ENABLED=False) ────
+# Ejercitan scraper.pipeline.update_recent directamente (vs. mockear
+# scheduler.pipeline_runs.run_bulk_pipeline como en los tests de arriba).
+
+
+class TestRunRecentBulk:
+    @patch("scheduler.watchlist_alerts.check_and_notify")
+    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
+    @patch("scheduler.kpi_precompute.run_kpi_precompute")
+    @patch("scraper.pipeline.update_recent", return_value=[{"status": "ok"}])
+    def test_success(self, *mocks: MagicMock) -> None:
+        from scheduler.jobs.recent_bulk import run
+
+        run()
+
+    @patch("scraper.pipeline.update_recent", return_value=[{"status": "error"}])
+    def test_failure(self, mock_update: MagicMock) -> None:
+        from scheduler.jobs.recent_bulk import run
+
+        with pytest.raises(RuntimeError, match="bulk refresh failed"):
+            run()
+
+
+class TestRunRecentBulkDefault:
+    @patch("scheduler.watchlist_alerts.check_and_notify")
+    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
+    @patch("scheduler.kpi_precompute.run_kpi_precompute")
+    @patch("scraper.pipeline.update_recent", return_value=[{"status": "ok"}])
+    def test_reads_env(self, mock_update: MagicMock, *mocks: MagicMock) -> None:
+        with patch.dict("os.environ", {"SCHEDULER_BULK_MONTHS": "5"}):
+            from scheduler.jobs.recent_bulk import run
+
+            run()
+        mock_update.assert_called_once_with(5)

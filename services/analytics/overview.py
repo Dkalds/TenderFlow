@@ -1,21 +1,34 @@
 """Analytics overview service for aggregated tender KPIs and breakdowns.
 
-Converts the pandas-based in-memory analytics to service functions that
-can be called from API endpoints. Uses services.licitaciones for data loading.
+Las agregaciones (KPIs, breakdowns por estado/mes/organo, indicadores de
+mercado) se calculan en Postgres vía ``db.repositories.aggregates`` — antes se
+cargaba la tabla ``licitaciones`` completa (~47k filas) a pandas y se
+agregaba en el proceso web (capado a 4 hilos, ver ``api/app.py`` y el
+postmortem de ``services/_data_cache.py``). Postgres resuelve estos
+``GROUP BY`` en milisegundos.
+
+``hhi``/``pct_oferta_unica``/``lead_time_medio`` siguen viniendo de
+``load_adjudicaciones()`` (servicio existente, sin filtros) — comportamiento
+preexistente que se preserva sin cambios: estos 3 valores YA ignoraban los
+filtros del endpoint antes de esta reescritura (no forman parte del "full
+scan de licitaciones" que motivó la migración; son agregados sobre
+``adjudicaciones`` sin filtrar, baratos y ya cacheados en ese servicio).
 """
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Any
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.licitaciones import load_adjudicaciones, load_stats_base_df
+from services.licitaciones import load_adjudicaciones
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -100,163 +113,20 @@ class OverviewResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _load_df() -> pd.DataFrame:
-    """Load stats dataframe from the service layer."""
-    df = load_stats_base_df()
-    if not df.empty:
-        df["fecha_publicacion"] = pd.to_datetime(
-            df["fecha_publicacion"],
-            errors="coerce",
-            utc=True,
-        )
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    return df
-
-
-def _apply_filters(df: pd.DataFrame, filters: OverviewFilters) -> pd.DataFrame:
-    """Apply optional filters to the dataframe."""
-    if df.empty:
-        return df
-    if filters.fecha_desde is not None:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_publicacion"] >= ts]
-    if filters.fecha_hasta is not None:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_publicacion"] <= ts]
-    if filters.ccaa:
-        df = df[df["ccaa"] == filters.ccaa]
-    if filters.tecnologia:
-        df = df[df["tecnologia"] == filters.tecnologia]
-    if filters.estado:
-        df = df[df["estado"] == filters.estado]
-    if filters.q:
-        # Paridad con la búsqueda del listado (titulo/órgano/id, substring
-        # case-insensitive). El listado usa FTS5 cuando está disponible; aquí
-        # el dataset ya está en memoria y contains es suficiente para KPIs.
-        needle = filters.q.strip().lower()
-        if needle:
-            mask = (
-                df["titulo"].fillna("").str.lower().str.contains(needle, regex=False)
-                | df["organo_contratacion"].fillna("").str.lower().str.contains(needle, regex=False)
-                | df["id_externo"].fillna("").str.lower().str.contains(needle, regex=False)
-            )
-            df = df[mask]
-    if filters.importe_min is not None:
-        # Igual que ``importe >= ?`` en SQL: NaN queda excluido.
-        df = df[df["importe"] >= filters.importe_min]
-    return df
-
-
-# ---------------------------------------------------------------------------
-# Aggregation functions for overview KPIs and breakdowns
-# ---------------------------------------------------------------------------
-
-
-def _kpis(df: pd.DataFrame) -> dict[str, Any]:
-    if df.empty:
-        return {"total": 0, "importe_total": 0.0, "importe_medio": 0.0, "organos": 0}
-    return {
-        "total": len(df),
-        "importe_total": float(df["importe"].sum(skipna=True)),
-        "importe_medio": float(df["importe"].mean(skipna=True) or 0),
-        "organos": int(df["organo_contratacion"].nunique()),
-    }
-
-
-def _por_estado(df: pd.DataFrame) -> list[EstadoCount]:
-    if df.empty:
-        return []
-    counts = df.groupby("estado").size().reset_index(name="n").sort_values("n", ascending=False)
-    return [EstadoCount(estado=row["estado"], n=int(row["n"])) for _, row in counts.iterrows()]
-
-
-def _por_mes(df: pd.DataFrame) -> list[MesAggregate]:
-    if df.empty or df["fecha_publicacion"].isna().all():
-        return []
-    g = (
-        df.dropna(subset=["fecha_publicacion"])
-        .assign(
-            mes=lambda x: (
-                x["fecha_publicacion"].dt.tz_localize(None).dt.to_period("M").dt.to_timestamp()
-            )
-        )
-        .groupby("mes")
-        .agg(n_licitaciones=("id_externo", "count"), importe=("importe", "sum"))
-        .reset_index()
-        .sort_values("mes")
+def _to_repo_filters(filters: OverviewFilters) -> LicitacionesFilters:
+    return LicitacionesFilters(
+        ccaa=filters.ccaa,
+        tecnologia=filters.tecnologia,
+        estado=filters.estado,
+        fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
+        fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
+        importe_min=filters.importe_min,
+        q=filters.q,
     )
-    return [
-        MesAggregate(
-            mes=row["mes"].strftime("%Y-%m"),
-            n_licitaciones=int(row["n_licitaciones"]),
-            importe=float(row["importe"] or 0),
-        )
-        for _, row in g.iterrows()
-    ]
-
-
-def _top_organos(df: pd.DataFrame, n: int = 15) -> list[OrganoAggregate]:
-    if df.empty:
-        return []
-    g = (
-        df.groupby("organo_contratacion")
-        .agg(n=("id_externo", "count"), importe=("importe", "sum"))
-        .sort_values("n", ascending=False)
-        .head(n)
-        .reset_index()
-    )
-    return [
-        OrganoAggregate(
-            organo_contratacion=row["organo_contratacion"],
-            n=int(row["n"]),
-            importe=float(row["importe"] or 0),
-        )
-        for _, row in g.iterrows()
-    ]
-
-
-def _funnel_estados(df: pd.DataFrame) -> list[FunnelStep]:
-    if df.empty:
-        return []
-    order = ["PUB", "EV", "RES", "ADJ", "ANUL"]
-    counts = df["estado"].value_counts()
-    total = len(df)
-    return [
-        FunnelStep(
-            estado=est,
-            n=int(counts.get(est, 0)),
-            pct=float(counts.get(est, 0) / total * 100) if total else 0.0,
-        )
-        for est in order
-    ]
-
-
-def _yoy_delta_count(df: pd.DataFrame, days: int = 30) -> tuple[float, float]:
-    """Returns (current_count, pct_change) for last N days vs previous N days."""
-    if df.empty:
-        return 0.0, 0.0
-    hoy = pd.Timestamp.now("UTC")
-    ult = df[df["fecha_publicacion"] >= (hoy - pd.Timedelta(days=days))]
-    prev = df[
-        (df["fecha_publicacion"] < (hoy - pd.Timedelta(days=days)))
-        & (df["fecha_publicacion"] >= (hoy - pd.Timedelta(days=days * 2)))
-    ]
-    v_act = float(len(ult))
-    v_prev = float(len(prev))
-    pct = ((v_act - v_prev) / v_prev * 100) if v_prev else 0.0
-    return v_act, pct
-
-
-def _importe_30d(df: pd.DataFrame) -> float:
-    if df.empty:
-        return 0.0
-    hoy = pd.Timestamp.now("UTC")
-    ult = df[df["fecha_publicacion"] >= (hoy - pd.Timedelta(days=30))]
-    return float(ult["importe"].sum(skipna=True))
 
 
 def _load_adj_df() -> pd.DataFrame:
-    """Load adjudicaciones dataframe."""
+    """Load adjudicaciones dataframe (sin filtros — comportamiento preexistente)."""
     try:
         return load_adjudicaciones()
     except Exception:
@@ -299,69 +169,78 @@ def _lead_time_medio(adj: pd.DataFrame) -> float | None:
 
 
 def get_overview(filters: OverviewFilters) -> OverviewResult:
-    """Compute the full overview payload."""
+    """Compute the full overview payload — agregaciones vía SQL en Postgres."""
     log.info("analytics_overview_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df()
-    df = _apply_filters(df, filters)
+    repo_filters = _to_repo_filters(filters)
     adj = _load_adj_df()
 
-    k = _kpis(df)
-    lics_30d, yoy = _yoy_delta_count(df)
+    k = _repo.overview_kpis(repo_filters)
+
+    hoy = datetime.now(UTC)
+    hace_30d_iso = (hoy - timedelta(days=30)).isoformat()
+    hace_60d_iso = (hoy - timedelta(days=60)).isoformat()
+    hace_365d_iso = (hoy - timedelta(days=365)).isoformat()
+    hace_24h_iso = (hoy - timedelta(hours=24)).isoformat()
+    hoy_iso = hoy.isoformat()
+    limite_48h_iso = (hoy + timedelta(hours=48)).isoformat()
+
+    yoy_data = _repo.overview_yoy_and_recent(
+        repo_filters, hace_30d_iso=hace_30d_iso, hace_60d_iso=hace_60d_iso
+    )
+    v_act = yoy_data["lics_30d"]
+    v_prev = yoy_data["lics_prev30d"]
+    yoy = ((v_act - v_prev) / v_prev * 100) if v_prev else 0.0
 
     # --- Market indicators ---
-    # concentracion_top10: sum of cuota (%) for top 10 organos by importe
-    concentracion_top10 = 0.0
-    if not df.empty and "organo_contratacion" in df.columns:
-        org_imp = df.groupby("organo_contratacion")["importe"].sum(min_count=1)
-        total_imp = float(org_imp.sum(skipna=True)) or 1.0
-        top10_imp = float(org_imp.nlargest(10).sum(skipna=True))
-        concentracion_top10 = top10_imp / total_imp * 100
+    top10_imp, total_imp = _repo.overview_concentracion_organos(repo_filters, top_n=10)
+    total_imp = total_imp or 1.0
+    concentracion_top10 = top10_imp / total_imp * 100
 
-    # tasa_anulacion: ANUL in last 12 months / total in last 12 months
-    tasa_anulacion = 0.0
-    if not df.empty and "estado" in df.columns:
-        hoy = pd.Timestamp.now("UTC")
-        last_12m = df[df["fecha_publicacion"] >= (hoy - pd.Timedelta(days=365))]
-        if len(last_12m) > 0:
-            anul_count = int((last_12m["estado"] == "ANUL").sum())
-            tasa_anulacion = anul_count / len(last_12m) * 100
+    anul_count, total_12m = _repo.overview_tasa_anulacion(repo_filters, hace_365d_iso=hace_365d_iso)
+    tasa_anulacion = (anul_count / total_12m * 100) if total_12m > 0 else 0.0
 
-    # concentracion_geo_top3: top 3 CCAAs by importe %
-    concentracion_geo_top3 = 0.0
-    if not df.empty and "ccaa" in df.columns:
-        ccaa_imp = df.groupby("ccaa")["importe"].sum(min_count=1)
-        total_imp_geo = float(ccaa_imp.sum(skipna=True)) or 1.0
-        top3_imp = float(ccaa_imp.nlargest(3).sum(skipna=True))
-        concentracion_geo_top3 = top3_imp / total_imp_geo * 100
+    top3_imp, total_imp_geo = _repo.overview_concentracion_ccaa(repo_filters, top_n=3)
+    total_imp_geo = total_imp_geo or 1.0
+    concentracion_geo_top3 = top3_imp / total_imp_geo * 100
 
-    # Distinct CCAA with activity (real coverage, not derived from concentration)
-    ccaa_cubiertas = 0
-    if not df.empty and "ccaa" in df.columns:
-        ccaa_cubiertas = int(df["ccaa"].dropna().nunique())
+    ccaa_cubiertas = _repo.overview_ccaa_cubiertas(repo_filters)
 
-    # "Para hoy" counts
-    calientes_hoy = 0
-    vencen_48h = 0
-    nuevas_24h = 0
-    if not df.empty:
-        hoy = pd.Timestamp.now("UTC")
-        activas = df[df["estado"].isin(["PUB", "EV"])]
-        importes_validos = df["importe"].dropna()
-        p75 = float(importes_validos.quantile(0.75)) if len(importes_validos) > 0 else 0.0
+    para_hoy = _repo.overview_para_hoy(
+        repo_filters,
+        hoy_iso=hoy_iso,
+        limite_48h_iso=limite_48h_iso,
+        hace_24h_iso=hace_24h_iso,
+    )
 
-        if "fecha_limite" in df.columns:
-            df["_fecha_limite_dt"] = pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True)
-            if not activas.empty:
-                act_fl = pd.to_datetime(activas["fecha_limite"], errors="coerce", utc=True)
-                cal_mask = activas["importe"].ge(p75) & act_fl.gt(hoy)
-                calientes_hoy = int(cal_mask.sum())
+    por_estado = [
+        EstadoCount(estado=row["estado"], n=int(row["n"]))
+        for row in _repo.overview_por_estado(repo_filters)
+    ]
+    por_mes = [
+        MesAggregate(
+            mes=row["mes"], n_licitaciones=int(row["n_licitaciones"]), importe=float(row["importe"])
+        )
+        for row in _repo.overview_por_mes(repo_filters)
+    ]
+    top_organos = [
+        OrganoAggregate(
+            organo_contratacion=row["organo_contratacion"],
+            n=int(row["n"]),
+            importe=float(row["importe"]),
+        )
+        for row in _repo.overview_top_organos(repo_filters)
+    ]
 
-            limite_48h = hoy + pd.Timedelta(hours=48)
-            fl_dt = df["_fecha_limite_dt"]
-            vencen_48h = int(fl_dt.between(hoy, limite_48h).sum())
-
-        hace_24h = hoy - pd.Timedelta(hours=24)
-        nuevas_24h = int((df["fecha_publicacion"] >= hace_24h).sum())
+    funnel_data = _repo.overview_funnel(repo_filters)
+    total_funnel = funnel_data["total"]
+    funnel_estados = [
+        FunnelStep(
+            estado=est,
+            n=funnel_data[est],
+            pct=float(funnel_data[est] / total_funnel * 100) if total_funnel else 0.0,
+        )
+        for est in ("PUB", "EV", "RES", "ADJ", "ANUL")
+    ]
 
     result = OverviewResult(
         total_licitaciones=k["total"],
@@ -369,12 +248,12 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         importe_medio=k["importe_medio"],
         organos_unicos=k["organos"],
         yoy_delta=yoy,
-        licitaciones_30d=int(lics_30d),
-        importe_30d=_importe_30d(df),
-        por_estado=_por_estado(df),
-        por_mes=_por_mes(df),
-        top_organos=_top_organos(df),
-        funnel_estados=_funnel_estados(df),
+        licitaciones_30d=int(v_act),
+        importe_30d=yoy_data["importe_30d"],
+        por_estado=por_estado,
+        por_mes=por_mes,
+        top_organos=top_organos,
+        funnel_estados=funnel_estados,
         hhi=_hhi(adj),
         pct_oferta_unica=_pct_oferta_unica(adj),
         pct_pyme=0.0,  # Placeholder — requires pyme flag in adjudicaciones
@@ -383,9 +262,9 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         tasa_anulacion=tasa_anulacion,
         concentracion_geo_top3=concentracion_geo_top3,
         ccaa_cubiertas=ccaa_cubiertas,
-        calientes_hoy=calientes_hoy,
-        vencen_48h=vencen_48h,
-        nuevas_24h=nuevas_24h,
+        calientes_hoy=para_hoy["calientes_hoy"],
+        vencen_48h=para_hoy["vencen_48h"],
+        nuevas_24h=para_hoy["nuevas_24h"],
     )
     log.info("analytics_overview_done", total=result.total_licitaciones)
     return result

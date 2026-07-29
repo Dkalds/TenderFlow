@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.routes.dual_auth import require_any_auth
+from api.routes.dual_auth import require_admin
 from db.audit import log_event
 from db.users import (
     anonymize_user,
@@ -25,13 +25,6 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
-
-
-def _require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
-    """Verifica que el usuario autenticado sea admin."""
-    if not user.get("is_admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
-    return user
 
 
 class SetAdminBody(BaseModel):
@@ -72,7 +65,7 @@ def _safe_user(user: dict[str, Any]) -> AdminUserOut:
 def admin_list_users(
     include_deactivated: bool = False,
     limit: int = 200,
-    admin: dict[str, Any] = Depends(_require_admin),
+    admin: dict[str, Any] = Depends(require_admin),
 ) -> list[AdminUserOut]:
     """Lista todos los usuarios (solo admin)."""
     return [
@@ -84,7 +77,7 @@ def admin_list_users(
 @router.get("/{user_id}")
 def admin_get_user(
     user_id: int,
-    admin: dict[str, Any] = Depends(_require_admin),
+    admin: dict[str, Any] = Depends(require_admin),
 ) -> AdminUserOut:
     """Detalle de un usuario (incluye desactivados)."""
     user = get_user_by_id(user_id, include_deactivated=True)
@@ -97,7 +90,7 @@ def admin_get_user(
 def admin_set_admin(
     user_id: int,
     body: SetAdminBody,
-    admin: dict[str, Any] = Depends(_require_admin),
+    admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, str]:
     """Promover/degradar admin de un usuario."""
     if user_id == admin.get("user_id"):
@@ -119,7 +112,7 @@ def admin_set_admin(
 def admin_deactivate_user(
     user_id: int,
     body: DeactivateBody,
-    admin: dict[str, Any] = Depends(_require_admin),
+    admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, str]:
     """Desactivar, reactivar o anonimizar un usuario."""
     if user_id == admin.get("user_id"):

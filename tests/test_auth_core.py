@@ -321,3 +321,424 @@ def test_verify_google_id_token_accepts_real_jwks_shape_without_x5c():
         assert result["sub"] == "google-subject"
     finally:
         auth_core._google_jwks_cache = None
+
+
+# ---------------------------------------------------------------------------
+# _TTLCacheNonceStore fallback, _RedisNonceStore init
+# ---------------------------------------------------------------------------
+
+
+class TestTTLCacheNonceStoreFallback:
+    """Lines 67-70: cachetools ImportError fallback."""
+
+    def test_fallback_to_dict_when_cachetools_missing(self):
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "cachetools":
+                raise ImportError("no cachetools")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            from shared.auth_core import _TTLCacheNonceStore
+
+            store = _TTLCacheNonceStore.__new__(_TTLCacheNonceStore)
+            store._ttl = 600
+            store._cache = {}
+            store._use_ttlcache = False
+
+        # Test dict-based contains (lazy cleanup path)
+        store._cache["old_nonce"] = time.time() - 1  # expired
+        store._cache["fresh_nonce"] = time.time() + 600
+        assert not store.contains("old_nonce")
+        assert store.contains("fresh_nonce")
+
+        # Test dict-based add
+        store.add("new_nonce", 60)
+        assert "new_nonce" in store._cache
+
+
+class TestRedisNonceStore:
+    """Lines 99-108: Redis nonce store init and operations."""
+
+    @patch("redis.Redis")
+    def test_init_and_contains_redis_hit(self, mock_redis_cls):
+        mock_client = MagicMock()
+        mock_redis_cls.from_url.return_value = mock_client
+        mock_client.exists.return_value = 1
+
+        from shared.auth_core import _RedisNonceStore
+
+        store = _RedisNonceStore("redis://localhost")
+        assert store.contains("abc")
+        mock_client.exists.assert_called_once()
+
+    @patch("redis.Redis")
+    def test_contains_redis_miss_fallback(self, mock_redis_cls):
+        mock_client = MagicMock()
+        mock_redis_cls.from_url.return_value = mock_client
+        mock_client.exists.return_value = 0
+
+        from shared.auth_core import _RedisNonceStore
+
+        store = _RedisNonceStore("redis://localhost")
+        assert not store.contains("missing")
+
+    @patch("redis.Redis")
+    def test_contains_redis_error_fallback(self, mock_redis_cls):
+        mock_client = MagicMock()
+        mock_redis_cls.from_url.return_value = mock_client
+        mock_client.exists.side_effect = Exception("conn refused")
+
+        from shared.auth_core import _RedisNonceStore
+
+        store = _RedisNonceStore("redis://localhost")
+        assert not store.contains("x")
+
+    @patch("redis.Redis")
+    def test_add_writes_to_redis_and_fallback(self, mock_redis_cls):
+        mock_client = MagicMock()
+        mock_redis_cls.from_url.return_value = mock_client
+
+        from shared.auth_core import _RedisNonceStore
+
+        store = _RedisNonceStore("redis://localhost")
+        store.add("nonce1", 300)
+        mock_client.set.assert_called_once()
+        assert store._fallback.contains("nonce1")
+
+    @patch("redis.Redis")
+    def test_add_redis_error_still_has_fallback(self, mock_redis_cls):
+        mock_client = MagicMock()
+        mock_redis_cls.from_url.return_value = mock_client
+        mock_client.set.side_effect = Exception("write fail")
+
+        from shared.auth_core import _RedisNonceStore
+
+        store = _RedisNonceStore("redis://localhost")
+        store.add("nonce2", 300)
+        assert store._fallback.contains("nonce2")
+
+
+class TestGetNonceStoreRedis:
+    """Lines 157-158: _get_nonce_store with config import failure."""
+
+    def setup_method(self):
+        from shared import auth_core
+
+        auth_core._nonce_store = None
+
+    def teardown_method(self):
+        from shared import auth_core
+
+        auth_core._nonce_store = None
+
+    def test_config_import_error_falls_to_ttlcache(self):
+        from shared import auth_core
+
+        with patch.dict("sys.modules", {"config": None}):
+            store = auth_core._get_nonce_store()
+        assert isinstance(store, auth_core._TTLCacheNonceStore)
+
+
+# ---------------------------------------------------------------------------
+# verify_password — argon2/bcrypt branches
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyPassword:
+    """Lines 186-218: verify_password branches."""
+
+    def test_empty_hash_returns_false(self):
+        from shared.auth_core import verify_password
+
+        assert verify_password("test", "") is False
+
+    @patch("argon2.PasswordHasher")
+    def test_argon2_verify_match(self, mock_ph_cls):
+        from shared.auth_core import verify_password
+
+        mock_ph = MagicMock()
+        mock_ph.verify.return_value = True
+        mock_ph_cls.return_value = mock_ph
+        assert verify_password("pass", "$argon2id$hash") is True
+
+    @patch("argon2.PasswordHasher")
+    def test_argon2_verify_mismatch(self, mock_ph_cls):
+        from argon2.exceptions import VerifyMismatchError
+
+        from shared.auth_core import verify_password
+
+        mock_ph = MagicMock()
+        mock_ph.verify.side_effect = VerifyMismatchError()
+        mock_ph_cls.return_value = mock_ph
+        assert verify_password("wrong", "$argon2id$hash") is False
+
+    def test_argon2_generic_exception(self):
+        from shared.auth_core import verify_password
+
+        with patch("argon2.PasswordHasher") as mock_ph_cls:
+            mock_ph_cls.return_value.verify.side_effect = RuntimeError("boom")
+            assert verify_password("x", "$argon2id$hash") is False
+
+    def test_bcrypt_verify_success(self):
+        import bcrypt
+
+        from shared.auth_core import verify_password
+
+        hashed = bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode("utf-8")
+        assert verify_password("testpass", hashed) is True
+
+    def test_bcrypt_verify_failure(self):
+        import bcrypt
+
+        from shared.auth_core import verify_password
+
+        hashed = bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode("utf-8")
+        assert verify_password("wrong", hashed) is False
+
+    def test_bcrypt_exception(self):
+        from shared.auth_core import verify_password
+
+        with patch("bcrypt.checkpw", side_effect=Exception("bad")):
+            assert verify_password("x", "$2b$12$somehash") is False
+
+
+# ---------------------------------------------------------------------------
+# verify_oauth_state — timestamp parsing edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestOAuthState:
+    """Lines 278-279: ValueError in timestamp parsing."""
+
+    def setup_method(self):
+        from shared import auth_core
+
+        auth_core._nonce_store = None
+
+    def teardown_method(self):
+        from shared import auth_core
+
+        auth_core._nonce_store = None
+
+    def test_verify_state_invalid_timestamp(self):
+        from shared.auth_core import verify_oauth_state
+
+        with patch("shared.auth_core.get_signing_key", return_value=b"key"):
+            assert verify_oauth_state("nonce:notanumber:sig") is False
+
+    def test_verify_state_expired(self):
+        from shared.auth_core import verify_oauth_state
+
+        old_ts = str(int(time.time()) - 9999)
+        with patch("shared.auth_core.get_signing_key", return_value=b"key"):
+            assert verify_oauth_state(f"nonce:{old_ts}:sig") is False
+
+
+# ---------------------------------------------------------------------------
+# csv_set, oauth_email_allowed, oauth_email_is_admin
+# ---------------------------------------------------------------------------
+
+
+class TestCsvSet:
+    """Line 307: csv_set."""
+
+    def test_csv_set(self):
+        from shared.auth_core import csv_set
+
+        result = csv_set("Alice@Example.COM, bob@test.org, ")
+        assert result == {"alice@example.com", "bob@test.org"}
+
+
+class TestOAuthEmailAllowed:
+    """Lines 312-320: oauth_email_allowed."""
+
+    def test_no_restrictions(self):
+        from shared.auth_core import oauth_email_allowed
+
+        settings = MagicMock()
+        settings.OAUTH_ALLOWED_EMAILS = ""
+        settings.OAUTH_ALLOWED_DOMAINS = ""
+        with patch("shared.auth_core.settings", settings, create=True):
+            with patch("config.settings", settings):
+                assert oauth_email_allowed("anyone@test.com") is True
+
+    def test_email_in_allowlist(self):
+        from shared.auth_core import oauth_email_allowed
+
+        settings = MagicMock()
+        settings.OAUTH_ALLOWED_EMAILS = "admin@test.com"
+        settings.OAUTH_ALLOWED_DOMAINS = ""
+        with patch("config.settings", settings):
+            assert oauth_email_allowed("admin@test.com") is True
+
+    def test_domain_in_allowlist(self):
+        from shared.auth_core import oauth_email_allowed
+
+        settings = MagicMock()
+        settings.OAUTH_ALLOWED_EMAILS = ""
+        settings.OAUTH_ALLOWED_DOMAINS = "allowed.com"
+        with patch("config.settings", settings):
+            assert oauth_email_allowed("user@allowed.com") is True
+
+    def test_email_not_allowed(self):
+        from shared.auth_core import oauth_email_allowed
+
+        settings = MagicMock()
+        settings.OAUTH_ALLOWED_EMAILS = "other@test.com"
+        settings.OAUTH_ALLOWED_DOMAINS = "other.com"
+        with patch("config.settings", settings):
+            assert oauth_email_allowed("user@bad.com") is False
+
+
+class TestOAuthEmailIsAdmin:
+    """Lines 325-327: oauth_email_is_admin."""
+
+    def test_admin_true(self):
+        from shared.auth_core import oauth_email_is_admin
+
+        settings = MagicMock()
+        settings.OAUTH_ADMIN_EMAILS = "admin@test.com,boss@test.com"
+        with patch("config.settings", settings):
+            assert oauth_email_is_admin("Admin@Test.COM") is True
+
+    def test_admin_false(self):
+        from shared.auth_core import oauth_email_is_admin
+
+        settings = MagicMock()
+        settings.OAUTH_ADMIN_EMAILS = "admin@test.com"
+        with patch("config.settings", settings):
+            assert oauth_email_is_admin("user@test.com") is False
+
+
+# ---------------------------------------------------------------------------
+# PKCE — generate_pkce_pair / verify_pkce
+# ---------------------------------------------------------------------------
+
+
+class TestPKCE:
+    """Lines 351-355, 364-368: generate_pkce_pair and verify_pkce."""
+
+    def test_generate_pkce_pair(self):
+        from shared.auth_core import generate_pkce_pair
+
+        verifier, challenge = generate_pkce_pair()
+        assert isinstance(verifier, str)
+        assert isinstance(challenge, str)
+        assert len(verifier) > 10
+        assert len(challenge) > 10
+
+    def test_verify_pkce_valid(self):
+        from shared.auth_core import generate_pkce_pair, verify_pkce
+
+        verifier, challenge = generate_pkce_pair()
+        assert verify_pkce(verifier, challenge) is True
+
+    def test_verify_pkce_invalid(self):
+        from shared.auth_core import verify_pkce
+
+        assert verify_pkce("wrong_verifier", "wrong_challenge") is False
+
+    def test_verify_pkce_empty(self):
+        from shared.auth_core import verify_pkce
+
+        assert verify_pkce("", "challenge") is False
+        assert verify_pkce("verifier", "") is False
+
+
+# ---------------------------------------------------------------------------
+# validate_google_id_token — claim validation branches
+# ---------------------------------------------------------------------------
+
+
+class TestValidateGoogleIdToken:
+    """Lines 403-440: validate_google_id_token."""
+
+    def test_empty_claims(self):
+        from shared.auth_core import validate_google_id_token
+
+        assert validate_google_id_token({}, audience="aud") is False
+        assert validate_google_id_token(None, audience="aud") is False
+
+    def test_invalid_iss(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {"iss": "evil.com", "aud": "aud", "exp": int(time.time()) + 600}
+        assert validate_google_id_token(claims, audience="aud") is False
+
+    def test_invalid_aud(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {"iss": "accounts.google.com", "aud": "wrong", "exp": int(time.time()) + 600}
+        assert validate_google_id_token(claims, audience="myapp") is False
+
+    def test_missing_exp(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {"iss": "accounts.google.com", "aud": "myapp"}
+        assert validate_google_id_token(claims, audience="myapp") is False
+
+    def test_expired_token(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {"iss": "accounts.google.com", "aud": "myapp", "exp": int(time.time()) - 600}
+        assert validate_google_id_token(claims, audience="myapp") is False
+
+    def test_invalid_exp_format(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {"iss": "accounts.google.com", "aud": "myapp", "exp": "not_a_number"}
+        assert validate_google_id_token(claims, audience="myapp") is False
+
+    def test_email_not_verified(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {
+            "iss": "accounts.google.com",
+            "aud": "myapp",
+            "exp": int(time.time()) + 600,
+            "email_verified": False,
+        }
+        assert validate_google_id_token(claims, audience="myapp") is False
+
+    def test_valid_token(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {
+            "iss": "accounts.google.com",
+            "aud": "myapp",
+            "sub": "google-subject-123",
+            "exp": int(time.time()) + 600,
+            "email_verified": True,
+        }
+        assert validate_google_id_token(claims, audience="myapp") is True
+
+    def test_valid_token_no_email_verify_required(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {
+            "iss": "https://accounts.google.com",
+            "aud": "myapp",
+            "sub": "google-subject-123",
+            "exp": int(time.time()) + 600,
+            "email_verified": False,
+        }
+        assert (
+            validate_google_id_token(claims, audience="myapp", require_email_verified=False) is True
+        )
+
+    def test_aud_as_list(self):
+        from shared.auth_core import validate_google_id_token
+
+        claims = {
+            "iss": "accounts.google.com",
+            "aud": ["myapp", "other"],
+            "azp": "myapp",
+            "sub": "google-subject-123",
+            "exp": int(time.time()) + 600,
+            "email_verified": True,
+        }
+        assert validate_google_id_token(claims, audience="myapp") is True

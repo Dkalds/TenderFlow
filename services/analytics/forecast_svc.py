@@ -85,14 +85,11 @@ class RetenderingResult(BaseModel):
 def _load_licit_df() -> pd.DataFrame:
     df = load_stats_base_df()
     if not df.empty:
-        df["fecha_publicacion"] = pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True)
-        fi_col = df.get("fecha_inicio")
-        if fi_col is not None:
-            df["fecha_inicio"] = pd.to_datetime(fi_col, errors="coerce")
-        ff_col = df.get("fecha_fin")
-        if ff_col is not None:
-            df["fecha_fin"] = pd.to_datetime(ff_col, errors="coerce")
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+        # Copia explícita: load_stats_base_df() devuelve el DataFrame cacheado
+        # compartido (sin .copy()), y esta función hace varias mutaciones
+        # in-place (incluyendo un .loc condicional) que contaminarían la
+        # caché entre requests concurrentes si operaran sobre el original.
+        df = df.copy()
         df["duracion_valor"] = pd.to_numeric(
             df.get("duracion_valor", pd.Series(dtype=float)), errors="coerce"
         )

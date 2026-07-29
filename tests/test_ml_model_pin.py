@@ -62,6 +62,24 @@ def test_load_pin_detects_tampered_model(tmp_path, monkeypatch) -> None:
         SAPClassifier.load(model_path)
 
 
+def test_load_prod_without_pin_or_checksum_raises(tmp_path, monkeypatch) -> None:
+    """En ENV=prod, sin pin ni checksum co-ubicado, load() debe fallar duro."""
+    model_path = _save_untrained(tmp_path)
+    model_path.with_suffix(".sha256").unlink()  # simula ausencia de checksum
+    monkeypatch.setattr(settings, "ML_MODEL_SHA256", "")
+    monkeypatch.setattr(settings, "ENV", "prod")
+    with pytest.raises(RuntimeError, match="Sin verificación de integridad"):
+        SAPClassifier.load(model_path)
+
+
+def test_load_prod_with_colocated_checksum_is_allowed(tmp_path, monkeypatch) -> None:
+    """En ENV=prod, un checksum co-ubicado válido basta (sin pin)."""
+    model_path = _save_untrained(tmp_path)
+    monkeypatch.setattr(settings, "ML_MODEL_SHA256", "")
+    monkeypatch.setattr(settings, "ENV", "prod")
+    assert SAPClassifier.load(model_path) is not None
+
+
 def test_ensure_downloaded_rejects_non_github_repository(tmp_path) -> None:
     """El repositorio no puede inyectar rutas ni consultas en la GitHub API."""
     with patch("scraper.ml_classifier.pinned_https_request") as request:

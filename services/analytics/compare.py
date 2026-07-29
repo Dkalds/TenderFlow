@@ -53,11 +53,7 @@ class CompareResult(BaseModel):
 
 
 def _load_df() -> pd.DataFrame:
-    df = load_stats_base_df()
-    if not df.empty:
-        df["fecha_publicacion"] = pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True)
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    return df
+    return load_stats_base_df()
 
 
 def _period_stats(df: pd.DataFrame, desde: date, hasta: date) -> PeriodStats:

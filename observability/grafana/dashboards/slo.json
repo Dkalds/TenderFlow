@@ -46,13 +46,13 @@
       "gridPos": { "x": 6, "y": 0, "w": 12, "h": 6 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
-          "legendFormat": "{{route}} p95",
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))",
+          "legendFormat": "{{handler}} p95",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
-          "legendFormat": "{{route}} p99",
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))",
+          "legendFormat": "{{handler}} p99",
           "refId": "B"
         }
       ],
@@ -120,8 +120,8 @@
       "gridPos": { "x": 6, "y": 6, "w": 12, "h": 4 },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{status=\"429\"}[1m])) by (route)",
-          "legendFormat": "{{route}}",
+          "expr": "sum(rate(http_requests_total{status=\"429\"}[1m])) by (handler)",
+          "legendFormat": "{{handler}}",
           "refId": "A"
         }
       ]

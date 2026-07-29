@@ -27,7 +27,6 @@ Uso CLI:
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -41,6 +40,7 @@ from scraper.ml_pipeline import (
     _keyword_fallback_score,
     _make_tech_pipeline,
 )
+from shared.model_integrity import verify_model_integrity, write_checksum
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -483,8 +483,7 @@ class TechnologyClassifier:
         target = path or _MODEL_PATH
         target.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self, target, compress=3)
-        sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
-        target.with_suffix(".sha256").write_text(sha256, encoding="utf-8")
+        sha256 = write_checksum(target)
         log.info(
             "tech_classifier.saved",
             path=str(target),
@@ -495,22 +494,25 @@ class TechnologyClassifier:
 
     @classmethod
     def load(cls, path: Path | None = None) -> TechnologyClassifier:
+        """Carga un modelo serializado con joblib. Lanza FileNotFoundError si no existe.
+
+        Verifica la integridad del fichero (pin out-of-band ML_TECH_MODEL_SHA256
+        y/o checksum co-ubicado .sha256) antes de deserializar — ver
+        ``shared.model_integrity`` para el razonamiento completo.
+        """
         import joblib
 
         target = path or _MODEL_PATH
         if not target.exists():
             raise FileNotFoundError(f"TechnologyClassifier no encontrado: {target}")
 
-        # Verificar integridad SHA-256 si el sidecar existe
-        sha_path = target.with_suffix(".sha256")
-        if sha_path.exists():
-            expected = sha_path.read_text(encoding="utf-8").strip()
-            actual = hashlib.sha256(target.read_bytes()).hexdigest()
-            if actual != expected:
-                raise ValueError(
-                    f"Checksum SHA-256 inválido para {target}: "
-                    f"esperado={expected[:16]}…, actual={actual[:16]}…"
-                )
+        verify_model_integrity(
+            target,
+            pinned_sha256=str(getattr(settings, "ML_TECH_MODEL_SHA256", "") or ""),
+            pin_setting_name="ML_TECH_MODEL_SHA256",
+            model_label="tech_classifier",
+            env=str(getattr(settings, "ENV", "dev")),
+        )
 
         obj = joblib.load(target)
         # Aceptar instancias re-importadas vía __main__

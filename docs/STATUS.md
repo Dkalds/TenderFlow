@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-07-27
+Generado: 2026-07-29
 
 ## Paridad de planos de orquestación (ADR-012)
 

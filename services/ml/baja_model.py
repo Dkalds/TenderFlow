@@ -122,20 +122,43 @@ class BajaModel:
         return out
 
     def save(self, path: Path | None = None) -> Path:
+        """Serializa el modelo con joblib + checksum SHA256 co-ubicado."""
         import joblib
+
+        from shared.model_integrity import write_checksum
 
         target = path or _MODEL_PATH
         target.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self, target, compress=3)
+        write_checksum(target)
         return target
 
     @classmethod
     def load(cls, path: Path | None = None) -> BajaModel:
+        """Carga un modelo serializado con joblib. Lanza FileNotFoundError si no existe.
+
+        Verifica la integridad del fichero (pin out-of-band ML_BAJA_MODEL_SHA256
+        y/o checksum co-ubicado .sha256) antes de deserializar — ver
+        ``shared.model_integrity`` para el razonamiento completo: joblib.load
+        ejecuta código arbitrario, así que un .pkl manipulado es RCE.
+        """
         import joblib
+
+        from config import settings
+        from shared.model_integrity import verify_model_integrity
 
         target = path or _MODEL_PATH
         if not target.exists():
             raise FileNotFoundError(f"No existe el modelo en {target}")
+
+        verify_model_integrity(
+            target,
+            pinned_sha256=str(getattr(settings, "ML_BAJA_MODEL_SHA256", "") or ""),
+            pin_setting_name="ML_BAJA_MODEL_SHA256",
+            model_label=MODEL_NAME,
+            env=str(getattr(settings, "ENV", "dev")),
+        )
+
         obj = joblib.load(target)
         if not isinstance(obj, cls):
             raise TypeError(f"El archivo {target} no contiene un BajaModel")

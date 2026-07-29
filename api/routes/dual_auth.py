@@ -119,6 +119,17 @@ async def require_any_auth(
     )
 
 
+async def require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+    """Exige que el principal autenticado (sesión o API key) sea admin.
+
+    Antes triplicado idénticamente en admin_users.py/feature_flags.py/
+    webhooks.py — un solo sitio evita que una copia diverja de las otras dos.
+    """
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
+    return user
+
+
 def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
     """Require a freshly authenticated browser session for destructive actions.
 

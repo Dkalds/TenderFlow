@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 
 def _reset_tracing():
     """Resetea el estado del módulo de tracing para tests aislados."""
@@ -165,3 +169,241 @@ def test_traced_bypasses_noop_configured(monkeypatch):
     result = my_func()
     assert result == "ok"
     assert call_log == ["called"]
+
+
+# ── _redact_span_text — casos adicionales con _cached_sensitive_values ────────
+
+
+class TestRedactSpanText:
+    """Lines 43-44, 46-47: _redact_span_text."""
+
+    def test_redact_sensitive_value(self):
+        from observability.tracing import _redact_span_text
+
+        with patch("observability.logging._cached_sensitive_values", ["secret123"]):
+            result = _redact_span_text("error with secret123 in it")
+            assert "secret123" not in result
+            assert "***REDACTED***" in result
+
+    def test_redact_exception_returns_original(self):
+        from observability.tracing import _redact_span_text
+
+        with patch("observability.logging._cached_sensitive_values", side_effect=AttributeError):
+            result = _redact_span_text("some text")
+            assert result == "some text"
+
+    def test_redact_no_match(self):
+        from observability.tracing import _redact_span_text
+
+        with patch("observability.logging._cached_sensitive_values", ["xyz"]):
+            result = _redact_span_text("no match here")
+            assert result == "no match here"
+
+
+# ── configure_tracing — ramas adicionales (idempotencia, ImportError) ────────
+
+
+class TestConfigureTracing:
+    """Lines 79-81, 89-174: configure_tracing branches."""
+
+    def setup_method(self):
+        import observability.tracing as t
+
+        self._orig_configured = t._configured
+        self._orig_noop = t._noop
+        t._configured = False
+        t._noop = False
+
+    def teardown_method(self):
+        import observability.tracing as t
+
+        t._configured = self._orig_configured
+        t._noop = self._orig_noop
+
+    def test_idempotent(self):
+        import observability.tracing as t
+
+        t._configured = True
+        t._noop = True
+        t.configure_tracing()  # should return immediately
+        assert t._noop is True
+
+    def test_noop_mode_no_endpoint(self):
+        import observability.tracing as t
+
+        settings = MagicMock()
+        settings.OTEL_EXPORTER_OTLP_ENDPOINT = ""
+        settings.OTEL_SERVICE_NAME = "test"
+        with patch("config.settings", settings):
+            t.configure_tracing()
+        assert t._configured is True
+        assert t._noop is True
+
+    def test_noop_mode_import_error(self):
+        import observability.tracing as t
+
+        settings = MagicMock()
+        settings.OTEL_EXPORTER_OTLP_ENDPOINT = ""
+        settings.OTEL_SERVICE_NAME = "test"
+
+        import builtins as _builtins
+
+        original_import = _builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if "opentelemetry" in name:
+                raise ImportError("no otel")
+            return original_import(name, *args, **kwargs)
+
+        with patch("config.settings", settings):
+            with patch("builtins.__import__", side_effect=mock_import):
+                t.configure_tracing()
+        assert t._configured is True
+        assert t._noop is True
+
+    def test_full_setup_import_error(self):
+        import observability.tracing as t
+
+        settings = MagicMock()
+        settings.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318"
+        settings.OTEL_SERVICE_NAME = "test-svc"
+
+        import builtins as _builtins
+
+        original_import = _builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if "opentelemetry" in name:
+                raise ImportError("no otel sdk")
+            return original_import(name, *args, **kwargs)
+
+        with patch("config.settings", settings):
+            with patch("builtins.__import__", side_effect=mock_import):
+                t.configure_tracing()
+        assert t._configured is True
+        assert t._noop is True
+
+
+# ── _NoOpTracer / _NoOpSpan ───────────────────────────────────────────────────
+
+
+class TestNoOpTracerAndSpan:
+    """Lines 182, 202, 205, 208: NoOp classes."""
+
+    def test_noop_tracer(self):
+        from observability.tracing import _NoOpSpan, _NoOpTracer
+
+        tracer = _NoOpTracer()
+        span = tracer.start_as_current_span("test")
+        assert isinstance(span, _NoOpSpan)
+
+    def test_noop_span_context_manager(self):
+        from observability.tracing import _NoOpSpan
+
+        span = _NoOpSpan()
+        with span as s:
+            s.set_attribute("key", "val")
+            s.record_exception(Exception("err"))
+            s.set_status("ERROR")
+
+
+# ── traced() — tracing activo (no NoOp) ───────────────────────────────────────
+
+
+class TestTracedDecorator:
+    """Lines 236-260: traced decorator with active tracing."""
+
+    def test_traced_noop(self):
+        import observability.tracing as t
+
+        orig_c, orig_n = t._configured, t._noop
+        t._configured = False
+        t._noop = False
+
+        from observability.tracing import traced
+
+        @traced("test.fn")
+        def my_fn():
+            return 42
+
+        assert my_fn() == 42
+        t._configured, t._noop = orig_c, orig_n
+
+    def test_traced_configured_noop(self):
+        import observability.tracing as t
+
+        orig_c, orig_n = t._configured, t._noop
+        t._configured = True
+        t._noop = True
+
+        from observability.tracing import traced
+
+        @traced("test.fn2")
+        def my_fn():
+            return 99
+
+        assert my_fn() == 99
+        t._configured, t._noop = orig_c, orig_n
+
+    def test_traced_active_success(self):
+        import observability.tracing as t
+
+        orig_c, orig_n = t._configured, t._noop
+        t._configured = True
+        t._noop = False
+
+        mock_span = MagicMock()
+        mock_span.__enter__ = MagicMock(return_value=mock_span)
+        mock_span.__exit__ = MagicMock(return_value=False)
+        mock_tracer = MagicMock()
+        mock_tracer.start_as_current_span.return_value = mock_span
+
+        from observability.tracing import traced
+
+        with patch("observability.tracing.get_tracer", return_value=mock_tracer):
+            with patch(
+                "structlog.contextvars.get_contextvars",
+                return_value={"run_id": "r1", "session_hash": "s1"},
+            ):
+
+                @traced("test.fn3")
+                def my_fn():
+                    return 7
+
+                assert my_fn() == 7
+        t._configured, t._noop = orig_c, orig_n
+
+    def test_traced_active_exception(self):
+        import observability.tracing as t
+
+        orig_c, orig_n = t._configured, t._noop
+        t._configured = True
+        t._noop = False
+
+        # Use a real context manager mock
+        inner_span = MagicMock()
+        mock_cm = MagicMock()
+        mock_cm.__enter__ = MagicMock(return_value=inner_span)
+        mock_cm.__exit__ = MagicMock(return_value=False)
+        mock_tracer = MagicMock()
+        mock_tracer.start_as_current_span.return_value = mock_cm
+
+        mock_status_code = MagicMock()
+        mock_status_code.ERROR = "ERROR"
+
+        from observability.tracing import traced
+
+        with patch("observability.tracing.get_tracer", return_value=mock_tracer):
+            with patch.dict(
+                "sys.modules", {"opentelemetry.trace": MagicMock(StatusCode=mock_status_code)}
+            ):
+
+                @traced("test.fn4")
+                def my_fn():
+                    raise ValueError("boom")
+
+                with pytest.raises(ValueError, match="boom"):
+                    my_fn()
+
+        inner_span.record_exception.assert_called()
+        t._configured, t._noop = orig_c, orig_n

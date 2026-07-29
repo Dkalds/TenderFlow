@@ -20,8 +20,9 @@ log = get_logger(__name__)
 
 _repo = LicitacionRepository()
 
-# Caché del DataFrame base (sin conversiones de tipo), única fuente de verdad
-# para stats/analytics. Invalidada por TTL o por la señal de ingesta
+# Caché del DataFrame base (con las conversiones de tipo canónicas ya
+# aplicadas — ver load_stats_base_df), única fuente de verdad para
+# stats/analytics. Invalidada por TTL o por la señal de ingesta
 # (shared.cache_signal). Analytics services llaman a load_stats_base_df() y
 # reciben un .copy(); SignalAwareCache serializa los misses concurrentes, así
 # que N threads con caché fría no construyen pd.DataFrame(rows) en paralelo.
@@ -114,18 +115,41 @@ def load_stats_dataframe() -> list[dict[str, Any]]:
 
 
 def load_stats_base_df() -> pd.DataFrame:
-    """Devuelve una copia mutable del DataFrame base de licitaciones para analytics.
+    """Devuelve el DataFrame base de licitaciones para analytics, COMPARTIDO entre llamadas.
 
-    El DataFrame base (sin conversiones de tipo) se construye una única vez y se
-    invalida por TTL o por la señal de ingesta (``_stats_df_cache``). Cada
-    llamada devuelve ``df.copy()`` para que el consumidor pueda mutar el
-    DataFrame sin afectar la copia cacheada.
+    El DataFrame base se construye una única vez con las conversiones de tipo
+    canónicas ya aplicadas (fecha_publicacion/fecha_limite/fecha_inicio/fecha_fin
+    a datetime UTC vía ``pd.to_datetime(errors="coerce", utc=True)``; importe a
+    numérico vía ``pd.to_numeric(errors="coerce")``) y se invalida por TTL o por
+    la señal de ingesta (``_stats_df_cache``).
+
+    IMPORTANTE — ya no se devuelve ``.copy()``: el objeto devuelto es la
+    instancia cacheada compartida por todos los consumidores concurrentes
+    (antes se copiaba el DataFrame completo en cada llamada, multiplicando el
+    pico de memoria por N bajo N requests concurrentes con caché fría — ver
+    postmortem OOM Render 2026-07-14 en ``services/_data_cache.py``). Los
+    consumidores **no deben mutar el DataFrame recibido**: filtrar con
+    ``df = df[mask]`` o añadir columnas derivadas con ``df.assign(...)`` (que
+    devuelven un objeto nuevo) es seguro; escribir ``df["col"] = ...`` o
+    ``df.loc[...] = ...`` directamente sobre el frame recibido no lo es —
+    contamina la caché para todas las requests siguientes. Si una función
+    necesita mutar in-place (varias asignaciones secuenciales, ``.loc``
+    condicional), debe tomar su propia copia explícita primero
+    (``df = df.copy()``).
     """
 
     def _build() -> pd.DataFrame:
-        return pd.DataFrame(load_stats_dataframe())
+        df = pd.DataFrame(load_stats_dataframe())
+        if df.empty:
+            return df
+        for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+        if "importe" in df.columns:
+            df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+        return df
 
-    return _stats_df_cache.get(_build).copy()
+    return _stats_df_cache.get(_build)
 
 
 def clear_stats_cache() -> None:

@@ -51,6 +51,7 @@ from scraper.ml_pipeline import (
     _make_pipeline_with_embeddings,
     _tune_pipeline,
 )
+from shared.model_integrity import verify_model_integrity, write_checksum
 from shared.outbound_http import pinned_https_request
 
 if TYPE_CHECKING:
@@ -632,8 +633,6 @@ class SAPClassifier:
         Guarda el objeto SAPClassifier completo (incluye pipeline entrenado,
         _threshold óptimo y metadata) junto con un checksum SHA256.
         """
-        import hashlib
-
         import joblib
 
         target = path or _MODEL_PATH
@@ -641,9 +640,7 @@ class SAPClassifier:
         joblib.dump(self, target, compress=3)
 
         # Generar checksum SHA256 junto al modelo
-        sha256_hash = hashlib.sha256(target.read_bytes()).hexdigest()
-        checksum_path = target.with_suffix(".sha256")
-        checksum_path.write_text(sha256_hash, encoding="utf-8")
+        sha256_hash = write_checksum(target)
 
         log.info(
             "ml_classifier.saved",
@@ -776,8 +773,6 @@ class SAPClassifier:
         Si el checksum no coincide, lanza RuntimeError para evitar cargar un
         modelo potencialmente manipulado.
         """
-        import hashlib
-
         import joblib
 
         # Si no se pasa path explícito, consultar el model registry
@@ -797,47 +792,13 @@ class SAPClassifier:
                 log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
 
         target = path or _MODEL_PATH
-        actual_hash = hashlib.sha256(target.read_bytes()).hexdigest()
-
-        # 1) Pin out-of-band (ML_MODEL_SHA256): defensa contra un GitHub Release
-        # comprometido. El .sha256 co-ubicado viaja junto al .pkl en el mismo
-        # release, así que ambos podrían sustituirse a la vez; un hash fijado
-        # fuera de banda detecta esa manipulación antes de deserializar.
-        pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()
-        if pinned and actual_hash.lower() != pinned:
-            raise RuntimeError(
-                f"Integridad del modelo comprometida: SHA256 no coincide con "
-                f"ML_MODEL_SHA256 fijado. Esperado: {pinned[:16]}..., "
-                f"obtenido: {actual_hash[:16]}... Fichero: {target}"
-            )
-
-        # 2) Checksum co-ubicado (.sha256)
-        checksum_path = target.with_suffix(".sha256")
-        if checksum_path.exists():
-            expected_hash = checksum_path.read_text(encoding="utf-8").strip()
-            if actual_hash != expected_hash:
-                raise RuntimeError(
-                    f"Integridad del modelo comprometida: SHA256 no coincide. "
-                    f"Esperado: {expected_hash[:16]}..., obtenido: {actual_hash[:16]}... "
-                    f"Fichero: {target}"
-                )
-            log.info("ml_classifier.checksum_verified", path=str(target))
-        elif getattr(settings, "ENV", "dev") == "prod" and not pinned:
-            # En producción se exige al menos una verificación de integridad (pin
-            # o checksum co-ubicado): joblib.load ejecuta código arbitrario.
-            raise RuntimeError(
-                f"Sin verificación de integridad para el modelo: no existe "
-                f"{checksum_path} ni ML_MODEL_SHA256 fijado. En producción es "
-                "obligatorio para deserializar con seguridad. Re-entrena con "
-                "save() o define ML_MODEL_SHA256."
-            )
-        elif not pinned:
-            log.warning(
-                "ml_classifier.no_checksum_file",
-                path=str(checksum_path),
-                hint="El modelo se cargará sin verificación de integridad. "
-                "Re-entrena con save() para generar el fichero .sha256.",
-            )
+        verify_model_integrity(
+            target,
+            pinned_sha256=str(getattr(settings, "ML_MODEL_SHA256", "") or ""),
+            pin_setting_name="ML_MODEL_SHA256",
+            model_label="sap_classifier",
+            env=str(getattr(settings, "ENV", "dev")),
+        )
 
         obj = joblib.load(target)
         # Compatibilidad con modelos guardados ejecutando el script como __main__:

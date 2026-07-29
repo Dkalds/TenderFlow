@@ -120,6 +120,32 @@ def clear_raw_adj_cache() -> None:
     _raw_adj_cache.clear()
 
 
+def load_for_competitors(
+    *,
+    ccaa: str | None = None,
+    tecnologia: str | None = None,
+    estado: str | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    importe_min: float | None = None,
+) -> list[dict[str, Any]]:
+    """Carga filtrada+proyectada para ``services/analytics/competitors.py``.
+
+    A diferencia de :func:`load_raw_adjudicaciones` (tabla completa, cacheada,
+    filtrada después en pandas), aplica los filtros en el ``WHERE`` SQL — sin
+    caché: cada combinación de filtros es una query distinta y Postgres la
+    resuelve en milisegundos.
+    """
+    return _repo.load_for_competitors(
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        estado=estado,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        importe_min=importe_min,
+    )
+
+
 def load_licitadores(
     ccaa_filter: tuple[str, ...] | None = None,
     limit: int = 10000,

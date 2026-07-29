@@ -1,7 +1,11 @@
 """Tests unitarios para services/analytics organos + organo_detail + overview.
 
-Parchean las cargas de datos de la capa de servicios con DataFrames sintéticos
-para validar las agregaciones sin tocar la BD.
+``organos``/``organo_detail`` parchean sus cargas de datos con DataFrames
+sintéticos (sin tocar la BD). ``overview`` ya agrega vía SQL
+(``db.repositories.aggregates``) — sus tests de este fichero siembran datos
+reales (``tmp_db``) en vez de mockear ``load_stats_base_df`` (que el módulo ya
+no importa); ``load_adjudicaciones`` sigue mockeado porque overview.py sigue
+llamándolo tal cual para hhi/pct_oferta_unica/lead_time_medio.
 """
 
 from __future__ import annotations
@@ -17,6 +21,49 @@ from services.analytics.organo_detail import (
 )
 from services.analytics.organos import OrganosFilters, get_organos
 from services.analytics.overview import OverviewFilters, get_overview
+
+_LICITACION_FIELDS = {
+    "id_externo",
+    "titulo",
+    "descripcion",
+    "organo_contratacion",
+    "importe",
+    "moneda",
+    "cpv",
+    "tipo_contrato",
+    "estado",
+    "fecha_publicacion",
+    "fecha_limite",
+    "url",
+    "raw_keywords",
+    "provincia",
+    "ccaa",
+    "nuts_code",
+    "duracion_valor",
+    "duracion_unidad",
+    "fecha_inicio",
+    "fecha_fin",
+    "prorroga_descripcion",
+    "ml_proba",
+    "tecnologia",
+    "fecha_extraccion",
+}
+
+
+def _insert_licitaciones(rows: list[dict]) -> None:
+    """Inserta ``rows`` (shape de ``_lic_rows()``) como licitaciones reales.
+
+    Descarta claves que no son columnas de ``Licitacion`` (p. ej.
+    ``modulos_str``, un campo derivado que añade ``load_dataframe()``, no una
+    columna cruda — ``get_overview`` nunca lo usa).
+    """
+    from db.upsert import Licitacion, upsert_licitaciones
+
+    items = [
+        Licitacion(**{k: v for k, v in row.items() if k in _LICITACION_FIELDS}) for row in rows
+    ]
+    upsert_licitaciones(items)
+
 
 # ── Datos sintéticos ────────────────────────────────────────────────────────
 
@@ -86,6 +133,24 @@ def _adj_rows() -> list[dict]:
     ]
 
 
+def _typed(df: pd.DataFrame) -> pd.DataFrame:
+    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
+    (ver ``services/licitaciones.py::_build``) para los mocks de organos.py y
+    organo_detail.py — sus fixtures usan fechas ISO en crudo, así que el mock
+    debe entregarlas ya convertidas para reflejar el contrato real. Los mocks
+    de overview.py (Frente B, fuera de mi alcance) no se tocan: ese módulo
+    sigue reconvirtiendo internamente, así que su fixture puede seguir cruda.
+    """
+    if df.empty:
+        return df
+    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+    if "importe" in df.columns:
+        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    return df
+
+
 # ── _lead_time_median ───────────────────────────────────────────────────────
 
 
@@ -117,7 +182,7 @@ def test_lead_time_median_ignores_negative_diffs():
 def test_get_organos_ranking_and_pct():
     with patch(
         "services.analytics.organos.load_stats_base_df",
-        return_value=pd.DataFrame(_lic_rows()),
+        return_value=_typed(pd.DataFrame(_lic_rows())),
     ):
         result = get_organos(OrganosFilters())
 
@@ -138,7 +203,7 @@ def test_get_organos_totales_sobre_dataset_completo_no_top_n():
     que devuelve `organos` (regresión: antes el frontend los sumaba sobre el top-50)."""
     with patch(
         "services.analytics.organos.load_stats_base_df",
-        return_value=pd.DataFrame(_lic_rows()),
+        return_value=_typed(pd.DataFrame(_lic_rows())),
     ):
         result = get_organos(OrganosFilters(limit=1))
 
@@ -175,7 +240,9 @@ def test_get_organos_q_accent_insensitive():
             "modulos_str": None,
         }
     )
-    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame(rows)):
+    with patch(
+        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
         con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
 
@@ -203,7 +270,9 @@ def test_get_organos_q_filters_before_limit():
         }
     )
     # limit=1: sin q solo saldría ORG A; con q el match aparece igual
-    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame(rows)):
+    with patch(
+        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         sin_q = get_organos(OrganosFilters(limit=1))
         con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
 
@@ -220,7 +289,7 @@ def test_get_organo_detail_lead_time_and_fields():
     with (
         patch(
             "services.analytics.organo_detail.load_stats_base_df",
-            return_value=pd.DataFrame(_lic_rows()),
+            return_value=_typed(pd.DataFrame(_lic_rows())),
         ),
         patch(
             "services.analytics.organo_detail.load_raw_adjudicaciones",
@@ -251,7 +320,7 @@ def test_get_organo_detail_unknown_organo():
     with (
         patch(
             "services.analytics.organo_detail.load_stats_base_df",
-            return_value=pd.DataFrame(_lic_rows()),
+            return_value=_typed(pd.DataFrame(_lic_rows())),
         ),
         patch(
             "services.analytics.organo_detail.load_raw_adjudicaciones",
@@ -266,17 +335,9 @@ def test_get_organo_detail_unknown_organo():
 # ── get_overview (smoke) ────────────────────────────────────────────────────
 
 
-def test_get_overview_basic():
-    with (
-        patch(
-            "services.analytics.overview.load_stats_base_df",
-            return_value=pd.DataFrame(_lic_rows()),
-        ),
-        patch(
-            "services.analytics.overview.load_adjudicaciones",
-            return_value=pd.DataFrame(),
-        ),
-    ):
+def test_get_overview_basic(tmp_db):
+    _insert_licitaciones(_lic_rows())
+    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
         result = get_overview(OverviewFilters())
     assert result.total_licitaciones == 3
     assert result.organos_unicos == 2
@@ -285,32 +346,18 @@ def test_get_overview_basic():
     assert result.ccaa_cubiertas == 2
 
 
-def test_get_overview_empty():
-    with (
-        patch("services.analytics.overview.load_stats_base_df", return_value=pd.DataFrame([])),
-        patch(
-            "services.analytics.overview.load_adjudicaciones",
-            return_value=pd.DataFrame(),
-        ),
-    ):
+def test_get_overview_empty(tmp_db):
+    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
         result = get_overview(OverviewFilters())
     assert result.total_licitaciones == 0
     assert result.ccaa_cubiertas == 0
 
 
-def test_get_overview_q_filters_titulo_organo_id():
+def test_get_overview_q_filters_titulo_organo_id(tmp_db):
     """El filtro q hace substring case-insensitive sobre titulo/órgano/id,
     en paridad con la búsqueda del listado (KPI bar honesto con q activo)."""
-    with (
-        patch(
-            "services.analytics.overview.load_stats_base_df",
-            return_value=pd.DataFrame(_lic_rows()),
-        ),
-        patch(
-            "services.analytics.overview.load_adjudicaciones",
-            return_value=pd.DataFrame(),
-        ),
-    ):
+    _insert_licitaciones(_lic_rows())
+    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
         por_titulo = get_overview(OverviewFilters(q="sap"))
         por_organo = get_overview(OverviewFilters(q="org b"))
         sin_match = get_overview(OverviewFilters(q="nomatch-xyz"))
@@ -319,7 +366,7 @@ def test_get_overview_q_filters_titulo_organo_id():
     assert sin_match.total_licitaciones == 0
 
 
-def test_get_overview_importe_min_excludes_below_and_nan():
+def test_get_overview_importe_min_excludes_below_and_nan(tmp_db):
     """importe_min filtra como ``importe >= ?`` en SQL (NaN excluido)."""
     rows = _lic_rows()
     rows.append(
@@ -336,19 +383,14 @@ def test_get_overview_importe_min_excludes_below_and_nan():
             "modulos_str": None,
         }
     )
-    with (
-        patch("services.analytics.overview.load_stats_base_df", return_value=pd.DataFrame(rows)),
-        patch(
-            "services.analytics.overview.load_adjudicaciones",
-            return_value=pd.DataFrame(),
-        ),
-    ):
+    _insert_licitaciones(rows)
+    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
         result = get_overview(OverviewFilters(importe_min=500_000.0))
     # Solo L1 (1M) y L2 (500K); L3 (200K) y L5 (None) quedan fuera.
     assert result.total_licitaciones == 2
 
 
-def test_get_overview_ccaa_cubiertas_ignores_nulls():
+def test_get_overview_ccaa_cubiertas_ignores_nulls(tmp_db):
     """ccaa_cubiertas cuenta CCAA distintas reales; las filas con ccaa nulo no
     inflan ni rompen el conteo (Patrón 1 meta-RFC: cobertura real, no derivada)."""
     rows = _lic_rows()  # Madrid, Madrid, Cataluña → 2 distintas
@@ -366,13 +408,8 @@ def test_get_overview_ccaa_cubiertas_ignores_nulls():
             "modulos_str": None,
         }
     )
-    with (
-        patch("services.analytics.overview.load_stats_base_df", return_value=pd.DataFrame(rows)),
-        patch(
-            "services.analytics.overview.load_adjudicaciones",
-            return_value=pd.DataFrame(),
-        ),
-    ):
+    _insert_licitaciones(rows)
+    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
         result = get_overview(OverviewFilters())
     # La fila con ccaa=None se excluye → siguen siendo 2 (Madrid, Cataluña).
     assert result.ccaa_cubiertas == 2
