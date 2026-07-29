@@ -136,6 +136,21 @@ def test_tecnologias_empty():
 # ---------------------------------------------------------------------------
 
 
+def _typed(df: pd.DataFrame) -> pd.DataFrame:
+    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
+    (ver ``services/licitaciones.py::_build``) para los mocks de
+    proyectos_modulos.py — su fixture usa fechas ISO en crudo, así que el mock
+    debe entregarlas ya convertidas para reflejar el contrato real."""
+    if df.empty:
+        return df
+    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+    if "importe" in df.columns:
+        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    return df
+
+
 def _pm_rows() -> list[dict]:
     rows: list[dict] = []
     base = {
@@ -185,7 +200,7 @@ def _pm_rows() -> list[dict]:
 
 
 def test_proyectos_modulos_yoy_tipo_estado_cpv():
-    with patch.object(pm_mod, "load_stats_base_df", return_value=pd.DataFrame(_pm_rows())):
+    with patch.object(pm_mod, "load_stats_base_df", return_value=_typed(pd.DataFrame(_pm_rows()))):
         res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
 
     assert res.top_modulo_yoy is not None
@@ -218,7 +233,7 @@ def test_proyectos_modulos_importe_distinct_sin_doble_conteo():
             "fecha_publicacion": _iso(30),
         },
     ]
-    with patch.object(pm_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)):
+    with patch.object(pm_mod, "load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
         res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
 
     # FI y CO detectados → 2 filas de módulo…

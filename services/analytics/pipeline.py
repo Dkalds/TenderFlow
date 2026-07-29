@@ -108,19 +108,13 @@ class PipelineResult(BaseModel):
 
 def _load_df() -> pd.DataFrame:
     df = load_stats_base_df()
-    if not df.empty:
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-        if "fecha_publicacion" in df.columns:
-            df["fecha_publicacion"] = pd.to_datetime(
-                df["fecha_publicacion"], errors="coerce", utc=True
-            )
+    if not df.empty and "fecha_limite" in df.columns:
         # Parse fecha_limite if present
-        if "fecha_limite" in df.columns:
-            df["fecha_limite_dt"] = pd.to_datetime(
-                df["fecha_limite"],
-                errors="coerce",
-                utc=True,
-            )
+        df["fecha_limite_dt"] = pd.to_datetime(
+            df["fecha_limite"],
+            errors="coerce",
+            utc=True,
+        )
     return df
 
 
@@ -196,10 +190,10 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
     vencen_30d = int((df["dias_restantes"] <= 30).sum())
 
     # Valor económico (suma de importe) sobre la misma ventana que los conteos.
-    _imp = pd.to_numeric(df["importe"], errors="coerce")
-    valor_total = float(_imp.sum(skipna=True))
-    valor_7d = float(_imp[df["dias_restantes"] <= 7].sum(skipna=True))
-    valor_30d = float(_imp[df["dias_restantes"] <= 30].sum(skipna=True))
+    # importe ya llega numérico desde load_stats_base_df(); sin reconversión.
+    valor_total = float(df["importe"].sum(skipna=True))
+    valor_7d = float(df.loc[df["dias_restantes"] <= 7, "importe"].sum(skipna=True))
+    valor_30d = float(df.loc[df["dias_restantes"] <= 30, "importe"].sum(skipna=True))
 
     # Sort by urgency and limit
     all_df = df.copy()  # keep full for extra computations

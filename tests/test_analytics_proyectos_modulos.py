@@ -69,6 +69,21 @@ def _rows_regex() -> list[dict]:
     ]
 
 
+def _typed(df: pd.DataFrame) -> pd.DataFrame:
+    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
+    (ver ``services/licitaciones.py::_build``): los fixtures de este módulo
+    usan fechas en crudo, así que el mock debe entregarlas ya convertidas para
+    reflejar el contrato real."""
+    if df.empty:
+        return df
+    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+    if "importe" in df.columns:
+        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    return df
+
+
 # ── _detect_modules ─────────────────────────────────────────────────────────
 
 
@@ -89,7 +104,7 @@ def test_detect_modules_case_insensitive():
 def test_modulos_deteccion_regex_en_titulos():
     with patch(
         "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame(_rows_regex()),
+        return_value=_typed(pd.DataFrame(_rows_regex())),
     ):
         result = get_proyectos_modulos(ProyectosModulosFilters())
 
@@ -107,7 +122,7 @@ def test_top_modulo_yoy_crecimiento():
     """2 menciones último año vs 1 el anterior → +100%."""
     with patch(
         "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame(_rows_regex()),
+        return_value=_typed(pd.DataFrame(_rows_regex())),
     ):
         result = get_proyectos_modulos(ProyectosModulosFilters())
 
@@ -134,7 +149,7 @@ def test_top_modulo_yoy_nuevo_sentinel():
     ]
     with patch(
         "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame(rows),
+        return_value=_typed(pd.DataFrame(rows)),
     ):
         result = get_proyectos_modulos(ProyectosModulosFilters())
 
@@ -185,7 +200,7 @@ def test_modulos_columna_explicita():
     ]
     with patch(
         "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame(rows),
+        return_value=_typed(pd.DataFrame(rows)),
     ):
         result = get_proyectos_modulos(ProyectosModulosFilters())
 
@@ -202,7 +217,7 @@ def test_modulos_columna_explicita():
 def test_tipos_proyecto_y_tipo_estado():
     with patch(
         "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame(_rows_regex()),
+        return_value=_typed(pd.DataFrame(_rows_regex())),
     ):
         result = get_proyectos_modulos(ProyectosModulosFilters())
 
@@ -217,7 +232,7 @@ def test_tipos_proyecto_y_tipo_estado():
 def test_cpv_top_con_descripcion():
     with patch(
         "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame(_rows_regex()),
+        return_value=_typed(pd.DataFrame(_rows_regex())),
     ):
         result = get_proyectos_modulos(ProyectosModulosFilters())
 
@@ -229,7 +244,7 @@ def test_cpv_top_con_descripcion():
 def test_filtro_fechas_reduce_dataset():
     with patch(
         "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame(_rows_regex()),
+        return_value=_typed(pd.DataFrame(_rows_regex())),
     ):
         result = get_proyectos_modulos(
             ProyectosModulosFilters(fecha_desde=(datetime.now(UTC) - timedelta(days=90)).date())

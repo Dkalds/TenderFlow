@@ -384,14 +384,6 @@ def get_scoring(
         log.info("analytics_scoring_done", total=0)
         return ScoringResult()
 
-    if "fecha_publicacion" in df.columns:
-        df["fecha_publicacion"] = pd.to_datetime(
-            df["fecha_publicacion"],
-            errors="coerce",
-            utc=True,
-        )
-    df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-
     # Parse fecha_limite para la dimensión de plazo
     if "fecha_limite" in df.columns:
         df["fecha_limite_dt"] = pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True)

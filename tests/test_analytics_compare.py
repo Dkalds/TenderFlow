@@ -43,6 +43,21 @@ def _rows() -> list[dict]:
     ]
 
 
+def _typed(df: pd.DataFrame) -> pd.DataFrame:
+    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
+    (ver ``services/licitaciones.py::_build``): el fixture de este módulo usa
+    fechas ISO en crudo, así que el mock debe entregarlas ya convertidas para
+    reflejar el contrato real."""
+    if df.empty:
+        return df
+    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+    if "importe" in df.columns:
+        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    return df
+
+
 def _filters(**overrides) -> CompareFilters:
     base = {
         "range_a_desde": date(2025, 1, 1),
@@ -55,7 +70,7 @@ def _filters(**overrides) -> CompareFilters:
 
 
 def test_compare_periodos_y_deltas():
-    with patch("services.analytics.compare.load_stats_base_df", return_value=pd.DataFrame(_rows())):
+    with patch("services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
         result = get_compare_periods(_filters())
 
     # Período A: L1 + L2 (enero)
@@ -74,7 +89,7 @@ def test_compare_periodos_y_deltas():
 
 
 def test_compare_filtro_ccaa():
-    with patch("services.analytics.compare.load_stats_base_df", return_value=pd.DataFrame(_rows())):
+    with patch("services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
         result = get_compare_periods(_filters(ccaa="Madrid"))
 
     # Solo L1 (enero, Madrid) y L3 (febrero, Madrid)
@@ -85,7 +100,7 @@ def test_compare_filtro_ccaa():
 
 def test_compare_periodo_a_vacio_no_divide_por_cero():
     """Con período A sin datos los deltas quedan en 0.0 (no ZeroDivisionError)."""
-    with patch("services.analytics.compare.load_stats_base_df", return_value=pd.DataFrame(_rows())):
+    with patch("services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
         result = get_compare_periods(
             _filters(range_a_desde=date(2020, 1, 1), range_a_hasta=date(2020, 1, 31))
         )

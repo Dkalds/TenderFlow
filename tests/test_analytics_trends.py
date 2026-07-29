@@ -53,9 +53,24 @@ def _rows() -> list[dict]:
     ]
 
 
+def _typed(df: pd.DataFrame) -> pd.DataFrame:
+    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
+    (ver ``services/licitaciones.py::_build``): el fixture de este módulo usa
+    fechas ISO en crudo, así que el mock debe entregarlas ya convertidas para
+    reflejar el contrato real."""
+    if df.empty:
+        return df
+    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+    if "importe" in df.columns:
+        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    return df
+
+
 def test_trends_group_by_day_real_counts():
     """group_by=day agrega por fecha exacta (YYYY-MM-DD), sin reparto sintético."""
-    with patch.object(tr_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())):
+    with patch.object(tr_mod, "load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
         res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by="day"))
 
     by_period = {p.period: p for p in res.series}
@@ -72,7 +87,7 @@ def test_trends_group_by_day_real_counts():
 
 def test_trends_group_by_month_aggregates():
     """group_by=month colapsa los días en su mes (comportamiento por defecto)."""
-    with patch.object(tr_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())):
+    with patch.object(tr_mod, "load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
         res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by="month"))
 
     by_period = {p.period: p for p in res.series}
@@ -82,7 +97,7 @@ def test_trends_group_by_month_aggregates():
 
 def test_trends_filters_apply_before_grouping():
     """Los filtros (ccaa/tecnologia) acotan antes de construir la serie diaria."""
-    with patch.object(tr_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())):
+    with patch.object(tr_mod, "load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
         res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by="day", tecnologia="ORACLE"))
     assert {p.period for p in res.series} == {"2026-03-04"}
     assert sum(p.count for p in res.series) == 1

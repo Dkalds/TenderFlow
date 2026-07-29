@@ -20,8 +20,9 @@ log = get_logger(__name__)
 
 _repo = LicitacionRepository()
 
-# Caché del DataFrame base (sin conversiones de tipo), única fuente de verdad
-# para stats/analytics. Invalidada por TTL o por la señal de ingesta
+# Caché del DataFrame base (con las conversiones de tipo canónicas ya
+# aplicadas — ver load_stats_base_df), única fuente de verdad para
+# stats/analytics. Invalidada por TTL o por la señal de ingesta
 # (shared.cache_signal). Analytics services llaman a load_stats_base_df() y
 # reciben un .copy(); SignalAwareCache serializa los misses concurrentes, así
 # que N threads con caché fría no construyen pd.DataFrame(rows) en paralelo.
@@ -116,14 +117,24 @@ def load_stats_dataframe() -> list[dict[str, Any]]:
 def load_stats_base_df() -> pd.DataFrame:
     """Devuelve una copia mutable del DataFrame base de licitaciones para analytics.
 
-    El DataFrame base (sin conversiones de tipo) se construye una única vez y se
-    invalida por TTL o por la señal de ingesta (``_stats_df_cache``). Cada
-    llamada devuelve ``df.copy()`` para que el consumidor pueda mutar el
-    DataFrame sin afectar la copia cacheada.
+    El DataFrame base se construye una única vez con las conversiones de tipo
+    canónicas ya aplicadas (fecha_publicacion/fecha_limite/fecha_inicio/fecha_fin
+    a datetime UTC vía ``pd.to_datetime(errors="coerce", utc=True)``; importe a
+    numérico vía ``pd.to_numeric(errors="coerce")``) y se invalida por TTL o por
+    la señal de ingesta (``_stats_df_cache``). Cada llamada devuelve ``df.copy()``
+    para que el consumidor pueda mutar el DataFrame sin afectar la copia cacheada.
     """
 
     def _build() -> pd.DataFrame:
-        return pd.DataFrame(load_stats_dataframe())
+        df = pd.DataFrame(load_stats_dataframe())
+        if df.empty:
+            return df
+        for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+        if "importe" in df.columns:
+            df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+        return df
 
     return _stats_df_cache.get(_build).copy()
 

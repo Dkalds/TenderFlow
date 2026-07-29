@@ -86,6 +86,24 @@ def _adj_rows() -> list[dict]:
     ]
 
 
+def _typed(df: pd.DataFrame) -> pd.DataFrame:
+    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
+    (ver ``services/licitaciones.py::_build``) para los mocks de organos.py y
+    organo_detail.py — sus fixtures usan fechas ISO en crudo, así que el mock
+    debe entregarlas ya convertidas para reflejar el contrato real. Los mocks
+    de overview.py (Frente B, fuera de mi alcance) no se tocan: ese módulo
+    sigue reconvirtiendo internamente, así que su fixture puede seguir cruda.
+    """
+    if df.empty:
+        return df
+    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+    if "importe" in df.columns:
+        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
+    return df
+
+
 # ── _lead_time_median ───────────────────────────────────────────────────────
 
 
@@ -117,7 +135,7 @@ def test_lead_time_median_ignores_negative_diffs():
 def test_get_organos_ranking_and_pct():
     with patch(
         "services.analytics.organos.load_stats_base_df",
-        return_value=pd.DataFrame(_lic_rows()),
+        return_value=_typed(pd.DataFrame(_lic_rows())),
     ):
         result = get_organos(OrganosFilters())
 
@@ -138,7 +156,7 @@ def test_get_organos_totales_sobre_dataset_completo_no_top_n():
     que devuelve `organos` (regresión: antes el frontend los sumaba sobre el top-50)."""
     with patch(
         "services.analytics.organos.load_stats_base_df",
-        return_value=pd.DataFrame(_lic_rows()),
+        return_value=_typed(pd.DataFrame(_lic_rows())),
     ):
         result = get_organos(OrganosFilters(limit=1))
 
@@ -175,7 +193,9 @@ def test_get_organos_q_accent_insensitive():
             "modulos_str": None,
         }
     )
-    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame(rows)):
+    with patch(
+        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
         con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
 
@@ -203,7 +223,9 @@ def test_get_organos_q_filters_before_limit():
         }
     )
     # limit=1: sin q solo saldría ORG A; con q el match aparece igual
-    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame(rows)):
+    with patch(
+        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         sin_q = get_organos(OrganosFilters(limit=1))
         con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
 
@@ -220,7 +242,7 @@ def test_get_organo_detail_lead_time_and_fields():
     with (
         patch(
             "services.analytics.organo_detail.load_stats_base_df",
-            return_value=pd.DataFrame(_lic_rows()),
+            return_value=_typed(pd.DataFrame(_lic_rows())),
         ),
         patch(
             "services.analytics.organo_detail.load_raw_adjudicaciones",
@@ -251,7 +273,7 @@ def test_get_organo_detail_unknown_organo():
     with (
         patch(
             "services.analytics.organo_detail.load_stats_base_df",
-            return_value=pd.DataFrame(_lic_rows()),
+            return_value=_typed(pd.DataFrame(_lic_rows())),
         ),
         patch(
             "services.analytics.organo_detail.load_raw_adjudicaciones",
