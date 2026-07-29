@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 from requests import RequestException
 
 from api.concurrency import run_db
-from api.routes.dual_auth import require_any_auth
+from api.routes.dual_auth import require_admin
 from config.settings import settings
 from db.audit import log_event
 from db.repositories.webhooks import WebhookRepository
@@ -60,13 +60,6 @@ def _validate_webhook_url(url: str) -> str:
         raise ValueError("Los webhooks salientes están deshabilitados: falta WEBHOOK_ALLOWED_HOSTS")
     validate_outbound_url(url, allowed_hosts=allowed_hosts or None)
     return url
-
-
-def _require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
-    """Verifica que el usuario autenticado sea admin (recurso compartido)."""
-    if not user.get("is_admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
-    return user
 
 
 def _actor_key(ctx: dict[str, Any]) -> str:
@@ -186,7 +179,7 @@ _repo = WebhookRepository()
 async def create(
     body: WebhookCreate,
     response: Response,
-    ctx: dict[str, Any] = Depends(_require_admin),
+    ctx: dict[str, Any] = Depends(require_admin),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> WebhookCreateResponse:
     """Crea un webhook. Devuelve el ``secret`` solo en esta respuesta.
@@ -305,7 +298,7 @@ async def create(
     responses={401: {"description": "API key inválida"}},
 )
 async def list_all(
-    _ctx: dict[str, Any] = Depends(_require_admin),
+    _ctx: dict[str, Any] = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     return _repo.list_all()
 
@@ -317,7 +310,7 @@ async def list_all(
 )
 async def get_one(
     webhook_id: int,
-    _ctx: dict[str, Any] = Depends(_require_admin),
+    _ctx: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     wh = _repo.get_by_id(webhook_id)
     if wh is None:
@@ -337,7 +330,7 @@ async def get_one(
 async def update(
     webhook_id: int,
     body: WebhookUpdate,
-    ctx: dict[str, Any] = Depends(_require_admin),
+    ctx: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     """Actualiza nombre, URL, event_types o active de un webhook existente."""
     found = _repo.update(
@@ -369,7 +362,7 @@ async def update(
 )
 async def delete(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(_require_admin),
+    ctx: dict[str, Any] = Depends(require_admin),
 ) -> None:
     if not _repo.delete(webhook_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe")
@@ -392,7 +385,7 @@ async def delete(
 )
 async def ping(
     webhook_id: int,
-    _ctx: dict[str, Any] = Depends(_require_admin),
+    _ctx: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     """Envía un payload de prueba al URL del webhook para verificar conectividad."""
     import asyncio as _asyncio
@@ -476,7 +469,7 @@ async def ping(
 async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
-    _ctx: dict[str, Any] = Depends(_require_admin),
+    _ctx: dict[str, Any] = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     if _repo.get_by_id(webhook_id) is None:

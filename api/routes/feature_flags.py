@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from api.routes.dual_auth import require_any_auth
+from api.routes.dual_auth import require_admin, require_any_auth
 from db.audit import log_event
 from observability.logging import get_logger
 from services.feature_flags import list_flags, set_flag
@@ -42,12 +42,6 @@ class SetFlagsBody(BaseModel):
     flags: list[FlagIn]
 
 
-def _require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
-    if not user.get("is_admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
-    return user
-
-
 @router.get("", response_model=list[FlagOut])
 def get_feature_flags(
     _user: dict[str, Any] = Depends(require_any_auth),
@@ -68,7 +62,7 @@ def get_feature_flags(
 @router.put("")
 def set_feature_flags(
     body: SetFlagsBody,
-    admin: dict[str, Any] = Depends(_require_admin),
+    admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, str]:
     """Persiste enabled/rollout de los flags (solo admin), auditando cada cambio.
 
