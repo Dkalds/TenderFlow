@@ -13,6 +13,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
+### [P1] Export/borrado GDPR de la watchlist CPV es un no-op silencioso — consulta una tabla inexistente
+- **Área:** db/repositories/watchlist.py, services/gdpr.py
+- **Problema:** `WatchlistRepository.export_by_user_key`/`anonymize_by_user_key` (usadas por el flujo GDPR de `/me/data` y `/me` DELETE) consultan una tabla llamada literalmente `"watchlist"`, que **no existe** — la tabla real es `watchlist_cpv`. El `except Exception` que envuelve la query traga el error sin loguearlo, así que el export devuelve una lista vacía y el borrado no borra nada, sin que ningún log ni test lo señale. Encontrado durante la auditoría de tenencia de [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) (no es una de las 10 tablas que ese test cubre, por eso no lo capturó).
+- **Acceptance criteria:**
+  - `export_by_user_key`/`anonymize_by_user_key` apuntan a `watchlist_cpv`.
+  - El `except Exception` que envolvía la query deja de ser necesario, o si se mantiene por otra razón, loguea el error en vez de tragarlo en silencio.
+  - Test de regresión: sembrar una entrada de watchlist CPV real, exportar/anonimizar por `user_key`, y confirmar que el dato aparece/desaparece — no solo que la llamada no lanza.
+- **Files de partida:** [db/repositories/watchlist.py](../db/repositories/watchlist.py), [services/gdpr.py](../services/gdpr.py)
+- **Riesgo:** bajo — el fix es un nombre de tabla; el riesgo real es de cumplimiento (GDPR Art. 15/17 no se está cumpliendo hoy para este dato), no de código.
+
 ### [P1] Tipar el contrato API↔web — 65 operaciones con respuesta opaca
 - **Área:** api/routes/*, services/*, scripts/check_openapi_contract.py
 - **Problema:** 65 operaciones devuelven `dict[str, Any]`, de modo que en `web/src/generated/api.d.ts` su `200` es `{ [key: string]: unknown }` y el frontend reescribe la forma a mano. El invariante §3.5/§3.8 ("los DTOs Pydantic son el contrato API↔web") se cumple sólo a medias, y el job *Codegen Drift Check* **no lo detecta**: compara el artefacto generado consigo mismo, o sea que verifica que está sincronizado, no que el contrato diga algo. Una ruta que devuelve `dict[str, Any]` lo pasa perfectamente. Resultado: tablero verde sobre un contrato que para un tercio de la superficie no describe nada, y cualquier renombre de campo en backend rompe el frontend en runtime sin que mypy ni tsc se enteren.
@@ -96,6 +106,33 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] Cerrar los huecos de aislamiento por user_key encontrados en la auditoría de tenencia
+- **Área:** db/watchlist.py, db/saved_filters.py, api/routes/watchlist_rules.py
+- **Problema:** [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) audita que toda query contra una tabla user-scoped filtre por `user_key`, y encontró 3 violaciones reales que quedaron explícitamente allowlisted como huecos pendientes (no como precedente): `db/watchlist.py::remove_entry`/`update_frequency` (`DELETE`/`UPDATE ... WHERE id = ?` sin `user_key`, sin caller HTTP hoy), `db/saved_filters.py::delete_saved_filter` (mismo patrón; no explotable hoy porque `api/routes/saved_filters.py` valida propiedad antes de llamar, pero el repository no se defiende solo), y `api/routes/watchlist_rules.py::post_rule._create` (`UPDATE watchlist_rules SET email = ? WHERE id = ?` sin `user_key`, inconsistente con `put_rule._update` que sí lo añade).
+- **Acceptance criteria:**
+  - Las 3 funciones añaden `user_key` como parámetro y `AND user_key = ?` a su query.
+  - Cada entrada se retira de `_KNOWN_GAPS_PENDING_FIX`/`_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX` en `tests/test_user_key_sql_isolation.py` al arreglarse (el ratchet solo puede encoger).
+- **Files de partida:** [db/watchlist.py](../db/watchlist.py), [db/saved_filters.py](../db/saved_filters.py), [api/routes/watchlist_rules.py](../api/routes/watchlist_rules.py), [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)
+- **Riesgo:** bajo — ninguna es explotable hoy (sin caller o con chequeo de propiedad en la ruta), pero son IDOR latentes si se reutiliza el repository sin ese cuidado.
+
+### [P2] `services/analytics/quality.py` ya no detecta fechas legacy malformadas
+- **Área:** services/analytics/quality.py
+- **Problema:** `_iso_date_stats()` detecta fechas legacy malformadas (p.ej. `"31/12/2025"`) comparando el string **crudo** de `fecha_publicacion` contra un regex ISO. Desde que `load_stats_base_df()` convierte esa columna a `Timestamp` (commit `622c859`), la función ya no recibe el string crudo — `pct_fecha_iso`/`fechas_no_iso` tienden a valores espurios (100%/0). El test existente (`test_quality_date_format_vs_completeness`) sigue en verde porque mockea `load_stats_base_df` directamente con strings, sin ejercitar el `_build()` real — es un falso negativo de cobertura, no una prueba de que el check funcione. Encontrado por la propia auditoría de Frente A al hacer el cambio; no corregido porque es una decisión de diseño, no una limpieza mecánica.
+- **Acceptance criteria:**
+  - Decidir entre: (a) `quality.py` usa `load_stats_dataframe()` (sin caché, sin conversión) para este check específico — recomendado, cambio de una línea; o (b) `_iso_date_stats` compara contra el `Timestamp` ya convertido de otra forma (p. ej. contando `NaT` tras `errors="coerce"`, que ya captura "no parseable como fecha" sin necesitar el string crudo).
+  - El test de regresión ejercita el `_build()` real (vía `tmp_db` con datos sembrados, no un mock de `load_stats_base_df`), para que no vuelva a quedar como falso negativo.
+- **Files de partida:** [services/analytics/quality.py](../services/analytics/quality.py), [tests/test_analytics_quality.py](../tests/test_analytics_quality.py)
+- **Riesgo:** bajo — un KPI de calidad de datos, sin impacto en escritura ni en otros endpoints.
+
+### [P2] `db/model_registry.py` no verifica el sha256 del modelo servido contra el registrado
+- **Área:** db/model_registry.py
+- **Problema:** `register_version`/`get_active` almacenan el `sha256` del artefacto como metadata de auditoría, pero nada en `get_active`/`activate_version` verifica ese hash contra el fichero que realmente se sirve al cargar el modelo activo. Encontrado durante el trabajo de integridad de modelos (commit `74d5aaf`, que sí verifica los 4 loaders contra un pin/checksum co-ubicado): esa verificación es independiente del registry, así que un artefacto en disco que ya no coincide con el `sha256` registrado (sustituido manualmente, o por un despliegue que dejó el fichero desactualizado) no se detecta por esta vía.
+- **Acceptance criteria:**
+  - `get_active()` (o el punto donde el llamador resuelve la ruta del artefacto activo) compara el `sha256` calculado del fichero contra el registrado, y falla/loguea si difieren.
+  - Test de regresión: registrar una versión, mutar el fichero en disco, confirmar que se detecta la discrepancia.
+- **Files de partida:** [db/model_registry.py](../db/model_registry.py), [shared/model_integrity.py](../shared/model_integrity.py)
+- **Riesgo:** bajo — es hardening adicional sobre un control que ya existe (los 4 loaders verifican su propio pin/checksum); esto cierra el hueco de que el registry mismo no lo hace.
+
 ### [P2] UI de webhooks y GDPR self-service
 - **Área:** web/, api/
 - **Problema:** Backend completo sin superficie de usuario: `db/webhooks.py` tiene entrega HMAC funcional con retry/DNS-pinning, y existen export GDPR (`/me/data`) y delete de cuenta. Nada de eso es usable sin tocar la API a mano. Para consultoría, webhooks = integrar alertas con los sistemas del cliente — mucho valor por pocas pantallas.
@@ -119,6 +156,25 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P3 — Nice to have
+
+### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
+- **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py
+- **Problema:** Tras mover `overview.py`/`tecnologias.py` a agregación SQL (commit `ab520da`), `competitors.py` quedó híbrido a propósito: sus filtros (fecha/tecnologia/estado/importe_min) ya se empujan a SQL, pero la resolución de identidad de empresa (`_prepare_company_identity`/`_connected_identity_keys`, un connected-components/union-find sobre 5 tokens de identidad por fila) sigue en pandas. Migrarla a SQL necesita `normalize_company`/`normalize_nif` en el motor (NFKD accent-fold + 12+ alternativas regex de sufijo legal), lo que requiere la extensión `unaccent` de Postgres — no habilitada hoy (solo `pg_trgm`/`vector` lo están), y habilitarla exige una migración Alembic (fuera de alcance sin OK humano, AGENTS.md §6).
+- **Acceptance criteria:**
+  - Extensión `unaccent` habilitada (migración Alembic, requiere confirmación humana).
+  - Connected-components de identidad expresado como CTE recursiva en `db/repositories/adjudicaciones.py` (o módulo hermano), con paridad de resultado verificada contra los 17 tests existentes de `tests/test_analytics_competitors.py` (casos: grupo Deloitte curado, joins solo-por-NIF, exclusión de NIF placeholder).
+  - `_apply_filters` (red de seguridad redundante añadida en la migración parcial) puede retirarse si el filtrado SQL cubre todos los casos que cubría.
+- **Files de partida:** [services/analytics/competitors.py](../services/analytics/competitors.py), [services/normalization.py](../services/normalization.py), [db/repositories/adjudicaciones.py](../db/repositories/adjudicaciones.py), [tests/test_analytics_competitors.py](../tests/test_analytics_competitors.py)
+- **Riesgo:** medio — toca una migración de schema (gate humano) y una query recursiva no trivial; mitigado por los 17 tests de caracterización ya existentes.
+
+### [P3] Decidir el destino de los tests tautológicos encontrados al redistribuir los batches de coverage
+- **Área:** tests/test_TODO_review_tautologico.py
+- **Problema:** Al redistribuir `test_unit_coverage_batch*.py` (commit `96ec96f`) a ficheros por módulo, 3 tests resultaron tautológicos (afirman sobre un mock que el propio test configuró, o ejercitan una rama que nunca se dispara de verdad) y se movieron a `tests/test_TODO_review_tautologico.py` en vez de borrarse, porque borrar tests existentes requiere OK explícito (AGENTS.md §6): `test_protocol_stubs` (verifica `hasattr` sobre un `Protocol`, cierto por construcción), `test_argon2_verify_success` y `test_argon2_import_error` (parchean un símbolo que `verify_password` no usa por ese nombre — el mock es un no-op inerte en ambos).
+- **Acceptance criteria:**
+  - Revisión humana de los 3 tests: o se borran (confirmando que no aportan cobertura real), o se reescriben para ejercitar el comportamiento real que su nombre sugiere.
+  - `tests/test_TODO_review_tautologico.py` desaparece (vacío) al resolverse.
+- **Files de partida:** [tests/test_TODO_review_tautologico.py](../tests/test_TODO_review_tautologico.py)
+- **Riesgo:** bajo — son 3 tests aislados; el único riesgo es decidir mal si alguno en realidad sí ejercitaba algo no obvio.
 
 ### [P3] pct_pyme real en analytics overview
 - **Área:** services/analytics, scraper (parser)
