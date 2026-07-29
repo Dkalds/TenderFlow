@@ -1,7 +1,8 @@
 ---
 id: ADR-017
 title: "Camino de lectura analítico tras el cutover a Postgres"
-status: accepted
+status: superseded
+superseded_by: ADR-023
 date: 2026-07-26
 deciders: "Daniel Kalitovics"
 supersedes: ADR-013
@@ -13,7 +14,16 @@ tags: [adr, analytics, materializations]
 
 # ADR-017 — Camino de lectura analítico tras el cutover a Postgres
 
-* **Estado:** Aceptado
+> **Superseded por [[ADR-023-computo-en-vivo-agregacion-sql|ADR-023]]
+> (2026-07-28).** La regla 1 de este ADR ("cómputo en vivo" exento de medir
+> antes de materializar) no distinguía agregación SQL (barata, sigue exenta)
+> de un full-table scan a pandas dentro del proceso de la API (ya causó un
+> OOM de producción documentado — ver `services/_data_cache.py`). ADR-023
+> da esa distinción y el criterio vigente. El resto de este ADR (regla 2,
+> eliminación de `mat_top_empresas_ccaa`, Parquet como snapshot offline) se
+> mantiene vigente sin cambios; se conserva como registro histórico.
+
+* **Estado:** Superseded por [[ADR-023-computo-en-vivo-agregacion-sql|ADR-023]] (2026-07-28)
 * **Fecha:** 2026-07-26
 * **Sustituye a:** [[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]]
 
