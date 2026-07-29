@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -56,3 +56,40 @@ def test_run_raises_if_update_daily_fails():
     ):
         with pytest.raises(RuntimeError):
             daily_atom.run()
+
+
+# ── Camino legacy de run_daily_pipeline() (PLACSP_CONNECTOR_ENABLED=False) ───
+# Estos tests no mockean scheduler.pipeline_runs.run_daily_pipeline como los de
+# arriba, sino sus dependencias internas (scraper.pipeline.update_daily) para
+# ejercitar la rama legacy real de la pipeline canónica.
+
+
+class TestRunDailyAtom:
+    @patch("scheduler.anomaly_alerts.run_anomaly_checks")
+    @patch("scheduler.dlq_retry.retry_failed_extractions")
+    @patch("scheduler.watchlist_alerts.check_and_notify")
+    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
+    @patch("scheduler.kpi_precompute.run_kpi_precompute")
+    @patch("scraper.ml_training.precompute_ml_proba")
+    @patch("scraper.ml_training.precompute_ml_tecnologias")
+    @patch("config.settings")
+    @patch("scraper.pipeline.update_daily", return_value={"status": "ok"})
+    def test_success(
+        self, mock_update: MagicMock, mock_settings: MagicMock, *mocks: MagicMock
+    ) -> None:
+        mock_settings.ML_TECH_ENABLED = False
+        # PLACSP_CONNECTOR_ENABLED (F2): un MagicMock sin este atributo seteado
+        # es truthy por defecto, lo que desvía run_daily_pipeline() al path del
+        # connector real (run_connector) en vez del legacy update_daily() mockeado
+        # arriba -- este test verifica el path legacy explícitamente.
+        mock_settings.PLACSP_CONNECTOR_ENABLED = False
+        from scheduler.jobs.daily_atom import run
+
+        run()
+
+    @patch("scraper.pipeline.update_daily", return_value={"status": "error"})
+    def test_failure(self, mock_update: MagicMock) -> None:
+        from scheduler.jobs.daily_atom import run
+
+        with pytest.raises(RuntimeError, match="daily ingestion failed"):
+            run()

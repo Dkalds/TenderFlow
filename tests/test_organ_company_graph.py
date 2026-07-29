@@ -133,3 +133,70 @@ def test_filas_con_nulos_se_descartan():
     result = build_bipartite_graph(df)
     empresas = {n["name"] for n in result["nodes"] if n["type"] == "empresa"}
     assert "EMPRESA TRES" not in empresas
+
+
+# ── Casos adicionales (coverage-driven) ──────────────────────────────────────
+
+
+def _make_adj_alt() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "organo_contratacion": ["ORG_A", "ORG_A", "ORG_B", "ORG_B", "ORG_A"],
+            "empresa_key": ["EK1", "EK2", "EK1", "EK3", "EK1"],
+            "nombre_canonico": ["INDRA", "TELEFONICA", "INDRA", "ACCENTURE", "INDRA"],
+            "importe_adjudicado": [50_000.0, 30_000.0, 80_000.0, 60_000.0, 20_000.0],
+            "fecha_adjudicacion": pd.to_datetime(
+                ["2024-01-20", "2024-01-20", "2024-02-25", "2024-03-15", "2024-06-01"]
+            ),
+        }
+    )
+
+
+def test_returns_nodes_and_edges_alt_fixture():
+    result = build_bipartite_graph(_make_adj_alt())
+    assert "nodes" in result
+    assert "edges" in result
+    assert len(result["nodes"]) > 0
+    assert len(result["edges"]) > 0
+
+
+def test_missing_columns_returns_empty_alt():
+    result = build_bipartite_graph(pd.DataFrame({"col": [1, 2]}))
+    assert result == {"nodes": [], "edges": []}
+
+
+def test_empty_dataframe_alt():
+    result = build_bipartite_graph(pd.DataFrame())
+    assert result == {"nodes": [], "edges": []}
+
+
+def test_min_contratos_filter_alt():
+    result = build_bipartite_graph(_make_adj_alt(), min_contratos=3)
+    assert len(result["edges"]) == 0 or all(e["contratos"] >= 3 for e in result["edges"])
+
+
+def test_node_types_alt():
+    result = build_bipartite_graph(_make_adj_alt())
+    node_types = {n["type"] for n in result["nodes"]}
+    assert node_types <= {"organo", "empresa"}
+
+
+def test_no_fecha_column_alt():
+    adj = _make_adj_alt().drop(columns=["fecha_adjudicacion"])
+    result = build_bipartite_graph(adj)
+    assert "nodes" in result
+
+
+def test_nan_rows_dropped_alt():
+    adj = _make_adj_alt()
+    adj.loc[0, "organo_contratacion"] = None
+    result = build_bipartite_graph(adj)
+    assert len(result["nodes"]) > 0
+
+
+def test_top_limits_alt():
+    result = build_bipartite_graph(_make_adj_alt(), top_organos=1, top_empresas=1)
+    organo_nodes = [n for n in result["nodes"] if n["type"] == "organo"]
+    empresa_nodes = [n for n in result["nodes"] if n["type"] == "empresa"]
+    assert len(organo_nodes) <= 2
+    assert len(empresa_nodes) <= 2

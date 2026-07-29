@@ -188,3 +188,81 @@ def test_download_pdf_returns_document_inline(client, api_db):
         assert resp.headers["content-type"].startswith("application/pdf")
         assert resp.content.startswith(b"%PDF")
         assert ".pdf" in resp.headers["content-disposition"]
+
+
+# ── Casos adicionales (coverage-driven, valores de retorno básicos) ─────────
+
+
+def test_generate_csv_returns_bytes_with_bom():
+    result = generate_csv([{"id_externo": "L1", "titulo": "Test"}])
+    assert isinstance(result, bytes)
+    assert result[:3] == b"\xef\xbb\xbf"
+
+
+def test_generate_csv_uses_semicolon_delimiter():
+    result = generate_csv([{"id_externo": "L1", "titulo": "Test"}])
+    content = result[3:].decode("utf-8")
+    assert ";" in content
+
+
+def test_generate_csv_custom_columns():
+    result = generate_csv(
+        [{"id_externo": "L1", "titulo": "Test", "ccaa": "Madrid"}],
+        columns=["id_externo", "ccaa"],
+    )
+    content = result[3:].decode("utf-8")
+    assert "id_externo" in content
+    assert "ccaa" in content
+
+
+def test_generate_csv_empty_records_returns_bytes():
+    result = generate_csv([])
+    assert isinstance(result, bytes)
+
+
+def test_generate_csv_missing_columns_ignored():
+    result = generate_csv(
+        [{"id_externo": "L1"}],
+        columns=["id_externo", "nonexistent_col"],
+    )
+    assert isinstance(result, bytes)
+
+
+def test_generate_excel_returns_bytes():
+    result = generate_excel([{"id_externo": "L1", "titulo": "Test"}])
+    assert isinstance(result, bytes)
+    assert len(result) > 0
+
+
+def test_generate_excel_custom_sheet_name_smoke():
+    result = generate_excel([{"id_externo": "L1"}], sheet_name="CustomSheet")
+    assert isinstance(result, bytes)
+
+
+def test_generate_excel_empty_records_returns_bytes():
+    result = generate_excel([])
+    assert isinstance(result, bytes)
+
+
+def test_generate_excel_timezone_aware_datetime_stripped_smoke():
+    df = pd.DataFrame(
+        {"fecha": pd.to_datetime(["2024-01-01"]).tz_localize("UTC"), "titulo": ["Test"]}
+    )
+    result = generate_excel(df.to_dict("records"), columns=["fecha", "titulo"])
+    assert isinstance(result, bytes)
+
+
+def test_get_export_filename_csv_format():
+    name = get_export_filename("csv")
+    assert name.endswith(".csv")
+    assert "licitaciones_" in name
+
+
+def test_get_export_filename_excel_format():
+    name = get_export_filename("excel")
+    assert name.endswith(".xlsx")
+
+
+def test_get_export_filename_custom_prefix():
+    name = get_export_filename("csv", prefix="custom")
+    assert name.startswith("custom_")
