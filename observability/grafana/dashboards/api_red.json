@@ -20,8 +20,8 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum by (path) (rate(http_requests_total[5m]))",
-          "legendFormat": "{{path}}",
+          "expr": "sum by (handler) (rate(http_requests_total[5m]))",
+          "legendFormat": "{{handler}}",
           "refId": "A"
         }
       ]
@@ -67,18 +67,18 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum by (le, path) (rate(http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "p50 — {{path}}",
+          "expr": "histogram_quantile(0.50, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50 — {{handler}}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le, path) (rate(http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "p95 — {{path}}",
+          "expr": "histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 — {{handler}}",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le, path) (rate(http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "p99 — {{path}}",
+          "expr": "histogram_quantile(0.99, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99 — {{handler}}",
           "refId": "C"
         }
       ]
@@ -97,8 +97,8 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum by (path) (rate(http_requests_total{status=\"429\"}[5m]))",
-          "legendFormat": "{{path}}",
+          "expr": "sum by (handler) (rate(http_requests_total{status=\"429\"}[5m]))",
+          "legendFormat": "{{handler}}",
           "refId": "A"
         }
       ]
@@ -122,6 +122,29 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Candidatos a retirada: total de requests por endpoint de /api/v1/analytics/*, ordenado ascendente (menor tráfico primero). Ventana [7d] porque el Prometheus de docker-compose.yml (perfil monitoring) no fija --storage.tsdb.retention.time y usa el default de 15d — un rango [30d] no devolvería historial completo con esa config. Si se sube storage.tsdb.retention.time (p.ej. a 45d), cambiar el rango del query a [30d] para alinear con un ciclo mensual. Ver también observability/grafana/dashboards/api_red.json panel 1 (RATE) para la serie temporal equivalente.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 25 },
+      "id": 6,
+      "title": "Candidatos a retirada — requests por endpoint analytics (7d, ascendente)",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "sort_asc(sum by (handler) (increase(http_requests_total{handler=~\"/api/v1/analytics/.*\"}[7d])))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{handler}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
@@ -132,5 +155,5 @@
   "timezone": "browser",
   "title": "API REST — RED metrics",
   "uid": "api-red-f5",
-  "version": 1
+  "version": 2
 }
