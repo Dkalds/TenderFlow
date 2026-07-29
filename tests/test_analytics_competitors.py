@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from services.analytics.competitors import CompetitorFilters, get_competitors
 
-_PATCH_TARGET = "services.analytics.competitors.load_raw_adjudicaciones"
+_PATCH_TARGET = "services.analytics.competitors.load_for_competitors"
 
 
 def _rows() -> list[dict]:

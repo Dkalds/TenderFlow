@@ -2,8 +2,11 @@
 
 These cover the React parity work: technology cross-tabs and detail,
 SAP module YoY / tipo x estado / CPV breakdowns, and real semantic clustering.
-Data access is mocked at ``load_stats_dataframe`` so the tests stay fast and
-DB-independent.
+
+``proyectos_modulos``/``clusters`` siguen mockeando ``load_stats_base_df`` (no
+tocados por la migración SQL de analytics). ``tecnologias`` ya agrega vía
+Postgres (``db.repositories.aggregates``) — sus tests usan datos reales
+(``tmp_db``) en vez de mockear un loader que el módulo ya no importa.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 import services.analytics.clusters as clusters_mod
 import services.analytics.proyectos_modulos as pm_mod
@@ -85,9 +89,27 @@ def _tec_rows() -> list[dict]:
     return rows
 
 
-def test_tecnologias_kpis_and_explode():
-    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame(_tec_rows())):
-        res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
+def _insert_tec_rows(db) -> None:
+    """Inserta en Postgres el equivalente real de ``_tec_rows()``.
+
+    ``tecnologias.py`` ya agrega vía SQL (``db.repositories.aggregates``), no
+    hay un ``load_stats_base_df`` que mockear — se siembra el dataset real.
+    Las claves de ``_tec_rows()`` coinciden con los campos de ``Licitacion``.
+    """
+    from db.upsert import Licitacion, upsert_licitaciones
+
+    upsert_licitaciones([Licitacion(**row) for row in _tec_rows()])
+
+
+@pytest.fixture()
+def tec_db(tmp_db):
+    db_mod, _ = tmp_db
+    _insert_tec_rows(db_mod)
+    return db_mod
+
+
+def test_tecnologias_kpis_and_explode(tec_db):
+    res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
 
     labels = {e.tecnologia for e in res.tecnologias}
     assert labels == {"SAP", "Oracle", "Salesforce"}
@@ -106,17 +128,15 @@ def test_tecnologias_kpis_and_explode():
     assert sap.importe_medio == sap.importe / sap.count
 
 
-def test_tecnologias_cross_tabs_present():
-    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame(_tec_rows())):
-        res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
+def test_tecnologias_cross_tabs_present(tec_db):
+    res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
     assert res.cross_organo and all(c.count > 0 for c in res.cross_organo)
     assert res.cross_geo and all(c.count > 0 for c in res.cross_geo)
     assert res.evolucion_mensual and all(e.mes and e.tecnologia for e in res.evolucion_mensual)
 
 
-def test_tecnologia_detalle_filters_by_label():
-    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame(_tec_rows())):
-        det = tec_mod.get_tecnologia_detalle("SAP", tec_mod.TecnologiaDetalleFilters(limit=50))
+def test_tecnologia_detalle_filters_by_label(tec_db):
+    det = tec_mod.get_tecnologia_detalle("SAP", tec_mod.TecnologiaDetalleFilters(limit=50))
     assert det.tecnologia == "SAP"
     assert det.n == 7  # de-duplicated across the comma-separated explode
     assert len(det.items) == 7
@@ -124,9 +144,8 @@ def test_tecnologia_detalle_filters_by_label():
     assert all(it.estado in {"Adjudicada", "Publicada"} for it in det.items if it.estado)
 
 
-def test_tecnologias_empty():
-    with patch.object(tec_mod, "load_stats_base_df", return_value=pd.DataFrame([])):
-        res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
+def test_tecnologias_empty(tmp_db):
+    res = tec_mod.get_tecnologias(tec_mod.TecnologiasFilters())
     assert res.tecnologias == []
     assert res.n_tecnologias == 0
 
