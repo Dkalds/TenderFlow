@@ -87,7 +87,9 @@ def test_novedades_user_sin_last_login():
     rows = [_row("L001", fecha_pub_offset=-1), _row("L002", fecha_pub_offset=-2)]
 
     with (
-        patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))),
+        patch(
+            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+        ),
         patch("db.users.get_user_by_id", return_value=user_mock),
     ):
         result = get_resumen_novedades(1)
@@ -108,7 +110,9 @@ def test_novedades_con_new_since():
     ]
 
     with (
-        patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))),
+        patch(
+            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+        ),
         patch("db.users.get_user_by_id", return_value=user_mock),
     ):
         result = get_resumen_novedades(1)
@@ -162,7 +166,9 @@ def test_hoy_calientes_y_vencen():
         _row("B2", importe=10_000.0, estado="PUB", fecha_limite_offset=90),
     ]
 
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
+    with patch(
+        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         result = get_resumen_hoy(ResumenHoyFilters())
 
     assert result.vencen_48h > 0
@@ -177,7 +183,9 @@ def test_hoy_filtro_ccaa():
         _row("C1", ccaa="Cataluña", estado="PUB"),
     ]
 
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
+    with patch(
+        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         result = get_resumen_hoy(ResumenHoyFilters(ccaa="Madrid"))
 
     assert result.total_activas == 2
@@ -192,7 +200,9 @@ def test_hoy_solo_estados_activos_cuentan():
         _row("A1", estado="ADJ"),  # no activa
     ]
 
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
+    with patch(
+        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         result = get_resumen_hoy(ResumenHoyFilters())
 
     assert result.total_activas == 2
@@ -210,7 +220,9 @@ def test_timeline_scatter_devuelve_items():
         _row("T2", importe=250_000.0),
     ]
 
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
+    with patch(
+        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         result = get_timeline_scatter(TimelineScatterFilters())
 
     assert len(result.items) == 2
@@ -233,7 +245,9 @@ def test_timeline_scatter_campos_completos():
     """Cada item expone todos los campos definidos en TimelineScatterItem."""
     rows = [_row("F1", organo="Ayuntamiento", ccaa="Madrid", tipo_contrato="3")]
 
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
+    with patch(
+        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         result = get_timeline_scatter(TimelineScatterFilters())
 
     item = result.items[0]
@@ -258,7 +272,9 @@ def test_sankey_nodes_y_links():
         _row("S4", tipo_contrato="3", estado="ADJ"),
     ]
 
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
+    with patch(
+        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         result = get_sankey_flow(SankeyFilters())
 
     # Debe tener 2 nodos tipo + 2 nodos estado = 4 nodos
@@ -291,7 +307,9 @@ def test_sankey_sin_columna_tipo_contrato():
         }
     ]
 
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
+    with patch(
+        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+    ):
         result = get_sankey_flow(SankeyFilters())
 
     assert result.nodes == []
@@ -328,7 +346,9 @@ def test_top_licitaciones_enriquece_con_adjudicatario():
     ]
 
     with (
-        patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))),
+        patch(
+            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+        ),
         patch("services.analytics.resumen.load_raw_adjudicaciones", return_value=adj_rows),
     ):
         result = get_top_licitaciones(TopLicitacionesFilters(n=2))
@@ -343,7 +363,9 @@ def test_top_licitaciones_sin_adjudicaciones():
     rows = [_row("T1", importe=300_000.0), _row("T2", importe=200_000.0)]
 
     with (
-        patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))),
+        patch(
+            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+        ),
         patch("services.analytics.resumen.load_raw_adjudicaciones", return_value=[]),
     ):
         result = get_top_licitaciones(TopLicitacionesFilters(n=5))
@@ -370,7 +392,9 @@ def test_top_licitaciones_respeta_n():
     rows = [_row(f"L{i}", importe=float(i * 10_000)) for i in range(1, 11)]
 
     with (
-        patch("services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))),
+        patch(
+            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
+        ),
         patch("services.analytics.resumen.load_raw_adjudicaciones", return_value=[]),
     ):
         result = get_top_licitaciones(TopLicitacionesFilters(n=3))

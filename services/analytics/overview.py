@@ -196,9 +196,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     total_imp = total_imp or 1.0
     concentracion_top10 = top10_imp / total_imp * 100
 
-    anul_count, total_12m = _repo.overview_tasa_anulacion(
-        repo_filters, hace_365d_iso=hace_365d_iso
-    )
+    anul_count, total_12m = _repo.overview_tasa_anulacion(repo_filters, hace_365d_iso=hace_365d_iso)
     tasa_anulacion = (anul_count / total_12m * 100) if total_12m > 0 else 0.0
 
     top3_imp, total_imp_geo = _repo.overview_concentracion_ccaa(repo_filters, top_n=3)

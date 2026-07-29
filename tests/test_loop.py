@@ -96,9 +96,7 @@ class TestRunJob:
 
     @patch("observability.runtime_metrics.scheduler_job_duration_seconds")
     @patch("observability.runtime_metrics.scheduler_job_total")
-    def test_success_records_metrics(
-        self, mock_total: MagicMock, mock_dur: MagicMock
-    ) -> None:
+    def test_success_records_metrics(self, mock_total: MagicMock, mock_dur: MagicMock) -> None:
         from scheduler.loop import _consecutive_failures, _run_job
 
         _consecutive_failures.pop("test_light", None)

@@ -70,7 +70,9 @@ def _filters(**overrides) -> CompareFilters:
 
 
 def test_compare_periodos_y_deltas():
-    with patch("services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
+    with patch(
+        "services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+    ):
         result = get_compare_periods(_filters())
 
     # Período A: L1 + L2 (enero)
@@ -89,7 +91,9 @@ def test_compare_periodos_y_deltas():
 
 
 def test_compare_filtro_ccaa():
-    with patch("services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
+    with patch(
+        "services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+    ):
         result = get_compare_periods(_filters(ccaa="Madrid"))
 
     # Solo L1 (enero, Madrid) y L3 (febrero, Madrid)
@@ -100,7 +104,9 @@ def test_compare_filtro_ccaa():
 
 def test_compare_periodo_a_vacio_no_divide_por_cero():
     """Con período A sin datos los deltas quedan en 0.0 (no ZeroDivisionError)."""
-    with patch("services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))):
+    with patch(
+        "services.analytics.compare.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+    ):
         result = get_compare_periods(
             _filters(range_a_desde=date(2020, 1, 1), range_a_hasta=date(2020, 1, 31))
         )

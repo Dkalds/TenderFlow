@@ -347,9 +347,7 @@ class AggregateRepository:
 
     # ── Tecnologias ──────────────────────────────────────────────────────
 
-    def tecnologias_total_y_sin_clasificar(
-        self, filters: LicitacionesFilters
-    ) -> tuple[int, int]:
+    def tecnologias_total_y_sin_clasificar(self, filters: LicitacionesFilters) -> tuple[int, int]:
         where, params = _build_where(filters)
         sql = (
             "SELECT COUNT(*) AS total, "

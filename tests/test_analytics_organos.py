@@ -64,6 +64,7 @@ def _insert_licitaciones(rows: list[dict]) -> None:
     ]
     upsert_licitaciones(items)
 
+
 # ── Datos sintéticos ────────────────────────────────────────────────────────
 
 

@@ -216,11 +216,7 @@ def test_filtro_fechas(db):
     desde = (hoy + timedelta(days=-30)).date()
     res = get_tecnologias(TecnologiasFilters(fecha_desde=desde))
     expected = len(
-        [
-            r
-            for r in _ROWS
-            if (hoy + timedelta(days=r[6])).date().isoformat() >= desde.isoformat()
-        ]
+        [r for r in _ROWS if (hoy + timedelta(days=r[6])).date().isoformat() >= desde.isoformat()]
     )
     assert res.total == expected
 

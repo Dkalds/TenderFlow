@@ -161,9 +161,7 @@ def _codes_for_label(tecnologia: str) -> list[str]:
     return codes
 
 
-def _merge_entries_by_label(
-    raw_entries: list[dict[str, Any]], total: int
-) -> list[TecnologiaEntry]:
+def _merge_entries_by_label(raw_entries: list[dict[str, Any]], total: int) -> list[TecnologiaEntry]:
     """Re-agrupa por label legible (varios códigos pueden compartir label)."""
     merged: dict[str, dict[str, float]] = {}
     for row in raw_entries:

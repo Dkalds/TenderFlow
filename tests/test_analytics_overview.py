@@ -239,9 +239,7 @@ def test_filtro_fecha(db):
     # fecha_desde se compara como fecha (sin hora) >= desde: se cuentan filas
     # cuya fecha de publicación (truncada a día) cae en o después de ese día.
     corte = desde.isoformat()
-    expected = len(
-        [r for r in _ROWS if (hoy + timedelta(hours=r[5])).date().isoformat() >= corte]
-    )
+    expected = len([r for r in _ROWS if (hoy + timedelta(hours=r[5])).date().isoformat() >= corte])
     assert res.total_licitaciones == expected
 
 

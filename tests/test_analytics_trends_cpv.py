@@ -67,7 +67,8 @@ def _typed(df: pd.DataFrame) -> pd.DataFrame:
 
 def test_ranking_por_importe_y_summary():
     with patch(
-        "services.analytics.trends_cpv.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+        "services.analytics.trends_cpv.load_stats_base_df",
+        return_value=_typed(pd.DataFrame(_rows())),
     ):
         result = get_trends_cpv(TrendsCpvFilters())
 
@@ -83,7 +84,8 @@ def test_ranking_por_importe_y_summary():
 
 def test_series_mensuales_por_cpv():
     with patch(
-        "services.analytics.trends_cpv.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+        "services.analytics.trends_cpv.load_stats_base_df",
+        return_value=_typed(pd.DataFrame(_rows())),
     ):
         result = get_trends_cpv(TrendsCpvFilters())
 
@@ -98,7 +100,8 @@ def test_series_mensuales_por_cpv():
 
 def test_top_n_limita_ranking_y_series():
     with patch(
-        "services.analytics.trends_cpv.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+        "services.analytics.trends_cpv.load_stats_base_df",
+        return_value=_typed(pd.DataFrame(_rows())),
     ):
         result = get_trends_cpv(TrendsCpvFilters(top_n=1))
 
@@ -110,7 +113,8 @@ def test_top_n_limita_ranking_y_series():
 
 def test_filtro_cpv_exacto():
     with patch(
-        "services.analytics.trends_cpv.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+        "services.analytics.trends_cpv.load_stats_base_df",
+        return_value=_typed(pd.DataFrame(_rows())),
     ):
         result = get_trends_cpv(TrendsCpvFilters(cpv="48000000"))
 
@@ -120,7 +124,8 @@ def test_filtro_cpv_exacto():
 
 def test_filtro_fechas():
     with patch(
-        "services.analytics.trends_cpv.load_stats_base_df", return_value=_typed(pd.DataFrame(_rows()))
+        "services.analytics.trends_cpv.load_stats_base_df",
+        return_value=_typed(pd.DataFrame(_rows())),
     ):
         result = get_trends_cpv(
             TrendsCpvFilters(fecha_desde=date(2025, 2, 1), fecha_hasta=date(2025, 2, 28))

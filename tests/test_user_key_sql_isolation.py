@@ -342,6 +342,4 @@ def test_grandfathered_non_db_sql_scopes_by_user_key() -> None:
     assert not nuevas, f"Query(s) nueva(s) sin predicado `user_key`: {nuevas}"
 
     obsoletas = sorted(_GRANDFATHERED_ALLOWLIST - found)
-    assert not obsoletas, (
-        f"Entrada(s) de allowlist ya sin violación real (bórralas): {obsoletas}"
-    )
+    assert not obsoletas, f"Entrada(s) de allowlist ya sin violación real (bórralas): {obsoletas}"

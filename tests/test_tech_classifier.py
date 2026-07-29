@@ -580,9 +580,7 @@ class TestTechnologyClassifierPersistence:
         with pytest.raises(RuntimeError, match="ML_TECH_MODEL_SHA256"):
             TechnologyClassifier.load(path=target)
 
-    def test_load_prod_without_pin_or_checksum_raises(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_load_prod_without_pin_or_checksum_raises(self, tmp_path: Path, monkeypatch) -> None:
         """En ENV=prod, sin pin ni checksum co-ubicado, load() falla duro."""
         from config import settings
 
