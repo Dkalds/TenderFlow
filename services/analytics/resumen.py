@@ -121,10 +121,16 @@ class TopLicitacionesResult(BaseModel):
 def _load_df() -> pd.DataFrame:
     df = load_stats_base_df()
     if not df.empty and "fecha_limite" in df.columns:
-        df["fecha_limite_dt"] = pd.to_datetime(
-            df["fecha_limite"],
-            errors="coerce",
-            utc=True,
+        # Usa assign() en vez de asignación in-place: load_stats_base_df()
+        # devuelve el DataFrame cacheado compartido (sin .copy()), así que
+        # mutar una columna aquí contaminaría la caché entre requests
+        # concurrentes.
+        df = df.assign(
+            fecha_limite_dt=pd.to_datetime(
+                df["fecha_limite"],
+                errors="coerce",
+                utc=True,
+            )
         )
     return df
 

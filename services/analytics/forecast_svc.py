@@ -85,6 +85,11 @@ class RetenderingResult(BaseModel):
 def _load_licit_df() -> pd.DataFrame:
     df = load_stats_base_df()
     if not df.empty:
+        # Copia explícita: load_stats_base_df() devuelve el DataFrame cacheado
+        # compartido (sin .copy()), y esta función hace varias mutaciones
+        # in-place (incluyendo un .loc condicional) que contaminarían la
+        # caché entre requests concurrentes si operaran sobre el original.
+        df = df.copy()
         df["duracion_valor"] = pd.to_numeric(
             df.get("duracion_valor", pd.Series(dtype=float)), errors="coerce"
         )

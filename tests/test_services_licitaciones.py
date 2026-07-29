@@ -191,6 +191,81 @@ def test_load_stats_dataframe_returns_list(tmp_db):
 
 
 # ---------------------------------------------------------------------------
+# load_stats_base_df — caché compartida (sin .copy() desde wave 2/A3)
+# ---------------------------------------------------------------------------
+
+
+def test_load_stats_base_df_applies_canonical_conversions(tmp_db):
+    """fecha_publicacion/importe llegan ya convertidos, no como string/objeto crudo."""
+    import pandas as pd
+
+    db_mod, _ = tmp_db
+    seed_licitaciones(db_mod, 3)
+
+    from services.licitaciones import clear_stats_cache, load_stats_base_df
+
+    clear_stats_cache()
+    df = load_stats_base_df()
+
+    assert pd.api.types.is_datetime64_any_dtype(df["fecha_publicacion"])
+    assert pd.api.types.is_numeric_dtype(df["importe"])
+
+
+def test_load_stats_base_df_returns_shared_instance_across_calls(tmp_db):
+    """Dos llamadas dentro de la ventana de caché devuelven el MISMO objeto
+    Python (no dos copias) — es la propiedad que A3 explota para eliminar el
+    .copy() por request."""
+    db_mod, _ = tmp_db
+    seed_licitaciones(db_mod, 3)
+
+    from services.licitaciones import clear_stats_cache, load_stats_base_df
+
+    clear_stats_cache()
+    first = load_stats_base_df()
+    second = load_stats_base_df()
+
+    assert first is second
+
+
+def test_load_stats_base_df_survives_concurrent_consumer_mutations(tmp_db):
+    """Ejercita los consumidores reales que añaden columnas derivadas
+    (resumen/pipeline/scoring/forecast_svc) y confirma que ninguno contamina
+    la caché compartida para el siguiente consumidor.
+
+    Antes de A3, esto no habría hecho falta (cada llamada recibía su propia
+    copia). Con la caché compartida, un `df["col"] = valor` in-place en
+    cualquiera de estos módulos correspondería a un consumidor mutando la
+    instancia que ven todos los demás — este test falla si eso ocurre.
+    """
+    db_mod, _ = tmp_db
+    seed_licitaciones(db_mod, 5)
+
+    from services.analytics.forecast_svc import _load_licit_df
+    from services.analytics.pipeline import _load_df as _pipeline_load_df
+    from services.analytics.resumen import _load_df as _resumen_load_df
+    from services.analytics.scoring import ScoringFilters, get_scoring
+    from services.licitaciones import clear_stats_cache, load_stats_base_df
+
+    clear_stats_cache()
+
+    baseline = load_stats_base_df()
+    baseline_columns = set(baseline.columns)
+
+    # Ejercita cada consumidor que históricamente mutaba in-place.
+    _resumen_load_df()
+    _pipeline_load_df()
+    _load_licit_df()
+    get_scoring(ScoringFilters())
+
+    after = load_stats_base_df()
+    assert after is baseline, "load_stats_base_df ya no devuelve la instancia compartida"
+    assert set(after.columns) == baseline_columns, (
+        "Un consumidor añadió columnas derivadas (fecha_limite_dt, duracion_valor, "
+        "tipo_proyecto...) a la instancia compartida en vez de a una copia local"
+    )
+
+
+# ---------------------------------------------------------------------------
 # load_uncertainty_zone
 # ---------------------------------------------------------------------------
 
