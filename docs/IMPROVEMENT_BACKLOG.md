@@ -106,6 +106,29 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P1] La señal de invalidación de caché nunca llega al API en Render (fichero local, procesos distintos)
+- **Área:** shared/cache_signal.py, services/_data_cache.py
+- **Problema:** `shared/cache_signal.py` señaliza la ingesta escribiendo `DATA_DIR/.cache_invalidation` y leyendo su `mtime`. Su docstring lo justifica con "un único nodo de scraper y un único proceso de dashboard", pero esa ya no es la topología: el scraper corre en GitHub Actions (`APP_PROFILE=scraper`, ver [render.yaml](../render.yaml)) y el API corre en un contenedor de Render distinto. El fichero que escribe el scraper **no existe** en el contenedor del API, así que `get_signal_timestamp()` devuelve `0.0` siempre y `SignalAwareCache._is_fresh()` nunca se invalida por señal. Consecuencia doble: (a) la invalidación descrita como "principal" está muerta en producción y la única real es el TTL de 60 s, descrito en el código como "defensivo"; (b) por eso el TTL no se puede subir para reducir la reconstrucción full-table cada minuto — hacerlo hoy sólo serviría datos más viejos. La frescura del dato en producción está acotada por un mecanismo que nadie eligió conscientemente.
+- **Acceptance criteria:**
+  - La señal viaja por un medio compartido entre contenedores. Redis ya es dependencia obligatoria en prod (`REDIS_URL` en [render.yaml](../render.yaml)): una key con el timestamp de la última ingesta basta y no añade infraestructura.
+  - `get_signal_timestamp()` cae al fichero local sólo cuando no hay Redis (dev/tests), sin cambiar la firma.
+  - Con la señal viva, subir `_DEFAULT_TTL` (hoy 60 s) al orden de 10 min: la recarga pasa a dispararse por ingesta real y no por reloj. Documentar el nuevo TTL como cota superior de obsolescencia, no como mecanismo principal.
+  - Test que cubra que una señal escrita por "otro proceso" (otra conexión Redis) invalida la caché.
+- **Files de partida:** [shared/cache_signal.py](../shared/cache_signal.py), [services/_data_cache.py](../services/_data_cache.py), [render.yaml](../render.yaml)
+- **Riesgo:** bajo — aditivo y con fallback al comportamiento actual; el beneficio (recarga full-table por ingesta en vez de cada 60 s) es directamente el consumo de memoria del API.
+
+### [P1] Dejar de materializar tablas completas en el proceso del API (memoria en Render)
+- **Área:** services/adjudicaciones.py, services/licitaciones.py, services/analytics/*
+- **Problema:** El API mantiene dos cargas full-table en memoria y las reconstruye cada 60 s. `_stats_df_cache` guarda un DataFrame con **todas** las licitaciones (`LicitacionRepository.load_stats` no lleva `LIMIT`) y `_raw_adj_cache` guarda el join `adjudicaciones ⋈ licitaciones ⋈ empresas ⋈ grupos` (`a.*` + 13 columnas, tampoco acotado) como **`list[dict]`** — la representación más cara posible: un `dict` por fila con ~25 claves, frente al mismo dato tipado en un DataFrame. Encima, todo consumidor con filtro **esquiva la caché** (`services/adjudicaciones.py:113-115`: si `ccaa_filter` no es `None`, se relanza la query completa) y reconstruye su propio DataFrame por request — `red_organo_empresa.py` lo hace en 4 call sites, más `utes.py` y `ecosistema_partners.py`. Con el limiter de anyio en 4 hilos eso son hasta 4 materializaciones full-table simultáneas. El resultado no es un leak (no hay contenedor que crezca sin cota — verificado) sino un baseline alto más un churn de cientos de miles de objetos `str`/`dict` efímeros por ciclo que fragmenta las arenas de pymalloc: el RSS sube y no vuelve a bajar, que es exactamente lo que se ve en la gráfica de Render.
+- **Dirección ya establecida:** ADR-023 (cómputo en vivo / agregación SQL) y los commits `ab520da` (overview/tecnologias a SQL) y `a274d8a` (drop del `.copy()` por request) van por aquí. Esto es continuar esas olas, no abrir una dirección nueva.
+- **Acceptance criteria:**
+  - Los agregados que hoy se calculan en pandas sobre la tabla completa se resuelven con `GROUP BY` en Postgres, por olas y con la suite como red.
+  - Mientras siga existiendo una caché de adjudicaciones, guardarla como DataFrame tipado y no como `list[dict]`.
+  - El camino con `ccaa_filter` deja de reconstruir la tabla entera por request (filtrar en SQL, como ya hace `load_for_competitors`).
+  - Medir antes/después con `process_resident_memory_bytes` (ya exportado por `prometheus_client`) en vez de a ojo.
+- **Files de partida:** [services/adjudicaciones.py](../services/adjudicaciones.py), [services/licitaciones.py](../services/licitaciones.py), [services/analytics/red_organo_empresa.py](../services/analytics/red_organo_empresa.py), [db/repositories/adjudicaciones.py](../db/repositories/adjudicaciones.py)
+- **Riesgo:** medio — toca la capa de lectura analítica y varios consumidores; mitigable haciéndolo por olas como las anteriores.
+
 ### [P2] Cerrar los huecos de aislamiento por user_key encontrados en la auditoría de tenencia
 - **Área:** db/watchlist.py, db/saved_filters.py, api/routes/watchlist_rules.py
 - **Problema:** [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) audita que toda query contra una tabla user-scoped filtre por `user_key`, y encontró 3 violaciones reales que quedaron explícitamente allowlisted como huecos pendientes (no como precedente): `db/watchlist.py::remove_entry`/`update_frequency` (`DELETE`/`UPDATE ... WHERE id = ?` sin `user_key`, sin caller HTTP hoy), `db/saved_filters.py::delete_saved_filter` (mismo patrón; no explotable hoy porque `api/routes/saved_filters.py` valida propiedad antes de llamar, pero el repository no se defiende solo), y `api/routes/watchlist_rules.py::post_rule._create` (`UPDATE watchlist_rules SET email = ? WHERE id = ?` sin `user_key`, inconsistente con `put_rule._update` que sí lo añade).

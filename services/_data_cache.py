@@ -16,7 +16,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from typing import Generic, TypeVar, cast
+from typing import Generic, TypeVar
 
 from shared.cache_signal import get_signal_timestamp
 
@@ -47,11 +47,29 @@ class SignalAwareCache(Generic[_T]):
         tiempo — el pico de memoria se multiplica por N en vez de servirse una
         sola vez. Ver postmortem OOM Render 2026-07-14.
         """
-        if self._is_fresh():
-            return cast("_T", self._value)
+        # El valor se lee a un local antes de comprobar la frescura: un refresco
+        # concurrente pone ``_value`` a None mientras construye el reemplazo, y
+        # sin el local un lector podría comprobar la frescura y leer el None de
+        # esa ventana como si fuera el dato. Con el local, lo peor que pasa es
+        # caer al camino con lock y esperar al valor nuevo.
+        cached = self._value
+        if cached is not None and self._is_fresh():
+            return cached
         with self._lock:
-            if self._is_fresh():
-                return cast("_T", self._value)
+            cached = self._value
+            if cached is not None and self._is_fresh():
+                return cached
+            # Soltar TODA referencia al valor anterior ANTES de llamar al
+            # loader: el atributo y también el local de este frame, que si no
+            # mantiene vivo el objeto durante toda la construcción del nuevo.
+            # Estas cachés guardan cargas full-table (DataFrame de licitaciones,
+            # lista de adjudicaciones⋈licitaciones); con la instancia vieja viva
+            # mientras se construye la nueva, ambas coexisten durante todo el
+            # loader() y cada refresco pica al doble del tamaño de la caché. Con
+            # TTL de 60 s ese pico se repite cada minuto bajo tráfico.
+            cached = None
+            self._valid = False
+            self._value = None
             value = loader()
             self._value = value
             self._loaded_at = time.time()
