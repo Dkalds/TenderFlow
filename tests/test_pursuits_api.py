@@ -12,12 +12,10 @@ def _seed(api_db) -> tuple[int, int]:
 
     user_id = create_user(
         email="api-pursuits@example.test",
-        password_hash="test-hash",
+        password_hash="test-hash",  # pragma: allowlist secret
         display_name="API User",
     )
-    organization_id = int(
-        OrganizationRepository().ensure_personal_organization(user_id)["id"]
-    )
+    organization_id = int(OrganizationRepository().ensure_personal_organization(user_id)["id"])
     with connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones "

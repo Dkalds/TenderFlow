@@ -73,9 +73,7 @@ def create_rule(
     return int(rid) if rid is not None else 0
 
 
-def list_rules(
-    user_key: str, organization_id: int | None = None
-) -> list[WatchlistRule]:
+def list_rules(user_key: str, organization_id: int | None = None) -> list[WatchlistRule]:
     """Reglas de un usuario, más recientes primero."""
     with connect() as c:
         if organization_id is None:
@@ -118,27 +116,32 @@ def update_rule(
     organization_id: int | None = None,
 ) -> bool:
     """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
+    values = (
+        rule.nombre,
+        rule.keyword,
+        rule.cpv,
+        rule.min_importe,
+        rule.ccaa,
+        rule.frequency,
+        1 if rule.active else 0,
+    )
     with connect() as c:
-        cur = c.execute(
-            "UPDATE watchlist_rules SET "
-            "nombre = ?, keyword = ?, cpv = ?, min_importe = ?, ccaa = ?, "
-            "frequency = ?, active = ? "
-            "WHERE id = ? AND user_key = ? "
-            "AND (? IS NULL OR organization_id = ?)",
-            (
-                rule.nombre,
-                rule.keyword,
-                rule.cpv,
-                rule.min_importe,
-                rule.ccaa,
-                rule.frequency,
-                1 if rule.active else 0,
-                rule_id,
-                user_key,
-                organization_id,
-                organization_id,
-            ),
-        )
+        if organization_id is None:
+            cur = c.execute(
+                "UPDATE watchlist_rules SET "
+                "nombre = ?, keyword = ?, cpv = ?, min_importe = ?, ccaa = ?, "
+                "frequency = ?, active = ? "
+                "WHERE id = ? AND user_key = ?",
+                (*values, rule_id, user_key),
+            )
+        else:
+            cur = c.execute(
+                "UPDATE watchlist_rules SET "
+                "nombre = ?, keyword = ?, cpv = ?, min_importe = ?, ccaa = ?, "
+                "frequency = ?, active = ? "
+                "WHERE id = ? AND user_key = ? AND organization_id = ?",
+                (*values, rule_id, user_key, organization_id),
+            )
         return bool(cur.rowcount > 0)
 
 
@@ -152,16 +155,19 @@ def set_active(user_key: str, rule_id: int, active: bool) -> bool:
         return bool(cur.rowcount > 0)
 
 
-def delete_rule(
-    user_key: str, rule_id: int, organization_id: int | None = None
-) -> bool:
+def delete_rule(user_key: str, rule_id: int, organization_id: int | None = None) -> bool:
     """Borra una regla propia. ``False`` si no existe o no es del usuario."""
     with connect() as c:
-        cur = c.execute(
-            "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ? "
-            "AND (? IS NULL OR organization_id = ?)",
-            (rule_id, user_key, organization_id, organization_id),
-        )
+        if organization_id is None:
+            cur = c.execute(
+                "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ?",
+                (rule_id, user_key),
+            )
+        else:
+            cur = c.execute(
+                "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ? AND organization_id = ?",
+                (rule_id, user_key, organization_id),
+            )
         return bool(cur.rowcount > 0)
 
 

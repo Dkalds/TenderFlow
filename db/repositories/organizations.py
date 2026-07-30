@@ -124,9 +124,7 @@ class OrganizationRepository:
             results = rows_to_dicts(row)
         return results[0]
 
-    def get_active_membership(
-        self, organization_id: int, user_id: int
-    ) -> dict[str, Any] | None:
+    def get_active_membership(self, organization_id: int, user_id: int) -> dict[str, Any] | None:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT organization_id, user_id, role, status, created_at, updated_at "

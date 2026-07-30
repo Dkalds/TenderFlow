@@ -84,9 +84,7 @@ class WatchlistRuleOut(WatchlistRule):
     email: str | None = None  # email de entrega, si lo tiene
 
 
-def _rules_with_counts(
-    user_key: str, organization_id: int | None = None
-) -> list[WatchlistRuleOut]:
+def _rules_with_counts(user_key: str, organization_id: int | None = None) -> list[WatchlistRuleOut]:
     """Lista las reglas del usuario con su conteo real de matches y email de entrega."""
     from db.database import connect_read
 
@@ -100,11 +98,7 @@ def _rules_with_counts(
                 if organization_id is None
                 else "organization_id = ? AND (visibility = 'organization' OR user_key = ?)"
             )
-            params = (
-                (user_key,)
-                if organization_id is None
-                else (organization_id, user_key)
-            )
+            params = (user_key,) if organization_id is None else (organization_id, user_key)
             cur = c.execute(
                 "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
                 "frequency, active, last_notified_at, email, organization_id, visibility "
@@ -282,10 +276,7 @@ async def get_rule_matches(
             )
         except OrganizationAccessError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
-    by_id = {
-        r.id: r
-        for r in await run_db(list_rules, _user_key(ctx), resolved_id)
-    }
+    by_id = {r.id: r for r in await run_db(list_rules, _user_key(ctx), resolved_id)}
     rule = by_id.get(rule_id)
     if rule is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")

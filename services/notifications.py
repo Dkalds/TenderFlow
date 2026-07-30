@@ -39,28 +39,42 @@ def get_user_alerts(
 ) -> list[dict[str, Any]]:
     """Devuelve alertas de reglas/deadlines pendientes (unread primero)."""
     with connect_read() as c:
-        cur = c.execute(
-            "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
-            "FROM user_notifications "
-            "WHERE user_key = ? AND (? IS NULL OR organization_id = ?) "
-            "ORDER BY read_at IS NOT NULL, created_at DESC "
-            "LIMIT ?",
-            (user_key, organization_id, organization_id, limit),
-        )
+        if organization_id is None:
+            cur = c.execute(
+                "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
+                "FROM user_notifications "
+                "WHERE user_key = ? "
+                "ORDER BY read_at IS NOT NULL, created_at DESC "
+                "LIMIT ?",
+                (user_key, limit),
+            )
+        else:
+            cur = c.execute(
+                "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
+                "FROM user_notifications "
+                "WHERE user_key = ? AND organization_id = ? "
+                "ORDER BY read_at IS NOT NULL, created_at DESC "
+                "LIMIT ?",
+                (user_key, organization_id, limit),
+            )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
-def get_alerts_unread_count(
-    user_key: str, organization_id: int | None = None
-) -> int:
+def get_alerts_unread_count(user_key: str, organization_id: int | None = None) -> int:
     """Numero de alertas no leidas para el usuario."""
     with connect_read() as c:
-        row = c.execute(
-            "SELECT COUNT(*) FROM user_notifications WHERE user_key = ? "
-            "AND (? IS NULL OR organization_id = ?) AND read_at IS NULL",
-            (user_key, organization_id, organization_id),
-        ).fetchone()
+        if organization_id is None:
+            row = c.execute(
+                "SELECT COUNT(*) FROM user_notifications WHERE user_key = ? AND read_at IS NULL",
+                (user_key,),
+            ).fetchone()
+        else:
+            row = c.execute(
+                "SELECT COUNT(*) FROM user_notifications WHERE user_key = ? "
+                "AND organization_id = ? AND read_at IS NULL",
+                (user_key, organization_id),
+            ).fetchone()
     return int(row[0]) if row else 0
 
 
@@ -73,25 +87,37 @@ def mark_alerts_read(
     now_ts = datetime.now(UTC).isoformat()
     placeholders = ",".join("?" * len(alert_ids))
     with connect() as c:
-        c.execute(
-            f"UPDATE user_notifications SET read_at = ? "  # noqa: S608
-            f"WHERE user_key = ? AND (? IS NULL OR organization_id = ?) "
-            f"AND id IN ({placeholders}) AND read_at IS NULL",
-            [now_ts, user_key, organization_id, organization_id, *alert_ids],
-        )
+        if organization_id is None:
+            c.execute(
+                f"UPDATE user_notifications SET read_at = ? "  # noqa: S608
+                f"WHERE user_key = ? "
+                f"AND id IN ({placeholders}) AND read_at IS NULL",
+                [now_ts, user_key, *alert_ids],
+            )
+        else:
+            c.execute(
+                f"UPDATE user_notifications SET read_at = ? "  # noqa: S608
+                f"WHERE user_key = ? AND organization_id = ? "
+                f"AND id IN ({placeholders}) AND read_at IS NULL",
+                [now_ts, user_key, organization_id, *alert_ids],
+            )
 
 
-def mark_all_alerts_read(
-    user_key: str, organization_id: int | None = None
-) -> None:
+def mark_all_alerts_read(user_key: str, organization_id: int | None = None) -> None:
     """Marca todas las alertas del usuario como leidas."""
     now_ts = datetime.now(UTC).isoformat()
     with connect() as c:
-        c.execute(
-            "UPDATE user_notifications SET read_at = ? WHERE user_key = ? "
-            "AND (? IS NULL OR organization_id = ?) AND read_at IS NULL",
-            (now_ts, user_key, organization_id, organization_id),
-        )
+        if organization_id is None:
+            c.execute(
+                "UPDATE user_notifications SET read_at = ? WHERE user_key = ? AND read_at IS NULL",
+                (now_ts, user_key),
+            )
+        else:
+            c.execute(
+                "UPDATE user_notifications SET read_at = ? WHERE user_key = ? "
+                "AND organization_id = ? AND read_at IS NULL",
+                (now_ts, user_key, organization_id),
+            )
 
 
 def delete_all_alerts(user_key: str) -> int:

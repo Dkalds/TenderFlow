@@ -59,13 +59,7 @@ def _record_source_completed(result: ConnectorRunResult) -> None:
         from db.repositories.source_health import SourceHealthRepository
 
         cursor = get_cursor(result.source_id) or {}
-        status = (
-            "failed"
-            if result.fetch_failed
-            else "partial"
-            if result.errores
-            else "success"
-        )
+        status = "failed" if result.fetch_failed else "partial" if result.errores else "success"
         SourceHealthRepository().mark_completed(
             source=result.source_id,
             status=status,

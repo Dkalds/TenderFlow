@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-07-29
+Generado: 2026-07-30
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -75,7 +75,7 @@ Generado: 2026-07-29
 
 ## Superficie de la API
 
-**138 endpoints** expuestos.
+**152 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -113,6 +113,7 @@ Generado: 2026-07-29
 | GET | `/api/v1/analytics/resumen/timeline` |
 | GET | `/api/v1/analytics/resumen/top` |
 | GET | `/api/v1/analytics/scoring` |
+| GET | `/api/v1/analytics/source-freshness` |
 | GET | `/api/v1/analytics/tecnologias` |
 | GET | `/api/v1/analytics/tecnologias/detail` |
 | GET | `/api/v1/analytics/trends` |
@@ -171,9 +172,12 @@ Generado: 2026-07-29
 | GET | `/api/v1/licitaciones/{id_externo:path}` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo}` |
 | POST | `/api/v1/licitaciones/{id_externo}/resumen` |
+| GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |
 | DELETE | `/api/v1/me` |
@@ -191,7 +195,17 @@ Generado: 2026-07-29
 | GET | `/api/v1/notifications` |
 | POST | `/api/v1/notifications/alerts/read` |
 | POST | `/api/v1/notifications/read` |
+| GET | `/api/v1/organizations` |
+| POST | `/api/v1/organizations` |
+| GET | `/api/v1/organizations/active` |
+| GET | `/api/v1/organizations/{organization_id}/members` |
+| PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
 | GET | `/api/v1/predicciones/calibracion` |
+| GET | `/api/v1/pursuits` |
+| POST | `/api/v1/pursuits` |
+| GET | `/api/v1/pursuits/metrics` |
+| GET | `/api/v1/pursuits/{pursuit_id}` |
+| PATCH | `/api/v1/pursuits/{pursuit_id}` |
 | GET | `/api/v1/resoluciones` |
 | GET | `/api/v1/saved-filters` |
 | POST | `/api/v1/saved-filters` |

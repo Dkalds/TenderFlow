@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import html
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405 -- nosemgrep: use-defused-xml -- ver mitigación junto a ET.fromstring más abajo
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlparse
 
@@ -60,7 +60,11 @@ def _label(text: str, labels: tuple[str, ...]) -> str | None:
     # etiquetas conocidas evita inventar una estructura DOM que los feeds no
     # prometen mantener.
     for label in labels:
-        match = re.search(rf"{re.escape(label)}\s*:\s*(.+?)(?=(?:Estado|Órgano|Organo|Tipo|Importe|Data|Fecha|Sistema|Lugar)\s*:|$)", text, re.IGNORECASE)
+        match = re.search(
+            rf"{re.escape(label)}\s*:\s*(.+?)(?=(?:Estado|Órgano|Organo|Tipo|Importe|Data|Fecha|Sistema|Lugar)\s*:|$)",
+            text,
+            re.IGNORECASE,
+        )
         if match:
             return match.group(1).strip().strip("-;").strip() or None
     return None
@@ -74,7 +78,9 @@ class RegionalRssConnector:
     ccaa: str
     analysis_universe: str
 
-    def __init__(self, *, feed_url: str | None = None, session: requests.Session | None = None) -> None:
+    def __init__(
+        self, *, feed_url: str | None = None, session: requests.Session | None = None
+    ) -> None:
         self._feed_url = feed_url or self.feed_url
         self._session = session or requests.Session()
         self._max_seen: str | None = None
@@ -89,7 +95,7 @@ class RegionalRssConnector:
         if b"<!doctype" in lowered or b"<!entity" in lowered:
             raise ValueError("El feed regional contiene declaraciones XML no permitidas.")
         # ElementTree es suficiente tras limitar tamaño y rechazar DTD/entidades.
-        root = ET.fromstring(content)  # noqa: S314
+        root = ET.fromstring(content)  # noqa: S314  # nosec B314
         previous = str((cursor or {}).get("last_seen_updated") or "")
         for item in root.findall("./channel/item"):
             title = _plain(item.findtext("title"))
@@ -103,7 +109,15 @@ class RegionalRssConnector:
                 continue
             if published and (self._max_seen is None or published > self._max_seen):
                 self._max_seen = published
-            yield RawNotice(natural_id=natural_id, payload={"title": title, "link": link, "description": description, "published": published})
+            yield RawNotice(
+                natural_id=natural_id,
+                payload={
+                    "title": title,
+                    "link": link,
+                    "description": description,
+                    "published": published,
+                },
+            )
 
     @staticmethod
     def _natural_id(title: str, link: str, guid: str) -> str | None:
@@ -131,15 +145,33 @@ class RegionalRssConnector:
         keywords = sorted({keyword for values in matches.values() for keyword in values})
         published = payload.get("published")
         lic = Licitacion(
-            id_externo=f"{self.source_id}:{raw.natural_id}", titulo=tender_title[:500],
-            organo_contratacion=_label(description, ("Órgano de contratación", "Organo de contratacion", "Órgano")),
-            importe=_amount(description), tipo_contrato=_label(description, ("Tipo de contrato",)),
-            estado=_label(description, ("Estado",)), fecha_publicacion=published[:10] if isinstance(published, str) else None,
-            fecha_limite=_date(_label(description, ("Data e hora límite de presentación de ofertas", "Fecha y hora límite de presentación de ofertas", "Fecha límite"))),
-            url=str(payload.get("link") or "") or None, raw_keywords=",".join(keywords) or None,
-            tecnologia=",".join(technologies) or None, ccaa=self.ccaa,
-            inclusion_reason="regional_rss_technology_match", analysis_universe=self.analysis_universe,
-            fecha_actualizacion_fuente=published if isinstance(published, str) else None, fuente=self.source_id,
+            id_externo=f"{self.source_id}:{raw.natural_id}",
+            titulo=tender_title[:500],
+            organo_contratacion=_label(
+                description, ("Órgano de contratación", "Organo de contratacion", "Órgano")
+            ),
+            importe=_amount(description),
+            tipo_contrato=_label(description, ("Tipo de contrato",)),
+            estado=_label(description, ("Estado",)),
+            fecha_publicacion=published[:10] if isinstance(published, str) else None,
+            fecha_limite=_date(
+                _label(
+                    description,
+                    (
+                        "Data e hora límite de presentación de ofertas",
+                        "Fecha y hora límite de presentación de ofertas",
+                        "Fecha límite",
+                    ),
+                )
+            ),
+            url=str(payload.get("link") or "") or None,
+            raw_keywords=",".join(keywords) or None,
+            tecnologia=",".join(technologies) or None,
+            ccaa=self.ccaa,
+            inclusion_reason="regional_rss_technology_match",
+            analysis_universe=self.analysis_universe,
+            fecha_actualizacion_fuente=published if isinstance(published, str) else None,
+            fuente=self.source_id,
         )
         return ParsedTender(licitacion=lic)
 

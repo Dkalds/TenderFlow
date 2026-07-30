@@ -85,9 +85,7 @@ def _download_bytes(uri: str) -> tuple[bytes, str | None]:
     return b"".join(chunks), content_type
 
 
-def _extract_pdf_pages_local(
-    content: bytes, *, max_pages: int, max_text_chars: int
-) -> list[str]:
+def _extract_pdf_pages_local(content: bytes, *, max_pages: int, max_text_chars: int) -> list[str]:
     """Extrae texto por página. Import diferido — ``[pliegos]`` es opcional."""
     try:
         from pypdf import PdfReader

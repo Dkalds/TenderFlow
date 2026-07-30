@@ -35,9 +35,7 @@ class PlacspWatchedCompanyAwardsConnector:
     def __init__(self, watched_nifs: Iterable[str]) -> None:
         self._source_id = SOURCE_ID
         self._watched_nifs = frozenset(
-            normalized
-            for nif in watched_nifs
-            if (normalized := normalize_nif(nif)) is not None
+            normalized for nif in watched_nifs if (normalized := normalize_nif(nif)) is not None
         )
         self._meta: dict[str, Any] = {}
         self._last_seen_updated: str | None = None
@@ -91,8 +89,7 @@ class PlacspWatchedCompanyAwardsConnector:
             lic.fecha_actualizacion_fuente = updated_str
 
         persisted_awards = [
-            replace(adjudicacion, licitacion_id=persisted_id)
-            for adjudicacion in adjudicaciones
+            replace(adjudicacion, licitacion_id=persisted_id) for adjudicacion in adjudicaciones
         ]
         return ParsedTender(licitacion=lic, adjudicaciones=persisted_awards)
 
@@ -149,7 +146,9 @@ class PlacspWatchedCompanyAwardsBulkConnector(PlacspWatchedCompanyAwardsConnecto
             return
         for _filename, content in iter_xml_files(zip_path):
             for entry_elem, _ in _iter_atom_entries(content):
-                yield RawNotice(natural_id=f"{self.year}{self.month:02d}", payload=(entry_elem, None))
+                yield RawNotice(
+                    natural_id=f"{self.year}{self.month:02d}", payload=(entry_elem, None)
+                )
 
     def new_cursor(self) -> dict[str, Any] | None:
         return None

@@ -17,9 +17,7 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
-def get_user_profile(
-    user_key: str, organization_id: int | None = None
-) -> dict[str, Any] | None:
+def get_user_profile(user_key: str, organization_id: int | None = None) -> dict[str, Any] | None:
     """Carga el perfil del usuario. Devuelve None si no tiene perfil."""
     with connect_read() as c:
         if organization_id is None:

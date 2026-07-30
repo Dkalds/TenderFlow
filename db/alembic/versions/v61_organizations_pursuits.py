@@ -280,9 +280,7 @@ def upgrade() -> None:
         "BEFORE UPDATE OR DELETE ON pursuit_events "
         "FOR EACH ROW EXECUTE FUNCTION public.prevent_pursuit_event_mutation()"
     )
-    op.execute(
-        "REVOKE EXECUTE ON FUNCTION public.prevent_pursuit_event_mutation() FROM PUBLIC"
-    )
+    op.execute("REVOKE EXECUTE ON FUNCTION public.prevent_pursuit_event_mutation() FROM PUBLIC")
 
     # Mismo patrón fail-closed de v52 para Supabase/PostgREST.
     for table in (

@@ -14,7 +14,7 @@ def _seed_pages(licitacion_id: str = "FACT-1") -> tuple[int, str]:
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
-            "VALUES (?, 'Contrato con pliego', 'placsp', datetime('now'))",
+            "VALUES (?, 'Contrato con pliego', 'placsp', CURRENT_TIMESTAMP)",
             (licitacion_id,),
         )
     repo = DocumentosRepository()

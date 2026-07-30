@@ -60,8 +60,7 @@ def build_portfolio(
             continue
         if isinstance(contract, dict):
             parts = [
-                str(contract.get(key) or "").strip()
-                for key in ("titulo", "descripcion", "cpv")
+                str(contract.get(key) or "").strip() for key in ("titulo", "descripcion", "cpv")
             ]
             text = " · ".join(part for part in parts if part)
             if text:

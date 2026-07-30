@@ -51,9 +51,7 @@ def save_filter(
         )
 
 
-def list_saved_filters(
-    user_key: str, organization_id: int | None = None
-) -> list[dict[str, Any]]:
+def list_saved_filters(user_key: str, organization_id: int | None = None) -> list[dict[str, Any]]:
     """Devuelve los filtros guardados del usuario, más recientes primero."""
     with connect() as c:
         if organization_id is None:

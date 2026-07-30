@@ -77,6 +77,7 @@ class SourceHealthRepository:
                 "ORDER BY h.source"
             )
             return rows_to_dicts(cur)
+
     def latency_samples(self, *, limit: int = 50_000) -> list[dict[str, Any]]:
         """Fechas fuente→ingesta recientes para estimar detección <24h."""
         with connect_read() as c:

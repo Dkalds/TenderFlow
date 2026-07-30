@@ -236,8 +236,7 @@ class PursuitRepository:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT status, outcome, awarded_amount_eur, identified_at, "
-                "decision_at, submitted_at FROM pursuits WHERE "
-                + " AND ".join(clauses),
+                "decision_at, submitted_at FROM pursuits WHERE " + " AND ".join(clauses),
                 tuple(params),
             )
             return rows_to_dicts(cur)
@@ -301,8 +300,7 @@ class PursuitRepository:
     def _event_key_exists(conn: Any, pursuit_id: int, idempotency_key: str) -> bool:
         return (
             conn.execute(
-                "SELECT 1 FROM pursuit_events "
-                "WHERE pursuit_id = ? AND idempotency_key = ?",
+                "SELECT 1 FROM pursuit_events WHERE pursuit_id = ? AND idempotency_key = ?",
                 (pursuit_id, idempotency_key),
             ).fetchone()
             is not None

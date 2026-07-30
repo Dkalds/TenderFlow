@@ -14,12 +14,12 @@ def test_metric_scope_reports_exact_observed_denominator(tmp_db):
             "(id_externo, titulo, cpv, ccaa, fuente, fecha_extraccion, "
             "filter_version, classifier_model_version, inclusion_reason, analysis_universe) "
             "VALUES ('SCOPE-1', 'Contrato', '72000000', 'Madrid', 'placsp', "
-            "datetime('now'), 'keywords-v1', 'model-v2', 'keyword', 'technology_observed')"
+            "CURRENT_TIMESTAMP, 'keywords-v1', 'model-v2', 'keyword', 'technology_observed')"
         )
         c.execute(
             "INSERT INTO adjudicaciones "
             "(licitacion_id, nombre, importe_adjudicado, fecha_adjudicacion, fecha_extraccion) "
-            "VALUES ('SCOPE-1', 'Empresa A', 250000, '2026-01-02', datetime('now'))"
+            "VALUES ('SCOPE-1', 'Empresa A', 250000, '2026-01-02', CURRENT_TIMESTAMP)"
         )
 
     scope = metric_scope(cpv_prefix="72", ccaa="Madrid", desde="2026-01-01")

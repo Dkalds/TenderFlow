@@ -17,7 +17,7 @@ from services.organizations import (
 def _user(email: str) -> int:
     from db.users import create_user
 
-    return create_user(email=email, password_hash="test-hash")
+    return create_user(email=email, password_hash="test-hash")  # pragma: allowlist secret
 
 
 def test_organization_visibility_shares_only_explicit_items(tmp_db):
@@ -26,15 +26,12 @@ def test_organization_visibility_shares_only_explicit_items(tmp_db):
     member = _user("scope-member@example.test")
     outsider = _user("scope-outsider@example.test")
     organizations = OrganizationRepository()
-    organization_id = int(
-        organizations.create_organization("Scope team", owner)["id"]
-    )
+    organization_id = int(organizations.create_organization("Scope team", owner)["id"])
     organizations.add_membership(organization_id, member, "member")
     with db_mod.connect() as conn:
         for external_id in ("SCOPE-SHARED", "SCOPE-PRIVATE"):
             conn.execute(
-                "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
-                "VALUES (?, ?, ?)",
+                "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (?, ?, ?)",
                 (external_id, external_id, "2026-07-30T10:00:00+00:00"),
             )
 
@@ -71,9 +68,7 @@ def test_legacy_rows_are_claimed_by_personal_organization(tmp_db):
     save_filter("legacy-key", "Filtro", '{"q":"sap"}')
 
     claim_legacy_scope(user_id, "legacy-key")
-    personal_id = int(
-        OrganizationRepository().ensure_personal_organization(user_id)["id"]
-    )
+    personal_id = int(OrganizationRepository().ensure_personal_organization(user_id)["id"])
     rows = list_saved_filters("legacy-key", personal_id)
 
     assert len(rows) == 1

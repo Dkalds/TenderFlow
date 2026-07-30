@@ -114,15 +114,32 @@ def test_repository_lists_unique_nonempty_canonical_nifs(tmp_db: Any) -> None:
     from db.repositories.watched_companies import WatchedCompanyRepository
 
     with db_mod.connect() as c:
-        c.execute("INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (?, ?)", ("B12345678", "Uno"))
-        c.execute("INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (?, ?)", (None, "Sin NIF"))
-        first_id = c.execute("SELECT empresa_id FROM empresas WHERE nombre_canonico = 'Uno'").fetchone()[0]
-        empty_id = c.execute("SELECT empresa_id FROM empresas WHERE nombre_canonico = 'Sin NIF'").fetchone()[0]
-        c.execute("INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u1", first_id))
-        c.execute("INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u2", first_id))
-        c.execute("INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u3", empty_id))
+        c.execute(
+            "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (?, ?)",
+            ("B12345678", "Uno"),  # pragma: allowlist secret
+        )
+        c.execute(
+            "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (?, ?)", (None, "Sin NIF")
+        )
+        first_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nombre_canonico = 'Uno'"
+        ).fetchone()[0]
+        empty_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nombre_canonico = 'Sin NIF'"
+        ).fetchone()[0]
+        c.execute(
+            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u1", first_id)
+        )
+        c.execute(
+            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u2", first_id)
+        )
+        c.execute(
+            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u3", empty_id)
+        )
 
-    assert WatchedCompanyRepository().list_canonical_nifs() == {"B12345678"}
+    assert WatchedCompanyRepository().list_canonical_nifs() == {
+        "B12345678"  # pragma: allowlist secret
+    }
 
 
 def test_cli_exits_successfully_without_watched_nifs(monkeypatch: Any) -> None:
