@@ -31,9 +31,11 @@ ROOT = Path(__file__).resolve().parent.parent
 INSTRUCTION_FILES = [
     "AGENTS.md",
     "CLAUDE.md",
+    "web/AGENTS.md",
     ".github/copilot-instructions.md",
     "docs/AGENT_PLAYBOOK.md",
     "docs/graphify-first.md",
+    "docs/contributor-checklist.md",
     ".agents/rules/graphify.md",
 ]
 
@@ -92,6 +94,9 @@ def looks_like_path(token: str) -> bool:
     if any(c in token for c in "*?{}<>$ |"):
         return False
     if token.startswith(("http", "mailto:", "#")):
+        return False
+    # Dependencias instaladas: existen o no según el entorno, no según el doc.
+    if token.startswith("node_modules/") or "/node_modules/" in token:
         return False
     # `competitive/`, `wiki/`: un solo segmento, se lee relativo al paquete que
     # menciona la prosa alrededor. No es una ruta resoluble desde la raíz.

@@ -2,11 +2,18 @@
 title: "RFC de handoff humano: bloqueos por denylist"
 author: "agent:architect"
 date: 2026-05-28
-status: partially-implemented
-tags: [rfc]
+status: retired
+retired: 2026-07-30
+tags: [rfc, historico]
 ---
 
 # RFC de handoff humano: bloqueos por denylist (2026-05-28)
+
+> **Retirado el 2026-07-30.** La denylist por rol de subagente (`AGENT_ROLE`) que
+> motivó este handoff se eliminó junto con el resto del andamiaje multi-agente.
+> Lo que sobrevive de esta idea es la lista de acciones que requieren OK humano
+> de AGENTS.md §6, que no depende de ningún rol. Se conserva como registro de por
+> qué existió el mecanismo; no describe el estado actual del repo.
 
 ## Contexto breve
 

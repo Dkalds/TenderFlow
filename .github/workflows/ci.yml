@@ -44,8 +44,13 @@ jobs:
       - name: Format check (ruff)
         run: ruff format --check .
 
+      # `make typecheck` (mypy .) y no una lista de paquetes: la lista omitía
+      # `services/` y `llm/`, o sea que el invariante de AGENTS.md §3.1 ("todo el
+      # código de producción pasa strict") no estaba verificado justo para el
+      # paquete más grande. Apuntar al target del Makefile evita que la lista
+      # vuelva a quedarse atrás cuando aparezca un paquete nuevo.
       - name: Type check (mypy)
-        run: mypy scraper/ db/ scheduler/ observability/ config/ api/ shared/
+        run: make typecheck
 
       # Previene el patrón que causó el incidente de psycopg-pool: alguien
       # agrega una dependencia a requirements.in y olvida recompilar

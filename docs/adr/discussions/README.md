@@ -1,69 +1,23 @@
-# ADR Discussions — licitaciones-sap
+# ADR Discussions — archivo histórico
 
-Log append-only de discusiones inter-agente durante el ciclo de vida de issues y RFCs.
+Log append-only de las discusiones que acompañaron a issues y RFCs hasta
+2026-07. Un archivo por issue: `NNN-slug.md`.
 
-## Propósito
+**Este directorio es un archivo, no un proceso vigente.** Las entradas se
+produjeron cuando el trabajo se orquestaba entre varios roles de agente
+(orchestrator, architect, coder, test_engineer, reviewer, security_triage); ese
+esquema se retiró el 2026-07-30 junto con la denylist por rol que lo sostenía.
+Los turnos con prefijo `agent:<rol>` que aparecen dentro de las entradas hay que
+leerlos con esa clave.
 
-Cada vez que el Orchestrator cierra un issue procesado, vuelca el thread completo de comentarios GitHub aquí como registro permanente. Esto permite:
+Se conserva porque documenta cómo se decidieron cambios que siguen vivos en el
+código (rotación de secretos, IDOR en export jobs, race condition del pool, CSRF
+del dashboard, entre otros) y porque varias entradas se citan desde ADRs y RFCs.
 
-- Auditar las decisiones tomadas por los agentes.
-- Aprender de iteraciones anteriores.
-- Detectar patrones de errores recurrentes.
+## Reglas
 
-## Nombre de archivo
-
-`docs/adr/discussions/NNN-slug.md`
-
-Donde `NNN` es el número de issue y `slug` es el título sanitizado del issue.
-
----
-
-## Formato de cada entrada
-
-```markdown
----
-issue: NNN
-title: <título del issue>
-url: <URL del issue de GitHub>
-rfc: <URL del RFC si aplica>
-opened: YYYY-MM-DD
-closed: YYYY-MM-DD
-result: merged | blocked | rejected | cancelled
-pr: <URL del PR si aplica>
-agents_involved:
-  - orchestrator
-  - architect
-  - coder
-  - test_engineer
-  - reviewer
-  - security_triage
----
-
-# Discussion: <título del issue>
-
-## Timeline
-
-### YYYY-MM-DDTHH:MMZ agent:orchestrator
-<turno del orchestrator>
-
-### YYYY-MM-DDTHH:MMZ agent:architect
-<turno del architect>
-
-### YYYY-MM-DDTHH:MMZ agent:reviewer
-<turno del reviewer>
-
-...
-
-## Resultado
-
-<Resumen de lo que se implementó, por qué se aprobó/rechazó, lecciones aprendidas.>
-```
-
----
-
-## Convenciones
-
-- **Append-only**: nunca modificar una entrada existente. Si hay correcciones, agregar nueva entrada al final.
-- **Formato de turno**: `## YYYY-MM-DDTHH:MMZ <agente>` (ISO 8601 con Z para UTC).
-- **El Orchestrator** es el responsable de crear el archivo al cerrar el issue.
-- **Un archivo por issue**. Si el issue se reabre, la nueva discusión se agrega al mismo archivo con separador `---`.
+- **Append-only**: no se modifica una entrada existente. Las correcciones van al
+  final del archivo, separadas por `---`.
+- **No se crean entradas nuevas con este formato.** Las decisiones de hoy se
+  registran en `docs/adr/` (arquitectura), `docs/rfc/` (los cuatro casos de
+  AGENTS.md §5) o `docs/IMPROVEMENT_BACKLOG.md` (todo lo demás).

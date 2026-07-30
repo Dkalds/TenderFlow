@@ -20,8 +20,9 @@ analítica.** Detalle completo, anti-patrones y checklist en
    URLs (Grafana) y datos vienen de API/config. Prohibido `MOCK_*`/`LOCAL_*`/
    `localhost` en datos renderizados.
 
-Verificado por `python scripts/check_frontend_invariants.py` (modo aviso;
-`fdi-allow` por línea para excepciones justificadas).
+Verificado por `make check-frontend-invariants` (`scripts/check_frontend_invariants.py
+--strict`). **Bloqueante desde 2026-07-28**, en local y en CI: un hallazgo nuevo
+se corrige o se justifica en su línea con `fdi-allow:<categoria>`.
 
 # Motion (Emil Kowalski design engineering)
 
@@ -29,4 +30,5 @@ Tokens de easing, duraciones por tipo de elemento, primitivos enter/exit,
 qué no animar nunca y por qué `motion`/Framer Motion salió del bundle:
 [`docs/frontend-motion.md`](../docs/frontend-motion.md). Antes de tocar
 cualquier animación, revisar ese documento y las skills `emil-design-eng` /
-`review-animations` / `apple-design` (`.agents/skills/`).
+`review-animations` / `apple-design` (instaladas en los dos árboles: Claude Code
+las carga de `.claude/skills/`, el resto de herramientas de `.agents/skills/`).

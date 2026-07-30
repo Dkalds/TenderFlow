@@ -1,5 +1,10 @@
-"""One-off migration: convertir referencias ADR-NNN/RFC-NNN y links relativos
-markdown dentro de docs/ a wikilinks de Obsidian ([[archivo|texto]]).
+"""Convierte referencias ADR-NNN/RFC-NNN y links relativos markdown dentro de
+docs/ a wikilinks de Obsidian ([[archivo|texto]]).
+
+Nunca toca el *target* de un link markdown, ni código inline, ni bloques de
+código: una corrida previa reescribió el ID dentro de `](adr/ADR-004-....md)` y
+dejó ocho links roto (wikilink anidado dentro del target, que no resuelve ni en
+Obsidian ni en GitHub). `make check-agent-docs` falla si reaparecen.
 
 Uso: python scripts/obsidian_wikilink.py [--dry-run]
 """
@@ -54,7 +59,31 @@ def convert_relative_links(text: str) -> str:
     return pattern.sub(repl, text)
 
 
+# Regiones donde un ID nunca debe reescribirse: target de link markdown, código
+# inline y bloques de código. El orden importa: los fences primero.
+PROTECTED = re.compile(r"```.*?```|``[^`]*``|`[^`\n]*`|\]\([^)\n]*\)", re.DOTALL)
+_SENTINEL = "\x00{}\x00"
+
+
+def mask_protected(text: str) -> tuple[str, list[str]]:
+    """Sustituye las regiones protegidas por centinelas irreemplazables."""
+    spans: list[str] = []
+
+    def repl(match: re.Match) -> str:
+        spans.append(match.group(0))
+        return _SENTINEL.format(len(spans) - 1)
+
+    return PROTECTED.sub(repl, text), spans
+
+
+def unmask_protected(text: str, spans: list[str]) -> str:
+    for i, span in enumerate(spans):
+        text = text.replace(_SENTINEL.format(i), span)
+    return text
+
+
 def convert_bare_ids(text: str, id_map: dict[str, str], self_stem: str | None = None) -> str:
+    text, protected = mask_protected(text)
     # ordenar claves mas largas primero para evitar solapes (ADR-0011 antes de ADR-001)
     for key in sorted(id_map, key=len, reverse=True):
         stem = id_map[key]
@@ -72,7 +101,7 @@ def convert_bare_ids(text: str, id_map: dict[str, str], self_stem: str | None = 
             return f"[[{stem}|{key}]]"
 
         text = pattern.sub(repl, text)
-    return text
+    return unmask_protected(text, protected)
 
 
 def already_wikilinked(text: str, key: str) -> bool:
