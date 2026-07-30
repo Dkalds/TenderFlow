@@ -163,7 +163,7 @@ class TestXMLParsingPerformance:
 
 
 class TestFTSPerformance:
-    """Verifica que la búsqueda FTS5 es rápida sobre 10K registros."""
+    """Verifica que la búsqueda full-text es rápida sobre 10K registros."""
 
     def test_fts_search_10k(self, perf_db):
         from db.database import Licitacion, connect, upsert_licitaciones
@@ -182,15 +182,19 @@ class TestFTSPerformance:
 
         t0 = time.monotonic()
         with connect() as c:
-            # FTS5 full-text search
+            # Búsqueda full-text sobre `search_vector` (índice GIN). Antes esta
+            # query usaba `licitaciones_fts MATCH ?`, sintaxis FTS5 de SQLite:
+            # el motor se retiró en ADR-021 y Postgres la rechaza con
+            # `syntax error at or near "MATCH"`.
             rows = c.execute(
-                "SELECT COUNT(*) FROM licitaciones_fts WHERE licitaciones_fts MATCH ?",
+                "SELECT COUNT(*) FROM licitaciones "
+                "WHERE search_vector @@ websearch_to_tsquery('spanish', ?)",
                 ["SAP HANA"],
             ).fetchone()
         elapsed = time.monotonic() - t0
 
         assert rows[0] > 0
-        assert elapsed < 2.0, f"FTS5 search tardó {elapsed:.1f}s (máx 2s)"
+        assert elapsed < 2.0, f"La búsqueda full-text tardó {elapsed:.1f}s (máx 2s)"
 
 
 class TestClusteringPerformance:

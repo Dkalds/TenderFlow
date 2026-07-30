@@ -64,26 +64,29 @@ def test_export_openapi_is_deterministic(tmp_path):
 # ── Ratchet del contrato (H2) ─────────────────────────────────────────────
 
 
-def test_contract_ratchet_matches_current_spec():
+def _load_contract_module():
+    spec = importlib.util.spec_from_file_location(
+        "check_openapi_contract", _REPO_ROOT / "scripts" / "check_openapi_contract.py"
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_contract_ratchet_matches_current_spec(tmp_path):
     """La allowlist de operaciones opacas coincide con el schema exportado.
 
     Es la mitad del ratchet que no puede comprobar el gate de drift: ese
     verifica que `api.d.ts` está sincronizado, no que el contrato tenga
     contenido. Si alguien tipa una ruta y olvida encoger la allowlist, o
     añade una ruta con `dict[str, Any]`, este test lo dice.
+
+    El schema se **genera** en vez de leerse de `api/openapi.json`: ese fichero
+    está en `.gitignore`, así que en un checkout limpio no existe.
     """
-    import importlib.util
-    import json
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    spec_path = root / "scripts" / "check_openapi_contract.py"
-    spec = importlib.util.spec_from_file_location("check_openapi_contract", spec_path)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
-    schema = json.loads((root / "api" / "openapi.json").read_text())
+    schema = _load_export_module().export_openapi(tmp_path / "openapi.json")
+    mod = _load_contract_module()
     opaque = set(mod.find_opaque(schema))
 
     sin_tipar = sorted(opaque - mod.ALLOWED_OPAQUE)
@@ -95,12 +98,9 @@ def test_contract_ratchet_matches_current_spec():
     )
 
 
-def test_renovaciones_response_is_typed():
+def test_renovaciones_response_is_typed(tmp_path):
     """Regresión de la primera ola: /competitive/renovaciones no es opaca."""
-    import json
-    from pathlib import Path
-
-    schema = json.loads((Path(__file__).resolve().parents[1] / "api" / "openapi.json").read_text())
+    schema = _load_export_module().export_openapi(tmp_path / "openapi.json")
     for path in ("/api/v1/competitive/renovaciones", "/api/v1/competitive/renovaciones/resumen"):
         content = schema["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]
         assert "$ref" in content["schema"], f"{path} volvió a respuesta opaca"
