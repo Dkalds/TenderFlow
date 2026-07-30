@@ -129,3 +129,4 @@ interpolar
 sme
 extensiones
 registre
+colateral

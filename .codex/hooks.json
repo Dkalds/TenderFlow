@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python 'C:\\Users\\dkalitovicsdorta\\OneDrive - Deloitte (O365D)\\Desktop\\Proyectos\\Licitaciones_sap_SP\\.codex\\hooks\\pretooluse_bash_grep_hint.py' || python3 'C:\\Users\\dkalitovicsdorta\\OneDrive - Deloitte (O365D)\\Desktop\\Proyectos\\Licitaciones_sap_SP\\.codex\\hooks\\pretooluse_bash_grep_hint.py'"
+            "command": "python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\" || python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\""
           }
         ]
       },
@@ -15,16 +15,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python 'C:\\Users\\dkalitovicsdorta\\OneDrive - Deloitte (O365D)\\Desktop\\Proyectos\\Licitaciones_sap_SP\\.codex\\hooks\\pretooluse_edit_denylist.py' || python3 'C:\\Users\\dkalitovicsdorta\\OneDrive - Deloitte (O365D)\\Desktop\\Proyectos\\Licitaciones_sap_SP\\.codex\\hooks\\pretooluse_edit_denylist.py'"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
+            "command": "python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_edit_denylist.py\" || python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_edit_denylist.py\""
+          },
           {
             "type": "command",
-            "command": "python 'C:\\Users\\dkalitovicsdorta\\OneDrive - Deloitte (O365D)\\Desktop\\Proyectos\\Licitaciones_sap_SP\\.codex\\hooks\\pretooluse_edit_stale.py' || python3 'C:\\Users\\dkalitovicsdorta\\OneDrive - Deloitte (O365D)\\Desktop\\Proyectos\\Licitaciones_sap_SP\\.codex\\hooks\\pretooluse_edit_stale.py'"
+            "command": "python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_edit_stale.py\" || python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_edit_stale.py\""
           }
         ]
       }

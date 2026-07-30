@@ -1,4 +1,48 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(make lint)",
+      "Bash(make typecheck)",
+      "Bash(make test-unit)",
+      "Bash(make test)",
+      "Bash(make check)",
+      "Bash(make check-agent-docs)",
+      "Bash(make check-api-contract)",
+      "Bash(make check-frontend-invariants)",
+      "Bash(make job-parity)",
+      "Bash(make status)",
+      "Bash(make doctor)",
+      "Bash(make web-lint)",
+      "Bash(make web-typecheck)",
+      "Bash(ruff check *)",
+      "Bash(ruff format --check *)",
+      "Bash(mypy *)",
+      "Bash(pytest *)",
+      "Bash(python scripts/check_agent_docs.py *)",
+      "Bash(python scripts/gen_status.py --check)",
+      "Bash(python scripts/check_openapi_contract.py *)",
+      "Bash(python scripts/check_frontend_invariants.py *)",
+      "Bash(python scripts/check_job_parity.py *)",
+      "Bash(python scripts/doctor.py *)",
+      "Bash(graphify query *)",
+      "Bash(graphify path *)",
+      "Bash(graphify explain *)",
+      "Bash(graphify update *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(docker compose up -d postgres)",
+      "Bash(docker compose ps *)",
+      "Bash(alembic history *)",
+      "Bash(alembic current *)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {

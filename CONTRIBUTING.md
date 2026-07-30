@@ -100,7 +100,7 @@ make web-lint && make web-typecheck && npm --prefix web run test
 - [ ] `make test-unit` pasa sin errores
 - [ ] Si tocaste `web/`: `make web-lint`, `make web-typecheck` y los tests de Vitest pasan
 - [ ] Los commits siguen Conventional Commits
-- [ ] Si tocaste módulos strict (`config/*`, `db.database`, `db.users`, `shared/*`), el tipado sigue siendo strict
+- [ ] El tipado sigue siendo strict: todo el código de producción pasa mypy strict, sin overrides nuevos en `pyproject.toml` (AGENTS.md §3.1)
 - [ ] Si agregaste un test, el nombre contiene el token correcto para auto-marking (no marcar a mano)
 - [ ] Si tocaste migraciones, es una nueva revisión Alembic (nunca modificar migraciones existentes)
 - [ ] Si tocaste analítica o datos en `web/`, no fabricaste agregados en cliente (ver `docs/frontend-data-invariants.md`)

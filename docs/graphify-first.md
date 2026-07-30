@@ -4,17 +4,8 @@ Esta guia define el uso diario de graphify para navegar arquitectura antes de le
 
 ## Comandos practicos
 
-Usa los targets del Makefile:
-
-```bash
-make graphify-query Q="donde se calcula la calidad de datos"
-make graphify-path A="api.app" B="services.licitaciones"
-make graphify-explain TOPIC="scheduler.loop"
-make graphify-update
-make graphify-update-force
-```
-
-Comandos directos equivalentes:
+`graphify` es un CLI local del mantenedor, no un target del Makefile (no hay
+`make graphify-*`). Se invoca directo:
 
 ```bash
 graphify query "donde se calcula la calidad de datos"
@@ -23,6 +14,9 @@ graphify explain "scheduler.loop"
 graphify update .
 graphify update . --force
 ```
+
+En Claude Code, `/graph-refresh` envuelve el `update` con verificacion de mtime y
+limpieza del flag `.graph_stale`.
 
 ## Cuando usar --force
 
@@ -37,8 +31,11 @@ En cambios pequenos (ediciones internas sin renames/moves), usa `graphify update
 
 ## Fallback si graphify no esta instalado
 
-Si el comando `graphify` no existe en tu shell:
+Si el comando `graphify` no existe en tu shell (CI, sesiones remotas):
 
-1. Documenta en el PR que no se pudo ejecutar graphify en local.
-2. Usa navegacion temporal con `rg`/`read_file`.
-3. Mantene la regla graphify-first para entornos donde la herramienta este disponible.
+1. Lee los artefactos commiteados: `graphify-out/graph.json`, `graphify-out/wiki/`
+   o `GRAPH_REPORT.md`. Siguen siendo utiles sin el CLI.
+2. Si `graphify-out/` no existe, navega con `rg` + `docs/AGENT_PLAYBOOK.md` y
+   omite todos los comandos `graphify` (incluido el `update` de post-flight).
+3. Documenta en el PR que no se pudo regenerar el grafo en local.
+4. Mantene la regla graphify-first para entornos donde la herramienta este disponible.

@@ -6,29 +6,36 @@ Guía operativa completa para agentes trabajando en TenderFlow (nombre históric
 
 ## 1. Mapa detallado de paquetes
 
-| Paquete | Propósito | Entry / fachada | Typing strict | Docs relacionados |
-|---|---|---|---|---|
-| `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | Sí | [ADR-004](adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md) |
-| `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, schemas (pandera), signing (JWKS), types | `shared/dto.py`, `shared/schemas.py` | Sí | [SECURITY.md](SECURITY.md) |
-| `services/` | Lógica de dominio pura: licitaciones, normalization, classification, clusters, analytics_engine (DuckDB), rate_limiting, investigador (FTS5) | `services/licitaciones.py` | Sí (core) | [ADR-007](adr/[[ADR-007-services-domain-layer|ADR-007]]-services-domain-layer.md), [ADR-005](adr/[[ADR-005-clustering-ctfidf-minibatch|ADR-005]]-clustering-ctfidf-minibatch.md) |
-| `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | Solo `db.database`, `db.users` | [database-schema.md](database-schema.md), [ADR-001](adr/[[ADR-001-sql-crudo-vs-orm|ADR-001]]-sql-crudo-vs-orm.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
-| `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; rutas en `api/routes/{health,licitaciones,search,exports,me,meta,feedback,webhooks,...}.py` | No (overrides activos) | [ADR-006](adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md) |
-| `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | — | — |
-| `scraper/` | Pipeline PLACSP: descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py` (SQL manual, S608 suppressed) | Selectivo | — |
-| `scheduler/` | Jobs cron: `run_update` (scraper), `kpi_precompute`, `loop` | `scheduler/loop.py`, `scheduler/run_update.py` | Sí | — |
-| `llm/` | Cliente y providers LLM (opcional) | `llm/client.py`, `llm/providers/` | — | — |
-| `observability/` | structlog config, Prometheus metrics, healthcheck, dashboards Grafana | `observability/logging.py` | — | [sli-slo.md](sli-slo.md) |
-| `tests/` | pytest con auto-marking, fixtures aisladas (tmp_db), markers unit/integration/e2e/property/load | `tests/conftest.py` | — | — |
+**Typing**: todo el código de producción pasa mypy strict (AGENTS.md §3.1). No hay
+paquetes exentos — no reproduzcas aquí un estado por paquete, envejece mal.
+
+| Paquete | Propósito | Entry / fachada | Docs relacionados |
+|---|---|---|---|
+| `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | [ADR-004](adr/ADR-004-sqlite-turso-vs-postgres.md) (histórico; superado por [ADR-016](adr/ADR-016-destino-persistencia-supabase.md)/[ADR-021](adr/ADR-021-retirada-sqlite.md)) |
+| `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, schemas (pandera), signing (JWKS), ssrf, csrf, types | `shared/dto.py`, `shared/schemas.py` | [SECURITY.md](SECURITY.md) |
+| `services/` | Biblioteca de dominio: licitaciones, normalization, classification, clusters, rate_limiting, `analytics_engine.py` (DuckDB) + subpaquetes `analytics/`, `competitive/`, `investigador/` (FTS Postgres `tsvector`), `ml/`, `rag/` | `services/licitaciones.py` | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
+| `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-022](adr/ADR-022-frontera-de-persistencia.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
+| `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; 27 routers en `api/routes/` (`ls api/routes/` es la lista vigente) | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md), [api-design.md](api-design.md) |
+| `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | [frontend-data-invariants.md](frontend-data-invariants.md) ([ADR-014](adr/ADR-014-integridad-analitica-frontend.md)) |
+| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED): descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py` (SQL manual, S608 suppressed) | [ADR-009](adr/ADR-009-framework-conectores-multifuente.md) |
+| `scheduler/` | Jobs cron: `run_update`, precomputes (`kpi_`, `aggregates_`), drift, alertas, DLQ retry, + `scheduler/jobs/` (daily_atom, recent_bulk, ml_predicciones, documentos_embeddings, retention_cleanup, watchlist_rules) | `scheduler/loop.py`, `scheduler/run_update.py` | [ADR-012](adr/ADR-012-plano-unico-orquestacion.md); inventario vigente y su plano: [STATUS.md](STATUS.md) |
+| `llm/` | Cliente y providers LLM (opcional): OpenAI, Anthropic y NVIDIA NIM (vía API compatible OpenAI), presupuesto/circuit-breaker en `budget.py` | `llm/client.py`, `llm/providers/` | — |
+| `observability/` | structlog config, Prometheus metrics, healthcheck, dashboards Grafana | `observability/logging.py` | [sli-slo.md](sli-slo.md), [ADR-019](adr/ADR-019-observabilidad-desplegada.md) |
+| `tests/` | pytest con auto-marking; cada test recibe un schema Postgres aislado (`_pg_schema`) vía fixtures `tmp_db`/`api_db`; markers unit/integration/e2e/property/load | `tests/conftest.py` | [testing.md](testing.md), [ADR-018](adr/ADR-018-paridad-motor-tests-produccion.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
 
 ---
 
 ## 2. Workflows
 
+Los pasos de post-flight de abajo asumen entorno completo. Si el CLI `graphify`
+no está instalado, omití `graphify update .`; si no hay Postgres, `/check` corre
+solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
+
 ### 2.1 Añadir un endpoint a la API
 
 1. **Define el contrato**: añade el DTO request/response en `shared/dto.py` (Pydantic v2).
 2. **Repositorio**: si lee/escribe datos nuevos, añade método en `db/repositories/<entidad>.py` (patrón existente: ver `db/repositories/licitaciones.py`). Si requiere SQL nuevo, mantén upsert idempotente.
-3. **Lógica de dominio**: añade función en `services/<dominio>.py`. No mezcles SQL directo en la ruta; pasa por el servicio.
+3. **Lógica de dominio**: si el endpoint transforma datos o aplica una regla de negocio, añade función en `services/<dominio>.py`. Si es CRUD passthrough, la ruta puede llamar a `db.*` directo ([ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md)). SQL nuevo nunca va en la ruta: vive en `db/` (§3).
 4. **Ruta**: crea o edita el router en `api/routes/<recurso>.py`. Inyectá `Depends(get_api_key)` si requiere auth. Registralo en `api/app.py` (sección `include_router`).
 5. **Errores**: si hay condiciones nuevas de error, registra el handler en `api/errors.py` (no lances HTTPException con strings sueltos).
 6. **Tests**: crea `tests/test_<recurso>_api.py` con `fastapi.testclient.TestClient`. Si hace BD, usa fixture `tmp_db` de `conftest.py`. El marker se aplica solo si el nombre del archivo encaja con un token de `_INTEGRATION_TOKENS`.
@@ -75,9 +82,9 @@ Guía operativa completa para agentes trabajando en TenderFlow (nombre históric
 
 | Decisión | Regla |
 |---|---|
-| ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/[[ADR-001-sql-crudo-vs-orm|ADR-001]]-sql-crudo-vs-orm.md)). En `scraper/ml_*` se permite SQL manual (S608 ya suppressed). |
-| ¿Cómo importar desde `db/`? | **Siempre** `from db.database import X` (fachada única). Nunca `from db.connection import ...` ni `from db.upsert import ...` directamente desde código fuera de `db/`. Así los importadores quedan aislados de la organización interna. Ver docstring de `db/database.py` para el catálogo completo de símbolos por submódulo. |
-| ¿Servicio vs repositorio directo en la ruta? | Siempre vía servicio. La ruta solo orquesta auth, validación, serialización. |
+| ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md)). En `scraper/ml_*` se permite SQL manual (S608 ya suppressed). |
+| ¿Cómo importar desde `db/`? | Preferí la fachada `from db.database import X` para aislarte de la organización interna (ver su docstring para el catálogo de símbolos). Pero **abrir conexiones está baneado por TID251 en ambas formas**: ni `db.connection.connect`/`connect_read` ni sus alias `db.database.connect`/`connect_read` fuera de la whitelist de `pyproject.toml` — la fachada no es vía de escape. Necesitás una query nueva: va a `db/` (repository o función de módulo, [ADR-022](adr/ADR-022-frontera-de-persistencia.md)). |
+| ¿Servicio vs `db/` directo en la ruta? | **CRUD simple → `db.*` directo desde la ruta; regla de negocio o transformación de dominio → `services/`** ([ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md)). `services/` es biblioteca, no frontera obligatoria: no envuelvas un passthrough (leer por id, listar paginado, log de auditoría) en una capa que no transforma nada. La ruta siempre orquesta auth, validación y serialización. |
 | ¿Cache en frontend? | Invalidación cross-process vía `shared/cache_signal.py` para refrescar datos server-side tras cada scraping. |
 | ¿Cómo añado settings? | Campo nuevo en `config/settings.py` con `Field(...)` + default seguro + entry en `.env.example`. Nunca leer `os.environ` directo. |
 | ¿Cómo añado un test slow? | Nombrá el archivo con token `performance` o `load`, o marca explícito con `@pytest.mark.slow`. `make test` excluye `integration_e2e` por defecto. |
@@ -104,7 +111,7 @@ Guía operativa completa para agentes trabajando en TenderFlow (nombre históric
 | **FAISS** | Índice vectorial para similitud semántica entre licitaciones (sentence-transformers + faiss-cpu, opcional). |
 | **FTS** | Full-text search con `tsvector`/`ts_rank_cd` de Postgres, usado por `services/investigador/` (el nombre `fts5_*` sobrevive en algunas firmas por compatibilidad de contrato). |
 | **Concept drift** | Detección de cambios en distribución de keywords/labels — `scheduler/concept_drift.py`. |
-| **ETag** | Header HTTP para cache de exports PDF (ver [ADR-006](adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md)). |
+| **ETag** | Header HTTP para cache de exports PDF (ver [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md)). |
 
 ---
 

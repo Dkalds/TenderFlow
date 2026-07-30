@@ -55,6 +55,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-agent-docs
+        name: agent docs (instrucciones vs repo real)
+        entry: python scripts/check_agent_docs.py
+        language: system
+        pass_filenames: false
+        files: '^(AGENTS\.md|CLAUDE\.md|Makefile|skills-lock\.json|\.github/copilot-instructions\.md|docs/(AGENT_PLAYBOOK|graphify-first)\.md|\.claude/(settings\.json|commands/.*|skills/.*)|\.agents/.*|\.codex/hooks\.json|\.opencode/.*)$'
+
+  - repo: local
+    hooks:
       - id: pytest-fast
         name: pytest (fast)
         entry: python -m pytest -x -q --no-header --no-cov -k "not slow" --ignore=tests/test_property_based.py

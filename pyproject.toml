@@ -104,7 +104,9 @@ shared = ["py.typed"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-exclude = [".agents"]
+# Skills vendored desde skills-lock.json: código de terceros, no del proyecto.
+# `.claude/skills` y `.agents/skills` son el mismo contenido para dos herramientas.
+exclude = [".agents", ".claude/skills"]
 
 [tool.ruff.lint]
 select = [
@@ -216,10 +218,10 @@ indent-style = "space"
 exclude = ["db/alembic/versions/v58_security_identity_hardening.py", "*.md"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-# RATCHET TID251: acceso directo a BD solo vía db/repositories/* (AGENTS.md §3.10).
+# RATCHET TID251: todo el SQL vive en db/ (ADR-022, AGENTS.md §3.10).
 # Para añadir un nuevo archivo al ratchet: PROHIBIDO. Solo se quitan líneas de la whitelist.
-"db.connection.connect".msg = "Acceso a BD solo vía db/repositories/* (AGENTS.md §3.10)."
-"db.connection.connect_read".msg = "Lectura solo vía db/repositories/* (AGENTS.md §3.10)."
+"db.connection.connect".msg = "Abrir conexiones solo dentro de db/ (repository o función de módulo) — AGENTS.md §3.10, ADR-022."
+"db.connection.connect_read".msg = "Lectura: abrir conexiones solo dentro de db/ — AGENTS.md §3.10, ADR-022."
 "db.database.connect".msg = "Facade: mismo ban que db.connection.connect."
 "db.database.connect_read".msg = "Facade: mismo ban que db.connection.connect_read."
 

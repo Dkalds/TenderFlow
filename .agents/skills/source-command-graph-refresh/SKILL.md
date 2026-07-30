@@ -18,7 +18,7 @@ Pasos:
 2. Ejecuta: `graphify update .`
 3. Si hubo refactor grande (renames, eliminación de módulos), reintenta con: `graphify update . --force`
 4. Verifica que `mtime` de `graph.json` cambió. Si no cambió y había edits a .py recientes, reportá warning.
-5. Si existe `graphify-out/.graph_stale` (flag dejado por el hook PostToolUse), borrarlo: `rm graphify-out/.graph_stale`.
+5. Si existe `graphify-out/.graph_stale` (flag que deja el hook PreToolUse `pretooluse_edit_stale.py` al editar un `.py`), borrarlo: `rm graphify-out/.graph_stale`.
 
 Reportá:
 - Tamaño antes/después de `graph.json`.

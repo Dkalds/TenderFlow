@@ -80,6 +80,10 @@ htmlcov/
 # Claude worktrees (local-only)
 .claude/worktrees/
 
+# Settings locales de cada máquina (permisos, rutas del venv, MCPs personales).
+# Los ajustes compartidos van en .claude/settings.json, que sí se commitea.
+.claude/settings.local.json
+
 # graphify - local-only files (graph.json, GRAPH_REPORT.md, graph.html are committed)
 graphify-out/manifest.json
 graphify-out/cost.json
