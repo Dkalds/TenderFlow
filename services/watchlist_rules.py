@@ -36,16 +36,25 @@ class WatchlistRule(BaseModel):
     ccaa: str | None = None
     frequency: Frequency = "daily"
     active: bool = True
+    organization_id: int | None = None
+    visibility: Literal["private", "organization"] = "private"
 
 
-def create_rule(user_key: str, rule: WatchlistRule, *, user_id: int | None = None) -> int:
+def create_rule(
+    user_key: str,
+    rule: WatchlistRule,
+    *,
+    user_id: int | None = None,
+    organization_id: int | None = None,
+    visibility: str = "private",
+) -> int:
     """Persiste una regla nueva y devuelve su id."""
     with connect() as c:
         cur = c.execute(
             "INSERT INTO watchlist_rules "
             "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
-            " frequency, active) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " frequency, active, organization_id, visibility) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user_key,
                 user_id,
@@ -56,21 +65,35 @@ def create_rule(user_key: str, rule: WatchlistRule, *, user_id: int | None = Non
                 rule.ccaa,
                 rule.frequency,
                 1 if rule.active else 0,
+                organization_id,
+                visibility,
             ),
         )
         rid = cur.lastrowid
     return int(rid) if rid is not None else 0
 
 
-def list_rules(user_key: str) -> list[WatchlistRule]:
+def list_rules(
+    user_key: str, organization_id: int | None = None
+) -> list[WatchlistRule]:
     """Reglas de un usuario, más recientes primero."""
     with connect() as c:
-        rows = c.execute(
-            "SELECT id, nombre, keyword, cpv, min_importe, ccaa, frequency, active "
-            "FROM watchlist_rules WHERE user_key = ? "
-            "ORDER BY created_at DESC, id DESC",
-            (user_key,),
-        ).fetchall()
+        if organization_id is None:
+            rows = c.execute(
+                "SELECT id, nombre, keyword, cpv, min_importe, ccaa, frequency, active, "
+                "organization_id, visibility FROM watchlist_rules WHERE user_key = ? "
+                "ORDER BY created_at DESC, id DESC",
+                (user_key,),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT id, nombre, keyword, cpv, min_importe, ccaa, frequency, active, "
+                "organization_id, visibility FROM watchlist_rules "
+                "WHERE organization_id = ? "
+                "AND (visibility = 'organization' OR user_key = ?) "
+                "ORDER BY created_at DESC, id DESC",
+                (organization_id, user_key),
+            ).fetchall()
     return [
         WatchlistRule(
             id=row[0],
@@ -81,19 +104,27 @@ def list_rules(user_key: str) -> list[WatchlistRule]:
             ccaa=row[5],
             frequency=row[6],
             active=bool(row[7]),
+            organization_id=row[8],
+            visibility=row[9],
         )
         for row in rows
     ]
 
 
-def update_rule(user_key: str, rule_id: int, rule: WatchlistRule) -> bool:
+def update_rule(
+    user_key: str,
+    rule_id: int,
+    rule: WatchlistRule,
+    organization_id: int | None = None,
+) -> bool:
     """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
     with connect() as c:
         cur = c.execute(
             "UPDATE watchlist_rules SET "
             "nombre = ?, keyword = ?, cpv = ?, min_importe = ?, ccaa = ?, "
             "frequency = ?, active = ? "
-            "WHERE id = ? AND user_key = ?",
+            "WHERE id = ? AND user_key = ? "
+            "AND (? IS NULL OR organization_id = ?)",
             (
                 rule.nombre,
                 rule.keyword,
@@ -104,6 +135,8 @@ def update_rule(user_key: str, rule_id: int, rule: WatchlistRule) -> bool:
                 1 if rule.active else 0,
                 rule_id,
                 user_key,
+                organization_id,
+                organization_id,
             ),
         )
         return bool(cur.rowcount > 0)
@@ -119,12 +152,15 @@ def set_active(user_key: str, rule_id: int, active: bool) -> bool:
         return bool(cur.rowcount > 0)
 
 
-def delete_rule(user_key: str, rule_id: int) -> bool:
+def delete_rule(
+    user_key: str, rule_id: int, organization_id: int | None = None
+) -> bool:
     """Borra una regla propia. ``False`` si no existe o no es del usuario."""
     with connect() as c:
         cur = c.execute(
-            "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ?",
-            (rule_id, user_key),
+            "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ? "
+            "AND (? IS NULL OR organization_id = ?)",
+            (rule_id, user_key, organization_id, organization_id),
         )
         return bool(cur.rowcount > 0)
 

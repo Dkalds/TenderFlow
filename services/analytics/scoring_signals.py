@@ -84,6 +84,7 @@ def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
         ) sub
         JOIN licitaciones l ON l.id_externo = sub.licitacion_id
         WHERE l.cpv IS NOT NULL
+          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND length(l.cpv) >= 4
         GROUP BY cpv4
         HAVING COUNT(*) >= 3
@@ -95,8 +96,10 @@ def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
                 a.licitacion_id,
                 MAX(a.n_ofertas_recibidas) AS max_ofertas
             FROM adjudicaciones a
+            JOIN licitaciones l ON l.id_externo = a.licitacion_id
             WHERE a.n_ofertas_recibidas IS NOT NULL
               AND a.fecha_adjudicacion >= :cutoff
+              AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
             GROUP BY a.licitacion_id
         ) sub
     """
@@ -145,6 +148,7 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         WHERE a.fecha_adjudicacion >= :cutoff
+          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND l.cpv IS NOT NULL
           AND length(l.cpv) >= 4
           AND a.importe_licitacion > 0
@@ -161,7 +165,9 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
             END
         ) AS baja_media_global
         FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
         WHERE a.fecha_adjudicacion >= :cutoff
+          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND a.importe_licitacion > 0
           AND a.importe_adjudicado IS NOT NULL
     """

@@ -1,5 +1,14 @@
 ﻿import { describe, it, expect } from "vitest";
-import { SECTIONS, ALL_PAGES, findPage, findSection } from "@/lib/navigation";
+import { SECTIONS, ALL_PAGES, PRODUCT_SPACES, findPage, findProductSpace, findSection } from "@/lib/navigation";
+
+describe("primary product spaces", () => {
+  it("organizes the product around Radar, Oportunidades and Mercado", () => {
+    expect(PRODUCT_SPACES.map((space) => space.label)).toEqual(["Radar", "Oportunidades", "Mercado"]);
+    expect(findProductSpace("radar")?.label).toBe("Radar");
+    expect(findProductSpace("oportunidades/p-1")?.label).toBe("Oportunidades");
+    expect(findProductSpace("competidores")?.label).toBe("Mercado");
+  });
+});
 
 describe("SECTIONS (NAV_SECTIONS)", () => {
   it("is a non-empty array", () => {

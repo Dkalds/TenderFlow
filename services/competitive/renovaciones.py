@@ -21,7 +21,11 @@ from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
 
 # FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos.
-from services.sql_fragments import FECHA_FIN_SQL, fecha_fin_sql  # noqa: F401
+from services.sql_fragments import (  # noqa: F401
+    FECHA_FIN_SQL,
+    TECHNOLOGY_OBSERVED_SQL,
+    fecha_fin_sql,
+)
 
 # ── Umbrales de "contrato caliente" ───────────────────────────────────────
 # Definición canónica y única (ADR-014): vivía duplicada en el cliente
@@ -159,6 +163,7 @@ def proximas_renovaciones(
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
         WHERE {fecha_fin} {_rango_vencimiento_sql()}
+          AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
     params: list[Any] = [months_ahead]
@@ -205,6 +210,7 @@ def resumen_renovaciones(
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         WHERE {fecha_fin} {_rango_vencimiento_sql()}
+          AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
     params: list[Any] = [months_ahead]
@@ -255,6 +261,7 @@ def totales_renovaciones(
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
         WHERE {fecha_fin} {_rango_vencimiento_sql()}
+          AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
     params: list[Any] = [RIESGO_ALTO, RIESGO_ALTO, DIAS_CALIENTE, months_ahead]

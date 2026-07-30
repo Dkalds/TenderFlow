@@ -8,9 +8,10 @@ Dimensiones (pesos configurables en ``settings.SCORING_WEIGHTS``, suman 100):
   media global o neutral. Datos reales de adjudicaciones 24 meses.
 - **margen** (20): 1 - min(baja_esperada/0.40, 1). Fuente: predicciones_baja.p50
   → fallback baja histórica CPV-4 → media global → neutral.
-- **afinidad** (15, opcional): min(hits/3, 1) sobre keywords configuradas en
-  ``settings.SCORING_AFINIDAD_KEYWORDS`` o en el perfil del usuario.
-  Si la lista está vacía la key se omite del desglose y su peso se redistribuye.
+- **afinidad** (15, opcional): similitud semántica con el portfolio explícito
+  (keywords, CPVs y referencias contractuales) usando embeddings en lote. Si
+  no están disponibles, conserva el fallback determinista ``min(hits/3, 1)``
+  y coincidencia CPV. Sin portfolio, el peso se redistribuye.
 - **riesgo** (penalización pura, fuera de la suma): sin_importe -5, sin_titulo -3,
   sin_plazo -2. fuera_de_rango -15 (importe fuera del rango del perfil de usuario).
 
@@ -31,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from observability.logging import get_logger
+from services.analytics.affinity import build_portfolio, score_affinity_batch
 from services.analytics.scoring_signals import (
     CompetenciaStats,
     MargenStats,
@@ -93,6 +95,8 @@ class ScoringProfile:
 
     weights: dict[str, int] | None = None
     afinidad_keywords: list[str] | None = None
+    cpvs: list[str] | None = None
+    contracts: list[Any] | None = None
     importe_min: float | None = None
     importe_max: float | None = None
 
@@ -106,6 +110,8 @@ class _ScoringContext:
     # Pesos efectivos (ya redistribuidos si afinidad está vacía)
     weights: dict[str, int]
     keywords: list[str]
+    affinity_scores: dict[str, float]
+    affinity_method: str
     competencia_stats: CompetenciaStats
     margen_stats: MargenStats
     # Rango de importe del perfil de usuario (None = sin restricción)
@@ -179,7 +185,14 @@ def _build_context(df: pd.DataFrame, profile: ScoringProfile | None = None) -> _
     else:
         keywords = list(settings.SCORING_AFINIDAD_KEYWORDS)
 
-    eff_weights = _effective_weights(weights_raw, keywords)
+    cpvs = list(profile.cpvs or []) if profile is not None else []
+    contracts = list(profile.contracts or []) if profile is not None else []
+    portfolio = build_portfolio(keywords=keywords, cpvs=cpvs, contracts=contracts)
+    eff_weights = _effective_weights(
+        weights_raw,
+        [*portfolio.keywords, *portfolio.cpvs, *portfolio.contracts],
+    )
+    affinity_batch = score_affinity_batch(df, portfolio)
 
     comp_stats = load_competencia_stats()
     margen_stats = load_margen_stats()
@@ -193,6 +206,8 @@ def _build_context(df: pd.DataFrame, profile: ScoringProfile | None = None) -> _
         imp_p90=imp_p90,
         weights=eff_weights,
         keywords=keywords,
+        affinity_scores=affinity_batch.scores,
+        affinity_method=affinity_batch.method,
         competencia_stats=comp_stats,
         margen_stats=margen_stats,
         importe_min=profile.importe_min if profile else None,
@@ -281,13 +296,13 @@ def _score_row(
         flags.append("sin_prediccion")
     desglose["margen"] = round(d_margen, 2)
 
-    # 5. Afinidad — solo si hay keywords configuradas (y su peso está activo)
-    if ctx.keywords and "afinidad" in w:
-        hits = sum(1 for kw in ctx.keywords if kw.casefold() in titulo_lower)
-        fraccion_af = min(hits / 3, 1.0)
+    # 5. Afinidad — similitud semántica precalculada en lote; el servicio de
+    # afinidad conserva el fallback histórico determinista si no hay embeddings.
+    if ctx.affinity_scores and "afinidad" in w:
+        fraccion_af = ctx.affinity_scores.get(id_externo, 0.0)
         d_afinidad = fraccion_af * w["afinidad"]
         desglose["afinidad"] = round(d_afinidad, 2)
-    # Si no hay keywords, la key "afinidad" se omite del desglose (peso ya redistribuido)
+    # Sin portfolio, la key se omite del desglose (peso ya redistribuido).
 
     # 6. Riesgo — penalización pura (fuera de la suma, sin afectar datos de cobertura)
     d_riesgo = 0.0
@@ -404,6 +419,10 @@ def get_scoring(
                 profile = ScoringProfile(
                     weights=raw_profile.get("weights"),
                     afinidad_keywords=raw_profile.get("afinidad_keywords"),
+                    cpvs=raw_profile.get("cpvs"),
+                    # Campo extensible: solo se usa si el perfil lo aporta
+                    # explícitamente. No se infiere empresa/portfolio por nombre.
+                    contracts=raw_profile.get("contracts"),
                     importe_min=raw_profile.get("importe_min"),
                     importe_max=raw_profile.get("importe_max"),
                 )

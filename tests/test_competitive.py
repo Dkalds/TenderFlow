@@ -39,6 +39,7 @@ def insert_contract(
     organo: str = "Ministerio X",
     n_ofertas: int = 4,
     tecnologia: str | None = None,
+    analysis_universe: str | None = None,
 ):
     """Inserta licitación + adjudicación y resuelve la empresa contra el maestro."""
     from db.upsert import (
@@ -61,6 +62,7 @@ def insert_contract(
         duracion_valor=duracion_valor,
         duracion_unidad=duracion_unidad,
         tecnologia=tecnologia,
+        analysis_universe=analysis_universe,
     )
     upsert_licitaciones([lic])
     adj = Adjudicacion(
@@ -80,6 +82,47 @@ def resolve(db):
     from services.entity_resolution import resolve_all_unlinked
 
     return resolve_all_unlinked()
+
+
+def test_market_aggregates_exclude_watched_company_awards_universe(db):
+    """El namespace de observación NIF no duplica el corpus tecnológico."""
+    from services.competitive.bajas import bajas_agregadas
+    from services.competitive.mercado import (
+        cuota_mercado,
+        listar_adjudicaciones_empresa,
+        metric_scope,
+    )
+
+    insert_contract(db, "TECH-ONE", "Tecnológica S.L.", adjudicado=100.0)
+    insert_contract(
+        db,
+        "WATCHED-ONE",
+        "Empresa vigilada S.L.",
+        adjudicado=900.0,
+        analysis_universe="watched_company_awards_observed",
+    )
+    resolve(db)
+
+    scope = metric_scope()
+    ranking = cuota_mercado()
+    bajas = bajas_agregadas(min_contratos=1)
+
+    assert scope.denominator_records == 1
+    assert scope.denominator_amount_eur == 100.0
+    assert len(ranking) == 1
+    assert ranking[0]["empresa"] != "Empresa vigilada S.L."
+    assert bajas[0]["contratos"] == 1
+
+    with db.connect_read() as c:
+        watched_empresa_id = c.execute(
+            "SELECT empresa_id FROM adjudicaciones WHERE licitacion_id = 'WATCHED-ONE'"
+        ).fetchone()[0]
+    watched_rows = listar_adjudicaciones_empresa(
+        watched_empresa_id,
+        analysis_universe="watched_company_awards_observed",
+    )
+    assert watched_rows["total"] == 1
+    assert watched_rows["items"][0]["licitacion_id"] == "WATCHED-ONE"
 
 
 # ---------------------------------------------------------------------------

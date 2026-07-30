@@ -20,6 +20,18 @@ VALID_PAIR = (
     "l.importe > 0 AND a.importe_adjudicado > 0 AND a.importe_adjudicado <= l.importe * 1.5"
 )
 
+# Universo por defecto de los agregados del radar. Las filas anteriores al
+# linaje se consideran legado del radar porque el único pipeline histórico
+# filtraba tecnología; las nuevas fuentes deben declarar su universo y quedan
+# fuera salvo que una métrica las solicite expresamente.
+TECHNOLOGY_OBSERVED_SQL = (
+    "COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'"
+)
+TECHNOLOGY_OBSERVED_L2_SQL = (
+    "COALESCE(l2.analysis_universe, 'technology_observed') = 'technology_observed'"
+)
+WATCHED_COMPANY_AWARDS_SQL = "l.analysis_universe = 'watched_company_awards_observed'"
+
 # Fecha de fin efectiva del contrato, con prioridad:
 # 1. ``licitaciones.fecha_fin`` explícita (solo ~6% de las filas).
 # 2. ``fecha_inicio + duracion`` (unidades CODICE: ANN/MON/DAY).

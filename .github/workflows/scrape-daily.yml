@@ -71,6 +71,48 @@ jobs:
           LOG_FORMAT: json
         run: python -m scraper.connectors.ted
 
+      # RSS oficiales sin credenciales. Su alcance es de descubrimiento reciente
+      # y cada fuente queda aislada para que una indisponibilidad regional no
+      # impida la actualización nacional ni las demás fuentes.
+      - name: Run Galicia RSS connector
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          LOG_FORMAT: json
+        run: python -m scraper.connectors.galicia
+
+      - name: Run Euskadi RSS connector
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          LOG_FORMAT: json
+        run: python -m scraper.connectors.euskadi
+
+      # Carril independiente del radar TI: solo conserva adjudicaciones cuya
+      # empresa está vigilada por NIF canónico. Sin NIF vigilados termina sin
+      # descargar el feed; el timeout aísla cualquier degradación de PLACE.
+      - name: Run watched-company awards connector
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          ENV: dev
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          LOG_FORMAT: json
+        run: python -m scraper.connectors.watched_company_awards
+
       # Conectores Fase 5 (RFC 20260611-1). Se omiten hasta que sus
       # variables estén configuradas tras validar las fuentes vivas
       # (scripts/probe_pscp.py · python -m scraper.connectors.tacrc --check).

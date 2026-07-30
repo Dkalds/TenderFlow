@@ -19,6 +19,12 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
+from services.organizations import (
+    OrganizationAccessError,
+    OrganizationPermissionError,
+    claim_legacy_scope,
+    resolve_organization,
+)
 from services.watchlist_rules import (
     Frequency,
     WatchlistRule,
@@ -64,6 +70,8 @@ class WatchlistRuleBody(BaseModel):
     ccaa: str | None = Field(default=None, max_length=80)
     frequency: Frequency = "daily"
     active: bool = True
+    organization_id: int | None = Field(default=None, ge=1)
+    visibility: str = Field(default="private", pattern="^(private|organization)$")
 
     def to_rule(self) -> WatchlistRule:
         return WatchlistRule(**self.model_dump())
@@ -76,7 +84,9 @@ class WatchlistRuleOut(WatchlistRule):
     email: str | None = None  # email de entrega, si lo tiene
 
 
-def _rules_with_counts(user_key: str) -> list[WatchlistRuleOut]:
+def _rules_with_counts(
+    user_key: str, organization_id: int | None = None
+) -> list[WatchlistRuleOut]:
     """Lista las reglas del usuario con su conteo real de matches y email de entrega."""
     from db.database import connect_read
 
@@ -85,11 +95,21 @@ def _rules_with_counts(user_key: str) -> list[WatchlistRuleOut]:
     # a la query sin email (tolerancia a schema viejo).
     try:
         with connect_read() as c:
+            where = (
+                "user_key = ?"
+                if organization_id is None
+                else "organization_id = ? AND (visibility = 'organization' OR user_key = ?)"
+            )
+            params = (
+                (user_key,)
+                if organization_id is None
+                else (organization_id, user_key)
+            )
             cur = c.execute(
                 "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
-                "frequency, active, last_notified_at, email "
-                "FROM watchlist_rules WHERE user_key = ? ORDER BY id",
-                (user_key,),
+                "frequency, active, last_notified_at, email, organization_id, visibility "
+                "FROM watchlist_rules WHERE " + where + " ORDER BY id",
+                params,
             )
             cols = [d[0] for d in cur.description]
             rows_raw = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
@@ -133,9 +153,19 @@ def _matches_for(rule: WatchlistRule, limit: int) -> list[dict[str, Any]]:
 
 @router.get("", summary="Listar reglas del usuario (con conteo real de matches)")
 async def get_rules(
+    organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, list[WatchlistRuleOut]]:
-    items = await run_db(_rules_with_counts, _user_key(ctx))
+    resolved_id: int | None = None
+    if organization_id is not None:
+        try:
+            resolved_id, _ = await run_db(
+                resolve_organization, int(ctx["user_id"]), organization_id
+            )
+            await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
+        except OrganizationAccessError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    items = await run_db(_rules_with_counts, _user_key(ctx), resolved_id)
     return {"items": items}
 
 
@@ -151,7 +181,18 @@ async def post_rule(
     rule = body.to_rule()
 
     def _create() -> int:
-        rule_id = create_rule(user_key, rule, user_id=int(ctx["user_id"]))
+        resolved_id: int | None = None
+        if body.organization_id is not None:
+            resolved_id, _ = resolve_organization(
+                int(ctx["user_id"]), body.organization_id, write=True
+            )
+        rule_id = create_rule(
+            user_key,
+            rule,
+            user_id=int(ctx["user_id"]),
+            organization_id=resolved_id,
+            visibility=body.visibility,
+        )
         if email is not None:
             with connect() as c:
                 c.execute(
@@ -160,7 +201,10 @@ async def post_rule(
                 )
         return rule_id
 
-    rule_id = await run_db(_create)
+    try:
+        rule_id = await run_db(_create)
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     log.info("watchlist_rule_created", rule_id=rule_id, has_email=email is not None)
     return {"id": rule_id}
 
@@ -177,7 +221,12 @@ async def put_rule(
     email = _ctx_email(ctx)
 
     def _update() -> bool:
-        ok = update_rule(user_key, rule_id, body.to_rule())
+        resolved_id: int | None = None
+        if body.organization_id is not None:
+            resolved_id, _ = resolve_organization(
+                int(ctx["user_id"]), body.organization_id, write=True
+            )
+        ok = update_rule(user_key, rule_id, body.to_rule(), resolved_id)
         if ok and email is not None:
             with connect() as c:
                 c.execute(
@@ -186,7 +235,10 @@ async def put_rule(
                 )
         return ok
 
-    ok = await run_db(_update)
+    try:
+        ok = await run_db(_update)
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
     return {"status": "ok"}
@@ -195,9 +247,21 @@ async def put_rule(
 @router.delete("/{rule_id}", summary="Eliminar una regla propia")
 async def delete_rule_route(
     rule_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, str]:
-    ok = await run_db(delete_rule, _user_key(ctx), rule_id)
+    resolved_id: int | None = None
+    if organization_id is not None:
+        try:
+            resolved_id, _ = await run_db(
+                resolve_organization,
+                int(ctx["user_id"]),
+                organization_id,
+                write=True,
+            )
+        except (OrganizationAccessError, OrganizationPermissionError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    ok = await run_db(delete_rule, _user_key(ctx), rule_id, resolved_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
     return {"status": "ok"}
@@ -208,8 +272,20 @@ async def get_rule_matches(
     rule_id: int,
     ctx: dict[str, Any] = Depends(require_any_auth),
     limit: int = Query(default=50, ge=1, le=200),
+    organization_id: int | None = Query(default=None, ge=1),
 ) -> dict[str, Any]:
-    by_id = {r.id: r for r in await run_db(list_rules, _user_key(ctx))}
+    resolved_id: int | None = None
+    if organization_id is not None:
+        try:
+            resolved_id, _ = await run_db(
+                resolve_organization, int(ctx["user_id"]), organization_id
+            )
+        except OrganizationAccessError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    by_id = {
+        r.id: r
+        for r in await run_db(list_rules, _user_key(ctx), resolved_id)
+    }
     rule = by_id.get(rule_id)
     if rule is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")

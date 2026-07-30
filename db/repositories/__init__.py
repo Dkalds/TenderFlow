@@ -13,6 +13,7 @@ from db.repositories.extraction_runs import ExtractionRunRepository
 from db.repositories.feedback import FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.predicciones import PrediccionesRepository
+from db.repositories.watched_companies import WatchedCompanyRepository
 from db.repositories.watchlist import WatchlistRepository
 from db.repositories.webhooks import WebhookRepository
 
@@ -26,6 +27,7 @@ __all__ = [
     "FeedbackRepository",
     "LicitacionRepository",
     "PrediccionesRepository",
+    "WatchedCompanyRepository",
     "WatchlistRepository",
     "WebhookRepository",
 ]

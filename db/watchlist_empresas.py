@@ -20,6 +20,8 @@ class WatchlistEmpresaEntry:
     empresa_id: int
     email: str | None = None
     frequency: str = "daily"  # 'immediate' | 'daily' | 'weekly'
+    organization_id: int | None = None
+    visibility: str = "private"
 
 
 def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
@@ -32,33 +34,63 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
         if existing is not None:
             return None
         cur = c.execute(
-            "INSERT INTO watchlist_empresas (user_key, empresa_id, email, frequency, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (entry.user_key, entry.empresa_id, entry.email, entry.frequency, now_utc_iso()),
+            "INSERT INTO watchlist_empresas "
+            "(user_key, empresa_id, email, frequency, created_at, organization_id, visibility) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                entry.user_key,
+                entry.empresa_id,
+                entry.email,
+                entry.frequency,
+                now_utc_iso(),
+                entry.organization_id,
+                entry.visibility,
+            ),
         )
         return int(cur.lastrowid)
 
 
-def remove_entry(user_key: str, empresa_id: int) -> bool:
+def remove_entry(
+    user_key: str, empresa_id: int, organization_id: int | None = None
+) -> bool:
     with connect() as c:
-        cur = c.execute(
-            "DELETE FROM watchlist_empresas WHERE user_key = ? AND empresa_id = ?",
-            (user_key, empresa_id),
-        )
+        if organization_id is None:
+            cur = c.execute(
+                "DELETE FROM watchlist_empresas WHERE user_key = ? AND empresa_id = ?",
+                (user_key, empresa_id),
+            )
+        else:
+            cur = c.execute(
+                "DELETE FROM watchlist_empresas WHERE organization_id = ? "
+                "AND empresa_id = ? AND (visibility = 'organization' OR user_key = ?)",
+                (organization_id, empresa_id, user_key),
+            )
         return bool(cur.rowcount)
 
 
-def list_entries(user_key: str) -> list[dict[str, Any]]:
+def list_entries(
+    user_key: str, organization_id: int | None = None
+) -> list[dict[str, Any]]:
     """Empresas vigiladas por un usuario, con nombre canónico."""
     with connect() as c:
+        if organization_id is None:
+            where = "w.user_key = ?"
+            params: tuple[Any, ...] = (user_key,)
+        else:
+            where = (
+                "w.organization_id = ? AND "
+                "(w.visibility = 'organization' OR w.user_key = ?)"
+            )
+            params = (organization_id, user_key)
         return rows_to_dicts(
             c.execute(
                 "SELECT w.id, w.empresa_id, e.nombre_canonico, e.nif_canonico, "
-                "       w.email, w.frequency, w.created_at, w.last_notified_at "
+                "       w.email, w.frequency, w.created_at, w.last_notified_at, "
+                "       w.organization_id, w.visibility "
                 "FROM watchlist_empresas w "
                 "JOIN empresas e ON e.empresa_id = w.empresa_id "
-                "WHERE w.user_key = ? ORDER BY e.nombre_canonico",
-                (user_key,),
+                "WHERE " + where + " ORDER BY e.nombre_canonico",
+                params,
             )
         )
 

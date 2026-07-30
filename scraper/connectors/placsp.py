@@ -59,15 +59,21 @@ class _PlacspParseCore:
             parse_document_references,
             parse_entry,
         )
+        from scraper.lineage import current_filter_version
         from scraper.pipeline import _ml_classify_entry
 
         try:
             lic: Licitacion | None = parse_entry(entry_elem)
+            inclusion_reason = "keyword"
             if lic is None:
                 # Fallback ML para entradas TI (CPV 48/72) sin keywords
                 lic = _ml_classify_entry(entry_elem)
+                inclusion_reason = "ml_cpv_rescue"
             if lic is None:
                 return None
+            lic.filter_version = current_filter_version()
+            lic.inclusion_reason = inclusion_reason
+            lic.analysis_universe = "technology_observed"
 
             # Anotar fecha_actualizacion_fuente desde el <updated> del feed
             if updated_str:

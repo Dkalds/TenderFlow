@@ -148,51 +148,96 @@ class WatchlistRepository:
     # watchlist_items — favoritos de licitaciones individuales (v45)
     # ------------------------------------------------------------------
 
-    def list_items(self, user_key: str) -> list[dict[str, Any]]:
+    def list_items(
+        self,
+        user_key: str,
+        organization_id: int | None = None,
+        user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Favoritos del usuario, enriquecidos con datos de la licitación.
 
         El backend es la fuente de la analítica/join (ADR-014): el frontend
         nunca debe fabricar este enriquecimiento por su cuenta.
         """
         with connect_read() as c:
-            cur = c.execute(
+            sql = (
                 "SELECT wi.id, wi.id_externo, wi.created_at, "
+                "       wi.organization_id, wi.visibility, "
                 "       l.titulo, l.importe, l.estado, l.fecha_publicacion "
                 "FROM watchlist_items wi "
                 "LEFT JOIN licitaciones l ON l.id_externo = wi.id_externo "
-                "WHERE wi.user_key = ? "
-                "ORDER BY wi.created_at DESC, wi.id DESC",
-                (user_key,),
+            )
+            if organization_id is None:
+                sql += "WHERE wi.user_key = ? "
+                params: tuple[Any, ...] = (user_key,)
+            else:
+                sql += (
+                    "WHERE wi.organization_id = ? AND "
+                    "(wi.visibility = 'organization' OR wi.user_id = ? OR wi.user_key = ?) "
+                )
+                params = (organization_id, user_id, user_key)
+            cur = c.execute(
+                sql + "ORDER BY wi.created_at DESC, wi.id DESC",
+                params,
             )
             return rows_to_dicts(cur)
 
-    def add_item(self, user_key: str, user_id: int | None, id_externo: str) -> dict[str, Any]:
+    def add_item(
+        self,
+        user_key: str,
+        user_id: int | None,
+        id_externo: str,
+        organization_id: int | None = None,
+        visibility: str = "private",
+    ) -> dict[str, Any]:
         """Añade un favorito de forma idempotente.
 
         Si el par ``(user_key, id_externo)`` ya existe, no duplica ni falla:
         devuelve el registro existente sin tocarlo.
         """
         with connect() as c:
-            c.execute(
-                "INSERT INTO watchlist_items (user_key, user_id, id_externo) "
-                "VALUES (?, ?, ?) ON CONFLICT(user_key, id_externo) DO NOTHING",
-                (user_key, user_id, id_externo),
-            )
+            if organization_id is None:
+                c.execute(
+                    "INSERT INTO watchlist_items (user_key, user_id, id_externo) "
+                    "VALUES (?, ?, ?) ON CONFLICT(user_key, id_externo) DO NOTHING",
+                    (user_key, user_id, id_externo),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO watchlist_items "
+                    "(user_key, user_id, id_externo, organization_id, visibility) "
+                    "VALUES (?, ?, ?, ?, ?) "
+                    "ON CONFLICT(user_key, id_externo) DO NOTHING",
+                    (user_key, user_id, id_externo, organization_id, visibility),
+                )
             cur = c.execute(
-                "SELECT id, user_key, user_id, id_externo, created_at "
+                "SELECT id, user_key, user_id, id_externo, organization_id, "
+                "visibility, created_at "
                 "FROM watchlist_items WHERE user_key = ? AND id_externo = ?",
                 (user_key, id_externo),
             )
             rows = rows_to_dicts(cur)
         return rows[0] if rows else {}
 
-    def remove_item(self, user_key: str, id_externo: str) -> bool:
+    def remove_item(
+        self,
+        user_key: str,
+        id_externo: str,
+        organization_id: int | None = None,
+    ) -> bool:
         """Elimina un favorito propio. ``True`` si borró algo."""
         with connect() as c:
-            cur = c.execute(
-                "DELETE FROM watchlist_items WHERE user_key = ? AND id_externo = ?",
-                (user_key, id_externo),
-            )
+            if organization_id is None:
+                cur = c.execute(
+                    "DELETE FROM watchlist_items WHERE user_key = ? AND id_externo = ?",
+                    (user_key, id_externo),
+                )
+            else:
+                cur = c.execute(
+                    "DELETE FROM watchlist_items WHERE organization_id = ? "
+                    "AND id_externo = ? AND (visibility = 'organization' OR user_key = ?)",
+                    (organization_id, id_externo, user_key),
+                )
             return bool(cur.rowcount > 0)
 
     def export_items_by_user_key(self, user_key: str) -> list[dict[str, Any]]:

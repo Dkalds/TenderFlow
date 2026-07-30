@@ -100,16 +100,79 @@ class DocumentosRepository:
                 ),
             )
 
-    def mark_extracted(self, documento_id: int, *, texto: str, sha256: str) -> None:
+    def mark_extracted(
+        self,
+        documento_id: int,
+        *,
+        texto: str,
+        sha256: str,
+        pages: list[str] | None = None,
+    ) -> None:
         """Texto extraído con éxito. ``sha256`` es del binario descargado —
         usado por el job de embeddings (F8) para saber si el contenido cambió
-        entre corridas (skip si el hash no varió, delete+reinsert si sí)."""
+        entre corridas (skip si el hash no varió, delete+reinsert si sí).
+
+        Cuando ``pages`` está presente, persiste texto por página y offsets
+        absolutos sobre ``texto`` en la misma transacción. Reintentar reemplaza
+        el conjunto completo y no duplica evidencia.
+        """
         with connect() as c:
             c.execute(
                 "UPDATE documentos SET status = 'extracted', texto = ?, sha256 = ?, "
                 "fetched_at = ?, updated_at = ? WHERE id = ?",
                 (texto, sha256, now_utc_iso(), now_utc_iso(), documento_id),
             )
+            if pages is not None:
+                c.execute(
+                    "DELETE FROM documento_pages WHERE documento_id = ?",
+                    (documento_id,),
+                )
+                page_rows: list[tuple[int, int, str, int, int]] = []
+                offset = 0
+                for page_number, page_text in enumerate(pages, start=1):
+                    start_offset = offset
+                    end_offset = start_offset + len(page_text)
+                    page_rows.append(
+                        (
+                            documento_id,
+                            page_number,
+                            page_text,
+                            start_offset,
+                            end_offset,
+                        )
+                    )
+                    offset = end_offset + 1  # separador ``\n`` del texto agregado
+                if page_rows:
+                    c.executemany(
+                        "INSERT INTO documento_pages "
+                        "(documento_id, page_number, texto, start_offset, end_offset) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        page_rows,
+                    )
+
+    def list_pages(self, documento_id: int) -> list[dict[str, Any]]:
+        """Páginas extraídas y offsets, en orden documental."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT documento_id, page_number, texto, start_offset, end_offset "
+                "FROM documento_pages WHERE documento_id = ? ORDER BY page_number",
+                (documento_id,),
+            )
+            return rows_to_dicts(cur)
+
+    def list_pages_by_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+        """Páginas de todos los pliegos de una licitación, con metadatos de cita."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT dp.documento_id, dp.page_number, dp.texto, "
+                "dp.start_offset, dp.end_offset, d.tipo, d.filename, d.uri "
+                "FROM documento_pages dp "
+                "JOIN documentos d ON d.id = dp.documento_id "
+                "WHERE d.licitacion_id = ? "
+                "ORDER BY d.id, dp.page_number",
+                (licitacion_id,),
+            )
+            return rows_to_dicts(cur)
 
     def mark_error(self, documento_id: int, *, error_detail: str) -> None:
         """Descarga o extracción fallida — no rompe el resto del batch."""

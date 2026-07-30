@@ -8,14 +8,20 @@ variantes del mismo adjudicatario.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from statistics import median
-from typing import Any
+from typing import Any, Literal
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import round_sql
+from services.sql_fragments import (
+    TECHNOLOGY_OBSERVED_L2_SQL,
+    TECHNOLOGY_OBSERVED_SQL,
+    WATCHED_COMPANY_AWARDS_SQL,
+    round_sql,
+)
+from shared.metric_scope import MetricScope
 
 _SEGMENT_COLUMNS = {
     "cpv": "substr(l.cpv, 1, 2)",
@@ -23,6 +29,83 @@ _SEGMENT_COLUMNS = {
     "organo": "l.organo_contratacion",
     "tecnologia": "l.tecnologia",
 }
+
+_ANALYSIS_UNIVERSE_SQL = {
+    "technology_observed": TECHNOLOGY_OBSERVED_SQL,
+    "watched_company_awards_observed": WATCHED_COMPANY_AWARDS_SQL,
+}
+AnalysisUniverse = Literal["technology_observed", "watched_company_awards_observed"]
+
+
+def metric_scope(
+    *,
+    cpv_prefix: str | None = None,
+    ccaa: str | None = None,
+    desde: str | None = None,
+) -> MetricScope:
+    """Alcance exacto del agregado de cuota/HHI sobre el corpus observado."""
+    clauses = [TECHNOLOGY_OBSERVED_SQL, "a.importe_adjudicado > 0", exclude_duplicados_sql()]
+    params: list[Any] = []
+    filters: dict[str, str] = {}
+    if cpv_prefix:
+        clauses.append("l.cpv LIKE ?")
+        params.append(f"{cpv_prefix}%")
+        filters["cpv_prefix"] = cpv_prefix
+    if ccaa:
+        clauses.append("l.ccaa = ?")
+        params.append(ccaa)
+        filters["ccaa"] = ccaa
+    if desde:
+        clauses.append("a.fecha_adjudicacion >= ?")
+        params.append(desde)
+        filters["desde"] = desde
+    where = " AND ".join(clauses)
+    totals_sql = f"""
+        SELECT COUNT(*), COALESCE(SUM(a.importe_adjudicado), 0)
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        WHERE {where}
+    """  # noqa: S608 -- cláusulas constantes, valores parametrizados
+    lineage_sql = f"""
+        SELECT DISTINCT l.fuente, l.filter_version, l.classifier_model_version
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        WHERE {where}
+    """  # noqa: S608 -- mismo scope parametrizado
+    with connect_read() as c:
+        row = c.execute(totals_sql, params).fetchone()
+        lineage = rows_to_dicts(c.execute(lineage_sql, params))
+    sources = sorted({str(item["fuente"]) for item in lineage if item.get("fuente")})
+    filter_versions = sorted(
+        {str(item["filter_version"]) for item in lineage if item.get("filter_version")}
+    )
+    model_versions = sorted(
+        {
+            str(item["classifier_model_version"])
+            for item in lineage
+            if item.get("classifier_model_version")
+        }
+    )
+    return MetricScope(
+        label="Cuota dentro del segmento tecnológico observado",
+        universe=(
+            "technology_observed (más filas históricas previas al linaje); excluye "
+            "watched_company_awards_observed y no representa todo el mercado español"
+        ),
+        denominator_records=int(row[0] or 0),
+        denominator_amount_eur=float(row[1] or 0),
+        filters=filters,
+        sources=sources,
+        filter_versions=filter_versions,
+        model_versions=model_versions,
+        window_from=desde,
+        window_to=date.today().isoformat(),
+        computed_at=datetime.now(UTC).isoformat(),
+        caveat=(
+            "El denominador depende de la cobertura de fuentes y de las reglas de inclusión "
+            "vigentes. Versiones vacías corresponden a filas históricas anteriores al linaje."
+        ),
+    )
 
 
 def cuota_mercado(
@@ -60,7 +143,8 @@ def cuota_mercado(
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-            WHERE a.importe_adjudicado > 0 AND {exclude_duplicados_sql()} {filters}
+            WHERE {TECHNOLOGY_OBSERVED_SQL} AND a.importe_adjudicado > 0
+              AND {exclude_duplicados_sql()} {filters}
             GROUP BY a.empresa_id, empresa
         )
         SELECT empresa_id, empresa, es_ute, contratos, importe, ofertas_medias,
@@ -97,6 +181,7 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             WHERE a.importe_adjudicado > 0 AND {seg_col} IS NOT NULL
+              AND {TECHNOLOGY_OBSERVED_SQL}
               AND {exclude_duplicados_sql()}
             GROUP BY segmento, a.empresa_id
         ),
@@ -114,6 +199,7 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
                     JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
                     WHERE {seg_col.replace("l.", "l2.")} = p.segmento
                       AND a2.importe_adjudicado > 0
+                      AND {TECHNOLOGY_OBSERVED_L2_SQL}
                       AND {exclude_duplicados_sql("l2.id_externo")}) AS contratos,
                    {round_sql("SUM((p.importe * 100.0 / t.total) * (p.importe * 100.0 / t.total))", 0)}
                        AS hhi
@@ -138,6 +224,7 @@ def _scope_sql(
     ccaas: list[str] | None = None,
     tecnologias: list[str] | None = None,
     importe_min: float | None = None,
+    analysis_universe: AnalysisUniverse = "technology_observed",
 ) -> tuple[str, list[Any]]:
     """Build the shared award scope with parameterised values only.
 
@@ -145,7 +232,7 @@ def _scope_sql(
     analítico sin fusionar aún) bajo un único dossier — tiene prioridad sobre
     ``empresa_id`` cuando se informan ambos.
     """
-    clauses = [exclude_duplicados_sql()]
+    clauses = [_ANALYSIS_UNIVERSE_SQL[analysis_universe], exclude_duplicados_sql()]
     params: list[Any] = []
     if empresa_ids:
         placeholders = ", ".join("?" for _ in empresa_ids)
@@ -384,6 +471,7 @@ def perfil_empresa(
     ccaas: list[str] | None = None,
     tecnologias: list[str] | None = None,
     importe_min: float | None = None,
+    analysis_universe: AnalysisUniverse = "technology_observed",
 ) -> dict[str, Any]:
     """Return an explainable, filter-coherent competitive company dossier.
 
@@ -407,6 +495,7 @@ def perfil_empresa(
         ccaas=ccaas,
         tecnologias=tecnologias,
         importe_min=importe_min,
+        analysis_universe=analysis_universe,
     )
     baseline_where, baseline_params = _scope_sql(
         empresa_id=empresa_id,
@@ -415,6 +504,7 @@ def perfil_empresa(
         ccaas=ccaas,
         tecnologias=tecnologias,
         importe_min=importe_min,
+        analysis_universe=analysis_universe,
     )
     market_where, market_params = _scope_sql(
         fecha_desde=fecha_desde,
@@ -423,10 +513,12 @@ def perfil_empresa(
         ccaas=ccaas,
         tecnologias=tecnologias,
         importe_min=importe_min,
+        analysis_universe=analysis_universe,
     )
     history_where, history_params = _scope_sql(
         empresa_id=empresa_id,
         empresa_ids=group_ids if is_group else None,
+        analysis_universe=analysis_universe,
     )
     activity_select = """
         SELECT a.licitacion_id,
@@ -659,6 +751,7 @@ def perfil_empresa(
             "ccaas": ccaas or [],
             "tecnologias": tecnologias or [],
             "importe_min": importe_min,
+            "analysis_universe": analysis_universe,
         },
         "actividad_historica": {
             "contratos": int(history.get("contratos") or 0),
@@ -726,6 +819,7 @@ def listar_adjudicaciones_empresa(
     sort: str = "fecha_desc",
     limit: int = 25,
     offset: int = 0,
+    analysis_universe: AnalysisUniverse = "technology_observed",
 ) -> dict[str, Any]:
     """Return the company's real awards with server-side filtering and pagination.
 
@@ -745,6 +839,7 @@ def listar_adjudicaciones_empresa(
         ccaas=ccaas,
         tecnologias=tecnologias,
         importe_min=importe_min,
+        analysis_universe=analysis_universe,
     )
     clauses = [where]
     if q and q.strip():

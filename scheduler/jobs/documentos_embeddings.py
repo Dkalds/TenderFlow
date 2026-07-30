@@ -13,6 +13,8 @@ scraper):
 1. **Fetch**: documentos ``pending`` → ``scraper.document_fetcher.fetch_and_extract``.
 2. **Embed**: documentos ``extracted`` sin chunks → ``services.rag.chunking.chunk_text``
    → ``services.embeddings.encode_texts`` → ``documento_chunks``.
+3. **Facts**: licitaciones con páginas y sin ficha → extracción Pydantic
+   verificable (solo cuando ``PLIEGO_FACTS_ENABLED=True``).
 
 Si el extra ``[ml-embeddings]`` no está instalado, la fase de embeddings se
 salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``).
@@ -28,6 +30,7 @@ log = get_logger(__name__)
 
 _FETCH_BATCH_SIZE = 50
 _EMBED_BATCH_SIZE = 50
+_FACTS_BATCH_SIZE = 10
 
 
 def _run_fetch_phase(limit: int = _FETCH_BATCH_SIZE) -> dict[str, int]:
@@ -94,12 +97,51 @@ def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
     return counts
 
 
+def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, int]:
+    """Extrae fichas tipadas; fail-open por licitación y con gate de gasto."""
+    from config import settings
+
+    counts = {"procesadas": 0, "needs_review": 0, "error": 0, "disabled": 0}
+    if not settings.PLIEGO_FACTS_ENABLED:
+        counts["disabled"] = 1
+        return counts
+
+    from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
+    from services.rag.fact_sheet import extract_fact_sheet
+
+    repo = TenderFactSheetsRepository()
+    for licitacion_id in repo.list_pending_licitaciones(limit=limit):
+        try:
+            record = extract_fact_sheet(
+                licitacion_id,
+                model=settings.PLIEGO_FACTS_MODEL,
+            )
+        except Exception as exc:
+            counts["error"] += 1
+            log.warning(
+                "documentos_facts_failed",
+                licitacion_id=licitacion_id,
+                error=str(exc),
+            )
+            continue
+        counts["procesadas"] += 1
+        if record.status == "needs_review":
+            counts["needs_review"] += 1
+    return counts
+
+
 def run() -> dict[str, Any]:
     """Entry point del job."""
     fetch_result = _run_fetch_phase()
     embed_result = _run_embed_phase()
-    log.info("documentos_embeddings_job_done", fetch=fetch_result, embed=embed_result)
-    return {"fetch": fetch_result, "embed": embed_result}
+    facts_result = _run_facts_phase()
+    log.info(
+        "documentos_embeddings_job_done",
+        fetch=fetch_result,
+        embed=embed_result,
+        facts=facts_result,
+    )
+    return {"fetch": fetch_result, "embed": embed_result, "facts": facts_result}
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

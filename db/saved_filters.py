@@ -12,40 +12,84 @@ from typing import Any
 from db.database import connect, now_utc_iso
 
 
-def save_filter(user_key: str, name: str, filters_json: str) -> None:
+def save_filter(
+    user_key: str,
+    name: str,
+    filters_json: str,
+    organization_id: int | None = None,
+    visibility: str = "private",
+) -> None:
     """Guarda o actualiza un filtro con nombre para el usuario.
 
     Si ya existe una entrada con (user_key, name) la sobreescribe.
     """
     with connect() as c:
+        if organization_id is None and visibility == "private":
+            c.execute(
+                """
+                INSERT INTO saved_filters (user_key, name, filters_json, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_key, name) DO UPDATE SET
+                    filters_json = excluded.filters_json,
+                    created_at   = excluded.created_at
+                """,
+                (user_key, name, filters_json, now_utc_iso()),
+            )
+            return
         c.execute(
             """
-            INSERT INTO saved_filters (user_key, name, filters_json, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO saved_filters
+                (user_key, name, filters_json, created_at, organization_id, visibility)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_key, name) DO UPDATE SET
                 filters_json = excluded.filters_json,
-                created_at   = excluded.created_at
+                created_at   = excluded.created_at,
+                organization_id = excluded.organization_id,
+                visibility = excluded.visibility
             """,
-            (user_key, name, filters_json, now_utc_iso()),
+            (user_key, name, filters_json, now_utc_iso(), organization_id, visibility),
         )
 
 
-def list_saved_filters(user_key: str) -> list[dict[str, Any]]:
+def list_saved_filters(
+    user_key: str, organization_id: int | None = None
+) -> list[dict[str, Any]]:
     """Devuelve los filtros guardados del usuario, más recientes primero."""
     with connect() as c:
-        cur = c.execute(
-            "SELECT id, name, filters_json, created_at "
-            "FROM saved_filters WHERE user_key = ? ORDER BY created_at DESC",
-            (user_key,),
-        )
+        if organization_id is None:
+            cur = c.execute(
+                "SELECT id, name, filters_json, created_at, organization_id, visibility "
+                "FROM saved_filters WHERE user_key = ? ORDER BY created_at DESC",
+                (user_key,),
+            )
+        else:
+            cur = c.execute(
+                "SELECT id, name, filters_json, created_at, organization_id, visibility "
+                "FROM saved_filters WHERE organization_id = ? "
+                "AND (visibility = 'organization' OR user_key = ?) "
+                "ORDER BY created_at DESC",
+                (organization_id, user_key),
+            )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
-def delete_saved_filter(filter_id: int) -> None:
+def delete_saved_filter(
+    filter_id: int,
+    *,
+    user_key: str | None = None,
+    organization_id: int | None = None,
+) -> None:
     """Elimina un filtro guardado por ID."""
     with connect() as c:
-        c.execute("DELETE FROM saved_filters WHERE id = ?", (filter_id,))
+        if organization_id is None or user_key is None:
+            c.execute("DELETE FROM saved_filters WHERE id = ?", (filter_id,))
+        else:
+            c.execute(
+                "DELETE FROM saved_filters WHERE id = ? AND organization_id = ? "
+                "AND (visibility = 'organization' OR user_key = ?)",
+                (filter_id, organization_id, user_key),
+            )
 
 
 def filters_to_json(

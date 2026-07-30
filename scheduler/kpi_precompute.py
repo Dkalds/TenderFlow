@@ -39,12 +39,16 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     # ── Métricas globales ─────────────────────────────────────────────────
 
     # Total de licitaciones
-    row = conn.execute("SELECT COUNT(*) FROM licitaciones").fetchone()
+    row = conn.execute(
+        "SELECT COUNT(*) FROM licitaciones "
+        "WHERE COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
+    ).fetchone()
     snapshots.append({"metrica": "total_licitaciones", "dimension": "global", "valor": row[0]})
 
     # Importe total y medio
     row = conn.execute(
-        "SELECT SUM(importe), AVG(importe) FROM licitaciones WHERE importe IS NOT NULL"
+        "SELECT SUM(importe), AVG(importe) FROM licitaciones WHERE importe IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
     ).fetchone()
     snapshots.append({"metrica": "importe_total", "dimension": "global", "valor": row[0] or 0.0})
     snapshots.append({"metrica": "importe_medio", "dimension": "global", "valor": row[1] or 0.0})
@@ -52,20 +56,23 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     # Órganos distintos
     row = conn.execute(
         "SELECT COUNT(DISTINCT organo_contratacion) FROM licitaciones "
-        "WHERE organo_contratacion IS NOT NULL"
+        "WHERE organo_contratacion IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
     ).fetchone()
     snapshots.append({"metrica": "n_organos", "dimension": "global", "valor": row[0]})
 
     # CCAA distintas
     row = conn.execute(
-        "SELECT COUNT(DISTINCT ccaa) FROM licitaciones WHERE ccaa IS NOT NULL"
+        "SELECT COUNT(DISTINCT ccaa) FROM licitaciones WHERE ccaa IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
     ).fetchone()
     snapshots.append({"metrica": "n_ccaa", "dimension": "global", "valor": row[0]})
 
     # Licitaciones últimos 30 días
     row = conn.execute(
         "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= "
-        "to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')"
+        "to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD') "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
     ).fetchone()
     snapshots.append({"metrica": "licitaciones_30d", "dimension": "global", "valor": row[0]})
 
@@ -73,7 +80,8 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     row = conn.execute(
         "SELECT COUNT(*) FROM licitaciones "
         "WHERE fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '60 days', 'YYYY-MM-DD') "
-        "  AND fecha_publicacion < to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')"
+        "  AND fecha_publicacion < to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD') "
+        "  AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
     ).fetchone()
     snapshots.append({"metrica": "licitaciones_30d_prev", "dimension": "global", "valor": row[0]})
 
@@ -82,6 +90,7 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT ccaa, COUNT(*) as n, SUM(importe) as total "
         "FROM licitaciones WHERE ccaa IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
         "GROUP BY ccaa ORDER BY n DESC"
     ).fetchall()
     ccaa_data = [{"ccaa": r[0], "n": r[1], "importe": r[2]} for r in rows]
@@ -98,6 +107,7 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
 
     rows = conn.execute(
         "SELECT estado, COUNT(*) FROM licitaciones WHERE estado IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
         "GROUP BY estado ORDER BY 2 DESC"
     ).fetchall()
     estado_data = {r[0]: r[1] for r in rows}
@@ -113,16 +123,20 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     # ── Adjudicaciones ────────────────────────────────────────────────────
 
     row = conn.execute(
-        "SELECT COUNT(*), COUNT(DISTINCT licitacion_id) FROM adjudicaciones"
+        "SELECT COUNT(*), COUNT(DISTINCT a.licitacion_id) FROM adjudicaciones a "
+        "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+        "WHERE COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'"
     ).fetchone()
     snapshots.append({"metrica": "total_adjudicaciones", "dimension": "global", "valor": row[0]})
     snapshots.append({"metrica": "licitaciones_con_adj", "dimension": "global", "valor": row[1]})
 
     # Top 10 adjudicatarios por importe
     rows = conn.execute(
-        "SELECT nombre, COUNT(*) as n, SUM(importe_adjudicado) as total "
-        "FROM adjudicaciones WHERE nombre IS NOT NULL AND importe_adjudicado IS NOT NULL "
-        "GROUP BY nombre ORDER BY total DESC LIMIT 10"
+        "SELECT a.nombre, COUNT(*) as n, SUM(a.importe_adjudicado) as total "
+        "FROM adjudicaciones a JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+        "WHERE a.nombre IS NOT NULL AND a.importe_adjudicado IS NOT NULL "
+        "AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed' "
+        "GROUP BY a.nombre ORDER BY total DESC LIMIT 10"
     ).fetchall()
     top_adj = [{"nombre": r[0], "n": r[1], "importe": r[2]} for r in rows]
     snapshots.append(
@@ -141,6 +155,7 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
         "       COUNT(*) as n, SUM(importe) as total "
         "FROM licitaciones "
         "WHERE fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '24 months', 'YYYY-MM-DD') "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
         "GROUP BY mes ORDER BY mes"
     ).fetchall()
     serie = [{"mes": r[0], "n": r[1], "importe": r[2]} for r in rows]
@@ -209,24 +224,34 @@ _MAT_QUERIES: dict[str, str] = {
     "mat_licitaciones_por_mes": (
         "SELECT strftime('%Y-%m', fecha_publicacion) AS mes, "
         "COUNT(*) AS n, SUM(importe) AS importe_total, AVG(importe) AS importe_medio "
-        "FROM licitaciones WHERE fecha_publicacion IS NOT NULL GROUP BY mes ORDER BY mes"
+        "FROM licitaciones WHERE fecha_publicacion IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
+        "GROUP BY mes ORDER BY mes"
     ),
     "mat_licitaciones_por_ccaa": (
         "SELECT ccaa, COUNT(*) AS n, SUM(importe) AS importe_total "
-        "FROM licitaciones WHERE ccaa IS NOT NULL GROUP BY ccaa ORDER BY n DESC"
+        "FROM licitaciones WHERE ccaa IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
+        "GROUP BY ccaa ORDER BY n DESC"
     ),
     "mat_licitaciones_por_estado": (
         "SELECT estado, COUNT(*) AS n FROM licitaciones "
-        "WHERE estado IS NOT NULL GROUP BY estado ORDER BY n DESC"
+        "WHERE estado IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
+        "GROUP BY estado ORDER BY n DESC"
     ),
     "mat_top_adjudicatarios": (
-        "SELECT nombre, COUNT(*) AS n, SUM(importe_adjudicado) AS importe_total "
-        "FROM adjudicaciones WHERE nombre IS NOT NULL AND importe_adjudicado IS NOT NULL "
-        "GROUP BY nombre ORDER BY importe_total DESC LIMIT 50"
+        "SELECT a.nombre, COUNT(*) AS n, SUM(a.importe_adjudicado) AS importe_total "
+        "FROM adjudicaciones a JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+        "WHERE a.nombre IS NOT NULL AND a.importe_adjudicado IS NOT NULL "
+        "AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed' "
+        "GROUP BY a.nombre ORDER BY importe_total DESC LIMIT 50"
     ),
     "mat_licitaciones_por_tipo": (
         "SELECT tipo_contrato, COUNT(*) AS n, SUM(importe) AS importe_total "
-        "FROM licitaciones WHERE tipo_contrato IS NOT NULL GROUP BY tipo_contrato ORDER BY n DESC"
+        "FROM licitaciones WHERE tipo_contrato IS NOT NULL "
+        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
+        "GROUP BY tipo_contrato ORDER BY n DESC"
     ),
 }
 

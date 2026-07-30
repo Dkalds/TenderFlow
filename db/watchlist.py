@@ -21,6 +21,8 @@ class WatchlistEntry:
     email: str | None = None
     user_id: int | None = None
     frequency: str = "daily"  # 'immediate' | 'daily' | 'weekly'
+    organization_id: int | None = None
+    visibility: str = "private"
 
 
 def add_entry(entry: WatchlistEntry) -> None:
@@ -47,8 +49,9 @@ def add_entry(entry: WatchlistEntry) -> None:
             return
         c.execute(
             "INSERT INTO watchlist_cpv "
-            "(user_key, cpv_prefix, keyword, min_importe, ccaa, email, user_id, frequency, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(user_key, cpv_prefix, keyword, min_importe, ccaa, email, user_id, "
+            " frequency, created_at, organization_id, visibility) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 entry.user_key,
                 entry.cpv_prefix,
@@ -59,6 +62,8 @@ def add_entry(entry: WatchlistEntry) -> None:
                 entry.user_id,
                 entry.frequency,
                 now_utc_iso(),
+                entry.organization_id,
+                entry.visibility,
             ),
         )
 
@@ -68,9 +73,24 @@ def remove_entry(entry_id: int) -> None:
         c.execute("DELETE FROM watchlist_cpv WHERE id = ?", (entry_id,))
 
 
-def list_entries(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def list_entries(
+    user_key: str,
+    *,
+    user_id: int | None = None,
+    organization_id: int | None = None,
+) -> list[dict[str, Any]]:
     with connect() as c:
-        if user_id is not None:
+        if organization_id is not None:
+            cur = c.execute(
+                "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
+                "created_at, last_notified_at, user_id, "
+                "COALESCE(frequency, 'daily') AS frequency, organization_id, visibility "
+                "FROM watchlist_cpv WHERE organization_id = ? "
+                "AND (visibility = 'organization' OR user_id = ? OR user_key = ?) "
+                "ORDER BY created_at DESC",
+                (organization_id, user_id, user_key),
+            )
+        elif user_id is not None:
             cur = c.execute(
                 "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
                 "created_at, last_notified_at, user_id, "

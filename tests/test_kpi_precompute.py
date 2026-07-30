@@ -82,6 +82,37 @@ def test_compute_all_kpis_with_data(tmp_db):
     assert total["valor"] == 2
 
 
+def test_compute_all_kpis_excludes_watched_company_awards_universe(tmp_db):
+    from db.database import Adjudicacion, Licitacion
+
+    db_mod, _ = tmp_db
+    db_mod.upsert_licitaciones(
+        [
+            Licitacion(id_externo="TECH-KPI", titulo="Radar TI"),
+            Licitacion(
+                id_externo="WATCHED-KPI",
+                titulo="Solo empresa vigilada",
+                analysis_universe="watched_company_awards_observed",
+            ),
+        ]
+    )
+    db_mod.replace_adjudicaciones_batch(
+        {
+            "TECH-KPI": [Adjudicacion(licitacion_id="TECH-KPI", nombre="A")],
+            "WATCHED-KPI": [Adjudicacion(licitacion_id="WATCHED-KPI", nombre="B")],
+        }
+    )
+
+    from scheduler.kpi_precompute import _compute_all_kpis
+
+    with db_mod.connect() as c:
+        snapshots = _compute_all_kpis(c)
+
+    totals = {snapshot["metrica"]: snapshot["valor"] for snapshot in snapshots}
+    assert totals["total_licitaciones"] == 1
+    assert totals["total_adjudicaciones"] == 1
+
+
 # ---------------------------------------------------------------------------
 # _persist_snapshots
 # ---------------------------------------------------------------------------

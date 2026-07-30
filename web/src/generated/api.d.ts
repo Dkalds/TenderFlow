@@ -577,6 +577,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/source-freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Frescura y SLA por fuente de ingesta
+         * @description Hace visibles cursores atascados, runs fallidos y detección <24h.
+         */
+        get: operations["source_freshness_api_v1_analytics_source_freshness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/tecnologias": {
         parameters: {
             query?: never;
@@ -1753,6 +1773,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/ficha-pliego": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ficha estructurada y citable de los pliegos
+         * @description Lee la extracción vigente sin invocar al proveedor LLM.
+         */
+        get: operations["get_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/ficha-pliego/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extraer o reprocesar la ficha estructurada
+         * @description Reextracción explícita; valida toda cita antes de persistirla.
+         */
+        post: operations["extract_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_extract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/resumen": {
         parameters: {
             query?: never;
@@ -1798,6 +1858,26 @@ export interface paths {
          *     ``precompute_ml_tecnologias`` no se ha ejecutado todavía).
          */
         get: operations["get_tech_scores_api_v1_licitaciones__id_externo__tech_scores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{licitacion_id}/escenarios-precio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Escenarios descriptivos de precio sobre adjudicaciones comparables
+         * @description Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar).
+         */
+        get: operations["get_escenarios_precio_api_v1_licitaciones__licitacion_id__escenarios_precio_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2136,6 +2216,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Organizations
+         * @description Lista las organizaciones activas del principal.
+         */
+        get: operations["get_organizations_api_v1_organizations_get"];
+        put?: never;
+        /** Post Organization */
+        post: operations["post_organization_api_v1_organizations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Active Organization Route */
+        get: operations["get_active_organization_route_api_v1_organizations_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Organization Members */
+        get: operations["get_organization_members_api_v1_organizations__organization_id__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/members/{member_user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Organization Member */
+        put: operations["put_organization_member_api_v1_organizations__organization_id__members__member_user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/predicciones/calibracion": {
         parameters: {
             query?: never;
@@ -2161,6 +2313,71 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuits
+         * @description Lista únicamente opportunities de una organización autorizada.
+         */
+        get: operations["get_pursuits_api_v1_pursuits_get"];
+        put?: never;
+        /**
+         * Post Pursuit
+         * @description Abre una oportunidad; reintentar la misma licitación no duplica.
+         */
+        post: operations["post_pursuit_api_v1_pursuits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Metrics
+         * @description Calcula funnel, win-rate, importe y tiempo de decisión.
+         */
+        get: operations["get_pursuit_metrics_api_v1_pursuits_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Pursuit Detail */
+        get: operations["get_pursuit_detail_api_v1_pursuits__pursuit_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Pursuit
+         * @description Aplica una transición validada y añade un único evento.
+         */
+        patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
         trace?: never;
     };
     "/api/v1/resoluciones": {
@@ -3299,6 +3516,22 @@ export interface components {
             action: string;
         };
         /**
+         * DeadlineFact
+         * @description Hito temporal extraído del pliego.
+         */
+        DeadlineFact: {
+            /** Confidence */
+            confidence: number;
+            /** Date Value */
+            date_value?: string | null;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Name */
+            name: string;
+        };
+        /**
          * DeleteMyDataRequest
          * @description Explicit confirmation prevents a forged or accidental destructive call.
          */
@@ -3415,6 +3648,22 @@ export interface components {
             items: components["schemas"]["EventoFeedItem"][];
         };
         /**
+         * EvidenceRef
+         * @description Cita verificable a texto persistido de un documento.
+         */
+        EvidenceRef: {
+            /** Documento Id */
+            documento_id: number;
+            /** End Offset */
+            end_offset?: number | null;
+            /** Page Number */
+            page_number: number;
+            /** Quote */
+            quote: string;
+            /** Start Offset */
+            start_offset?: number | null;
+        };
+        /**
          * EvolucionEntry
          * @description Monthly point for a technology.
          */
@@ -3427,6 +3676,18 @@ export interface components {
             mes: string;
             /** Tecnologia */
             tecnologia: string;
+        };
+        /**
+         * FactItem
+         * @description Hecho textual con confianza y una o más citas.
+         */
+        FactItem: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
         };
         /** FeedbackRequest */
         FeedbackRequest: {
@@ -3671,6 +3932,26 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** HistoricalDistribution */
+        HistoricalDistribution: {
+            /** N */
+            n: number;
+            /** Observed Interval */
+            observed_interval: [
+                number,
+                number
+            ];
+            /** P10 Discount */
+            p10_discount: number;
+            /** P25 Discount */
+            p25_discount: number;
+            /** P50 Discount */
+            p50_discount: number;
+            /** P75 Discount */
+            p75_discount: number;
+            /** P90 Discount */
+            p90_discount: number;
+        };
         /**
          * HorizonteCount
          * @description Count by horizon bucket.
@@ -3826,6 +4107,8 @@ export interface components {
             all: boolean;
             /** Ids */
             ids?: number[];
+            /** Organization Id */
+            organization_id?: number | null;
         };
         /** MarkReadRequest */
         MarkReadRequest: {
@@ -3855,6 +4138,20 @@ export interface components {
             importe: number;
             /** Modulo */
             modulo: string;
+        };
+        /**
+         * MonetaryFact
+         * @description Importe exigido/previsto; ``amount_eur`` queda nulo si no es inequívoco.
+         */
+        MonetaryFact: {
+            /** Amount Eur */
+            amount_eur?: number | null;
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
         };
         /** NotificationItem */
         NotificationItem: {
@@ -3909,6 +4206,86 @@ export interface components {
              * @default 0
              */
             total_organos: number;
+        };
+        /**
+         * OrganizationCreate
+         * @description Alta de un espacio compartido.
+         */
+        OrganizationCreate: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * OrganizationMembershipOut
+         * @description Membresía sin datos de autenticación ni credenciales.
+         */
+        OrganizationMembershipOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "member" | "viewer";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "invited" | "suspended" | "revoked";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id: number;
+        };
+        /**
+         * OrganizationMembershipUpsert
+         * @description Alta o cambio de rol/estado de un miembro existente.
+         */
+        OrganizationMembershipUpsert: {
+            /**
+             * Role
+             * @default member
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "member" | "viewer";
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "invited" | "suspended" | "revoked";
+            /** User Id */
+            user_id: number;
+        };
+        /**
+         * OrganizationSummary
+         * @description Organización de trabajo visible para el usuario autenticado.
+         */
+        OrganizationSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Is Personal */
+            is_personal: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "member" | "viewer";
         };
         /**
          * OrganoAggregate
@@ -4325,6 +4702,50 @@ export interface components {
              */
             vencen_7d: number;
         };
+        /** PriceScenario */
+        PriceScenario: {
+            /** Basis */
+            basis: string;
+            /** Discount */
+            discount: number;
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "defensivo" | "central" | "competitivo";
+            /** Price Eur */
+            price_eur: number;
+        };
+        /** PriceScenariosResult */
+        PriceScenariosResult: {
+            /** Cohort */
+            cohort?: string[];
+            /**
+             * Disclaimer
+             * @default Estos escenarios NO son una P(ganar) causal ni garantizan adjudicación. Son referencias descriptivas del histórico observado; no incluyen ofertas perdedoras.
+             */
+            disclaimer: string;
+            distribution?: components["schemas"]["HistoricalDistribution"] | null;
+            /** Expected Competition */
+            expected_competition?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * Methodology
+             * @default Distribución empírica de bajas en adjudicaciones comparables observadas.
+             */
+            methodology: string;
+            /**
+             * Sample Quality
+             * @enum {string}
+             */
+            sample_quality: "robusta" | "indicativa" | "insuficiente";
+            /** Scenarios */
+            scenarios?: components["schemas"]["PriceScenario"][];
+            /** Tender Amount Eur */
+            tender_amount_eur: number;
+            win_probability_gate?: components["schemas"]["WinProbabilityGate"];
+        };
         /**
          * ProvinciaEntry
          * @description Single provincia entry (aggregated over the full filtered dataset).
@@ -4378,6 +4799,244 @@ export interface components {
              * @default 0
              */
             total_clasificados: number;
+        };
+        /**
+         * PursuitCreate
+         * @description Convierte una licitación existente en oportunidad colaborativa.
+         */
+        PursuitCreate: {
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Responsible User Id */
+            responsible_user_id?: number | null;
+        };
+        /**
+         * PursuitDetail
+         * @description Detalle de una oportunidad con su ledger append-only.
+         */
+        PursuitDetail: {
+            /** Awarded Amount Eur */
+            awarded_amount_eur?: number | null;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "pending" | "go" | "no_go";
+            /** Decision At */
+            decision_at?: string | null;
+            /** Decision Reason */
+            decision_reason?: string | null;
+            /** Events */
+            events?: components["schemas"]["PursuitEventOut"][];
+            /** Id */
+            id: number;
+            /**
+             * Identified At
+             * Format: date-time
+             */
+            identified_at: string;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Offer Price Eur */
+            offer_price_eur?: number | null;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "pending" | "won" | "lost" | "cancelled";
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Responsible Name */
+            responsible_name?: string | null;
+            /** Responsible User Id */
+            responsible_user_id?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn";
+            /** Submitted At */
+            submitted_at?: string | null;
+            /** Tender Deadline */
+            tender_deadline?: string | null;
+            /** Tender Title */
+            tender_title?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * PursuitEventOut
+         * @description Entrada inmutable del historial de una oportunidad.
+         */
+        PursuitEventOut: {
+            /** Actor User Id */
+            actor_user_id?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: number;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Pursuit Id */
+            pursuit_id: number;
+        };
+        /**
+         * PursuitListResponse
+         * @description Listado paginado dentro de una única organización.
+         */
+        PursuitListResponse: {
+            /** Items */
+            items?: components["schemas"]["PursuitSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PursuitMetrics
+         * @description Métricas reproducibles de funnel y resultado por organización/periodo.
+         */
+        PursuitMetrics: {
+            /**
+             * Awarded Amount Eur
+             * @default 0
+             */
+            awarded_amount_eur: number;
+            /** Median Decision Time Hours */
+            median_decision_time_hours?: number | null;
+            /** Organization Id */
+            organization_id: number;
+            /** Period From */
+            period_from?: string | null;
+            /** Period To */
+            period_to?: string | null;
+            /** Pursuits Identified */
+            pursuits_identified: number;
+            /** Pursuits Lost */
+            pursuits_lost: number;
+            /** Pursuits Submitted */
+            pursuits_submitted: number;
+            /** Pursuits Won */
+            pursuits_won: number;
+            /** Win Rate */
+            win_rate?: number | null;
+        };
+        /**
+         * PursuitSummary
+         * @description Oportunidad enriquecida con los datos básicos de su licitación.
+         */
+        PursuitSummary: {
+            /** Awarded Amount Eur */
+            awarded_amount_eur?: number | null;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "pending" | "go" | "no_go";
+            /** Decision At */
+            decision_at?: string | null;
+            /** Decision Reason */
+            decision_reason?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Identified At
+             * Format: date-time
+             */
+            identified_at: string;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Offer Price Eur */
+            offer_price_eur?: number | null;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "pending" | "won" | "lost" | "cancelled";
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Responsible Name */
+            responsible_name?: string | null;
+            /** Responsible User Id */
+            responsible_user_id?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn";
+            /** Submitted At */
+            submitted_at?: string | null;
+            /** Tender Deadline */
+            tender_deadline?: string | null;
+            /** Tender Title */
+            tender_title?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * PursuitUpdate
+         * @description Patch parcial de una oportunidad con control optimista opcional.
+         */
+        PursuitUpdate: {
+            /** Awarded Amount Eur */
+            awarded_amount_eur?: number | null;
+            /** Decision */
+            decision?: ("pending" | "go" | "no_go") | null;
+            /** Decision Reason */
+            decision_reason?: string | null;
+            /** Expected Version */
+            expected_version?: number | null;
+            /** Offer Price Eur */
+            offer_price_eur?: number | null;
+            /** Outcome */
+            outcome?: ("pending" | "won" | "lost" | "cancelled") | null;
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Responsible User Id */
+            responsible_user_id?: number | null;
+            /** Status */
+            status?: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
         };
         /**
          * QualityResult
@@ -4662,6 +5321,13 @@ export interface components {
             filters_json: string;
             /** Name */
             name: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Visibility
+             * @default private
+             */
+            visibility: string;
         };
         /**
          * SavedFilter
@@ -4676,6 +5342,13 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Visibility
+             * @default private
+             */
+            visibility: string;
         };
         /**
          * ScatterPoint
@@ -4869,6 +5542,86 @@ export interface components {
             /** Flags */
             flags: components["schemas"]["FlagIn"][];
         };
+        /** SourceFreshness */
+        SourceFreshness: {
+            /** Cursor Updated At */
+            cursor_updated_at?: string | null;
+            /** Detected Within 24H Pct */
+            detected_within_24h_pct?: number | null;
+            /**
+             * Discarded
+             * @default 0
+             */
+            discarded: number;
+            /**
+             * Errors
+             * @default 0
+             */
+            errors: number;
+            /**
+             * Fetched
+             * @default 0
+             */
+            fetched: number;
+            /**
+             * Is Degraded
+             * @default false
+             */
+            is_degraded: boolean;
+            /** Lag Hours */
+            lag_hours?: number | null;
+            /** Last Seen Updated */
+            last_seen_updated?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /**
+             * Parsed
+             * @default 0
+             */
+            parsed: number;
+            /**
+             * Sample Size
+             * @default 0
+             */
+            sample_size: number;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Warning */
+            warning?: string | null;
+        };
+        /** SourceFreshnessResult */
+        SourceFreshnessResult: {
+            /** Generated At */
+            generated_at: string;
+            /** Healthy Sources */
+            healthy_sources: number;
+            /** Healthy Sources Pct */
+            healthy_sources_pct: number;
+            /** Sources */
+            sources: components["schemas"]["SourceFreshness"][];
+            /** Total Sources */
+            total_sources: number;
+        };
+        /**
+         * TeamRequirement
+         * @description Perfil o capacidad mínima del equipo.
+         */
+        TeamRequirement: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Minimum Years */
+            minimum_years?: number | null;
+            /** Quantity */
+            quantity?: number | null;
+            /** Role */
+            role?: string | null;
+        };
         /**
          * TecnologiaDetalleItem
          * @description Single tender row in the detail table.
@@ -4977,6 +5730,64 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * TenderFactSheet
+         * @description Ficha de decisión derivada de pliegos, validada y citable.
+         */
+        TenderFactSheet: {
+            /** Award Criteria */
+            award_criteria?: components["schemas"]["WeightedCriterion"][];
+            /** Critical Deadlines */
+            critical_deadlines?: components["schemas"]["DeadlineFact"][];
+            /** Economic Solvency */
+            economic_solvency?: components["schemas"]["MonetaryFact"][];
+            /** Extensions */
+            extensions?: components["schemas"]["FactItem"][];
+            /** Guarantees */
+            guarantees?: components["schemas"]["MonetaryFact"][];
+            /** Penalties */
+            penalties?: components["schemas"]["MonetaryFact"][];
+            /** Subcontracting */
+            subcontracting?: components["schemas"]["FactItem"][];
+            /** Team Requirements */
+            team_requirements?: components["schemas"]["TeamRequirement"][];
+            /** Technical Solvency */
+            technical_solvency?: components["schemas"]["FactItem"][];
+        };
+        /**
+         * TenderFactSheetRecord
+         * @description Envelope persistido y servido por API.
+         */
+        TenderFactSheetRecord: {
+            /** Error Detail */
+            error_detail?: string | null;
+            /**
+             * Evidence Count
+             * @default 0
+             */
+            evidence_count: number;
+            /** Extracted At */
+            extracted_at?: string | null;
+            /** Extraction Version */
+            extraction_version: string;
+            facts?: components["schemas"]["TenderFactSheet"] | null;
+            /**
+             * Field Count
+             * @default 0
+             */
+            field_count: number;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Model */
+            model?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "extracted" | "needs_review" | "failed";
+            /** Updated At */
+            updated_at: string;
         };
         /** TimelineScatterItem */
         TimelineScatterItem: {
@@ -5312,6 +6123,14 @@ export interface components {
             importe_max?: number | null;
             /** Importe Min */
             importe_min?: number | null;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
             /** Weights */
             weights?: {
                 [key: string]: number;
@@ -5328,10 +6147,18 @@ export interface components {
             importe_max?: number | null;
             /** Importe Min */
             importe_min?: number | null;
+            /** Organization Id */
+            organization_id?: number | null;
             /** Updated At */
             updated_at?: string | null;
             /** User Key */
             user_key?: string | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
             /** Weights */
             weights?: {
                 [key: string]: number;
@@ -5364,6 +6191,13 @@ export interface components {
              * @default daily
              */
             frequency: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Visibility
+             * @default private
+             */
+            visibility: string;
         };
         /**
          * WatchlistItemBody
@@ -5372,6 +6206,13 @@ export interface components {
         WatchlistItemBody: {
             /** Id Externo */
             id_externo: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Visibility
+             * @default private
+             */
+            visibility: string;
         };
         /**
          * WatchlistRuleBody
@@ -5399,6 +6240,13 @@ export interface components {
             min_importe?: number | null;
             /** Nombre */
             nombre?: string | null;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Visibility
+             * @default private
+             */
+            visibility: string;
         };
         /**
          * WatchlistRuleOut
@@ -5435,6 +6283,14 @@ export interface components {
             min_importe?: number | null;
             /** Nombre */
             nombre?: string | null;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
         };
         /**
          * WaterfallPoint
@@ -5494,6 +6350,41 @@ export interface components {
             name?: string | null;
             /** Url */
             url?: string | null;
+        };
+        /**
+         * WeightedCriterion
+         * @description Criterio de adjudicación y peso publicado, cuando existe.
+         */
+        WeightedCriterion: {
+            /** Confidence */
+            confidence: number;
+            /**
+             * Criterion Type
+             * @default other
+             * @enum {string}
+             */
+            criterion_type: "price" | "quality" | "automatic" | "judgement" | "other";
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Name */
+            name: string;
+            /** Weight Pct */
+            weight_pct?: number | null;
+        };
+        /**
+         * WinProbabilityGate
+         * @description Condiciones pendientes antes de publicar una probabilidad numérica.
+         */
+        WinProbabilityGate: {
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /** Blockers */
+            blockers?: string[];
         };
     };
     responses: never;
@@ -6650,6 +7541,37 @@ export interface operations {
             };
         };
     };
+    source_freshness_api_v1_analytics_source_freshness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceFreshnessResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     tecnologias_api_v1_analytics_tecnologias_get: {
         parameters: {
             query?: {
@@ -7667,7 +8589,9 @@ export interface operations {
     };
     get_watchlist_api_v1_competitive_watchlist_get: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -7741,7 +8665,9 @@ export interface operations {
     };
     delete_watchlist_api_v1_competitive_watchlist__empresa_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -8870,6 +9796,102 @@ export interface operations {
             };
         };
     };
+    get_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenderFactSheetRecord"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ficha todavía no disponible */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_extract_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenderFactSheetRecord"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No hay páginas extraídas */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El proveedor no devolvió una ficha válida */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post: {
         parameters: {
             query?: never;
@@ -8965,6 +9987,50 @@ export interface operations {
                 content?: never;
             };
             /** @description No encontrado o sin scores */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_escenarios_precio_api_v1_licitaciones__licitacion_id__escenarios_precio_get: {
+        parameters: {
+            query?: {
+                competencia_esperada?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                licitacion_id: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceScenariosResult"];
+                };
+            };
+            /** @description Licitación inexistente */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9227,7 +10293,9 @@ export interface operations {
     };
     get_profile_api_v1_me_profile_get: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -9520,7 +10588,9 @@ export interface operations {
     };
     get_notifications_api_v1_notifications_get: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -9629,6 +10699,186 @@ export interface operations {
             };
         };
     };
+    get_organizations_api_v1_organizations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_organization_api_v1_organizations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_active_organization_route_api_v1_organizations_active_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_members_api_v1_organizations__organization_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMembershipOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_organization_member_api_v1_organizations__organization_id__members__member_user_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+                member_user_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationMembershipUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMembershipOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_calibracion_baja_api_v1_predicciones_calibracion_get: {
         parameters: {
             query?: never;
@@ -9649,6 +10899,199 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalibracionBajaDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuits_api_v1_pursuits_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                status?: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
+                responsible_user_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_api_v1_pursuits_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Idempotency-Key"?: string | null;
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_metrics_api_v1_pursuits_metrics_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                period_from?: string | null;
+                period_to?: string | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitMetrics"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_detail_api_v1_pursuits__pursuit_id__get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_pursuit_api_v1_pursuits__pursuit_id__patch: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-Idempotency-Key"?: string | null;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitDetail"];
                 };
             };
             /** @description Validation Error */
@@ -9709,7 +11152,9 @@ export interface operations {
     };
     get_saved_filters_api_v1_saved_filters_get: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -9783,7 +11228,9 @@ export interface operations {
     };
     delete_saved_filter_route_api_v1_saved_filters__filter_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -9926,7 +11373,9 @@ export interface operations {
     };
     get_items_api_v1_watchlist_items_get: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -10002,7 +11451,9 @@ export interface operations {
     };
     delete_item_api_v1_watchlist_items__id_externo__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -10035,7 +11486,9 @@ export interface operations {
     };
     get_rules_api_v1_watchlist_rules_get: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -10189,7 +11642,9 @@ export interface operations {
     };
     delete_rule_route_api_v1_watchlist_rules__rule_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -10228,6 +11683,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                organization_id?: number | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;

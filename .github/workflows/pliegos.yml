@@ -45,6 +45,11 @@ jobs:
           APP_PROFILE: scraper
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          PLIEGO_FACTS_ENABLED: ${{ vars.PLIEGO_FACTS_ENABLED || 'false' }}
+          PLIEGO_FACTS_MODEL: ${{ vars.PLIEGO_FACTS_MODEL || 'deepseek-ai/deepseek-v4-pro' }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LOG_FORMAT: json
         run: python -m scheduler.jobs.documentos_embeddings run
 

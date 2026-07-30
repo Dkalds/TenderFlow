@@ -65,7 +65,9 @@ def comprobar_calibracion_baja() -> dict[str, Any]:
                 FROM predicciones_baja pb
                 JOIN licitaciones l ON l.id_externo = pb.licitacion_id
                 JOIN adjudicado adj ON adj.lic_id = l.id_externo
-                WHERE l.importe > 0 AND adj.total_adjudicado <= l.importe * 1.5
+                WHERE l.importe > 0
+                  AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
+                  AND adj.total_adjudicado <= l.importe * 1.5
             )
             SELECT
                 COUNT(*) AS n,

@@ -200,6 +200,7 @@ def _cargar_pares(hasta: str | None = None) -> list[dict[str, Any]]:
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         WHERE {VALID_PAIR} AND a.fecha_adjudicacion IS NOT NULL
+          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND {exclude_duplicados_sql()}
     """  # noqa: S608 — fragmentos constantes (VALID_PAIR, dedupe); valores con ?
     params: list[Any] = []
@@ -267,6 +268,7 @@ def features_licitaciones_abiertas(
                l.tipo_contrato, l.fuente, l.importe
         FROM licitaciones l
         WHERE l.importe > 0
+          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND COALESCE(l.estado, '') NOT IN ('RES', 'ADJ', 'ANUL')
           AND NOT EXISTS (SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo)
           AND {exclude_duplicados_sql()}

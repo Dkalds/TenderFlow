@@ -44,6 +44,41 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 
+def _record_source_started(source_id: str) -> None:
+    """Best-effort: la observabilidad nunca bloquea la ingesta."""
+    try:
+        from db.repositories.source_health import SourceHealthRepository
+
+        SourceHealthRepository().mark_started(source_id)
+    except Exception:
+        log.debug("connector_source_health_start_failed", source=source_id, exc_info=True)
+
+
+def _record_source_completed(result: ConnectorRunResult) -> None:
+    try:
+        from db.repositories.source_health import SourceHealthRepository
+
+        cursor = get_cursor(result.source_id) or {}
+        status = (
+            "failed"
+            if result.fetch_failed
+            else "partial"
+            if result.errores
+            else "success"
+        )
+        SourceHealthRepository().mark_completed(
+            source=result.source_id,
+            status=status,
+            fetched=result.fetched,
+            parsed=result.parsed,
+            discarded=result.descartadas,
+            errors=result.errores,
+            cursor_value=str(cursor.get("last_seen_updated") or "") or None,
+        )
+    except Exception:
+        log.debug("connector_source_health_finish_failed", source=result.source_id, exc_info=True)
+
+
 @dataclass
 class RawNotice:
     """Aviso crudo tal como llega de la fuente.
@@ -187,6 +222,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     source_id = connector.source_id
     result = ConnectorRunResult(source_id=source_id)
     cursor = get_cursor(source_id)
+    _record_source_started(source_id)
     log.info("connector_run_start", source=source_id, cursor=cursor)
 
     lics: list[Licitacion] = []
@@ -254,10 +290,12 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         result.fetch_failed = True
         record_failure(None, source_id, e, scope="fetch")
         log.error("connector_run_failed", source=source_id, error=str(e))
+        _record_source_completed(result)
         return result
 
     if result.parsed or result.adjudicaciones:
         _post_ingestion(source_id)
 
     log.info("connector_run_done", **result.as_dict())
+    _record_source_completed(result)
     return result

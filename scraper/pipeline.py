@@ -256,6 +256,9 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
         return None
 
     lic.ml_proba = proba
+    lic.classifier_model_version = str(
+        getattr(clf, "metadata", {}).get("trained_at") or "unknown"
+    )
 
     # Anotación multi-tecnología (no-op si ML_TECH_ENABLED=False).
     tech_pred = _apply_tech_prediction(lic)
@@ -562,9 +565,16 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
     for entry_elem, updated_str in entries:
         try:
             lic = parse_entry(entry_elem)
+            inclusion_reason = "keyword"
             if lic is None:
                 lic = _ml_classify_entry(entry_elem)
+                inclusion_reason = "ml_cpv_rescue"
             if lic:
+                from scraper.lineage import current_filter_version
+
+                lic.filter_version = current_filter_version()
+                lic.inclusion_reason = inclusion_reason
+                lic.analysis_universe = "technology_observed"
                 # Actualizar fecha_actualizacion_fuente con el <updated> de la entry
                 if updated_str:
                     lic.fecha_actualizacion_fuente = updated_str

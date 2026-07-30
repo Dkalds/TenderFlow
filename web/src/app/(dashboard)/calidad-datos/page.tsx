@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { CalibracionBajaBlock } from "@/components/calibracion-baja";
+import { SourceFreshnessPanel } from "@/components/source-freshness-panel";
 import {
   ShieldCheck,
   AlertTriangle,
@@ -167,6 +168,8 @@ export default function CalidadDatosPage() {
       </div>
 
       <Separator />
+
+      <SourceFreshnessPanel />
 
       {/* Completeness horizontal bar chart */}
       <Card>

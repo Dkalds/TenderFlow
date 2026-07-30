@@ -1,0 +1,97 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowUpRight, Building2, CalendarClock, CircleSlash2, Eye, Loader2, RadioTower, Star } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { formatDate, formatEur, daysUntil } from "@/components/pursuits/pursuit-presenters";
+import { useCreatePursuit } from "@/hooks/use-pursuits";
+import { useAddWatchlistItem, useWatchlistItems } from "@/hooks/use-watchlist-items";
+import { type RadarTender, useRadar } from "@/hooks/use-radar";
+
+function scoreCopy(tender: RadarTender): string {
+  if (tender.band) return tender.band;
+  if (tender.score != null) return `Score ${Math.round(tender.score)}`;
+  return "Nueva señal";
+}
+
+function RadarItem({ tender, onDismiss }: { tender: RadarTender; onDismiss: (id: string) => void }) {
+  const router = useRouter();
+  const createPursuit = useCreatePursuit();
+  const addWatchlist = useAddWatchlistItem();
+  const { data: watched = [] } = useWatchlistItems();
+  const watchedAlready = watched.some((item) => item.id_externo === tender.id_externo);
+  const deadline = daysUntil(tender.fecha_limite);
+
+  const openPursuit = async () => {
+    try {
+      const pursuit = await createPursuit.mutateAsync({ licitacion_id: tender.id_externo });
+      toast.success("Oportunidad abierta para el equipo");
+      router.push(`/oportunidades/${pursuit.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo abrir la oportunidad");
+    }
+  };
+
+  const follow = async () => {
+    if (watchedAlready) return;
+    try {
+      await addWatchlist.mutateAsync(tender.id_externo);
+      toast.success("Licitación añadida a seguimiento");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo seguir la licitación");
+    }
+  };
+
+  return (
+    <Card className="group relative overflow-hidden">
+      <CardContent className="p-0">
+        <div className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
+        <div className="p-5 pl-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-primary"><span className="rounded-full bg-primary/10 px-2 py-0.5">{scoreCopy(tender)}</span>{tender.tecnologia && <span className="text-muted-foreground">{tender.tecnologia}</span>}</div>
+              <h2 className="mt-2 text-base font-semibold leading-snug">{tender.titulo ?? `Licitación ${tender.id_externo}`}</h2>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" />{tender.organo_contratacion ?? "Órgano no informado"}</span>
+                <span className="inline-flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />{deadline ?? formatDate(tender.fecha_limite)}</span>
+                <span className="font-medium text-foreground">{formatEur(tender.importe)}</span>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => onDismiss(tender.id_externo)} aria-label={`Descartar ${tender.titulo ?? tender.id_externo}`}><CircleSlash2 />Descartar</Button>
+              <Button variant="outline" size="sm" onClick={() => void follow()} disabled={watchedAlready || addWatchlist.isPending}><Star className={watchedAlready ? "fill-primary text-primary" : ""} />{watchedAlready ? "Siguiendo" : "Seguir"}</Button>
+              <Button size="sm" onClick={() => void openPursuit()} disabled={createPursuit.isPending}>{createPursuit.isPending ? <Loader2 className="animate-spin" /> : <ArrowUpRight />}Abrir oportunidad</Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function RadarPage() {
+  const { data, isLoading, error } = useRadar();
+  const [dismissed, setDismissed] = React.useState<Set<string>>(() => new Set());
+  const tenders = (data?.items ?? []).filter((item) => !dismissed.has(item.id_externo));
+
+  return (
+    <div className="space-y-5">
+      <section className="tf-card-shadow relative overflow-hidden rounded-xl border border-border bg-card/75 p-5 sm:p-7">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"><RadioTower className="h-3.5 w-3.5" />Radar de oportunidades</div><h1 className="tf-display">Qué merece atención ahora.</h1><p className="mt-2 max-w-2xl text-muted-foreground">Señales recientes del mercado para decidir qué seguir y qué convertir en una oportunidad de equipo.</p></div>
+          <Link href="/oportunidades" className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"><Eye className="h-4 w-4" />Ver oportunidades abiertas</Link>
+        </div>
+      </section>
+
+      <div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">{isLoading ? "Actualizando señales…" : `${tenders.length} oportunidades por revisar`}</p>{dismissed.size > 0 && <Button variant="link" size="sm" onClick={() => setDismissed(new Set())}>Restaurar descartadas</Button>}</div>
+
+      {error ? <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive">No se pudo cargar el radar. {(error as Error).message}</div> : isLoading ? <div className="grid gap-4"><SkeletonCard /><SkeletonCard /><SkeletonCard /></div> : tenders.length === 0 ? <Card><CardContent className="py-14 text-center"><RadioTower className="mx-auto h-9 w-9 text-muted-foreground/50" /><h2 className="mt-3 font-semibold">Radar al día</h2><p className="mt-1 text-sm text-muted-foreground">No quedan señales con los criterios actuales.</p></CardContent></Card> : <div className="grid gap-4">{tenders.map((tender) => <RadarItem key={tender.id_externo} tender={tender} onDismiss={(id) => setDismissed((current) => new Set(current).add(id))} />)}</div>}
+    </div>
+  );
+}

@@ -351,6 +351,8 @@ class PscpConnector:
             tecnologia=",".join(tecnologias) or None,
             nuts_code=nuts,
             ccaa=ccaa,
+            inclusion_reason="regional_source_record",
+            analysis_universe="pscp_observed",
             fuente=SOURCE_ID,
         )
 

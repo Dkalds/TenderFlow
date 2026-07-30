@@ -43,7 +43,7 @@ def _load_active_rules() -> list[dict[str, Any]]:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
-                "frequency, active, last_notified_at, email "
+                "frequency, active, last_notified_at, email, organization_id, visibility "
                 "FROM watchlist_rules WHERE active = 1"
             )
             cols = [d[0] for d in cur.description]
@@ -95,6 +95,8 @@ def _row_to_rule(row: dict[str, Any]) -> WatchlistRule:
         ccaa=row.get("ccaa"),
         frequency=row.get("frequency") or "daily",
         active=True,
+        organization_id=row.get("organization_id"),
+        visibility=row.get("visibility") or "private",
     )
 
 
@@ -160,10 +162,19 @@ def _write_user_notifications(
                 body = f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}"
                 cur = c.execute(
                     "INSERT INTO user_notifications "
-                    "(user_key, created_at, type, title, body, licitacion_id, rule_id) "
-                    "VALUES (?, ?, 'rule_match', ?, ?, ?, ?) "
+                    "(user_key, created_at, type, title, body, licitacion_id, rule_id, "
+                    " organization_id) "
+                    "VALUES (?, ?, 'rule_match', ?, ?, ?, ?, ?) "
                     "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
-                    (user_key, now_ts, title, body, lic_id, rule_id),
+                    (
+                        user_key,
+                        now_ts,
+                        title,
+                        body,
+                        lic_id,
+                        rule_id,
+                        rule.organization_id,
+                    ),
                 )
                 inserted += cur.rowcount
     except Exception as exc:

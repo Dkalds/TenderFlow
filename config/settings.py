@@ -423,6 +423,11 @@ class Settings(BaseSettings):
     # Con el flag off, search_for_ask() es idéntico byte-a-byte al camino
     # anterior — PR mergeable sin riesgo.
     RAG_HYBRID_ENABLED: bool = False
+    # Extracción tipada de ficha del pliego. Requiere credencial para el modelo
+    # seleccionado; se activa de forma explícita para no generar gasto por el
+    # mero despliegue de la migración.
+    PLIEGO_FACTS_ENABLED: bool = False
+    PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-pro"
 
     # ── LLM: presupuesto de gasto + timeout (RFC llm-dependencia-gestionada) ──
     # Tope de gasto del proveedor LLM por ventana (USD). <= 0 desactiva el límite.

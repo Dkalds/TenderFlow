@@ -232,6 +232,8 @@ class TedConnector:
             tecnologia=",".join(tecnologias) or None,
             nuts_code=nuts,
             ccaa=nuts_to_ccaa(nuts) if nuts else None,
+            inclusion_reason="source_cpv_query",
+            analysis_universe="technology_observed",
             fuente=SOURCE_ID,
         )
 

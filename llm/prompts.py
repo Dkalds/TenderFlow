@@ -15,6 +15,7 @@ Modos:
     - ``licitacion``: conversación centrada en un único expediente, con
       fragmentos de sus pliegos como contexto.
     - ``resumen``: resumen ejecutivo estructurado de una licitación.
+    - ``extraction``: JSON estricto para la ficha verificable del pliego.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from __future__ import annotations
 from typing import Any, Literal, TypedDict
 
 Role = Literal["user", "assistant"]
-PromptMode = Literal["general", "licitacion", "resumen"]
+PromptMode = Literal["general", "licitacion", "resumen", "extraction"]
 
 
 class ChatMessage(TypedDict):
@@ -43,6 +44,7 @@ _CONTEXT_CHARS_BY_MODE: dict[PromptMode, int] = {
     "general": MAX_CONTEXT_CHARS_GENERAL,
     "licitacion": MAX_CONTEXT_CHARS_LICITACION,
     "resumen": MAX_CONTEXT_CHARS_LICITACION,
+    "extraction": MAX_CONTEXT_CHARS_LICITACION,
 }
 
 _TRUNCATION_MARK = "\n[contexto truncado]"
@@ -111,9 +113,24 @@ _SYSTEM_RESUMEN = (
     )
 )
 
+_SYSTEM_EXTRACTION = (
+    _BASE
+    + _UNTRUSTED_CONTEXT_RULES
+    + (
+        "Extrae exclusivamente hechos presentes en los fragmentos del pliego. "
+        "Devuelve solo un objeto JSON válido, sin Markdown ni explicaciones. "
+        "No completes campos por conocimiento general. Cada elemento debe incluir "
+        "confidence entre 0 y 1 y evidence con documento_id, page_number y una cita "
+        "literal breve. Si un dato no aparece, usa una lista vacía. Las citas y sus "
+        "páginas se validarán contra el texto persistido; una cita inventada se descarta."
+    )
+)
+
 
 def build_system_prompt(mode: PromptMode, *, has_corpus_context: bool) -> str:
     """Devuelve el system prompt para el modo dado."""
+    if mode == "extraction":
+        return _SYSTEM_EXTRACTION
     if mode == "licitacion":
         return _SYSTEM_LICITACION
     if mode == "resumen":
@@ -161,7 +178,15 @@ def _doc_block(doc: dict[str, Any], keywords: list[str]) -> str:
     lines.append(f"Descripción: {_excerpt(doc.get('descripcion'), keywords)}")
     for chunk in doc.get("chunks") or []:
         etiqueta = " ".join(str(chunk[k]) for k in ("tipo", "filename") if chunk.get(k))
-        lines.append(f"--- Fragmento de pliego ({etiqueta or 'documento'}) ---")
+        location = " ".join(
+            str(chunk[k])
+            for k in ("documento_id", "page_number")
+            if chunk.get(k) is not None
+        )
+        lines.append(
+            f"--- Fragmento de pliego ({etiqueta or 'documento'}"
+            f"{'; documento/página ' + location if location else ''}) ---"
+        )
         lines.append(str(chunk.get("texto", "")))
     return "\n".join(lines)
 

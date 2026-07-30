@@ -10,6 +10,7 @@ Uso:
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -287,3 +288,162 @@ class CompetitiveCompanyAwardsDTO(BaseModel):
     total: int = Field(default=0, ge=0)
     limit: int = Field(ge=1, le=500)
     offset: int = Field(default=0, ge=0)
+
+
+# ── Organizaciones y pursuits (Fase 1 TenderFlow) ──────────────────────────
+
+OrganizationRole = Literal["owner", "admin", "member", "viewer"]
+OrganizationMembershipStatus = Literal["active", "invited", "suspended", "revoked"]
+PursuitStatus = Literal[
+    "identified",
+    "qualifying",
+    "go_no_go",
+    "preparing",
+    "submitted",
+    "won",
+    "lost",
+    "withdrawn",
+]
+PursuitDecision = Literal["pending", "go", "no_go"]
+PursuitOutcome = Literal["pending", "won", "lost", "cancelled"]
+
+
+class OrganizationSummary(BaseModel):
+    """Organización de trabajo visible para el usuario autenticado."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    id: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=200)
+    is_personal: bool
+    role: OrganizationRole
+    created_at: datetime
+
+
+class OrganizationMembershipOut(BaseModel):
+    """Membresía sin datos de autenticación ni credenciales."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int = Field(ge=1)
+    user_id: int = Field(ge=1)
+    role: OrganizationRole
+    status: OrganizationMembershipStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class OrganizationCreate(BaseModel):
+    """Alta de un espacio compartido."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=200)
+
+
+class OrganizationMembershipUpsert(BaseModel):
+    """Alta o cambio de rol/estado de un miembro existente."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: int = Field(ge=1)
+    role: OrganizationRole = "member"
+    status: OrganizationMembershipStatus = "active"
+
+
+class PursuitCreate(BaseModel):
+    """Convierte una licitación existente en oportunidad colaborativa."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    licitacion_id: str = Field(min_length=1, max_length=500)
+    organization_id: int | None = Field(default=None, ge=1)
+    responsible_user_id: int | None = Field(default=None, ge=1)
+
+
+class PursuitUpdate(BaseModel):
+    """Patch parcial de una oportunidad con control optimista opcional."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    status: PursuitStatus | None = None
+    decision: PursuitDecision | None = None
+    decision_reason: str | None = Field(default=None, max_length=4000)
+    responsible_user_id: int | None = Field(default=None, ge=1)
+    offer_price_eur: float | None = Field(default=None, ge=0)
+    outcome: PursuitOutcome | None = None
+    awarded_amount_eur: float | None = Field(default=None, ge=0)
+    outcome_reason: str | None = Field(default=None, max_length=4000)
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+class PursuitEventOut(BaseModel):
+    """Entrada inmutable del historial de una oportunidad."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    event_type: str
+    actor_user_id: int | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class PursuitSummary(BaseModel):
+    """Oportunidad enriquecida con los datos básicos de su licitación."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    licitacion_id: str
+    tender_title: str | None = None
+    tender_deadline: datetime | None = None
+    responsible_user_id: int | None = None
+    responsible_name: str | None = None
+    status: PursuitStatus
+    decision: PursuitDecision
+    decision_reason: str | None = None
+    offer_price_eur: float | None = Field(default=None, ge=0)
+    outcome: PursuitOutcome
+    awarded_amount_eur: float | None = Field(default=None, ge=0)
+    outcome_reason: str | None = None
+    identified_at: datetime
+    decision_at: datetime | None = None
+    submitted_at: datetime | None = None
+    closed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    version: int = Field(ge=1)
+
+
+class PursuitDetail(PursuitSummary):
+    """Detalle de una oportunidad con su ledger append-only."""
+
+    events: list[PursuitEventOut] = Field(default_factory=list)
+
+
+class PursuitListResponse(BaseModel):
+    """Listado paginado dentro de una única organización."""
+
+    organization_id: int = Field(ge=1)
+    items: list[PursuitSummary] = Field(default_factory=list)
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=200)
+    offset: int = Field(ge=0)
+
+
+class PursuitMetrics(BaseModel):
+    """Métricas reproducibles de funnel y resultado por organización/periodo."""
+
+    organization_id: int = Field(ge=1)
+    period_from: datetime | None = None
+    period_to: datetime | None = None
+    pursuits_identified: int = Field(ge=0)
+    pursuits_submitted: int = Field(ge=0)
+    pursuits_won: int = Field(ge=0)
+    pursuits_lost: int = Field(ge=0)
+    win_rate: float | None = Field(default=None, ge=0, le=1)
+    awarded_amount_eur: float = Field(default=0, ge=0)
+    median_decision_time_hours: float | None = Field(default=None, ge=0)

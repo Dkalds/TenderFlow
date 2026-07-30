@@ -41,6 +41,10 @@ def required_scope_for_request(method: str, path: str) -> str:
         return "api_keys:read"
     if normalized_path.startswith("/api/v1/me/profile"):
         return "profile:read" if normalized_method in _READ_METHODS else "profile:write"
+    if normalized_path.startswith("/api/v1/organizations"):
+        return "pursuits:read" if normalized_method in _READ_METHODS else "pursuits:write"
+    if normalized_path.startswith("/api/v1/pursuits"):
+        return "pursuits:read" if normalized_method in _READ_METHODS else "pursuits:write"
 
     # Listing flags is useful to authenticated UI/API clients, but changing
     # rollout state is operationally sensitive and remains admin-only.

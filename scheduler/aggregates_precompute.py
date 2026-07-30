@@ -111,6 +111,7 @@ def _load_clustering_data(conn: Any) -> list[tuple[str, str, str]]:
         SELECT id_externo, titulo, SUBSTR(descripcion, 1, 500)
         FROM licitaciones
         WHERE titulo IS NOT NULL
+          AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'
           AND (fecha_publicacion IS NULL OR {cutoff_sql})
         ORDER BY fecha_publicacion DESC
         LIMIT 50000

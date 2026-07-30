@@ -1,9 +1,9 @@
-"""Descarga transitoria + extracción de texto de adjuntos (pliegos).
+"""Descarga + extracción trazable de texto de adjuntos (pliegos).
 
-Plan Pliegos+RAG, fase A3 (F7). Decisión de producto v1: el PDF se descarga
-**en memoria**, se extrae el texto y el binario se descarta — no hay blob
-storage (``documentos.storage_key`` queda ``NULL``, columna reservada para
-añadir persistencia de binarios en el futuro sin otra migración).
+El binario se procesa en memoria, pero el resultado conserva el texto por
+página y sus offsets (``documento_pages``). Eso permite citas verificables y
+reprocesado de la extracción estructurada aunque el PDF de origen deje de
+estar disponible, sin introducir un blob store obligatorio.
 
 Solo se soportan ``application/pdf`` y ``text/plain`` en v1; cualquier otro
 content-type marca el documento como ``error`` sin romper el resto del batch
@@ -85,8 +85,10 @@ def _download_bytes(uri: str) -> tuple[bytes, str | None]:
     return b"".join(chunks), content_type
 
 
-def _extract_pdf_text_local(content: bytes, *, max_pages: int, max_text_chars: int) -> str:
-    """Extrae texto de un PDF con pypdf. Import diferido — [pliegos] es opcional."""
+def _extract_pdf_pages_local(
+    content: bytes, *, max_pages: int, max_text_chars: int
+) -> list[str]:
+    """Extrae texto por página. Import diferido — ``[pliegos]`` es opcional."""
     try:
         from pypdf import PdfReader
     except ImportError as e:
@@ -105,7 +107,7 @@ def _extract_pdf_text_local(content: bytes, *, max_pages: int, max_text_chars: i
             total_chars += len(page_text)
             if total_chars > max_text_chars:
                 raise DocumentFetchError("PDF excede el máximo de texto extraíble permitido")
-            pages_text.append(page_text)
+            pages_text.append(page_text.strip())
     except DocumentFetchError:
         raise
     except Exception as e:
@@ -116,7 +118,18 @@ def _extract_pdf_text_local(content: bytes, *, max_pages: int, max_text_chars: i
     texto = "\n".join(pages_text).strip()
     if not texto:
         raise DocumentFetchError("PDF sin texto extraíble (posible escaneado sin OCR)")
-    return texto
+    return pages_text
+
+
+def _extract_pdf_text_local(content: bytes, *, max_pages: int, max_text_chars: int) -> str:
+    """Compatibilidad: devuelve el texto agregado del PDF."""
+    return "\n".join(
+        _extract_pdf_pages_local(
+            content,
+            max_pages=max_pages,
+            max_text_chars=max_text_chars,
+        )
+    ).strip()
 
 
 def _pdf_extraction_worker(
@@ -135,7 +148,7 @@ def _pdf_extraction_worker(
         result_connection.send(
             (
                 "ok",
-                _extract_pdf_text_local(
+                _extract_pdf_pages_local(
                     content, max_pages=max_pages, max_text_chars=max_text_chars
                 ),
             )
@@ -146,8 +159,8 @@ def _pdf_extraction_worker(
         result_connection.close()
 
 
-def _extract_pdf_text(content: bytes) -> str:
-    """Extrae texto de PDF con límites de recursos también en tiempo.
+def _extract_pdf_pages(content: bytes) -> list[str]:
+    """Extrae páginas de PDF con límites de recursos también en tiempo.
 
     En producción y staging se usa un proceso desechable: si un PDF malicioso
     bloquea el parser, se corta al vencer el presupuesto configurado. En local
@@ -159,7 +172,7 @@ def _extract_pdf_text(content: bytes) -> str:
     timeout_seconds = float(settings.DOCUMENT_EXTRACTION_TIMEOUT_SECONDS)
 
     if settings.ENV not in ("prod", "staging") or timeout_seconds <= 0:
-        return _extract_pdf_text_local(
+        return _extract_pdf_pages_local(
             content,
             max_pages=max_pages,
             max_text_chars=max_text_chars,
@@ -199,7 +212,9 @@ def _extract_pdf_text(content: bytes) -> str:
 
         if outcome != "ok":
             raise DocumentFetchError(str(payload))
-        return str(payload)
+        if not isinstance(payload, list) or not all(isinstance(page, str) for page in payload):
+            raise DocumentFetchError("El extractor devolvió un resultado de páginas inválido")
+        return payload
     finally:
         if process.is_alive():
             process.terminate()
@@ -208,18 +223,28 @@ def _extract_pdf_text(content: bytes) -> str:
         send_connection.close()
 
 
-def _extract_text(content: bytes, content_type: str | None) -> str:
-    """Despacha la extracción según content-type. v1: PDF + text/plain."""
+def _extract_pdf_text(content: bytes) -> str:
+    """Compatibilidad: texto agregado a partir de las páginas extraídas."""
+    return "\n".join(_extract_pdf_pages(content)).strip()
+
+
+def _extract_pages(content: bytes, content_type: str | None) -> list[str]:
+    """Despacha extracción preservando límites de página."""
     if content_type == "text/plain":
         texto = content.decode("utf-8", errors="replace").strip()
         if len(texto) > settings.MAX_DOCUMENT_TEXT_CHARS:
             raise DocumentFetchError("text/plain excede el máximo de texto permitido")
         if not texto:
             raise DocumentFetchError("text/plain vacío tras decodificar")
-        return texto
+        return [texto]
     if content_type in (None, "application/pdf"):
-        return _extract_pdf_text(content)
+        return _extract_pdf_pages(content)
     raise DocumentFetchError(f"content-type no soportado: {content_type!r}")
+
+
+def _extract_text(content: bytes, content_type: str | None) -> str:
+    """Despacha la extracción según content-type. v1: PDF + text/plain."""
+    return "\n".join(_extract_pages(content, content_type)).strip()
 
 
 def fetch_and_extract(documento: dict[str, Any]) -> str:
@@ -249,7 +274,8 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
     size_bytes = len(content)
 
     try:
-        texto = _extract_text(content, content_type)
+        pages = _extract_pages(content, content_type)
+        texto = "\n".join(pages).strip()
     except DocumentFetchError as e:
         log.warning("document_fetch_extract_failed", documento_id=documento_id, error=str(e))
         # Persistimos lo que sí se supo (descarga OK) antes de marcar error —
@@ -264,7 +290,7 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
         repo.mark_error(documento_id, error_detail=str(e)[:_MAX_ERROR_DETAIL_LEN])
         return "error"
 
-    repo.mark_extracted(documento_id, texto=texto, sha256=sha256)
+    repo.mark_extracted(documento_id, texto=texto, sha256=sha256, pages=pages)
     log.info(
         "document_fetch_extracted",
         documento_id=documento_id,

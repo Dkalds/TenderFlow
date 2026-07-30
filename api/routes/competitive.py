@@ -27,6 +27,7 @@ from services.competitive.mercado import (
     concentracion_hhi,
     cuota_mercado,
     listar_adjudicaciones_empresa,
+    metric_scope,
     perfil_empresa,
 )
 from services.competitive.renovaciones import (
@@ -174,7 +175,8 @@ async def get_cuota(
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
     items = await run_db(cuota_mercado, cpv_prefix=cpv, ccaa=ccaa, desde=desde, limit=limit)
-    return {"items": items}
+    scope = await run_db(metric_scope, cpv_prefix=cpv, ccaa=ccaa, desde=desde)
+    return {"items": items, "scope": scope}
 
 
 @router.get("/hhi", summary="Concentración HHI por segmento")
@@ -184,7 +186,8 @@ async def get_hhi(
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
     items = await run_db(concentracion_hhi, segment_by=segment_by, min_contratos=min_contratos)
-    return {"items": items, "segment_by": segment_by}
+    scope = await run_db(metric_scope)
+    return {"items": items, "segment_by": segment_by, "scope": scope}
 
 
 @router.get(
@@ -279,11 +282,26 @@ class WatchlistEmpresaRequest(BaseModel):
     empresa_id: int = Field(..., ge=1)
     email: str | None = Field(None, max_length=200, description="Destino de alertas")
     frequency: str = Field("daily", pattern="^(immediate|daily|weekly)$")
+    organization_id: int | None = Field(default=None, ge=1)
+    visibility: str = Field(default="private", pattern="^(private|organization)$")
 
 
 @router.get("/watchlist", summary="Empresas vigiladas por el usuario")
-async def get_watchlist(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
-    items = await run_db(list_entries, _user_key(ctx))
+async def get_watchlist(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> dict[str, Any]:
+    from services.organizations import resolve_organization
+
+    resolved_id: int | None = None
+    if organization_id is not None:
+        try:
+            resolved_id, _ = await run_db(
+                resolve_organization, int(ctx["user_id"]), organization_id
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    items = await run_db(list_entries, _user_key(ctx), resolved_id)
     return {"items": items}
 
 
@@ -292,11 +310,26 @@ async def post_watchlist(
     body: WatchlistEmpresaRequest,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
+    from services.organizations import resolve_organization
+
+    resolved_id: int | None = None
+    if body.organization_id is not None:
+        try:
+            resolved_id, _ = await run_db(
+                resolve_organization,
+                int(ctx["user_id"]),
+                body.organization_id,
+                write=True,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     entry = WatchlistEmpresaEntry(
         user_key=_user_key(ctx),
         empresa_id=body.empresa_id,
         email=body.email or ctx.get("email"),
         frequency=body.frequency,
+        organization_id=resolved_id,
+        visibility=body.visibility,
     )
     try:
         entry_id = await run_db(add_entry, entry)
@@ -315,9 +348,23 @@ async def post_watchlist(
 @router.delete("/watchlist/{empresa_id}", summary="Dejar de vigilar una empresa")
 async def delete_watchlist(
     empresa_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
-    removed = await run_db(remove_entry, _user_key(ctx), empresa_id)
+    from services.organizations import resolve_organization
+
+    resolved_id: int | None = None
+    if organization_id is not None:
+        try:
+            resolved_id, _ = await run_db(
+                resolve_organization,
+                int(ctx["user_id"]),
+                organization_id,
+                write=True,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    removed = await run_db(remove_entry, _user_key(ctx), empresa_id, resolved_id)
     if not removed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

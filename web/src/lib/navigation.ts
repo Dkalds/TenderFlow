@@ -22,6 +22,7 @@ import {
   Map,
   Network,
   Puzzle,
+  RadioTower,
   Search,
   Settings,
   Shield,
@@ -68,7 +69,66 @@ export interface NavSection {
   adminOnly?: boolean;
 }
 
+/**
+ * The product's primary mental model.  Legacy analytical routes stay in
+ * `SECTIONS` beneath Mercado so bookmarks and the existing exploration tools
+ * remain available during the gradual migration.
+ */
+export interface ProductSpace {
+  label: "Radar" | "Oportunidades" | "Mercado";
+  slug: string;
+  description: string;
+  icon: LucideIcon;
+}
+
+export const PRODUCT_SPACES: ProductSpace[] = [
+  {
+    label: "Radar",
+    slug: "radar",
+    description: "Descubrimiento personalizado y acción directa.",
+    icon: RadioTower,
+  },
+  {
+    label: "Oportunidades",
+    slug: "oportunidades",
+    description: "Decisiones, equipo, oferta y resultado.",
+    icon: Briefcase,
+  },
+  {
+    label: "Mercado",
+    slug: "resumen",
+    description: "Consulta analítica con alcance explícito.",
+    icon: Globe,
+  },
+];
+
 export const SECTIONS: NavSection[] = [
+  {
+    label: "Radar",
+    icon: RadioTower,
+    pages: [
+      {
+        label: "Radar",
+        slug: "radar",
+        description: "Señales recientes priorizadas para decidir qué seguir o abrir.",
+        icon: RadioTower,
+        usesGlobalFilters: false,
+      },
+    ],
+  },
+  {
+    label: "Oportunidades",
+    icon: Briefcase,
+    pages: [
+      {
+        label: "Oportunidades",
+        slug: "oportunidades",
+        description: "Espacio operativo de decisiones, responsables, ofertas y resultados.",
+        icon: Briefcase,
+        usesGlobalFilters: false,
+      },
+    ],
+  },
   {
     label: "Inicio",
     icon: LayoutDashboard,
@@ -335,6 +395,14 @@ export function findPage(slug: string) {
  */
 export function findSection(slug: string) {
   return SECTIONS.find((s) => s.pages.some((p) => p.slug === slug));
+}
+
+/** Map any dashboard route onto the three primary product spaces. */
+export function findProductSpace(slug: string): ProductSpace | undefined {
+  const cleanSlug = slug.replace(/^\//, "").split("/")[0];
+  if (cleanSlug === "radar") return PRODUCT_SPACES[0];
+  if (cleanSlug === "oportunidades") return PRODUCT_SPACES[1];
+  return findPage(cleanSlug) ? PRODUCT_SPACES[2] : undefined;
 }
 
 /**

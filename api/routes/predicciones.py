@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from services.ml.calibration import CalibracionBajaDTO, calibracion_baja_dto
+from services.ml.pricing_scenarios import PriceScenariosResult, get_price_scenarios
 from services.ml.scoring import prediccion_baja
 from shared.cache import cache_response
 
@@ -65,3 +66,33 @@ async def get_calibracion_baja(
     despliegue nuevo o con poco volumen de adjudicaciones recientes.
     """
     return await run_db(calibracion_baja_dto)
+
+
+@router.get(
+    "/licitaciones/{licitacion_id:path}/escenarios-precio",
+    summary="Escenarios descriptivos de precio sobre adjudicaciones comparables",
+    response_model=PriceScenariosResult,
+    responses={404: {"description": "Licitación inexistente"}},
+)
+async def get_escenarios_precio(
+    licitacion_id: str,
+    competencia_esperada: int | None = None,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PriceScenariosResult:
+    """Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar)."""
+    if competencia_esperada is not None and competencia_esperada < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="competencia_esperada debe ser al menos 1.",
+        )
+    data = await run_db(
+        get_price_scenarios,
+        licitacion_id,
+        expected_competition=competencia_esperada,
+    )
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Licitación no encontrada.",
+        )
+    return data

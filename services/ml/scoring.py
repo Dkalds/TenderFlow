@@ -31,7 +31,9 @@ def _media_global_baja() -> float:
         SELECT AVG((l.importe - a.importe_adjudicado) / l.importe)
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
+        WHERE {VALID_PAIR}
+          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
+          AND {exclude_duplicados_sql()}
     """  # noqa: S608 — VALID_PAIR y exclude_duplicados_sql son fragmentos constantes
     with connect_read() as c:
         row = c.execute(sql).fetchone()
@@ -109,6 +111,7 @@ def _tasa_retencion_baseline() -> dict[tuple[str, str], float]:
         FROM licitaciones l
         JOIN adjudicaciones a ON a.licitacion_id = l.id_externo
         WHERE l.organo_contratacion IS NOT NULL
+          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND l.cpv IS NOT NULL
           AND length(l.cpv) >= 4
         GROUP BY l.organo_contratacion, cpv4

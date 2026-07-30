@@ -39,6 +39,7 @@ from observability.logging import get_logger
 from services.gdpr import (
     anonymize_user_data,
     export_audit_log,
+    export_collaboration_data,
     export_feedback,
     export_user_notifications,
     export_user_profile,
@@ -128,6 +129,13 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
 
         audit = export_audit_log(_actor_key(ctx))
         zf.writestr("audit.json", json.dumps(audit, ensure_ascii=False, indent=2))
+
+        collaboration = export_collaboration_data(int(ctx["user_id"]))
+        for filename, rows in collaboration.items():
+            zf.writestr(
+                f"{filename}.json",
+                json.dumps(rows, ensure_ascii=False, indent=2),
+            )
 
         meta = {
             "exported_at": now_utc_iso(),
@@ -297,6 +305,8 @@ class UserProfileBody(BaseModel):
     afinidad_keywords: list[str] | None = None
     importe_min: float | None = None
     importe_max: float | None = None
+    organization_id: int | None = None
+    visibility: Literal["private", "organization"] = "private"
 
     def validate_weights(self) -> None:
         if self.weights is not None:
@@ -319,10 +329,13 @@ class UserProfileOut(BaseModel):
     importe_min: float | None = None
     importe_max: float | None = None
     updated_at: str | None = None
+    organization_id: int | None = None
+    visibility: Literal["private", "organization"] = "private"
 
 
 @router.get("/me/profile", summary="Obtener el perfil de scoring del usuario")
 async def get_profile(
+    organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> UserProfileOut:
     """Devuelve el perfil de scoring personalizado del usuario.
@@ -332,7 +345,17 @@ async def get_profile(
     from db.repositories.user_profiles import get_user_profile
 
     user_key = _user_key(ctx)
-    raw = get_user_profile(user_key)
+    resolved_id: int | None = None
+    if organization_id is not None:
+        from services.organizations import OrganizationAccessError, resolve_organization
+
+        try:
+            resolved_id, _ = resolve_organization(int(ctx["user_id"]), organization_id)
+        except OrganizationAccessError as exc:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    raw = get_user_profile(user_key, resolved_id)
     if raw is None:
         return UserProfileOut()
     return UserProfileOut(
@@ -341,6 +364,8 @@ async def get_profile(
         importe_min=raw.get("importe_min"),
         importe_max=raw.get("importe_max"),
         updated_at=raw.get("updated_at"),
+        organization_id=raw.get("organization_id"),
+        visibility=raw.get("visibility") or "private",
     )
 
 
@@ -358,6 +383,22 @@ async def put_profile(
 
     body.validate_weights()
     user_key = _user_key(ctx)
+    resolved_id: int | None = None
+    if body.organization_id is not None:
+        from services.organizations import (
+            OrganizationAccessError,
+            OrganizationPermissionError,
+            resolve_organization,
+        )
+
+        try:
+            resolved_id, _ = resolve_organization(
+                int(ctx["user_id"]), body.organization_id, write=True
+            )
+        except (OrganizationAccessError, OrganizationPermissionError) as exc:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     upsert_user_profile(
         user_key,
         {
@@ -366,6 +407,8 @@ async def put_profile(
             "importe_min": body.importe_min,
             "importe_max": body.importe_max,
         },
+        resolved_id,
+        body.visibility,
     )
     return {"status": "ok"}
 

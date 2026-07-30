@@ -85,6 +85,7 @@ from services.analytics.tecnologias import (
 from services.analytics.trends import TrendsFilters, TrendsResult, get_trends
 from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
 from services.analytics.utes import UTEFilters, UTEResult, get_utes
+from services.source_health import SourceFreshnessResult, get_source_freshness
 from shared.cache import cache_response
 
 log = get_logger(__name__)
@@ -222,6 +223,18 @@ def quality(
 ) -> QualityResult:
     """Data quality metrics — completeness and scrape freshness."""
     return get_quality()
+
+
+@router.get(
+    "/source-freshness",
+    response_model=SourceFreshnessResult,
+    summary="Frescura y SLA por fuente de ingesta",
+)
+def source_freshness(
+    _user: dict[str, Any] = Depends(get_current_session_user),
+) -> SourceFreshnessResult:
+    """Hace visibles cursores atascados, runs fallidos y detección <24h."""
+    return get_source_freshness()
 
 
 @router.get("/organos", response_model=OrganosResult)

@@ -22,6 +22,8 @@ from typing import Any
 from db.repositories.api_keys import ApiKeyRepository
 from db.repositories.audit import AuditRepository
 from db.repositories.feedback import FeedbackRepository
+from db.repositories.organizations import OrganizationRepository
+from db.repositories.pursuits import PursuitRepository
 from db.repositories.user_profiles import delete_user_profile, get_user_profile
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
@@ -32,6 +34,8 @@ _api_key_repo = ApiKeyRepository()
 _watchlist_repo = WatchlistRepository()
 _feedback_repo = FeedbackRepository()
 _audit_repo = AuditRepository()
+_organization_repo = OrganizationRepository()
+_pursuit_repo = PursuitRepository()
 
 
 def get_user_id_from_key_id(key_id: int) -> int | None:
@@ -94,6 +98,20 @@ def export_audit_log(key_hash: str) -> list[dict[str, Any]]:
     return _audit_repo.export_by_user_key(key_hash)
 
 
+def export_collaboration_data(user_id: int) -> dict[str, list[dict[str, Any]]]:
+    """Exporta membresías y filas corporativas vinculadas personalmente.
+
+    No vuelca oportunidades de compañeros sin relación personal con el
+    solicitante: la portabilidad GDPR no debe convertirse en una exportación
+    indiscriminada de información corporativa.
+    """
+    data = _pursuit_repo.export_personal_data(user_id)
+    return {
+        "organization_memberships": _organization_repo.export_memberships_for_user(user_id),
+        **data,
+    }
+
+
 def anonymize_user_data(
     user_key: str, key_id: int | None = None, *, user_id: int | None = None
 ) -> None:
@@ -113,6 +131,8 @@ def anonymize_user_data(
     delete_all_alerts(user_key)
     if user_id is not None:
         _feedback_repo.delete_for_user(user_id)
+        _pursuit_repo.anonymize_user_references(user_id)
+        _organization_repo.remove_memberships_for_user(user_id)
     if key_id is not None:
         _api_key_repo.deactivate_by_id(key_id)
 

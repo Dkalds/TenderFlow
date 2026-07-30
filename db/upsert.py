@@ -143,6 +143,11 @@ class Licitacion:
     ml_tecnologias: str | None = None  # CSV ordenado por probabilidad
     ml_proba_max: float | None = None
     ml_tech_principal: str | None = None
+    # Linaje de inclusión: separa el dato observado del universo de análisis.
+    filter_version: str | None = None
+    classifier_model_version: str | None = None
+    inclusion_reason: str | None = None
+    analysis_universe: str | None = None
     fecha_actualizacion_fuente: str | None = None
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".

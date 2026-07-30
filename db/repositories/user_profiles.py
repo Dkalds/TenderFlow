@@ -17,15 +17,29 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
-def get_user_profile(user_key: str) -> dict[str, Any] | None:
+def get_user_profile(
+    user_key: str, organization_id: int | None = None
+) -> dict[str, Any] | None:
     """Carga el perfil del usuario. Devuelve None si no tiene perfil."""
     with connect_read() as c:
-        row = c.execute(
-            "SELECT user_key, weights_json, afinidad_keywords_json, "
-            "cpvs_json, ccaa_json, importe_min, importe_max, updated_at "
-            "FROM user_profiles WHERE user_key = ?",
-            (user_key,),
-        ).fetchone()
+        if organization_id is None:
+            row = c.execute(
+                "SELECT user_key, weights_json, afinidad_keywords_json, "
+                "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
+                "organization_id, visibility "
+                "FROM user_profiles WHERE user_key = ?",
+                (user_key,),
+            ).fetchone()
+        else:
+            row = c.execute(
+                "SELECT user_key, weights_json, afinidad_keywords_json, "
+                "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
+                "organization_id, visibility "
+                "FROM user_profiles WHERE organization_id = ? "
+                "AND (visibility = 'organization' OR user_key = ?) "
+                "ORDER BY CASE WHEN user_key = ? THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+                (organization_id, user_key, user_key),
+            ).fetchone()
     if row is None:
         return None
     cols = [
@@ -37,6 +51,8 @@ def get_user_profile(user_key: str) -> dict[str, Any] | None:
         "importe_min",
         "importe_max",
         "updated_at",
+        "organization_id",
+        "visibility",
     ]
     raw = dict(zip(cols, row, strict=False))
     # Deserializar JSON columns
@@ -49,10 +65,17 @@ def get_user_profile(user_key: str) -> dict[str, Any] | None:
             result[key] = None
     result["importe_min"] = raw["importe_min"]
     result["importe_max"] = raw["importe_max"]
+    result["organization_id"] = raw["organization_id"]
+    result["visibility"] = raw["visibility"]
     return result
 
 
-def upsert_user_profile(user_key: str, profile: dict[str, Any]) -> None:
+def upsert_user_profile(
+    user_key: str,
+    profile: dict[str, Any],
+    organization_id: int | None = None,
+    visibility: str = "private",
+) -> None:
     """Crea o actualiza el perfil del usuario."""
     from db.database import now_utc_iso
 
@@ -67,8 +90,8 @@ def upsert_user_profile(user_key: str, profile: dict[str, Any]) -> None:
         c.execute(
             "INSERT INTO user_profiles "
             "(user_key, weights_json, afinidad_keywords_json, cpvs_json, ccaa_json, "
-            " importe_min, importe_max, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            " importe_min, importe_max, updated_at, organization_id, visibility) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(user_key) DO UPDATE SET "
             "weights_json = excluded.weights_json, "
             "afinidad_keywords_json = excluded.afinidad_keywords_json, "
@@ -76,7 +99,9 @@ def upsert_user_profile(user_key: str, profile: dict[str, Any]) -> None:
             "ccaa_json = excluded.ccaa_json, "
             "importe_min = excluded.importe_min, "
             "importe_max = excluded.importe_max, "
-            "updated_at = excluded.updated_at",
+            "updated_at = excluded.updated_at, "
+            "organization_id = excluded.organization_id, "
+            "visibility = excluded.visibility",
             (
                 user_key,
                 json.dumps(weights) if weights is not None else None,
@@ -86,6 +111,8 @@ def upsert_user_profile(user_key: str, profile: dict[str, Any]) -> None:
                 importe_min,
                 importe_max,
                 now_utc_iso(),
+                organization_id,
+                visibility,
             ),
         )
     log.info("user_profile_upserted", user_key=user_key[:8])

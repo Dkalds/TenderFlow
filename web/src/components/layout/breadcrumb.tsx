@@ -4,27 +4,27 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { findPage, findSection } from "@/lib/navigation";
+import { findPage, findProductSpace } from "@/lib/navigation";
 import { useWithFilters } from "@/lib/filters";
 
 export function Breadcrumb() {
   const pathname = usePathname();
   const withFilters = useWithFilters();
-  const slug = pathname.replace("/", "");
-  const section = findSection(slug);
+  const slug = pathname.replace(/^\//, "").split("/")[0];
+  const space = findProductSpace(slug);
   const page = findPage(slug);
 
-  if (!section || !page) return null;
+  if (!space || !page) return null;
 
-  const sectionHref = withFilters(`/${section.pages[0].slug}`);
+  const spaceHref = withFilters(`/${space.slug}`);
 
   return (
     <nav className="flex items-center gap-1.5 text-sm text-muted-foreground px-4 py-2">
       <Link
-        href={sectionHref}
+        href={spaceHref}
         className="hover:text-foreground transition-colors"
       >
-        {section.label}
+        {space.label}
       </Link>
       <ChevronRight className="h-3.5 w-3.5" />
       <span className="text-foreground font-medium">{page.label}</span>

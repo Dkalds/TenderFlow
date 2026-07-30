@@ -28,6 +28,7 @@ from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from shared.export_safety import sanitize_spreadsheet_record
+from shared.tender_facts import TenderFactSheetRecord
 
 log = get_logger(__name__)
 
@@ -524,6 +525,68 @@ async def get_documentos(
         "id_externo": id_externo,
         "items": [DocumentoSummary.model_validate(d) for d in items],
     }
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/ficha-pliego",
+    response_model=TenderFactSheetRecord,
+    summary="Ficha estructurada y citable de los pliegos",
+    responses={
+        401: {"description": "Autenticación inválida"},
+        404: {"description": "Ficha todavía no disponible"},
+    },
+)
+async def get_tender_fact_sheet(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> TenderFactSheetRecord:
+    """Lee la extracción vigente sin invocar al proveedor LLM."""
+    from services.rag.fact_sheet import get_fact_sheet
+
+    record = await run_db(get_fact_sheet, id_externo)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La ficha del pliego todavía no está disponible.",
+        )
+    return record
+
+
+@router.post(
+    "/licitaciones/{id_externo:path}/ficha-pliego/extract",
+    response_model=TenderFactSheetRecord,
+    summary="Extraer o reprocesar la ficha estructurada",
+    responses={
+        401: {"description": "Autenticación inválida"},
+        422: {"description": "No hay páginas extraídas"},
+        502: {"description": "El proveedor no devolvió una ficha válida"},
+    },
+)
+async def extract_tender_fact_sheet(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> TenderFactSheetRecord:
+    """Reextracción explícita; valida toda cita antes de persistirla."""
+    from config import settings
+    from services.rag.fact_sheet import extract_fact_sheet
+
+    try:
+        return await run_db(
+            extract_fact_sheet,
+            id_externo,
+            model=settings.PLIEGO_FACTS_MODEL,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        log.warning("tender_fact_sheet_extract_failed", id_externo=id_externo, error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No se pudo extraer una ficha verificable del pliego.",
+        ) from exc
 
 
 @router.get(

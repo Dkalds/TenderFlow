@@ -13,7 +13,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import VALID_PAIR, round_sql
+from services.sql_fragments import TECHNOLOGY_OBSERVED_SQL, VALID_PAIR, round_sql
 
 _BAJA_PCT = "(l.importe - a.importe_adjudicado) / l.importe * 100"
 
@@ -60,7 +60,7 @@ def bajas_agregadas(
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
+        WHERE {VALID_PAIR} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
     """  # noqa: S608
     params: list[Any] = []
     if cpv_prefix:
@@ -98,7 +98,7 @@ def baja_de_referencia(
                {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {VALID_PAIR} AND {exclude_duplicados_sql()}
+        WHERE {VALID_PAIR} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
     """  # noqa: S608 — VALID_PAIR es un fragmento constante; valores con ?
     params: list[Any] = []
     if organo:
