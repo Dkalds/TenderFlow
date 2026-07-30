@@ -2,7 +2,7 @@ import * as React from "react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import { useCreatePursuit, usePursuits } from "@/hooks/use-pursuits";
+import { pursuitKeys, useCreatePursuit, usePursuits, useUpdatePursuit } from "@/hooks/use-pursuits";
 import { useOrganizationStore } from "@/hooks/use-organization";
 
 const pursuit = {
@@ -42,7 +42,7 @@ describe("pursuit hooks", () => {
     const { result } = renderHook(() => usePursuits({ status: "identified" }), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data?.items[0].id).toBe(1);
+    expect(result.current.data?.items?.[0].id).toBe(1);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("status=identified"))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("organization_id=1"))).toBe(true);
   });
@@ -76,5 +76,39 @@ describe("pursuit hooks", () => {
         body: JSON.stringify({ licitacion_id: "lic-1", organization_id: 1 }),
       }),
     );
+  });
+
+  it("seeds the detail cache under the key the detail view reads", async () => {
+    // `usePursuit` lee `[...detail(id), organizationId]`. Sembrar sin la
+    // organización dejaba el dato en una entrada huérfana y el detalle sólo se
+    // actualizaba cuando volvía el refetch de la invalidación.
+    useOrganizationStore.setState({ activeOrganizationId: 1 });
+    const updated = { ...pursuit, status: "qualifying", version: 2 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              String(url).includes("/organizations")
+                ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+                : updated,
+            ),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const localWrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useUpdatePursuit(1), { wrapper: localWrapper });
+    await waitFor(() => expect(useOrganizationStore.getState().activeOrganizationId).toBe(1));
+    await result.current.mutateAsync({ status: "qualifying" });
+
+    expect(client.getQueryData([...pursuitKeys.detail("1"), 1])).toMatchObject({ version: 2 });
   });
 });

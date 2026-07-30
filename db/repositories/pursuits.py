@@ -242,24 +242,30 @@ class PursuitRepository:
             return rows_to_dicts(cur)
 
     def export_personal_data(self, user_id: int) -> dict[str, list[dict[str, Any]]]:
-        """Exporta solo filas vinculadas personalmente al usuario."""
+        """Exporta solo filas vinculadas personalmente al usuario.
+
+        Cada resultado se materializa antes de lanzar la siguiente query: la
+        conexión expone un único cursor y ``execute`` lo reemplaza, así que dos
+        cursores "vivos" a la vez apuntan al mismo resultado (el último).
+        """
         with connect_read() as conn:
-            pursuit_cur = conn.execute(
-                "SELECT * FROM pursuits WHERE responsible_user_id = ? "
-                "OR created_by_user_id = ? OR updated_by_user_id = ? "
-                "ORDER BY id LIMIT 5000",
-                (user_id, user_id, user_id),
+            pursuits = rows_to_dicts(
+                conn.execute(
+                    "SELECT * FROM pursuits WHERE responsible_user_id = ? "
+                    "OR created_by_user_id = ? OR updated_by_user_id = ? "
+                    "ORDER BY id LIMIT 5000",
+                    (user_id, user_id, user_id),
+                )
             )
-            event_cur = conn.execute(
-                "SELECT id, pursuit_id, organization_id, event_type, actor_user_id, "
-                "payload_json, idempotency_key, created_at "
-                "FROM pursuit_events WHERE actor_user_id = ? ORDER BY id LIMIT 5000",
-                (user_id,),
+            events = rows_to_dicts(
+                conn.execute(
+                    "SELECT id, pursuit_id, organization_id, event_type, actor_user_id, "
+                    "payload_json, idempotency_key, created_at "
+                    "FROM pursuit_events WHERE actor_user_id = ? ORDER BY id LIMIT 5000",
+                    (user_id,),
+                )
             )
-            return {
-                "pursuits": rows_to_dicts(pursuit_cur),
-                "pursuit_events": rows_to_dicts(event_cur),
-            }
+            return {"pursuits": pursuits, "pursuit_events": events}
 
     def anonymize_user_references(self, user_id: int) -> None:
         """Desvincula asignaciones mutables; el ledger permanece inalterado."""

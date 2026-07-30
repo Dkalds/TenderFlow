@@ -31,6 +31,7 @@ _SUMMARY_COLS = [
     licitaciones.c.importe,
     licitaciones.c.estado,
     licitaciones.c.fecha_publicacion,
+    licitaciones.c.fecha_limite,
     licitaciones.c.ccaa,
     licitaciones.c.cpv,
     licitaciones.c.url,
@@ -57,7 +58,7 @@ _DEFAULT_ORDER = licitaciones.c.fecha_publicacion.desc()
 
 _SUMMARY_COLS_STR = (
     "id_externo, titulo, organo_contratacion, importe, estado, "
-    "fecha_publicacion, ccaa, cpv, url, tecnologia, "
+    "fecha_publicacion, fecha_limite, ccaa, cpv, url, tecnologia, "
     "ml_tecnologias, ml_proba_max, ml_tech_principal"
 )
 

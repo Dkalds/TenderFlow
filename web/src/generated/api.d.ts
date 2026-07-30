@@ -4064,6 +4064,8 @@ export interface components {
             cpv?: string | null;
             /** Estado */
             estado?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
             /** Fecha Publicacion */
             fecha_publicacion?: string | null;
             /** Id Externo */

@@ -2,38 +2,76 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import type { components } from "@/generated/api";
 
-/** A deliberately small projection used by the action-oriented Radar. */
-export interface RadarTender {
-  id_externo: string;
-  titulo: string | null;
-  organo_contratacion: string | null;
-  importe: number | null;
-  fecha_limite: string | null;
-  fecha_publicacion: string | null;
-  estado: string | null;
-  tecnologia: string | null;
+/**
+ * Proyección que renderiza el Radar.
+ *
+ * Se deriva del esquema generado, no se escribe a mano: un campo que la API no
+ * envía deja de compilar aquí en vez de aparecer como `undefined` en pantalla.
+ */
+type LicitacionSummary = components["schemas"]["LicitacionSummary"];
+type ScoredOpportunity = components["schemas"]["ScoredOpportunity"];
+
+export type RadarTender = LicitacionSummary & {
   score?: number | null;
   band?: string | null;
+};
+
+/** Lo que devuelve el listado: sin `score` ni `band`, que llegan del scoring. */
+interface ListingResponse {
+  items: LicitacionSummary[];
 }
 
-interface RadarResponse {
-  items: RadarTender[];
-  total: number;
+interface ScoringResponse {
+  opportunities: ScoredOpportunity[];
 }
 
 /**
- * Radar is intentionally based on the existing tender listing.  It therefore
- * works before personalised ranking is introduced, while the endpoint remains
- * a stable place to attach that ranking later.
+ * `sort` sin prefijo es descendente para fechas (lo más reciente primero); el
+ * prefijo `-` invierte a ascendente. Es al revés que en `importe`, así que
+ * pedir `-fecha_publicacion` devolvía las licitaciones más viejas de la base
+ * — justo lo contrario de un radar.
+ */
+const RADAR_QUERY = "/api/v1/licitaciones?limit=24&with_total=false&sort=fecha_publicacion";
+
+/**
+ * Radar se apoya en el listado existente y le alinea el score por id, igual que
+ * la página de detalle. El scoring lo calcula el backend (ADR-014): aquí sólo
+ * se emparejan ids, nunca se deriva una puntuación en cliente.
  */
 export function useRadar() {
-  return useQuery({
+  const listing = useQuery({
     queryKey: ["radar", "tenders"],
-    queryFn: () =>
-      fetchWithAuth<RadarResponse>(
-        "/api/v1/licitaciones?limit=24&with_total=false&sort=-fecha_publicacion",
-      ),
+    queryFn: () => fetchWithAuth<ListingResponse>(RADAR_QUERY),
     staleTime: 30_000,
   });
+
+  const ids = (listing.data?.items ?? []).map((item) => item.id_externo).filter(Boolean);
+
+  const scoring = useQuery({
+    queryKey: ["radar", "scoring", ids],
+    queryFn: () =>
+      fetchWithAuth<ScoringResponse>(
+        `/api/v1/analytics/scoring?ids=${encodeURIComponent(ids.join(","))}`,
+      ),
+    enabled: ids.length > 0,
+    staleTime: 5 * 60_000,
+    placeholderData: (previous) => previous,
+  });
+
+  const scores = new Map(
+    (scoring.data?.opportunities ?? []).map((row) => [row.id_externo, row] as const),
+  );
+
+  const items: RadarTender[] = (listing.data?.items ?? []).map((item) => {
+    const scored = scores.get(item.id_externo);
+    return scored ? { ...item, score: scored.score, band: scored.band } : item;
+  });
+
+  return {
+    data: listing.data ? { items } : undefined,
+    isLoading: listing.isLoading,
+    error: listing.error,
+  };
 }

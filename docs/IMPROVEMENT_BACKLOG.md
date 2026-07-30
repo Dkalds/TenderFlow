@@ -153,6 +153,27 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/filters.ts](../web/src/lib/filters.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
 - **Riesgo:** bajo — solo añade tests.
 
+### [P2] Derivar del esquema generado los 6 hooks que aún escriben tipos a mano
+- **Área:** web/src/hooks
+- **Problema:** Un hook que declara su propia `interface` de respuesta compila
+  aunque la API nunca envíe ese campo, y el valor llega a pantalla como
+  `undefined`. Ya pasó dos veces: `RadarTender` declaraba `score`/`band`/
+  `fecha_limite` inexistentes (todas las tarjetas del Radar mostraban "Nueva
+  señal" y "Sin fecha límite"), y antes el merge de scoring de `detalle` leía
+  `.items` donde el backend devuelve `.opportunities`. `use-radar.ts` y
+  `use-pursuits.ts` ya derivan de `@/generated/api`; quedan **6**: `use-ask`,
+  `use-organization`, `use-price-scenarios`, `use-source-freshness`,
+  `use-tender-fact-sheet`, `use-watchlist-items`.
+- **Acceptance criteria:**
+  - Cada hook usa `components["schemas"][...]` en lugar de su `interface` local,
+    o justifica en línea por qué su ruta no tiene esquema tipado (las 65
+    operaciones opacas del ítem P1 de contrato no pueden derivarse todavía —
+    esos hooks se desbloquean al tipar la ruta, no antes).
+  - `make web-typecheck` sigue verde: es el guardián, no hace falta un checker
+    nuevo.
+- **Files de partida:** [web/src/hooks/](../web/src/hooks/), [web/src/generated/api.d.ts](../web/src/generated/api.d.ts)
+- **Riesgo:** bajo — el typecheck delata cualquier divergencia al migrar cada hook.
+
 ---
 
 ## P3 — Nice to have
@@ -238,6 +259,42 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-07-30] **Cobertura de Radar y Oportunidades, y los 5 bugs que la
+  cobertura destapó** — El plan de producto llegó con el camino feliz probado y
+  las guardas sin probar: `services/pursuits.py` al 77% con **todas** sus reglas
+  de negocio descubiertas, `api/routes/pursuits.py` al 48% (ningún test tocaba
+  el mapeo 403/404/409/422 ni `/organizations`), y `use-radar.ts` sin un solo
+  test. Al escribirlos aparecieron cinco defectos reales, cada uno con su
+  regresión verificada en rojo antes del fix:
+  (1) **Export GDPR de pursuits devolvía la tabla equivocada** — la conexión
+  expone un único cursor y `execute` lo reemplaza, así que abrir dos antes de
+  consumirlos dejaba las filas de `pursuit_events` bajo la clave `pursuits` y la
+  lista de eventos vacía. Un escaneo AST del patrón sobre `db/`, `services/`,
+  `api/`, `scheduler/` y `scraper/` confirma que era el **único** caso del repo.
+  (2) **El Radar listaba lo más viejo de la base** — pedía
+  `sort=-fecha_publicacion` y en `_SORT_MAP` el prefijo `-` sobre fechas es
+  ASCENDENTE (al revés que en `importe`, y no documentado en la ruta).
+  (3) **Todas las tarjetas del Radar decían "Nueva señal"** — `RadarTender`
+  declaraba `score`/`band`, que `/api/v1/licitaciones` nunca ha devuelto. Ahora
+  se alinean por id contra `/api/v1/analytics/scoring?ids=`, igual que hace
+  `detalle/page.tsx`.
+  (4) **Todas las tarjetas decían "Sin fecha límite"** — `fecha_limite` no
+  viajaba en el resumen; se añade a `LicitacionSummary` y a `_SUMMARY_COLS`.
+  (5) **`useUpdatePursuit` sembraba la caché en una clave huérfana** — escribía
+  en `detail(id)` mientras `usePursuit` lee `[...detail(id), organizationId]`.
+  **Causa raíz de (3) y (4)**: los hooks escribían sus interfaces a mano en vez
+  de derivarlas de `web/src/generated/api.d.ts`, así que un campo que la API no
+  envía compilaba igual. Es el hallazgo H2 (contrato opaco) otra vez, el mismo
+  que ya obligó a declarar `RenovacionesTotales` a mano. `use-radar.ts` y
+  `use-pursuits.ts` ahora derivan del esquema generado: el gate que ya existe
+  (`make web-typecheck`) pasa a ser el guardián, y detectó una discrepancia real
+  en cuanto se aplicó. **Quedan 6 hooks con tipos a mano**
+  (`use-ask`, `use-organization`, `use-price-scenarios`, `use-source-freshness`,
+  `use-tender-fact-sheet`, `use-watchlist-items`) — ver ítem P2 abajo.
+  +54 tests backend (`test_pursuits_rules.py`, `test_pursuits_api_contract.py`,
+  `test_licitaciones_radar_contract.py`) y +16 frontend (`use-radar.test.tsx`,
+  `radar/__tests__/page.test.tsx`, `use-pursuits.test.tsx`).
 
 - [2026-07-30] **Plan de producto TenderFlow implementado de extremo a extremo
   (Fases 1–8)** — Organizaciones y membresías; `pursuits` con decisiones,

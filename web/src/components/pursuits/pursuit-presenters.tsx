@@ -45,7 +45,7 @@ export function formatDate(value: string | null | undefined): string {
   return new Intl.DateTimeFormat("es-ES", { dateStyle: "medium" }).format(date);
 }
 
-export function daysUntil(value: string | null): string | null {
+export function daysUntil(value: string | null | undefined): string | null {
   if (!value) return null;
   const difference = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000);
   if (Number.isNaN(difference)) return null;
