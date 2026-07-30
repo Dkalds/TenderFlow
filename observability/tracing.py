@@ -122,10 +122,10 @@ def configure_tracing(service_name: str | None = None) -> None:
         # they were NOT selected by the ratio sampler (dropped spans).
         # We achieve this by adding a SimpleSpanProcessor with a filter wrapper.
         try:
-            from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
+            from opentelemetry.sdk.trace.export import SimpleSpanProcessor
             from opentelemetry.trace import StatusCode as _StatusCode
 
-            class _ErrorFilterExporter(SpanExporter):
+            class _ErrorFilterExporter:
                 """Exporter wrapper that only exports spans with ERROR status."""
 
                 def __init__(self, inner: Any) -> None:
