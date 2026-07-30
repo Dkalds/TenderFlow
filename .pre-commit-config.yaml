@@ -86,7 +86,13 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
-        exclude: "^(\\.secrets\\.baseline|tests/fixtures/.*|graphify-out/.*|web/public/locales/.*|skills-lock\\.json)$"
+        # Los árboles de skills (.claude/skills/, .agents/skills/) se excluyen por
+        # el mismo motivo que en codespell más arriba: es documentación vendored
+        # instalada desde skills-lock.json, no fuente del proyecto. Sus ejemplos
+        # (`hashed_password="hashed"`, DSNs de tutorial) sólo generan falsos
+        # positivos, y un `pragma` inline se perdería al reinstalar el skill.
+        # gitleaks sigue escaneando esas rutas sin exclusiones.
+        exclude: "^(\\.secrets\\.baseline|tests/fixtures/.*|graphify-out/.*|web/public/locales/.*|skills-lock\\.json|\\.claude/skills/.*|\\.agents/skills/.*)$"
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
