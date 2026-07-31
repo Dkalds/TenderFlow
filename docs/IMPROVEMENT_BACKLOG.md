@@ -304,6 +304,41 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-07-31] **El lote no existía en el modelo — pérdida de filas en
+  expedientes multi-lote (migraciones `v65_lotes`/`v66_lotes_index_concurrent`,
+  commit `e2f116b`)** — `parse_adjudicaciones` iteraba
+  `cac:TenderResult` (uno por lote en CODICE) pero descartaba la referencia
+  al lote, así que `UNIQUE(licitacion_id, nif, importe_adjudicado)`
+  descartaba en silencio una fila cuando la misma empresa ganaba dos lotes
+  por el mismo importe. Nueva tabla `lotes` + `adjudicaciones.lote_id`;
+  la unique vieja (localizada dinámicamente, su nombre no es fijo entre
+  entornos) se sustituye por dos índices únicos parciales —
+  `..._sin_lote` (WHERE lote_id IS NULL, protección idéntica a la que
+  reemplaza) y `..._lic_lote_nif_importe` (WHERE lote_id IS NOT NULL,
+  protección nueva por lote) — porque una unique simple con `lote_id`
+  habría perdido toda protección para el ~100% de filas existentes sin lote
+  resuelto (`NULL <> NULL` en SQL). Creación de índices separada en
+  `v66_lotes_index_concurrent` (mismo patrón que v61→v63) para no dejar la
+  migración a medio aplicar si la construcción concurrente falla sobre
+  `adjudicaciones`. `scraper/codice_parser.py::parse_lotes()` extrae
+  `cac:ProcurementProjectLot`; `parse_adjudicaciones` lee
+  `cac:TenderResult/cac:ProcurementProjectLotReference/cbc:ID` a un campo
+  parse-only (`Adjudicacion.lote_numero_raw`, excluido de las columnas del
+  INSERT) que el runner de conectores (`scraper/connectors/base.py`)
+  resuelve a `lote_id` real tras persistir los lotes, en el mismo ciclo de
+  escritura que las adjudicaciones. La dedup en memoria
+  (`db/upsert.py::_dedup_adj_rows`) refleja las mismas dos claves.
+  Verificado contra Postgres 16 real (no mockeado): `alembic upgrade head`
+  con las 66 migraciones detectó un bug real que ningún test lo hubiera
+  hecho — `information_schema.column_name` es `sql_identifier`, no `text`,
+  y no compara contra un array literal sin cast explícito. 381 tests
+  dirigidos en verde contra esa instancia, incluida la regresión directa
+  (dos lotes, misma empresa, mismo importe → ahora persisten 2 filas) a
+  nivel de conector y de `db/upsert.py`.
+  **Sigue abierto** (ver ítem P0 de arriba): `services/competitive/bajas.py`
+  y `services/competitive/mercado.py` todavía no usan `lote_id` para
+  calcular baja/cuota/HHI, y la UTE sigue sin tabla de miembros.
+
 - [2026-07-31] **`fecha_limite` nunca se extraía de PLACSP (commit `166b2f2`)**
   — `scraper/codice_parser.py::parse_entry` leía
   `ProcurementProject/PlannedPeriod/EndDate` (fin de EJECUCIÓN del contrato,
