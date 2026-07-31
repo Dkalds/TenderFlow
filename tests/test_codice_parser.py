@@ -17,6 +17,7 @@ from scraper.codice_parser import (
     parse_document_references,
     parse_entry,
     parse_entry_unfiltered,
+    parse_lotes,
     parse_summary,
 )
 
@@ -229,6 +230,106 @@ def _make_entry_with_adjudicacion(lic_id: str = "ADJ-001") -> str:
                 <cac:PartyIdentification><cbc:ID>B12345678</cbc:ID></cac:PartyIdentification>
               </cac:WinningParty>
             </cac:TenderResult>
+          </cacext:ContractFolderStatus>
+        </entry>
+    """)
+
+
+def _make_entry_with_lotes(
+    lic_id: str = "LOTE-001",
+    *,
+    lotes: tuple[dict, ...] = (
+        {
+            "numero": "1",
+            "titulo": "Lote 1",
+            "cpv": "72000000-5",
+            "importe": "10000.00",
+        },
+    ),
+    tender_results: tuple[dict, ...] = (),
+) -> str:
+    """Entry con ``cac:ProcurementProjectLot`` y, opcionalmente, ``TenderResult``
+    que referencian un lote vía ``cac:ProcurementProjectLotReference/cbc:ID``.
+
+    Cada dict de ``tender_results`` acepta ``nombre``, ``nif``, ``importe`` y
+    ``lote_numero`` (opcional -- si falta, el TenderResult no referencia
+    ningún lote, igual que un expediente de lote único).
+    """
+    cbc = _NS["cbc"]
+    cac = _NS["cac"]
+    cacext = _NS["cacext"]
+    cbcext = _NS["cbcext"]
+
+    lotes_xml = "".join(
+        f"""
+        <cac:ProcurementProjectLot>
+          <cbc:ID>{lote["numero"]}</cbc:ID>
+          <cac:ProcurementProject>
+            <cbc:Name>{lote.get("titulo", "")}</cbc:Name>
+            <cac:RequiredCommodityClassification>
+              <cbc:ItemClassificationCode>{lote.get("cpv", "")}</cbc:ItemClassificationCode>
+            </cac:RequiredCommodityClassification>
+            <cac:BudgetAmount>
+              <cbc:TaxExclusiveAmount currencyID="EUR">{lote.get("importe", "0")}</cbc:TaxExclusiveAmount>
+            </cac:BudgetAmount>
+          </cac:ProcurementProject>
+        </cac:ProcurementProjectLot>"""
+        for lote in lotes
+    )
+
+    def _tr(tr: dict) -> str:
+        lot_ref_xml = (
+            f"<cac:ProcurementProjectLotReference><cbc:ID>{tr['lote_numero']}</cbc:ID>"
+            "</cac:ProcurementProjectLotReference>"
+            if tr.get("lote_numero") is not None
+            else ""
+        )
+        nif_xml = (
+            f"<cac:PartyIdentification><cbc:ID>{tr['nif']}</cbc:ID></cac:PartyIdentification>"
+            if tr.get("nif")
+            else ""
+        )
+        return f"""
+        <cac:TenderResult>
+          {lot_ref_xml}
+          <cac:AwardedTenderedProject>
+            <cac:LegalMonetaryTotal>
+              <cbc:TaxExclusiveAmount>{tr["importe"]}</cbc:TaxExclusiveAmount>
+            </cac:LegalMonetaryTotal>
+          </cac:AwardedTenderedProject>
+          <cac:WinningParty>
+            <cac:PartyName><cbc:Name>{tr["nombre"]}</cbc:Name></cac:PartyName>
+            {nif_xml}
+          </cac:WinningParty>
+        </cac:TenderResult>"""
+
+    tr_xml = "".join(_tr(tr) for tr in tender_results)
+
+    return textwrap.dedent(f"""\
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:cbc="{cbc}"
+               xmlns:cac="{cac}"
+               xmlns:cacext="{cacext}"
+               xmlns:cbcext="{cbcext}">
+          <id>https://example.com/{lic_id}</id>
+          <title>Expediente con lotes SAP</title>
+          <updated>2024-03-15T00:00:00Z</updated>
+          <link href="https://example.com/{lic_id}" rel="alternate"/>
+          <summary>
+            Id licitación: {lic_id}; Órgano de Contratación: Ministerio;
+            Importe: 100000.00 EUR; Estado: ADJ
+          </summary>
+          <cacext:ContractFolderStatus>
+            <cbc:ContractFolderID>{lic_id}</cbc:ContractFolderID>
+            <cbcext:ContractFolderStatusCode>ADJ</cbcext:ContractFolderStatusCode>
+            <cac:ProcurementProject>
+              <cbc:Name>Expediente con lotes SAP</cbc:Name>
+              <cac:BudgetAmount>
+                <cbc:TaxExclusiveAmount currencyID="EUR">100000.00</cbc:TaxExclusiveAmount>
+              </cac:BudgetAmount>
+            </cac:ProcurementProject>
+            {lotes_xml}
+            {tr_xml}
           </cacext:ContractFolderStatus>
         </entry>
     """)
@@ -513,6 +614,80 @@ class TestTenderDeadline:
         assert lic.fecha_limite.startswith("2026-04-10")
 
 
+# ─── parse_lotes (v65_lotes) ─────────────────────────────────────────────────
+
+
+class TestParseLotes:
+    """Regresión de Ola 2 (docs/IMPROVEMENT_BACKLOG.md): el lote es la unidad
+    real de negocio en contratación pública española y no existía en el
+    modelo hasta v65_lotes."""
+
+    def _get_entry(self, entry_xml: str):
+        feed = _make_atom_feed(entry_xml)
+        root = etree.fromstring(feed)
+        return root.find("{http://www.w3.org/2005/Atom}entry")
+
+    def test_extracts_multiple_lotes(self):
+        entry = self._get_entry(
+            _make_entry_with_lotes(
+                lotes=(
+                    {
+                        "numero": "1",
+                        "titulo": "Lote informático",
+                        "cpv": "72000000-5",
+                        "importe": "10000.00",
+                    },
+                    {
+                        "numero": "2",
+                        "titulo": "Lote soporte",
+                        "cpv": "72200000-7",
+                        "importe": "20000.00",
+                    },
+                )
+            )
+        )
+        lotes = parse_lotes(entry, "LOTE-001")
+        assert [lote.numero for lote in lotes] == ["1", "2"]
+        assert lotes[0].titulo == "Lote informático"
+        assert lotes[0].cpv == "72000000-5"
+        assert lotes[0].importe == pytest.approx(10_000.0)
+        assert all(lote.licitacion_id == "LOTE-001" for lote in lotes)
+
+    def test_no_lotes_returns_empty_list(self):
+        entry = self._get_entry(_make_sap_entry())
+        assert parse_lotes(entry, "EXP-2024-001") == []
+
+    def test_lote_without_id_is_skipped(self):
+        """Un lote sin numero no es direccionable -- ninguna adjudicación
+        podría referenciarlo, así que persistirlo no aportaría nada."""
+        entry_xml = textwrap.dedent(f"""\
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:cbc="{_NS["cbc"]}"
+                   xmlns:cac="{_NS["cac"]}"
+                   xmlns:cacext="{_NS["cacext"]}"
+                   xmlns:cbcext="{_NS["cbcext"]}">
+              <id>https://example.com/LOTE-SIN-ID</id>
+              <title>Expediente SAP</title>
+              <cacext:ContractFolderStatus>
+                <cbc:ContractFolderID>LOTE-SIN-ID</cbc:ContractFolderID>
+                <cac:ProcurementProjectLot>
+                  <cac:ProcurementProject><cbc:Name>Sin ID</cbc:Name></cac:ProcurementProject>
+                </cac:ProcurementProjectLot>
+              </cacext:ContractFolderStatus>
+            </entry>
+        """)
+        entry = self._get_entry(entry_xml)
+        assert parse_lotes(entry, "LOTE-SIN-ID") == []
+
+    def test_fallback_fecha_limite_applied_when_lot_has_no_own_deadline(self):
+        """La mayoría de expedientes con lotes comparten un único plazo de
+        presentación para todos -- el lote hereda el del expediente si no
+        publica el suyo propio."""
+        entry = self._get_entry(_make_entry_with_lotes())
+        lotes = parse_lotes(entry, "LOTE-001", fallback_fecha_limite="2026-08-15T21:59:00+00:00")
+        assert lotes[0].fecha_limite == "2026-08-15T21:59:00+00:00"
+
+
 # ─── parse_adjudicaciones ────────────────────────────────────────────────────
 
 
@@ -534,11 +709,56 @@ class TestParseAdjudicaciones:
         assert adj.oferta_minima == pytest.approx(40_000.0)
         assert adj.oferta_maxima == pytest.approx(55_000.0)
         assert adj.fecha_adjudicacion == "2024-04-01"
+        assert adj.lote_numero_raw is None
 
     def test_entry_without_tender_result_returns_empty(self):
         entry = self._get_entry(_make_sap_entry())
         adjs = parse_adjudicaciones(entry, "EXP-2024-001")
         assert adjs == []
+
+    def test_extracts_lote_numero_raw_from_lot_reference(self):
+        entry = self._get_entry(
+            _make_entry_with_lotes(
+                tender_results=(
+                    {
+                        "nombre": "Empresa A",
+                        "nif": "B00000001",
+                        "importe": "5000.00",
+                        "lote_numero": "1",
+                    },
+                ),
+            )
+        )
+        adjs = parse_adjudicaciones(entry, "LOTE-001")
+        assert len(adjs) == 1
+        assert adjs[0].lote_numero_raw == "1"
+
+    def test_two_lots_same_empresa_same_importe_both_extracted(self):
+        """Regresión directa del bug de pérdida de filas: sin lote_numero_raw
+        estas dos adjudicaciones son indistinguibles bajo la unique antigua
+        (licitacion_id, nif, importe_adjudicado) y la BD descartaba una."""
+        entry = self._get_entry(
+            _make_entry_with_lotes(
+                lotes=({"numero": "1"}, {"numero": "2"}),
+                tender_results=(
+                    {
+                        "nombre": "Misma Empresa SL",
+                        "nif": "B00000001",
+                        "importe": "5000.00",
+                        "lote_numero": "1",
+                    },
+                    {
+                        "nombre": "Misma Empresa SL",
+                        "nif": "B00000001",
+                        "importe": "5000.00",
+                        "lote_numero": "2",
+                    },
+                ),
+            )
+        )
+        adjs = parse_adjudicaciones(entry, "LOTE-001")
+        assert len(adjs) == 2
+        assert {adj.lote_numero_raw for adj in adjs} == {"1", "2"}
 
 
 # ─── parse_atom_bytes ────────────────────────────────────────────────────────

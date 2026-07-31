@@ -903,3 +903,106 @@ def test_ingesta_no_hace_un_round_trip_por_fila(db, monkeypatch):
         f"{stats['trips']} viajes para {filas} filas — el camino de ingesta "
         "volvió a hacer un round trip por fila (ver H1)"
     )
+
+
+# ---------------------------------------------------------------------------
+# lotes (v65_lotes)
+# ---------------------------------------------------------------------------
+
+
+def test_replace_lotes_returns_numero_to_id_mapping(db):
+    from db.upsert import Lote, replace_lotes, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    mapping = replace_lotes(
+        "TEST-001",
+        [
+            Lote(licitacion_id="TEST-001", numero="1", titulo="Lote uno", importe=1000.0),
+            Lote(licitacion_id="TEST-001", numero="2", titulo="Lote dos", importe=2000.0),
+        ],
+    )
+
+    assert set(mapping) == {"1", "2"}
+    assert isinstance(mapping["1"], int)
+    assert mapping["1"] != mapping["2"]
+
+
+def test_replace_lotes_reingesta_reemplaza_no_acumula(db):
+    from db.database import connect
+    from db.upsert import Lote, replace_lotes, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    replace_lotes("TEST-001", [Lote(licitacion_id="TEST-001", numero="1")])
+    replace_lotes("TEST-001", [Lote(licitacion_id="TEST-001", numero="1")])
+
+    with connect() as c:
+        count = c.execute("SELECT COUNT(*) FROM lotes WHERE licitacion_id = 'TEST-001'").fetchone()[
+            0
+        ]
+    assert count == 1
+
+
+def test_replace_lotes_empty_clears(db):
+    from db.database import connect
+    from db.upsert import Lote, replace_lotes, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    replace_lotes("TEST-001", [Lote(licitacion_id="TEST-001", numero="1")])
+    mapping = replace_lotes("TEST-001", [])
+
+    assert mapping == {}
+    with connect() as c:
+        count = c.execute("SELECT COUNT(*) FROM lotes WHERE licitacion_id = 'TEST-001'").fetchone()[
+            0
+        ]
+    assert count == 0
+
+
+def test_replace_lotes_batch_multiple_licitaciones(db):
+    from db.upsert import Lote, replace_lotes_batch, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="LIC-A"), make_licitacion(id_externo="LIC-B")])
+    result = replace_lotes_batch(
+        {
+            "LIC-A": [Lote(licitacion_id="LIC-A", numero="1")],
+            "LIC-B": [
+                Lote(licitacion_id="LIC-B", numero="1"),
+                Lote(licitacion_id="LIC-B", numero="2"),
+            ],
+        }
+    )
+
+    assert set(result["LIC-A"]) == {"1"}
+    assert set(result["LIC-B"]) == {"1", "2"}
+    # Mismo numero "1" en dos licitaciones distintas -> ids distintos (PK global).
+    assert result["LIC-A"]["1"] != result["LIC-B"]["1"]
+
+
+def test_replace_adjudicaciones_same_nif_importe_different_lote_both_persist(db):
+    """Regresión directa del bug de pérdida de filas (docs/IMPROVEMENT_BACKLOG.md):
+    antes de v65_lotes, la unique (licitacion_id, nif, importe_adjudicado)
+    descartaba en silencio una fila cuando la misma empresa ganaba dos lotes
+    por el mismo importe. Con lote_id resuelto, ambas deben persistir."""
+    from db.database import connect
+    from db.upsert import Lote, replace_adjudicaciones, replace_lotes, upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
+    lote_ids = replace_lotes(
+        "TEST-001",
+        [
+            Lote(licitacion_id="TEST-001", numero="1"),
+            Lote(licitacion_id="TEST-001", numero="2"),
+        ],
+    )
+    adj_lote_1 = _make_adj(nif="B00000001", importe_adjudicado=5000.0, lote_id=lote_ids["1"])
+    adj_lote_2 = _make_adj(nif="B00000001", importe_adjudicado=5000.0, lote_id=lote_ids["2"])
+
+    persisted, dropped = replace_adjudicaciones("TEST-001", [adj_lote_1, adj_lote_2])
+
+    assert persisted == 2
+    assert dropped == 0
+    with connect() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = 'TEST-001'"
+        ).fetchone()[0]
+    assert count == 2

@@ -36,7 +36,7 @@ class FakeConnector:
             yield RawNotice(natural_id=n["id"], payload=n)
 
     def parse(self, raw):
-        from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion
+        from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
 
         if raw.payload.get("explota"):
             raise ValueError("payload corrupto")
@@ -58,13 +58,30 @@ class FakeConnector:
                     fecha_adjudicacion="2026-02-01",
                 )
             )
+        # Payload separado de "ganador" (no lo toca): una lista de adjudicaciones
+        # con lote_numero propio, para probar el flujo de resolución lotes->lote_id.
+        for g in raw.payload.get("ganadores_multi_lote", []):
+            adjs.append(
+                Adjudicacion(
+                    licitacion_id=lic.id_externo,
+                    nombre=g["nombre"],
+                    nif=g.get("nif"),
+                    importe_adjudicado=g["importe_adjudicado"],
+                    fecha_adjudicacion="2026-02-01",
+                    lote_numero_raw=g.get("lote_numero"),
+                )
+            )
         docs = []
         if raw.payload.get("documentos"):
             docs = [
                 DocumentoReferencia(tipo=d["tipo"], uri=d["uri"], filename=d.get("filename"))
                 for d in raw.payload["documentos"]
             ]
-        return ParsedTender(licitacion=lic, adjudicaciones=adjs, documentos=docs)
+        lotes = [
+            Lote(licitacion_id=lic.id_externo, numero=lote_data["numero"])
+            for lote_data in raw.payload.get("lotes", [])
+        ]
+        return ParsedTender(licitacion=lic, adjudicaciones=adjs, documentos=docs, lotes=lotes)
 
     def new_cursor(self):
         return {"last_seen_updated": "2026-01-31"}
@@ -148,6 +165,142 @@ def test_runner_pasa_cursor_al_conector(db):
     fake = FakeConnector([])
     run_connector(fake)
     assert fake.received_cursor["last_seen_updated"] == "2025-12-01"
+
+
+# ---------------------------------------------------------------------------
+# Persistencia de lotes (v65_lotes) y resolución lote_numero_raw -> lote_id
+# ---------------------------------------------------------------------------
+
+
+def test_runner_multi_lote_misma_empresa_mismo_importe_no_pierde_filas(db):
+    """Regresión del bug real: antes de v65_lotes, la unique
+    (licitacion_id, nif, importe_adjudicado) descartaba en silencio una fila
+    cuando la misma empresa ganaba dos lotes por el mismo importe. Con
+    lote_id resuelto, ambas filas deben persistir."""
+    from db.database import connect
+
+    notices = [
+        {
+            "id": "N1",
+            "titulo": "Expediente con dos lotes",
+            "lotes": [{"numero": "1"}, {"numero": "2"}],
+            "ganadores_multi_lote": [
+                {
+                    "nombre": "Misma Empresa SL",
+                    "nif": "B00000001",
+                    "importe_adjudicado": 5000.0,
+                    "lote_numero": "1",
+                },
+                {
+                    "nombre": "Misma Empresa SL",
+                    "nif": "B00000001",
+                    "importe_adjudicado": 5000.0,
+                    "lote_numero": "2",
+                },
+            ],
+        }
+    ]
+    result = run_connector(FakeConnector(notices))
+
+    assert result.adjudicaciones == 2
+    with connect() as c:
+        rows = c.execute(
+            "SELECT a.nif, a.importe_adjudicado, l.numero "
+            "FROM adjudicaciones a JOIN lotes l ON l.id = a.lote_id "
+            "WHERE a.licitacion_id = ? ORDER BY l.numero",
+            ["fake:N1"],
+        ).fetchall()
+    assert [r[2] for r in rows] == ["1", "2"]
+    assert all(r[0] == "B00000001" and r[1] == pytest.approx(5000.0) for r in rows)
+
+
+def test_runner_sin_lote_preserva_dedup_antiguo(db):
+    """Sin lote_numero (expediente de lote único, el caso común hoy), la
+    protección original (licitacion_id, nif, importe_adjudicado) se mantiene:
+    dos filas idénticas sin lote_id siguen deduplicándose a una."""
+    from db.database import connect
+
+    notices = [
+        {
+            "id": "N1",
+            "titulo": "Expediente sin lotes",
+            "ganadores_multi_lote": [
+                {"nombre": "Empresa SL", "nif": "B99999999", "importe_adjudicado": 3000.0},
+                {"nombre": "Empresa SL", "nif": "B99999999", "importe_adjudicado": 3000.0},
+            ],
+        }
+    ]
+    result = run_connector(FakeConnector(notices))
+
+    assert result.adjudicaciones == 1
+    with connect() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = ?", ["fake:N1"]
+        ).fetchone()[0]
+    assert count == 1
+
+
+def test_runner_persiste_lotes_con_metadatos(db):
+    from db.database import connect
+
+    notices = [
+        {
+            "id": "N1",
+            "titulo": "Expediente con lotes",
+            "lotes": [{"numero": "1"}, {"numero": "2"}],
+        }
+    ]
+    run_connector(FakeConnector(notices))
+
+    with connect() as c:
+        numeros = {
+            r[0]
+            for r in c.execute(
+                "SELECT numero FROM lotes WHERE licitacion_id = ?", ["fake:N1"]
+            ).fetchall()
+        }
+    assert numeros == {"1", "2"}
+
+
+def test_runner_lotes_reingesta_no_duplica(db):
+    """replace_lotes_batch reemplaza (no acumula) en cada re-ingesta."""
+    from db.database import connect
+
+    notices = [{"id": "N1", "titulo": "Expediente", "lotes": [{"numero": "1"}]}]
+    run_connector(FakeConnector(notices))
+    run_connector(FakeConnector(notices))
+
+    with connect() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM lotes WHERE licitacion_id = ?", ["fake:N1"]
+        ).fetchone()[0]
+    assert count == 1
+
+
+def test_runner_adjudicacion_sin_lote_numero_no_falla_con_lotes_presentes(db):
+    """Una adjudicación sin lote_numero_raw en un expediente que sí tiene
+    lotes (p.ej. una fuente que no publica la referencia) no debe romper la
+    resolución: lote_id queda None, no un KeyError."""
+    from db.database import connect
+
+    notices = [
+        {
+            "id": "N1",
+            "titulo": "Expediente mixto",
+            "lotes": [{"numero": "1"}],
+            "ganadores_multi_lote": [
+                {"nombre": "Empresa SL", "nif": "B11111111", "importe_adjudicado": 1000.0}
+            ],
+        }
+    ]
+    result = run_connector(FakeConnector(notices))
+
+    assert result.errores == 0
+    with connect() as c:
+        lote_id = c.execute(
+            "SELECT lote_id FROM adjudicaciones WHERE licitacion_id = ?", ["fake:N1"]
+        ).fetchone()[0]
+    assert lote_id is None
 
 
 # ---------------------------------------------------------------------------

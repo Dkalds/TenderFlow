@@ -19,7 +19,7 @@ from typing import Any
 from lxml import etree
 
 from config import settings
-from db.database import Adjudicacion, DocumentoReferencia, Licitacion
+from db.database import Adjudicacion, DocumentoReferencia, Licitacion, Lote
 from observability.logging import get_logger
 from scraper.filters import matches_technology
 from shared.dates import to_iso_date, to_iso_datetime
@@ -106,6 +106,11 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
     for tr in results:
         result_code = _text(tr, "./cbc:ResultCode")
         result_desc = _text(tr, "./cbc:Description")
+        # Referencia UBL estándar al lote (mismo shape que las *DocumentReference
+        # de más abajo: un wrapper "X + Reference" con cbc:ID). Ausente en
+        # expedientes de lote único -- lote_numero_raw queda None, resuelto a
+        # lote_id=None (lote único implícito) en el punto de persistencia.
+        lote_numero = _text(tr, "./cac:ProcurementProjectLotReference/cbc:ID")
         award_date = to_iso_date(_text(tr, "./cbc:AwardDate"))
         n_ofertas = _int(tr, "./cbc:ReceivedTenderQuantity")
         oferta_min = _float(tr, "./cbc:LowerTenderAmount")
@@ -148,6 +153,7 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
                     oferta_maxima=oferta_max,
                     result_code=result_code,
                     result_description=result_desc,
+                    lote_numero_raw=lote_numero,
                 )
             )
     return out
@@ -203,7 +209,7 @@ def _issue_date(entry: Any, cfs: str) -> str | None:
     return min(normalized) if normalized else None
 
 
-def _tender_deadline(entry: Any, cfs: str) -> str | None:
+def _tender_deadline(root: Any, tendering_process_prefix: str) -> str | None:
     """Extrae el fin del plazo de presentación de ofertas.
 
     No confundir con ``ProcurementProject/PlannedPeriod/EndDate`` (fin de
@@ -212,15 +218,67 @@ def _tender_deadline(entry: Any, cfs: str) -> str | None:
     ``TenderSubmissionDeadlinePeriod`` (procedimiento abierto estándar); cae a
     ``ParticipationRequestReceptionPeriod`` para procedimientos con fase de
     solicitud de participación previa a la oferta (restringido, negociado).
+
+    ``tendering_process_prefix`` es la ruta absoluta hasta el
+    ``cac:TenderingProcess`` a leer -- a nivel de expediente
+    (``{cfs}/cac:TenderingProcess``) o, si un lote publica su propio plazo
+    (UBL lo permite anidando el mismo nodo dentro de
+    ``cac:ProcurementProjectLot``), a nivel de lote (``./cac:TenderingProcess``
+    relativo al elemento del lote). Mismo XPath, distinta raíz.
     """
-    tp = f"{cfs}/cac:TenderingProcess"
     for period in ("TenderSubmissionDeadlinePeriod", "ParticipationRequestReceptionPeriod"):
-        end_date = _text(entry, f"{tp}/cac:{period}/cbc:EndDate")
+        end_date = _text(root, f"{tendering_process_prefix}/cac:{period}/cbc:EndDate")
         if not end_date:
             continue
-        end_time = _text(entry, f"{tp}/cac:{period}/cbc:EndTime")
+        end_time = _text(root, f"{tendering_process_prefix}/cac:{period}/cbc:EndTime")
         return to_iso_datetime(end_date, end_time)
     return None
+
+
+def parse_lotes(
+    entry: Any, licitacion_id: str, *, fallback_fecha_limite: str | None = None
+) -> list[Lote]:
+    """Extrae los lotes (``cac:ProcurementProjectLot``) de una entry CODICE.
+
+    Cada lote anida su propio ``cac:ProcurementProject`` con la misma forma
+    que el del expediente (título, CPV, presupuesto) -- patrón estándar UBL
+    2.1 reutilizado por CODICE. Un lote sin ``cbc:ID`` se descarta: sin
+    número no es direccionable (no hay a qué ``ProcurementProjectLotReference``
+    de una adjudicación podría apuntar), así que persistirlo no aportaría nada
+    verificable.
+
+    Si el lote no publica su propio plazo de presentación, hereda
+    ``fallback_fecha_limite`` (el del expediente, ya calculado por el
+    llamador) -- la mayoría de expedientes con lotes comparten un único plazo
+    para todos ellos.
+    """
+    cfs = "./cacext:ContractFolderStatus"
+    lotes: list[Lote] = []
+    for lot_elem in entry.xpath(f"{cfs}/cac:ProcurementProjectLot", namespaces=NS):
+        numero = _text(lot_elem, "./cbc:ID")
+        if not numero:
+            continue
+        pp = "./cac:ProcurementProject"
+        titulo = _text(lot_elem, f"{pp}/cbc:Name")
+        cpv = _text(
+            lot_elem,
+            f"{pp}/cac:RequiredCommodityClassification/cbc:ItemClassificationCode",
+        )
+        importe = _float(lot_elem, f"{pp}/cac:BudgetAmount/cbc:TaxExclusiveAmount")
+        if importe is None:
+            importe = _float(lot_elem, f"{pp}/cac:BudgetAmount/cbc:TotalAmount")
+        fecha_limite = _tender_deadline(lot_elem, "./cac:TenderingProcess") or fallback_fecha_limite
+        lotes.append(
+            Lote(
+                licitacion_id=licitacion_id,
+                numero=numero,
+                titulo=titulo,
+                cpv=cpv,
+                importe=importe,
+                fecha_limite=fecha_limite,
+            )
+        )
+    return lotes
 
 
 def parse_entry(entry: Any) -> Licitacion | None:
@@ -286,7 +344,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         duracion_unidad = unit_attr[0]
     fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
-    fecha_limite = _tender_deadline(entry, cfs)
+    fecha_limite = _tender_deadline(entry, f"{cfs}/cac:TenderingProcess")
 
     prorroga = _text(
         entry,
@@ -415,7 +473,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     duracion_unidad = unit_attr[0] if unit_attr else None
     fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
-    fecha_limite = _tender_deadline(entry, cfs)
+    fecha_limite = _tender_deadline(entry, f"{cfs}/cac:TenderingProcess")
     prorroga = _text(
         entry,
         f"{project_xp}/cac:ContractExtension/cac:OptionValidityPeriod/cbc:Description",

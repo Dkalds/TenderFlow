@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from db.database import (
     get_cursor,
     replace_adjudicaciones_batch,
+    replace_lotes_batch,
     set_cursor,
     upsert_licitaciones_with_history,
 )
@@ -39,7 +40,7 @@ from observability import get_logger
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion
+    from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
 
 log = get_logger(__name__)
 
@@ -94,6 +95,10 @@ class ParsedTender:
     # Campo aditivo — connectores que no lo pueblan siguen funcionando igual
     # (default vacío, run_connector no persiste nada si la lista está vacía).
     documentos: list[DocumentoReferencia] = field(default_factory=list)
+    # v65_lotes: lotes del expediente. Campo aditivo — connectores que no lo
+    # pueblan siguen funcionando igual (adjudicaciones sin lote_numero_raw
+    # resuelven lote_id=None, el "lote único implícito" de siempre).
+    lotes: list[Lote] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -222,6 +227,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     lics: list[Licitacion] = []
     adj_por_lic: dict[str, list[Adjudicacion]] = {}
     docs_por_lic: dict[str, list[DocumentoReferencia]] = {}
+    lotes_por_lic: dict[str, list[Lote]] = {}
 
     def _flush() -> None:
         if not lics:
@@ -231,6 +237,18 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         result.actualizadas += len(upsert_result.modified)
         result.inserted_ids.extend(upsert_result.inserted)
         result.modified_ids.extend(upsert_result.modified)
+        if lotes_por_lic:
+            # Antes de persistir adjudicaciones: lote_id es un FK real a
+            # lotes.id (autoincrement), así que hace falta el id que acaba de
+            # asignar replace_lotes_batch para resolver lote_numero_raw en
+            # cada Adjudicacion del mismo lote de escritura.
+            lote_ids_por_lic = replace_lotes_batch(lotes_por_lic)
+            for licitacion_id, mapping in lote_ids_por_lic.items():
+                if not mapping:
+                    continue
+                for adj in adj_por_lic.get(licitacion_id, ()):
+                    if adj.lote_numero_raw is not None:
+                        adj.lote_id = mapping.get(adj.lote_numero_raw)
         if adj_por_lic:
             n_adj, n_dropped, n_failed = replace_adjudicaciones_batch(
                 adj_por_lic, run_id=None, fuente=source_id
@@ -244,6 +262,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         lics.clear()
         adj_por_lic.clear()
         docs_por_lic.clear()
+        lotes_por_lic.clear()
         # Avanzar el cursor por cada lote persistido, no solo al final del
         # fetch completo. Si la ejecución se corta a mitad de camino (timeout
         # externo del job, no una excepción Python), el progreso hasta el
@@ -273,6 +292,8 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
                 adj_por_lic[parsed.licitacion.id_externo] = parsed.adjudicaciones
             if parsed.documentos:
                 docs_por_lic[parsed.licitacion.id_externo] = parsed.documentos
+            if parsed.lotes:
+                lotes_por_lic[parsed.licitacion.id_externo] = parsed.lotes
             if len(lics) >= batch_size:
                 _flush()
         _flush()

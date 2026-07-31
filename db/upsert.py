@@ -110,6 +110,27 @@ class Adjudicacion:
     oferta_maxima: float | None = None
     result_code: str | None = None
     result_description: str | None = None
+    # FK a lotes.id (v65_lotes). None = expediente sin lote parseado (lote
+    # único implícito) -- nunca lo pone el parser directamente, lo resuelve
+    # replace_lotes_batch() a partir de lote_numero_raw antes de persistir.
+    lote_id: int | None = None
+    fecha_extraccion: str = field(default_factory=now_utc_iso)
+    # Referencia de lote tal como la publica CODICE (p.ej. "1", "Lote 3").
+    # NO es una columna de `adjudicaciones` -- se resuelve a lote_id antes de
+    # insertar (mismo motivo que DocumentoReferencia no es 1:1 con su tabla:
+    # el parser conoce el número natural del lote, no el id autoincrement
+    # real que la BD le asigna). Excluido de _ADJ_KEYS explícitamente.
+    lote_numero_raw: str | None = None
+
+
+@dataclass
+class Lote:
+    licitacion_id: str
+    numero: str
+    titulo: str | None = None
+    cpv: str | None = None
+    importe: float | None = None
+    fecha_limite: str | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
@@ -194,9 +215,15 @@ _LIC_UPDATES = ", ".join(
     if k != "id_externo"
 )
 
-_ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion))
+# lote_numero_raw es parse-only (ver docstring de Adjudicacion): nunca es
+# columna de `adjudicaciones`, así que se excluye de las columnas del INSERT.
+_ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion) if f.name != "lote_numero_raw")
 _ADJ_COLS = ", ".join(_ADJ_KEYS)
 _ADJ_PLACEHOLDERS = ", ".join("?" for _ in _ADJ_KEYS)
+
+_LOTE_KEYS = tuple(f.name for f in fields(Lote))
+_LOTE_COLS = ", ".join(_LOTE_KEYS)
+_LOTE_PLACEHOLDERS = ", ".join("?" for _ in _LOTE_KEYS)
 
 _HISTORY_SELECT_COLS = (
     "id_externo, titulo, descripcion, organo_contratacion, importe, "
@@ -262,12 +289,19 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
 def _dedup_adj_rows(
     licitacion_id: str, adjs: Iterable[Adjudicacion]
 ) -> list[tuple[Adjudicacion, list[Any]]]:
-    """Deduplica en memoria por ``UNIQUE(licitacion_id, nif, importe_adjudicado)``.
+    """Deduplica en memoria replicando las dos unique parciales de la BD
+    (v65_lotes: ``..._sin_lote`` y ``..._lic_lote_nif_importe``).
 
     ``replace_*`` borra antes todas las filas de la licitación, así que el único
-    conflicto UNIQUE posible es **intra-lote**: deduplicar aquí es equivalente a
+    conflicto UNIQUE posible es intra-batch: deduplicar aquí es equivalente a
     dejar que lo rechace el motor, y permite contar ``persisted`` sin depender
     del ``rowcount`` de ``executemany`` (poco fiable entre drivers).
+
+    La clave incluye ``lote_id`` solo cuando se conoce: dos adjudicaciones a
+    la misma empresa por el mismo importe en LOTES DISTINTOS no deben
+    deduplicarse entre sí (es la corrección del bug de pérdida de filas
+    multi-lote), pero dos filas sin lote resuelto (``lote_id is None``) siguen
+    protegidas por ``(licitacion_id, nif, importe_adjudicado)`` como antes.
 
     SQL trata NULL como distinto de NULL, así que una clave con cualquier
     componente NULL nunca conflictúa: esas filas **no** se deduplican, o se
@@ -277,7 +311,11 @@ def _dedup_adj_rows(
     out: list[tuple[Adjudicacion, list[Any]]] = []
     for adj in adjs:
         data = asdict(adj)
-        key = (data["licitacion_id"], data["nif"], data["importe_adjudicado"])
+        key: tuple[Any, ...]
+        if data["lote_id"] is not None:
+            key = (data["licitacion_id"], data["lote_id"], data["nif"], data["importe_adjudicado"])
+        else:
+            key = (data["licitacion_id"], data["nif"], data["importe_adjudicado"])
         if None not in key:
             if key in seen:
                 _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
@@ -459,6 +497,54 @@ def replace_adjudicaciones_batch(
     for caught_exc, payload_ref in failures:
         record_failure(run_id, fuente, caught_exc, scope="adjudicacion", payload_ref=payload_ref)
     return persisted, dropped, failed
+
+
+def replace_lotes(licitacion_id: str, items: Iterable[Lote]) -> dict[str, int]:
+    """Reemplaza los lotes de una licitación (idempotente): mismo patrón
+    DELETE-then-insert que ``replace_adjudicaciones``.
+
+    Devuelve el mapeo ``numero -> id`` (autoincrement fresco de esta llamada)
+    para que el llamador resuelva ``Adjudicacion.lote_id`` a partir de
+    ``lote_numero_raw`` antes de persistir adjudicaciones **en el mismo ciclo
+    de escritura**: ambas tablas se recalculan juntas en cada re-ingesta, así
+    que un id nuevo en ``lotes`` nunca deja huérfano un ``lote_id`` ya
+    persistido de una corrida anterior (esa fila de adjudicaciones también se
+    reemplaza a la vez).
+
+    Sin SAVEPOINT/DLQ por fila (a diferencia de ``replace_adjudicaciones``):
+    el volumen por expediente es pequeño (unas pocas decenas de lotes como
+    mucho) y el parser ya descarta un lote sin ``numero``, así que no hay un
+    camino realista para que una fila viole una constraint aquí.
+    """
+    rows = list(items)
+    with connect() as c:
+        c.execute("DELETE FROM lotes WHERE licitacion_id = ?", [licitacion_id])
+        mapping: dict[str, int] = {}
+        for lote in rows:
+            data = asdict(lote)
+            vals = [data[k] for k in _LOTE_KEYS]
+            row = c.execute(
+                f"INSERT INTO lotes ({_LOTE_COLS}) VALUES ({_LOTE_PLACEHOLDERS}) RETURNING id",
+                vals,
+            ).fetchone()
+            mapping[lote.numero] = int(row[0])
+    return mapping
+
+
+def replace_lotes_batch(lotes_por_lic: dict[str, list[Lote]]) -> dict[str, dict[str, int]]:
+    """Aplica ``replace_lotes`` a varias licitaciones. Devuelve
+    ``{licitacion_id: {numero: lote_id}}`` para resolver adjudicaciones.
+
+    Sin el camino "un solo executemany" de ``replace_adjudicaciones_batch``:
+    el volumen de lotes por ciclo de ingesta (cientos de licitaciones con
+    unos pocos lotes cada una) no justifica esa complejidad, y aquí hace
+    falta el ``id`` de cada fila insertada (``RETURNING``), que un
+    ``executemany`` no expone de forma portable.
+    """
+    return {
+        licitacion_id: replace_lotes(licitacion_id, items)
+        for licitacion_id, items in lotes_por_lic.items()
+    }
 
 
 def log_extraccion(
