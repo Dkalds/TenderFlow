@@ -662,6 +662,57 @@ def test_perfil_empresa(db):
     assert perfil["contratos_recientes"][0]["licitacion_id"] == "M-21"
 
 
+def test_perfil_empresa_incluye_participaciones_ute_sin_duplicar_totales(db):
+    """Corrección del diagnóstico original de UTE (docs/IMPROVEMENT_BACKLOG.md):
+    CODICE publica la UTE como un único WinningParty con nombre compuesto, y
+    entity_resolution.py ya crea una empresa UTE propia (es_ute=1) con sus
+    miembros en ute_miembros -- el dinero NO se cuenta dos veces. El gap real
+    era que el dossier de un miembro no mostraba esa participación en
+    absoluto. Este test fija ambas mitades: los 180k de la UTE no entran en
+    los totales propios de Alfa (ya se cuentan bajo la UTE en
+    cuota_mercado()), pero sí aparecen en participaciones_ute."""
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+
+    insert_contract(
+        db, "UTE-01", "UTE Empresa Alfa - Empresa Beta", importe=200_000, adjudicado=180_000
+    )
+    insert_contract(db, "SOLO-01", "Empresa Alfa", importe=100_000, adjudicado=90_000)
+    resolve(db)
+
+    with connect_read() as c:
+        alfa_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nombre_canonico = 'EMPRESA ALFA'"
+        ).fetchone()[0]
+
+    perfil = perfil_empresa(alfa_id)
+
+    assert perfil["totales"]["contratos"] == 1
+    assert perfil["totales"]["importe_total"] == pytest.approx(90_000.0)
+
+    assert len(perfil["participaciones_ute"]) == 1
+    participacion = perfil["participaciones_ute"][0]
+    assert participacion["contratos"] == 1
+    assert participacion["importe_total"] == pytest.approx(180_000.0)
+    assert any("BETA" in m.upper() for m in participacion["otros_miembros"])
+
+
+def test_perfil_empresa_sin_ute_devuelve_lista_vacia(db):
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+
+    insert_contract(db, "SOLO-02", "Empresa Gamma", nif="B77777777", importe=50_000)
+    resolve(db)
+
+    with connect_read() as c:
+        gamma_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B77777777'"
+        ).fetchone()[0]
+
+    perfil = perfil_empresa(gamma_id)
+    assert perfil["participaciones_ute"] == []
+
+
 # ---------------------------------------------------------------------------
 # Watchlist de empresas + alertas
 # ---------------------------------------------------------------------------

@@ -3203,6 +3203,8 @@ export interface components {
             movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
             /** Organos Principales */
             organos_principales?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Participaciones Ute */
+            participaciones_ute?: components["schemas"]["CompetitiveCompanyUteParticipationDTO"][];
             /** Por Anio */
             por_anio?: components["schemas"]["CompetitiveCompanyYearDTO"][];
             /** Por Ccaa */
@@ -3292,6 +3294,34 @@ export interface components {
             territorios: number;
             /** Ultima Adjudicacion */
             ultima_adjudicacion?: string | null;
+        };
+        /**
+         * CompetitiveCompanyUteParticipationDTO
+         * @description UTE en la que la empresa participa como miembro, con su actividad propia.
+         *
+         *     Deliberadamente separado de ``totales``/``posicion_mercado``, que solo
+         *     cuentan lo adjudicado directamente a ``empresa_id`` -- sumarlo ahí
+         *     duplicaría el importe ya atribuido a la UTE como entidad propia en
+         *     cuota_mercado()/concentracion_hhi(). Esto es visibilidad adicional, no
+         *     una redefinición de la cuota de mercado.
+         */
+        CompetitiveCompanyUteParticipationDTO: {
+            /**
+             * Contratos
+             * @default 0
+             */
+            contratos: number;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /** Otros Miembros */
+            otros_miembros?: string[];
+            /** Ute Empresa Id */
+            ute_empresa_id: number;
+            /** Ute Nombre */
+            ute_nombre: string;
         };
         /**
          * CompetitiveCompanyYearDTO

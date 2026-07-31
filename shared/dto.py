@@ -263,6 +263,23 @@ class CompetitiveCompanyAwardDTO(BaseModel):
     expediente_url: str | None = None
 
 
+class CompetitiveCompanyUteParticipationDTO(BaseModel):
+    """UTE en la que la empresa participa como miembro, con su actividad propia.
+
+    Deliberadamente separado de ``totales``/``posicion_mercado``, que solo
+    cuentan lo adjudicado directamente a ``empresa_id`` -- sumarlo ahí
+    duplicaría el importe ya atribuido a la UTE como entidad propia en
+    cuota_mercado()/concentracion_hhi(). Esto es visibilidad adicional, no
+    una redefinición de la cuota de mercado.
+    """
+
+    ute_empresa_id: int = Field(ge=1)
+    ute_nombre: str
+    otros_miembros: list[str] = Field(default_factory=list)
+    contratos: int = Field(default=0, ge=0)
+    importe_total: float = Field(default=0, ge=0)
+
+
 class CompetitiveCompanyProfileDTO(BaseModel):
     """Full competitor dossier used by quick and deep company views."""
 
@@ -279,6 +296,7 @@ class CompetitiveCompanyProfileDTO(BaseModel):
     por_anio: list[CompetitiveCompanyYearDTO] = Field(default_factory=list)
     movimientos: list[CompetitiveCompanySignalDTO] = Field(default_factory=list)
     contratos_recientes: list[CompetitiveCompanyAwardDTO] = Field(default_factory=list)
+    participaciones_ute: list[CompetitiveCompanyUteParticipationDTO] = Field(default_factory=list)
 
 
 class CompetitiveCompanyAwardsDTO(BaseModel):
