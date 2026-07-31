@@ -162,6 +162,35 @@ class OrganizationRepository:
             )
             return rows_to_dicts(cur)
 
+    def scope_coverage(self) -> dict[str, int]:
+        """Filas totales y sin ``organization_id`` en las tablas escopadas (v64).
+
+        Métrica de retirada del scope legacy ``user_key``-only: mientras
+        ``sin_organizacion`` no llegue a 0, ``claim_legacy_scope`` todavía
+        tiene trabajo pendiente (se dispara solo cuando un usuario pasa por
+        una ruta org-aware, no en un backfill único).
+        """
+        tables = (
+            "watchlist_items",
+            "watchlist_rules",
+            "watchlist_empresas",
+            "watchlist_cpv",
+            "saved_filters",
+            "user_profiles",
+            "user_notifications",
+        )
+        total = 0
+        sin_organizacion = 0
+        with connect_read() as conn:
+            for table in tables:
+                row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                total += int(row[0]) if row else 0
+                row = conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE organization_id IS NULL"
+                ).fetchone()
+                sin_organizacion += int(row[0]) if row else 0
+        return {"total": total, "sin_organizacion": sin_organizacion}
+
     def claim_legacy_rows(self, user_id: int, user_key: str) -> int:
         """Asigna filas sin scope al espacio personal, nunca a uno compartido."""
         personal = self.ensure_personal_organization(user_id)

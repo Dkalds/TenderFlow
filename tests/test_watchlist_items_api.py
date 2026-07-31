@@ -1,9 +1,29 @@
 """Tests de la API /api/v1/watchlist/items (favoritos de licitaciones).
 
-Fixtures api_db, api_key, client heredados de conftest.py.
+Fixtures api_db, client heredados de conftest.py. ``api_key`` se sobreescribe
+localmente (ver más abajo).
 """
 
 from __future__ import annotations
+
+import pytest
+
+
+@pytest.fixture()
+def api_key(api_db):
+    """Override de conftest: vincula la key a un usuario real.
+
+    Esta ruta resuelve organización server-side (``api/tenancy.py``), que
+    necesita un ``users.id`` real para ``ensure_personal_organization``. La
+    key sin vincular del fixture compartido usa su propio id como
+    ``user_id`` postizo (compatibilidad dev/test de
+    ``api/routes/dual_auth.py``), que no existe en ``users``.
+    """
+    from api.auth import create_api_key
+    from db.users import create_user
+
+    user_id = create_user(email="watchlist-items-api@example.test", password_hash="test-hash")
+    return create_api_key("test-key", scopes="*", user_id=user_id)
 
 
 def _auth(api_key: str) -> dict[str, str]:
@@ -75,10 +95,13 @@ def test_remove_inexistente_404(client, api_key):
 
 def test_items_de_distintos_usuarios_no_se_mezclan(client, api_db):
     from api.auth import create_api_key
+    from db.users import create_user
 
     _seed_licitaciones()
-    key_a = create_api_key("user-a", scopes="watchlist:read,watchlist:write")
-    key_b = create_api_key("user-b", scopes="watchlist:read,watchlist:write")
+    user_a = create_user(email="items-user-a@example.test", password_hash="test-hash")
+    user_b = create_user(email="items-user-b@example.test", password_hash="test-hash")
+    key_a = create_api_key("user-a", scopes="watchlist:read,watchlist:write", user_id=user_a)
+    key_b = create_api_key("user-b", scopes="watchlist:read,watchlist:write", user_id=user_b)
 
     client.post("/api/v1/watchlist/items", json={"id_externo": "L1"}, headers=_auth(key_a))
     client.post("/api/v1/watchlist/items", json={"id_externo": "L2"}, headers=_auth(key_b))

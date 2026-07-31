@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from api.auth import AuthContext, create_api_key, require_scope
 from api.routes.dual_auth import require_any_auth, require_recent_session
+from api.tenancy import require_organization, resolve_organization_ctx
 from db.audit import log_event
 from db.database import now_utc_iso
 from db.repositories.api_keys import ApiKeyRepository
@@ -335,8 +336,7 @@ class UserProfileOut(BaseModel):
 
 @router.get("/me/profile", summary="Obtener el perfil de scoring del usuario")
 async def get_profile(
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization()),
 ) -> UserProfileOut:
     """Devuelve el perfil de scoring personalizado del usuario.
 
@@ -345,17 +345,7 @@ async def get_profile(
     from db.repositories.user_profiles import get_user_profile
 
     user_key = _user_key(ctx)
-    resolved_id: int | None = None
-    if organization_id is not None:
-        from services.organizations import OrganizationAccessError, resolve_organization
-
-        try:
-            resolved_id, _ = resolve_organization(int(ctx["user_id"]), organization_id)
-        except OrganizationAccessError as exc:
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-    raw = get_user_profile(user_key, resolved_id)
+    raw = get_user_profile(user_key, ctx["organization_id"])
     if raw is None:
         return UserProfileOut()
     return UserProfileOut(
@@ -382,23 +372,8 @@ async def put_profile(
     from db.repositories.user_profiles import upsert_user_profile
 
     body.validate_weights()
+    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
-    resolved_id: int | None = None
-    if body.organization_id is not None:
-        from services.organizations import (
-            OrganizationAccessError,
-            OrganizationPermissionError,
-            resolve_organization,
-        )
-
-        try:
-            resolved_id, _ = resolve_organization(
-                int(ctx["user_id"]), body.organization_id, write=True
-            )
-        except (OrganizationAccessError, OrganizationPermissionError) as exc:
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
     upsert_user_profile(
         user_key,
         {
@@ -407,7 +382,7 @@ async def put_profile(
             "importe_min": body.importe_min,
             "importe_max": body.importe_max,
         },
-        resolved_id,
+        ctx["organization_id"],
         body.visibility,
     )
     return {"status": "ok"}

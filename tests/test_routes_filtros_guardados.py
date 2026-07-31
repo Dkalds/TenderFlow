@@ -4,6 +4,31 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def api_key(api_db):
+    """Override de conftest: vincula la key a un usuario real.
+
+    Esta ruta resuelve organización server-side (``api/tenancy.py``), que
+    necesita un ``users.id`` real para ``ensure_personal_organization``. La
+    key sin vincular del fixture compartido usa su propio id como
+    ``user_id`` postizo (compatibilidad dev/test de
+    ``api/routes/dual_auth.py``), que no existe en ``users``. ``auth``
+    (conftest.py) depende de ``api_key`` y recoge este override.
+    """
+    from api.auth import create_api_key
+    from db.users import create_user
+
+    user_id = create_user(email="saved-filters-api@example.test", password_hash="test-hash")
+    return create_api_key("test-key", scopes="*", user_id=user_id)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -102,6 +127,7 @@ def test_filtros_delete(client, auth):
 def test_filtros_delete_ajeno(client, auth, api_db):
     """Filtro creado con key A → intento de borrado con key B → 404 (IDOR)."""
     from api.auth import create_api_key
+    from db.users import create_user
 
     # Crear filtro con la key del fixture auth
     _crear_filtro(client, auth, name="Filtro ajeno")
@@ -109,7 +135,8 @@ def test_filtros_delete_ajeno(client, auth, api_db):
     filter_id = items[0]["id"]
 
     # Segunda key para usuario distinto
-    otra_key = create_api_key("otro-usuario", scopes="saved_filters:write")
+    otro_user_id = create_user(email="otro-usuario@example.test", password_hash="test-hash")
+    otra_key = create_api_key("otro-usuario", scopes="saved_filters:write", user_id=otro_user_id)
     otro_auth = {"X-API-Key": otra_key}
 
     r = client.delete(f"/api/v1/saved-filters/{filter_id}", headers=otro_auth)

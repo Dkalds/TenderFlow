@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import require_organization, resolve_organization_ctx
 from db.watchlist_empresas import (
     WatchlistEmpresaEntry,
     add_entry,
@@ -288,20 +289,9 @@ class WatchlistEmpresaRequest(BaseModel):
 
 @router.get("/watchlist", summary="Empresas vigiladas por el usuario")
 async def get_watchlist(
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization()),
 ) -> dict[str, Any]:
-    from services.organizations import resolve_organization
-
-    resolved_id: int | None = None
-    if organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization, int(ctx["user_id"]), organization_id
-            )
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-    items = await run_db(list_entries, _user_key(ctx), resolved_id)
+    items = await run_db(list_entries, _user_key(ctx), ctx["organization_id"])
     return {"items": items}
 
 
@@ -310,25 +300,13 @@ async def post_watchlist(
     body: WatchlistEmpresaRequest,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
-    from services.organizations import resolve_organization
-
-    resolved_id: int | None = None
-    if body.organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization,
-                int(ctx["user_id"]),
-                body.organization_id,
-                write=True,
-            )
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     entry = WatchlistEmpresaEntry(
         user_key=_user_key(ctx),
         empresa_id=body.empresa_id,
         email=body.email or ctx.get("email"),
         frequency=body.frequency,
-        organization_id=resolved_id,
+        organization_id=ctx["organization_id"],
         visibility=body.visibility,
     )
     try:
@@ -348,23 +326,9 @@ async def post_watchlist(
 @router.delete("/watchlist/{empresa_id}", summary="Dejar de vigilar una empresa")
 async def delete_watchlist(
     empresa_id: int,
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> dict[str, Any]:
-    from services.organizations import resolve_organization
-
-    resolved_id: int | None = None
-    if organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization,
-                int(ctx["user_id"]),
-                organization_id,
-                write=True,
-            )
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-    removed = await run_db(remove_entry, _user_key(ctx), empresa_id, resolved_id)
+    removed = await run_db(remove_entry, _user_key(ctx), empresa_id, ctx["organization_id"])
     if not removed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

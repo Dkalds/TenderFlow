@@ -47,6 +47,11 @@ class QualityResult(BaseModel):
     # publicación presentes, % en ISO-8601 y nº con formato inválido (DD/MM/YYYY…).
     pct_fecha_iso: float = 0.0
     fechas_no_iso: int = 0
+    # Cobertura de tenencia por organización (v64) sobre las 7 tablas
+    # user-scoped que la soportan. Métrica de cuándo se puede retirar el
+    # scope legacy user_key-only (ver docs/IMPROVEMENT_BACKLOG.md).
+    pct_organization_scoped: float = 100.0
+    filas_sin_organizacion: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +125,23 @@ def _dlq_count() -> int:
         return 0
 
 
+def _organization_scope_coverage() -> tuple[float, int]:
+    """(% de filas con organization_id, nº sin organization_id) en las 7
+    tablas escopadas por v64. Independiente de ``licitaciones`` -- por eso
+    no vive detrás del ``if df.empty`` de :func:`get_quality`."""
+    try:
+        from db.repositories.organizations import OrganizationRepository
+
+        coverage = OrganizationRepository().scope_coverage()
+        total = coverage["total"]
+        sin_organizacion = coverage["sin_organizacion"]
+        pct = 100.0 if total == 0 else (total - sin_organizacion) / total * 100
+        return pct, sin_organizacion
+    except Exception:
+        log.debug("quality_organization_scope_unavailable")
+        return 100.0, 0
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -129,10 +151,15 @@ def get_quality() -> QualityResult:
     """Compute data quality metrics."""
     log.info("analytics_quality_start")
     df = load_stats_base_df()
+    pct_organization_scoped, filas_sin_organizacion = _organization_scope_coverage()
 
     if df.empty:
         log.info("analytics_quality_done", total=0)
-        return QualityResult(dlq_count=_dlq_count())
+        return QualityResult(
+            dlq_count=_dlq_count(),
+            pct_organization_scoped=pct_organization_scoped,
+            filas_sin_organizacion=filas_sin_organizacion,
+        )
 
     pct_fecha_iso, fechas_no_iso = _iso_date_stats(df, "fecha_publicacion")
     result = QualityResult(
@@ -145,6 +172,8 @@ def get_quality() -> QualityResult:
         fechas_no_iso=fechas_no_iso,
         last_scrape_hours_ago=_last_scrape_hours(),
         dlq_count=_dlq_count(),
+        pct_organization_scoped=pct_organization_scoped,
+        filas_sin_organizacion=filas_sin_organizacion,
         completitud_columnas=[
             ColumnCompleteness(columna=col, pct=_pct_filled(df, col))
             for col in [

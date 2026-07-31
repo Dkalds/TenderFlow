@@ -75,13 +75,16 @@ def list_saved_filters(user_key: str, organization_id: int | None = None) -> lis
 def delete_saved_filter(
     filter_id: int,
     *,
-    user_key: str | None = None,
+    user_key: str,
     organization_id: int | None = None,
 ) -> None:
-    """Elimina un filtro guardado por ID."""
+    """Elimina un filtro guardado por ID, siempre acotado a su dueño."""
     with connect() as c:
-        if organization_id is None or user_key is None:
-            c.execute("DELETE FROM saved_filters WHERE id = ?", (filter_id,))
+        if organization_id is None:
+            c.execute(
+                "DELETE FROM saved_filters WHERE id = ? AND user_key = ?",
+                (filter_id, user_key),
+            )
         else:
             c.execute(
                 "DELETE FROM saved_filters WHERE id = ? AND organization_id = ? "
