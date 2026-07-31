@@ -13,11 +13,11 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-### [P0] Investigar si las UTE reciben atribución correcta en cuota/HHI
-- **Área:** services/competitive/mercado.py, services/entity_resolution.py, services/partners.py, db/empresas.py
-- **Problema:** la crítica original de esta entrada asumía que `parse_adjudicaciones` emite una fila por `cac:WinningParty` y que eso triplica el importe de una UTE en `mercado.py`. **Es incorrecto para el caso real dominante**: CODICE publica la UTE como un único `WinningParty` con nombre compuesto (`"UTE EMPRESA1 - EMPRESA2"`), y el repo ya tiene infraestructura dedicada para eso —`services/normalization.py::parse_ute_members` extrae los miembros del nombre, `services/entity_resolution.py` crea una "empresa UTE" propia con `es_ute=1` y sus miembros en `ute_miembros` (tabla de la migración v35) — así que el dinero **no** se cuenta N veces: se agrupa una sola vez bajo el `empresa_id` sintético de la UTE. El bug real, si existe, es otro: `services/competitive/mercado.py` no parece hacer join contra `ute_miembros` para repartir esa cuota entre las empresas reales — así que el perfil competitivo/cuota de mercado de una empresa que participa mucho vía UTE **subestima** su fuerza real, porque esas victorias quedan ocultas detrás de la entidad sintética en vez de sumarse a su `empresa_id` propio. No se ha confirmado si esto es intencional (evitar doble conteo del lado del mercado agregado) o un gap real de atribución individual.
-- **Antes de tocar código:** confirmar leyendo completo `services/competitive/mercado.py` (cómo trata `es_ute` en el cálculo de cuota/HHI hoy) y `services/partners.py` (que sí usa `parse_ute_members` para el grafo de socios) si existe ya alguna vía de atribución a miembros que la crítica original no vio. Esta entrada se corrigió una vez ya (ver commit de esta misma fecha) precisamente porque el diagnóstico inicial no leyó `entity_resolution.py`/`ute_miembros` — no repetir el error de proponer una migración antes de esta lectura.
-- **Riesgo:** medio — si el fix es real, probablemente no necesita migración nueva (`ute_miembros` ya existe), solo cambios de consulta en `mercado.py`; pero el diagnóstico todavía no está confirmado.
+### [P2] Surface `participaciones_ute` en el frontend de competidores
+- **Área:** web/src/components/competitors/company-profile-types.ts, web/src/components/competitors/company-profile-summary.tsx, web/src/app/(dashboard)/competidores/page.tsx
+- **Problema:** el backend ya expone `participaciones_ute` en `GET /api/v1/competitive/.../perfil` (ver _Cerrados_, commit `33d98e4`) — por cada UTE de la que la empresa es miembro, sus `contratos`/`importe_total` propios y los `otros_miembros`. `company-profile-types.ts` todavía no declara el campo (compara con `por_cpv`/`por_anio`/`movimientos`, todas ya tipadas ahí) y ningún componente lo renderiza, así que el dato es invisible en la UI aunque ya viaja en la respuesta.
+- **Acceptance criteria:** tipo `CompanyUteParticipation` en `company-profile-types.ts` reflejando el DTO; una sección en el dossier (`company-profile-summary.tsx` o vecino) listando las UTEs con sus `otros_miembros`, dejando claro que esos importes son **adicionales** a los totales directos de la empresa, no una desagregación de ellos (evitar que el usuario los sume dos veces mentalmente).
+- **Riesgo:** bajo — solo lectura de un campo ya validado por el contrato OpenAPI/TS; sin cambio de backend.
 
 ### [P0] La tenencia por organización es un parámetro opcional, no una frontera
 - **Área:** api/routes/watchlist_items.py, api/routes/notifications.py, api/routes/competitive.py, api/routes/me.py, db/watchlist.py, services/organizations.py, tests/test_user_key_sql_isolation.py
@@ -299,6 +299,37 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-07-31] **El dossier de una empresa no mostraba su actividad vía UTE
+  (commit `33d98e4`)** — cierra el ítem P0 "Investigar si las UTE reciben
+  atribución correcta en cuota/HHI" (ver entrada de abajo de esta misma
+  fecha para el diagnóstico corregido). Confirmado leyendo
+  `services/competitive/mercado.py` completo: `cuota_mercado()`/
+  `concentracion_hhi()` tratan a la UTE como participante independiente en
+  el agregado del segmento **a propósito** — sumar también el importe a
+  cada miembro duplicaría dinero en el total del mercado. Esa parte estaba
+  bien; el gap real era otro y más estrecho: `perfil_empresa()` (el dossier
+  de UNA empresa, endpoint `.../perfil`) nunca hacía join contra
+  `ute_miembros`, así que una empresa que gana mucho vía UTE veía cero
+  actividad atribuida a esas victorias en su propio dossier — quedaban
+  ocultas detrás del `empresa_id` sintético de la UTE sin ningún puente de
+  vuelta. Añadido `participaciones_ute` a `CompetitiveCompanyProfileDTO`
+  (`shared/dto.py`): por cada UTE de la que la empresa es miembro,
+  `contratos`/`importe_total` **propios de la UTE** (no repartidos) y
+  `otros_miembros`, como bloque separado de los totales directos de la
+  empresa — decisión deliberada para no fusionar dos semánticas de
+  atribución distintas en un único número y así no reabrir el riesgo de
+  doble conteo que este mismo ítem descartó para el agregado. OpenAPI +
+  `web/src/generated/api.d.ts` regenerados; ratchet de contrato
+  (`check_openapi_contract.py`) verde sin nuevas operaciones opacas. 56
+  tests dirigidos en verde contra Postgres real (los 2 nuevos de
+  `participaciones_ute` + toda `test_competitive.py`/
+  `test_pricing_repository.py`/`test_ml_baja_model.py`/
+  `test_baja_single_source.py` para descartar regresión sobre el trabajo
+  de baja/lote de esta misma fecha). **Sigue abierto** (ítem "[P2] Surface
+  `participaciones_ute` en el frontend de competidores" en _P1 — Alta_ de
+  arriba, severidad bajada de P0 a P2 porque ya no hay sospecha de dato
+  incorrecto): el backend lo expone, la UI todavía no lo pinta.
 
 - [2026-07-31] **La baja por-fila se comparaba contra el presupuesto del
   expediente completo, no el del lote (commit `fa9b39a`)** —
