@@ -179,7 +179,20 @@ class DocumentoReferencia:
 _LIC_KEYS = tuple(f.name for f in fields(Licitacion))
 _LIC_COLS = ", ".join(_LIC_KEYS)
 _LIC_PLACEHOLDERS = ", ".join("?" for _ in _LIC_KEYS)
-_LIC_UPDATES = ", ".join(f"{k}=excluded.{k}" for k in _LIC_KEYS if k != "id_externo")
+
+# Campos donde una re-ingesta que no trae el dato NO debe borrar un valor ya
+# conocido. Hoy solo fecha_limite: el nodo CODICE que la publica
+# (TenderingProcess/TenderSubmissionDeadlinePeriod) puede desaparecer cuando
+# el expediente avanza a fase ADJ/RES, y sin COALESCE esa re-ingesta legítima
+# (misma licitación, estado más reciente) nulearía un plazo ya conocido.
+_LIC_COALESCE_UPDATE_FIELDS = frozenset({"fecha_limite"})
+_LIC_UPDATES = ", ".join(
+    f"{k}=COALESCE(excluded.{k}, licitaciones.{k})"
+    if k in _LIC_COALESCE_UPDATE_FIELDS
+    else f"{k}=excluded.{k}"
+    for k in _LIC_KEYS
+    if k != "id_externo"
+)
 
 _ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion))
 _ADJ_COLS = ", ".join(_ADJ_KEYS)
@@ -187,7 +200,7 @@ _ADJ_PLACEHOLDERS = ", ".join("?" for _ in _ADJ_KEYS)
 
 _HISTORY_SELECT_COLS = (
     "id_externo, titulo, descripcion, organo_contratacion, importe, "
-    "estado, fecha_fin, fecha_inicio, duracion_valor, duracion_unidad"
+    "estado, fecha_fin, fecha_inicio, duracion_valor, duracion_unidad, fecha_limite"
 )
 
 

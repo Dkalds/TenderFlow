@@ -138,6 +138,82 @@ def test_upsert_with_history_keeps_earliest_fecha_publicacion(db):
     assert row[1] == "ADJ"
 
 
+# ---------------------------------------------------------------------------
+# fecha_limite: COALESCE en el upsert (Ola 1, docs/IMPROVEMENT_BACKLOG.md)
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_keeps_fecha_limite_when_reingest_lacks_it(db):
+    """Una re-ingesta sin fecha_limite no debe borrar un plazo ya conocido.
+
+    Regresión: el nodo CODICE que publica fecha_limite
+    (TenderingProcess/TenderSubmissionDeadlinePeriod) puede desaparecer
+    cuando el expediente avanza a fase ADJ/RES. Sin COALESCE en el upsert,
+    ese re-parseo legítimo (misma licitación, estado más reciente) nuleaba
+    un plazo que ya se conocía.
+    """
+    from db.database import connect
+    from db.upsert import upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(fecha_limite="2026-08-15T21:59:00+00:00")])
+    upsert_licitaciones([make_licitacion(fecha_limite=None, estado="ADJ")])
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT fecha_limite, estado FROM licitaciones WHERE id_externo = ?",
+            ["TEST-001"],
+        ).fetchone()
+    assert row[0] == "2026-08-15T21:59:00+00:00"
+    # El resto de campos sí se actualiza normalmente — COALESCE es específico
+    # de fecha_limite, no un comportamiento general de "nunca sobrescribir".
+    assert row[1] == "ADJ"
+
+
+def test_upsert_updates_fecha_limite_on_real_extension(db):
+    """Una ampliación de plazo real (nuevo valor no-NULL) SÍ debe sobrescribir."""
+    from db.database import connect
+    from db.upsert import upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion(fecha_limite="2026-08-15T21:59:00+00:00")])
+    upsert_licitaciones([make_licitacion(fecha_limite="2026-09-01T21:59:00+00:00")])
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT fecha_limite FROM licitaciones WHERE id_externo = ?", ["TEST-001"]
+        ).fetchone()
+    assert row[0] == "2026-09-01T21:59:00+00:00"
+
+
+def test_upsert_with_history_tracks_fecha_limite_extension(db):
+    """Una ampliación de plazo debe quedar registrada en licitaciones_history.
+
+    fecha_limite se añadió a HISTORY_TRACKED_FIELDS (config/constants.py) en
+    la misma ola: antes de eso, una ampliación de plazo —evento operativo de
+    primer orden— era invisible en el histórico.
+    """
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history(
+        [make_licitacion(fecha_limite="2026-08-15T21:59:00+00:00")], source="pub"
+    )
+    upsert_licitaciones_with_history(
+        [make_licitacion(fecha_limite="2026-09-01T21:59:00+00:00")], source="atom_live"
+    )
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT changed_fields, snapshot_json FROM licitaciones_history "
+            "WHERE id_externo = ? ORDER BY id DESC LIMIT 1",
+            ["TEST-001"],
+        ).fetchone()
+    assert row is not None
+    assert "fecha_limite" in row[0].split(",")
+    snapshot = json.loads(row[1])
+    # El snapshot guarda el estado ANTERIOR al cambio.
+    assert snapshot["fecha_limite"] == "2026-08-15T21:59:00+00:00"
+
+
 def test_upsert_empty_list(db):
     from db.upsert import upsert_licitaciones
 

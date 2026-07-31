@@ -22,7 +22,7 @@ from config import settings
 from db.database import Adjudicacion, DocumentoReferencia, Licitacion
 from observability.logging import get_logger
 from scraper.filters import matches_technology
-from shared.dates import to_iso_date
+from shared.dates import to_iso_date, to_iso_datetime
 from shared.geo import nuts_to_ccaa
 
 log = get_logger(__name__)
@@ -203,6 +203,26 @@ def _issue_date(entry: Any, cfs: str) -> str | None:
     return min(normalized) if normalized else None
 
 
+def _tender_deadline(entry: Any, cfs: str) -> str | None:
+    """Extrae el fin del plazo de presentación de ofertas.
+
+    No confundir con ``ProcurementProject/PlannedPeriod/EndDate`` (fin de
+    ejecución del contrato, ya extraído como ``fecha_fin``): este es el nodo
+    que de verdad responde "¿hasta cuándo puedo presentarme?". Prioriza
+    ``TenderSubmissionDeadlinePeriod`` (procedimiento abierto estándar); cae a
+    ``ParticipationRequestReceptionPeriod`` para procedimientos con fase de
+    solicitud de participación previa a la oferta (restringido, negociado).
+    """
+    tp = f"{cfs}/cac:TenderingProcess"
+    for period in ("TenderSubmissionDeadlinePeriod", "ParticipationRequestReceptionPeriod"):
+        end_date = _text(entry, f"{tp}/cac:{period}/cbc:EndDate")
+        if not end_date:
+            continue
+        end_time = _text(entry, f"{tp}/cac:{period}/cbc:EndTime")
+        return to_iso_datetime(end_date, end_time)
+    return None
+
+
 def parse_entry(entry: Any) -> Licitacion | None:
     """Convierte una <entry> ATOM en una Licitacion (si es de tecnología enterprise)."""
     titulo = _text(entry, "./atom:title") or ""
@@ -266,6 +286,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         duracion_unidad = unit_attr[0]
     fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
+    fecha_limite = _tender_deadline(entry, cfs)
 
     prorroga = _text(
         entry,
@@ -309,6 +330,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         tipo_contrato=tipo,
         estado=estado_codice or s.get("estado"),
         fecha_publicacion=fecha_pub,
+        fecha_limite=fecha_limite,
         fecha_actualizacion_fuente=fecha_upd,
         url=url,
         raw_keywords=",".join(kw),
@@ -334,6 +356,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
             "cpv": lic.cpv,
             "estado": lic.estado,
             "fecha_publicacion": lic.fecha_publicacion,
+            "fecha_limite": lic.fecha_limite,
         }
         for field, value in _critical.items():
             if value is None:
@@ -392,6 +415,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     duracion_unidad = unit_attr[0] if unit_attr else None
     fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
+    fecha_limite = _tender_deadline(entry, cfs)
     prorroga = _text(
         entry,
         f"{project_xp}/cac:ContractExtension/cac:OptionValidityPeriod/cbc:Description",
@@ -418,6 +442,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         tipo_contrato=tipo,
         estado=estado_codice or s.get("estado"),
         fecha_publicacion=fecha_pub,
+        fecha_limite=fecha_limite,
         fecha_actualizacion_fuente=fecha_upd,
         url=url,
         raw_keywords=None,  # sin keywords → ejemplo negativo para ML

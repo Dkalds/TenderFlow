@@ -33,6 +33,7 @@ HISTORY_TRACKED_FIELDS = (
     "estado",
     "fecha_fin",
     "fecha_inicio",
+    "fecha_limite",
     "duracion_valor",
     "duracion_unidad",
     "titulo",

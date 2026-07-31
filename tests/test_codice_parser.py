@@ -16,6 +16,7 @@ from scraper.codice_parser import (
     parse_atom_bytes,
     parse_document_references,
     parse_entry,
+    parse_entry_unfiltered,
     parse_summary,
 )
 
@@ -102,6 +103,76 @@ def _make_sap_entry(
                 <cbc:DurationMeasure unitCode="MON">12</cbc:DurationMeasure>
               </cac:PlannedPeriod>
             </cac:ProcurementProject>
+          </cacext:ContractFolderStatus>
+        </entry>
+    """)
+
+
+def _make_entry_with_deadline(
+    id_externo: str = "DEADLINE-001",
+    *,
+    end_date: str | None = "2026-01-15",
+    end_time: str | None = "23:59:00",
+    period_tag: str = "TenderSubmissionDeadlinePeriod",
+    also_planned_period_end_date: str | None = None,
+) -> str:
+    """Entry SAP con ``TenderingProcess/<period_tag>/EndDate(+EndTime)``.
+
+    ``also_planned_period_end_date`` añade además un
+    ``ProcurementProject/PlannedPeriod/EndDate`` (fin de EJECUCIÓN del
+    contrato, fuente de ``fecha_fin``) para verificar que ``fecha_limite`` y
+    ``fecha_fin`` no se confunden entre sí.
+    """
+    cbc = _NS["cbc"]
+    cac = _NS["cac"]
+    cacext = _NS["cacext"]
+    cbcext = _NS["cbcext"]
+
+    end_time_xml = f"<cbc:EndTime>{end_time}</cbc:EndTime>" if end_time else ""
+    deadline_xml = (
+        f"<cac:TenderingProcess><cac:{period_tag}>"
+        f"<cbc:EndDate>{end_date}</cbc:EndDate>{end_time_xml}"
+        f"</cac:{period_tag}></cac:TenderingProcess>"
+        if end_date
+        else ""
+    )
+    planned_period_xml = (
+        f"<cac:PlannedPeriod><cbc:EndDate>{also_planned_period_end_date}</cbc:EndDate>"
+        "</cac:PlannedPeriod>"
+        if also_planned_period_end_date
+        else ""
+    )
+
+    return textwrap.dedent(f"""\
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:cbc="{cbc}"
+               xmlns:cac="{cac}"
+               xmlns:cacext="{cacext}"
+               xmlns:cbcext="{cbcext}">
+          <id>https://example.com/{id_externo}</id>
+          <title>Sistema SAP ERP mantenimiento</title>
+          <updated>2026-06-14T00:00:00Z</updated>
+          <link href="https://example.com/{id_externo}" rel="alternate"/>
+          <summary>
+            Id licitación: {id_externo}; Órgano de Contratación: Ministerio;
+            Importe: 100000.00 EUR; Estado: PUB
+          </summary>
+          <cacext:ContractFolderStatus>
+            <cbc:ContractFolderID>{id_externo}</cbc:ContractFolderID>
+            <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+            <cacext:LocatedContractingParty>
+              <cac:Party>
+                <cac:PartyName><cbc:Name>Ministerio</cbc:Name></cac:PartyName>
+              </cac:Party>
+            </cacext:LocatedContractingParty>
+            <cac:ProcurementProject>
+              <cbc:Name>Sistema SAP ERP mantenimiento</cbc:Name>
+              <cac:BudgetAmount>
+                <cbc:TaxExclusiveAmount currencyID="EUR">100000.00</cbc:TaxExclusiveAmount>
+              </cac:BudgetAmount>
+              {planned_period_xml}
+            </cac:ProcurementProject>
+            {deadline_xml}
           </cacext:ContractFolderStatus>
         </entry>
     """)
@@ -367,6 +438,79 @@ class TestParseEntry:
         assert lic is not None
         assert lic.duracion_valor == pytest.approx(12.0)
         assert lic.duracion_unidad == "MON"
+
+
+# ─── fecha_limite (plazo de presentación de ofertas) ─────────────────────────
+
+
+class TestTenderDeadline:
+    """Regresión del fix de Ola 1 (docs/IMPROVEMENT_BACKLOG.md): antes de este
+    fix, el parser nunca leía ``TenderingProcess`` y ``fecha_limite`` quedaba
+    NULL en el 100% de las licitaciones de PLACSP."""
+
+    def _get_entry(self, entry_xml: str):
+        feed = _make_atom_feed(entry_xml)
+        root = etree.fromstring(feed)
+        return root.find("{http://www.w3.org/2005/Atom}entry")
+
+    def test_tender_submission_deadline_extracted(self):
+        entry = self._get_entry(
+            _make_entry_with_deadline(end_date="2026-01-15", end_time="23:59:00")
+        )
+        lic = parse_entry(entry)
+        assert lic is not None
+        # 2026-01-15 es invierno en España (CET, UTC+1): 23:59 local = 22:59 UTC.
+        # Si el código asumiera un offset fijo en vez de convertir por zona
+        # horaria, este valor (o el de verano en otro test) sería incorrecto.
+        assert lic.fecha_limite == "2026-01-15T22:59:00+00:00"
+
+    def test_falls_back_to_participation_request_reception_period(self):
+        entry = self._get_entry(
+            _make_entry_with_deadline(
+                end_date="2026-03-01",
+                end_time="12:00:00",
+                period_tag="ParticipationRequestReceptionPeriod",
+            )
+        )
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_limite is not None
+        assert lic.fecha_limite.startswith("2026-03-01")
+
+    def test_no_tendering_process_node_returns_none(self):
+        """Sin TenderingProcess (expediente en fase ADJ/RES, p.ej.), fecha_limite
+        debe quedar None — nunca inferirse de PlannedPeriod/EndDate (fecha_fin)."""
+        entry = self._get_entry(_make_entry_with_deadline(end_date=None))
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_limite is None
+
+    def test_fecha_limite_and_fecha_fin_are_independent(self):
+        """PlannedPeriod/EndDate (ejecución) y TenderingProcess (presentación
+        de ofertas) son nodos CODICE distintos con semántica distinta — el
+        parser no debe confundirlos."""
+        entry = self._get_entry(
+            _make_entry_with_deadline(
+                end_date="2026-02-01",
+                end_time="10:00:00",
+                also_planned_period_end_date="2027-12-31",
+            )
+        )
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_fin == "2027-12-31"
+        assert lic.fecha_limite is not None
+        assert lic.fecha_limite.startswith("2026-02-01")
+        assert lic.fecha_limite != lic.fecha_fin
+
+    def test_parse_entry_unfiltered_also_extracts_fecha_limite(self):
+        entry = self._get_entry(
+            _make_entry_with_deadline(end_date="2026-04-10", end_time="09:00:00")
+        )
+        lic = parse_entry_unfiltered(entry)
+        assert lic is not None
+        assert lic.fecha_limite is not None
+        assert lic.fecha_limite.startswith("2026-04-10")
 
 
 # ─── parse_adjudicaciones ────────────────────────────────────────────────────
