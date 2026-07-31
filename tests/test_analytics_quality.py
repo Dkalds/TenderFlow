@@ -120,3 +120,54 @@ def test_quality_all_iso_dates():
         res = q_mod.get_quality()
     assert res.pct_fecha_iso == 100.0
     assert res.fechas_no_iso == 0
+
+
+def test_quality_organization_scope_counts_real_rows(tmp_db):
+    """pct_organization_scoped/filas_sin_organizacion reflejan filas reales,
+    no el best-effort fallback (ver test_quality_dlq_count_best_effort_on_error
+    para el caso sin tablas)."""
+    db_mod, _ = tmp_db
+    from db.users import create_user
+
+    user_id = create_user(
+        email="quality-scope@example.test", password_hash="x"
+    )  # pragma: allowlist secret
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (?, ?, ?)",
+            ("QUALITY-1", "x", "2026-07-30T10:00:00+00:00"),
+        )
+
+    from db.repositories.organizations import OrganizationRepository
+    from db.repositories.watchlist import WatchlistRepository
+
+    org_id = int(OrganizationRepository().create_organization("Quality org", user_id)["id"])
+    repo = WatchlistRepository()
+    repo.add_item("scoped-key", user_id, "QUALITY-1", org_id, "private")
+    # Fila legacy sin organización -- add_item con organization_id=None omite
+    # las columnas organization_id/visibility en el INSERT (quedan NULL).
+    repo.add_item("legacy-key", user_id, "QUALITY-1", None)
+
+    with (
+        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame([])),
+        patch("db.dlq.count_unresolved", return_value=0),
+    ):
+        res = q_mod.get_quality()
+
+    assert res.filas_sin_organizacion >= 1
+    assert 0.0 <= res.pct_organization_scoped < 100.0
+
+
+def test_quality_organization_scope_best_effort_without_tables():
+    """Sin tablas escopadas disponibles, cae a 100%/0 sin romper el panel."""
+    with (
+        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame([])),
+        patch("db.dlq.count_unresolved", return_value=0),
+        patch(
+            "db.repositories.organizations.OrganizationRepository.scope_coverage",
+            side_effect=RuntimeError("no table"),
+        ),
+    ):
+        res = q_mod.get_quality()
+    assert res.pct_organization_scoped == 100.0
+    assert res.filas_sin_organizacion == 0

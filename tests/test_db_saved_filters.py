@@ -166,6 +166,6 @@ class TestDeleteSavedFilter:
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
-        delete_saved_filter(42)
+        delete_saved_filter(42, user_key="user1")
         mock_conn.execute.assert_called_once()
-        assert mock_conn.execute.call_args[0][1] == (42,)
+        assert mock_conn.execute.call_args[0][1] == (42, "user1")

@@ -310,18 +310,7 @@ _GRANDFATHERED_LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
     }
 )
 
-_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset(
-    {
-        # UPDATE watchlist_rules SET email = ? WHERE id = ? sin predicado
-        # user_key, dentro de la función anidada `_create` de post_rule(). El
-        # id es el recién insertado por create_rule(user_key, ...) en la
-        # misma petición, así que hoy no cruza usuarios -- pero la query en
-        # sí no se defiende sola. Comparar con `put_rule._update` en el mismo
-        # archivo, que sí añade `AND user_key = ?` a la query equivalente.
-        # Arreglo pendiente: alinear `_create` con `_update`.
-        "api/routes/watchlist_rules.py::post_rule._create",
-    }
-)
+_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset()
 
 _GRANDFATHERED_ALLOWLIST: frozenset[str] = (
     _GRANDFATHERED_LEGITIMATE_SWEEPS | _GRANDFATHERED_KNOWN_GAPS_PENDING_FIX

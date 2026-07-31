@@ -21,20 +21,27 @@ from observability.logging import get_logger
 from services.dedupe import exclude_duplicados_sql
 from services.ml.baja_model import MODEL_NAME, BajaModel, Prediccion, predecir_baseline
 from services.ml.features import features_licitaciones_abiertas
-from services.sql_fragments import VALID_PAIR
+from services.sql_fragments import BAJA_PCT_SQL, VALID_PAIR_LOTE
 
 log = get_logger(__name__)
 
 
 def _media_global_baja() -> float:
+    """Baja media histórica del segmento, usada como baseline sin modelo entrenado.
+
+    Presupuesto de referencia por fila: el del lote si la adjudicación lo
+    tiene resuelto (v65_lotes), o el del expediente completo si no —
+    ``BAJA_PCT_SQL``/``VALID_PAIR_LOTE`` (services/sql_fragments.py).
+    """
     sql = f"""
-        SELECT AVG((l.importe - a.importe_adjudicado) / l.importe)
+        SELECT AVG({BAJA_PCT_SQL} / 100)
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {VALID_PAIR}
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
+        WHERE {VALID_PAIR_LOTE}
           AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — VALID_PAIR y exclude_duplicados_sql son fragmentos constantes
+    """  # noqa: S608 — VALID_PAIR_LOTE y exclude_duplicados_sql son fragmentos constantes
     with connect_read() as c:
         row = c.execute(sql).fetchone()
     return float(row[0]) if row and row[0] is not None else 0.12

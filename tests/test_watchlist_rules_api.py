@@ -1,9 +1,29 @@
 """Tests de la API /api/v1/watchlist/rules (CRUD + matches + preview).
 
-Fixtures api_db, api_key, client heredados de conftest.py.
+Fixtures api_db, client heredados de conftest.py. ``api_key`` se sobreescribe
+localmente (ver más abajo).
 """
 
 from __future__ import annotations
+
+import pytest
+
+
+@pytest.fixture()
+def api_key(api_db):
+    """Override de conftest: vincula la key a un usuario real.
+
+    Esta ruta resuelve organización server-side (``api/tenancy.py``), que
+    necesita un ``users.id`` real para ``ensure_personal_organization``. La
+    key sin vincular del fixture compartido usa su propio id como
+    ``user_id`` postizo (compatibilidad dev/test de
+    ``api/routes/dual_auth.py``), que no existe en ``users``.
+    """
+    from api.auth import create_api_key
+    from db.users import create_user
+
+    user_id = create_user(email="watchlist-rules-api@example.test", password_hash="test-hash")
+    return create_api_key("test-key", scopes="*", user_id=user_id)
 
 
 def _auth(api_key: str) -> dict[str, str]:

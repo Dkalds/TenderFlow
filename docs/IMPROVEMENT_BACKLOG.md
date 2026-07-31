@@ -13,6 +13,12 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
+### [P2] Surface `participaciones_ute` en el frontend de competidores
+- **Área:** web/src/components/competitors/company-profile-types.ts, web/src/components/competitors/company-profile-summary.tsx, web/src/app/(dashboard)/competidores/page.tsx
+- **Problema:** el backend ya expone `participaciones_ute` en `GET /api/v1/competitive/.../perfil` (ver _Cerrados_, commit `33d98e4`) — por cada UTE de la que la empresa es miembro, sus `contratos`/`importe_total` propios y los `otros_miembros`. `company-profile-types.ts` todavía no declara el campo (compara con `por_cpv`/`por_anio`/`movimientos`, todas ya tipadas ahí) y ningún componente lo renderiza, así que el dato es invisible en la UI aunque ya viaja en la respuesta.
+- **Acceptance criteria:** tipo `CompanyUteParticipation` en `company-profile-types.ts` reflejando el DTO; una sección en el dossier (`company-profile-summary.tsx` o vecino) listando las UTEs con sus `otros_miembros`, dejando claro que esos importes son **adicionales** a los totales directos de la empresa, no una desagregación de ellos (evitar que el usuario los sume dos veces mentalmente).
+- **Riesgo:** bajo — solo lectura de un campo ya validado por el contrato OpenAPI/TS; sin cambio de backend.
+
 ### [P1] Export/borrado GDPR de la watchlist CPV es un no-op silencioso — consulta una tabla inexistente
 - **Área:** db/repositories/watchlist.py, services/gdpr.py
 - **Problema:** `WatchlistRepository.export_by_user_key`/`anonymize_by_user_key` (usadas por el flujo GDPR de `/me/data` y `/me` DELETE) consultan una tabla llamada literalmente `"watchlist"`, que **no existe** — la tabla real es `watchlist_cpv`. El `except Exception` que envuelve la query traga el error sin loguearlo, así que el export devuelve una lista vacía y el borrado no borra nada, sin que ningún log ni test lo señale. Encontrado durante la auditoría de tenencia de [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) (no es una de las 10 tablas que ese test cubre, por eso no lo capturó).
@@ -282,6 +288,189 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-07-31] **`organization_id` era un parámetro opcional que el cliente
+  decidía enviar, no una frontera (commit `360bb73`)** — 6 de los 7 route
+  files que aceptan `organization_id` solo llamaban a `resolve_organization`
+  (`services/organizations.py`) dentro de `if organization_id is not None:`;
+  omitirlo (el default del cliente, y el 100% del tráfico real del frontend
+  hacia esos seis dominios) saltaba la resolución entera y dejaba pasar
+  `None` hasta el repositorio, que cae a una query sin filtro de
+  organización (`db/saved_filters.py::delete_saved_filter` tenía una rama
+  sin predicado alguno, ni siquiera `user_key`). El séptimo,
+  `services/pursuits.py`, ya lo hacía bien: llama a `resolve_organization`
+  **incondicionalmente**, nunca solo "si el cliente lo mandó" — ese fue el
+  único cambio de fondo necesario, replicado como choke point común.
+  **Corrección del plan original**: no hizo falta persistir la organización
+  activa server-side ni migración nueva — `resolve_organization(user_id,
+  None)` ya resuelve correctamente a la organización personal del usuario;
+  el AC original lo daba por supuesto sin haber leído esa función completa.
+  Nuevo `api/tenancy.py`: `resolve_organization_ctx()` (POST/PUT, el id
+  viaja en el body) y `require_organization()` (dependency FastAPI para
+  GET/DELETE, el id viaja en la query), ambos traducen el rechazo de
+  dominio a 403 en un solo sitio en vez de repetirlo en cada handler.
+  Migrados `watchlist_items.py`, `watchlist_rules.py`, `notifications.py`,
+  `saved_filters.py`, `me.py` (de paso corrige que `get_profile`/
+  `put_profile` llamaban a `resolve_organization` de forma síncrona, fuera
+  de `run_db`, bloqueando el event loop) y `competitive.py` (watchlist de
+  empresas). **Deliberadamente NO se hizo obligatorio** `organization_id` en
+  las firmas de `db/repositories/watchlist.py`, `db/watchlist_empresas.py`,
+  `db/repositories/user_profiles.py`, `services/watchlist_rules.py`,
+  `services/notifications.py` ni `db/saved_filters.py::list_saved_filters`:
+  tienen callers legítimos que dependen de su modo sin filtro —
+  `services/gdpr.py` (export de TODOS los datos del usuario sin importar
+  organización), `services/analytics/scoring.py` (el perfil de scoring es
+  uno solo por `user_key`, no por organización) y tests directos de CRUD.
+  Forzarlo ahí habría roto esos callers sin cerrar ningún hueco real, porque
+  ninguna ruta vuelve a pasarles `None`. Ratchet nuevo
+  (`tests/test_organization_sql_isolation.py`) — **no** un clon literal del
+  escáner de SQL de `test_user_key_sql_isolation.py` (habría producido una
+  allowlist enorme y sin valor, precisamente por esos callers legítimos):
+  en su lugar, prohíbe que cualquier fichero en `api/routes/` importe
+  `resolve_organization` directamente — todos deben pasar por
+  `api/tenancy.py` — más una verificación de que esa resolución no queda
+  anidada dentro de un `if`. Allowlist vacía desde el día uno. Contador
+  `pct_organization_scoped`/`filas_sin_organizacion` nuevo en
+  `GET /api/v1/analytics/quality` (`db/repositories/organizations.py::
+  scope_coverage()`) sobre las 7 tablas escopadas por v64, como criterio
+  medible de cuándo retirar el scope legacy `user_key`. Cuatro test files de
+  ruta (`test_watchlist_items_api.py`, `test_watchlist_rules_api.py`,
+  `test_routes_filtros_guardados.py`, `test_routes_competitive_basico.py`)
+  usaban la API key sin vincular del fixture compartido (compatibilidad
+  dev/test documentada en `api/routes/dual_auth.py`: sin `user_id`, usa el
+  id de la propia key como sustituto) — dejó de bastar en cuanto la
+  resolución de organización pasó a ser incondicional, porque ese id no
+  existe en `users`. Se sobreescribió `api_key` localmente en esos cuatro
+  ficheros en vez de tocar el fixture compartido de `conftest.py`, del que
+  dependen muchos más tests fuera de este alcance. 208 tests dirigidos en
+  verde contra Postgres real, incluidos los tres de regresión nuevos en
+  `tests/test_organization_scope.py` (omitir `organization_id` resuelve a
+  la organización personal, no a una fusión entre todas las del usuario;
+  pedir una organización sin membresía → 403; rol viewer no puede escribir).
+
+- [2026-07-31] **El dossier de una empresa no mostraba su actividad vía UTE
+  (commit `33d98e4`)** — cierra el ítem P0 "Investigar si las UTE reciben
+  atribución correcta en cuota/HHI" (ver entrada de abajo de esta misma
+  fecha para el diagnóstico corregido). Confirmado leyendo
+  `services/competitive/mercado.py` completo: `cuota_mercado()`/
+  `concentracion_hhi()` tratan a la UTE como participante independiente en
+  el agregado del segmento **a propósito** — sumar también el importe a
+  cada miembro duplicaría dinero en el total del mercado. Esa parte estaba
+  bien; el gap real era otro y más estrecho: `perfil_empresa()` (el dossier
+  de UNA empresa, endpoint `.../perfil`) nunca hacía join contra
+  `ute_miembros`, así que una empresa que gana mucho vía UTE veía cero
+  actividad atribuida a esas victorias en su propio dossier — quedaban
+  ocultas detrás del `empresa_id` sintético de la UTE sin ningún puente de
+  vuelta. Añadido `participaciones_ute` a `CompetitiveCompanyProfileDTO`
+  (`shared/dto.py`): por cada UTE de la que la empresa es miembro,
+  `contratos`/`importe_total` **propios de la UTE** (no repartidos) y
+  `otros_miembros`, como bloque separado de los totales directos de la
+  empresa — decisión deliberada para no fusionar dos semánticas de
+  atribución distintas en un único número y así no reabrir el riesgo de
+  doble conteo que este mismo ítem descartó para el agregado. OpenAPI +
+  `web/src/generated/api.d.ts` regenerados; ratchet de contrato
+  (`check_openapi_contract.py`) verde sin nuevas operaciones opacas. 56
+  tests dirigidos en verde contra Postgres real (los 2 nuevos de
+  `participaciones_ute` + toda `test_competitive.py`/
+  `test_pricing_repository.py`/`test_ml_baja_model.py`/
+  `test_baja_single_source.py` para descartar regresión sobre el trabajo
+  de baja/lote de esta misma fecha). **Sigue abierto** (ítem "[P2] Surface
+  `participaciones_ute` en el frontend de competidores" en _P1 — Alta_ de
+  arriba, severidad bajada de P0 a P2 porque ya no hay sospecha de dato
+  incorrecto): el backend lo expone, la UI todavía no lo pinta.
+
+- [2026-07-31] **La baja por-fila se comparaba contra el presupuesto del
+  expediente completo, no el del lote (commit `fa9b39a`)** —
+  `services/competitive/bajas.py`, `db/repositories/pricing.py` y
+  `services/ml/scoring.py::_media_global_baja` calculaban cada uno
+  `(l.importe - a.importe_adjudicado) / l.importe`, sobreestimando la baja
+  de cualquier lote en un expediente con más de uno (un lote al 20% de su
+  propio presupuesto de 20k dentro de un expediente de 100k se leía como
+  85% de baja en vez del 25% real). `db/repositories/pricing.py` incluso
+  documentaba el síntoma en su propio comentario ("se excluyen ratios fuera
+  de [0, 1]: normalmente representan lotes...") y lo parcheaba descartando
+  esas filas en vez de arreglar el denominador, encogiendo en silencio la
+  distribución de entrenamiento de `services/ml/pricing_scenarios.py`
+  justo para los expedientes multi-lote donde más importa acertar.
+  Añadidos `EFFECTIVE_BUDGET_SQL`/`VALID_PAIR_LOTE`/`BAJA_PCT_SQL` a
+  `services/sql_fragments.py` (usan el presupuesto del lote cuando
+  `adjudicaciones.lote_id` está resuelto, si no el del expediente).
+  `services/ml/calibration.py` y `scoring.py::_baja_real` NO se tocaron:
+  ya sumaban todos los lotes de la licitación antes de comparar contra el
+  total del expediente, que es la fórmula agregada correcta, no el mismo
+  bug. Ratchet nuevo (`tests/test_baja_single_source.py`) contra que
+  reaparezca la fórmula rota fuera de `sql_fragments.py`. 48 tests
+  dirigidos en verde contra Postgres real, incluida la regresión directa.
+  **Corrección del diagnóstico original de UTE** (ver ítem P0 de arriba,
+  reescrito): la crítica inicial asumía que una UTE se cuenta N veces en
+  `mercado.py`; investigar `services/entity_resolution.py` mostró que ya
+  existe una vía distinta (empresa UTE sintética + tabla `ute_miembros`,
+  migración v35) que evita ese conteo múltiple — el gap real, si existe, es
+  de atribución a los miembros individuales, no de duplicación, y queda
+  pendiente de confirmar antes de tocar código.
+
+- [2026-07-31] **El lote no existía en el modelo — pérdida de filas en
+  expedientes multi-lote (migraciones `v65_lotes`/`v66_lotes_index_concurrent`,
+  commit `e2f116b`)** — `parse_adjudicaciones` iteraba
+  `cac:TenderResult` (uno por lote en CODICE) pero descartaba la referencia
+  al lote, así que `UNIQUE(licitacion_id, nif, importe_adjudicado)`
+  descartaba en silencio una fila cuando la misma empresa ganaba dos lotes
+  por el mismo importe. Nueva tabla `lotes` + `adjudicaciones.lote_id`;
+  la unique vieja (localizada dinámicamente, su nombre no es fijo entre
+  entornos) se sustituye por dos índices únicos parciales —
+  `..._sin_lote` (WHERE lote_id IS NULL, protección idéntica a la que
+  reemplaza) y `..._lic_lote_nif_importe` (WHERE lote_id IS NOT NULL,
+  protección nueva por lote) — porque una unique simple con `lote_id`
+  habría perdido toda protección para el ~100% de filas existentes sin lote
+  resuelto (`NULL <> NULL` en SQL). Creación de índices separada en
+  `v66_lotes_index_concurrent` (mismo patrón que v61→v63) para no dejar la
+  migración a medio aplicar si la construcción concurrente falla sobre
+  `adjudicaciones`. `scraper/codice_parser.py::parse_lotes()` extrae
+  `cac:ProcurementProjectLot`; `parse_adjudicaciones` lee
+  `cac:TenderResult/cac:ProcurementProjectLotReference/cbc:ID` a un campo
+  parse-only (`Adjudicacion.lote_numero_raw`, excluido de las columnas del
+  INSERT) que el runner de conectores (`scraper/connectors/base.py`)
+  resuelve a `lote_id` real tras persistir los lotes, en el mismo ciclo de
+  escritura que las adjudicaciones. La dedup en memoria
+  (`db/upsert.py::_dedup_adj_rows`) refleja las mismas dos claves.
+  Verificado contra Postgres 16 real (no mockeado): `alembic upgrade head`
+  con las 66 migraciones detectó un bug real que ningún test lo hubiera
+  hecho — `information_schema.column_name` es `sql_identifier`, no `text`,
+  y no compara contra un array literal sin cast explícito. 381 tests
+  dirigidos en verde contra esa instancia, incluida la regresión directa
+  (dos lotes, misma empresa, mismo importe → ahora persisten 2 filas) a
+  nivel de conector y de `db/upsert.py`.
+  **Sigue abierto** (ver ítem P0 de arriba): `services/competitive/bajas.py`
+  y `services/competitive/mercado.py` todavía no usan `lote_id` para
+  calcular baja/cuota/HHI, y la UTE sigue sin tabla de miembros.
+
+- [2026-07-31] **`fecha_limite` nunca se extraía de PLACSP (commit `166b2f2`)**
+  — `scraper/codice_parser.py::parse_entry` leía
+  `ProcurementProject/PlannedPeriod/EndDate` (fin de EJECUCIÓN del contrato,
+  ya usado como `fecha_fin`) y nunca `TenderingProcess/
+  TenderSubmissionDeadlinePeriod/EndDate` (fin del plazo de PRESENTACIÓN de
+  ofertas). Solo PSCP/TED/RSS autonómicos poblaban el campo — la fuente
+  mayoritaria (PLACSP) lo dejaba NULL en el 100% de los casos. Explica de raíz
+  por qué el fix de "Sin fecha límite" en el Radar (entrada anterior, ítem 4)
+  seguía mostrando tarjetas vacías para licitaciones PLACSP incluso tras
+  arreglar el wiring API↔frontend: la columna nunca tuvo valor que mostrar.
+  Añadido `_tender_deadline()` con fallback a
+  `ParticipationRequestReceptionPeriod` (procedimientos con fase de solicitud
+  de participación) y `shared.dates.to_iso_datetime()` (combina
+  `EndDate`+`EndTime`, convierte de hora local España a UTC con `zoneinfo`,
+  probado en ambos lados del cambio de horario). `db/upsert.py::_LIC_UPDATES`
+  pasa a `COALESCE` específicamente en `fecha_limite` para que una
+  re-ingesta del mismo expediente tras avanzar a fase ADJ/RES (donde el nodo
+  `TenderingProcess` desaparece) no borre un plazo ya conocido. Añadido a
+  `HISTORY_TRACKED_FIELDS` para que una ampliación de plazo quede en
+  `licitaciones_history`. Instrumentación: `fecha_limite` se sumó al monitor
+  de NULLs críticos del parser, y `scripts/audit_domain_truth.py`
+  (`make audit-truth`) mide el efecto real del fix contra la BD y contra los
+  ZIP ya cacheados.
+  **Backfill pendiente** (acción del usuario/próxima sesión, no bloqueante):
+  re-ingerir el histórico con `python -m scheduler.run_update --backfill
+  <año> <mes>` para poblar `fecha_limite` en filas ya existentes; los ZIP
+  cacheados en `DOWNLOADS_DIR` evitan re-descargar.
 
 - [2026-07-30] **Cobertura de Radar y Oportunidades, y los 5 bugs que la
   cobertura destapó** — El plan de producto llegó con el camino feliz probado y

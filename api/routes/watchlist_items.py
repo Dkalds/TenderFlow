@@ -16,14 +16,10 @@ from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import require_organization, resolve_organization_ctx
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
-from services.organizations import (
-    OrganizationAccessError,
-    OrganizationPermissionError,
-    claim_legacy_scope,
-    resolve_organization,
-)
+from services.organizations import claim_legacy_scope
 
 log = get_logger(__name__)
 
@@ -62,21 +58,14 @@ class WatchlistItemBody(BaseModel):
 @router.get("", summary="Listar favoritos del usuario (enriquecidos)")
 async def get_items(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization()),
 ) -> dict[str, list[dict[str, Any]]]:
-    resolved_id: int | None = None
     if organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization, int(ctx["user_id"]), organization_id
-            )
-            await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
-        except OrganizationAccessError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
     items = await run_db(
         _repo.list_items,
         _user_key(ctx),
-        resolved_id,
+        ctx["organization_id"],
         _user_id(ctx),
     )
     return {"items": items}
@@ -87,23 +76,13 @@ async def post_item(
     body: WatchlistItemBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
-    resolved_id: int | None = None
-    if body.organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization,
-                int(ctx["user_id"]),
-                body.organization_id,
-                write=True,
-            )
-        except (OrganizationAccessError, OrganizationPermissionError) as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     item = await run_db(
         _repo.add_item,
         _user_key(ctx),
         _user_id(ctx),
         body.id_externo,
-        resolved_id,
+        ctx["organization_id"],
         body.visibility,
     )
     log.info("watchlist_item_created", id_externo=body.id_externo)
@@ -117,17 +96,8 @@ async def post_item(
 )
 async def delete_item(
     id_externo: str,
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> None:
-    resolved_id: int | None = None
-    if organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization, int(ctx["user_id"]), organization_id, write=True
-            )
-        except (OrganizationAccessError, OrganizationPermissionError) as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-    ok = await run_db(_repo.remove_item, _user_key(ctx), id_externo, resolved_id)
+    ok = await run_db(_repo.remove_item, _user_key(ctx), id_externo, ctx["organization_id"])
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")

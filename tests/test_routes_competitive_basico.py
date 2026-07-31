@@ -2,6 +2,27 @@
 
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture()
+def api_key(api_db):
+    """Override de conftest: vincula la key a un usuario real.
+
+    ``/competitive/watchlist`` resuelve organización server-side
+    (``api/tenancy.py``), que necesita un ``users.id`` real para
+    ``ensure_personal_organization``. La key sin vincular del fixture
+    compartido usa su propio id como ``user_id`` postizo (compatibilidad
+    dev/test de ``api/routes/dual_auth.py``), que no existe en ``users``.
+    ``auth`` (conftest.py) depende de ``api_key`` y recoge este override.
+    """
+    from api.auth import create_api_key
+    from db.users import create_user
+
+    user_id = create_user(email="competitive-api@example.test", password_hash="test-hash")
+    return create_api_key("test-key", scopes="*", user_id=user_id)
+
+
 # ---------------------------------------------------------------------------
 # Renovaciones
 # ---------------------------------------------------------------------------

@@ -16,9 +16,37 @@ composición del proyecto:
 # sin importes positivos y outliers donde el adjudicado supera el
 # presupuesto en más de un 50% (errores de fuente o modificados mal
 # atribuidos). Asume alias ``l`` (licitaciones) y ``a`` (adjudicaciones).
+#
+# Úsese solo cuando la comparación es AGREGADA por licitación (sumar todas
+# las adjudicaciones del expediente y comparar contra l.importe, patrón de
+# services/ml/calibration.py y services/ml/scoring.py::_baja_real) — ahí
+# l.importe es el denominador correcto porque ya se sumó todo lo adjudicado.
+# Para comparar UNA fila de adjudicación contra su presupuesto real (v65_lotes:
+# el de su lote, si lo tiene) usar VALID_PAIR_LOTE + EFFECTIVE_BUDGET_SQL.
 VALID_PAIR = (
     "l.importe > 0 AND a.importe_adjudicado > 0 AND a.importe_adjudicado <= l.importe * 1.5"
 )
+
+# Presupuesto real de UNA fila de adjudicación: el de su lote si lo tiene
+# (v65_lotes), si no el del expediente completo (lote único implícito).
+# Requiere ``LEFT JOIN lotes lo ON lo.id = a.lote_id`` en la query llamadora.
+EFFECTIVE_BUDGET_SQL = "COALESCE(lo.importe, l.importe)"
+
+# Equivalente de VALID_PAIR para comparar una fila de adjudicación contra su
+# presupuesto real (el del lote, no el del expediente completo). Antes de
+# v65_lotes, comparar un lote contra l.importe sobreestimaba sistemáticamente
+# la baja de cualquier expediente con más de un lote — db/repositories/
+# pricing.py lo parcheaba descartando ratios > 1 en vez de corregir el
+# denominador, perdiendo esas filas de la distribución en vez de arreglarlas.
+VALID_PAIR_LOTE = (
+    f"({EFFECTIVE_BUDGET_SQL}) > 0 AND a.importe_adjudicado > 0 "
+    f"AND a.importe_adjudicado <= ({EFFECTIVE_BUDGET_SQL}) * 1.5"
+)
+
+# Baja porcentual de una fila de adjudicación contra su presupuesto real.
+# Único punto de esta fórmula fuera de la agregación por licitación — ver
+# nota en VALID_PAIR sobre cuál usar según el caso.
+BAJA_PCT_SQL = f"(({EFFECTIVE_BUDGET_SQL}) - a.importe_adjudicado) / ({EFFECTIVE_BUDGET_SQL}) * 100"
 
 # Universo por defecto de los agregados del radar. Las filas anteriores al
 # linaje se consideran legado del radar porque el único pipeline histórico

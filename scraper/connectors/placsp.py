@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion
+from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 
@@ -58,6 +58,7 @@ class _PlacspParseCore:
             parse_adjudicaciones,
             parse_document_references,
             parse_entry,
+            parse_lotes,
         )
         from scraper.lineage import current_filter_version
         from scraper.pipeline import _ml_classify_entry
@@ -84,7 +85,10 @@ class _PlacspParseCore:
 
             adjs: list[Adjudicacion] = parse_adjudicaciones(entry_elem, lic.id_externo)
             docs: list[DocumentoReferencia] = parse_document_references(entry_elem)
-            return ParsedTender(licitacion=lic, adjudicaciones=adjs, documentos=docs)
+            lotes: list[Lote] = parse_lotes(
+                entry_elem, lic.id_externo, fallback_fecha_limite=lic.fecha_limite
+            )
+            return ParsedTender(licitacion=lic, adjudicaciones=adjs, documentos=docs, lotes=lotes)
 
         except Exception as exc:
             log.debug("placsp_parse_entry_failed", error=str(exc))

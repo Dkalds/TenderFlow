@@ -122,6 +122,24 @@ adjudicaciones = Table(
     Column("result_code", String),
     Column("result_description", Text),
     Column("empresa_id", Integer),
+    Column("lote_id", Integer),
+    Column("fecha_extraccion", String, nullable=False),
+)
+
+# ---------------------------------------------------------------------------
+# Lotes (v65_lotes)
+# ---------------------------------------------------------------------------
+
+lotes = Table(
+    "lotes",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("licitacion_id", String, nullable=False),
+    Column("numero", String, nullable=False),
+    Column("titulo", Text),
+    Column("cpv", String),
+    Column("importe", Float),
+    Column("fecha_limite", String),
     Column("fecha_extraccion", String, nullable=False),
 )
 

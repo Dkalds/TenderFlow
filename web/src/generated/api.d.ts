@@ -3203,6 +3203,8 @@ export interface components {
             movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
             /** Organos Principales */
             organos_principales?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Participaciones Ute */
+            participaciones_ute?: components["schemas"]["CompetitiveCompanyUteParticipationDTO"][];
             /** Por Anio */
             por_anio?: components["schemas"]["CompetitiveCompanyYearDTO"][];
             /** Por Ccaa */
@@ -3292,6 +3294,34 @@ export interface components {
             territorios: number;
             /** Ultima Adjudicacion */
             ultima_adjudicacion?: string | null;
+        };
+        /**
+         * CompetitiveCompanyUteParticipationDTO
+         * @description UTE en la que la empresa participa como miembro, con su actividad propia.
+         *
+         *     Deliberadamente separado de ``totales``/``posicion_mercado``, que solo
+         *     cuentan lo adjudicado directamente a ``empresa_id`` -- sumarlo ahí
+         *     duplicaría el importe ya atribuido a la UTE como entidad propia en
+         *     cuota_mercado()/concentracion_hhi(). Esto es visibilidad adicional, no
+         *     una redefinición de la cuota de mercado.
+         */
+        CompetitiveCompanyUteParticipationDTO: {
+            /**
+             * Contratos
+             * @default 0
+             */
+            contratos: number;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /** Otros Miembros */
+            otros_miembros?: string[];
+            /** Ute Empresa Id */
+            ute_empresa_id: number;
+            /** Ute Nombre */
+            ute_nombre: string;
         };
         /**
          * CompetitiveCompanyYearDTO
@@ -5067,6 +5097,11 @@ export interface components {
              * @default 0
              */
             fechas_no_iso: number;
+            /**
+             * Filas Sin Organizacion
+             * @default 0
+             */
+            filas_sin_organizacion: number;
             /** Last Scrape Hours Ago */
             last_scrape_hours_ago?: number | null;
             /**
@@ -5089,6 +5124,11 @@ export interface components {
              * @default 0
              */
             pct_importe: number;
+            /**
+             * Pct Organization Scoped
+             * @default 100
+             */
+            pct_organization_scoped: number;
             /**
              * Pct Titulo
              * @default 0
@@ -8592,6 +8632,7 @@ export interface operations {
     get_watchlist_api_v1_competitive_watchlist_get: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -8668,6 +8709,7 @@ export interface operations {
     delete_watchlist_api_v1_competitive_watchlist__empresa_id__delete: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -10296,6 +10338,7 @@ export interface operations {
     get_profile_api_v1_me_profile_get: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -10591,6 +10634,7 @@ export interface operations {
     get_notifications_api_v1_notifications_get: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -11155,6 +11199,7 @@ export interface operations {
     get_saved_filters_api_v1_saved_filters_get: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -11231,6 +11276,7 @@ export interface operations {
     delete_saved_filter_route_api_v1_saved_filters__filter_id__delete: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -11376,6 +11422,7 @@ export interface operations {
     get_items_api_v1_watchlist_items_get: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -11454,6 +11501,7 @@ export interface operations {
     delete_item_api_v1_watchlist_items__id_externo__delete: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -11489,6 +11537,7 @@ export interface operations {
     get_rules_api_v1_watchlist_rules_get: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -11645,6 +11694,7 @@ export interface operations {
     delete_rule_route_api_v1_watchlist_rules__rule_id__delete: {
         parameters: {
             query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {
@@ -11685,6 +11735,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                /** @description Organización activa; por defecto la personal del usuario. */
                 organization_id?: number | null;
             };
             header?: {

@@ -60,6 +60,18 @@ erDiagram
         REAL oferta_maxima
         TEXT result_code
         TEXT result_description
+        INTEGER lote_id FK
+        TEXT fecha_extraccion
+    }
+
+    lotes {
+        INTEGER id PK
+        TEXT licitacion_id FK
+        TEXT numero
+        TEXT titulo
+        TEXT cpv
+        REAL importe
+        TEXT fecha_limite
         TEXT fecha_extraccion
     }
 
@@ -180,6 +192,8 @@ erDiagram
 
     licitaciones ||--o{ adjudicaciones : "tiene"
     licitaciones ||--o{ licitaciones_history : "registra cambios"
+    licitaciones ||--o{ lotes : "se divide en"
+    lotes ||--o{ adjudicaciones : "se adjudica en"
     users ||--o{ watchlist_cpv : "gestiona"
     users ||--o{ access_log : "genera"
     extraction_runs ||--o{ failed_extractions : "registra"
@@ -250,9 +264,37 @@ Contiene los datos de adjudicación de cada licitación (empresa ganadora, impor
 | `oferta_maxima` | REAL | Importe de la oferta más alta recibida |
 | `result_code` | TEXT | Código de resultado de la adjudicación |
 | `result_description` | TEXT | Descripción del resultado |
+| `lote_id` | INTEGER FK | Referencia a `lotes.id` (v65_lotes). `NULL` = expediente sin lote parseado (lote único implícito) |
 | `fecha_extraccion` | TEXT | Fecha de extracción |
 
-**Constraint único:** `(licitacion_id, nif, importe_adjudicado)` — evita duplicados.
+**Constraints únicas** (v65_lotes sustituye la única constraint original por dos
+índices únicos parciales — una unique simple con `lote_id` habría perdido toda
+protección para el caso sin lote, donde `NULL <> NULL` en SQL):
+- `uq_adjudicaciones_lic_nif_importe_sin_lote` — `(licitacion_id, nif, importe_adjudicado) WHERE lote_id IS NULL`.
+- `uq_adjudicaciones_lic_lote_nif_importe` — `(licitacion_id, lote_id, nif, importe_adjudicado) WHERE lote_id IS NOT NULL`.
+
+---
+
+### `lotes` — Lotes de un expediente (v65_lotes)
+
+En contratación pública española un expediente puede dividirse en lotes, cada
+uno con presupuesto, CPV y adjudicatario propios. CODICE los modela como
+`cac:ProcurementProjectLot`; cada adjudicación referencia el suyo vía
+`cac:TenderResult/cac:ProcurementProjectLotReference/cbc:ID`
+(`scraper/codice_parser.py::parse_lotes`).
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | INTEGER PK | Autoincremental |
+| `licitacion_id` | TEXT FK | Referencia a `licitaciones.id_externo` |
+| `numero` | TEXT | Número/identificador del lote tal como lo publica la fuente |
+| `titulo` | TEXT | Nombre del lote |
+| `cpv` | TEXT | Código CPV propio del lote |
+| `importe` | REAL | Presupuesto del lote (no del expediente completo) |
+| `fecha_limite` | TEXT | Plazo de presentación propio del lote si lo publica; si no, hereda el del expediente |
+| `fecha_extraccion` | TEXT | Fecha de extracción |
+
+**Constraint único:** `(licitacion_id, numero)`.
 
 ---
 

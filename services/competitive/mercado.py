@@ -613,6 +613,47 @@ def perfil_empresa(
                 [*market_params, *group_ids],
             )
         )
+        # UTEs en las que participa como miembro (v35, ute_miembros) -- no
+        # como entidad propia. cuota_mercado()/concentracion_hhi() ya tratan
+        # a la UTE como participante independiente para no contar dos veces
+        # el mismo importe en el agregado del segmento; esto es visibilidad
+        # adicional sobre ESTE dossier, sin tocar ese cómputo.
+        ute_identity_rows = rows_to_dicts(
+            c.execute(
+                "SELECT DISTINCT u.ute_empresa_id, e.nombre_canonico AS ute_nombre "  # noqa: S608
+                "FROM ute_miembros u JOIN empresas e ON e.empresa_id = u.ute_empresa_id "
+                f"WHERE u.miembro_empresa_id IN ({id_placeholders})",
+                group_ids,
+            )
+        )
+        ute_ids = [int(row["ute_empresa_id"]) for row in ute_identity_rows]
+        ute_activity_rows: list[dict[str, Any]] = []
+        ute_miembros_rows: list[dict[str, Any]] = []
+        if ute_ids:
+            ute_placeholders = ", ".join("?" for _ in ute_ids)
+            ute_activity_rows = rows_to_dicts(
+                c.execute(
+                    f"""
+                    SELECT a.empresa_id AS ute_empresa_id,
+                           COUNT(*) AS contratos,
+                           COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total
+                    FROM adjudicaciones a
+                    JOIN licitaciones l ON l.id_externo = a.licitacion_id
+                    WHERE a.empresa_id IN ({ute_placeholders}) AND {market_where}
+                    GROUP BY a.empresa_id
+                    """,  # noqa: S608 -- placeholders/market_where constantes, valores con ?
+                    [*ute_ids, *market_params],
+                )
+            )
+            ute_miembros_rows = rows_to_dicts(
+                c.execute(
+                    "SELECT u.ute_empresa_id, m.nombre_canonico "  # noqa: S608
+                    "FROM ute_miembros u JOIN empresas m ON m.empresa_id = u.miembro_empresa_id "
+                    f"WHERE u.ute_empresa_id IN ({ute_placeholders}) "
+                    f"AND u.miembro_empresa_id NOT IN ({id_placeholders})",
+                    [*ute_ids, *group_ids],
+                )
+            )
 
     primary_identity = next(
         (row for row in identity_rows if row.get("empresa_id") == empresa_id),
@@ -707,6 +748,24 @@ def perfil_empresa(
         fecha_hasta=fecha_hasta,
     )
     position = position_rows[0] if position_rows else {}
+    activity_by_ute = {int(row["ute_empresa_id"]): row for row in ute_activity_rows}
+    miembros_by_ute: dict[int, list[str]] = defaultdict(list)
+    for row in ute_miembros_rows:
+        miembros_by_ute[int(row["ute_empresa_id"])].append(str(row["nombre_canonico"]))
+    participaciones_ute = [
+        {
+            "ute_empresa_id": int(row["ute_empresa_id"]),
+            "ute_nombre": row["ute_nombre"],
+            "otros_miembros": miembros_by_ute.get(int(row["ute_empresa_id"]), []),
+            "contratos": int(
+                activity_by_ute.get(int(row["ute_empresa_id"]), {}).get("contratos", 0)
+            ),
+            "importe_total": float(
+                activity_by_ute.get(int(row["ute_empresa_id"]), {}).get("importe_total", 0)
+            ),
+        }
+        for row in ute_identity_rows
+    ]
     movements = _company_movements(
         comparison=comparison,
         concentration=concentration,
@@ -793,6 +852,7 @@ def perfil_empresa(
         "por_anio": year_rows,
         "movimientos": movements,
         "contratos_recientes": recent_contracts,
+        "participaciones_ute": participaciones_ute,
     }
 
 
