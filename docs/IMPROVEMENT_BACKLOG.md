@@ -13,15 +13,11 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-### [P0] El lote no existe en el modelo — baja mal calculada, UTE triplicada
-- **Área:** services/competitive/bajas.py, services/ml/calibration.py, services/ml/scoring.py, services/competitive/mercado.py, services/analytics/utes.py, db/alembic/
-- **Problema:** en contratación pública española el expediente se divide en lotes (presupuesto, CPV y adjudicatario propios). Hasta la migración `v65_lotes`/`v66_lotes_index_concurrent` el lote no existía en el modelo en absoluto: `parse_adjudicaciones` descartaba la referencia al lote y la unique `(licitacion_id, nif, importe_adjudicado)` descartaba en silencio una fila cuando la misma empresa ganaba dos lotes por el mismo importe. **Esa parte ya está cerrada (ver Cerrados) —** lo que queda abierto es que, con `lote_id` ya disponible, los consumidores de negocio todavía no lo usan: `services/competitive/bajas.py::baja_de_referencia` (el dato que un comercial usa para preparar una oferta) sigue comparando el importe de UN lote contra el presupuesto **total** del expediente, mientras que `services/ml/calibration.py`/`services/ml/scoring.py` agregan por licitación primero — dos cálculos divergentes de la misma magnitud, y el que ve el usuario es el que está mal. Y `parse_adjudicaciones` sigue emitiendo una fila por `cac:WinningParty` con el importe **íntegro** repetido (no hay tabla de miembros ni porcentaje de participación), así que una UTE de N empresas infla N veces el importe atribuido al segmento en `services/competitive/mercado.py` (cuota, HHI — que además eleva la cuota al cuadrado, amplificando el error).
-- **Medir antes de arreglar:** `make audit-truth` expone (c) proxy de UTE por filas que comparten `(licitacion_id, fecha_adjudicacion, importe_adjudicado)` con distinto NIF, y (d) el delta real entre `baja_media_pct` por-adjudicación vs. por-licitación (ahora se puede refinar a por-lote con `lote_id` ya disponible).
-- **Acceptance criteria:**
-  - `_BAJA_PCT` centralizado en `services/sql_fragments.py` agregando por `(licitacion_id, lote_id)`; `bajas.py`, `calibration.py`, `scoring.py` y `services/ml/pricing_scenarios.py` consumen el mismo fragmento. Ratchet de regresión: ningún fichero fuera de `sql_fragments.py` define su propia expresión de baja.
-  - Migración `v67_ute_miembros` (siguiente cabeza libre tras `v66_lotes_index_concurrent`): tabla `adjudicacion_miembros`; `adjudicaciones` pasa a una fila por adjudicación (no por `WinningParty`); backfill determinista de las filas actuales que comparten clave con distinto NIF. Requiere **gate humano** (AGENTS.md §6, `db/alembic/`).
-  - `MetricScope` (`shared/metric_scope.py`) gana `lot_level: bool` para que series pre/post fix no se mezclen en silencio (principio de honestidad estadística ya establecido en `PRODUCT_EXECUTION_PLAN.md §7`).
-- **Riesgo:** alto — toca schema (una migración) y el cálculo público de baja/cuota/HHI; re-baseline de métricas ya publicadas necesario tras el fix.
+### [P0] Investigar si las UTE reciben atribución correcta en cuota/HHI
+- **Área:** services/competitive/mercado.py, services/entity_resolution.py, services/partners.py, db/empresas.py
+- **Problema:** la crítica original de esta entrada asumía que `parse_adjudicaciones` emite una fila por `cac:WinningParty` y que eso triplica el importe de una UTE en `mercado.py`. **Es incorrecto para el caso real dominante**: CODICE publica la UTE como un único `WinningParty` con nombre compuesto (`"UTE EMPRESA1 - EMPRESA2"`), y el repo ya tiene infraestructura dedicada para eso —`services/normalization.py::parse_ute_members` extrae los miembros del nombre, `services/entity_resolution.py` crea una "empresa UTE" propia con `es_ute=1` y sus miembros en `ute_miembros` (tabla de la migración v35) — así que el dinero **no** se cuenta N veces: se agrupa una sola vez bajo el `empresa_id` sintético de la UTE. El bug real, si existe, es otro: `services/competitive/mercado.py` no parece hacer join contra `ute_miembros` para repartir esa cuota entre las empresas reales — así que el perfil competitivo/cuota de mercado de una empresa que participa mucho vía UTE **subestima** su fuerza real, porque esas victorias quedan ocultas detrás de la entidad sintética en vez de sumarse a su `empresa_id` propio. No se ha confirmado si esto es intencional (evitar doble conteo del lado del mercado agregado) o un gap real de atribución individual.
+- **Antes de tocar código:** confirmar leyendo completo `services/competitive/mercado.py` (cómo trata `es_ute` en el cálculo de cuota/HHI hoy) y `services/partners.py` (que sí usa `parse_ute_members` para el grafo de socios) si existe ya alguna vía de atribución a miembros que la crítica original no vio. Esta entrada se corrigió una vez ya (ver commit de esta misma fecha) precisamente porque el diagnóstico inicial no leyó `entity_resolution.py`/`ute_miembros` — no repetir el error de proponer una migración antes de esta lectura.
+- **Riesgo:** medio — si el fix es real, probablemente no necesita migración nueva (`ute_miembros` ya existe), solo cambios de consulta en `mercado.py`; pero el diagnóstico todavía no está confirmado.
 
 ### [P0] La tenencia por organización es un parámetro opcional, no una frontera
 - **Área:** api/routes/watchlist_items.py, api/routes/notifications.py, api/routes/competitive.py, api/routes/me.py, db/watchlist.py, services/organizations.py, tests/test_user_key_sql_isolation.py
@@ -303,6 +299,36 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-07-31] **La baja por-fila se comparaba contra el presupuesto del
+  expediente completo, no el del lote (commit `fa9b39a`)** —
+  `services/competitive/bajas.py`, `db/repositories/pricing.py` y
+  `services/ml/scoring.py::_media_global_baja` calculaban cada uno
+  `(l.importe - a.importe_adjudicado) / l.importe`, sobreestimando la baja
+  de cualquier lote en un expediente con más de uno (un lote al 20% de su
+  propio presupuesto de 20k dentro de un expediente de 100k se leía como
+  85% de baja en vez del 25% real). `db/repositories/pricing.py` incluso
+  documentaba el síntoma en su propio comentario ("se excluyen ratios fuera
+  de [0, 1]: normalmente representan lotes...") y lo parcheaba descartando
+  esas filas en vez de arreglar el denominador, encogiendo en silencio la
+  distribución de entrenamiento de `services/ml/pricing_scenarios.py`
+  justo para los expedientes multi-lote donde más importa acertar.
+  Añadidos `EFFECTIVE_BUDGET_SQL`/`VALID_PAIR_LOTE`/`BAJA_PCT_SQL` a
+  `services/sql_fragments.py` (usan el presupuesto del lote cuando
+  `adjudicaciones.lote_id` está resuelto, si no el del expediente).
+  `services/ml/calibration.py` y `scoring.py::_baja_real` NO se tocaron:
+  ya sumaban todos los lotes de la licitación antes de comparar contra el
+  total del expediente, que es la fórmula agregada correcta, no el mismo
+  bug. Ratchet nuevo (`tests/test_baja_single_source.py`) contra que
+  reaparezca la fórmula rota fuera de `sql_fragments.py`. 48 tests
+  dirigidos en verde contra Postgres real, incluida la regresión directa.
+  **Corrección del diagnóstico original de UTE** (ver ítem P0 de arriba,
+  reescrito): la crítica inicial asumía que una UTE se cuenta N veces en
+  `mercado.py`; investigar `services/entity_resolution.py` mostró que ya
+  existe una vía distinta (empresa UTE sintética + tabla `ute_miembros`,
+  migración v35) que evita ese conteo múltiple — el gap real, si existe, es
+  de atribución a los miembros individuales, no de duplicación, y queda
+  pendiente de confirmar antes de tocar código.
 
 - [2026-07-31] **El lote no existía en el modelo — pérdida de filas en
   expedientes multi-lote (migraciones `v65_lotes`/`v66_lotes_index_concurrent`,
