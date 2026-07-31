@@ -19,17 +19,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Acceptance criteria:** tipo `CompanyUteParticipation` en `company-profile-types.ts` reflejando el DTO; una sección en el dossier (`company-profile-summary.tsx` o vecino) listando las UTEs con sus `otros_miembros`, dejando claro que esos importes son **adicionales** a los totales directos de la empresa, no una desagregación de ellos (evitar que el usuario los sume dos veces mentalmente).
 - **Riesgo:** bajo — solo lectura de un campo ya validado por el contrato OpenAPI/TS; sin cambio de backend.
 
-### [P0] La tenencia por organización es un parámetro opcional, no una frontera
-- **Área:** api/routes/watchlist_items.py, api/routes/notifications.py, api/routes/competitive.py, api/routes/me.py, db/watchlist.py, services/organizations.py, tests/test_user_key_sql_isolation.py
-- **Problema:** `organization_id` viaja como query param opcional que decide el cliente, y `resolve_organization` (`services/organizations.py`) se importa dentro del cuerpo de cada handler en vez de resolverse por una dependency obligatoria. Cuando se omite — el default — `db/watchlist.py` y equivalentes caen a `WHERE user_id = ? OR user_key = ?`, **sin filtro de organización**. La política RLS del rol de runtime es `USING(true) WITH CHECK(true)` (`scripts/setup_pg_roles.sql`), así que el aislamiento entre tenants depende al 100% de que cada query añada el predicado — y el ratchet que lo audita (`tests/test_user_key_sql_isolation.py`) solo cubre `user_key`, el eje que se está abandonando en favor de `organization_id`.
-- **Acceptance criteria:**
-  - Nueva dependency `require_organization` en `api/` que resuelve la organización activa desde la sesión (persistida server-side), no del query param.
-  - Los handlers dejan de importar `resolve_organization` inline; `organization_id` pasa a obligatorio en la firma de los repositorios.
-  - Ratchet gemelo `tests/test_organization_sql_isolation.py` (mismo AST-scanner que `test_user_key_sql_isolation.py`) con allowlist decreciente.
-  - Contador de filas sin `organization_id` en `/api/v1/analytics/quality` como criterio medible de cuándo retirar el scope legacy `user_key`.
-- **Files de partida:** [api/routes/dual_auth.py](../api/routes/dual_auth.py), [services/organizations.py](../services/organizations.py), [db/watchlist.py](../db/watchlist.py), [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)
-- **Riesgo:** medio — cambia la forma de resolver tenencia en varias rutas; sin cambio de schema si la org activa se guarda en `organizations.settings_json` (columna nueva en `user_profiles` requeriría gate).
-
 ### [P1] Export/borrado GDPR de la watchlist CPV es un no-op silencioso — consulta una tabla inexistente
 - **Área:** db/repositories/watchlist.py, services/gdpr.py
 - **Problema:** `WatchlistRepository.export_by_user_key`/`anonymize_by_user_key` (usadas por el flujo GDPR de `/me/data` y `/me` DELETE) consultan una tabla llamada literalmente `"watchlist"`, que **no existe** — la tabla real es `watchlist_cpv`. El `except Exception` que envuelve la query traga el error sin loguearlo, así que el export devuelve una lista vacía y el borrado no borra nada, sin que ningún log ni test lo señale. Encontrado durante la auditoría de tenencia de [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) (no es una de las 10 tablas que ese test cubre, por eso no lo capturó).
@@ -299,6 +288,65 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-07-31] **`organization_id` era un parámetro opcional que el cliente
+  decidía enviar, no una frontera (commit `360bb73`)** — 6 de los 7 route
+  files que aceptan `organization_id` solo llamaban a `resolve_organization`
+  (`services/organizations.py`) dentro de `if organization_id is not None:`;
+  omitirlo (el default del cliente, y el 100% del tráfico real del frontend
+  hacia esos seis dominios) saltaba la resolución entera y dejaba pasar
+  `None` hasta el repositorio, que cae a una query sin filtro de
+  organización (`db/saved_filters.py::delete_saved_filter` tenía una rama
+  sin predicado alguno, ni siquiera `user_key`). El séptimo,
+  `services/pursuits.py`, ya lo hacía bien: llama a `resolve_organization`
+  **incondicionalmente**, nunca solo "si el cliente lo mandó" — ese fue el
+  único cambio de fondo necesario, replicado como choke point común.
+  **Corrección del plan original**: no hizo falta persistir la organización
+  activa server-side ni migración nueva — `resolve_organization(user_id,
+  None)` ya resuelve correctamente a la organización personal del usuario;
+  el AC original lo daba por supuesto sin haber leído esa función completa.
+  Nuevo `api/tenancy.py`: `resolve_organization_ctx()` (POST/PUT, el id
+  viaja en el body) y `require_organization()` (dependency FastAPI para
+  GET/DELETE, el id viaja en la query), ambos traducen el rechazo de
+  dominio a 403 en un solo sitio en vez de repetirlo en cada handler.
+  Migrados `watchlist_items.py`, `watchlist_rules.py`, `notifications.py`,
+  `saved_filters.py`, `me.py` (de paso corrige que `get_profile`/
+  `put_profile` llamaban a `resolve_organization` de forma síncrona, fuera
+  de `run_db`, bloqueando el event loop) y `competitive.py` (watchlist de
+  empresas). **Deliberadamente NO se hizo obligatorio** `organization_id` en
+  las firmas de `db/repositories/watchlist.py`, `db/watchlist_empresas.py`,
+  `db/repositories/user_profiles.py`, `services/watchlist_rules.py`,
+  `services/notifications.py` ni `db/saved_filters.py::list_saved_filters`:
+  tienen callers legítimos que dependen de su modo sin filtro —
+  `services/gdpr.py` (export de TODOS los datos del usuario sin importar
+  organización), `services/analytics/scoring.py` (el perfil de scoring es
+  uno solo por `user_key`, no por organización) y tests directos de CRUD.
+  Forzarlo ahí habría roto esos callers sin cerrar ningún hueco real, porque
+  ninguna ruta vuelve a pasarles `None`. Ratchet nuevo
+  (`tests/test_organization_sql_isolation.py`) — **no** un clon literal del
+  escáner de SQL de `test_user_key_sql_isolation.py` (habría producido una
+  allowlist enorme y sin valor, precisamente por esos callers legítimos):
+  en su lugar, prohíbe que cualquier fichero en `api/routes/` importe
+  `resolve_organization` directamente — todos deben pasar por
+  `api/tenancy.py` — más una verificación de que esa resolución no queda
+  anidada dentro de un `if`. Allowlist vacía desde el día uno. Contador
+  `pct_organization_scoped`/`filas_sin_organizacion` nuevo en
+  `GET /api/v1/analytics/quality` (`db/repositories/organizations.py::
+  scope_coverage()`) sobre las 7 tablas escopadas por v64, como criterio
+  medible de cuándo retirar el scope legacy `user_key`. Cuatro test files de
+  ruta (`test_watchlist_items_api.py`, `test_watchlist_rules_api.py`,
+  `test_routes_filtros_guardados.py`, `test_routes_competitive_basico.py`)
+  usaban la API key sin vincular del fixture compartido (compatibilidad
+  dev/test documentada en `api/routes/dual_auth.py`: sin `user_id`, usa el
+  id de la propia key como sustituto) — dejó de bastar en cuanto la
+  resolución de organización pasó a ser incondicional, porque ese id no
+  existe en `users`. Se sobreescribió `api_key` localmente en esos cuatro
+  ficheros en vez de tocar el fixture compartido de `conftest.py`, del que
+  dependen muchos más tests fuera de este alcance. 208 tests dirigidos en
+  verde contra Postgres real, incluidos los tres de regresión nuevos en
+  `tests/test_organization_scope.py` (omitir `organization_id` resuelve a
+  la organización personal, no a una fusión entre todas las del usuario;
+  pedir una organización sin membresía → 403; rol viewer no puede escribir).
 
 - [2026-07-31] **El dossier de una empresa no mostraba su actividad vía UTE
   (commit `33d98e4`)** — cierra el ítem P0 "Investigar si las UTE reciben
