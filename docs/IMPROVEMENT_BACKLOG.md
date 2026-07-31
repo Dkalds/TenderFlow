@@ -13,6 +13,29 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
+### [P0] El lote no existe en el modelo — pérdida de filas, baja mal calculada, UTE triplicada
+- **Área:** scraper/codice_parser.py, db/upsert.py, db/alembic/, services/competitive/bajas.py, services/ml/calibration.py, services/ml/scoring.py, services/competitive/mercado.py, services/analytics/utes.py
+- **Problema:** en contratación pública española el expediente se divide en lotes (presupuesto, CPV y adjudicatario propios), y CODICE lo modela con un `cac:TenderResult` por lote. `parse_adjudicaciones` (`scraper/codice_parser.py:101-153`) los itera pero descarta la referencia al lote, así que la unique `(licitacion_id, nif, importe_adjudicado)` + `_dedup_adj_rows` (`db/upsert.py`) **descarta silenciosamente** una fila cuando la misma empresa gana dos lotes por el mismo importe. Además, `services/competitive/bajas.py::baja_de_referencia` (el dato que un comercial usa para preparar una oferta) compara el importe de UN lote contra el presupuesto **total** del expediente, mientras que `services/ml/calibration.py` y `services/ml/scoring.py` sí agregan por licitación primero — dos cálculos divergentes de la misma magnitud, y el que ve el usuario es el que está mal. Por último, `parse_adjudicaciones` emite una fila por `cac:WinningParty` con el importe **íntegro** repetido (no hay tabla de miembros ni porcentaje de participación), así que una UTE de N empresas infla N veces el importe atribuido al segmento en `services/competitive/mercado.py` (cuota, HHI — que además eleva la cuota al cuadrado, amplificando el error).
+- **Medir antes de arreglar:** `make audit-truth` (añadido en `166b2f2`) expone (b) proxy de expedientes multi-lote sobre los ZIP cacheados, (c) proxy de UTE por filas que comparten `(licitacion_id, fecha_adjudicacion, importe_adjudicado)` con distinto NIF, y (d) el delta real entre `baja_media_pct` por-adjudicación vs. por-licitación.
+- **Acceptance criteria:**
+  - Migración aditiva `v65_lotes`: tabla `lotes` (`licitacion_id`, `numero`, `titulo`, `cpv`, `importe`, `fecha_limite`), `adjudicaciones.lote_id` nullable, nueva unique `(licitacion_id, lote_id, nif, importe_adjudicado)` conviviendo con la actual (retirar la vieja en revisión posterior). Requiere **gate humano** (AGENTS.md §6, `db/alembic/`).
+  - `parse_lotes()` desde `cac:ProcurementProjectLot`; `parse_adjudicaciones` propaga `lote_numero` leyendo `cac:TenderResult/cac:ProcurementProjectLotReference/cbc:ID`.
+  - `_BAJA_PCT` centralizado en `services/sql_fragments.py` agregando por `(licitacion_id, lote_id)`; `bajas.py`, `calibration.py`, `scoring.py` y `services/ml/pricing_scenarios.py` consumen el mismo fragmento. Ratchet de regresión: ningún fichero fuera de `sql_fragments.py` define su propia expresión de baja.
+  - Migración `v66_ute_miembros`: tabla `adjudicacion_miembros`; `adjudicaciones` pasa a una fila por adjudicación (no por `WinningParty`); backfill determinista de las filas actuales que comparten clave con distinto NIF.
+  - `MetricScope` (`shared/metric_scope.py`) gana `lot_level: bool` para que series pre/post fix no se mezclen en silencio (principio de honestidad estadística ya establecido en `PRODUCT_EXECUTION_PLAN.md §7`).
+- **Riesgo:** alto — toca schema (dos migraciones) y el cálculo público de baja/cuota/HHI; re-baseline de métricas ya publicadas necesario tras el fix.
+
+### [P0] La tenencia por organización es un parámetro opcional, no una frontera
+- **Área:** api/routes/watchlist_items.py, api/routes/notifications.py, api/routes/competitive.py, api/routes/me.py, db/watchlist.py, services/organizations.py, tests/test_user_key_sql_isolation.py
+- **Problema:** `organization_id` viaja como query param opcional que decide el cliente, y `resolve_organization` (`services/organizations.py`) se importa dentro del cuerpo de cada handler en vez de resolverse por una dependency obligatoria. Cuando se omite — el default — `db/watchlist.py` y equivalentes caen a `WHERE user_id = ? OR user_key = ?`, **sin filtro de organización**. La política RLS del rol de runtime es `USING(true) WITH CHECK(true)` (`scripts/setup_pg_roles.sql`), así que el aislamiento entre tenants depende al 100% de que cada query añada el predicado — y el ratchet que lo audita (`tests/test_user_key_sql_isolation.py`) solo cubre `user_key`, el eje que se está abandonando en favor de `organization_id`.
+- **Acceptance criteria:**
+  - Nueva dependency `require_organization` en `api/` que resuelve la organización activa desde la sesión (persistida server-side), no del query param.
+  - Los handlers dejan de importar `resolve_organization` inline; `organization_id` pasa a obligatorio en la firma de los repositorios.
+  - Ratchet gemelo `tests/test_organization_sql_isolation.py` (mismo AST-scanner que `test_user_key_sql_isolation.py`) con allowlist decreciente.
+  - Contador de filas sin `organization_id` en `/api/v1/analytics/quality` como criterio medible de cuándo retirar el scope legacy `user_key`.
+- **Files de partida:** [api/routes/dual_auth.py](../api/routes/dual_auth.py), [services/organizations.py](../services/organizations.py), [db/watchlist.py](../db/watchlist.py), [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)
+- **Riesgo:** medio — cambia la forma de resolver tenencia en varias rutas; sin cambio de schema si la org activa se guarda en `organizations.settings_json` (columna nueva en `user_profiles` requeriría gate).
+
 ### [P1] Export/borrado GDPR de la watchlist CPV es un no-op silencioso — consulta una tabla inexistente
 - **Área:** db/repositories/watchlist.py, services/gdpr.py
 - **Problema:** `WatchlistRepository.export_by_user_key`/`anonymize_by_user_key` (usadas por el flujo GDPR de `/me/data` y `/me` DELETE) consultan una tabla llamada literalmente `"watchlist"`, que **no existe** — la tabla real es `watchlist_cpv`. El `except Exception` que envuelve la query traga el error sin loguearlo, así que el export devuelve una lista vacía y el borrado no borra nada, sin que ningún log ni test lo señale. Encontrado durante la auditoría de tenencia de [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) (no es una de las 10 tablas que ese test cubre, por eso no lo capturó).
@@ -282,6 +305,34 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-07-31] **`fecha_limite` nunca se extraía de PLACSP (commit `166b2f2`)**
+  — `scraper/codice_parser.py::parse_entry` leía
+  `ProcurementProject/PlannedPeriod/EndDate` (fin de EJECUCIÓN del contrato,
+  ya usado como `fecha_fin`) y nunca `TenderingProcess/
+  TenderSubmissionDeadlinePeriod/EndDate` (fin del plazo de PRESENTACIÓN de
+  ofertas). Solo PSCP/TED/RSS autonómicos poblaban el campo — la fuente
+  mayoritaria (PLACSP) lo dejaba NULL en el 100% de los casos. Explica de raíz
+  por qué el fix de "Sin fecha límite" en el Radar (entrada anterior, ítem 4)
+  seguía mostrando tarjetas vacías para licitaciones PLACSP incluso tras
+  arreglar el wiring API↔frontend: la columna nunca tuvo valor que mostrar.
+  Añadido `_tender_deadline()` con fallback a
+  `ParticipationRequestReceptionPeriod` (procedimientos con fase de solicitud
+  de participación) y `shared.dates.to_iso_datetime()` (combina
+  `EndDate`+`EndTime`, convierte de hora local España a UTC con `zoneinfo`,
+  probado en ambos lados del cambio de horario). `db/upsert.py::_LIC_UPDATES`
+  pasa a `COALESCE` específicamente en `fecha_limite` para que una
+  re-ingesta del mismo expediente tras avanzar a fase ADJ/RES (donde el nodo
+  `TenderingProcess` desaparece) no borre un plazo ya conocido. Añadido a
+  `HISTORY_TRACKED_FIELDS` para que una ampliación de plazo quede en
+  `licitaciones_history`. Instrumentación: `fecha_limite` se sumó al monitor
+  de NULLs críticos del parser, y `scripts/audit_domain_truth.py`
+  (`make audit-truth`) mide el efecto real del fix contra la BD y contra los
+  ZIP ya cacheados.
+  **Backfill pendiente** (acción del usuario/próxima sesión, no bloqueante):
+  re-ingerir el histórico con `python -m scheduler.run_update --backfill
+  <año> <mes>` para poblar `fecha_limite` en filas ya existentes; los ZIP
+  cacheados en `DOWNLOADS_DIR` evitan re-descargar.
 
 - [2026-07-30] **Cobertura de Radar y Oportunidades, y los 5 bugs que la
   cobertura destapó** — El plan de producto llegó con el camino feliz probado y
