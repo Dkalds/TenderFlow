@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/components/providers";
 import { RouteProgress } from "@/components/route-progress";
+import { Toaster } from "@/components/toaster";
 import "nprogress/nprogress.css";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
@@ -72,6 +73,9 @@ export default async function RootLayout({
         <Providers nonce={nonce}>
           <RouteProgress />
           {children}
+          {/* El Toaster vivía en `(dashboard)/layout.tsx`, así que cualquier
+              `toast()` disparado en /login se descartaba en silencio. */}
+          <Toaster />
         </Providers>
         <SpeedInsights />
         <Analytics />

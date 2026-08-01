@@ -8,7 +8,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalCopilot } from "@/components/copilot-panel";
-import { Toaster } from "@/components/toaster";
+import { KeyboardHelp } from "@/components/keyboard-help";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,7 @@ export default function DashboardLayout({
       </div>
       <CommandPalette />
       <GlobalCopilot />
-      <Toaster />
+      <KeyboardHelp />
     </div>
   );
 }

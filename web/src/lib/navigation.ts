@@ -67,6 +67,15 @@ export interface NavSection {
   icon: LucideIcon;
   pages: NavPage[];
   adminOnly?: boolean;
+  /**
+   * Espacio de producto al que pertenece la sección, **declarado**.
+   *
+   * Antes se infería por descarte ("si no es Radar ni Oportunidades, es
+   * Mercado"), de modo que el breadcrumb anunciaba "Mercado › Administración" y
+   * "Mercado › Calidad de Datos". Ops, Admin y Mi Pipeline no son análisis de
+   * mercado: se quedan sin espacio y el breadcrumb arranca en su sección.
+   */
+  space?: ProductSpace["label"];
 }
 
 /**
@@ -105,6 +114,7 @@ export const PRODUCT_SPACES: ProductSpace[] = [
 export const SECTIONS: NavSection[] = [
   {
     label: "Radar",
+    space: "Radar",
     icon: RadioTower,
     pages: [
       {
@@ -118,6 +128,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Oportunidades",
+    space: "Oportunidades",
     icon: Briefcase,
     pages: [
       {
@@ -131,6 +142,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Inicio",
+    space: "Mercado",
     icon: LayoutDashboard,
     pages: [
       {
@@ -144,6 +156,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Licitaciones",
+    space: "Mercado",
     icon: Search,
     pages: [
       {
@@ -157,6 +170,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Tendencias",
+    space: "Mercado",
     icon: TrendingUp,
     pages: [
       {
@@ -183,6 +197,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Mercado",
+    space: "Mercado",
     icon: Globe,
     pages: [
       {
@@ -224,6 +239,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Competencia",
+    space: "Mercado",
     icon: Trophy,
     pages: [
       {
@@ -252,6 +268,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Relaciones",
+    space: "Mercado",
     icon: Network,
     pages: [
       {
@@ -310,6 +327,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Investigador",
+    space: "Mercado",
     icon: Sparkles,
     pages: [
       {
@@ -397,12 +415,21 @@ export function findSection(slug: string) {
   return SECTIONS.find((s) => s.pages.some((p) => p.slug === slug));
 }
 
-/** Map any dashboard route onto the three primary product spaces. */
+/**
+ * Espacio de producto al que pertenece una ruta, según lo declarado en su
+ * sección (`NavSection.space`).
+ *
+ * Devuelve `undefined` para las secciones que no viven bajo ningún espacio
+ * (Mi Pipeline, Ops, Admin). Antes esta función devolvía `Mercado` para
+ * cualquier ruta conocida que no fuese radar/oportunidades, y de ahí salían
+ * breadcrumbs falsos como "Mercado › Administración".
+ */
 export function findProductSpace(slug: string): ProductSpace | undefined {
   const cleanSlug = slug.replace(/^\//, "").split("/")[0];
-  if (cleanSlug === "radar") return PRODUCT_SPACES[0];
-  if (cleanSlug === "oportunidades") return PRODUCT_SPACES[1];
-  return findPage(cleanSlug) ? PRODUCT_SPACES[2] : undefined;
+  const sectionSpace = findSection(cleanSlug)?.space;
+  return sectionSpace
+    ? PRODUCT_SPACES.find((space) => space.label === sectionSpace)
+    : undefined;
 }
 
 /**

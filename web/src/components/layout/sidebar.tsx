@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2, type LucideIcon, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { PRODUCT_SPACES, SECTIONS } from "@/lib/navigation";
+import { PRODUCT_SPACES, SECTIONS, findProductSpace } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -93,6 +93,7 @@ export function Sidebar() {
   // sondeaba `/analytics/quality` cada 60 s con su propia escala de tiempo, y
   // podía discrepar del indicador de la cabecera sobre el mismo instante.
   const { relative } = useDataFreshness();
+  const currentSpace = findProductSpace(pathname);
 
   return (
     <aside
@@ -178,9 +179,10 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3" aria-label="Espacios de producto">
         {!collapsed && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Espacios</p>}
         {PRODUCT_SPACES.map((space) => {
-          const active = space.label === "Mercado"
-            ? !["/radar", "/oportunidades"].some((route) => pathname === route || pathname.startsWith(`${route}/`))
-            : pathname === `/${space.slug}` || pathname.startsWith(`/${space.slug}/`);
+          // Mismo criterio que el breadcrumb: la pertenencia se lee de
+          // `NavSection.space`, no se infiere por descarte. Una ruta sin espacio
+          // declarado (Ops, Admin, Mi Pipeline) ya no ilumina "Mercado".
+          const active = currentSpace?.label === space.label;
           return (
             <NavLink
               key={space.label}
