@@ -21,7 +21,7 @@
       "sourceType": "github",
       "skillPath": "skills/animation-vocabulary/SKILL.md",
       "computedHash": "280c6688ef2568ad92f40c4dc638f0cc5cde0f49bdd6debd097410aa9945f44f",
-      "verifiedHash": "805c42843c34a3cf13e9942d44553c6f8abfaeb8bea96fca6ebb2289fd0df622",
+      "verifiedHash": "58f4d58feb3951b74035a130c5e41bcc99f71fd5f3a1104d17099a3f8d17706c",
       "trust": "community"
     },
     "apple-design": {
@@ -29,7 +29,7 @@
       "sourceType": "github",
       "skillPath": "skills/apple-design/SKILL.md",
       "computedHash": "0d19303902efa64eace10e6b183eb29ef3220d424c1a7fd1eafc52adde216932",
-      "verifiedHash": "bad6e4f5daf800f1497eb2f1de8876cdc9c5c7df8d17db013f38fe2ad382e14b",
+      "verifiedHash": "4fd475a0226bb852b18b333ad88b72500bb2cc7c0e43a77149832265b6c2a443",
       "trust": "community"
     },
     "bash-defensive-patterns": {
@@ -51,7 +51,7 @@
       "sourceType": "github",
       "skillPath": "skills/emil-design-eng/SKILL.md",
       "computedHash": "87067d79205fdedc6d682891027dd9c7335486c4b4dc2e785638941a9d2e6061",
-      "verifiedHash": "b9026216c8a3f14f7488cac3d546d89e316d882bcd65bc3b39ea9dc2e433ecc7",
+      "verifiedHash": "aee6119bfb8f5649bd2a06aa8d3ec633c1f2d81e280905f9f8a5b11830330f7a",
       "trust": "community"
     },
     "fastapi-python": {
@@ -73,7 +73,7 @@
       "sourceType": "github",
       "skillPath": "skills/find-animation-opportunities/SKILL.md",
       "computedHash": "c6b1d0f6d03a11f8772b1cef4ca5cc88301ae8641ac2697c85ffa87eb458e40a",
-      "verifiedHash": "4a7c5a6c80be22de093bc2244b460328bcab9f057b781bb1054e30e3b2b93899",
+      "verifiedHash": "6e94133d0b8f0b46f593619f31b52ba671a527b99a52484c1bfb94d428e41b14",
       "trust": "community"
     },
     "find-skills": {
@@ -97,7 +97,7 @@
       "sourceType": "github",
       "skillPath": "skills/improve-animations/SKILL.md",
       "computedHash": "9cd956e91139211efa5e17fc5e1675b9a3f711ef38cbc92aa8f3fa5b626b7e12",
-      "verifiedHash": "941a5616b4b8d6152adaf7524ff44bd28609e286c9e1c8e91a1dc5aca6c8f7ef",
+      "verifiedHash": "d9263e097dd977a40eb16c22c32b1babbb34bd52a32df1749d9167688d95fb23",
       "trust": "community"
     },
     "machine-learning": {
@@ -140,7 +140,7 @@
       "sourceType": "github",
       "skillPath": "skills/pick-ui-library/SKILL.md",
       "computedHash": "1a0a6819d13fb5361cf5cdc923f46a1effc37cb61ecb908419eedb0e11f428fe",
-      "verifiedHash": "3f1ddb399468e6d4df5cc2b045fa53172cb41eb1aa0f0886b8f52c7a174cc85d",
+      "verifiedHash": "6fcfd2b85c02e12d3c23455ad3e436fe96d1dd3f3337d228f450b4a894eb06d6",
       "trust": "community"
     },
     "pydantic": {
@@ -176,7 +176,7 @@
       "sourceType": "github",
       "skillPath": "skills/review-animations/SKILL.md",
       "computedHash": "6f8d633d7884c1390eff7af4bfaf7a450e798f117e1d49a555e00819dc877f64",
-      "verifiedHash": "f3db2d38b118a885a06ad44ec815522566ac10d0a5cd2b4775795c072901d079",
+      "verifiedHash": "23f860dc51bd18a61d166c1a9aac781c8bf17ba0fcd8f696bf30e490a0bca994",
       "trust": "community"
     },
     "scikit-learn": {
