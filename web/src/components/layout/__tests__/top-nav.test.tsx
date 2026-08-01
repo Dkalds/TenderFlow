@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // TopNav wires together many stores/children. We stub the external
@@ -18,7 +19,14 @@ vi.mock("@/lib/ui-store", () => ({
     selector({ setCommandOpen }),
 }));
 const apiMutate = vi.fn().mockResolvedValue({});
-vi.mock("@/lib/api-client", () => ({ apiMutate: (...a: unknown[]) => apiMutate(...a) }));
+// `vi.mock` se iza al principio del fichero, así que la fábrica no puede leer
+// variables de módulo: el instante se calcula dentro.
+vi.mock("@/lib/api-client", () => ({
+  apiMutate: (...a: unknown[]) => apiMutate(...a),
+  fetchWithAuth: vi.fn(async () => ({
+    last_extraction: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+  })),
+}));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => <div data-testid="bell" /> }));
 vi.mock("@/components/export-popover", () => ({ ExportPopover: () => <div data-testid="export" /> }));
 
@@ -39,19 +47,16 @@ afterEach(() => {
 });
 
 function renderNav() {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ last_extraction: new Date().toISOString() }),
-    }),
-  );
   // The density/theme toggle buttons wrap in a Tooltip, which requires a
   // TooltipProvider ancestor (real usage gets one from components/providers.tsx).
+  // `useDataFreshness` is a TanStack query, so it needs a client too.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
-    <TooltipProvider>
-      <TopNav />
-    </TooltipProvider>,
+    <QueryClientProvider client={qc}>
+      <TooltipProvider>
+        <TopNav />
+      </TooltipProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -60,30 +65,30 @@ describe("TopNav", () => {
     renderNav();
     expect(screen.getByRole("banner")).toBeInTheDocument();
     expect(screen.getByTestId("bell")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Toggle density/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cambiar densidad/ })).toBeInTheDocument();
   });
 
   it("toggles the theme when the theme button is clicked", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Toggle theme/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Cambiar tema/ }));
     expect(setTheme).toHaveBeenCalledWith("dark");
   });
 
   it("opens the command palette from the search button (single search entry point)", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir busqueda y comandos/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir búsqueda y comandos/ }));
     expect(setCommandOpen).toHaveBeenCalledWith(true);
   });
 
   it("opens the mobile navigation drawer", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     expect(screen.getByRole("dialog", { name: /Menú de navegación/ })).toBeInTheDocument();
   });
 
   it("auto-expands the section containing the active page", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     // pathname is stubbed to "/resumen", which lives in "Inicio".
     const sectionToggle = screen.getByRole("button", { name: /Inicio/ });
     expect(sectionToggle).toHaveAttribute("aria-expanded", "true");
@@ -92,13 +97,13 @@ describe("TopNav", () => {
 
   it("expands and collapses a non-active section without navigating", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     const mercadoToggle = screen.getByRole("button", { name: /Mercado/ });
     expect(mercadoToggle).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(mercadoToggle);
     expect(mercadoToggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("link", { name: /Organos/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Órganos/ })).toBeInTheDocument();
     // The drawer must stay open after expanding a section.
     expect(screen.getByRole("dialog", { name: /Menú de navegación/ })).toBeInTheDocument();
 
@@ -108,7 +113,7 @@ describe("TopNav", () => {
 
   it("closes the mobile drawer when a child page link is clicked", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     fireEvent.click(screen.getByRole("link", { name: /Resumen/ }));
     expect(screen.queryByRole("dialog", { name: /Menú de navegación/ })).not.toBeInTheDocument();
   });
@@ -124,6 +129,13 @@ describe("TopNav", () => {
 
   it("shows the last-extraction relative time once fetched", async () => {
     renderNav();
-    await waitFor(() => expect(screen.getByText("Datos en vivo")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/hace 3 horas/)).toBeInTheDocument());
+  });
+
+  it("exposes the exact extraction instant to assistive tech, not via a native title", () => {
+    // El instante exacto colgaba de un `title=` nativo, que no se dispara con
+    // teclado. Ahora viaja en el nombre accesible del propio indicador.
+    const { container } = renderNav();
+    expect(container.querySelector("header [title]")).toBeNull();
   });
 });

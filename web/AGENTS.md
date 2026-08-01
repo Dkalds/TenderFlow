@@ -24,6 +24,13 @@ Verificado por `make check-frontend-invariants` (`scripts/check_frontend_invaria
 --strict`). **Bloqueante desde 2026-07-28**, en local y en CI: un hallazgo nuevo
 se corrige o se justifica en su línea con `fdi-allow:<categoria>`.
 
+# Estado UX/UI
+
+Diagnóstico crítico del frontend, con lo ya corregido y el roadmap de lo que
+queda: [`docs/UX_AUDIT.md`](../docs/UX_AUDIT.md). Antes de rediseñar navegación,
+cabeceras o formato de datos, leelo — varias de esas piezas ya tienen una
+decisión tomada y un test que la fija.
+
 # Motion (Emil Kowalski design engineering)
 
 Tokens de easing, duraciones por tipo de elemento, primitivos enter/exit,

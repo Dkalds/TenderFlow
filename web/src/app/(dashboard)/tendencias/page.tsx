@@ -245,7 +245,7 @@ export default function TendenciasPage() {
           ) : series.length > 0 ? (
             <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={series}>
+              <BarChart accessibilityLayer data={series}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 12 }} />
@@ -271,7 +271,7 @@ export default function TendenciasPage() {
           ) : cumulativeData.length > 0 ? (
             <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={350}>
-              <AreaChart data={cumulativeData}>
+              <AreaChart accessibilityLayer data={cumulativeData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
@@ -307,7 +307,7 @@ export default function TendenciasPage() {
           <CardContent>
             <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={histBins} layout="vertical">
+              <BarChart accessibilityLayer data={histBins} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <YAxis dataKey="bin_label" type="category" tick={{ fontSize: 12 }} width={120} />
                 <XAxis
@@ -429,7 +429,7 @@ export default function TendenciasPage() {
           ) : forecastData.length > 0 ? (
             <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={350}>
-              <AreaChart data={forecastData}>
+              <AreaChart accessibilityLayer data={forecastData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="mes" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => forecastMetric === "sum" ? formatCurrency(v) : formatNumber(v)} />

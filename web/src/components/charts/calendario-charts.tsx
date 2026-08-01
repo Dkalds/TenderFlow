@@ -32,7 +32,7 @@ export function CalendarioMonthlyChart({ data }: { data: MonthlyEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
+        <BarChart accessibilityLayer data={data}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
           <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
@@ -60,7 +60,7 @@ export function CalendarioDowChart({ data }: { data: DowEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={data}>
+        <BarChart accessibilityLayer data={data}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="dia" tick={{ fontSize: 12 }} />
           <YAxis tick={{ fontSize: 12 }} />

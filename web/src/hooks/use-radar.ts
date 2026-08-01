@@ -38,7 +38,21 @@ const RADAR_QUERY = "/api/v1/licitaciones?limit=24&with_total=false&sort=fecha_p
 /**
  * Radar se apoya en el listado existente y le alinea el score por id, igual que
  * la página de detalle. El scoring lo calcula el backend (ADR-014): aquí sólo
- * se emparejan ids, nunca se deriva una puntuación en cliente.
+ * se emparejan ids y se ordena por el valor recibido, nunca se deriva una
+ * puntuación en cliente.
+ *
+ * **Alcance real de la lista** (la UI debe decirlo, ver `radar/page.tsx`): son
+ * las 24 licitaciones *más recientes*, reordenadas por score. No es el top-24
+ * por score de todo el corpus. Antes se renderizaban en orden cronológico
+ * mientras la página prometía priorización, que es el anti-patrón 1 de
+ * `docs/frontend-data-invariants.md` aplicado al orden en vez de al número.
+ *
+ * El ranking real ya existe en backend (`GET /analytics/scoring?limit=N`
+ * devuelve "ranked by commercial potential"), pero su DTO `ScoredOpportunity`
+ * no incluye `fecha_limite` ni `tecnologia`, que la tarjeta necesita, y el
+ * único endpoint de hidratación por ids (`POST /licitaciones/bulk-get`) exige
+ * API key en vez de sesión. Cambiar a esa fuente es P1 en
+ * `docs/IMPROVEMENT_BACKLOG.md`.
  */
 export function useRadar() {
   const listing = useQuery({
@@ -64,14 +78,22 @@ export function useRadar() {
     (scoring.data?.opportunities ?? []).map((row) => [row.id_externo, row] as const),
   );
 
-  const items: RadarTender[] = (listing.data?.items ?? []).map((item) => {
-    const scored = scores.get(item.id_externo);
-    return scored ? { ...item, score: scored.score, band: scored.band } : item;
-  });
+  const items: RadarTender[] = (listing.data?.items ?? [])
+    .map<RadarTender>((item) => {
+      const scored = scores.get(item.id_externo);
+      return scored ? { ...item, score: scored.score, band: scored.band } : item;
+    })
+    // Orden por el score que devolvió el backend, descendente; los que no tienen
+    // score van al final conservando su orden de publicación. Sin `score` aún en
+    // vuelo el orden es el del listado, y la UI lo señala como "ordenando…" en
+    // vez de fingir que ya está priorizado.
+    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 
   return {
     data: listing.data ? { items } : undefined,
     isLoading: listing.isLoading,
+    /** El score aún no ha llegado: el orden mostrado todavía no es el final. */
+    isRanking: scoring.isPending && ids.length > 0,
     error: listing.error,
   };
 }

@@ -25,7 +25,7 @@ import {
   ExternalLink,
   X,
 } from "lucide-react";
-import { formatNumber, formatPercent, cn } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/api-client";
 
 interface TechModel {
@@ -85,11 +85,6 @@ function headlineMetric(metrics: Record<string, number>): { label: string; value
     if (typeof metrics[key] === "number") return { label: key, value: metrics[key] };
   }
   return null;
-}
-
-function formatCurrency(val: number | null | undefined): string {
-  if (val == null) return "—";
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 }
 
 export default function ActiveLearningPage() {

@@ -13,6 +13,19 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
+### [P1] El Radar no puede ordenar por el ranking real: falta dismiss server-side y faltan campos en `ScoredOpportunity`
+- **Área:** api/routes/analytics.py, services/analytics/scoring.py, api/routes/licitaciones.py, web/src/hooks/use-radar.ts, web/src/app/(dashboard)/radar/page.tsx
+- **Problema:** dos huecos de backend que dejan la página insignia a medias (ver [UX_AUDIT.md](UX_AUDIT.md) §1).
+  1. **No existe endpoint de dismiss.** El descarte de señales vive en `React.useState`, así que se pierde al recargar: el usuario tría 24 señales y vuelven las 24. Viola el invariante 2 de [frontend-data-invariants.md](frontend-data-invariants.md) ("el estado de usuario es server-side"), y ni siquiera llega a `localStorage`, que ese documento ya considera insuficiente. Mitigado en frontend con *undo* por ítem y copy que declara que es de sesión, pero eso es contención, no la solución.
+  2. **El ranking real no se puede consumir.** `GET /analytics/scoring?limit=N` **ya devuelve** un ranking por potencial comercial, pero su DTO `ScoredOpportunity` no incluye `fecha_limite` ni `tecnologia`, que la tarjeta del Radar renderiza; y el único endpoint de hidratación por ids (`POST /licitaciones/bulk-get`) exige `require_api_key` en vez de sesión, así que el navegador no puede usarlo. Resultado: hoy la lista son las 24 licitaciones más recientes reordenadas por score — lo que la UI dice — en vez del top-N del mercado.
+- **Acceptance criteria:**
+  - Endpoint de dismiss por usuario (patrón de `services/watchlist.py`), y el Radar deja de guardar descartes en memoria; recargar conserva el triaje.
+  - `ScoredOpportunity` incluye `fecha_limite` y `tecnologia` (aditivo, no rompe consumidores; declararlos **sin default** según la nota de modelado del ítem de tipado).
+  - `use-radar.ts` consume `/analytics/scoring?limit=24` como fuente de la lista, y el listado deja de ser el origen del orden.
+  - El copy de alcance de `radar/page.tsx` se actualiza: deja de decir "señales recientes" y pasa a describir un ranking de mercado.
+- **Files de partida:** [services/analytics/scoring.py](../services/analytics/scoring.py), [api/routes/analytics.py](../api/routes/analytics.py), [web/src/hooks/use-radar.ts](../web/src/hooks/use-radar.ts)
+- **Riesgo:** medio — toca DTO y una ruta de producción, pero el cambio de contrato es aditivo.
+
 ### [P2] Surface `participaciones_ute` en el frontend de competidores
 - **Área:** web/src/components/competitors/company-profile-types.ts, web/src/components/competitors/company-profile-summary.tsx, web/src/app/(dashboard)/competidores/page.tsx
 - **Problema:** el backend ya expone `participaciones_ute` en `GET /api/v1/competitive/.../perfil` (ver _Cerrados_, commit `33d98e4`) — por cada UTE de la que la empresa es miembro, sus `contratos`/`importe_total` propios y los `otros_miembros`. `company-profile-types.ts` todavía no declara el campo (compara con `por_cpv`/`por_anio`/`movimientos`, todas ya tipadas ahí) y ningún componente lo renderiza, así que el dato es invisible en la UI aunque ya viaja en la respuesta.
@@ -112,6 +125,37 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P1] `e2e/responsive.spec.ts` no prueba nada: la experiencia móvil no tiene cobertura
+- **Área:** web/e2e/responsive.spec.ts
+- **Problema:** los dos tests del fichero solo afirman `expect(page.locator("body")).toBeVisible()`. El primero construye un localizador `_hamburger` con tres estrategias encadenadas y **nunca lo usa** (el prefijo `_` existe para callar al linter de variables sin usar). Es decir: la única cobertura declarada de responsive pasa siempre, incluso con la navegación móvil rota. Relevante porque la sidebar es `hidden md:flex` y por debajo de `md` el conmutador de espacios de producto no existe en ninguna parte — un fallo real ahí no lo detecta nadie.
+- **Acceptance criteria:**
+  - A 375px: el botón hamburguesa es visible, abre el drawer, y desde él se alcanza una página de cada espacio de producto.
+  - A 1440px: la sidebar es visible y el hamburguesa no.
+  - El test falla si se elimina el drawer móvil (verificarlo borrándolo temporalmente).
+- **Files de partida:** [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [web/src/components/layout/top-nav.tsx](../web/src/components/layout/top-nav.tsx)
+- **Riesgo:** bajo — solo test.
+
+### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select
+- **Área:** web/src/components/layout/global-filter-bar.tsx
+- **Problema:** tres filtros usan `<select value="">` con un `onChange` que **añade** el valor a una lista de chips. El control nunca refleja lo seleccionado (su `value` es siempre `""`), no se puede quitar desde él, no hay búsqueda entre las 17 CCAA ni entre las tecnologías, y el teclado se comporta distinto que en el resto de la UI, que es Radix. `components/ui/select.tsx` existe y no se usa aquí.
+- **Acceptance criteria:** un multi-select real (Radix o `Popover` + lista con búsqueda) que muestre lo seleccionado, permita quitar desde el propio control, y filtre por texto con `foldText` de `lib/utils.ts` (para que "informatica" encuentre "Informática").
+- **Files de partida:** [web/src/components/layout/global-filter-bar.tsx](../web/src/components/layout/global-filter-bar.tsx), [web/src/components/ui/select.tsx](../web/src/components/ui/select.tsx)
+- **Riesgo:** bajo — el estado de filtros ya vive en la URL vía nuqs; solo cambia el control.
+
+### [P2] Unificar los dos árboles de navegación (`PRODUCT_SPACES` vs `SECTIONS`)
+- **Área:** web/src/lib/navigation.ts, web/src/components/layout/{sidebar,breadcrumb,page-tabs}.tsx
+- **Problema:** conviven dos arquitecturas de información desde que se introdujeron los espacios de producto; el propio `navigation.ts` lo declara transitorio ("during the gradual migration"). Mientras siga abierto: "Mercado" es a la vez un espacio y una sección dentro de sí mismo (el breadcrumb tiene que colapsar ese nivel para no decir "Mercado › Mercado › Órganos"), la sidebar mantiene dos listas con criterios distintos, y **17 de 28 páginas solo son alcanzables** por tabs, command palette o URL. Detalle en [UX_AUDIT.md](UX_AUDIT.md) §2.
+- **Acceptance criteria:** un solo árbol; sidebar, breadcrumb y PageTabs derivan de él sin casos especiales por etiqueta; ninguna página queda sin ruta de navegación desde el shell.
+- **Files de partida:** [web/src/lib/navigation.ts](../web/src/lib/navigation.ts)
+- **Riesgo:** alto — toca las 28 rutas y el modelo mental del producto; merece rama y revisión propias.
+
+### [P2] Decidir si el producto es español-only y retirar o completar la capa de i18n
+- **Área:** web/src/lib/i18n.ts, web/public/locales/
+- **Problema:** hay una capa de i18n vestigial: 40 claves por idioma, `t()` usado en 12 ficheros y casi siempre para una o dos cadenas, **ningún selector de idioma en la UI**, `<html lang="es">` fijo y `en.json` inalcanzable. La UI es castellano hardcodeado (~2.000 cadenas). Mantener la capa aparenta una capacidad que no existe; ampliarla ad hoc no la acerca a funcionar.
+- **Acceptance criteria:** decisión de producto registrada y, según ella, (a) retirar `lib/i18n.ts` + `public/locales/` inlineando las 40 claves, o (b) plan de extracción de cadenas con selector de idioma y `lang` dinámico.
+- **Files de partida:** [web/src/lib/i18n.ts](../web/src/lib/i18n.ts)
+- **Riesgo:** bajo (a) / alto (b). **Requiere decisión del usuario antes de tocar código.**
+
 ### [P1] La señal de invalidación de caché nunca llega al API en Render (fichero local, procesos distintos)
 - **Área:** shared/cache_signal.py, services/_data_cache.py
 - **Problema:** `shared/cache_signal.py` señaliza la ingesta escribiendo `DATA_DIR/.cache_invalidation` y leyendo su `mtime`. Su docstring lo justifica con "un único nodo de scraper y un único proceso de dashboard", pero esa ya no es la topología: el scraper corre en GitHub Actions (`APP_PROFILE=scraper`, ver [render.yaml](../render.yaml)) y el API corre en un contenedor de Render distinto. El fichero que escribe el scraper **no existe** en el contenedor del API, así que `get_signal_timestamp()` devuelve `0.0` siempre y `SignalAwareCache._is_fresh()` nunca se invalida por señal. Consecuencia doble: (a) la invalidación descrita como "principal" está muerta en producción y la única real es el TTL de 60 s, descrito en el código como "defensivo"; (b) por eso el TTL no se puede subir para reducir la reconstrucción full-table cada minuto — hacerlo hoy sólo serviría datos más viejos. La frescura del dato en producción está acotada por un mecanismo que nadie eligió conscientemente.
@@ -206,6 +250,19 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P3 — Nice to have
+
+### [P3] Migrar los `title=` nativos restantes a `Tooltip`
+- **Área:** web/src (celdas de tabla y textos truncados)
+- **Problema:** quedan ~180 `title=` nativos. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
+- **Acceptance criteria:** ningún `title=` sobre un elemento interactivo; en celdas y textos truncados, o `Tooltip` o texto visible.
+- **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip)
+- **Riesgo:** bajo — mecánico, pero masivo: hacerlo por olas.
+
+### [P3] Barrido de ortografía castellana en las cadenas visibles restantes
+- **Área:** web/src (páginas)
+- **Problema:** decenas de cadenas de UI sin tildes ("prediccion", "analisis", "Busqueda", "Ultimos"), y `...` donde corresponde `…`. La Ola 1 cubrió navegación, barra de filtros, TopNav, `es.json` y la meta description; falta el interior de las páginas. En un producto B2B español se lee como descuido, no como estilo.
+- **Acceptance criteria:** sin cadenas de UI sin tilde en `web/src/app/**`; tests actualizados a la par (varios asertan sobre el texto). Ojo con `.codespell-ignore-words.txt`: al acentuar, algunas entradas dejan de hacer falta y conviene retirarlas.
+- **Riesgo:** bajo — pero toca muchos tests; hacerlo por página.
 
 ### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
 - **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py

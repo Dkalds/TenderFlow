@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { NUMBER_SHORTCUTS, useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useUiStore } from "@/lib/ui-store";
 
 const push = vi.fn();
@@ -15,7 +15,7 @@ function dispatchKey(key: string, opts: Partial<KeyboardEventInit> = {}) {
 
 beforeEach(() => {
   push.mockClear();
-  useUiStore.setState({ commandOpen: false });
+  useUiStore.setState({ commandOpen: false, shortcutsHelpOpen: false });
 });
 
 afterEach(() => {
@@ -35,34 +35,64 @@ describe("useKeyboardShortcuts", () => {
     expect(useUiStore.getState().commandOpen).toBe(true);
   });
 
-  it("pressing '1' navigates to /resumen", () => {
-    renderHook(() => useKeyboardShortcuts());
-    dispatchKey("1");
-    expect(push).toHaveBeenCalledWith("/resumen");
+  it.each(NUMBER_SHORTCUTS.map((s) => [s.key, s.href] as const))(
+    "pressing '%s' navigates to %s",
+    (key, href) => {
+      renderHook(() => useKeyboardShortcuts());
+      dispatchKey(key);
+      expect(push).toHaveBeenCalledWith(href);
+    },
+  );
+
+  it("reaches the two primary product spaces, not only the legacy pages", () => {
+    // Los atajos apuntaban a las cinco páginas analíticas legacy; Radar y
+    // Oportunidades, que el producto declara primarios, no tenían ninguno.
+    const destinations = NUMBER_SHORTCUTS.map((s) => s.href);
+    expect(destinations).toContain("/radar");
+    expect(destinations).toContain("/oportunidades");
   });
 
-  it("pressing '2' navigates to /detalle", () => {
+  it("ignores number shortcuts inside a contenteditable", () => {
+    // El guard sólo excluía input/textarea, así que escribir en un editor rico
+    // navegaba fuera de la página.
     renderHook(() => useKeyboardShortcuts());
-    dispatchKey("2");
-    expect(push).toHaveBeenCalledWith("/detalle");
+    const editor = document.createElement("div");
+    editor.contentEditable = "true";
+    // jsdom no implementa `isContentEditable` a partir del atributo.
+    Object.defineProperty(editor, "isContentEditable", { value: true });
+    document.body.appendChild(editor);
+
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true }));
+
+    expect(push).not.toHaveBeenCalled();
+    document.body.removeChild(editor);
   });
 
-  it("pressing '3' navigates to /competidores", () => {
+  it("ignores number shortcuts inside a listbox that does its own typeahead", () => {
     renderHook(() => useKeyboardShortcuts());
-    dispatchKey("3");
-    expect(push).toHaveBeenCalledWith("/competidores");
+    const listbox = document.createElement("div");
+    listbox.setAttribute("role", "listbox");
+    const option = document.createElement("div");
+    listbox.appendChild(option);
+    document.body.appendChild(listbox);
+
+    option.dispatchEvent(new KeyboardEvent("keydown", { key: "2", bubbles: true }));
+
+    expect(push).not.toHaveBeenCalled();
+    document.body.removeChild(listbox);
   });
 
-  it("pressing '4' navigates to /investigador", () => {
+  it("leaves modified number keys to the browser", () => {
+    // Alt+1 / Ctrl+1 cambian de pestaña; interceptarlos rompía el navegador.
     renderHook(() => useKeyboardShortcuts());
-    dispatchKey("4");
-    expect(push).toHaveBeenCalledWith("/investigador");
+    dispatchKey("1", { altKey: true });
+    expect(push).not.toHaveBeenCalled();
   });
 
-  it("pressing '5' navigates to /pipeline-alertas", () => {
+  it("'?' opens the shortcuts help overlay", () => {
     renderHook(() => useKeyboardShortcuts());
-    dispatchKey("5");
-    expect(push).toHaveBeenCalledWith("/pipeline-alertas");
+    dispatchKey("?");
+    expect(useUiStore.getState().shortcutsHelpOpen).toBe(true);
   });
 
   it("ignores number shortcuts while typing in an input", () => {

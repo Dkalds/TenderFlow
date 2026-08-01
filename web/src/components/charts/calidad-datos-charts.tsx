@@ -32,7 +32,7 @@ export function CalidadCompletenessChart({ data }: { data: ColumnCompleteness[] 
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(data.length * 40, 200)}>
-        <BarChart
+        <BarChart accessibilityLayer
           data={data}
           layout="vertical"
           margin={{ top: 5, right: 30, left: 80, bottom: 5 }}

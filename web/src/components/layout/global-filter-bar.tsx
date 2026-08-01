@@ -15,10 +15,13 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Input } from "@/components/ui/input";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useScrolledPast } from "@/hooks/use-scrolled-past";
 import { useFilterParams, useFilters } from "@/lib/filters";
+import { cn } from "@/lib/utils";
 import { pageGlobalFilterKeys, pathUsesGlobalFilters } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
+import { useAnnounceOnChange } from "@/components/live-region";
 
 interface MetaFilters {
   estado: string[];
@@ -43,11 +46,11 @@ interface DatePreset {
 }
 
 const DATE_PRESETS: DatePreset[] = [
-  { label: "Ultimos 7 dias", desde: () => toIsoDate(new Date(Date.now() - 7 * 86400000)), hasta: () => toIsoDate(new Date()) },
-  { label: "Ultimos 30 dias", desde: () => toIsoDate(new Date(Date.now() - 30 * 86400000)), hasta: () => toIsoDate(new Date()) },
-  { label: "Ultimos 90 dias", desde: () => toIsoDate(new Date(Date.now() - 90 * 86400000)), hasta: () => toIsoDate(new Date()) },
-  { label: "Este anio (YTD)", desde: () => `${new Date().getFullYear()}-01-01`, hasta: () => toIsoDate(new Date()) },
-  { label: "Ultimos 12 meses", desde: () => toIsoDate(new Date(Date.now() - 365 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 7 días", desde: () => toIsoDate(new Date(Date.now() - 7 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 30 días", desde: () => toIsoDate(new Date(Date.now() - 30 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 90 días", desde: () => toIsoDate(new Date(Date.now() - 90 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Este año (YTD)", desde: () => `${new Date().getFullYear()}-01-01`, hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 12 meses", desde: () => toIsoDate(new Date(Date.now() - 365 * 86400000)), hasta: () => toIsoDate(new Date()) },
   { label: "Todo", desde: () => null, hasta: () => null },
 ];
 
@@ -112,7 +115,19 @@ export function GlobalFilterBar() {
   const filters = useFilters();
   const filterParams = useFilterParams();
   const activeCount = Object.keys(filterParams).length;
+
+  // Aplicar o quitar un filtro repinta la página entera sin decir nada a un
+  // lector de pantalla. El recuento de resultados lo anuncia cada tabla; esto
+  // anuncia el cambio de criterio, que es lo que el usuario acaba de hacer.
+  useAnnounceOnChange(
+    filtersApply
+      ? activeCount === 0
+        ? "Sin filtros activos"
+        : `${activeCount} ${activeCount === 1 ? "filtro activo" : "filtros activos"}`
+      : null,
+  );
   const { history, addToHistory } = useSearchHistory();
+  const scrolled = useScrolledPast(8);
   const { data: meta } = useQuery<MetaFilters>({
     queryKey: ["meta-filters"],
     queryFn: async () => {
@@ -190,14 +205,26 @@ export function GlobalFilterBar() {
   }
 
   return (
-    <div className="tf-glass sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2">
+    <div
+      className={cn(
+        "tf-glass sticky top-[60px] z-30 flex min-h-13 items-center gap-2 border-b border-border/70 px-4 py-2",
+        // Al scrollear, la barra deja de envolverse en 2-3 filas y pasa a una
+        // sola con scroll horizontal. Con 8 controles más un chip por filtro
+        // activo, el `flex-wrap` permanente costaba ~80px fijos de altura en una
+        // barra pegajosa, encima de un contenido que son tablas y grafos.
+        // Mismo gesto que el KPI bar, que ya usa este hook.
+        scrolled
+          ? "flex-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "flex-wrap",
+      )}
+    >
       {shows("q") && (
       <SearchAutocomplete
         className="min-w-56 flex-1 sm:max-w-80"
         data-search-input
         aria-label="Buscar licitaciones"
         inputClassName="h-9 rounded-md bg-background/70 pl-9 text-xs"
-        placeholder="Buscar licitaciones, organos, empresas..."
+        placeholder="Buscar licitaciones, órganos, empresas…"
         value={filters.q}
         onChange={filters.setQ}
         onSubmit={addToHistory}
@@ -234,7 +261,7 @@ export function GlobalFilterBar() {
       )}
 
       {shows("fecha") && (
-      <PresetMenu icon={<Calendar className="h-3.5 w-3.5 text-primary" />} label="Rangos de fecha rapidos">
+      <PresetMenu icon={<Calendar className="h-3.5 w-3.5 text-primary" />} label="Rangos de fecha rápidos">
         {DATE_PRESETS.map((preset) => (
           <DropdownMenuItem
             key={preset.label}
@@ -250,7 +277,7 @@ export function GlobalFilterBar() {
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Map className="h-3.5 w-3.5 text-primary" />
         <select
-          aria-label="Filtrar por CCAA"
+          aria-label="Filtrar por comunidad autónoma"
           className="max-w-36 bg-inherit text-foreground outline-none"
           value=""
           onChange={(event) => addUnique(event.target.value, filters.ccaas, filters.setCcaas)}
@@ -265,12 +292,12 @@ export function GlobalFilterBar() {
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Cpu className="h-3.5 w-3.5 text-primary" />
         <select
-          aria-label="Filtrar por tecnologia"
+          aria-label="Filtrar por tecnología"
           className="max-w-40 bg-inherit text-foreground outline-none"
           value=""
           onChange={(event) => addUnique(event.target.value, filters.tecnologias, filters.setTecnologias)}
         >
-          <option value="">Tecnologia</option>
+          <option value="">Tecnología</option>
           {(meta?.tecnologia ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
       </label>
@@ -293,17 +320,17 @@ export function GlobalFilterBar() {
 
       {shows("importe") && (
       <Input
-        aria-label="Importe minimo"
+        aria-label="Importe mínimo"
         type="number"
         className="h-9 w-32 rounded-md bg-background/70 text-xs"
-        placeholder="Importe min."
+        placeholder="Importe mín."
         value={importeInput}
         onChange={(event) => setImporteInput(event.target.value ? Number(event.target.value) : "")}
       />
       )}
 
       {shows("importe") && (
-      <PresetMenu icon={<span className="text-xs font-semibold text-primary">€</span>} label="Presets de importe minimo">
+      <PresetMenu icon={<span className="text-xs font-semibold text-primary">€</span>} label="Atajos de importe mínimo">
         {IMPORTE_PRESETS.map((preset) => (
           <DropdownMenuItem key={preset.label} onSelect={() => filters.setImporteMin(preset.value)}>
             {preset.label}

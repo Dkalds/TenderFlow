@@ -67,6 +67,15 @@ export interface NavSection {
   icon: LucideIcon;
   pages: NavPage[];
   adminOnly?: boolean;
+  /**
+   * Espacio de producto al que pertenece la sección, **declarado**.
+   *
+   * Antes se infería por descarte ("si no es Radar ni Oportunidades, es
+   * Mercado"), de modo que el breadcrumb anunciaba "Mercado › Administración" y
+   * "Mercado › Calidad de Datos". Ops, Admin y Mi Pipeline no son análisis de
+   * mercado: se quedan sin espacio y el breadcrumb arranca en su sección.
+   */
+  space?: ProductSpace["label"];
 }
 
 /**
@@ -105,12 +114,13 @@ export const PRODUCT_SPACES: ProductSpace[] = [
 export const SECTIONS: NavSection[] = [
   {
     label: "Radar",
+    space: "Radar",
     icon: RadioTower,
     pages: [
       {
         label: "Radar",
         slug: "radar",
-        description: "Señales recientes priorizadas para decidir qué seguir o abrir.",
+        description: "Señales recientes del mercado, ordenadas por afinidad.",
         icon: RadioTower,
         usesGlobalFilters: false,
       },
@@ -118,6 +128,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Oportunidades",
+    space: "Oportunidades",
     icon: Briefcase,
     pages: [
       {
@@ -131,113 +142,118 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Inicio",
+    space: "Mercado",
     icon: LayoutDashboard,
     pages: [
       {
         label: "Resumen",
         slug: "resumen",
         description:
-          "Top licitaciones, distribucion por estado y salud competitiva del mercado.",
+          "Top licitaciones, distribución por estado y salud competitiva del mercado.",
         icon: LayoutDashboard,
       },
     ],
   },
   {
     label: "Licitaciones",
+    space: "Mercado",
     icon: Search,
     pages: [
       {
         label: "Detalle",
         slug: "detalle",
         description:
-          "Tabla completa con todos los campos y exportacion a Excel/CSV.",
+          "Tabla completa con todos los campos y exportación a Excel/CSV.",
         icon: Search,
       },
     ],
   },
   {
     label: "Tendencias",
+    space: "Mercado",
     icon: TrendingUp,
     pages: [
       {
         label: "Tendencias",
         slug: "tendencias",
         description:
-          "Evolucion mensual de publicaciones e importes, heatmap y distribucion.",
+          "Evolución mensual de publicaciones e importes, heatmap y distribución.",
         icon: TrendingUp,
       },
       {
         label: "Tendencias CPV",
         slug: "tendencias-cpv",
         description:
-          "Serie temporal de importes por CPV con prediccion ARIMA.",
+          "Serie temporal de importes por CPV con predicción ARIMA.",
         icon: BarChart3,
       },
       {
         label: "Calendario",
         slug: "calendario",
-        description: "Heatmap de publicaciones por semana/dia del anio.",
+        description: "Heatmap de publicaciones por semana y día del año.",
         icon: Calendar,
       },
     ],
   },
   {
     label: "Mercado",
+    space: "Mercado",
     icon: Globe,
     pages: [
       {
-        label: "Organos",
+        label: "Órganos",
         slug: "organos",
         description:
-          "Ranking de organos contratantes, treemap y analisis de pipeline individual.",
+          "Ranking de órganos contratantes, treemap y análisis de pipeline individual.",
         icon: Building2,
       },
       {
-        label: "Geografia",
+        label: "Geografía",
         slug: "geografia",
         description:
-          "Distribucion geografica por comunidad autonoma e importe acumulado.",
+          "Distribución geográfica por comunidad autónoma e importe acumulado.",
         icon: Map,
       },
       {
-        label: "Tecnologias",
+        label: "Tecnologías",
         slug: "tecnologias",
         description:
-          "Distribucion, evolucion y cruces por tecnologia detectada (SAP, Oracle, Salesforce...).",
+          "Distribución, evolución y cruces por tecnología detectada (SAP, Oracle, Salesforce…).",
         icon: Wrench,
       },
       {
-        label: "Proyectos & Modulos",
+        label: "Proyectos y Módulos",
         slug: "proyectos-modulos",
         description:
-          "Desglose por tipo de proyecto y modulo SAP detectado.",
+          "Desglose por tipo de proyecto y módulo SAP detectado.",
         icon: Puzzle,
       },
       {
         label: "Clusters",
         slug: "clusters",
         description:
-          "Agrupaciones semanticas de licitaciones para detectar patrones y nichos de mercado.",
+          "Agrupaciones semánticas de licitaciones para detectar patrones y nichos de mercado.",
         icon: Target,
       },
     ],
   },
   {
     label: "Competencia",
+    space: "Mercado",
     icon: Trophy,
     pages: [
       {
         label: "Competidores",
         slug: "competidores",
         description:
-          "Empresas adjudicatarias, cuota de mercado y analisis comparativo.",
+          "Empresas adjudicatarias, cuota de mercado y análisis comparativo.",
         icon: Trophy,
       },
       {
         label: "Empresas",
         slug: "empresas",
         description:
-          "Maestro de empresas canonicas: buscador, perfil competitivo, aliases y vigilancia.",
+          "Maestro de empresas canónicas: buscador, perfil competitivo, alias y vigilancia.",
         icon: Briefcase,
         usesGlobalFilters: false,
       },
@@ -245,13 +261,14 @@ export const SECTIONS: NavSection[] = [
         label: "UTEs",
         slug: "utes",
         description:
-          "Analisis de Uniones Temporales de Empresas: alianzas, estructura y contratos ganados.",
+          "Análisis de Uniones Temporales de Empresas: alianzas, estructura y contratos ganados.",
         icon: Handshake,
       },
     ],
   },
   {
     label: "Relaciones",
+    space: "Mercado",
     icon: Network,
     pages: [
       {
@@ -262,10 +279,10 @@ export const SECTIONS: NavSection[] = [
         icon: Network,
       },
       {
-        label: "Red Organo-Empresa",
+        label: "Red Órgano-Empresa",
         slug: "red-organo-empresa",
         description:
-          "Grafo bipartito de relaciones contractuales entre organos contratantes y empresas.",
+          "Grafo bipartito de relaciones contractuales entre órganos contratantes y empresas.",
         icon: Link2,
       },
     ],
@@ -285,7 +302,7 @@ export const SECTIONS: NavSection[] = [
         label: "Renovaciones",
         slug: "renovaciones",
         description:
-          "Contratos que vencen proximamente: cartera en juego por empresa y pipeline comercial.",
+          "Contratos que vencen próximamente: cartera en juego por empresa y pipeline comercial.",
         icon: CalendarClock,
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia"],
@@ -310,13 +327,14 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Investigador",
+    space: "Mercado",
     icon: Sparkles,
     pages: [
       {
         label: "Investigador",
         slug: "investigador",
         description:
-          "Busqueda semantica RAG sobre el corpus de licitaciones.",
+          "Búsqueda semántica RAG sobre el corpus de licitaciones.",
         icon: Search,
       },
     ],
@@ -329,7 +347,7 @@ export const SECTIONS: NavSection[] = [
         label: "Observabilidad",
         slug: "observabilidad",
         description:
-          "Metricas de rendimiento, logs de scraping y estado del pipeline.",
+          "Métricas de rendimiento, logs de scraping y estado del pipeline.",
         icon: BarChart3,
         usesGlobalFilters: false,
       },
@@ -349,10 +367,10 @@ export const SECTIONS: NavSection[] = [
     adminOnly: true,
     pages: [
       {
-        label: "Administracion",
+        label: "Administración",
         slug: "administracion",
         description:
-          "Gestion de DLQ, usuarios y API Keys. Solo accesible para administradores.",
+          "Gestión de DLQ, usuarios y API keys. Solo accesible para administradores.",
         icon: Settings,
         usesGlobalFilters: false,
       },
@@ -360,7 +378,7 @@ export const SECTIONS: NavSection[] = [
         label: "Feature Flags",
         slug: "feature-flags",
         description:
-          "Activar/desactivar funcionalidades en tiempo real con rollout gradual.",
+          "Activar y desactivar funcionalidades en tiempo real con despliegue gradual.",
         icon: Flag,
         usesGlobalFilters: false,
       },
@@ -368,7 +386,7 @@ export const SECTIONS: NavSection[] = [
         label: "Active Learning",
         slug: "active-learning",
         description:
-          "Etiquetado humano de licitaciones en zona de incertidumbre del modelo ML.",
+          "Etiquetado humano de licitaciones en la zona de incertidumbre del modelo.",
         icon: GraduationCap,
         usesGlobalFilters: false,
       },
@@ -397,12 +415,21 @@ export function findSection(slug: string) {
   return SECTIONS.find((s) => s.pages.some((p) => p.slug === slug));
 }
 
-/** Map any dashboard route onto the three primary product spaces. */
+/**
+ * Espacio de producto al que pertenece una ruta, según lo declarado en su
+ * sección (`NavSection.space`).
+ *
+ * Devuelve `undefined` para las secciones que no viven bajo ningún espacio
+ * (Mi Pipeline, Ops, Admin). Antes esta función devolvía `Mercado` para
+ * cualquier ruta conocida que no fuese radar/oportunidades, y de ahí salían
+ * breadcrumbs falsos como "Mercado › Administración".
+ */
 export function findProductSpace(slug: string): ProductSpace | undefined {
   const cleanSlug = slug.replace(/^\//, "").split("/")[0];
-  if (cleanSlug === "radar") return PRODUCT_SPACES[0];
-  if (cleanSlug === "oportunidades") return PRODUCT_SPACES[1];
-  return findPage(cleanSlug) ? PRODUCT_SPACES[2] : undefined;
+  const sectionSpace = findSection(cleanSlug)?.space;
+  return sectionSpace
+    ? PRODUCT_SPACES.find((space) => space.label === sectionSpace)
+    : undefined;
 }
 
 /**
