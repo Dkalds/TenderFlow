@@ -2,7 +2,7 @@
 
 Fuente canónica de instrucciones para todos los agentes (Claude Code, Copilot, OpenCode, Cursor, etc.). `CLAUDE.md` y `.github/copilot-instructions.md` referencian este archivo y solo añaden overrides específicos de su plataforma. **Si editás reglas, editá aquí.**
 
-Guía completa de navegación, workflows y patrones: [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md). Backlog de mejoras priorizadas: [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md).
+Guía completa de navegación, workflows y patrones: [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md). Backlog de mejoras priorizadas: [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md). Diagnóstico UX/UI del frontend y su roadmap por olas: [docs/UX_AUDIT.md](docs/UX_AUDIT.md).
 
 ---
 
