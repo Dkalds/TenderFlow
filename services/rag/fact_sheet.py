@@ -129,9 +129,7 @@ def _validate_fact_evidence(
     pages: list[dict[str, Any]],
 ) -> tuple[TenderFactSheet, int]:
     """Descarta hechos sin una cita que exista literalmente en la página."""
-    page_index = {
-        (int(page["documento_id"]), int(page["page_number"])): page for page in pages
-    }
+    page_index = {(int(page["documento_id"]), int(page["page_number"])): page for page in pages}
     rejected = 0
     for field_name in TenderFactSheet.model_fields:
         kept: list[Any] = []

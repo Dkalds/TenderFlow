@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import require_organization, resolve_organization_ctx
 from observability.logging import get_logger
 from services.analytics.resumen import ResumenHoyFilters, get_resumen_hoy, get_resumen_novedades
 from services.notifications import (
@@ -93,21 +94,11 @@ class MarkAlertsReadRequest(BaseModel):
 
 @router.get("", summary="Notificaciones del usuario (novedades + alertas + contadores de hoy)")
 async def get_notifications(
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization()),
 ) -> NotificationsResult:
     user_id = _user_id_int(ctx)
     user_key = _user_key(ctx)
-    resolved_id: int | None = None
-    if organization_id is not None:
-        from services.organizations import resolve_organization
-
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization, int(ctx["user_id"]), organization_id
-            )
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    resolved_id = ctx["organization_id"]
 
     novedades = await run_db(get_resumen_novedades, int(user_id)) if user_id is not None else None
     hoy = await run_db(get_resumen_hoy, ResumenHoyFilters())
@@ -168,20 +159,9 @@ async def post_mark_alerts_read(
     body: MarkAlertsReadRequest,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, str]:
+    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
-    resolved_id: int | None = None
-    if body.organization_id is not None:
-        from services.organizations import resolve_organization
-
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization,
-                int(ctx["user_id"]),
-                body.organization_id,
-                write=True,
-            )
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    resolved_id = ctx["organization_id"]
     if body.all:
         await run_db(mark_all_alerts_read, user_key, resolved_id)
     elif body.ids:

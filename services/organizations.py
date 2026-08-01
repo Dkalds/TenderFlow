@@ -60,14 +60,10 @@ def list_organizations(user_id: int) -> list[OrganizationSummary]:
 
 
 def create_organization(user_id: int, name: str) -> OrganizationSummary:
-    return OrganizationSummary.model_validate(
-        _repo.create_organization(name.strip(), user_id)
-    )
+    return OrganizationSummary.model_validate(_repo.create_organization(name.strip(), user_id))
 
 
-def get_active_organization(
-    user_id: int, organization_id: int | None
-) -> OrganizationSummary:
+def get_active_organization(user_id: int, organization_id: int | None) -> OrganizationSummary:
     resolved_id, _ = resolve_organization(user_id, organization_id)
     row = _repo.get_for_user(resolved_id, user_id)
     if row is None:
@@ -75,13 +71,10 @@ def get_active_organization(
     return OrganizationSummary.model_validate(row)
 
 
-def list_members(
-    user_id: int, organization_id: int
-) -> list[OrganizationMembershipOut]:
+def list_members(user_id: int, organization_id: int) -> list[OrganizationMembershipOut]:
     resolve_organization(user_id, organization_id)
     return [
-        OrganizationMembershipOut.model_validate(row)
-        for row in _repo.list_members(organization_id)
+        OrganizationMembershipOut.model_validate(row) for row in _repo.list_members(organization_id)
     ]
 
 
@@ -105,9 +98,7 @@ def upsert_membership(
 ) -> OrganizationMembershipOut:
     _, role = resolve_organization(user_id, organization_id)
     if role not in {"owner", "admin"}:
-        raise OrganizationPermissionError(
-            "Solo owner o admin puede gestionar miembros."
-        )
+        raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
     if body.role == "owner" and role != "owner":
         raise OrganizationPermissionError("Solo un owner puede asignar otro owner.")
     _guard_owner_row(organization_id, body.user_id)

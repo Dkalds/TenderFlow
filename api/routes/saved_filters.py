@@ -16,18 +16,14 @@ from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import require_organization, resolve_organization_ctx
 from db.saved_filters import (
     delete_saved_filter,
     list_saved_filters,
     save_filter,
 )
 from observability.logging import get_logger
-from services.organizations import (
-    OrganizationAccessError,
-    OrganizationPermissionError,
-    claim_legacy_scope,
-    resolve_organization,
-)
+from services.organizations import claim_legacy_scope
 
 log = get_logger(__name__)
 
@@ -65,18 +61,11 @@ class SaveFilterRequest(BaseModel):
 @router.get("", summary="Listar vistas guardadas del usuario")
 async def get_saved_filters(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization()),
 ) -> dict[str, list[SavedFilter]]:
-    resolved_id: int | None = None
     if organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization, int(ctx["user_id"]), organization_id
-            )
-            await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
-        except OrganizationAccessError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-    rows = await run_db(list_saved_filters, _user_key(ctx), resolved_id)
+        await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
+    rows = await run_db(list_saved_filters, _user_key(ctx), ctx["organization_id"])
     items = [SavedFilter(**row) for row in rows]
     return {"items": items}
 
@@ -95,23 +84,13 @@ async def post_saved_filter(
             detail="filters_json no es JSON válido.",
         ) from exc
 
-    resolved_id: int | None = None
-    if body.organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization,
-                int(ctx["user_id"]),
-                body.organization_id,
-                write=True,
-            )
-        except (OrganizationAccessError, OrganizationPermissionError) as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     await run_db(
         save_filter,
         _user_key(ctx),
         body.name.strip(),
         body.filters_json,
-        resolved_id,
+        ctx["organization_id"],
         body.visibility,
     )
     log.info("saved_filter_upsert", name=body.name)
@@ -121,23 +100,11 @@ async def post_saved_filter(
 @router.delete("/{filter_id}", summary="Eliminar una vista guardada")
 async def delete_saved_filter_route(
     filter_id: int,
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> dict[str, str]:
     user_key = _user_key(ctx)
-    resolved_id: int | None = None
-    if organization_id is not None:
-        try:
-            resolved_id, _ = await run_db(
-                resolve_organization,
-                int(ctx["user_id"]),
-                organization_id,
-                write=True,
-            )
-        except (OrganizationAccessError, OrganizationPermissionError) as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
     # Comprobar propiedad antes de borrar (previene IDOR — OWASP A01).
-    rows = await run_db(list_saved_filters, user_key, resolved_id)
+    rows = await run_db(list_saved_filters, user_key, ctx["organization_id"])
     if not any(row["id"] == filter_id for row in rows):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -147,6 +114,6 @@ async def delete_saved_filter_route(
         delete_saved_filter,
         filter_id,
         user_key=user_key,
-        organization_id=resolved_id,
+        organization_id=ctx["organization_id"],
     )
     return {"status": "ok"}

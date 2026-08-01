@@ -19,6 +19,13 @@ depends_on: str | tuple[str, ...] | None = None
 
 _NOW = sa.text("NOW()")
 
+# ``NOW()::text`` en Postgres omite los minutos del offset cuando son cero
+# (p.ej. "2026-08-01 00:45:48.33444+00"), formato que pydantic rechaza como
+# datetime (``datetime_from_date_parsing``). Este fragmento reproduce el
+# mismo formato que ``db.connection.now_utc_iso()`` (ISO 8601 con offset
+# completo) para los INSERT de backfill de esta migración.
+_NOW_ISO_TEXT = "to_char(NOW() AT TIME ZONE 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.US') || '+00:00'"
+
 
 def _is_postgres() -> bool:
     return op.get_bind().dialect.name == "postgresql"
@@ -255,14 +262,14 @@ def upgrade() -> None:
         "INSERT INTO organizations "
         "(name, is_personal, personal_owner_user_id, created_by_user_id, created_at, updated_at) "
         "SELECT COALESCE(NULLIF(display_name, ''), NULLIF(email, ''), 'Usuario ' || id::text), "
-        "TRUE, id, id, NOW()::text, NOW()::text "
+        f"TRUE, id, id, {_NOW_ISO_TEXT}, {_NOW_ISO_TEXT} "
         "FROM users "
         "ON CONFLICT (personal_owner_user_id) DO NOTHING"
     )
     op.execute(
         "INSERT INTO organization_memberships "
         "(organization_id, user_id, role, status, created_at, updated_at) "
-        "SELECT o.id, o.personal_owner_user_id, 'owner', 'active', NOW()::text, NOW()::text "
+        f"SELECT o.id, o.personal_owner_user_id, 'owner', 'active', {_NOW_ISO_TEXT}, {_NOW_ISO_TEXT} "
         "FROM organizations o "
         "WHERE o.is_personal = TRUE AND o.personal_owner_user_id IS NOT NULL "
         "ON CONFLICT (organization_id, user_id) DO NOTHING"
@@ -280,9 +287,7 @@ def upgrade() -> None:
         "BEFORE UPDATE OR DELETE ON pursuit_events "
         "FOR EACH ROW EXECUTE FUNCTION public.prevent_pursuit_event_mutation()"
     )
-    op.execute(
-        "REVOKE EXECUTE ON FUNCTION public.prevent_pursuit_event_mutation() FROM PUBLIC"
-    )
+    op.execute("REVOKE EXECUTE ON FUNCTION public.prevent_pursuit_event_mutation() FROM PUBLIC")
 
     # Mismo patrón fail-closed de v52 para Supabase/PostgREST.
     for table in (

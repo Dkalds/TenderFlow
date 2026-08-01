@@ -1,9 +1,13 @@
 """Análisis de bajas: presupuesto de licitación vs importe adjudicado.
 
 Responde "¿cuánto hay que bajar para ganar?" segmentado por empresa, órgano
-de contratación o CPV. Solo considera pares con presupuesto y adjudicación
-positivos y descarta outliers donde el adjudicado supera el presupuesto en
-más de un 50% (errores de fuente o modificados mal atribuidos).
+de contratación o CPV. El presupuesto de referencia es el del LOTE cuando la
+adjudicación tiene uno resuelto (v65_lotes), o el del expediente completo si
+no — comparar un lote contra el presupuesto de todo el expediente
+sobreestima la baja en cualquier procedimiento con más de un lote. Solo
+considera pares con presupuesto y adjudicación positivos y descarta
+outliers donde el adjudicado supera ese presupuesto en más de un 50%
+(errores de fuente o modificados mal atribuidos).
 """
 
 from __future__ import annotations
@@ -13,9 +17,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import TECHNOLOGY_OBSERVED_SQL, VALID_PAIR, round_sql
-
-_BAJA_PCT = "(l.importe - a.importe_adjudicado) / l.importe * 100"
+from services.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_PAIR_LOTE, round_sql
 
 _GROUP_COLUMNS = {
     "empresa": ("a.empresa_id", "COALESCE(e.nombre_canonico, a.nombre)"),
@@ -35,8 +37,10 @@ def bajas_agregadas(
 ) -> list[dict[str, Any]]:
     """Baja media/mediana-aproximada por dimensión.
 
-    ``baja_pct`` = (presupuesto - adjudicado) / presupuesto * 100. Devuelve
-    media, mínimo, máximo, nº de contratos e importe total por grupo;
+    ``baja_pct`` = (presupuesto - adjudicado) / presupuesto * 100, con
+    presupuesto = el del lote si la adjudicación lo tiene resuelto (ver
+    :data:`services.sql_fragments.EFFECTIVE_BUDGET_SQL`). Devuelve media,
+    mínimo, máximo, nº de contratos e importe total por grupo;
     ``min_contratos`` filtra grupos sin masa estadística.
     """
     if group_by not in _GROUP_COLUMNS:
@@ -47,20 +51,21 @@ def bajas_agregadas(
     group_cols = f"{id_col}, {label_col}" if id_col else label_col
 
     # S608: las columnas interpoladas salen de _GROUP_COLUMNS (whitelist
-    # interna) y VALID_PAIR es un fragmento constante; los valores van con ?.
+    # interna) y VALID_PAIR_LOTE es un fragmento constante; los valores van con ?.
     sql = f"""
         SELECT {select_id}
                {label_col} AS grupo,
                COUNT(*) AS contratos,
-               {round_sql(f"AVG({_BAJA_PCT})", 2)} AS baja_media_pct,
-               {round_sql(f"MIN({_BAJA_PCT})", 2)} AS baja_min_pct,
-               {round_sql(f"MAX({_BAJA_PCT})", 2)} AS baja_max_pct,
+               {round_sql(f"AVG({BAJA_PCT_SQL})", 2)} AS baja_media_pct,
+               {round_sql(f"MIN({BAJA_PCT_SQL})", 2)} AS baja_min_pct,
+               {round_sql(f"MAX({BAJA_PCT_SQL})", 2)} AS baja_max_pct,
                COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total,
                {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {VALID_PAIR} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
+        WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
     """  # noqa: S608
     params: list[Any] = []
     if cpv_prefix:
@@ -92,14 +97,15 @@ def baja_de_referencia(
     """
     sql = f"""
         SELECT COUNT(*) AS contratos,
-               {round_sql(f"AVG({_BAJA_PCT})", 2)} AS baja_media_pct,
-               {round_sql(f"MIN({_BAJA_PCT})", 2)} AS baja_min_pct,
-               {round_sql(f"MAX({_BAJA_PCT})", 2)} AS baja_max_pct,
+               {round_sql(f"AVG({BAJA_PCT_SQL})", 2)} AS baja_media_pct,
+               {round_sql(f"MIN({BAJA_PCT_SQL})", 2)} AS baja_min_pct,
+               {round_sql(f"MAX({BAJA_PCT_SQL})", 2)} AS baja_max_pct,
                {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {VALID_PAIR} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — VALID_PAIR es un fragmento constante; valores con ?
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
+        WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
+    """  # noqa: S608 — VALID_PAIR_LOTE es un fragmento constante; valores con ?
     params: list[Any] = []
     if organo:
         sql += " AND l.organo_contratacion = ?"

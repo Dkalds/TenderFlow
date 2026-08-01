@@ -50,9 +50,7 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
         return int(cur.lastrowid)
 
 
-def remove_entry(
-    user_key: str, empresa_id: int, organization_id: int | None = None
-) -> bool:
+def remove_entry(user_key: str, empresa_id: int, organization_id: int | None = None) -> bool:
     with connect() as c:
         if organization_id is None:
             cur = c.execute(
@@ -68,19 +66,14 @@ def remove_entry(
         return bool(cur.rowcount)
 
 
-def list_entries(
-    user_key: str, organization_id: int | None = None
-) -> list[dict[str, Any]]:
+def list_entries(user_key: str, organization_id: int | None = None) -> list[dict[str, Any]]:
     """Empresas vigiladas por un usuario, con nombre canónico."""
     with connect() as c:
         if organization_id is None:
             where = "w.user_key = ?"
             params: tuple[Any, ...] = (user_key,)
         else:
-            where = (
-                "w.organization_id = ? AND "
-                "(w.visibility = 'organization' OR w.user_key = ?)"
-            )
+            where = "w.organization_id = ? AND (w.visibility = 'organization' OR w.user_key = ?)"
             params = (organization_id, user_key)
         return rows_to_dicts(
             c.execute(

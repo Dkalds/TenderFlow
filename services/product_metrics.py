@@ -60,8 +60,7 @@ def _aggregate(
     decision_hours = [
         elapsed
         for row in pursuits
-        if (elapsed := _hours(row.get("identified_at"), row.get("decision_at")))
-        is not None
+        if (elapsed := _hours(row.get("identified_at"), row.get("decision_at"))) is not None
     ]
     return OrganizationProductMetrics(
         organization_id=organization_id,
@@ -88,12 +87,9 @@ def build_product_status(
 ) -> ProductStatus:
     grouped: dict[tuple[int, str], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        grouped[
-            (int(row["organization_id"]), str(row["organization_name"]))
-        ].append(row)
+        grouped[(int(row["organization_id"]), str(row["organization_name"]))].append(row)
     organizations = [
-        _aggregate(org_id, name, org_rows)
-        for (org_id, name), org_rows in sorted(grouped.items())
+        _aggregate(org_id, name, org_rows) for (org_id, name), org_rows in sorted(grouped.items())
     ]
     all_pursuits = [row for row in rows if row.get("id") is not None]
     totals = _aggregate(None, "Todas las organizaciones", all_pursuits)

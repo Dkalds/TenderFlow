@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import sqlite3
-
+import psycopg.errors
 import pytest
 
 from db.repositories.organizations import OrganizationRepository
@@ -168,12 +167,12 @@ def test_pursuit_events_reject_update_and_delete(tmp_db):
         PursuitCreate(licitacion_id="LIC-PURSUIT-1", organization_id=organization_id),
     )
 
-    with pytest.raises((sqlite3.DatabaseError, ValueError), match="append-only"):
+    with pytest.raises((psycopg.errors.DatabaseError, ValueError), match="append-only"):
         with db_mod.connect() as conn:
             conn.execute(
                 "UPDATE pursuit_events SET event_type = 'tampered' WHERE pursuit_id = ?",
                 (pursuit.id,),
             )
-    with pytest.raises((sqlite3.DatabaseError, ValueError), match="append-only"):
+    with pytest.raises((psycopg.errors.DatabaseError, ValueError), match="append-only"):
         with db_mod.connect() as conn:
             conn.execute("DELETE FROM pursuit_events WHERE pursuit_id = ?", (pursuit.id,))

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -12,6 +14,11 @@ _log = get_logger(__name__)
 
 # Regex para detectar fechas DD/MM/YYYY o DD-MM-YYYY (formato español)
 _DATE_DMY_RE = re.compile(r"^(\d{2})[/\-](\d{2})[/\-](\d{4})$")
+
+# Detecta si una hora CODICE (cbc:EndTime) ya trae offset explícito (Z o ±HH:MM/±HHMM).
+_TIME_OFFSET_RE = re.compile(r"(Z|[+-]\d{2}:?\d{2})$")
+
+_MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 
 def to_iso_date(raw: str | None) -> str | None:
@@ -37,6 +44,38 @@ def to_iso_date(raw: str | None) -> str | None:
     # Formato no reconocido — devolver como está y loguear
     _log.debug("date_unrecognized_format", raw=raw)
     return raw
+
+
+def to_iso_datetime(raw_date: str | None, raw_time: str | None = None) -> str | None:
+    """Combina ``EndDate``/``EndTime`` de CODICE en un datetime ISO 8601 UTC.
+
+    CODICE publica la hora del plazo de presentación en hora local de España
+    salvo que el propio valor lleve offset explícito. Sin normalizar a UTC,
+    un plazo a las 23:59 CEST (verano, UTC+2) se guardaría como si venciera
+    2h más tarde — suficiente para que un recordatorio T-1 avise después de
+    que el plazo real ya haya pasado.
+
+    Si falta ``raw_time`` o no es parseable, devuelve solo la fecha (mismo
+    comportamiento que ``to_iso_date``) en vez de asumir una hora que la
+    fuente no publicó.
+    """
+    date_part = to_iso_date(raw_date)
+    if not date_part:
+        return None
+    time_part = (raw_time or "").strip()
+    if not time_part:
+        return date_part
+    try:
+        if _TIME_OFFSET_RE.search(time_part):
+            dt = datetime.fromisoformat(f"{date_part}T{time_part.replace('Z', '+00:00')}")
+            dt = dt.astimezone(UTC)
+        else:
+            dt = datetime.fromisoformat(f"{date_part}T{time_part}").replace(tzinfo=_MADRID_TZ)
+            dt = dt.astimezone(UTC)
+    except ValueError:
+        _log.debug("tender_deadline_time_unparseable", raw_date=raw_date, raw_time=raw_time)
+        return date_part
+    return dt.isoformat()
 
 
 def month_start(series: pd.Series) -> pd.Series:

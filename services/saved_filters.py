@@ -23,8 +23,8 @@ def list_saved_filters(user_key: str) -> list[dict[str, Any]]:
     return _list_saved_filters(user_key)
 
 
-def delete_saved_filter(filter_id: int) -> None:
-    _delete_saved_filter(filter_id)
+def delete_saved_filter(filter_id: int, user_key: str) -> None:
+    _delete_saved_filter(filter_id, user_key=user_key)
 
 
 def filters_to_json(

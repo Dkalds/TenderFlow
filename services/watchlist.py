@@ -83,9 +83,7 @@ def list_entries(
     organization_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """List watchlist entries for a user."""
-    return _list_entries(
-        user_key, user_id=user_id, organization_id=organization_id
-    )
+    return _list_entries(user_key, user_id=user_id, organization_id=organization_id)
 
 
 def update_frequency(entry_id: int, frequency: str) -> None:

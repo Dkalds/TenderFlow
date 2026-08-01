@@ -257,7 +257,7 @@ def test_filtros_delete_roundtrip(tmp_db):
     assert len(filtros) == 1
     fid = filtros[0]["id"]
 
-    delete_saved_filter(fid)
+    delete_saved_filter(fid, user_key)
 
     filtros_tras_borrado = list_saved_filters(user_key)
     assert filtros_tras_borrado == []

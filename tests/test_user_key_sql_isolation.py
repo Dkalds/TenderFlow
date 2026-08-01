@@ -224,6 +224,11 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # Mismo patrón que db/watchlist.py::update_last_notified, para el job
         # de alertas de competidores (scheduler/competitor_alerts.py).
         "db/watchlist_empresas.py::update_last_notified",
+        # Barrido global de NIF canónicos vigilados por CUALQUIER usuario:
+        # scraper/connectors/watched_company_awards.py necesita saber qué
+        # empresas buscar en la fuente PLACSP durante la ingesta, no los
+        # favoritos de un usuario concreto. Sin caller vía api/routes/*.py.
+        "db/repositories/watched_companies.py::WatchedCompanyRepository.list_canonical_nifs",
         # Integridad de la cadena de hashes de auditoría (v26): es UNA
         # cadena global (no una por usuario) -- necesita leer la cola/COUNT
         # de audit_log sin filtrar por usuario para verificar continuidad.
@@ -251,21 +256,13 @@ _KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset(
         # no tiene ningún caller en api/routes/*.py (services.watchlist.
         # remove_entry no está enganchado a ninguna ruta) -- pero si se
         # expone un DELETE para este recurso llamando a este repo sin antes
-        # validar propiedad (como sí hace api/routes/saved_filters.py, ver
-        # abajo), sería un IDOR. Arreglo pendiente: añadir `user_key` como
-        # parámetro y `AND user_key = ?` a la query.
+        # validar propiedad (como sí hace api/routes/saved_filters.py::
+        # delete_saved_filter_route), sería un IDOR. Arreglo pendiente:
+        # añadir `user_key` como parámetro y `AND user_key = ?` a la query.
         "db/watchlist.py::remove_entry",
         # Mismo hueco que remove_entry de arriba: misma tabla, mismo patrón
         # (UPDATE ... WHERE id = ? sin user_key), también sin caller HTTP hoy.
         "db/watchlist.py::update_frequency",
-        # DELETE FROM saved_filters WHERE id = ? sin predicado user_key en la
-        # query. Su único caller (api/routes/saved_filters.py::
-        # delete_saved_filter_route) SÍ comprueba propiedad antes de llamar
-        # (comentario explícito en esa ruta: "previene IDOR -- OWASP A01"),
-        # así que HOY no es explotable por esa ruta -- pero la función de
-        # repositorio no tiene esa defensa si se reutiliza en otro sitio.
-        # Arreglo pendiente: añadir `user_key` como parámetro de la query.
-        "db/saved_filters.py::delete_saved_filter",
     }
 )
 
@@ -313,18 +310,7 @@ _GRANDFATHERED_LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
     }
 )
 
-_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset(
-    {
-        # UPDATE watchlist_rules SET email = ? WHERE id = ? sin predicado
-        # user_key, dentro de la función anidada `_create` de post_rule(). El
-        # id es el recién insertado por create_rule(user_key, ...) en la
-        # misma petición, así que hoy no cruza usuarios -- pero la query en
-        # sí no se defiende sola. Comparar con `put_rule._update` en el mismo
-        # archivo, que sí añade `AND user_key = ?` a la query equivalente.
-        # Arreglo pendiente: alinear `_create` con `_update`.
-        "api/routes/watchlist_rules.py::post_rule._create",
-    }
-)
+_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset()
 
 _GRANDFATHERED_ALLOWLIST: frozenset[str] = (
     _GRANDFATHERED_LEGITIMATE_SWEEPS | _GRANDFATHERED_KNOWN_GAPS_PENDING_FIX

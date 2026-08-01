@@ -16,6 +16,8 @@ from scraper.codice_parser import (
     parse_atom_bytes,
     parse_document_references,
     parse_entry,
+    parse_entry_unfiltered,
+    parse_lotes,
     parse_summary,
 )
 
@@ -107,6 +109,76 @@ def _make_sap_entry(
     """)
 
 
+def _make_entry_with_deadline(
+    id_externo: str = "DEADLINE-001",
+    *,
+    end_date: str | None = "2026-01-15",
+    end_time: str | None = "23:59:00",
+    period_tag: str = "TenderSubmissionDeadlinePeriod",
+    also_planned_period_end_date: str | None = None,
+) -> str:
+    """Entry SAP con ``TenderingProcess/<period_tag>/EndDate(+EndTime)``.
+
+    ``also_planned_period_end_date`` añade además un
+    ``ProcurementProject/PlannedPeriod/EndDate`` (fin de EJECUCIÓN del
+    contrato, fuente de ``fecha_fin``) para verificar que ``fecha_limite`` y
+    ``fecha_fin`` no se confunden entre sí.
+    """
+    cbc = _NS["cbc"]
+    cac = _NS["cac"]
+    cacext = _NS["cacext"]
+    cbcext = _NS["cbcext"]
+
+    end_time_xml = f"<cbc:EndTime>{end_time}</cbc:EndTime>" if end_time else ""
+    deadline_xml = (
+        f"<cac:TenderingProcess><cac:{period_tag}>"
+        f"<cbc:EndDate>{end_date}</cbc:EndDate>{end_time_xml}"
+        f"</cac:{period_tag}></cac:TenderingProcess>"
+        if end_date
+        else ""
+    )
+    planned_period_xml = (
+        f"<cac:PlannedPeriod><cbc:EndDate>{also_planned_period_end_date}</cbc:EndDate>"
+        "</cac:PlannedPeriod>"
+        if also_planned_period_end_date
+        else ""
+    )
+
+    return textwrap.dedent(f"""\
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:cbc="{cbc}"
+               xmlns:cac="{cac}"
+               xmlns:cacext="{cacext}"
+               xmlns:cbcext="{cbcext}">
+          <id>https://example.com/{id_externo}</id>
+          <title>Sistema SAP ERP mantenimiento</title>
+          <updated>2026-06-14T00:00:00Z</updated>
+          <link href="https://example.com/{id_externo}" rel="alternate"/>
+          <summary>
+            Id licitación: {id_externo}; Órgano de Contratación: Ministerio;
+            Importe: 100000.00 EUR; Estado: PUB
+          </summary>
+          <cacext:ContractFolderStatus>
+            <cbc:ContractFolderID>{id_externo}</cbc:ContractFolderID>
+            <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+            <cacext:LocatedContractingParty>
+              <cac:Party>
+                <cac:PartyName><cbc:Name>Ministerio</cbc:Name></cac:PartyName>
+              </cac:Party>
+            </cacext:LocatedContractingParty>
+            <cac:ProcurementProject>
+              <cbc:Name>Sistema SAP ERP mantenimiento</cbc:Name>
+              <cac:BudgetAmount>
+                <cbc:TaxExclusiveAmount currencyID="EUR">100000.00</cbc:TaxExclusiveAmount>
+              </cac:BudgetAmount>
+              {planned_period_xml}
+            </cac:ProcurementProject>
+            {deadline_xml}
+          </cacext:ContractFolderStatus>
+        </entry>
+    """)
+
+
 def _make_entry_with_adjudicacion(lic_id: str = "ADJ-001") -> str:
     """Entry con un TenderResult y WinningParty."""
     cbc = _NS["cbc"]
@@ -158,6 +230,106 @@ def _make_entry_with_adjudicacion(lic_id: str = "ADJ-001") -> str:
                 <cac:PartyIdentification><cbc:ID>B12345678</cbc:ID></cac:PartyIdentification>
               </cac:WinningParty>
             </cac:TenderResult>
+          </cacext:ContractFolderStatus>
+        </entry>
+    """)
+
+
+def _make_entry_with_lotes(
+    lic_id: str = "LOTE-001",
+    *,
+    lotes: tuple[dict, ...] = (
+        {
+            "numero": "1",
+            "titulo": "Lote 1",
+            "cpv": "72000000-5",
+            "importe": "10000.00",
+        },
+    ),
+    tender_results: tuple[dict, ...] = (),
+) -> str:
+    """Entry con ``cac:ProcurementProjectLot`` y, opcionalmente, ``TenderResult``
+    que referencian un lote vía ``cac:ProcurementProjectLotReference/cbc:ID``.
+
+    Cada dict de ``tender_results`` acepta ``nombre``, ``nif``, ``importe`` y
+    ``lote_numero`` (opcional -- si falta, el TenderResult no referencia
+    ningún lote, igual que un expediente de lote único).
+    """
+    cbc = _NS["cbc"]
+    cac = _NS["cac"]
+    cacext = _NS["cacext"]
+    cbcext = _NS["cbcext"]
+
+    lotes_xml = "".join(
+        f"""
+        <cac:ProcurementProjectLot>
+          <cbc:ID>{lote["numero"]}</cbc:ID>
+          <cac:ProcurementProject>
+            <cbc:Name>{lote.get("titulo", "")}</cbc:Name>
+            <cac:RequiredCommodityClassification>
+              <cbc:ItemClassificationCode>{lote.get("cpv", "")}</cbc:ItemClassificationCode>
+            </cac:RequiredCommodityClassification>
+            <cac:BudgetAmount>
+              <cbc:TaxExclusiveAmount currencyID="EUR">{lote.get("importe", "0")}</cbc:TaxExclusiveAmount>
+            </cac:BudgetAmount>
+          </cac:ProcurementProject>
+        </cac:ProcurementProjectLot>"""
+        for lote in lotes
+    )
+
+    def _tr(tr: dict) -> str:
+        lot_ref_xml = (
+            f"<cac:ProcurementProjectLotReference><cbc:ID>{tr['lote_numero']}</cbc:ID>"
+            "</cac:ProcurementProjectLotReference>"
+            if tr.get("lote_numero") is not None
+            else ""
+        )
+        nif_xml = (
+            f"<cac:PartyIdentification><cbc:ID>{tr['nif']}</cbc:ID></cac:PartyIdentification>"
+            if tr.get("nif")
+            else ""
+        )
+        return f"""
+        <cac:TenderResult>
+          {lot_ref_xml}
+          <cac:AwardedTenderedProject>
+            <cac:LegalMonetaryTotal>
+              <cbc:TaxExclusiveAmount>{tr["importe"]}</cbc:TaxExclusiveAmount>
+            </cac:LegalMonetaryTotal>
+          </cac:AwardedTenderedProject>
+          <cac:WinningParty>
+            <cac:PartyName><cbc:Name>{tr["nombre"]}</cbc:Name></cac:PartyName>
+            {nif_xml}
+          </cac:WinningParty>
+        </cac:TenderResult>"""
+
+    tr_xml = "".join(_tr(tr) for tr in tender_results)
+
+    return textwrap.dedent(f"""\
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:cbc="{cbc}"
+               xmlns:cac="{cac}"
+               xmlns:cacext="{cacext}"
+               xmlns:cbcext="{cbcext}">
+          <id>https://example.com/{lic_id}</id>
+          <title>Expediente con lotes SAP</title>
+          <updated>2024-03-15T00:00:00Z</updated>
+          <link href="https://example.com/{lic_id}" rel="alternate"/>
+          <summary>
+            Id licitación: {lic_id}; Órgano de Contratación: Ministerio;
+            Importe: 100000.00 EUR; Estado: ADJ
+          </summary>
+          <cacext:ContractFolderStatus>
+            <cbc:ContractFolderID>{lic_id}</cbc:ContractFolderID>
+            <cbcext:ContractFolderStatusCode>ADJ</cbcext:ContractFolderStatusCode>
+            <cac:ProcurementProject>
+              <cbc:Name>Expediente con lotes SAP</cbc:Name>
+              <cac:BudgetAmount>
+                <cbc:TaxExclusiveAmount currencyID="EUR">100000.00</cbc:TaxExclusiveAmount>
+              </cac:BudgetAmount>
+            </cac:ProcurementProject>
+            {lotes_xml}
+            {tr_xml}
           </cacext:ContractFolderStatus>
         </entry>
     """)
@@ -369,6 +541,153 @@ class TestParseEntry:
         assert lic.duracion_unidad == "MON"
 
 
+# ─── fecha_limite (plazo de presentación de ofertas) ─────────────────────────
+
+
+class TestTenderDeadline:
+    """Regresión del fix de Ola 1 (docs/IMPROVEMENT_BACKLOG.md): antes de este
+    fix, el parser nunca leía ``TenderingProcess`` y ``fecha_limite`` quedaba
+    NULL en el 100% de las licitaciones de PLACSP."""
+
+    def _get_entry(self, entry_xml: str):
+        feed = _make_atom_feed(entry_xml)
+        root = etree.fromstring(feed)
+        return root.find("{http://www.w3.org/2005/Atom}entry")
+
+    def test_tender_submission_deadline_extracted(self):
+        entry = self._get_entry(
+            _make_entry_with_deadline(end_date="2026-01-15", end_time="23:59:00")
+        )
+        lic = parse_entry(entry)
+        assert lic is not None
+        # 2026-01-15 es invierno en España (CET, UTC+1): 23:59 local = 22:59 UTC.
+        # Si el código asumiera un offset fijo en vez de convertir por zona
+        # horaria, este valor (o el de verano en otro test) sería incorrecto.
+        assert lic.fecha_limite == "2026-01-15T22:59:00+00:00"
+
+    def test_falls_back_to_participation_request_reception_period(self):
+        entry = self._get_entry(
+            _make_entry_with_deadline(
+                end_date="2026-03-01",
+                end_time="12:00:00",
+                period_tag="ParticipationRequestReceptionPeriod",
+            )
+        )
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_limite is not None
+        assert lic.fecha_limite.startswith("2026-03-01")
+
+    def test_no_tendering_process_node_returns_none(self):
+        """Sin TenderingProcess (expediente en fase ADJ/RES, p.ej.), fecha_limite
+        debe quedar None — nunca inferirse de PlannedPeriod/EndDate (fecha_fin)."""
+        entry = self._get_entry(_make_entry_with_deadline(end_date=None))
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_limite is None
+
+    def test_fecha_limite_and_fecha_fin_are_independent(self):
+        """PlannedPeriod/EndDate (ejecución) y TenderingProcess (presentación
+        de ofertas) son nodos CODICE distintos con semántica distinta — el
+        parser no debe confundirlos."""
+        entry = self._get_entry(
+            _make_entry_with_deadline(
+                end_date="2026-02-01",
+                end_time="10:00:00",
+                also_planned_period_end_date="2027-12-31",
+            )
+        )
+        lic = parse_entry(entry)
+        assert lic is not None
+        assert lic.fecha_fin == "2027-12-31"
+        assert lic.fecha_limite is not None
+        assert lic.fecha_limite.startswith("2026-02-01")
+        assert lic.fecha_limite != lic.fecha_fin
+
+    def test_parse_entry_unfiltered_also_extracts_fecha_limite(self):
+        entry = self._get_entry(
+            _make_entry_with_deadline(end_date="2026-04-10", end_time="09:00:00")
+        )
+        lic = parse_entry_unfiltered(entry)
+        assert lic is not None
+        assert lic.fecha_limite is not None
+        assert lic.fecha_limite.startswith("2026-04-10")
+
+
+# ─── parse_lotes (v65_lotes) ─────────────────────────────────────────────────
+
+
+class TestParseLotes:
+    """Regresión de Ola 2 (docs/IMPROVEMENT_BACKLOG.md): el lote es la unidad
+    real de negocio en contratación pública española y no existía en el
+    modelo hasta v65_lotes."""
+
+    def _get_entry(self, entry_xml: str):
+        feed = _make_atom_feed(entry_xml)
+        root = etree.fromstring(feed)
+        return root.find("{http://www.w3.org/2005/Atom}entry")
+
+    def test_extracts_multiple_lotes(self):
+        entry = self._get_entry(
+            _make_entry_with_lotes(
+                lotes=(
+                    {
+                        "numero": "1",
+                        "titulo": "Lote informático",
+                        "cpv": "72000000-5",
+                        "importe": "10000.00",
+                    },
+                    {
+                        "numero": "2",
+                        "titulo": "Lote soporte",
+                        "cpv": "72200000-7",
+                        "importe": "20000.00",
+                    },
+                )
+            )
+        )
+        lotes = parse_lotes(entry, "LOTE-001")
+        assert [lote.numero for lote in lotes] == ["1", "2"]
+        assert lotes[0].titulo == "Lote informático"
+        assert lotes[0].cpv == "72000000-5"
+        assert lotes[0].importe == pytest.approx(10_000.0)
+        assert all(lote.licitacion_id == "LOTE-001" for lote in lotes)
+
+    def test_no_lotes_returns_empty_list(self):
+        entry = self._get_entry(_make_sap_entry())
+        assert parse_lotes(entry, "EXP-2024-001") == []
+
+    def test_lote_without_id_is_skipped(self):
+        """Un lote sin numero no es direccionable -- ninguna adjudicación
+        podría referenciarlo, así que persistirlo no aportaría nada."""
+        entry_xml = textwrap.dedent(f"""\
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:cbc="{_NS["cbc"]}"
+                   xmlns:cac="{_NS["cac"]}"
+                   xmlns:cacext="{_NS["cacext"]}"
+                   xmlns:cbcext="{_NS["cbcext"]}">
+              <id>https://example.com/LOTE-SIN-ID</id>
+              <title>Expediente SAP</title>
+              <cacext:ContractFolderStatus>
+                <cbc:ContractFolderID>LOTE-SIN-ID</cbc:ContractFolderID>
+                <cac:ProcurementProjectLot>
+                  <cac:ProcurementProject><cbc:Name>Sin ID</cbc:Name></cac:ProcurementProject>
+                </cac:ProcurementProjectLot>
+              </cacext:ContractFolderStatus>
+            </entry>
+        """)
+        entry = self._get_entry(entry_xml)
+        assert parse_lotes(entry, "LOTE-SIN-ID") == []
+
+    def test_fallback_fecha_limite_applied_when_lot_has_no_own_deadline(self):
+        """La mayoría de expedientes con lotes comparten un único plazo de
+        presentación para todos -- el lote hereda el del expediente si no
+        publica el suyo propio."""
+        entry = self._get_entry(_make_entry_with_lotes())
+        lotes = parse_lotes(entry, "LOTE-001", fallback_fecha_limite="2026-08-15T21:59:00+00:00")
+        assert lotes[0].fecha_limite == "2026-08-15T21:59:00+00:00"
+
+
 # ─── parse_adjudicaciones ────────────────────────────────────────────────────
 
 
@@ -390,11 +709,56 @@ class TestParseAdjudicaciones:
         assert adj.oferta_minima == pytest.approx(40_000.0)
         assert adj.oferta_maxima == pytest.approx(55_000.0)
         assert adj.fecha_adjudicacion == "2024-04-01"
+        assert adj.lote_numero_raw is None
 
     def test_entry_without_tender_result_returns_empty(self):
         entry = self._get_entry(_make_sap_entry())
         adjs = parse_adjudicaciones(entry, "EXP-2024-001")
         assert adjs == []
+
+    def test_extracts_lote_numero_raw_from_lot_reference(self):
+        entry = self._get_entry(
+            _make_entry_with_lotes(
+                tender_results=(
+                    {
+                        "nombre": "Empresa A",
+                        "nif": "B00000001",
+                        "importe": "5000.00",
+                        "lote_numero": "1",
+                    },
+                ),
+            )
+        )
+        adjs = parse_adjudicaciones(entry, "LOTE-001")
+        assert len(adjs) == 1
+        assert adjs[0].lote_numero_raw == "1"
+
+    def test_two_lots_same_empresa_same_importe_both_extracted(self):
+        """Regresión directa del bug de pérdida de filas: sin lote_numero_raw
+        estas dos adjudicaciones son indistinguibles bajo la unique antigua
+        (licitacion_id, nif, importe_adjudicado) y la BD descartaba una."""
+        entry = self._get_entry(
+            _make_entry_with_lotes(
+                lotes=({"numero": "1"}, {"numero": "2"}),
+                tender_results=(
+                    {
+                        "nombre": "Misma Empresa SL",
+                        "nif": "B00000001",
+                        "importe": "5000.00",
+                        "lote_numero": "1",
+                    },
+                    {
+                        "nombre": "Misma Empresa SL",
+                        "nif": "B00000001",
+                        "importe": "5000.00",
+                        "lote_numero": "2",
+                    },
+                ),
+            )
+        )
+        adjs = parse_adjudicaciones(entry, "LOTE-001")
+        assert len(adjs) == 2
+        assert {adj.lote_numero_raw for adj in adjs} == {"1", "2"}
 
 
 # ─── parse_atom_bytes ────────────────────────────────────────────────────────

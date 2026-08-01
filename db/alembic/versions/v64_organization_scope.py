@@ -46,21 +46,28 @@ _SCOPED_TABLES: dict[str, tuple[bool, bool]] = {
     "user_notifications": (False, False),
 }
 
-_ENSURE_PERSONAL_ORGANIZATIONS = """
+# ``NOW()::text`` en Postgres omite los minutos del offset cuando son cero
+# (p.ej. "2026-08-01 00:45:48.33444+00"), formato que pydantic rechaza como
+# datetime (``datetime_from_date_parsing``). ``_NOW_ISO_TEXT`` reproduce el
+# mismo formato que ``db.connection.now_utc_iso()`` (ISO 8601 con offset
+# completo) para los INSERT de backfill de esta migración.
+_NOW_ISO_TEXT = "to_char(NOW() AT TIME ZONE 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.US') || '+00:00'"
+
+_ENSURE_PERSONAL_ORGANIZATIONS = f"""
 INSERT INTO organizations
     (name, is_personal, personal_owner_user_id, created_by_user_id,
      created_at, updated_at)
 SELECT
     COALESCE(NULLIF(display_name, ''), NULLIF(email, ''), 'Usuario ' || id::text),
-    TRUE, id, id, NOW()::text, NOW()::text
+    TRUE, id, id, {_NOW_ISO_TEXT}, {_NOW_ISO_TEXT}
 FROM users
 ON CONFLICT (personal_owner_user_id) DO NOTHING
 """
 
-_ENSURE_PERSONAL_MEMBERSHIPS = """
+_ENSURE_PERSONAL_MEMBERSHIPS = f"""
 INSERT INTO organization_memberships
     (organization_id, user_id, role, status, created_at, updated_at)
-SELECT o.id, o.personal_owner_user_id, 'owner', 'active', NOW()::text, NOW()::text
+SELECT o.id, o.personal_owner_user_id, 'owner', 'active', {_NOW_ISO_TEXT}, {_NOW_ISO_TEXT}
 FROM organizations AS o
 WHERE o.is_personal = TRUE AND o.personal_owner_user_id IS NOT NULL
 ON CONFLICT (organization_id, user_id) DO NOTHING

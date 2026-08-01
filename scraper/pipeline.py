@@ -256,9 +256,7 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
         return None
 
     lic.ml_proba = proba
-    lic.classifier_model_version = str(
-        getattr(clf, "metadata", {}).get("trained_at") or "unknown"
-    )
+    lic.classifier_model_version = str(getattr(clf, "metadata", {}).get("trained_at") or "unknown")
 
     # Anotación multi-tecnología (no-op si ML_TECH_ENABLED=False).
     tech_pred = _apply_tech_prediction(lic)

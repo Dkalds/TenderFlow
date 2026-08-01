@@ -189,9 +189,7 @@ def get_metrics(
         pursuits_lost=lost,
         win_rate=(won / resolved) if resolved else None,
         awarded_amount_eur=sum(
-            float(row["awarded_amount_eur"] or 0)
-            for row in rows
-            if row["outcome"] == "won"
+            float(row["awarded_amount_eur"] or 0) for row in rows if row["outcome"] == "won"
         ),
         median_decision_time_hours=median(decision_hours) if decision_hours else None,
     )
@@ -202,11 +200,7 @@ def _normalize_and_validate_update(
     requested: dict[str, Any],
     organization_id: int,
 ) -> dict[str, Any]:
-    changes = {
-        field: value
-        for field, value in requested.items()
-        if current.get(field) != value
-    }
+    changes = {field: value for field, value in requested.items() if current.get(field) != value}
     if not changes:
         return {}
 

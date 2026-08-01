@@ -201,6 +201,37 @@ def test_scoring_sin_modelo_sirve_baseline(db):
     assert 0 <= pred["p10"] <= pred["p50"] <= pred["p90"] < 1
 
 
+def test_media_global_baja_usa_presupuesto_del_lote(db):
+    """Regresión: _media_global_baja() comparaba cada adjudicación contra el
+    presupuesto del EXPEDIENTE completo, no el de su lote (v65_lotes). Un
+    histórico dominado por lotes pequeños con baja real moderada inflaba el
+    baseline si se medía contra el presupuesto total del expediente."""
+    from db.database import connect
+    from services.ml.scoring import _media_global_baja
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
+            " ccaa, importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
+            "VALUES ('LOTE-BASE', 'Expediente con lote', 'Organo A', '72000000', "
+            " 'Madrid', 100000, 'Servicios', 'placsp', '2025-01-15', CURRENT_TIMESTAMP)"
+        )
+        lote_id = c.execute(
+            "INSERT INTO lotes (licitacion_id, numero, importe, fecha_extraccion) "
+            "VALUES ('LOTE-BASE', '1', 20000, CURRENT_TIMESTAMP) RETURNING id"
+        ).fetchone()[0]
+        c.execute(
+            "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
+            " fecha_adjudicacion, n_ofertas_recibidas, lote_id, fecha_extraccion) "
+            "VALUES ('LOTE-BASE', 'Empresa X', 15000, '2025-02-01', 3, ?, CURRENT_TIMESTAMP)",
+            [lote_id],
+        )
+
+    # Real baja del lote: (20000-15000)/20000 = 0.25. Contra el expediente
+    # completo (100000) habría dado (100000-15000)/100000 = 0.85.
+    assert _media_global_baja() == pytest.approx(0.25)
+
+
 def test_scoring_es_idempotente(db):
     from db.database import connect
 

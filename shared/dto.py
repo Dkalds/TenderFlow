@@ -9,10 +9,30 @@ Uso:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
+
+# Postgres serializa timestamptz a texto sin los minutos del offset cuando son
+# cero (p.ej. "2026-08-01 00:45:48.33444+00"), formato que el parser RFC3339
+# estricto de pydantic rechaza con `datetime_from_date_parsing`. Todas las
+# columnas de fecha llegan como TEXT desde repositories/*.py (ADR-016/021), así
+# que cualquier `datetime` de este módulo puede recibir ese formato.
+_PG_SHORT_TZ_OFFSET_RE = re.compile(r"^(?P<body>.*\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?P<offset>[+-]\d{2})$")
+
+
+def _normalize_pg_datetime(value: Any) -> Any:
+    """Completa el offset corto de Postgres (``+00`` → ``+00:00``) antes de parsear."""
+    if isinstance(value, str):
+        match = _PG_SHORT_TZ_OFFSET_RE.match(value)
+        if match:
+            return f"{match.group('body')}{match.group('offset')}:00"
+    return value
+
+
+PgDateTime = Annotated[datetime, BeforeValidator(_normalize_pg_datetime)]
 
 
 class LicitacionSummary(BaseModel):
@@ -25,7 +45,7 @@ class LicitacionSummary(BaseModel):
     organo_contratacion: str | None = None
     importe: float | None = Field(default=None, ge=0)
     estado: str | None = None
-    fecha_publicacion: datetime | None = None
+    fecha_publicacion: PgDateTime | None = None
     ccaa: str | None = None
     cpv: str | None = None
     url: str | None = None
@@ -41,10 +61,10 @@ class LicitacionDetail(LicitacionSummary):
     provincia: str | None = None
     duracion_valor: float | None = None
     duracion_unidad: str | None = None
-    fecha_limite: datetime | None = None
-    fecha_inicio: datetime | None = None
-    fecha_fin: datetime | None = None
-    fecha_extraccion: datetime | None = None
+    fecha_limite: PgDateTime | None = None
+    fecha_inicio: PgDateTime | None = None
+    fecha_fin: PgDateTime | None = None
+    fecha_extraccion: PgDateTime | None = None
     nuts_code: str | None = None
 
 
@@ -57,7 +77,7 @@ class AdjudicacionSummary(BaseModel):
     nombre: str | None = None
     nif: str | None = None
     importe_adjudicado: float | None = Field(default=None, ge=0)
-    fecha_adjudicacion: datetime | None = None
+    fecha_adjudicacion: PgDateTime | None = None
     ccaa: str | None = None
 
 
@@ -70,7 +90,7 @@ class KpiSnapshotDTO(BaseModel):
     total_adjudicadas: int = 0
     importe_medio: float | None = None
     importe_total: float | None = None
-    computed_at: datetime | None = None
+    computed_at: PgDateTime | None = None
 
 
 class PaginatedResponse(BaseModel):
@@ -108,8 +128,8 @@ class WatchlistEntry(BaseModel):
     licitacion_id: str
     note: str | None = Field(default=None, max_length=2000)
     pinned: bool = False
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    created_at: PgDateTime | None = None
+    updated_at: PgDateTime | None = None
 
 
 # ── Clustering (F1) ─────────────────────────────────────────────────────────
@@ -127,7 +147,7 @@ class ClusterSummary(BaseModel):
     representative_ids: list[str] = Field(default_factory=list)
     silhouette: float | None = None
     inertia: float | None = None
-    computed_at: datetime | None = None
+    computed_at: PgDateTime | None = None
 
 
 # Competitive company dossier
@@ -263,6 +283,23 @@ class CompetitiveCompanyAwardDTO(BaseModel):
     expediente_url: str | None = None
 
 
+class CompetitiveCompanyUteParticipationDTO(BaseModel):
+    """UTE en la que la empresa participa como miembro, con su actividad propia.
+
+    Deliberadamente separado de ``totales``/``posicion_mercado``, que solo
+    cuentan lo adjudicado directamente a ``empresa_id`` -- sumarlo ahí
+    duplicaría el importe ya atribuido a la UTE como entidad propia en
+    cuota_mercado()/concentracion_hhi(). Esto es visibilidad adicional, no
+    una redefinición de la cuota de mercado.
+    """
+
+    ute_empresa_id: int = Field(ge=1)
+    ute_nombre: str
+    otros_miembros: list[str] = Field(default_factory=list)
+    contratos: int = Field(default=0, ge=0)
+    importe_total: float = Field(default=0, ge=0)
+
+
 class CompetitiveCompanyProfileDTO(BaseModel):
     """Full competitor dossier used by quick and deep company views."""
 
@@ -279,6 +316,7 @@ class CompetitiveCompanyProfileDTO(BaseModel):
     por_anio: list[CompetitiveCompanyYearDTO] = Field(default_factory=list)
     movimientos: list[CompetitiveCompanySignalDTO] = Field(default_factory=list)
     contratos_recientes: list[CompetitiveCompanyAwardDTO] = Field(default_factory=list)
+    participaciones_ute: list[CompetitiveCompanyUteParticipationDTO] = Field(default_factory=list)
 
 
 class CompetitiveCompanyAwardsDTO(BaseModel):
@@ -317,7 +355,7 @@ class OrganizationSummary(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     is_personal: bool
     role: OrganizationRole
-    created_at: datetime
+    created_at: PgDateTime
 
 
 class OrganizationMembershipOut(BaseModel):
@@ -329,8 +367,8 @@ class OrganizationMembershipOut(BaseModel):
     user_id: int = Field(ge=1)
     role: OrganizationRole
     status: OrganizationMembershipStatus
-    created_at: datetime
-    updated_at: datetime
+    created_at: PgDateTime
+    updated_at: PgDateTime
     display_name: str | None = None
     email: str | None = None
 
@@ -398,7 +436,7 @@ class PursuitEventOut(BaseModel):
     event_type: str
     actor_user_id: int | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime
+    created_at: PgDateTime
 
 
 class PursuitSummary(BaseModel):
@@ -410,7 +448,7 @@ class PursuitSummary(BaseModel):
     organization_id: int = Field(ge=1)
     licitacion_id: str
     tender_title: str | None = None
-    tender_deadline: datetime | None = None
+    tender_deadline: PgDateTime | None = None
     responsible_user_id: int | None = None
     responsible_name: str | None = None
     status: PursuitStatus
@@ -420,12 +458,12 @@ class PursuitSummary(BaseModel):
     outcome: PursuitOutcome
     awarded_amount_eur: float | None = Field(default=None, ge=0)
     outcome_reason: str | None = None
-    identified_at: datetime
-    decision_at: datetime | None = None
-    submitted_at: datetime | None = None
-    closed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    identified_at: PgDateTime
+    decision_at: PgDateTime | None = None
+    submitted_at: PgDateTime | None = None
+    closed_at: PgDateTime | None = None
+    created_at: PgDateTime
+    updated_at: PgDateTime
     version: int = Field(ge=1)
 
 
@@ -449,8 +487,8 @@ class PursuitMetrics(BaseModel):
     """Métricas reproducibles de funnel y resultado por organización/periodo."""
 
     organization_id: int = Field(ge=1)
-    period_from: datetime | None = None
-    period_to: datetime | None = None
+    period_from: PgDateTime | None = None
+    period_to: PgDateTime | None = None
     pursuits_identified: int = Field(ge=0)
     pursuits_submitted: int = Field(ge=0)
     pursuits_won: int = Field(ge=0)

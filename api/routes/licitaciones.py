@@ -73,6 +73,9 @@ class LicitacionSummary(BaseModel):
     importe: float | None = None
     estado: str | None = None
     fecha_publicacion: str | None = None
+    # La fecha límite decide la urgencia de una licitación: sin ella un listado
+    # no puede ordenar por cierre ni avisar de un plazo que se agota.
+    fecha_limite: str | None = None
     ccaa: str | None = None
     cpv: str | None = None
     url: str | None = None
@@ -90,7 +93,6 @@ class LicitacionDetail(LicitacionSummary):
     nuts_code: str | None = None
     duracion_valor: float | None = None
     duracion_unidad: str | None = None
-    fecha_limite: str | None = None
     fecha_inicio: str | None = None
     fecha_fin: str | None = None
     raw_keywords: str | None = None

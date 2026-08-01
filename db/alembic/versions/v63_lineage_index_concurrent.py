@@ -38,6 +38,4 @@ def downgrade() -> None:
     if not _is_postgres():
         return
     with op.get_context().autocommit_block():
-        op.execute(
-            "DROP INDEX CONCURRENTLY IF EXISTS idx_licitaciones_analysis_lineage"
-        )
+        op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_licitaciones_analysis_lineage")

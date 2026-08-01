@@ -137,10 +137,12 @@ def _select_cohort(
     predicates: list[tuple[list[str], Any]] = [
         (
             ["organo", "cpv4", "importe", "competencia"],
-            lambda row: row.organ == organ
-            and row.cpv4 == cpv4
-            and amount_match(row)
-            and row.competition_band == target_band,
+            lambda row: (
+                row.organ == organ
+                and row.cpv4 == cpv4
+                and amount_match(row)
+                and row.competition_band == target_band
+            ),
         ),
         (
             ["organo", "cpv4", "importe"],
@@ -148,9 +150,9 @@ def _select_cohort(
         ),
         (
             ["cpv4", "importe", "competencia"],
-            lambda row: row.cpv4 == cpv4
-            and amount_match(row)
-            and row.competition_band == target_band,
+            lambda row: (
+                row.cpv4 == cpv4 and amount_match(row) and row.competition_band == target_band
+            ),
         ),
         (["cpv4", "importe"], lambda row: row.cpv4 == cpv4 and amount_match(row)),
         (["cpv4"], lambda row: row.cpv4 == cpv4),
@@ -227,12 +229,12 @@ def get_price_scenarios(
 
     distribution = _distribution([row.discount for row in cohort])
     quality: Literal["robusta", "indicativa", "insuficiente"]
-    quality = "robusta" if distribution.n >= 30 else (
-        "indicativa" if distribution.n >= _MIN_INDICATIVE_N else "insuficiente"
+    quality = (
+        "robusta"
+        if distribution.n >= 30
+        else ("indicativa" if distribution.n >= _MIN_INDICATIVE_N else "insuficiente")
     )
-    quantiles: list[
-        tuple[Literal["defensivo", "central", "competitivo"], float, str]
-    ] = [
+    quantiles: list[tuple[Literal["defensivo", "central", "competitivo"], float, str]] = [
         ("defensivo", distribution.p25_discount, "percentil 25 de la baja observada"),
         ("central", distribution.p50_discount, "mediana de la baja observada"),
         ("competitivo", distribution.p75_discount, "percentil 75 de la baja observada"),

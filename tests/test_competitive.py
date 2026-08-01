@@ -401,6 +401,95 @@ def test_bajas_group_by_invalido(db):
 
 
 # ---------------------------------------------------------------------------
+# Bajas: presupuesto efectivo del lote (v65_lotes)
+# ---------------------------------------------------------------------------
+
+
+def _insert_lote_contract(
+    db,
+    lic_id: str,
+    empresa: str,
+    *,
+    importe_expediente: float,
+    importe_lote: float,
+    adjudicado: float,
+):
+    """Como insert_contract, pero la adjudicación referencia un lote propio
+    cuyo presupuesto es distinto (menor) que el del expediente completo."""
+    from db.upsert import (
+        Adjudicacion,
+        Licitacion,
+        Lote,
+        replace_adjudicaciones_batch,
+        replace_lotes,
+    )
+    from db.upsert import upsert_licitaciones as _upsert_licitaciones
+
+    lic = Licitacion(
+        id_externo=lic_id,
+        titulo=f"Contrato {lic_id}",
+        organo_contratacion="Ministerio X",
+        importe=importe_expediente,
+        cpv="72000000",
+        ccaa="Madrid",
+        fecha_publicacion="2025-05-01",
+    )
+    _upsert_licitaciones([lic])
+    lote_ids = replace_lotes(lic_id, [Lote(licitacion_id=lic_id, numero="1", importe=importe_lote)])
+    adj = Adjudicacion(
+        licitacion_id=lic_id,
+        nombre=empresa,
+        importe_adjudicado=adjudicado,
+        fecha_adjudicacion="2025-06-01",
+        n_ofertas_recibidas=3,
+        lote_id=lote_ids["1"],
+    )
+    _total, _dropped, failed = replace_adjudicaciones_batch({lic_id: [adj]})
+    assert failed == 0
+
+
+def test_bajas_usa_presupuesto_del_lote_no_del_expediente(db):
+    """Regresión directa: antes de v65_lotes esto daba 85% (contra los
+    100000 del expediente) en vez del 25% real (contra los 20000 del lote)."""
+    from services.competitive.bajas import bajas_agregadas
+
+    _insert_lote_contract(
+        db, "LB-01", "Lotera SL", importe_expediente=100_000, importe_lote=20_000, adjudicado=15_000
+    )
+    resolve(db)
+
+    items = bajas_agregadas(group_by="empresa", min_contratos=1)
+    assert len(items) == 1
+    assert items[0]["baja_media_pct"] == 25.0
+
+
+def test_baja_de_referencia_usa_presupuesto_del_lote(db):
+    from services.competitive.bajas import baja_de_referencia
+
+    _insert_lote_contract(
+        db, "LB-02", "Lotera SL", importe_expediente=100_000, importe_lote=20_000, adjudicado=15_000
+    )
+    resolve(db)
+
+    ref = baja_de_referencia()
+    assert ref["contratos"] == 1
+    assert ref["baja_media_pct"] == 25.0
+
+
+def test_bajas_sin_lote_sigue_usando_presupuesto_del_expediente(db):
+    """Compatibilidad: una adjudicación sin lote_id (el caso de siempre) no
+    cambia de comportamiento."""
+    from services.competitive.bajas import bajas_agregadas
+
+    insert_contract(db, "LB-03", "Sin Lote SL", importe=100_000, adjudicado=80_000)
+    resolve(db)
+
+    items = bajas_agregadas(group_by="empresa", min_contratos=1)
+    assert len(items) == 1
+    assert items[0]["baja_media_pct"] == 20.0
+
+
+# ---------------------------------------------------------------------------
 # Mercado: cuota y HHI
 # ---------------------------------------------------------------------------
 
@@ -571,6 +660,57 @@ def test_perfil_empresa(db):
     assert len(perfil["por_ccaa"]) == 2
     assert len(perfil["contratos_recientes"]) == 2
     assert perfil["contratos_recientes"][0]["licitacion_id"] == "M-21"
+
+
+def test_perfil_empresa_incluye_participaciones_ute_sin_duplicar_totales(db):
+    """Corrección del diagnóstico original de UTE (docs/IMPROVEMENT_BACKLOG.md):
+    CODICE publica la UTE como un único WinningParty con nombre compuesto, y
+    entity_resolution.py ya crea una empresa UTE propia (es_ute=1) con sus
+    miembros en ute_miembros -- el dinero NO se cuenta dos veces. El gap real
+    era que el dossier de un miembro no mostraba esa participación en
+    absoluto. Este test fija ambas mitades: los 180k de la UTE no entran en
+    los totales propios de Alfa (ya se cuentan bajo la UTE en
+    cuota_mercado()), pero sí aparecen en participaciones_ute."""
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+
+    insert_contract(
+        db, "UTE-01", "UTE Empresa Alfa - Empresa Beta", importe=200_000, adjudicado=180_000
+    )
+    insert_contract(db, "SOLO-01", "Empresa Alfa", importe=100_000, adjudicado=90_000)
+    resolve(db)
+
+    with connect_read() as c:
+        alfa_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nombre_canonico = 'EMPRESA ALFA'"
+        ).fetchone()[0]
+
+    perfil = perfil_empresa(alfa_id)
+
+    assert perfil["totales"]["contratos"] == 1
+    assert perfil["totales"]["importe_total"] == pytest.approx(90_000.0)
+
+    assert len(perfil["participaciones_ute"]) == 1
+    participacion = perfil["participaciones_ute"][0]
+    assert participacion["contratos"] == 1
+    assert participacion["importe_total"] == pytest.approx(180_000.0)
+    assert any("BETA" in m.upper() for m in participacion["otros_miembros"])
+
+
+def test_perfil_empresa_sin_ute_devuelve_lista_vacia(db):
+    from db.database import connect_read
+    from services.competitive.mercado import perfil_empresa
+
+    insert_contract(db, "SOLO-02", "Empresa Gamma", nif="B77777777", importe=50_000)
+    resolve(db)
+
+    with connect_read() as c:
+        gamma_id = c.execute(
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B77777777'"
+        ).fetchone()[0]
+
+    perfil = perfil_empresa(gamma_id)
+    assert perfil["participaciones_ute"] == []
 
 
 # ---------------------------------------------------------------------------

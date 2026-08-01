@@ -73,18 +73,14 @@ def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshne
             else None
         )
         observed = within.get(source, [])
-        detected_pct = (
-            round(sum(observed) / len(observed) * 100, 2) if observed else None
-        )
+        detected_pct = round(sum(observed) / len(observed) * 100, 2) if observed else None
         status = str(row.get("status") or "unknown")
-        is_degraded = (
-            status != "success"
-            or lag_hours is None
-            or lag_hours > degraded_after_hours
-        )
+        is_degraded = status != "success" or lag_hours is None or lag_hours > degraded_after_hours
         warning: str | None = None
         if status == "running" and row.get("last_started_at"):
-            warning = "La fuente sigue marcada como ejecutándose; el proceso pudo quedar interrumpido."
+            warning = (
+                "La fuente sigue marcada como ejecutándose; el proceso pudo quedar interrumpido."
+            )
         elif lag_hours is None:
             warning = "Todavía no hay una ingesta exitosa registrada."
         elif lag_hours > degraded_after_hours:

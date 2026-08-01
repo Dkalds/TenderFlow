@@ -179,9 +179,7 @@ def _doc_block(doc: dict[str, Any], keywords: list[str]) -> str:
     for chunk in doc.get("chunks") or []:
         etiqueta = " ".join(str(chunk[k]) for k in ("tipo", "filename") if chunk.get(k))
         location = " ".join(
-            str(chunk[k])
-            for k in ("documento_id", "page_number")
-            if chunk.get(k) is not None
+            str(chunk[k]) for k in ("documento_id", "page_number") if chunk.get(k) is not None
         )
         lines.append(
             f"--- Fragmento de pliego ({etiqueta or 'documento'}"
