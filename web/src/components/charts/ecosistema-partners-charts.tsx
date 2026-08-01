@@ -27,7 +27,7 @@ export function GanadoresCountBarChart({ data }: { data: WinnerEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(350, data.length * 30)}>
-        <BarChart
+        <BarChart accessibilityLayer
           data={data}
           layout="vertical"
           margin={{ left: 180 }}
@@ -53,7 +53,7 @@ export function GanadoresImporteBarChart({ data }: { data: WinnerEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(350, data.length * 30)}>
-        <BarChart
+        <BarChart accessibilityLayer
           data={data}
           layout="vertical"
           margin={{ left: 180 }}

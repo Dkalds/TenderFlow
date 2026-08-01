@@ -120,7 +120,7 @@ export const SECTIONS: NavSection[] = [
       {
         label: "Radar",
         slug: "radar",
-        description: "Señales recientes priorizadas para decidir qué seguir o abrir.",
+        description: "Señales recientes del mercado, ordenadas por afinidad.",
         icon: RadioTower,
         usesGlobalFilters: false,
       },
@@ -149,7 +149,7 @@ export const SECTIONS: NavSection[] = [
         label: "Resumen",
         slug: "resumen",
         description:
-          "Top licitaciones, distribucion por estado y salud competitiva del mercado.",
+          "Top licitaciones, distribución por estado y salud competitiva del mercado.",
         icon: LayoutDashboard,
       },
     ],
@@ -163,7 +163,7 @@ export const SECTIONS: NavSection[] = [
         label: "Detalle",
         slug: "detalle",
         description:
-          "Tabla completa con todos los campos y exportacion a Excel/CSV.",
+          "Tabla completa con todos los campos y exportación a Excel/CSV.",
         icon: Search,
       },
     ],
@@ -177,20 +177,20 @@ export const SECTIONS: NavSection[] = [
         label: "Tendencias",
         slug: "tendencias",
         description:
-          "Evolucion mensual de publicaciones e importes, heatmap y distribucion.",
+          "Evolución mensual de publicaciones e importes, heatmap y distribución.",
         icon: TrendingUp,
       },
       {
         label: "Tendencias CPV",
         slug: "tendencias-cpv",
         description:
-          "Serie temporal de importes por CPV con prediccion ARIMA.",
+          "Serie temporal de importes por CPV con predicción ARIMA.",
         icon: BarChart3,
       },
       {
         label: "Calendario",
         slug: "calendario",
-        description: "Heatmap de publicaciones por semana/dia del anio.",
+        description: "Heatmap de publicaciones por semana y día del año.",
         icon: Calendar,
       },
     ],
@@ -201,38 +201,38 @@ export const SECTIONS: NavSection[] = [
     icon: Globe,
     pages: [
       {
-        label: "Organos",
+        label: "Órganos",
         slug: "organos",
         description:
-          "Ranking de organos contratantes, treemap y analisis de pipeline individual.",
+          "Ranking de órganos contratantes, treemap y análisis de pipeline individual.",
         icon: Building2,
       },
       {
-        label: "Geografia",
+        label: "Geografía",
         slug: "geografia",
         description:
-          "Distribucion geografica por comunidad autonoma e importe acumulado.",
+          "Distribución geográfica por comunidad autónoma e importe acumulado.",
         icon: Map,
       },
       {
-        label: "Tecnologias",
+        label: "Tecnologías",
         slug: "tecnologias",
         description:
-          "Distribucion, evolucion y cruces por tecnologia detectada (SAP, Oracle, Salesforce...).",
+          "Distribución, evolución y cruces por tecnología detectada (SAP, Oracle, Salesforce…).",
         icon: Wrench,
       },
       {
-        label: "Proyectos & Modulos",
+        label: "Proyectos y Módulos",
         slug: "proyectos-modulos",
         description:
-          "Desglose por tipo de proyecto y modulo SAP detectado.",
+          "Desglose por tipo de proyecto y módulo SAP detectado.",
         icon: Puzzle,
       },
       {
         label: "Clusters",
         slug: "clusters",
         description:
-          "Agrupaciones semanticas de licitaciones para detectar patrones y nichos de mercado.",
+          "Agrupaciones semánticas de licitaciones para detectar patrones y nichos de mercado.",
         icon: Target,
       },
     ],
@@ -246,14 +246,14 @@ export const SECTIONS: NavSection[] = [
         label: "Competidores",
         slug: "competidores",
         description:
-          "Empresas adjudicatarias, cuota de mercado y analisis comparativo.",
+          "Empresas adjudicatarias, cuota de mercado y análisis comparativo.",
         icon: Trophy,
       },
       {
         label: "Empresas",
         slug: "empresas",
         description:
-          "Maestro de empresas canonicas: buscador, perfil competitivo, aliases y vigilancia.",
+          "Maestro de empresas canónicas: buscador, perfil competitivo, alias y vigilancia.",
         icon: Briefcase,
         usesGlobalFilters: false,
       },
@@ -261,7 +261,7 @@ export const SECTIONS: NavSection[] = [
         label: "UTEs",
         slug: "utes",
         description:
-          "Analisis de Uniones Temporales de Empresas: alianzas, estructura y contratos ganados.",
+          "Análisis de Uniones Temporales de Empresas: alianzas, estructura y contratos ganados.",
         icon: Handshake,
       },
     ],
@@ -279,10 +279,10 @@ export const SECTIONS: NavSection[] = [
         icon: Network,
       },
       {
-        label: "Red Organo-Empresa",
+        label: "Red Órgano-Empresa",
         slug: "red-organo-empresa",
         description:
-          "Grafo bipartito de relaciones contractuales entre organos contratantes y empresas.",
+          "Grafo bipartito de relaciones contractuales entre órganos contratantes y empresas.",
         icon: Link2,
       },
     ],
@@ -302,7 +302,7 @@ export const SECTIONS: NavSection[] = [
         label: "Renovaciones",
         slug: "renovaciones",
         description:
-          "Contratos que vencen proximamente: cartera en juego por empresa y pipeline comercial.",
+          "Contratos que vencen próximamente: cartera en juego por empresa y pipeline comercial.",
         icon: CalendarClock,
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia"],
@@ -334,7 +334,7 @@ export const SECTIONS: NavSection[] = [
         label: "Investigador",
         slug: "investigador",
         description:
-          "Busqueda semantica RAG sobre el corpus de licitaciones.",
+          "Búsqueda semántica RAG sobre el corpus de licitaciones.",
         icon: Search,
       },
     ],
@@ -347,7 +347,7 @@ export const SECTIONS: NavSection[] = [
         label: "Observabilidad",
         slug: "observabilidad",
         description:
-          "Metricas de rendimiento, logs de scraping y estado del pipeline.",
+          "Métricas de rendimiento, logs de scraping y estado del pipeline.",
         icon: BarChart3,
         usesGlobalFilters: false,
       },
@@ -367,10 +367,10 @@ export const SECTIONS: NavSection[] = [
     adminOnly: true,
     pages: [
       {
-        label: "Administracion",
+        label: "Administración",
         slug: "administracion",
         description:
-          "Gestion de DLQ, usuarios y API Keys. Solo accesible para administradores.",
+          "Gestión de DLQ, usuarios y API keys. Solo accesible para administradores.",
         icon: Settings,
         usesGlobalFilters: false,
       },
@@ -378,7 +378,7 @@ export const SECTIONS: NavSection[] = [
         label: "Feature Flags",
         slug: "feature-flags",
         description:
-          "Activar/desactivar funcionalidades en tiempo real con rollout gradual.",
+          "Activar y desactivar funcionalidades en tiempo real con despliegue gradual.",
         icon: Flag,
         usesGlobalFilters: false,
       },
@@ -386,7 +386,7 @@ export const SECTIONS: NavSection[] = [
         label: "Active Learning",
         slug: "active-learning",
         description:
-          "Etiquetado humano de licitaciones en zona de incertidumbre del modelo ML.",
+          "Etiquetado humano de licitaciones en la zona de incertidumbre del modelo.",
         icon: GraduationCap,
         usesGlobalFilters: false,
       },

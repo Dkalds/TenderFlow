@@ -19,6 +19,7 @@ import { useFilterParams, useFilters } from "@/lib/filters";
 import { pageGlobalFilterKeys, pathUsesGlobalFilters } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
+import { useAnnounceOnChange } from "@/components/live-region";
 
 interface MetaFilters {
   estado: string[];
@@ -43,11 +44,11 @@ interface DatePreset {
 }
 
 const DATE_PRESETS: DatePreset[] = [
-  { label: "Ultimos 7 dias", desde: () => toIsoDate(new Date(Date.now() - 7 * 86400000)), hasta: () => toIsoDate(new Date()) },
-  { label: "Ultimos 30 dias", desde: () => toIsoDate(new Date(Date.now() - 30 * 86400000)), hasta: () => toIsoDate(new Date()) },
-  { label: "Ultimos 90 dias", desde: () => toIsoDate(new Date(Date.now() - 90 * 86400000)), hasta: () => toIsoDate(new Date()) },
-  { label: "Este anio (YTD)", desde: () => `${new Date().getFullYear()}-01-01`, hasta: () => toIsoDate(new Date()) },
-  { label: "Ultimos 12 meses", desde: () => toIsoDate(new Date(Date.now() - 365 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 7 días", desde: () => toIsoDate(new Date(Date.now() - 7 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 30 días", desde: () => toIsoDate(new Date(Date.now() - 30 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 90 días", desde: () => toIsoDate(new Date(Date.now() - 90 * 86400000)), hasta: () => toIsoDate(new Date()) },
+  { label: "Este año (YTD)", desde: () => `${new Date().getFullYear()}-01-01`, hasta: () => toIsoDate(new Date()) },
+  { label: "Últimos 12 meses", desde: () => toIsoDate(new Date(Date.now() - 365 * 86400000)), hasta: () => toIsoDate(new Date()) },
   { label: "Todo", desde: () => null, hasta: () => null },
 ];
 
@@ -112,6 +113,17 @@ export function GlobalFilterBar() {
   const filters = useFilters();
   const filterParams = useFilterParams();
   const activeCount = Object.keys(filterParams).length;
+
+  // Aplicar o quitar un filtro repinta la página entera sin decir nada a un
+  // lector de pantalla. El recuento de resultados lo anuncia cada tabla; esto
+  // anuncia el cambio de criterio, que es lo que el usuario acaba de hacer.
+  useAnnounceOnChange(
+    filtersApply
+      ? activeCount === 0
+        ? "Sin filtros activos"
+        : `${activeCount} ${activeCount === 1 ? "filtro activo" : "filtros activos"}`
+      : null,
+  );
   const { history, addToHistory } = useSearchHistory();
   const { data: meta } = useQuery<MetaFilters>({
     queryKey: ["meta-filters"],
@@ -197,7 +209,7 @@ export function GlobalFilterBar() {
         data-search-input
         aria-label="Buscar licitaciones"
         inputClassName="h-9 rounded-md bg-background/70 pl-9 text-xs"
-        placeholder="Buscar licitaciones, organos, empresas..."
+        placeholder="Buscar licitaciones, órganos, empresas…"
         value={filters.q}
         onChange={filters.setQ}
         onSubmit={addToHistory}
@@ -234,7 +246,7 @@ export function GlobalFilterBar() {
       )}
 
       {shows("fecha") && (
-      <PresetMenu icon={<Calendar className="h-3.5 w-3.5 text-primary" />} label="Rangos de fecha rapidos">
+      <PresetMenu icon={<Calendar className="h-3.5 w-3.5 text-primary" />} label="Rangos de fecha rápidos">
         {DATE_PRESETS.map((preset) => (
           <DropdownMenuItem
             key={preset.label}
@@ -250,7 +262,7 @@ export function GlobalFilterBar() {
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Map className="h-3.5 w-3.5 text-primary" />
         <select
-          aria-label="Filtrar por CCAA"
+          aria-label="Filtrar por comunidad autónoma"
           className="max-w-36 bg-inherit text-foreground outline-none"
           value=""
           onChange={(event) => addUnique(event.target.value, filters.ccaas, filters.setCcaas)}
@@ -265,12 +277,12 @@ export function GlobalFilterBar() {
       <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-3 text-xs text-muted-foreground">
         <Cpu className="h-3.5 w-3.5 text-primary" />
         <select
-          aria-label="Filtrar por tecnologia"
+          aria-label="Filtrar por tecnología"
           className="max-w-40 bg-inherit text-foreground outline-none"
           value=""
           onChange={(event) => addUnique(event.target.value, filters.tecnologias, filters.setTecnologias)}
         >
-          <option value="">Tecnologia</option>
+          <option value="">Tecnología</option>
           {(meta?.tecnologia ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
       </label>
@@ -293,17 +305,17 @@ export function GlobalFilterBar() {
 
       {shows("importe") && (
       <Input
-        aria-label="Importe minimo"
+        aria-label="Importe mínimo"
         type="number"
         className="h-9 w-32 rounded-md bg-background/70 text-xs"
-        placeholder="Importe min."
+        placeholder="Importe mín."
         value={importeInput}
         onChange={(event) => setImporteInput(event.target.value ? Number(event.target.value) : "")}
       />
       )}
 
       {shows("importe") && (
-      <PresetMenu icon={<span className="text-xs font-semibold text-primary">€</span>} label="Presets de importe minimo">
+      <PresetMenu icon={<span className="text-xs font-semibold text-primary">€</span>} label="Atajos de importe mínimo">
         {IMPORTE_PRESETS.map((preset) => (
           <DropdownMenuItem key={preset.label} onSelect={() => filters.setImporteMin(preset.value)}>
             {preset.label}

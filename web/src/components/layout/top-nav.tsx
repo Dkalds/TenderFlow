@@ -92,10 +92,10 @@ export function TopNav() {
             className="md:hidden"
             onClick={() => (mobileOpen ? setMobileOpen(false) : openMobileNav())}
             aria-expanded={mobileOpen}
-            aria-label={mobileOpen ? "Cerrar menu" : "Abrir menu"}
+            aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
           >
             <Menu className="h-5 w-5" />
-            <span className="sr-only">Menu</span>
+            <span className="sr-only">Menú</span>
           </Button>
 
           {/* Logo / Title for mobile, full brand lives in sidebar on desktop */}
@@ -106,17 +106,17 @@ export function TopNav() {
             <TenderFlowLogo boxSize={32} />
           </Link>
 
-          {/* La busqueda unica vive en la barra de filtros (por pagina) y en
-              la command palette; este boton solo abre la paleta — evita dos
+          {/* La búsqueda única vive en la barra de filtros (por página) y en
+              la command palette; este botón solo abre la paleta — evita dos
               buscadores ligados al mismo `q` visibles a la vez. */}
           <button
             type="button"
             onClick={() => setCommandOpen(true)}
-            aria-label="Abrir busqueda y comandos"
+            aria-label="Abrir búsqueda y comandos"
             className="hidden min-w-72 max-w-xl flex-1 items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-3 h-9 text-sm text-muted-foreground transition-colors hover:border-border hover:text-foreground md:flex"
           >
             <Search className="h-4 w-4 shrink-0" />
-            <span className="flex-1 text-left truncate">Buscar licitaciones, organos, empresas...</span>
+            <span className="flex-1 text-left truncate">Buscar licitaciones, órganos, empresas…</span>
             <span className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
               Ctrl K
             </span>
@@ -158,10 +158,10 @@ export function TopNav() {
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={toggleCompact}>
                   {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
-                  <span className="sr-only">Toggle density</span>
+                  <span className="sr-only">Cambiar densidad</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{compact ? "Normal density" : "Compact density"}</TooltipContent>
+              <TooltipContent>{compact ? "Densidad normal" : "Densidad compacta"}</TooltipContent>
             </Tooltip>
 
             {/* Theme toggle */}
@@ -171,10 +171,10 @@ export function TopNav() {
                 <Button variant="ghost" size="icon" onClick={toggleTheme}>
                   <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
                   <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
-                  <span className="sr-only">Toggle theme</span>
+                  <span className="sr-only">Cambiar tema</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{theme === "dark" ? "Light mode" : "Dark mode"}</TooltipContent>
+              <TooltipContent>{theme === "dark" ? "Modo claro" : "Modo oscuro"}</TooltipContent>
             </Tooltip>
 
             {/* User menu */}

@@ -33,7 +33,7 @@ describe("Breadcrumb", () => {
     render(<Breadcrumb />);
 
     expect(screen.getAllByText("Mercado")).toHaveLength(1);
-    expect(screen.getByText("Organos")).toBeInTheDocument();
+    expect(screen.getByText("Órganos")).toBeInTheDocument();
   });
 
   it("does not label Admin pages as Mercado", () => {
@@ -44,7 +44,7 @@ describe("Breadcrumb", () => {
     render(<Breadcrumb />);
 
     expect(screen.queryByRole("link", { name: "Mercado" })).not.toBeInTheDocument();
-    expect(screen.getByText("Administracion")).toBeInTheDocument();
+    expect(screen.getByText("Administración")).toBeInTheDocument();
   });
 
   it("does not label Ops pages as Mercado", () => {

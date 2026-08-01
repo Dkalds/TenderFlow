@@ -38,7 +38,7 @@ export function PipelineUrgencyScatter({
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={300}>
-        <ScatterChart margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+        <ScatterChart accessibilityLayer margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis type="number" dataKey="dias_restantes" name="Dias restantes" tick={{ fontSize: 11 }} />
           <YAxis

@@ -65,30 +65,30 @@ describe("TopNav", () => {
     renderNav();
     expect(screen.getByRole("banner")).toBeInTheDocument();
     expect(screen.getByTestId("bell")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Toggle density/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cambiar densidad/ })).toBeInTheDocument();
   });
 
   it("toggles the theme when the theme button is clicked", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Toggle theme/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Cambiar tema/ }));
     expect(setTheme).toHaveBeenCalledWith("dark");
   });
 
   it("opens the command palette from the search button (single search entry point)", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir busqueda y comandos/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir búsqueda y comandos/ }));
     expect(setCommandOpen).toHaveBeenCalledWith(true);
   });
 
   it("opens the mobile navigation drawer", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     expect(screen.getByRole("dialog", { name: /Menú de navegación/ })).toBeInTheDocument();
   });
 
   it("auto-expands the section containing the active page", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     // pathname is stubbed to "/resumen", which lives in "Inicio".
     const sectionToggle = screen.getByRole("button", { name: /Inicio/ });
     expect(sectionToggle).toHaveAttribute("aria-expanded", "true");
@@ -97,13 +97,13 @@ describe("TopNav", () => {
 
   it("expands and collapses a non-active section without navigating", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     const mercadoToggle = screen.getByRole("button", { name: /Mercado/ });
     expect(mercadoToggle).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(mercadoToggle);
     expect(mercadoToggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("link", { name: /Organos/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Órganos/ })).toBeInTheDocument();
     // The drawer must stay open after expanding a section.
     expect(screen.getByRole("dialog", { name: /Menú de navegación/ })).toBeInTheDocument();
 
@@ -113,7 +113,7 @@ describe("TopNav", () => {
 
   it("closes the mobile drawer when a child page link is clicked", () => {
     renderNav();
-    fireEvent.click(screen.getByRole("button", { name: /Abrir menu/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Abrir menú/ }));
     fireEvent.click(screen.getByRole("link", { name: /Resumen/ }));
     expect(screen.queryByRole("dialog", { name: /Menú de navegación/ })).not.toBeInTheDocument();
   });

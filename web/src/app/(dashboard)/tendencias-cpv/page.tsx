@@ -217,7 +217,7 @@ export default function TendenciasCpvPage() {
           ) : chartData.length > 0 ? (
             <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={chartData}>
+              <LineChart accessibilityLayer data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
@@ -267,7 +267,7 @@ export default function TendenciasCpvPage() {
             ) : forecastData.length > 0 ? (
               <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={forecastData}>
+                <AreaChart accessibilityLayer data={forecastData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="mes" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
                   <YAxis tick={{ fontSize: 12 }} />
@@ -298,7 +298,7 @@ export default function TendenciasCpvPage() {
           ) : topCpvs.length > 0 ? (
             <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={Math.max(300, topCpvs.length * 30)}>
-              <BarChart data={topCpvs} layout="vertical">
+              <BarChart accessibilityLayer data={topCpvs} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <YAxis dataKey="cpv" type="category" tick={{ fontSize: 12 }} width={140} />
                 <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />

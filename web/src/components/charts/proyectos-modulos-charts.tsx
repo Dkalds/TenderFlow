@@ -53,7 +53,7 @@ export function ModulosBarChart({ data }: { data: ModuloBarEntry[] }) {
         width="100%"
         height={Math.max(300, data.length * 30)}
       >
-        <BarChart
+        <BarChart accessibilityLayer
           data={data}
           layout="vertical"
           margin={{ left: 80 }}
@@ -169,7 +169,7 @@ export function TipoEstadoStackedChart({
         width="100%"
         height={Math.max(320, data.length * 42)}
       >
-        <BarChart data={data} layout="vertical" margin={{ left: 120 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 120 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis type="number" tick={{ fontSize: 11 }} />
           <YAxis dataKey="tipo" type="category" width={110} tick={{ fontSize: 11 }} />

@@ -19,7 +19,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { useAnnounceOnChange } from "@/components/live-region";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -28,6 +29,12 @@ interface DataTableProps<TData, TValue> {
   emptyMessage?: string;
   getRowClassName?: (row: Row<TData>) => string | undefined;
   className?: string;
+  /**
+   * Cómo nombrar las filas al anunciar el recuento ("licitaciones", "empresas").
+   * Con `null` la tabla no anuncia: útil cuando la página ya anuncia su propio
+   * recuento y dos mensajes se pisarían.
+   */
+  rowNoun?: string | null;
 }
 
 export function DataTable<TData, TValue>({
@@ -37,8 +44,19 @@ export function DataTable<TData, TValue>({
   emptyMessage = "Sin datos disponibles",
   getRowClassName,
   className,
+  rowNoun = "resultados",
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting);
+
+  // El salto de 4.000 filas a 12 tras filtrar era invisible sin lector: la tabla
+  // se redibujaba en silencio. Sólo se anuncia el cambio, no el montaje.
+  useAnnounceOnChange(
+    rowNoun === null
+      ? null
+      : data.length === 0
+        ? emptyMessage
+        : `${formatNumber(data.length)} ${rowNoun}`,
+  );
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({

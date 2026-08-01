@@ -68,7 +68,7 @@ export function OrganosRankingChart({
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(400, data.length * 28)}>
-        <BarChart data={data} layout="vertical" margin={{ left: 200 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 200 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             type="number"
@@ -124,7 +124,7 @@ export function OrganosAdjudicatariosChart({ data }: { data: AdjudicatarioEntry[
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data.slice(0, 10).reverse()} layout="vertical" margin={{ left: 120 }}>
+        <BarChart accessibilityLayer data={data.slice(0, 10).reverse()} layout="vertical" margin={{ left: 120 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatCurrency(v)} />
           <YAxis
@@ -151,7 +151,7 @@ export function OrganosEstacionalidadChart({ data }: { data: EstacionalidadEntry
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={data}>
+        <BarChart accessibilityLayer data={data}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="mes_numero"

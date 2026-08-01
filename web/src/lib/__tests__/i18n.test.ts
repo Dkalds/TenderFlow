@@ -101,7 +101,7 @@ describe("setLocale / getLocale (deprecated)", () => {
 
 describe("t()", () => {
   it("returns Spanish translation when locale is 'es'", () => {
-    expect(t("common.loading")).toBe("Cargando...");
+    expect(t("common.loading")).toBe("Cargando…");
   });
 
   it("returns English translation after setLocale('en')", () => {
@@ -126,7 +126,7 @@ describe("t()", () => {
     // using a custom template. Here we verify no crash on a real key with vars
     // that has no placeholders (vars are simply ignored).
     const result = t("common.loading", { count: "5" });
-    expect(result).toBe("Cargando...");
+    expect(result).toBe("Cargando…");
   });
 
   it("returns all known es keys correctly", () => {
@@ -135,7 +135,7 @@ describe("t()", () => {
       ["common.search", "Buscar"],
       ["common.filter", "Filtrar"],
       ["common.export", "Exportar"],
-      ["auth.login", "Iniciar sesion"],
+      ["auth.login", "Iniciar sesión"],
       ["app.title", "TenderFlow"],
     ];
     for (const [key, expected] of cases) {
@@ -165,7 +165,7 @@ describe("t()", () => {
 describe("tWithLocale()", () => {
   it("translates with explicit 'es' locale regardless of store", () => {
     setLocale("en"); // store is 'en' but we pass 'es'
-    expect(tWithLocale("es" as Locale, "common.loading")).toBe("Cargando...");
+    expect(tWithLocale("es" as Locale, "common.loading")).toBe("Cargando…");
   });
 
   it("translates with explicit 'en' locale regardless of store", () => {
