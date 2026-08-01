@@ -6,6 +6,16 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Marcador único de "sin dato" para todos los formateadores.
+ *
+ * Era `"-"` (guion) aquí y `"—"` (raya) en los cuatro formateadores locales que
+ * duplicaban estas funciones, así que la misma condición se dibujaba de dos
+ * formas distintas según la pantalla. La raya es la convención tipográfica para
+ * un valor ausente en una tabla; el guion es un signo menos.
+ */
+export const EMPTY = "—";
+
+/**
  * Format a number as currency (EUR by default).
  */
 export function formatCurrency(
@@ -13,12 +23,39 @@ export function formatCurrency(
   locale = "es-ES",
   currency = "EUR",
 ): string {
-  if (value == null) return "-";
+  if (value == null) return EMPTY;
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
+  }).format(value);
+}
+
+/**
+ * Format a currency value compactly, for KPI chrome where the full figure
+ * doesn't fit (`1,2 M €` instead of `1.234.567 €`).
+ *
+ * Delegates the abbreviation to `Intl` on purpose. A hand-rolled version used
+ * to divide by 1e9 and append `"B €"`, which reads as *billón* (10¹²) to a
+ * Spanish speaker — the KPI claimed a figure a thousand times the real one.
+ * It also mixed separators: `.toFixed(1)` emits a decimal point in the same
+ * bar where `formatNumber` emits points as thousands separators.
+ */
+export function formatCompactCurrency(
+  value: number | null | undefined,
+  locale = "es-ES",
+  currency = "EUR",
+): string {
+  if (value == null) return EMPTY;
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+    // Sin este mínimo explícito, `compact` fija también el mínimo en 1 y saca
+    // "2500,0 M €" / "0,0 €" — un decimal que no aporta a una cifra abreviada.
+    minimumFractionDigits: 0,
   }).format(value);
 }
 
@@ -29,7 +66,7 @@ export function formatNumber(
   value: number | null | undefined,
   locale = "es-ES",
 ): string {
-  if (value == null) return "-";
+  if (value == null) return EMPTY;
   return new Intl.NumberFormat(locale).format(value);
 }
 
@@ -40,7 +77,7 @@ export function formatPercent(
   value: number | null | undefined,
   decimals = 1,
 ): string {
-  if (value == null) return "-";
+  if (value == null) return EMPTY;
   return `${value.toFixed(decimals)}%`;
 }
 
@@ -59,7 +96,7 @@ export function formatDate(
   date: string | Date | null | undefined,
   locale = "es-ES",
 ): string {
-  if (!date) return "-";
+  if (!date) return EMPTY;
   let d: Date;
   if (typeof date === "string") {
     // Handle DD/MM/YYYY or DD-MM-YYYY (legacy CODICE format)
@@ -72,7 +109,7 @@ export function formatDate(
   } else {
     d = date;
   }
-  if (isNaN(d.getTime())) return date?.toString() ?? "-";
+  if (isNaN(d.getTime())) return date?.toString() ?? EMPTY;
   return d.toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
@@ -81,11 +118,46 @@ export function formatDate(
 }
 
 /**
+ * Format a past instant as relative time ("hace 3 h", "hace 2 días").
+ *
+ * `Intl.RelativeTimeFormat` instead of a hand-rolled ladder: it declines the
+ * unit and picks "ayer"/"ahora" via `numeric: "auto"`. Two hand-rolled copies
+ * used to live in `top-nav.tsx` and `sidebar.tsx` and could disagree on the
+ * same instant.
+ */
+export function formatRelativeTime(
+  date: string | Date | null | undefined,
+  locale = "es-ES",
+): string {
+  if (!date) return EMPTY;
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return EMPTY;
+  return formatRelativeHours((Date.now() - d.getTime()) / 3_600_000, locale);
+}
+
+/**
+ * Same output as `formatRelativeTime`, for endpoints that already report an
+ * age in hours instead of a timestamp (`analytics/quality.last_scrape_hours_ago`).
+ */
+export function formatRelativeHours(
+  hoursAgo: number | null | undefined,
+  locale = "es-ES",
+): string {
+  if (hoursAgo == null || !Number.isFinite(hoursAgo)) return EMPTY;
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const minutes = Math.round(hoursAgo * 60);
+  if (minutes < 1) return rtf.format(0, "minute");
+  if (minutes < 60) return rtf.format(-minutes, "minute");
+  if (hoursAgo < 24) return rtf.format(-Math.round(hoursAgo), "hour");
+  return rtf.format(-Math.round(hoursAgo / 24), "day");
+}
+
+/**
  * Truncate text with ellipsis.
  */
 export function truncate(text: string | null | undefined, max = 80): string {
   if (!text) return "";
-  return text.length > max ? `${text.slice(0, max)}...` : text;
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 /**

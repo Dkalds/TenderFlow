@@ -47,7 +47,7 @@ export function GeografiaBarChart({
         width="100%"
         height={Math.max(300, data.length * 30)}
       >
-        <BarChart
+        <BarChart accessibilityLayer
           data={data}
           layout="vertical"
           margin={{ left: 120 }}

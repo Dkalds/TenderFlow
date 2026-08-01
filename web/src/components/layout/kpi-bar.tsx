@@ -16,7 +16,7 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScrolledPast } from "@/hooks/use-scrolled-past";
 import { useFilterParams } from "@/lib/filters";
 import { pathUsesGlobalFilters } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
+import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export interface KpiItem {
@@ -33,17 +33,6 @@ interface KpiBarProps {
   filtered?: boolean;
   /** Colapsa visualmente la barra (scroll hacia abajo) sin desmontarla. */
   collapsed?: boolean;
-}
-
-function formatCurrency(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B €`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M €`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K €`;
-  return `${n.toFixed(0)} €`;
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString("es-ES");
 }
 
 interface OverviewData {
@@ -79,7 +68,7 @@ export function KpiBarConnected() {
         },
         {
           label: "Importe",
-          value: formatCurrency(data.importe_total),
+          value: formatCompactCurrency(data.importe_total),
           icon: DollarSign,
         },
         {

@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { PursuitDecision, PursuitOutcome, PursuitStatus } from "@/hooks/use-pursuits";
+import { formatCurrency, formatDate as formatDateBase } from "@/lib/utils";
 
 const statusCopy: Record<PursuitStatus, string> = {
   identified: "Identificada",
@@ -29,20 +30,17 @@ export function statusLabel(status: PursuitStatus): string {
   return statusCopy[status];
 }
 
-export function formatEur(value: number | null | undefined): string {
-  if (value == null) return "—";
-  return new Intl.NumberFormat("es-ES", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+/** Alias de dominio sobre el formateador único (`lib/utils.ts`). */
+export const formatEur = formatCurrency;
 
+/**
+ * Igual que `formatDate` de `lib/utils.ts`, pero con el copy de dominio para el
+ * caso vacío: aquí la fecha es siempre un plazo de presentación, así que "Sin
+ * fecha límite" dice más que la raya genérica.
+ */
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "Sin fecha límite";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-ES", { dateStyle: "medium" }).format(date);
+  return formatDateBase(value);
 }
 
 export function daysUntil(value: string | null | undefined): string | null {

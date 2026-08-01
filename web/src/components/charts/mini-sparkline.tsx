@@ -25,7 +25,10 @@ export const MiniSparkline = React.memo(function MiniSparkline({
   const color = up ? "hsl(var(--success))" : "hsl(var(--destructive))";
 
   return (
-    <div className={className} style={{ width, height }}>
+    // Decorativo, no informativo: acompaña a un KPI cuyo valor y tendencia ya se
+    // renderizan como texto. Darle `accessibilityLayer` añadiría una parada de
+    // teclado que no aporta ningún dato nuevo.
+    <div className={className} style={{ width, height }} aria-hidden="true">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 1, right: 1, bottom: 1, left: 1 }}>
           <YAxis domain={["dataMin", "dataMax"]} hide />

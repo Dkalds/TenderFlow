@@ -183,7 +183,7 @@ export default function UtesPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : data?.top_miembros && data.top_miembros.length > 0 ? (
               <ResponsiveContainer width="100%" height={Math.max(300, data.top_miembros.length * 32)}>
-                <BarChart
+                <BarChart accessibilityLayer
                   data={data.top_miembros}
                   layout="vertical"
                   margin={{ left: 180 }}
@@ -217,7 +217,7 @@ export default function UtesPage() {
               <Skeleton className="h-[400px] w-full" />
             ) : data?.evolucion && data.evolucion.length > 0 ? (
               <ResponsiveContainer width="100%" height={400}>
-                <ComposedChart data={data.evolucion} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <ComposedChart accessibilityLayer data={data.evolucion} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="periodo" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
@@ -312,7 +312,7 @@ export default function UtesPage() {
             ) : memberDistribution.length > 0 ? (
               <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={memberDistribution} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <BarChart accessibilityLayer data={memberDistribution} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="rango" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
@@ -338,7 +338,7 @@ export default function UtesPage() {
             ) : topMiembrosByImporte.length > 0 ? (
               <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={Math.max(300, topMiembrosByImporte.length * 28)}>
-                <BarChart
+                <BarChart accessibilityLayer
                   data={topMiembrosByImporte}
                   layout="vertical"
                   margin={{ left: 180 }}

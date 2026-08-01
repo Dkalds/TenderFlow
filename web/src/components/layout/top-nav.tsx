@@ -19,7 +19,7 @@ import {
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { SECTIONS } from "@/lib/navigation";
 import { t } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,21 +33,11 @@ import { NotificationBell } from "@/components/notification-bell";
 import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
+import { useDataFreshness } from "@/hooks/use-data-freshness";
 import { useWithFilters } from "@/lib/filters";
 import { useUiStore } from "@/lib/ui-store";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
-
-function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "ahora";
-  if (mins < 60) return `hace ${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `hace ${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `hace ${days}d`;
-}
 
 export function TopNav() {
   const pathname = usePathname();
@@ -72,23 +62,10 @@ export function TopNav() {
 
   React.useEffect(() => { initDensity(); }, []);
 
-  const [lastExtraction, setLastExtraction] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    const fetchLastExtraction = async () => {
-      try {
-        const res = await fetch("/api/v1/meta/last-extraction", { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json();
-          setLastExtraction(data.last_extraction ?? null);
-        }
-      } catch (err) {
-        reportError("TopNav.lastExtraction", err);
-      }
-    };
-    fetchLastExtraction();
-    const id = setInterval(fetchLastExtraction, 5 * 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // Frescura del dato: un solo hook compartido con la sidebar. Antes cada uno
+  // consultaba un endpoint distinto (`meta/last-extraction` aquí,
+  // `analytics/quality` allí) y podían mostrar antigüedades que no cuadraban.
+  const { lastExtraction, relative } = useDataFreshness();
 
   const visibleSections = SECTIONS.filter(
     (s) => !s.adminOnly || isAdmin,
@@ -115,10 +92,10 @@ export function TopNav() {
             className="md:hidden"
             onClick={() => (mobileOpen ? setMobileOpen(false) : openMobileNav())}
             aria-expanded={mobileOpen}
-            aria-label={mobileOpen ? "Cerrar menu" : "Abrir menu"}
+            aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
           >
             <Menu className="h-5 w-5" />
-            <span className="sr-only">Menu</span>
+            <span className="sr-only">Menú</span>
           </Button>
 
           {/* Logo / Title for mobile, full brand lives in sidebar on desktop */}
@@ -129,17 +106,17 @@ export function TopNav() {
             <TenderFlowLogo boxSize={32} />
           </Link>
 
-          {/* La busqueda unica vive en la barra de filtros (por pagina) y en
-              la command palette; este boton solo abre la paleta — evita dos
+          {/* La búsqueda única vive en la barra de filtros (por página) y en
+              la command palette; este botón solo abre la paleta — evita dos
               buscadores ligados al mismo `q` visibles a la vez. */}
           <button
             type="button"
             onClick={() => setCommandOpen(true)}
-            aria-label="Abrir busqueda y comandos"
+            aria-label="Abrir búsqueda y comandos"
             className="hidden min-w-72 max-w-xl flex-1 items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-3 h-9 text-sm text-muted-foreground transition-colors hover:border-border hover:text-foreground md:flex"
           >
             <Search className="h-4 w-4 shrink-0" />
-            <span className="flex-1 text-left truncate">Buscar licitaciones, organos, empresas...</span>
+            <span className="flex-1 text-left truncate">Buscar licitaciones, órganos, empresas…</span>
             <span className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
               Ctrl K
             </span>
@@ -147,20 +124,27 @@ export function TopNav() {
 
           {/* Right side actions */}
           <div className="ml-auto flex items-center gap-1">
+            {/* Indicador de estado, no un control: el instante exacto viaja en
+                el nombre accesible en vez de esconderse tras un `title=` nativo
+                (que no se dispara con teclado) o tras un tooltip colgado de un
+                `<span tabIndex={0}>` que fingiría ser interactivo. */}
             <span className="hidden items-center gap-1.5 rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground lg:inline-flex">
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2 w-2" aria-hidden="true">
                 <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
-              <span>Datos en vivo</span>
-              {lastExtraction && (
+              <span aria-hidden="true">Datos en vivo</span>
+              {relative && (
                 <>
-                  <span className="opacity-40">·</span>
-                  <span className="text-[10px] opacity-60" title={lastExtraction}>
-                    {formatRelativeTime(lastExtraction)}
-                  </span>
+                  <span className="opacity-40" aria-hidden="true">·</span>
+                  <span className="text-[10px] opacity-60" aria-hidden="true">{relative}</span>
                 </>
               )}
+              <span className="sr-only">
+                {lastExtraction
+                  ? `Datos en vivo. Última extracción: ${formatDate(lastExtraction)}.`
+                  : "Datos en vivo. Todavía sin registro de extracción."}
+              </span>
             </span>
 
             {/* Export */}
@@ -174,10 +158,10 @@ export function TopNav() {
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={toggleCompact}>
                   {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
-                  <span className="sr-only">Toggle density</span>
+                  <span className="sr-only">Cambiar densidad</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{compact ? "Normal density" : "Compact density"}</TooltipContent>
+              <TooltipContent>{compact ? "Densidad normal" : "Densidad compacta"}</TooltipContent>
             </Tooltip>
 
             {/* Theme toggle */}
@@ -187,10 +171,10 @@ export function TopNav() {
                 <Button variant="ghost" size="icon" onClick={toggleTheme}>
                   <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
                   <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
-                  <span className="sr-only">Toggle theme</span>
+                  <span className="sr-only">Cambiar tema</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{theme === "dark" ? "Light mode" : "Dark mode"}</TooltipContent>
+              <TooltipContent>{theme === "dark" ? "Modo claro" : "Modo oscuro"}</TooltipContent>
             </Tooltip>
 
             {/* User menu */}
