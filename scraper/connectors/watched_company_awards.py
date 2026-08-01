@@ -183,9 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.bulk:
             year, month = args.bulk
             connector: PlacspWatchedCompanyAwardsConnector = (
-                PlacspWatchedCompanyAwardsBulkConnector(
-                    year, month, watched_nifs, force=args.force
-                )
+                PlacspWatchedCompanyAwardsBulkConnector(year, month, watched_nifs, force=args.force)
             )
         else:
             connector = PlacspWatchedCompanyAwardsConnector(watched_nifs)

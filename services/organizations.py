@@ -126,14 +126,11 @@ def add_member_by_email(
     """
     _, acting_role = resolve_organization(user_id, organization_id)
     if acting_role not in {"owner", "admin"}:
-        raise OrganizationPermissionError(
-            "Solo owner o admin puede gestionar miembros."
-        )
+        raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
     target = get_active_user_by_email_ci(email)
     if target is None:
         raise OrganizationMemberNotFoundError(
-            "No existe una cuenta activa con ese correo. "
-            "La persona debe registrarse primero."
+            "No existe una cuenta activa con ese correo. La persona debe registrarse primero."
         )
     _guard_owner_row(organization_id, int(target["id"]))
     row = _repo.add_membership(

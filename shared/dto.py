@@ -20,7 +20,9 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
 # estricto de pydantic rechaza con `datetime_from_date_parsing`. Todas las
 # columnas de fecha llegan como TEXT desde repositories/*.py (ADR-016/021), así
 # que cualquier `datetime` de este módulo puede recibir ese formato.
-_PG_SHORT_TZ_OFFSET_RE = re.compile(r"^(?P<body>.*\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?P<offset>[+-]\d{2})$")
+_PG_SHORT_TZ_OFFSET_RE = re.compile(
+    r"^(?P<body>.*\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?P<offset>[+-]\d{2})$"
+)
 
 
 def _normalize_pg_datetime(value: Any) -> Any:

@@ -42,7 +42,7 @@ export default function OportunidadesPage() {
 
       {pursuits.error ? (
         <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive">No se pudieron cargar las oportunidades. {(pursuits.error as Error).message}</div>
-      ) : !pursuits.isLoading && (pursuits.data?.items.length ?? 0) === 0 ? (
+      ) : !pursuits.isLoading && (pursuits.data?.items?.length ?? 0) === 0 ? (
         <Card className="border-dashed shadow-none">
           <CardContent className="flex flex-col items-center gap-3 py-14 text-center">
             <BriefcaseBusiness className="h-9 w-9 text-muted-foreground/50" />

@@ -273,9 +273,7 @@ def check_skill_trees() -> None:
         installed = {path.parent.name for path in tree.glob("*/SKILL.md")}
         extras = installed - locked_names
         if tree == AGENTS_SKILLS:
-            extras = {
-                name for name in extras if not name.startswith(AGENTS_SKILL_PREFIX_ALLOWLIST)
-            }
+            extras = {name for name in extras if not name.startswith(AGENTS_SKILL_PREFIX_ALLOWLIST)}
         for name in sorted(extras):
             fail(
                 "skills-lock.json",

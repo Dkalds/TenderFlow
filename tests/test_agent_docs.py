@@ -29,9 +29,7 @@ def _install_locked_skill(root: Path) -> None:
     )
     _write(
         root / "skills-lock.json",
-        json.dumps(
-            {"skills": {"demo": {"verifiedHash": verified_hash, "trust": "community"}}}
-        ),
+        json.dumps({"skills": {"demo": {"verifiedHash": verified_hash, "trust": "community"}}}),
     )
 
 
@@ -129,10 +127,7 @@ class AgentDocsCheckerTests(unittest.TestCase):
         check_agent_docs.check_skill_trees()
 
         self.assertTrue(
-            any(
-                "cambió de contenido sin actualizar" in error
-                for error in check_agent_docs.errors
-            )
+            any("cambió de contenido sin actualizar" in error for error in check_agent_docs.errors)
         )
 
     def test_command_copies_reject_missing_portable_adapter(self) -> None:
@@ -204,9 +199,7 @@ class AgentDocsCheckerTests(unittest.TestCase):
             self.root / "tests/test_integration_e2e.py",
             "import pytest\n\n@pytest.mark.integration\nclass TestLegacy:\n    pass\n",
         )
-        allowlist = frozenset(
-            {("tests/test_integration_e2e.py", "integration", "TestLegacy")}
-        )
+        allowlist = frozenset({("tests/test_integration_e2e.py", "integration", "TestLegacy")})
 
         with patch.object(check_agent_docs, "MANUAL_CATEGORY_MARKER_ALLOWLIST", allowlist):
             check_agent_docs.check_manual_test_markers()

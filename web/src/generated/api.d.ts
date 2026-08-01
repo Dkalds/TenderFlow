@@ -2264,7 +2264,12 @@ export interface paths {
         /** Get Organization Members */
         get: operations["get_organization_members_api_v1_organizations__organization_id__members_get"];
         put?: never;
-        post?: never;
+        /**
+         * Post Organization Member
+         * @description Incorpora por correo a un usuario ya registrado. No crea invitaciones
+         *     para correos sin cuenta: el alta requiere que la persona se registre.
+         */
+        post: operations["post_organization_member_api_v1_organizations__organization_id__members_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4248,6 +4253,23 @@ export interface components {
             name: string;
         };
         /**
+         * OrganizationMemberInvite
+         * @description Alta de un miembro por correo; requiere una cuenta activa existente.
+         */
+        OrganizationMemberInvite: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /**
+             * Role
+             * @default member
+             * @enum {string}
+             */
+            role: "admin" | "member" | "viewer";
+        };
+        /**
          * OrganizationMembershipOut
          * @description Membresía sin datos de autenticación ni credenciales.
          */
@@ -4257,6 +4279,10 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Email */
+            email?: string | null;
             /** Organization Id */
             organization_id: number;
             /**
@@ -10872,6 +10898,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationMembershipOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_organization_member_api_v1_organizations__organization_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationMemberInvite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMembershipOut"];
                 };
             };
             /** @description Validation Error */

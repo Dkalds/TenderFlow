@@ -139,7 +139,7 @@ describe("useRadar", () => {
 
     const { rerender } = renderHook(
       ({ tecnologia }: { tecnologia: string | null }) => useRadar(tecnologia),
-      { wrapper, initialProps: { tecnologia: null } },
+      { wrapper, initialProps: { tecnologia: null as string | null } },
     );
     rerender({ tecnologia: "Cloud" });
 

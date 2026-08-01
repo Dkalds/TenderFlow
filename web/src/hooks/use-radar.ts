@@ -51,8 +51,6 @@ export function useRadar(tecnologia: string | null = null) {
     queryFn: () => fetchWithAuth<ListingResponse>(`/api/v1/licitaciones?${params.toString()}`),
     staleTime: 30_000,
   });
-    staleTime: 30_000,
-  });
 
   const ids = (listing.data?.items ?? []).map((item) => item.id_externo).filter(Boolean);
 

@@ -83,7 +83,9 @@ def main() -> int:
         print("docs/skills-inventory.md al día.")
         return 0
     OUT.write_text(content, encoding="utf-8")
-    print(f"Escrito {OUT.relative_to(ROOT)} ({len(json.loads(LOCK.read_text(encoding='utf-8'))['skills'])} skills).")
+    print(
+        f"Escrito {OUT.relative_to(ROOT)} ({len(json.loads(LOCK.read_text(encoding='utf-8'))['skills'])} skills)."
+    )
     return 0
 
 
