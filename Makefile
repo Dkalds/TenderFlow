@@ -1,4 +1,4 @@
-.PHONY: status product-status job-parity install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -42,7 +42,7 @@ check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloq
 check-api-contract:  ## Ratchet del contrato API↔web (ninguna operación nueva opaca)
 	python scripts/check_openapi_contract.py
 
-check-agent-docs:  ## Verifica que las instrucciones de agentes citen cosas que existen
+check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y markers
 	python scripts/check_agent_docs.py
 
 # ── Tests ────────────────────────────────────────────────────────────────
@@ -165,6 +165,9 @@ product-status:  ## Métricas de producto: funnel, win rate, euros y tiempo de d
 
 job-parity:  ## Verifica que todo job del registry tiene plano de ejecución (ADR-012)
 	python scripts/check_job_parity.py
+
+skills-inventory:  ## Regenera docs/skills-inventory.md desde skills-lock.json
+	python scripts/gen_skills_inventory.py
 
 # ── Seed: datos de desarrollo ────────────────────────────────────────────
 seed:  ## Inserta datos de ejemplo en la BD local (licitaciones + usuario demo)

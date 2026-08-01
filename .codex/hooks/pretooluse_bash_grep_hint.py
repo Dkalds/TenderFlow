@@ -1,6 +1,8 @@
 import json
-import os
+import pathlib
 import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 try:
     d = json.load(sys.stdin)
@@ -11,7 +13,7 @@ except Exception:
 GREP_TOKENS = ("grep", "rg ", "ripgrep", "find ", "fd ", "ack ", "ag ")
 
 try:
-    if any(tok in cmd for tok in GREP_TOKENS) and os.path.isfile("graphify-out/graph.json"):
+    if any(tok in cmd for tok in GREP_TOKENS) and (ROOT / "graphify-out/graph.json").is_file():
         print(
             json.dumps(
                 {
@@ -19,8 +21,8 @@ try:
                         "hookEventName": "PreToolUse",
                         "additionalContext": (
                             "graphify: knowledge graph at graphify-out/. For focused questions, "
-                            'run `graphify query "<question>"` (scoped subgraph, usually much '
-                            "smaller than GRAPH_REPORT.md) instead of grepping raw files. Read "
+                            'run `graphify query "<question>"` when the CLI is available; otherwise '
+                            "read the committed artifacts before grepping raw files. Read "
                             "GRAPH_REPORT.md only for broad architecture context."
                         ),
                     }

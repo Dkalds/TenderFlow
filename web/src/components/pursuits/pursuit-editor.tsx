@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, CircleDollarSign, Loader2, Save, UserRound } from "lucide-react";
+import { Check, CircleDollarSign, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { type Pursuit, type PursuitDecision, type PursuitOutcome, type PursuitStatus, useUpdatePursuit } from "@/hooks/use-pursuits";
+import { useOrganizationMembers } from "@/hooks/use-organization";
 import { PursuitDecisionBadge, PursuitOutcomeBadge, PursuitStatusBadge } from "@/components/pursuits/pursuit-presenters";
 
 const statuses: Array<{ value: PursuitStatus; label: string }> = [
@@ -56,6 +57,7 @@ export function PursuitEditor({ pursuit }: { pursuit: Pursuit }) {
 
 function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
   const update = useUpdatePursuit(pursuit.id);
+  const members = useOrganizationMembers(pursuit.organization_id).data ?? [];
   const [form, setForm] = React.useState<FormState>(() => formFrom(pursuit));
 
   const save = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -93,7 +95,20 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
             <Select value={form.status} onValueChange={(value) => set("status", value as PursuitStatus)}><SelectTrigger id={inputId("status")}><SelectValue /></SelectTrigger><SelectContent>{statuses.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent></Select>
           </label>
           <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("owner")}>Responsable
-            <span className="relative block"><UserRound className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input id={inputId("owner")} className="pl-9" inputMode="numeric" value={form.responsible_user_id} onChange={(event) => set("responsible_user_id", event.target.value)} placeholder="ID de miembro" /></span>
+            <Select
+              value={form.responsible_user_id || "unassigned"}
+              onValueChange={(value) => set("responsible_user_id", value === "unassigned" ? "" : value)}
+            >
+              <SelectTrigger id={inputId("owner")}><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Sin asignar</SelectItem>
+                {members.map((member) => (
+                  <SelectItem key={member.user_id} value={String(member.user_id)}>
+                    {member.display_name ?? member.email ?? `Usuario ${member.user_id}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <span className="block text-xs font-normal text-muted-foreground">Asigna una persona de tu organización.</span>
           </label>
           <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("decision")}>Decisión

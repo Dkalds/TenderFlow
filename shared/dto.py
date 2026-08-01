@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class LicitacionSummary(BaseModel):
@@ -331,6 +331,8 @@ class OrganizationMembershipOut(BaseModel):
     status: OrganizationMembershipStatus
     created_at: datetime
     updated_at: datetime
+    display_name: str | None = None
+    email: str | None = None
 
 
 class OrganizationCreate(BaseModel):
@@ -349,6 +351,15 @@ class OrganizationMembershipUpsert(BaseModel):
     user_id: int = Field(ge=1)
     role: OrganizationRole = "member"
     status: OrganizationMembershipStatus = "active"
+
+
+class OrganizationMemberInvite(BaseModel):
+    """Alta de un miembro por correo; requiere una cuenta activa existente."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    email: EmailStr
+    role: Literal["admin", "member", "viewer"] = "member"
 
 
 class PursuitCreate(BaseModel):

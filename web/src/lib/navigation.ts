@@ -31,6 +31,7 @@ import {
   Target,
   TrendingUp,
   Trophy,
+  Users,
   Wrench,
 } from "lucide-react";
 
@@ -60,6 +61,13 @@ export interface NavPage {
    * bar sigue gobernado por `usesGlobalFilters`.
    */
   globalFilterKeys?: GlobalFilterKey[];
+  /**
+   * Subconjunto de `globalFilterKeys` cuya selección reemplaza el valor
+   * anterior en vez de acumularse en chips. Pensado para páginas de acción
+   * como Radar, donde "varias tecnologías a la vez" no tiene un significado
+   * operativo claro.
+   */
+  singleValueFilterKeys?: GlobalFilterKey[];
 }
 
 export interface NavSection {
@@ -113,6 +121,8 @@ export const SECTIONS: NavSection[] = [
         description: "Señales recientes priorizadas para decidir qué seguir o abrir.",
         icon: RadioTower,
         usesGlobalFilters: false,
+        globalFilterKeys: ["tecnologia"],
+        singleValueFilterKeys: ["tecnologia"],
       },
     ],
   },
@@ -125,6 +135,19 @@ export const SECTIONS: NavSection[] = [
         slug: "oportunidades",
         description: "Espacio operativo de decisiones, responsables, ofertas y resultados.",
         icon: Briefcase,
+        usesGlobalFilters: false,
+      },
+    ],
+  },
+  {
+    label: "Organización",
+    icon: Users,
+    pages: [
+      {
+        label: "Equipo",
+        slug: "equipo",
+        description: "Organizaciones compartidas, miembros y roles del equipo.",
+        icon: Users,
         usesGlobalFilters: false,
       },
     ],
@@ -424,4 +447,14 @@ export function pageGlobalFilterKeys(pathname: string): GlobalFilterKey[] | null
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
   return page?.globalFilterKeys ?? null;
+}
+
+/**
+ * Subconjunto de `pageGlobalFilterKeys` cuya selección reemplaza el valor
+ * anterior en vez de acumularse (ver `NavPage.singleValueFilterKeys`).
+ */
+export function pageSingleValueFilterKeys(pathname: string): GlobalFilterKey[] {
+  const slug = pathname.replace(/^\//, "").split("/")[0];
+  const page = findPage(slug);
+  return page?.singleValueFilterKeys ?? [];
 }

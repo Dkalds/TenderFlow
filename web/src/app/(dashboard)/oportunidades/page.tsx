@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { BriefcaseBusiness, CircleCheckBig, CircleX, Clock3, Search, Trophy } from "lucide-react";
+import Link from "next/link";
+import { BriefcaseBusiness, CircleCheckBig, CircleX, Clock3, RadioTower, Search, Trophy } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SkeletonCard } from "@/components/ui/skeleton";
@@ -38,7 +40,20 @@ export default function OportunidadesPage() {
         <Metric icon={CircleX} label="Adjudicado" value={metrics.data ? formatEur(metrics.data.awarded_amount_eur) : undefined} />
       </section>
 
-      {pursuits.error ? <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive">No se pudieron cargar las oportunidades. {(pursuits.error as Error).message}</div> : <section className="grid gap-5 xl:grid-cols-4">{lanes.map((lane) => { const laneItems = items.filter((item) => lane.statuses.includes(item.status)); return <div key={lane.title}><div className="mb-3 flex items-baseline justify-between"><div><h2 className="tf-h2">{lane.title}</h2><p className="text-xs text-muted-foreground">{lane.description}</p></div><span className="text-sm font-semibold text-muted-foreground">{laneItems.length}</span></div><div className="space-y-3">{pursuits.isLoading ? <><SkeletonCard /><SkeletonCard /></> : laneItems.length ? laneItems.map((pursuit) => <PursuitCard key={pursuit.id} pursuit={pursuit} />) : <Card className="border-dashed shadow-none"><CardContent className="py-8 text-center text-sm text-muted-foreground">Sin oportunidades en esta fase.</CardContent></Card>}</div></div>; })}</section>}
+      {pursuits.error ? (
+        <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive">No se pudieron cargar las oportunidades. {(pursuits.error as Error).message}</div>
+      ) : !pursuits.isLoading && (pursuits.data?.items.length ?? 0) === 0 ? (
+        <Card className="border-dashed shadow-none">
+          <CardContent className="flex flex-col items-center gap-3 py-14 text-center">
+            <BriefcaseBusiness className="h-9 w-9 text-muted-foreground/50" />
+            <div>
+              <h2 className="font-semibold">Todavía no hay oportunidades</h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">Convierte una señal del Radar en una oportunidad de equipo para empezar a hacerle seguimiento.</p>
+            </div>
+            <Button asChild size="sm"><Link href="/radar"><RadioTower />Ir al Radar</Link></Button>
+          </CardContent>
+        </Card>
+      ) : <section className="grid gap-5 xl:grid-cols-4">{lanes.map((lane) => { const laneItems = items.filter((item) => lane.statuses.includes(item.status)); return <div key={lane.title}><div className="mb-3 flex items-baseline justify-between"><div><h2 className="tf-h2">{lane.title}</h2><p className="text-xs text-muted-foreground">{lane.description}</p></div><span className="text-sm font-semibold text-muted-foreground">{laneItems.length}</span></div><div className="space-y-3">{pursuits.isLoading ? <><SkeletonCard /><SkeletonCard /></> : laneItems.length ? laneItems.map((pursuit) => <PursuitCard key={pursuit.id} pursuit={pursuit} />) : <Card className="border-dashed shadow-none"><CardContent className="py-8 text-center text-sm text-muted-foreground">Sin oportunidades en esta fase.</CardContent></Card>}</div></div>; })}</section>}
     </div>
   );
 }

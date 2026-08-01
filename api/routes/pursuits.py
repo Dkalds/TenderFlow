@@ -11,7 +11,9 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from services.organizations import (
     OrganizationAccessError,
+    OrganizationMemberNotFoundError,
     OrganizationPermissionError,
+    add_member_by_email,
     create_organization,
     get_active_organization,
     list_members,
@@ -31,6 +33,7 @@ from services.pursuits import (
 )
 from shared.dto import (
     OrganizationCreate,
+    OrganizationMemberInvite,
     OrganizationMembershipOut,
     OrganizationMembershipUpsert,
     OrganizationSummary,
@@ -93,6 +96,33 @@ async def get_organization_members(
         return await run_db(list_members, int(ctx["user_id"]), organization_id)
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post(
+    "/organizations/{organization_id}/members",
+    response_model=OrganizationMembershipOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_organization_member(
+    organization_id: int,
+    body: OrganizationMemberInvite,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> OrganizationMembershipOut:
+    """Incorpora por correo a un usuario ya registrado. No crea invitaciones
+    para correos sin cuenta: el alta requiere que la persona se registre.
+    """
+    try:
+        return await run_db(
+            add_member_by_email,
+            int(ctx["user_id"]),
+            organization_id,
+            str(body.email),
+            body.role,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationMemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.put(

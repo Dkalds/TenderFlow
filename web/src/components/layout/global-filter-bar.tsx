@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useFilterParams, useFilters } from "@/lib/filters";
-import { pageGlobalFilterKeys, pathUsesGlobalFilters } from "@/lib/navigation";
+import { pageGlobalFilterKeys, pageSingleValueFilterKeys, pathUsesGlobalFilters } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 
@@ -104,6 +104,7 @@ export function GlobalFilterBar() {
   // (p. ej. Renovaciones solo filtra por tecnología): en ese caso la barra se
   // muestra con esos controles únicamente, en vez de ocultarse por completo.
   const subsetKeys = pageGlobalFilterKeys(pathname);
+  const singleValueKeys = pageSingleValueFilterKeys(pathname);
   const filtersApply =
     pathUsesGlobalFilters(pathname) || (subsetKeys?.length ?? 0) > 0;
   const shows = (
@@ -127,7 +128,7 @@ export function GlobalFilterBar() {
   const chips = [
     ...(shows("estado") ? filters.estados.map((value) => ({ kind: "estado" as const, value })) : []),
     ...(shows("ccaa") ? filters.ccaas.map((value) => ({ kind: "ccaa" as const, value })) : []),
-    ...(shows("tecnologia")
+    ...(shows("tecnologia") && !singleValueKeys.includes("tecnologia")
       ? filters.tecnologias.map((value) => ({ kind: "tecnologia" as const, value }))
       : []),
   ];
@@ -267,10 +268,17 @@ export function GlobalFilterBar() {
         <select
           aria-label="Filtrar por tecnologia"
           className="max-w-40 bg-inherit text-foreground outline-none"
-          value=""
-          onChange={(event) => addUnique(event.target.value, filters.tecnologias, filters.setTecnologias)}
+          value={singleValueKeys.includes("tecnologia") ? filters.tecnologias[0] ?? "" : ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (singleValueKeys.includes("tecnologia")) {
+              filters.setTecnologias(value ? [value] : []);
+            } else {
+              addUnique(value, filters.tecnologias, filters.setTecnologias);
+            }
+          }}
         >
-          <option value="">Tecnologia</option>
+          <option value="">{singleValueKeys.includes("tecnologia") ? "Todas" : "Tecnologia"}</option>
           {(meta?.tecnologia ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
       </label>

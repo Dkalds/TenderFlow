@@ -116,9 +116,11 @@ class OrganizationRepository:
                 ),
             )
             row = conn.execute(
-                "SELECT organization_id, user_id, role, status, created_at, updated_at "
-                "FROM organization_memberships "
-                "WHERE organization_id = ? AND user_id = ?",
+                "SELECT m.organization_id, m.user_id, m.role, m.status, "
+                "m.created_at, m.updated_at, u.display_name, u.email "
+                "FROM organization_memberships m "
+                "JOIN users u ON u.id = m.user_id "
+                "WHERE m.organization_id = ? AND m.user_id = ?",
                 (organization_id, user_id),
             )
             results = rows_to_dicts(row)
@@ -157,8 +159,9 @@ class OrganizationRepository:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT m.organization_id, m.user_id, m.role, m.status, "
-                "m.created_at, m.updated_at "
+                "m.created_at, m.updated_at, u.display_name, u.email "
                 "FROM organization_memberships m "
+                "JOIN users u ON u.id = m.user_id "
                 "WHERE m.organization_id = ? ORDER BY m.role, m.user_id",
                 (organization_id,),
             )

@@ -174,4 +174,33 @@ describe("GlobalFilterBar", () => {
     expect(screen.queryByRole("button", { name: "Quitar PUB" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Quitar MD" })).not.toBeInTheDocument();
   });
+
+  it("shows a single-value tecnologia select on Radar (no chips, placeholder 'Todas')", () => {
+    // Radar declara `singleValueFilterKeys: ["tecnologia"]`: el control es un
+    // select de valor único, no chips acumulables como en el resto de páginas.
+    pathnameRef.current = "/radar";
+    paramsRef.current = { tecnologia: "IA" };
+    renderBar();
+    const select = screen.getByLabelText("Filtrar por tecnologia") as HTMLSelectElement;
+    expect(select.value).toBe("IA");
+    expect(screen.getByText("Todas")).toBeInTheDocument();
+    // No debe renderizarse el chip acumulable "Quitar IA".
+    expect(screen.queryByRole("button", { name: "Quitar IA" })).not.toBeInTheDocument();
+  });
+
+  it("replaces (not appends) the tecnologia value on Radar's single-value select", () => {
+    pathnameRef.current = "/radar";
+    paramsRef.current = { tecnologia: "IA" };
+    renderBar();
+    fireEvent.change(screen.getByLabelText("Filtrar por tecnologia"), { target: { value: "Cloud" } });
+    expect(setters.setTecnologias).toHaveBeenCalledWith(["Cloud"]);
+  });
+
+  it("clears the tecnologia filter when 'Todas' is selected on Radar", () => {
+    pathnameRef.current = "/radar";
+    paramsRef.current = { tecnologia: "IA" };
+    renderBar();
+    fireEvent.change(screen.getByLabelText("Filtrar por tecnologia"), { target: { value: "" } });
+    expect(setters.setTecnologias).toHaveBeenCalledWith([]);
+  });
 });

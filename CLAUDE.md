@@ -14,4 +14,4 @@
 - `Bash` → `pretooluse_bash_grep_hint.py`: recuerda usar `graphify query` antes de grep.
 - `Edit|Write|MultiEdit` → `pretooluse_edit_stale.py`: al tocar un `.py` deja el flag `graphify-out/.graph_stale`; `/graph-refresh` lo borra tras un update exitoso.
 
-**Sesiones remotas (Claude Code web / CI)**: no hay Postgres ni `TEST_DATABASE_URL`, así que `make test-unit` aborta al arrancar y el CLI `graphify` no está instalado. Ver AGENTS.md §4 ("Qué se puede correr sin Postgres") y §5 antes de declarar un cambio verde: lint y typecheck sí corren, los tests no, y eso se reporta explícitamente en vez de omitirse.
+**Sesiones remotas (Claude Code web / CI)**: no hay Postgres ni `TEST_DATABASE_URL`, así que `make test-unit` aborta al arrancar y el CLI `graphify` no está instalado. Ver AGENTS.md §4 y la matriz de prerrequisitos de `docs/AGENT_PLAYBOOK.md` antes de declarar un cambio verde: lint y typecheck sí corren, los tests no, y eso se reporta explícitamente en vez de omitirse.

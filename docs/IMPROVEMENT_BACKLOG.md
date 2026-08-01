@@ -239,6 +239,35 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-08-01] **Regresiones de Radar/Oportunidades del plan 2026-07-30 corregidas, y alta de miembros por correo añadida** —
+  Tres fallos reportados por el usuario sobre la entrega de Fases 1–8: (1) `web/src/hooks/use-radar.ts` pedía
+  `sort=-fecha_publicacion`, que en el `_SORT_MAP` de `db/repositories/licitaciones.py` ordena ascendente (más antiguas
+  primero) en vez de descendente — se corrige a `sort=fecha_publicacion` y se añade un filtro de tecnología single-select
+  (`navigation.ts`/`global-filter-bar.tsx`, con "Todas" como estado sin filtro); Radar también carecía de forma de abrir el
+  detalle de la licitación — se añade enlace en el título y botón "Ver licitación" a `/detalle?lic=<id_externo>`. (2)
+  Oportunidades aparecía siempre vacío porque `usePursuits`/`usePursuit`/`usePursuitMetrics` (`use-pursuits.ts`) tenían
+  `enabled: organizationId !== null`, bloqueando la consulta mientras el frontend no elegía activamente una organización,
+  aunque el backend ya resuelve una organización personal cuando se omite `organization_id` — se quita el gate y se añade
+  un estado vacío real con CTA a Radar cuando no hay ninguna oportunidad. (3) No existía manera usable de añadir miembros a
+  una organización compartida (`OrganizationMembershipUpsert` exigía un `user_id` numérico y `OrganizationMembershipOut` no
+  exponía nombre/correo) — se añaden aditivamente `display_name`/`email` a `OrganizationMembershipOut`, un nuevo DTO
+  `OrganizationMemberInvite`, `db.users.get_active_user_by_email_ci`, `services.organizations.add_member_by_email` (con
+  guarda `_guard_owner_row` para que ni el alta ni la actualización de rol puedan degradar una fila `owner`) y el endpoint
+  `POST /organizations/{id}/members`. En frontend: `use-organization.ts` gana hooks de miembros/alta/actualización, se crea
+  la página `/equipo` (crear organización, alta por correo, tabla de miembros con cambio de rol y revocar/reactivar) con
+  entrada en `navigation.ts` y enlace directo desde el selector del sidebar, y `pursuit-editor.tsx` reemplaza el input
+  numérico "ID de miembro" por un selector real con nombre/correo. Sin migraciones, sin cambios de auth, contrato aditivo.
+  Verificado: `get_errors` limpio en los 11 archivos backend+frontend tocados, `npm run typecheck` y `npm run lint` (web/)
+  en verde. **Pruebas de regresión añadidas (2026-08-01, misma sesión):** `tests/test_organization_members.py` (8 tests
+  backend para alta por correo, guarda de owner y contrato API — escrito pero no ejecutado, falta `TEST_DATABASE_URL` +
+  Postgres en este entorno), `web/src/hooks/__tests__/use-radar.test.tsx` (4 tests), 3 tests añadidos a
+  `web/src/components/layout/__tests__/global-filter-bar.test.tsx` y `web/src/components/pursuits/__tests__/pursuit-editor.test.tsx`
+  (4 tests) — estos 3 archivos frontend (24 tests) se ejecutaron y pasan en verde con
+  `.\node_modules\.bin\vitest.cmd run --pool=threads <archivo>` (el pool `forks` por defecto cuelga en este entorno
+  OneDrive-sync; ver `/memories/repo/licitaciones-sap-sp.md`). **Sigue pendiente:** `make lint`/`make typecheck`/
+  `make test-unit` (Python) por falta de `ruff`/`mypy`/`pytest` instalados y de `TEST_DATABASE_URL`; tampoco se regeneró
+  `api/openapi.json` — ver nota en `/memories/session/plan.md`.
+
 - [2026-07-30] **Plan de producto TenderFlow implementado de extremo a extremo
   (Fases 1–8)** — Organizaciones y membresías; `pursuits` con decisiones,
   ofertas, outcomes, eventos, GDPR y métricas; scope organizativo para datos

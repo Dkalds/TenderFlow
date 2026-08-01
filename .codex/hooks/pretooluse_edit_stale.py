@@ -1,7 +1,8 @@
 import json
-import os
 import pathlib
 import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 try:
     d = json.load(sys.stdin) if not sys.stdin.isatty() else {}
@@ -23,8 +24,8 @@ try:
             "node_modules",
         )
     )
-    ok = fp.endswith(".py") and not skip and os.path.isdir("graphify-out")
+    ok = fp.endswith(".py") and not skip and (ROOT / "graphify-out").is_dir()
     if ok:
-        pathlib.Path("graphify-out/.graph_stale").touch()
+        (ROOT / "graphify-out/.graph_stale").touch()
 except Exception:
     pass
