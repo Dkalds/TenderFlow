@@ -268,14 +268,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cpv", default="48,72", help="Familias CPV separadas por coma")
     args = parser.parse_args(argv)
 
-    from db.database import init_db
+    from db.database import close_pool, init_db
     from scraper.connectors.base import run_connector
 
     init_db()
-    connector = TedConnector(cpv_families=tuple(args.cpv.split(",")))
-    if args.desde:
-        connector._since = lambda cursor: args.desde  # type: ignore[method-assign]
-    result = run_connector(connector)
+    try:
+        connector = TedConnector(cpv_families=tuple(args.cpv.split(",")))
+        if args.desde:
+            connector._since = lambda cursor: args.desde  # type: ignore[method-assign]
+        result = run_connector(connector)
+    finally:
+        close_pool()
     print(
         f"TED: {result.fetched} avisos · {result.nuevas} nuevas · "
         f"{result.actualizadas} actualizadas · {result.adjudicaciones} adjudicaciones · "

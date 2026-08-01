@@ -24,6 +24,7 @@ Invariantes que el conector debe respetar:
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -43,6 +44,39 @@ if TYPE_CHECKING:
     from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
 
 log = get_logger(__name__)
+
+# Reintentos de un lote ante contención transitoria de Postgres (lock esperando
+# a otro writer, deadlock, serialization failure). Observado en producción:
+# el DELETE agrupado de replace_adjudicaciones_batch esperó el
+# statement_timeout completo (30s) bloqueado detrás de otra transacción sobre
+# la misma tabla `adjudicaciones` y tumbó el run entero pese a que la fila no
+# tenía ningún problema real. `upsert_licitaciones_with_history` es idempotente
+# (ADR-009), así que reintentar el flush completo -- no solo el paso que
+# falló -- es seguro.
+_FLUSH_MAX_ATTEMPTS = 3
+_FLUSH_RETRY_BASE_S = 2.0
+
+
+def _is_retryable_db_error(exc: BaseException) -> bool:
+    """True si ``exc`` es un error transitorio de Postgres (lock/serialization).
+
+    Deliberadamente NO incluye errores de conexión u otros ``OperationalError``
+    genéricos: esos suelen ser permanentes dentro del mismo run (credenciales,
+    red caída) y reintentarlos solo demora el fallo real.
+    """
+    try:
+        from psycopg import errors as pg_errors
+    except ImportError:
+        return False
+    return isinstance(
+        exc,
+        (
+            pg_errors.QueryCanceled,
+            pg_errors.LockNotAvailable,
+            pg_errors.DeadlockDetected,
+            pg_errors.SerializationFailure,
+        ),
+    )
 
 
 def _record_source_started(source_id: str) -> None:
@@ -229,14 +263,9 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     docs_por_lic: dict[str, list[DocumentoReferencia]] = {}
     lotes_por_lic: dict[str, list[Lote]] = {}
 
-    def _flush() -> None:
-        if not lics:
-            return
+    def _flush_once() -> tuple[Any, int, int]:
         upsert_result = upsert_licitaciones_with_history(lics, source=source_id)
-        result.nuevas += len(upsert_result.inserted)
-        result.actualizadas += len(upsert_result.modified)
-        result.inserted_ids.extend(upsert_result.inserted)
-        result.modified_ids.extend(upsert_result.modified)
+        n_adj = n_failed = 0
         if lotes_por_lic:
             # Antes de persistir adjudicaciones: lote_id es un FK real a
             # lotes.id (autoincrement), así que hace falta el id que acaba de
@@ -253,12 +282,45 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             n_adj, n_dropped, n_failed = replace_adjudicaciones_batch(
                 adj_por_lic, run_id=None, fuente=source_id
             )
-            result.adjudicaciones += n_adj
-            result.errores += n_failed
             if n_dropped:
                 log.warning("adj_rows_dropped", dropped=n_dropped, persisted=n_adj)
         if docs_por_lic:
             _persist_documentos(docs_por_lic, source_id=source_id)
+        return upsert_result, n_adj, n_failed
+
+    def _flush() -> None:
+        if not lics:
+            return
+        # Reintenta el lote completo (no solo el paso que falló): tanto el
+        # upsert de licitaciones como el replace de adjudicaciones son
+        # idempotentes, así que repetirlos contra el mismo batch es seguro. El
+        # resultado sólo se vuelca a `result` tras el intento que finalmente
+        # tiene éxito, para no contar dos veces nuevas/actualizadas/adjudicaciones
+        # si un intento anterior falló a mitad de camino.
+        attempt = 1
+        while True:
+            try:
+                upsert_result, n_adj, n_failed = _flush_once()
+                break
+            except Exception as e:
+                if attempt >= _FLUSH_MAX_ATTEMPTS or not _is_retryable_db_error(e):
+                    raise
+                wait_s = _FLUSH_RETRY_BASE_S * attempt
+                log.warning(
+                    "connector_flush_retry",
+                    source=source_id,
+                    attempt=attempt,
+                    wait_s=wait_s,
+                    error=str(e),
+                )
+                time.sleep(wait_s)
+                attempt += 1
+        result.nuevas += len(upsert_result.inserted)
+        result.actualizadas += len(upsert_result.modified)
+        result.inserted_ids.extend(upsert_result.inserted)
+        result.modified_ids.extend(upsert_result.modified)
+        result.adjudicaciones += n_adj
+        result.errores += n_failed
         lics.clear()
         adj_por_lic.clear()
         docs_por_lic.clear()
