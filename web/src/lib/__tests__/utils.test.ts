@@ -371,7 +371,7 @@ describe("formatRelativeHours", () => {
 });
 
 describe("formatRelativeTime", () => {
-  it("returns EMPTY for null and unparseable input", () => {
+  it("returns EMPTY for null and unparsable input", () => {
     expect(formatRelativeTime(null)).toBe(EMPTY);
     expect(formatRelativeTime("no es una fecha")).toBe(EMPTY);
   });

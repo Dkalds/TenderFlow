@@ -130,3 +130,5 @@ sme
 extensiones
 registre
 colateral
+visuales
+controlable
