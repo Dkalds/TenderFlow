@@ -30,6 +30,30 @@ const radarState: {
 } = { data: undefined, isLoading: false, error: null };
 vi.mock("@/hooks/use-radar", () => ({ useRadar: () => radarState }));
 
+// RadarPage lee `filters.tecnologias` vía el hook nuqs-backed `useFilters`;
+// se stubea igual que en saved-views-menu.test.tsx para no requerir un
+// NuqsAdapter real en jsdom.
+const filtersStub = {
+  q: "",
+  rango: { desde: null, hasta: null },
+  estados: [] as string[],
+  ccaas: [] as string[],
+  tecnologias: [] as string[],
+  importeMin: null,
+  comparar: false,
+  rangoB: { desde: null, hasta: null },
+  setQ: vi.fn(),
+  setRango: vi.fn(),
+  setEstados: vi.fn(),
+  setCcaas: vi.fn(),
+  setTecnologias: vi.fn(),
+  setImporteMin: vi.fn(),
+  setComparar: vi.fn(),
+  setRangoB: vi.fn(),
+  resetFilters: vi.fn(),
+};
+vi.mock("@/lib/filters", () => ({ useFilters: () => filtersStub }));
+
 import RadarPage from "@/app/(dashboard)/radar/page";
 
 function tender(overrides: Partial<RadarTender> = {}): RadarTender {
