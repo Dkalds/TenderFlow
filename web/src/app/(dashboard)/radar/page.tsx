@@ -13,6 +13,7 @@ import { formatDate, formatEur, daysUntil } from "@/components/pursuits/pursuit-
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import { useAddWatchlistItem, useWatchlistItems } from "@/hooks/use-watchlist-items";
 import { type RadarTender, useRadar } from "@/hooks/use-radar";
+import { PageHeader } from "@/components/layout/page-header";
 
 function scoreCopy(tender: RadarTender): string {
   if (tender.band) return tender.band;
@@ -123,13 +124,22 @@ export default function RadarPage() {
 
   return (
     <div className="space-y-5">
-      <section className="tf-card-shadow relative overflow-hidden rounded-xl border border-border bg-card/75 p-5 sm:p-7">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"><RadioTower className="h-3.5 w-3.5" />Radar de oportunidades</div><h1 className="tf-display">Qué merece atención ahora.</h1><p className="mt-2 max-w-2xl text-muted-foreground">Señales recientes del mercado para decidir qué seguir y qué convertir en una oportunidad de equipo.</p></div>
-          <Link href="/oportunidades" className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"><Eye className="h-4 w-4" />Ver oportunidades abiertas</Link>
-        </div>
-      </section>
+      <PageHeader
+        variant="hero"
+        eyebrow="Radar de oportunidades"
+        eyebrowIcon={RadioTower}
+        title="Qué merece atención ahora."
+        description="Señales recientes del mercado para decidir qué seguir y qué convertir en una oportunidad de equipo."
+        actions={
+          <Link
+            href="/oportunidades"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+          >
+            <Eye className="h-4 w-4" aria-hidden="true" />
+            Ver oportunidades abiertas
+          </Link>
+        }
+      />
 
       {/* El alcance se declara, no se insinúa: la lista son las 24 licitaciones
           más recientes reordenadas por afinidad, no el top-24 por score de todo

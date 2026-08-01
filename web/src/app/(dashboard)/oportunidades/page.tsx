@@ -8,6 +8,7 @@ import { SkeletonCard } from "@/components/ui/skeleton";
 import { PursuitCard } from "@/components/pursuits/pursuit-card";
 import { formatEur } from "@/components/pursuits/pursuit-presenters";
 import { type PursuitStatus, usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
+import { PageHeader } from "@/components/layout/page-header";
 
 const lanes: Array<{ title: string; statuses: PursuitStatus[]; description: string }> = [
   { title: "Por decidir", statuses: ["identified", "qualifying", "go_no_go"], description: "Identificadas, cualificando o en GO/NO-GO" },
@@ -26,10 +27,29 @@ export default function OportunidadesPage() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-4 rounded-xl border border-border bg-card/75 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-7">
-        <div><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"><BriefcaseBusiness className="h-3.5 w-3.5" />Espacio de ejecución</div><h1 className="tf-display">Oportunidades del equipo</h1><p className="mt-2 max-w-2xl text-muted-foreground">Convierte señales en decisiones trazables, responsables claros y resultados medibles.</p></div>
-        <label className="relative block w-full sm:max-w-xs" htmlFor="pursuit-search"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="pursuit-search" className="pl-9" placeholder="Buscar oportunidad" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      </section>
+      <PageHeader
+        variant="hero"
+        eyebrow="Espacio de ejecución"
+        eyebrowIcon={BriefcaseBusiness}
+        title="Oportunidades del equipo"
+        description="Convierte señales en decisiones trazables, responsables claros y resultados medibles."
+        actions={
+          <label className="relative block w-full sm:max-w-xs" htmlFor="pursuit-search">
+            <Search
+              className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <span className="sr-only">Buscar oportunidad</span>
+            <Input
+              id="pursuit-search"
+              className="pl-9"
+              placeholder="Buscar oportunidad"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+        }
+      />
 
       <section aria-label="Resumen de oportunidades" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric icon={Clock3} label="Identificadas" value={metrics.data?.pursuits_identified} />

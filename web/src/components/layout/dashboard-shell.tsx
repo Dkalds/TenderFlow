@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useDensity } from "@/lib/density";
 
@@ -16,10 +15,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       // navegación después de "saltar al contenido".
       tabIndex={-1}
       aria-label="Contenido principal"
-      className={cn(
-        "flex-1 overflow-auto",
-        compact && "text-sm [&_.container]:px-2 [&_.container]:py-3",
-      )}
+      // La densidad se declara como atributo y `globals.css` la aplica sobre los
+      // primitivos (`[data-slot]`). Antes era `[&_.container]:px-2`, y la clase
+      // `.container` no se usa en ningún sitio del proyecto: el toggle sólo
+      // cambiaba un `text-sm` global que casi todos los hijos sobrescriben.
+      data-density={compact ? "compact" : "normal"}
+      className="flex-1 overflow-auto"
     >
       {children}
     </main>

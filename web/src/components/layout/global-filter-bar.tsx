@@ -15,7 +15,9 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Input } from "@/components/ui/input";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useScrolledPast } from "@/hooks/use-scrolled-past";
 import { useFilterParams, useFilters } from "@/lib/filters";
+import { cn } from "@/lib/utils";
 import { pageGlobalFilterKeys, pathUsesGlobalFilters } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -125,6 +127,7 @@ export function GlobalFilterBar() {
       : null,
   );
   const { history, addToHistory } = useSearchHistory();
+  const scrolled = useScrolledPast(8);
   const { data: meta } = useQuery<MetaFilters>({
     queryKey: ["meta-filters"],
     queryFn: async () => {
@@ -202,7 +205,19 @@ export function GlobalFilterBar() {
   }
 
   return (
-    <div className="tf-glass sticky top-[60px] z-30 flex min-h-13 flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2">
+    <div
+      className={cn(
+        "tf-glass sticky top-[60px] z-30 flex min-h-13 items-center gap-2 border-b border-border/70 px-4 py-2",
+        // Al scrollear, la barra deja de envolverse en 2-3 filas y pasa a una
+        // sola con scroll horizontal. Con 8 controles más un chip por filtro
+        // activo, el `flex-wrap` permanente costaba ~80px fijos de altura en una
+        // barra pegajosa, encima de un contenido que son tablas y grafos.
+        // Mismo gesto que el KPI bar, que ya usa este hook.
+        scrolled
+          ? "flex-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "flex-wrap",
+      )}
+    >
       {shows("q") && (
       <SearchAutocomplete
         className="min-w-56 flex-1 sm:max-w-80"
