@@ -28,11 +28,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--url", help="URL RSS alternativa para diagnostico o backfill")
     args = parser.parse_args(argv)
 
-    from db.database import init_db
+    from db.database import close_pool, init_db
     from scraper.connectors.base import run_connector
 
     init_db()
-    result = run_connector(EuskadiRssConnector(feed_url=args.url))
+    try:
+        result = run_connector(EuskadiRssConnector(feed_url=args.url))
+    finally:
+        close_pool()
     print(
         f"Euskadi RSS: {result.fetched} avisos · {result.nuevas} nuevas · "
         f"{result.actualizadas} actualizadas · {result.descartadas} descartadas · "

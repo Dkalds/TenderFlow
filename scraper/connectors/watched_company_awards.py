@@ -170,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--force", action="store_true", help="re-descarga el ZIP mensual")
     args = parser.parse_args(argv)
 
-    from db.database import init_db
+    from db.database import close_pool, init_db
     from db.repositories.watched_companies import WatchedCompanyRepository
     from scraper.connectors.base import run_connector
 
@@ -180,14 +180,19 @@ def main(argv: list[str] | None = None) -> int:
         print("Empresas vigiladas: 0 NIF canónicos; no se descarga PLACSP.")
         return 0
 
-    if args.bulk:
-        year, month = args.bulk
-        connector: PlacspWatchedCompanyAwardsConnector = PlacspWatchedCompanyAwardsBulkConnector(
-            year, month, watched_nifs, force=args.force
-        )
-    else:
-        connector = PlacspWatchedCompanyAwardsConnector(watched_nifs)
-    result = run_connector(connector)
+    try:
+        if args.bulk:
+            year, month = args.bulk
+            connector: PlacspWatchedCompanyAwardsConnector = (
+                PlacspWatchedCompanyAwardsBulkConnector(
+                    year, month, watched_nifs, force=args.force
+                )
+            )
+        else:
+            connector = PlacspWatchedCompanyAwardsConnector(watched_nifs)
+        result = run_connector(connector)
+    finally:
+        close_pool()
     print(
         f"Adjudicaciones de empresas vigiladas: {result.fetched} avisos · "
         f"{result.nuevas} nuevas · {result.actualizadas} actualizadas · "

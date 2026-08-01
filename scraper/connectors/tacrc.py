@@ -262,10 +262,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0 if items else 1
 
-    from db.database import init_db
+    from db.database import close_pool, init_db
 
     init_db()
-    stats = run(args.url)
+    try:
+        stats = run(args.url)
+    finally:
+        close_pool()
     print(
         f"TACRC: {stats['fetched']} resoluciones · {stats['nuevas']} nuevas · "
         f"{stats['actualizadas']} actualizadas · {stats.get('vinculadas', 0)} vinculadas · "
