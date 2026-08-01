@@ -5,10 +5,14 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  EMPTY,
   cn,
   foldText,
+  formatCompactCurrency,
   formatCurrency,
   formatNumber,
+  formatRelativeHours,
+  formatRelativeTime,
   formatPercent,
   formatDate,
   truncate,
@@ -59,12 +63,12 @@ describe("cn", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatCurrency", () => {
-  it("returns '-' for null", () => {
-    expect(formatCurrency(null)).toBe("-");
+  it("returns EMPTY for null", () => {
+    expect(formatCurrency(null)).toBe(EMPTY);
   });
 
-  it("returns '-' for undefined", () => {
-    expect(formatCurrency(undefined)).toBe("-");
+  it("returns EMPTY for undefined", () => {
+    expect(formatCurrency(undefined)).toBe(EMPTY);
   });
 
   it("formats zero correctly in EUR", () => {
@@ -113,12 +117,12 @@ describe("formatCurrency", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatNumber", () => {
-  it("returns '-' for null", () => {
-    expect(formatNumber(null)).toBe("-");
+  it("returns EMPTY for null", () => {
+    expect(formatNumber(null)).toBe(EMPTY);
   });
 
-  it("returns '-' for undefined", () => {
-    expect(formatNumber(undefined)).toBe("-");
+  it("returns EMPTY for undefined", () => {
+    expect(formatNumber(undefined)).toBe(EMPTY);
   });
 
   it("formats zero", () => {
@@ -161,12 +165,12 @@ describe("formatNumber", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatPercent", () => {
-  it("returns '-' for null", () => {
-    expect(formatPercent(null)).toBe("-");
+  it("returns EMPTY for null", () => {
+    expect(formatPercent(null)).toBe(EMPTY);
   });
 
-  it("returns '-' for undefined", () => {
-    expect(formatPercent(undefined)).toBe("-");
+  it("returns EMPTY for undefined", () => {
+    expect(formatPercent(undefined)).toBe(EMPTY);
   });
 
   it("formats 0 as '0.0%'", () => {
@@ -199,16 +203,16 @@ describe("formatPercent", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatDate", () => {
-  it("returns '-' for null", () => {
-    expect(formatDate(null)).toBe("-");
+  it("returns EMPTY for null", () => {
+    expect(formatDate(null)).toBe(EMPTY);
   });
 
-  it("returns '-' for undefined", () => {
-    expect(formatDate(undefined)).toBe("-");
+  it("returns EMPTY for undefined", () => {
+    expect(formatDate(undefined)).toBe(EMPTY);
   });
 
-  it("returns '-' for empty string", () => {
-    expect(formatDate("")).toBe("-");
+  it("returns EMPTY for empty string", () => {
+    expect(formatDate("")).toBe(EMPTY);
   });
 
   it("formats a Date object", () => {
@@ -267,22 +271,22 @@ describe("truncate", () => {
     expect(truncate(text, 80)).toBe(text);
   });
 
-  it("truncates text that exceeds max and appends '...'", () => {
+  it("truncates text that exceeds max and appends an ellipsis", () => {
     const text = "a".repeat(81);
     const result = truncate(text, 80);
-    expect(result).toBe("a".repeat(80) + "...");
-    expect(result.length).toBe(83);
+    expect(result).toBe("a".repeat(80) + "…");
+    expect(result.length).toBe(81);
   });
 
   it("uses default max of 80", () => {
     const text = "x".repeat(100);
     const result = truncate(text);
-    expect(result).toBe("x".repeat(80) + "...");
+    expect(result).toBe("x".repeat(80) + "…");
   });
 
   it("supports custom max length", () => {
     const result = truncate("Hello, World!", 5);
-    expect(result).toBe("Hello...");
+    expect(result).toBe("Hello…");
   });
 
   it("does not truncate a string of length exactly 1 with max=1", () => {
@@ -290,7 +294,7 @@ describe("truncate", () => {
   });
 
   it("truncates a string of length 2 with max=1", () => {
-    expect(truncate("ab", 1)).toBe("a...");
+    expect(truncate("ab", 1)).toBe("a…");
   });
 });
 
@@ -315,5 +319,65 @@ describe("foldText", () => {
   it("matches accented organ names from unaccented queries", () => {
     const organo = "Gerencia de Informática de la Seguridad Social";
     expect(foldText(organo).includes(foldText("gerencia de informatica"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatCompactCurrency
+// ---------------------------------------------------------------------------
+
+describe("formatCompactCurrency", () => {
+  it("returns EMPTY for null and undefined", () => {
+    expect(formatCompactCurrency(null)).toBe(EMPTY);
+    expect(formatCompactCurrency(undefined)).toBe(EMPTY);
+  });
+
+  it("never abbreviates thousands of millions as 'B'", () => {
+    // Regresión: la versión a mano emitía "2.5B €", que un lector español lee
+    // como 2,5 billones (10¹²) — mil veces la cifra real.
+    const result = formatCompactCurrency(2_500_000_000);
+    expect(result).not.toMatch(/B/);
+    expect(result).toContain("M");
+  });
+
+  it("uses the es-ES decimal comma, not a point", () => {
+    // La barra de KPI mezclaba "1.5M €" (punto decimal) con "1.234.567"
+    // (punto de millares) a pocos píxeles de distancia.
+    expect(formatCompactCurrency(1_234_567)).toContain(",");
+    expect(formatCompactCurrency(1_234_567)).not.toMatch(/\d\.\d/);
+  });
+
+  it("drops the trailing zero decimal", () => {
+    expect(formatCompactCurrency(0)).not.toContain(",0");
+    expect(formatCompactCurrency(2_500_000_000)).not.toContain(",0");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatRelativeTime / formatRelativeHours
+// ---------------------------------------------------------------------------
+
+describe("formatRelativeHours", () => {
+  it("returns EMPTY for null and non-finite input", () => {
+    expect(formatRelativeHours(null)).toBe(EMPTY);
+    expect(formatRelativeHours(Number.NaN)).toBe(EMPTY);
+  });
+
+  it("scales the unit with the age", () => {
+    expect(formatRelativeHours(0.5)).toMatch(/minuto/);
+    expect(formatRelativeHours(5)).toMatch(/hora/);
+    expect(formatRelativeHours(72)).toMatch(/día/);
+  });
+});
+
+describe("formatRelativeTime", () => {
+  it("returns EMPTY for null and unparseable input", () => {
+    expect(formatRelativeTime(null)).toBe(EMPTY);
+    expect(formatRelativeTime("no es una fecha")).toBe(EMPTY);
+  });
+
+  it("describes a recent instant in the past", () => {
+    const threeHoursAgo = new Date(Date.now() - 3 * 3_600_000).toISOString();
+    expect(formatRelativeTime(threeHoursAgo)).toMatch(/hace 3 horas/);
   });
 });

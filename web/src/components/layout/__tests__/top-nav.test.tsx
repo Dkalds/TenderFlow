@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // TopNav wires together many stores/children. We stub the external
@@ -18,7 +19,14 @@ vi.mock("@/lib/ui-store", () => ({
     selector({ setCommandOpen }),
 }));
 const apiMutate = vi.fn().mockResolvedValue({});
-vi.mock("@/lib/api-client", () => ({ apiMutate: (...a: unknown[]) => apiMutate(...a) }));
+// `vi.mock` se iza al principio del fichero, así que la fábrica no puede leer
+// variables de módulo: el instante se calcula dentro.
+vi.mock("@/lib/api-client", () => ({
+  apiMutate: (...a: unknown[]) => apiMutate(...a),
+  fetchWithAuth: vi.fn(async () => ({
+    last_extraction: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+  })),
+}));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => <div data-testid="bell" /> }));
 vi.mock("@/components/export-popover", () => ({ ExportPopover: () => <div data-testid="export" /> }));
 
@@ -39,19 +47,16 @@ afterEach(() => {
 });
 
 function renderNav() {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ last_extraction: new Date().toISOString() }),
-    }),
-  );
   // The density/theme toggle buttons wrap in a Tooltip, which requires a
   // TooltipProvider ancestor (real usage gets one from components/providers.tsx).
+  // `useDataFreshness` is a TanStack query, so it needs a client too.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
-    <TooltipProvider>
-      <TopNav />
-    </TooltipProvider>,
+    <QueryClientProvider client={qc}>
+      <TooltipProvider>
+        <TopNav />
+      </TooltipProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -124,6 +129,13 @@ describe("TopNav", () => {
 
   it("shows the last-extraction relative time once fetched", async () => {
     renderNav();
-    await waitFor(() => expect(screen.getByText("Datos en vivo")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/hace 3 horas/)).toBeInTheDocument());
+  });
+
+  it("exposes the exact extraction instant to assistive tech, not via a native title", () => {
+    // El instante exacto colgaba de un `title=` nativo, que no se dispara con
+    // teclado. Ahora viaja en el nombre accesible del propio indicador.
+    const { container } = renderNav();
+    expect(container.querySelector("header [title]")).toBeNull();
   });
 });

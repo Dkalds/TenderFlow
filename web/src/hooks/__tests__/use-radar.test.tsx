@@ -75,6 +75,51 @@ describe("useRadar", () => {
     expect(second.band).toBeUndefined();
   });
 
+  it("orders by the backend score, not by publication date", async () => {
+    // Regresión: la página prometía "señales priorizadas" y renderizaba en
+    // orden cronológico — el score sólo decoraba la fila. La jerarquía visual
+    // afirmaba un ranking que el dato no respaldaba (anti-patrón 1 de
+    // docs/frontend-data-invariants.md, aplicado al orden en vez de al número).
+    stubApi({
+      items: [tender("RECIENTE", "2026-07-10"), tender("ANTIGUA", "2026-06-01")],
+      opportunities: [
+        { id_externo: "RECIENTE", score: 20, band: "Tibia" },
+        { id_externo: "ANTIGUA", score: 91, band: "Caliente" },
+      ],
+    });
+
+    const { result } = renderHook(() => useRadar(), { wrapper });
+    await waitFor(() => expect(result.current.data?.items[0].score).toBe(91));
+
+    expect(result.current.data!.items.map((item) => item.id_externo)).toEqual([
+      "ANTIGUA",
+      "RECIENTE",
+    ]);
+  });
+
+  it("pushes unscored tenders to the end instead of ranking them first", async () => {
+    stubApi({
+      items: [tender("SIN_SCORE", "2026-07-10"), tender("CON_SCORE", "2026-06-01")],
+      opportunities: [{ id_externo: "CON_SCORE", score: 40, band: "Tibia" }],
+    });
+
+    const { result } = renderHook(() => useRadar(), { wrapper });
+    await waitFor(() => expect(result.current.data?.items[0].score).toBe(40));
+
+    expect(result.current.data!.items.at(-1)!.id_externo).toBe("SIN_SCORE");
+  });
+
+  it("flags that the order is not final while scoring is in flight", async () => {
+    stubApi({
+      items: [tender("A", "2026-07-01")],
+      opportunities: [{ id_externo: "A", score: 50, band: "Tibia" }],
+    });
+
+    const { result } = renderHook(() => useRadar(), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    await waitFor(() => expect(result.current.isRanking).toBe(false));
+  });
+
   it("carries the deadline the card renders", async () => {
     stubApi({ items: [tender("A", "2026-07-01")] });
 

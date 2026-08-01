@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
+import { formatCurrency } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -56,14 +57,6 @@ const PROFILE_KEY = ["me", "profile"] as const;
 
 function sumWeights(w: Record<string, number>): number {
   return Object.values(w).reduce((a, b) => a + b, 0);
-}
-
-function formatCurrency(v: number) {
-  return new Intl.NumberFormat("es-ES", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(v);
 }
 
 // ---------------------------------------------------------------------------

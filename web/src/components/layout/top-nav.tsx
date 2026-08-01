@@ -19,7 +19,7 @@ import {
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { SECTIONS } from "@/lib/navigation";
 import { t } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,21 +33,11 @@ import { NotificationBell } from "@/components/notification-bell";
 import { ExportPopover } from "@/components/export-popover";
 import { useDensity, initDensity } from "@/lib/density";
 import { useAdmin } from "@/hooks/use-admin";
+import { useDataFreshness } from "@/hooks/use-data-freshness";
 import { useWithFilters } from "@/lib/filters";
 import { useUiStore } from "@/lib/ui-store";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
-
-function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "ahora";
-  if (mins < 60) return `hace ${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `hace ${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `hace ${days}d`;
-}
 
 export function TopNav() {
   const pathname = usePathname();
@@ -72,23 +62,10 @@ export function TopNav() {
 
   React.useEffect(() => { initDensity(); }, []);
 
-  const [lastExtraction, setLastExtraction] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    const fetchLastExtraction = async () => {
-      try {
-        const res = await fetch("/api/v1/meta/last-extraction", { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json();
-          setLastExtraction(data.last_extraction ?? null);
-        }
-      } catch (err) {
-        reportError("TopNav.lastExtraction", err);
-      }
-    };
-    fetchLastExtraction();
-    const id = setInterval(fetchLastExtraction, 5 * 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // Frescura del dato: un solo hook compartido con la sidebar. Antes cada uno
+  // consultaba un endpoint distinto (`meta/last-extraction` aquí,
+  // `analytics/quality` allí) y podían mostrar antigüedades que no cuadraban.
+  const { lastExtraction, relative } = useDataFreshness();
 
   const visibleSections = SECTIONS.filter(
     (s) => !s.adminOnly || isAdmin,
@@ -147,20 +124,27 @@ export function TopNav() {
 
           {/* Right side actions */}
           <div className="ml-auto flex items-center gap-1">
+            {/* Indicador de estado, no un control: el instante exacto viaja en
+                el nombre accesible en vez de esconderse tras un `title=` nativo
+                (que no se dispara con teclado) o tras un tooltip colgado de un
+                `<span tabIndex={0}>` que fingiría ser interactivo. */}
             <span className="hidden items-center gap-1.5 rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground lg:inline-flex">
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2 w-2" aria-hidden="true">
                 <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
-              <span>Datos en vivo</span>
-              {lastExtraction && (
+              <span aria-hidden="true">Datos en vivo</span>
+              {relative && (
                 <>
-                  <span className="opacity-40">·</span>
-                  <span className="text-[10px] opacity-60" title={lastExtraction}>
-                    {formatRelativeTime(lastExtraction)}
-                  </span>
+                  <span className="opacity-40" aria-hidden="true">·</span>
+                  <span className="text-[10px] opacity-60" aria-hidden="true">{relative}</span>
                 </>
               )}
+              <span className="sr-only">
+                {lastExtraction
+                  ? `Datos en vivo. Última extracción: ${formatDate(lastExtraction)}.`
+                  : "Datos en vivo. Todavía sin registro de extracción."}
+              </span>
             </span>
 
             {/* Export */}
