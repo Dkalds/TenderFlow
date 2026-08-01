@@ -2,8 +2,8 @@
 
 ## Pre-flight
 
-1. Si existe `graphify-out/graph.json`, corre una consulta inicial:
-   - `graphify query "area relevante"` (o lee los artefactos commiteados si el CLI no esta: AGENTS.md §1)
+1. Si el CLI esta disponible, corre `graphify query "area relevante"`; si no,
+   lee los artefactos commiteados siguiendo AGENTS.md §1.
 2. Revisa invariantes en AGENTS.md (typing strict, upsert idempotente, migraciones append-only).
 3. Identifica si tu cambio toca rutas sensibles (workflows, pyproject, requirements, alembic, secrets).
 4. Si toca rutas sensibles, pide OK humano explicito antes de editar.

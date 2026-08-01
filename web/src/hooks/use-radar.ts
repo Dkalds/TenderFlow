@@ -32,13 +32,11 @@ interface ScoringResponse {
  * prefijo `-` invierte a ascendente. Es al revés que en `importe`, así que
  * pedir `-fecha_publicacion` devolvía las licitaciones más viejas de la base
  * — justo lo contrario de un radar.
- */
-const RADAR_QUERY = "/api/v1/licitaciones?limit=24&with_total=false&sort=fecha_publicacion";
-
-/**
- * Radar se apoya en el listado existente y le alinea el score por id, igual que
- * la página de detalle. El scoring lo calcula el backend (ADR-014): aquí sólo
- * se emparejan ids y se ordena por el valor recibido, nunca se deriva una
+ *
+ * `tecnologia` es un filtro único (o `null` para "Todas"). Radar se apoya en
+ * el listado existente y le alinea el score por id, igual que la página de
+ * detalle. El scoring lo calcula el backend (ADR-014): aquí sólo se
+ * emparejan ids y se ordena por el valor recibido, nunca se deriva una
  * puntuación en cliente.
  *
  * **Alcance real de la lista** (la UI debe decirlo, ver `radar/page.tsx`): son
@@ -54,10 +52,17 @@ const RADAR_QUERY = "/api/v1/licitaciones?limit=24&with_total=false&sort=fecha_p
  * API key en vez de sesión. Cambiar a esa fuente es P1 en
  * `docs/IMPROVEMENT_BACKLOG.md`.
  */
-export function useRadar() {
+export function useRadar(tecnologia: string | null = null) {
+  const params = new URLSearchParams({
+    limit: "24",
+    with_total: "false",
+    sort: "fecha_publicacion",
+  });
+  if (tecnologia) params.set("tecnologia", tecnologia);
+
   const listing = useQuery({
-    queryKey: ["radar", "tenders"],
-    queryFn: () => fetchWithAuth<ListingResponse>(RADAR_QUERY),
+    queryKey: ["radar", "tenders", tecnologia],
+    queryFn: () => fetchWithAuth<ListingResponse>(`/api/v1/licitaciones?${params.toString()}`),
     staleTime: 30_000,
   });
 

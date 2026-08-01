@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Building2, CalendarClock, CircleSlash2, Eye, Loader2, RadioTower, Star } from "lucide-react";
+import { ArrowUpRight, Building2, CalendarClock, CircleSlash2, Eye, ExternalLink, Loader2, RadioTower, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import { Skeleton, SkeletonCard } from "@/components/ui/skeleton";
 import { formatDate, formatEur, daysUntil } from "@/components/pursuits/pursuit-presenters";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import { useAddWatchlistItem, useWatchlistItems } from "@/hooks/use-watchlist-items";
+import { useOrganizationStore } from "@/hooks/use-organization";
+import { useFilters } from "@/lib/filters";
 import { type RadarTender, useRadar } from "@/hooks/use-radar";
 import { PageHeader } from "@/components/layout/page-header";
 
@@ -34,12 +36,15 @@ function RadarItem({
   const createPursuit = useCreatePursuit();
   const addWatchlist = useAddWatchlistItem();
   const { data: watched = [] } = useWatchlistItems();
+  const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
   const watchedAlready = watched.some((item) => item.id_externo === tender.id_externo);
   const deadline = daysUntil(tender.fecha_limite);
+  const tenderHref = `/detalle?lic=${encodeURIComponent(tender.id_externo)}`;
 
   const openPursuit = async () => {
     try {
       const pursuit = await createPursuit.mutateAsync({ licitacion_id: tender.id_externo });
+      setActiveOrganizationId(pursuit.organization_id);
       toast.success("Oportunidad abierta para el equipo");
       router.push(`/oportunidades/${pursuit.id}`);
     } catch (error) {
@@ -75,7 +80,11 @@ function RadarItem({
                 )}
                 {tender.tecnologia && <span className="text-muted-foreground">{tender.tecnologia}</span>}
               </div>
-              <h2 className="mt-2 text-base font-semibold leading-snug">{tender.titulo ?? `Licitación ${tender.id_externo}`}</h2>
+              <h2 className="mt-2 text-base font-semibold leading-snug">
+                <Link href={tenderHref} className="hover:underline focus-visible:underline">
+                  {tender.titulo ?? `Licitación ${tender.id_externo}`}
+                </Link>
+              </h2>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" />{tender.organo_contratacion ?? "Órgano no informado"}</span>
                 <span className="inline-flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />{deadline ?? formatDate(tender.fecha_limite)}</span>
@@ -83,6 +92,7 @@ function RadarItem({
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => router.push(tenderHref)}><ExternalLink />Ver licitación</Button>
               <Button variant="ghost" size="sm" onClick={() => onDismiss(tender)} aria-label={`Descartar ${tender.titulo ?? tender.id_externo}`}><CircleSlash2 />Descartar</Button>
               <Button variant="outline" size="sm" onClick={() => void follow()} disabled={watchedAlready || addWatchlist.isPending}><Star className={watchedAlready ? "fill-primary text-primary" : ""} />{watchedAlready ? "Siguiendo" : "Seguir"}</Button>
               <Button size="sm" onClick={() => void openPursuit()} disabled={createPursuit.isPending}>{createPursuit.isPending ? <Loader2 className="animate-spin" /> : <ArrowUpRight />}Abrir oportunidad</Button>
@@ -95,7 +105,9 @@ function RadarItem({
 }
 
 export default function RadarPage() {
-  const { data, isLoading, isRanking, error } = useRadar();
+  const filters = useFilters();
+  const tecnologia = filters.tecnologias[0] ?? null;
+  const { data, isLoading, isRanking, error } = useRadar(tecnologia);
   const [dismissed, setDismissed] = React.useState<Set<string>>(() => new Set());
   const tenders = (data?.items ?? []).filter((item) => !dismissed.has(item.id_externo));
 

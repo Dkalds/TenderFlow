@@ -7,7 +7,6 @@ plotly>=5.18.0,<7
 python-dateutil>=2.8.2,<3
 tenacity>=8.2.0,<10
 openpyxl>=3.1.0,<4
-libsql>=0.1.0,<0.3
 python-dotenv>=1.0.0,<2
 pydantic-settings>=2.0.0,<3
 # Validación de emails para pydantic EmailStr (api/routes/auth.py)

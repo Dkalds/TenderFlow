@@ -1,7 +1,13 @@
 ---
-description: Onboarding rápido a un área del código (graphify explain + files + tests + docs)
-argument-hint: <nombre del paquete o concepto>
+name: "source-command-area"
+description: "Onboarding rápido a un área del código con graphify, archivos, tests y docs"
 ---
+
+# source-command-area
+
+Use this skill when the user asks to run the migrated source command `area`.
+
+## Command Template
 
 Querés trabajar en `$ARGUMENTS`. Da un panorama denso y accionable, en este orden:
 

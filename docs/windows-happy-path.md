@@ -11,31 +11,36 @@ pip install -e .
 
 ## 2) Verificar entorno
 
+Los targets del Makefile requieren WSL, Git Bash o un entorno POSIX con `make`.
+Desde PowerShell puro, ejecuta el script equivalente:
+
 ```powershell
-make doctor
+python scripts/doctor.py
 ```
 
 ## 3) Flujo de desarrollo diario
 
 ```powershell
-make lint
-make typecheck
-make test-unit
+ruff check .
+mypy .
+pytest tests/ -m "unit and not slow"
 ```
 
-## 4) Limpieza portable (sin comandos Unix)
+La suite requiere `TEST_DATABASE_URL`; consulta `AGENTS.md` para levantar Postgres.
+
+## 4) Limpieza portable
 
 ```powershell
-make clean
+python scripts/clean_artifacts.py
 ```
 
-`make clean` usa `python scripts/clean_artifacts.py`, compatible con Windows/Linux/macOS.
+`make clean` usa comandos POSIX; el script anterior es la alternativa portable.
 
 ## 5) Navegacion graphify-first
 
 ```powershell
-make graphify-query Q="scheduler anomaly"
-make graphify-update
+graphify query "scheduler anomaly"
+graphify update .
 ```
 
-Si `graphify` no esta instalado en tu shell, sigue el fallback documentado en `docs/graphify-first.md`.
+`graphify` es un CLI local, no un target del Makefile. Si no esta instalado en tu shell, sigue el fallback documentado en `docs/graphify-first.md` y no intentes instalarlo.

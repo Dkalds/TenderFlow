@@ -34,7 +34,6 @@ def _build_simple_atom(n: int) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.load
 class TestXmlParsingThroughput:
     """Benchmark: parse N entries from synthetic ATOM XML."""
 
@@ -61,7 +60,6 @@ class TestXmlParsingThroughput:
         assert throughput > 10_000, f"Parsing too slow: {throughput:.0f} entries/sec"
 
 
-@pytest.mark.load
 class TestBulkUpsertPerformance:
     """Benchmark: bulk upsert of synthetic licitaciones."""
 

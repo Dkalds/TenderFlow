@@ -16,7 +16,7 @@
 | Paquete | Entry point | Para profundizar |
 |---|---|---|
 | `api/` | `api/app.py` (FastAPI factory) | `graphify explain "api/app.py"` |
-| `dashboard/` | `dashboard/app.py` (Streamlit) | `graphify explain "dashboard/router.py"` |
+| `web/` | `web/src/app/` (Next.js 16) | `graphify explain "web/src/app"` |
 | `services/` | `services/licitaciones.py` (core de dominio) | `graphify explain "services/licitaciones.py"` |
 | `db/` | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py` | `graphify explain "db/upsert.py"` |
 | `scraper/` | `scraper/pipeline.py` | `graphify explain "scraper/pipeline.py"` |
@@ -34,12 +34,12 @@
 | Concepto | Comando sugerido |
 |---|---|
 | Cómo el scraper guarda en BD | `graphify path "scraper/pipeline.py" "db/upsert.py"` |
-| Cómo el dashboard lee datos | `graphify path "dashboard/app.py" "db/repositories/licitaciones.py"` |
+| Cómo el dashboard lee datos | `graphify path "web/src/lib/api-client.ts" "api/app.py"` |
 | Flujo auth en la API | `graphify explain "api/routes/security.py"` |
 | Cómo se calculan los KPIs | `graphify explain "scheduler/kpi_precompute.py"` |
 | Cómo funciona el upsert idempotente | `graphify explain "db/upsert.py"` |
 | Clasificación ML de licitaciones | `graphify explain "scraper/ml_classifier.py"` |
-| Búsqueda semántica | `graphify path "services/investigador" "dashboard/embeddings.py"` |
+| Búsqueda semántica | `graphify path "web/src/app/(dashboard)/investigador/page.tsx" "services/investigador"` |
 | Watchlist / alertas email | `graphify explain "services/watchlist"` |
 | Rate limiting | `graphify path "api/middleware" "services/rate_limiting.py"` |
 | Migraciones | `graphify explain "db/alembic"` |
@@ -68,13 +68,15 @@ PLACSP (open data)
  kpi_precompute      classification         middleware
  loop                clusters               errors
                      analytics_engine
-                     investigador (FTS5)
+                               investigador (FTS Postgres)
                           │
                           ▼
-                    [dashboard/]
-                     pages / components / filters
-                     embeddings + FAISS (opt)
-                     theme / router
+                                  [api/]
+                                    HTTP
+                                       │
+                                       ▼
+                                  [web/]
+                               Next.js dashboard
 ```
 
 ---

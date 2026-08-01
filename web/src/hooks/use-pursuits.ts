@@ -47,25 +47,27 @@ export interface PursuitFilters {
   responsible_user_id?: number;
 }
 
-function pursuitQuery(filters: PursuitFilters): string {
+function pursuitQuery(filters: PursuitFilters, organizationId: number | null): string {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.responsible_user_id) params.set("responsible_user_id", String(filters.responsible_user_id));
+  if (organizationId != null) params.set("organization_id", String(organizationId));
   const search = params.toString();
   return search ? `?${search}` : "";
 }
 
+/**
+ * `organizationId === null` no significa "sin datos": el backend resuelve la
+ * organización personal automáticamente cuando se omite el parámetro. Por eso
+ * estas queries se ejecutan siempre, en vez de quedar deshabilitadas hasta que
+ * exista un ID explícito seleccionado en el frontend.
+ */
 export function usePursuits(filters: PursuitFilters = {}) {
   const organizationId = useActiveOrganizationId();
-  const query = pursuitQuery(filters);
-  const separator = query ? "&" : "?";
-  const organizationQuery = organizationId
-    ? `${query}${separator}organization_id=${organizationId}`
-    : query;
   return useQuery({
     queryKey: [...pursuitKeys.list(filters), organizationId],
-    queryFn: () => fetchWithAuth<PursuitList>(`/api/v1/pursuits${organizationQuery}`),
-    enabled: organizationId !== null,
+    queryFn: () =>
+      fetchWithAuth<PursuitList>(`/api/v1/pursuits${pursuitQuery(filters, organizationId)}`),
     staleTime: 30_000,
   });
 }
@@ -74,11 +76,15 @@ export function usePursuit(id: string | null) {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.detail(id ?? ""), organizationId],
-    queryFn: () =>
-      fetchWithAuth<Pursuit>(
-        `/api/v1/pursuits/${encodeURIComponent(id!)}?organization_id=${organizationId}`,
-      ),
-    enabled: Boolean(id) && organizationId !== null,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (organizationId != null) params.set("organization_id", String(organizationId));
+      const query = params.toString();
+      return fetchWithAuth<Pursuit>(
+        `/api/v1/pursuits/${encodeURIComponent(id!)}${query ? `?${query}` : ""}`,
+      );
+    },
+    enabled: Boolean(id),
   });
 }
 
@@ -86,6 +92,7 @@ function invalidatePursuits(queryClient: ReturnType<typeof useQueryClient>) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: pursuitKeys.all }),
     queryClient.invalidateQueries({ queryKey: pursuitKeys.metrics }),
+    queryClient.invalidateQueries({ queryKey: ["organizations"] }),
   ]);
 }
 
@@ -107,12 +114,16 @@ export function useUpdatePursuit(id: string | number) {
   const pursuitId = String(id);
   const organizationId = useActiveOrganizationId();
   return useMutation({
-    mutationFn: (input: UpdatePursuitInput) =>
-      apiMutate<Pursuit>(
+    mutationFn: (input: UpdatePursuitInput) => {
+      const params = new URLSearchParams();
+      if (organizationId != null) params.set("organization_id", String(organizationId));
+      const query = params.toString();
+      return apiMutate<Pursuit>(
         "PATCH",
-        `/api/v1/pursuits/${encodeURIComponent(pursuitId)}?organization_id=${organizationId}`,
+        `/api/v1/pursuits/${encodeURIComponent(pursuitId)}${query ? `?${query}` : ""}`,
         input,
-      ),
+      );
+    },
     onSuccess: (pursuit) => {
       // La misma clave que lee `usePursuit`, organización incluida: sin ella el
       // detalle se sembraba en una entrada que nadie consulta y la vista se
@@ -127,11 +138,12 @@ export function usePursuitMetrics() {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.metrics, organizationId],
-    queryFn: () =>
-      fetchWithAuth<PursuitMetrics>(
-        `/api/v1/pursuits/metrics?organization_id=${organizationId}`,
-      ),
-    enabled: organizationId !== null,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (organizationId != null) params.set("organization_id", String(organizationId));
+      const query = params.toString();
+      return fetchWithAuth<PursuitMetrics>(`/api/v1/pursuits/metrics${query ? `?${query}` : ""}`);
+    },
     staleTime: 60_000,
   });
 }

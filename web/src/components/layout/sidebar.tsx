@@ -173,6 +173,12 @@ export function Sidebar() {
               </option>
             ))}
           </select>
+          <Link
+            href="/equipo"
+            className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+          >
+            Gestionar equipo &rarr;
+          </Link>
         </div>
       )}
 

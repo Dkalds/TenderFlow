@@ -15,9 +15,9 @@ paquetes exentos — no reproduzcas aquí un estado por paquete, envejece mal.
 | `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, schemas (pandera), signing (JWKS), ssrf, csrf, types | `shared/dto.py`, `shared/schemas.py` | [SECURITY.md](SECURITY.md) |
 | `services/` | Biblioteca de dominio: licitaciones, normalization, classification, clusters, rate_limiting, `analytics_engine.py` (DuckDB) + subpaquetes `analytics/`, `competitive/`, `investigador/` (FTS Postgres `tsvector`), `ml/`, `rag/` | `services/licitaciones.py` | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
 | `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-022](adr/ADR-022-frontera-de-persistencia.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
-| `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; 27 routers en `api/routes/` (`ls api/routes/` es la lista vigente) | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md), [api-design.md](api-design.md) |
+| `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; routers en `api/routes/` | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md), [api-design.md](api-design.md) |
 | `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | [frontend-data-invariants.md](frontend-data-invariants.md) ([ADR-014](adr/ADR-014-integridad-analitica-frontend.md)) |
-| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED): descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py` (SQL manual, S608 suppressed) | [ADR-009](adr/ADR-009-framework-conectores-multifuente.md) |
+| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED): descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py`. Las violaciones legacy de persistencia están congeladas por TID251; no son patrón para código nuevo | [ADR-009](adr/ADR-009-framework-conectores-multifuente.md) |
 | `scheduler/` | Jobs cron: `run_update`, precomputes (`kpi_`, `aggregates_`), drift, alertas, DLQ retry, + `scheduler/jobs/` (daily_atom, recent_bulk, ml_predicciones, documentos_embeddings, retention_cleanup, watchlist_rules) | `scheduler/loop.py`, `scheduler/run_update.py` | [ADR-012](adr/ADR-012-plano-unico-orquestacion.md); inventario vigente y su plano: [STATUS.md](STATUS.md) |
 | `llm/` | Cliente y providers LLM (opcional): OpenAI, Anthropic y NVIDIA NIM (vía API compatible OpenAI), presupuesto/circuit-breaker en `budget.py` | `llm/client.py`, `llm/providers/` | — |
 | `observability/` | structlog config, Prometheus metrics, healthcheck, dashboards Grafana | `observability/logging.py` | [sli-slo.md](sli-slo.md), [ADR-019](adr/ADR-019-observabilidad-desplegada.md) |
@@ -25,13 +25,57 @@ paquetes exentos — no reproduzcas aquí un estado por paquete, envejece mal.
 
 ---
 
-## 2. Workflows
+## 2. Comandos y prerrequisitos
+
+El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
+
+| Necesidad | Comando |
+|---|---|
+| Lint + typecheck + tests unitarios, fail-fast | `make check` |
+| Lint Python | `make lint` |
+| Typecheck Python | `make typecheck` |
+| Tests unitarios rápidos | `make test-unit` |
+| Suite estándar | `make test` |
+| Tests de integración | `make test-integration` |
+| Validar customizaciones agénticas | `make check-agent-docs` |
+| Validar contrato API | `make check-api-contract` |
+| Validar invariantes analíticos del frontend | `make check-frontend-invariants` |
+| Lint / typecheck frontend | `make web-lint` / `make web-typecheck` |
+| Tests E2E frontend | `make web-test-e2e` |
+| Arrancar API / frontend | `make api` / `make web-dev` |
+| Regenerar estado calculado | `make status` |
+| Verificar paridad de jobs | `make job-parity` |
+
+`/check` no es un alias de `make check`: ejecuta los mismos tres controles de
+forma independiente para poder reportar todos los resultados aunque uno falle.
+
+Los tests usan Postgres y requieren `TEST_DATABASE_URL`. En local, levantá la
+instancia de desarrollo con `docker compose up -d postgres`; cada test recibe un
+schema aislado mediante las fixtures de `tests/conftest.py`.
+
+| Control | Sin dependencias | Con dependencias, sin Postgres |
+|---|---|---|
+| `make check-agent-docs` | disponible: stdlib | disponible |
+| `make check-frontend-invariants` | disponible: stdlib | disponible |
+| `make lint` | requiere ruff | disponible |
+| `make typecheck` | requiere deps y mypy | disponible |
+| `make status`, `make job-parity` | requiere deps | disponible |
+| `make check-api-contract` | requiere deps | disponible tras `make openapi` |
+| `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
+| `graphify *` | solo si el CLI está instalado | igual |
+
+Un control no ejecutado se reporta como tal; no cuenta como verde ni se
+sustituye por otro motor. El catálogo completo sigue disponible con `make help`.
+
+---
+
+## 3. Workflows
 
 Los pasos de post-flight de abajo asumen entorno completo. Si el CLI `graphify`
-no está instalado, omití `graphify update .`; si no hay Postgres, `/check` corre
-solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
+no está instalado, omití `graphify update .`; si no hay Postgres, ejecutá los
+controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 
-### 2.1 Añadir un endpoint a la API
+### 3.1 Añadir un endpoint a la API
 
 1. **Define el contrato**: añade el DTO request/response en `shared/dto.py` (Pydantic v2).
 2. **Repositorio**: si lee/escribe datos nuevos, añade método en `db/repositories/<entidad>.py` (patrón existente: ver `db/repositories/licitaciones.py`). Si requiere SQL nuevo, mantén upsert idempotente.
@@ -42,14 +86,14 @@ solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
 7. **Documenta**: actualiza el docstring de módulo de `api/app.py` (lista de endpoints en la cabecera).
 8. **Post-flight**: `/check` → `graphify update .`.
 
-### 2.2 Añadir una página al frontend
+### 3.2 Añadir una página al frontend
 
 1. **Nueva ruta**: crea directorio en `web/src/app/(dashboard)/<nombre>/page.tsx`.
 2. **Componentes reutilizables**: van en `web/src/components/`. UI primitivos en `web/src/components/ui/`.
 3. **Carga de datos**: usa los hooks de TanStack Query en `web/src/hooks/`. API client en `web/src/lib/api-client.ts`.
 4. **Tests**: tests e2e en `web/src/test/` con Playwright.
 
-### 2.3 Añadir un job al scraper
+### 3.3 Añadir un job al scraper
 
 1. **Filtro keywords**: si filtra por tecnología nueva, añade lista en `config/keywords.py` (patrón: `SAP_KEYWORDS`, `TECHNOLOGY_KEYWORDS`).
 2. **Pipeline**: extendé `scraper/pipeline.py` o crea módulo nuevo. Mantén el patrón: descarga → parse → filtrar → clasificar → upsert.
@@ -58,7 +102,7 @@ solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
 5. **Tests integration**: `tests/test_<pipeline>_integration.py` (auto-marker `integration` si el nombre encaja).
 6. **Schedule**: registrá en `scheduler/run_update.py` y si corresponde en `.github/workflows/scrape*.yml` (**requiere confirmación humana**).
 
-### 2.4 Fix de bug
+### 3.4 Fix de bug
 
 1. **Reproducir con test primero**: añadí test que falla con el bug actual (`tests/test_<area>_<bug>.py`). Marker apropiado.
 2. **Localiza la causa**: `graphify query "<síntoma>"` o `graphify path "<entry>" "<componente>"`.
@@ -67,7 +111,7 @@ solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
 5. **Post-flight**: `graphify update .`.
 6. **Commit**: convencional. Sin `--no-verify`.
 
-### 2.5 Refactor / mover archivos
+### 3.5 Refactor / mover archivos
 
 1. **Antes**: corre `/check` para tener una baseline verde.
 2. **Mueve / renombra**.
@@ -78,11 +122,11 @@ solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
 
 ---
 
-## 3. Patterns por área
+## 4. Patterns por área
 
 | Decisión | Regla |
 |---|---|
-| ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md)). En `scraper/ml_*` se permite SQL manual (S608 ya suppressed). |
+| ¿SQL crudo o ORM? | SQL crudo con repositorios finos (ver [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md)), siempre dentro de `db/`. Las excepciones legacy congeladas por TID251 no autorizan SQL nuevo fuera de esa capa. |
 | ¿Cómo importar desde `db/`? | Preferí la fachada `from db.database import X` para aislarte de la organización interna (ver su docstring para el catálogo de símbolos). Pero **abrir conexiones está baneado por TID251 en ambas formas**: ni `db.connection.connect`/`connect_read` ni sus alias `db.database.connect`/`connect_read` fuera de la whitelist de `pyproject.toml` — la fachada no es vía de escape. Necesitás una query nueva: va a `db/` (repository o función de módulo, [ADR-022](adr/ADR-022-frontera-de-persistencia.md)). |
 | ¿Servicio vs `db/` directo en la ruta? | **CRUD simple → `db.*` directo desde la ruta; regla de negocio o transformación de dominio → `services/`** ([ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md)). `services/` es biblioteca, no frontera obligatoria: no envuelvas un passthrough (leer por id, listar paginado, log de auditoría) en una capa que no transforma nada. La ruta siempre orquesta auth, validación y serialización. |
 | ¿Cache en frontend? | Invalidación cross-process vía `shared/cache_signal.py` para refrescar datos server-side tras cada scraping. |
@@ -94,7 +138,7 @@ solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
 
 ---
 
-## 4. Glosario del dominio
+## 5. Glosario del dominio
 
 | Término | Significado |
 |---|---|
@@ -115,7 +159,7 @@ solo lint+typecheck y los tests se reportan como no ejecutados (AGENTS.md §4).
 
 ---
 
-## 5. Cuándo NO seguir este playbook
+## 6. Cuándo NO seguir este playbook
 
 - El usuario pide explícitamente otra cosa.
 - Hay un ADR posterior que contradice algo aquí (los ADRs son la fuente de verdad sobre decisiones arquitectónicas; este playbook describe el estado vigente).

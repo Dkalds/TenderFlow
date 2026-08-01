@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from db.repositories.organizations import OrganizationRepository
+from db.users import get_active_user_by_email_ci
 from shared.dto import (
     OrganizationMembershipOut,
     OrganizationMembershipUpsert,
@@ -18,6 +19,10 @@ class OrganizationAccessError(PermissionError):
 
 class OrganizationPermissionError(PermissionError):
     """La membresía existe, pero su rol no permite la operación."""
+
+
+class OrganizationMemberNotFoundError(LookupError):
+    """No existe una cuenta activa con el correo indicado."""
 
 
 def resolve_organization(
@@ -73,6 +78,19 @@ def list_members(user_id: int, organization_id: int) -> list[OrganizationMembers
     ]
 
 
+def _guard_owner_row(organization_id: int, target_user_id: int) -> None:
+    """Impide degradar o revocar una fila owner desde este flujo.
+
+    La transferencia de propiedad queda fuera de alcance a propósito; el
+    único camino para dejar de ser owner sigue siendo uno no expuesto aquí.
+    """
+    existing = _repo.get_active_membership(organization_id, target_user_id)
+    if existing is not None and str(existing["role"]) == "owner":
+        raise OrganizationPermissionError(
+            "El owner no puede degradarse ni revocarse desde este flujo."
+        )
+
+
 def upsert_membership(
     user_id: int,
     organization_id: int,
@@ -83,12 +101,44 @@ def upsert_membership(
         raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
     if body.role == "owner" and role != "owner":
         raise OrganizationPermissionError("Solo un owner puede asignar otro owner.")
+    _guard_owner_row(organization_id, body.user_id)
     row = _repo.add_membership(
         organization_id,
         body.user_id,
         body.role,
         invited_by_user_id=user_id,
         status=body.status,
+    )
+    return OrganizationMembershipOut.model_validate(row)
+
+
+def add_member_by_email(
+    user_id: int,
+    organization_id: int,
+    email: str,
+    role: str,
+) -> OrganizationMembershipOut:
+    """Incorpora a un usuario ya registrado a una organización compartida.
+
+    Solo admite ``admin``, ``member`` o ``viewer`` (ver
+    :class:`shared.dto.OrganizationMemberInvite`): asignar ``owner`` por este
+    camino queda fuera de alcance a propósito.
+    """
+    _, acting_role = resolve_organization(user_id, organization_id)
+    if acting_role not in {"owner", "admin"}:
+        raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
+    target = get_active_user_by_email_ci(email)
+    if target is None:
+        raise OrganizationMemberNotFoundError(
+            "No existe una cuenta activa con ese correo. La persona debe registrarse primero."
+        )
+    _guard_owner_row(organization_id, int(target["id"]))
+    row = _repo.add_membership(
+        organization_id,
+        int(target["id"]),
+        role,
+        invited_by_user_id=user_id,
+        status="active",
     )
     return OrganizationMembershipOut.model_validate(row)
 

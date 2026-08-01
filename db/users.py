@@ -99,6 +99,26 @@ def get_user_by_email(email: str, *, include_deactivated: bool = False) -> dict[
         return dict(zip(cols, row, strict=False))
 
 
+def get_active_user_by_email_ci(email: str) -> dict[str, Any] | None:
+    """Busca una cuenta activa por correo, sin distinguir mayúsculas.
+
+    Pensado para el alta de miembros de organizaciones por correo: el alta
+    self-service (``POST /auth/register``) no canonicaliza el valor antes de
+    guardarlo, así que una comparación exacta puede fallar por diferencias de
+    capitalización. No se usa en login para no tocar ese comportamiento.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "SELECT * FROM users WHERE lower(email) = lower(?) AND deactivated_at IS NULL",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row, strict=False))
+
+
 def is_admin(user_id: int) -> bool:
     """Devuelve True si el usuario tiene el flag is_admin activo."""
     with connect() as c:

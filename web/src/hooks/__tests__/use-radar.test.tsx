@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useRadar } from "@/hooks/use-radar";
 
-const tender = (id: string, fecha_publicacion: string) => ({
+const tender = (id: string, fecha_publicacion: string, tecnologia = "SAP") => ({
   id_externo: id,
   titulo: `Licitación ${id}`,
   organo_contratacion: "Ayuntamiento",
@@ -15,7 +15,7 @@ const tender = (id: string, fecha_publicacion: string) => ({
   ccaa: "MAD",
   cpv: "72000000",
   url: null,
-  tecnologia: "SAP",
+  tecnologia,
 });
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -153,5 +153,46 @@ describe("useRadar", () => {
     await waitFor(() => expect(result.current.error).toBeTruthy());
 
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("omits the tecnologia param when null (no filter applied)", async () => {
+    const fetchMock = stubApi({ items: [] });
+
+    const { result } = renderHook(() => useRadar(null), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const listingCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/api/v1/licitaciones"),
+    );
+    expect(String(listingCall![0])).not.toContain("tecnologia=");
+  });
+
+  it("includes the tecnologia param when a single value is selected", async () => {
+    const fetchMock = stubApi({ items: [] });
+
+    const { result } = renderHook(() => useRadar("IA"), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const listingCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/api/v1/licitaciones"),
+    );
+    expect(String(listingCall![0])).toContain("tecnologia=IA");
+  });
+
+  it("uses a distinct query key per tecnologia so switching the filter refetches", async () => {
+    const fetchMock = stubApi({ items: [] });
+
+    const { rerender } = renderHook(
+      ({ tecnologia }: { tecnologia: string | null }) => useRadar(tecnologia),
+      { wrapper, initialProps: { tecnologia: null as string | null } },
+    );
+    rerender({ tecnologia: "Cloud" });
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).includes("/api/v1/licitaciones"))
+          .length,
+      ).toBeGreaterThanOrEqual(2),
+    );
   });
 });

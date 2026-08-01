@@ -9,18 +9,27 @@ herramienta (`.claude/`, `.agents/`, `.codex/`, `.opencode/`):
 3. Los skills nombrados en CLAUDE.md existen en `.claude/skills/` y son
    invocables por el modelo.
 4. `.claude/skills/` y `.agents/skills/` contienen todo lo que declara
-   `skills-lock.json` (los dos árboles no divergen).
+   `skills-lock.json` (los dos árboles no divergen) y su `verifiedHash`
+   coincide con el contenido instalado (detecta tamperizado o un lock
+   desactualizado; ver `scripts/update_skills_lock_hashes.py`). Cada skill
+   también declara `trust` (`first-party`/`community`; ver
+   `scripts/classify_skill_trust.py`).
 5. Toda ruta del repo citada entre backticks o como link markdown existe.
 6. Los hooks apuntan a scripts existentes y sin rutas absolutas de una máquina.
 7. Los comandos de `.claude/commands/` y sus copias
    `.agents/skills/source-command-*/` no divergen.
 8. No quedan wikilinks de Obsidian anidados dentro de links markdown.
+9. Los hooks Claude/Codex son equivalentes y los plugins OpenCode existen.
+10. No se introducen markers pytest manuales de categoría fuera de las
+    excepciones históricas congeladas.
 
 Uso: python scripts/check_agent_docs.py [--verbose]
 """
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import re
 import sys
@@ -36,12 +45,29 @@ INSTRUCTION_FILES = [
     "docs/AGENT_PLAYBOOK.md",
     "docs/graphify-first.md",
     "docs/contributor-checklist.md",
+    "docs/windows-happy-path.md",
     ".agents/rules/graphify.md",
+    ".agents/workflows/graphify.md",
 ]
 
 COMMANDS_DIR = ROOT / ".claude/commands"
 CLAUDE_SKILLS = ROOT / ".claude/skills"
 AGENTS_SKILLS = ROOT / ".agents/skills"
+AGENTS_SKILL_PREFIX_ALLOWLIST = ("source-command-",)
+
+VALID_TRUST_LEVELS = frozenset({"first-party", "community"})
+
+CATEGORY_MARKERS = frozenset({"unit", "integration", "e2e", "property", "load"})
+MANUAL_CATEGORY_MARKER_ALLOWLIST = frozenset(
+    {
+        ("tests/test_integration_e2e.py", "integration", "TestE2EPipelineToDatabase"),
+        ("tests/test_integration_e2e.py", "integration", "TestE2EHistoryTracking"),
+        ("tests/test_integration_e2e.py", "integration", "TestE2EDataLoader"),
+        ("tests/test_integration_e2e.py", "integration", "TestE2EFilters"),
+        ("tests/test_integration_e2e.py", "integration", "TestE2EKpiPrecompute"),
+        ("tests/test_integration_e2e.py", "integration", "TestE2ERateLimiting"),
+    }
+)
 
 # Tokens que parecen slash-command pero no lo son.
 SLASH_ALLOWLIST = {"/api", "/ask", "/me", "/competitive", "/analytics", "/graphify"}
@@ -134,6 +160,27 @@ def skill_is_model_invocable(skill_dir: Path) -> bool:
     return "disable-model-invocation: true" not in head
 
 
+def tree_hashes(root: Path) -> dict[str, str]:
+    """Return stable SHA-256 hashes for every file below ``root``."""
+    return {
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def combined_hash(file_hashes: dict[str, str]) -> str:
+    """Return one deterministic hash for a skill tree from its per-file hashes.
+
+    Self-computed and self-verified: unrelated to the `computedHash` field that
+    the external `skills add` CLI writes at install time (undocumented,
+    proprietary algorithm we cannot reproduce). This one we generate and check
+    ourselves via `scripts/update_skills_lock_hashes.py`.
+    """
+    manifest = "".join(f"{rel}:{file_hashes[rel]}\n" for rel in sorted(file_hashes))
+    return hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+
+
 def check_claude_skills() -> None:
     """Valida los nombres de skill citados en frases que hablan de skills."""
     sentences = [s for s in re.split(r"(?<=[.:])\s", read("CLAUDE.md")) if "skill" in s.lower()]
@@ -172,13 +219,67 @@ def check_skill_trees() -> None:
     if not lock_path.exists():
         return
     lock = json.loads(lock_path.read_text(encoding="utf-8")).get("skills", {})
+    locked_names = set(lock)
     for name in sorted(lock):
-        for tree in (CLAUDE_SKILLS, AGENTS_SKILLS):
-            if not (tree / name / "SKILL.md").exists():
+        skill_dirs = [tree / name for tree in (CLAUDE_SKILLS, AGENTS_SKILLS)]
+        for skill_dir in skill_dirs:
+            if not (skill_dir / "SKILL.md").exists():
                 fail(
                     "skills-lock.json",
-                    f"declara `{name}` pero falta en {tree.relative_to(ROOT)}/ (los dos árboles deben coincidir)",
+                    f"declara `{name}` pero falta en {skill_dir.parent.relative_to(ROOT)}/ "
+                    "(los dos árboles deben coincidir)",
                 )
+        if all((skill_dir / "SKILL.md").exists() for skill_dir in skill_dirs):
+            claude_hashes, agents_hashes = (tree_hashes(skill_dir) for skill_dir in skill_dirs)
+            if claude_hashes != agents_hashes:
+                differing = sorted(
+                    path
+                    for path in claude_hashes.keys() | agents_hashes.keys()
+                    if claude_hashes.get(path) != agents_hashes.get(path)
+                )
+                fail(
+                    "skills-lock.json",
+                    f"el skill `{name}` diverge entre .claude/skills y .agents/skills "
+                    f"({len(differing)} archivo/s), p.ej.: {differing[0]}",
+                )
+            verified = combined_hash(claude_hashes)
+            locked_hash = lock[name].get("verifiedHash")
+            if locked_hash is None:
+                fail(
+                    "skills-lock.json",
+                    f"`{name}` no tiene `verifiedHash`; corré "
+                    "`python scripts/update_skills_lock_hashes.py`",
+                )
+            elif locked_hash != verified:
+                fail(
+                    "skills-lock.json",
+                    f"`{name}` cambió de contenido sin actualizar `verifiedHash` en el lock "
+                    "(revisá el cambio y corré `python scripts/update_skills_lock_hashes.py`)",
+                )
+            trust = lock[name].get("trust")
+            if trust is None:
+                fail(
+                    "skills-lock.json",
+                    f"`{name}` no tiene `trust` (first-party/community); corré "
+                    "`python scripts/classify_skill_trust.py`",
+                )
+            elif trust not in VALID_TRUST_LEVELS:
+                fail(
+                    "skills-lock.json",
+                    f"`{name}` tiene `trust` inválido ({trust!r}); debe ser "
+                    "first-party o community",
+                )
+    for tree in (CLAUDE_SKILLS, AGENTS_SKILLS):
+        installed = {path.parent.name for path in tree.glob("*/SKILL.md")}
+        extras = installed - locked_names
+        if tree == AGENTS_SKILLS:
+            extras = {name for name in extras if not name.startswith(AGENTS_SKILL_PREFIX_ALLOWLIST)}
+        for name in sorted(extras):
+            fail(
+                "skills-lock.json",
+                f"{tree.relative_to(ROOT)}/{name} no está declarado en el lock "
+                "ni es un skill local permitido",
+            )
     reported: set[str] = set()
     for tree in (CLAUDE_SKILLS, AGENTS_SKILLS):
         for skill in sorted(tree.glob("*/SKILL.md")):
@@ -237,20 +338,59 @@ def check_hooks_and_absolute_paths() -> None:
             warn(rel, "define hooks sin apuntar a .../hooks/*.py")
 
 
+def check_hook_parity() -> None:
+    claude_files = {path.name: path for path in (ROOT / ".claude/hooks").glob("*.py")}
+    codex_files = {path.name: path for path in (ROOT / ".codex/hooks").glob("*.py")}
+    for name in sorted(claude_files.keys() | codex_files.keys()):
+        if name not in claude_files or name not in codex_files:
+            fail("hooks", f"el hook `{name}` no existe en ambos adaptadores Claude/Codex")
+            continue
+        if claude_files[name].read_bytes() != codex_files[name].read_bytes():
+            fail("hooks", f"el hook `{name}` diverge entre .claude/hooks y .codex/hooks")
+
+
+def check_opencode_plugins() -> None:
+    config_path = ROOT / ".opencode/opencode.json"
+    if not config_path.exists():
+        return
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        fail(".opencode/opencode.json", f"JSON inválido: {exc.msg}")
+        return
+    plugins = config.get("plugin", [])
+    if not isinstance(plugins, list):
+        fail(".opencode/opencode.json", "`plugin` debe ser una lista")
+        return
+    for plugin in plugins:
+        if not isinstance(plugin, str) or not (ROOT / plugin).is_file():
+            fail(".opencode/opencode.json", f"referencia un plugin inexistente: {plugin!r}")
+
+
 def check_command_copies() -> None:
     for command in sorted(COMMANDS_DIR.glob("*.md")):
         copy = AGENTS_SKILLS / f"source-command-{command.stem}/SKILL.md"
         if not copy.exists():
-            continue
-        body = command.read_text(encoding="utf-8").split("---", 2)[-1]
-        copy_text = copy.read_text(encoding="utf-8")
-        missing = [
-            ln.strip() for ln in body.splitlines() if ln.strip() and ln.strip() not in copy_text
-        ]
-        if missing:
             fail(
-                str(copy.relative_to(ROOT)),
-                f"divergió de {command.relative_to(ROOT)} ({len(missing)} línea/s), p.ej.: {missing[0][:80]!r}",
+                command.relative_to(ROOT).as_posix(),
+                f"falta la copia portable {copy.relative_to(ROOT).as_posix()}",
+            )
+            continue
+        body = command.read_text(encoding="utf-8").split("---", 2)[-1].strip()
+        copy_text = copy.read_text(encoding="utf-8")
+        marker = "## Command Template"
+        if marker not in copy_text:
+            fail(
+                copy.relative_to(ROOT).as_posix(),
+                f"no contiene la sección canónica `{marker}`",
+            )
+            continue
+        copy_body = copy_text.split(marker, 1)[1].strip()
+        if copy_body != body:
+            fail(
+                copy.relative_to(ROOT).as_posix(),
+                f"divergió de {command.relative_to(ROOT).as_posix()} "
+                "(el cuerpo debe coincidir exactamente)",
             )
 
 
@@ -267,6 +407,50 @@ def check_nested_wikilinks() -> None:
                 )
 
 
+def _category_marker(decorator: ast.expr) -> str | None:
+    expression = decorator.func if isinstance(decorator, ast.Call) else decorator
+    if not isinstance(expression, ast.Attribute) or expression.attr not in CATEGORY_MARKERS:
+        return None
+    mark = expression.value
+    if not isinstance(mark, ast.Attribute) or mark.attr != "mark":
+        return None
+    if not isinstance(mark.value, ast.Name) or mark.value.id != "pytest":
+        return None
+    return expression.attr
+
+
+def check_manual_test_markers() -> None:
+    found: set[tuple[str, str, str]] = set()
+    tests_dir = ROOT / "tests"
+    if not tests_dir.exists():
+        return
+    for path in sorted(tests_dir.rglob("*.py")):
+        rel = path.relative_to(ROOT).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+        except SyntaxError as exc:
+            fail(rel, f"no se pudo analizar para markers manuales: {exc.msg}")
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                marker = _category_marker(decorator)
+                if marker is not None:
+                    found.add((rel, marker, node.name))
+
+    for rel, marker, scope in sorted(found - MANUAL_CATEGORY_MARKER_ALLOWLIST):
+        fail(
+            rel,
+            f"{scope} introduce `pytest.mark.{marker}` manual; renombrá el test para usar auto-marking",
+        )
+    for rel, marker, scope in sorted(MANUAL_CATEGORY_MARKER_ALLOWLIST - found):
+        fail(
+            "marker allowlist",
+            f"la excepción `{rel}:{scope}` (`{marker}`) ya no existe; eliminála del ratchet",
+        )
+
+
 def main() -> int:
     verbose = "--verbose" in sys.argv
     targets = make_targets()
@@ -276,8 +460,11 @@ def main() -> int:
     check_skill_trees()
     check_paths()
     check_hooks_and_absolute_paths()
+    check_hook_parity()
+    check_opencode_plugins()
     check_command_copies()
     check_nested_wikilinks()
+    check_manual_test_markers()
 
     for w in warnings:
         print(f"WARN  {w}")

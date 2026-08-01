@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
 
 # Postgres serializa timestamptz a texto sin los minutos del offset cuando son
 # cero (p.ej. "2026-08-01 00:45:48.33444+00"), formato que el parser RFC3339
@@ -371,6 +371,8 @@ class OrganizationMembershipOut(BaseModel):
     status: OrganizationMembershipStatus
     created_at: PgDateTime
     updated_at: PgDateTime
+    display_name: str | None = None
+    email: str | None = None
 
 
 class OrganizationCreate(BaseModel):
@@ -389,6 +391,15 @@ class OrganizationMembershipUpsert(BaseModel):
     user_id: int = Field(ge=1)
     role: OrganizationRole = "member"
     status: OrganizationMembershipStatus = "active"
+
+
+class OrganizationMemberInvite(BaseModel):
+    """Alta de un miembro por correo; requiere una cuenta activa existente."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    email: EmailStr
+    role: Literal["admin", "member", "viewer"] = "member"
 
 
 class PursuitCreate(BaseModel):
