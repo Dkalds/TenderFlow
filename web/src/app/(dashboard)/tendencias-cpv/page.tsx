@@ -153,7 +153,7 @@ export default function TendenciasCpvPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Tendencias CPV</h1>
+        <h1 className="sr-only">Tendencias CPV</h1>
         <p className="text-muted-foreground">Series temporales por codigo CPV.</p>
       </div>
 

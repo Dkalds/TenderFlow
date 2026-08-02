@@ -1,55 +1,64 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
 import { Info } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, truncate } from "@/lib/utils";
 import type { ResumenNovedadesResult } from "@/lib/api-types";
 
-interface NovedadesBannerProps {
+/**
+ * Novedades desde la última visita. La muestra de cinco no es decorativa: es
+ * lo que convierte «hay 23 nuevas» en algo sobre lo que se puede decidir sin
+ * abrir otra pantalla, así que cada línea enlaza a su ficha.
+ */
+export function NovedadesBanner({
+  data,
+  isLoading,
+}: {
   data: ResumenNovedadesResult | undefined;
   isLoading: boolean;
-}
-
-export function NovedadesBanner({ data, isLoading }: NovedadesBannerProps) {
-  if (isLoading) {
-    return <Skeleton className="h-20 w-full" />;
-  }
-
+}) {
+  if (isLoading) return <Skeleton className="mb-4 h-20 w-full rounded-xl" />;
   if (!data) return null;
 
   if (data.count > 0) {
     return (
-      <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-        <CardContent className="py-4">
-          <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0" />
-            <div className="space-y-2">
-              <p className="font-medium text-blue-900 dark:text-blue-100">
-                {data.count} nuevas licitaciones desde tu ultima visita
-              </p>
-              <ul className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
-                {(data.sample ?? []).slice(0, 5).map((item) => (
-                  <li key={item.id_externo} className="flex items-center justify-between gap-4">
-                    <span className="truncate">{truncate(item.titulo, 60)}</span>
-                    {item.importe != null && (
-                      <span className="shrink-0 font-medium">{formatCurrency(item.importe)}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="mb-4 rounded-xl border border-[hsl(var(--info)/0.28)] bg-[hsl(var(--info)/0.05)] px-3.5 py-3">
+        <div className="mb-2.5 flex items-center gap-2.5">
+          <span className="grid h-5.5 w-5.5 flex-none place-items-center rounded-full border border-[hsl(var(--info)/0.4)] text-[hsl(var(--info))]">
+            <Info className="h-3 w-3" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-[hsl(var(--info))]">
+            {data.count} nuevas licitaciones desde tu última visita
+          </span>
+          <Link href="/detalle" className="flex-none whitespace-nowrap text-[11.5px] font-medium">
+            Ver todas →
+          </Link>
+        </div>
+        <ul className="flex flex-col gap-1.5 pl-8">
+          {(data.sample ?? []).slice(0, 5).map((item) => (
+            <li key={item.id_externo} className="flex min-w-0 items-baseline gap-3.5">
+              <Link
+                href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
+                className="min-w-0 flex-1 truncate text-[11.5px] leading-[1.4] text-[hsl(var(--info))] hover:underline"
+              >
+                {truncate(item.titulo, 80)}
+              </Link>
+              {item.importe != null && (
+                <span className="tf-tnum flex-none font-mono text-[11px] font-semibold leading-[1.4] text-[hsl(var(--info))]">
+                  {formatCurrency(item.importe)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
     );
   }
 
   return (
-    <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-      <CardContent className="flex items-center justify-center py-4">
-        <p className="text-green-800 dark:text-green-200 text-sm font-medium">Todo al dia</p>
-      </CardContent>
-    </Card>
+    <div className="mb-4 flex items-center justify-center rounded-xl border border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.05)] px-3.5 py-3">
+      <span className="text-[12.5px] font-semibold text-[hsl(var(--success))]">Todo al día</span>
+    </div>
   );
 }

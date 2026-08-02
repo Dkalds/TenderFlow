@@ -13,7 +13,6 @@ import { Slider } from "@/components/ui/slider";
 import {
   Search,
   MessageSquare,
-  BookOpen,
   Settings,
   Download,
   Clock,
@@ -26,6 +25,7 @@ import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
 import { useChat } from "@/hooks/use-ask";
 import { ChatThread } from "@/components/chat-thread";
+import { SpaceShell } from "@/components/layout/space-shell";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -148,7 +148,7 @@ export default function InvestigadorPage() {
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [config, setConfig] = useState<InvestigadorConfig>(DEFAULT_CONFIG);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
 
   // Modo "Preguntar": hilo de chat multi-turno (historial en cliente).
@@ -284,19 +284,8 @@ export default function InvestigadorPage() {
   const showEmpty = !loading && !error && !searchResults && chat.messages.length === 0 && !chat.loading && !chat.error;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
-          <BookOpen className="h-7 w-7" />
-          Investigador
-        </h1>
-        <p className="text-muted-foreground">
-          Busca en el corpus o pregunta lo que quieras: el asistente cita expedientes cuando son relevantes y responde
-          con conocimiento general cuando no lo son.
-        </p>
-      </div>
-
+    <SpaceShell spaceKey="investigador">
+      <div className="space-y-6">
       {/* ---- Configuration panel ---- */}
       <Card>
         <CardHeader
@@ -516,6 +505,10 @@ export default function InvestigadorPage() {
         </Card>
       )}
 
+      {/* Resultados y conversación **conviven**: antes se excluían, así que
+          preguntar por un resultado te hacía perder la lista desde la que
+          preguntabas. En pantalla ancha van en paneles contiguos. */}
+      <div className="grid items-start gap-4 xl:grid-cols-2">
       {/* ---- Search results ---- */}
       {!loading && searchResults && (
         <div className="space-y-3">
@@ -597,6 +590,7 @@ export default function InvestigadorPage() {
           </CardContent>
         </Card>
       )}
+      </div>
 
       {/* ---- Empty state (no example chips shown above already) ---- */}
       {showEmpty && (
@@ -613,6 +607,7 @@ export default function InvestigadorPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+      </div>
+    </SpaceShell>
   );
 }

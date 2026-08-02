@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -287,22 +287,17 @@ export default function EcosistemaPartnersPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Ecosistema Partners
-          </h1>
-          <p className="text-muted-foreground">
-            Clústeres de empresas que co-licitan en UTE y con quién conviene aliarse
-            por segmento.
-          </p>
-        </div>
-        <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "ecosistema-partners" }} />
+      <div className="flex items-center">
+        <div className="flex-1" />
+        <ExportPopover
+          endpoint="/api/v1/exports/download"
+          extraParams={{ seccion: "ecosistema-partners" }}
+          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
+        />
       </div>
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Total Empresas"
           value={isLoading ? undefined : formatNumber(data?.competitors.length)}
@@ -337,7 +332,7 @@ export default function EcosistemaPartnersPage() {
           icon={Users}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Tab Toggle */}
       <div className="flex items-center gap-1 rounded-lg border p-1 w-fit">
@@ -621,7 +616,7 @@ export default function EcosistemaPartnersPage() {
       />
 
       {/* KPI cards for winners */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Top Ganador (por Count)"
           value={isLoading ? undefined : truncate(topWinners[0]?.nombre ?? "-", 30)}
@@ -646,7 +641,7 @@ export default function EcosistemaPartnersPage() {
           icon={TrendingUp}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Bar: Top 15 by count */}

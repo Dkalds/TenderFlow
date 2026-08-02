@@ -95,7 +95,7 @@ export default function CalidadDatosPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Calidad de Datos</h1>
+        <h1 className="sr-only">Calidad de Datos</h1>
         <p className="text-muted-foreground">
           Completitud y consistencia del dataset.
         </p>

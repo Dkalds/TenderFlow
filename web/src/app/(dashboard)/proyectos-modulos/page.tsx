@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 const ModulosBarChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
 const TiposPieChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TiposPieChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
 const ModulosTreemap = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosTreemap })), { ssr: false, loading: () => <Skeleton className="h-[350px] w-full rounded-md" /> });
@@ -224,7 +224,7 @@ export default function ProyectosModulosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="sr-only">
             Proyectos &amp; Modulos
           </h1>
           <p className="text-muted-foreground">
@@ -238,7 +238,7 @@ export default function ProyectosModulosPage() {
       </div>
 
       {/* SAP-specific KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <KpiStrip columns={5}>
         <KpiCard
           title="Ticket Medio SAP"
           value={isLoading ? undefined : formatCurrency(ticketMedioSAP)}
@@ -287,10 +287,10 @@ export default function ProyectosModulosPage() {
           icon={Layers}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Original KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <KpiStrip columns={3}>
         <KpiCard
           title="Total Clasificados"
           value={
@@ -321,7 +321,7 @@ export default function ProyectosModulosPage() {
           icon={Layers}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Bar Chart: SAP Modules */}

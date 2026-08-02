@@ -3,7 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemo, useState } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -128,19 +128,18 @@ export default function UtesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">UTEs</h1>
-          <p className="text-muted-foreground">
-            Analisis de Uniones Temporales de Empresas.
-          </p>
-        </div>
-        <ExportPopover extraParams={{ section: "utes" }} />
+      {/* El nombre del corte lo pone la cabecera del espacio; aquí queda la
+          acción, que es lo único que no puede vivir allí. */}
+      <div className="flex items-center">
+        <div className="flex-1" />
+        <ExportPopover
+          extraParams={{ section: "utes" }}
+          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
+        />
       </div>
 
       {/* KPI Row — 5 cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <KpiStrip columns={5}>
         <KpiCard
           title="Total UTEs"
           value={isLoading ? undefined : formatNumber(kpis?.total_ute)}
@@ -169,7 +168,7 @@ export default function UtesPage() {
           icon={Users}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Charts Row: Top miembros + Evolucion */}
       <div className="grid gap-6 lg:grid-cols-2">

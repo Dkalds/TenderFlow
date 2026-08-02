@@ -4,10 +4,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 const ClustersBarChart = dynamic(() => import("@/components/charts/clusters-charts").then(m => ({ default: m.ClustersBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
 const ClustersBoxChart = dynamic(() => import("@/components/charts/clusters-charts").then(m => ({ default: m.ClustersBoxChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton, SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -131,7 +131,7 @@ export default function ClustersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Clusters</h1>
+        <h1 className="sr-only">Clusters</h1>
         <p className="text-muted-foreground">
           Agrupacion semantica de licitaciones por similitud de titulo (KMeans).
         </p>
@@ -166,7 +166,7 @@ export default function ClustersPage() {
       </Card>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Clusters detectados"
           value={isLoading ? undefined : formatNumber(data?.n_clusters_detectados ?? 0)}
@@ -212,7 +212,7 @@ export default function ClustersPage() {
           icon={Layers}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {data && data.total > 0 && clusters.length === 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50/50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-300">
@@ -244,9 +244,9 @@ export default function ClustersPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Distribucion de importe por cluster</CardTitle>
-            <p className="text-xs text-muted-foreground">
+            <CardDescription>
               Banda = rango (min-max), nucleo = rango intercuartilico (Q1-Q3)
-            </p>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (

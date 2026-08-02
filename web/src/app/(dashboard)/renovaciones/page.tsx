@@ -12,7 +12,7 @@ import type {
   RenovacionesResumenResult,
 } from "@/lib/api-types";
 import { useFilters } from "@/lib/filters";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -218,15 +218,11 @@ export default function RenovacionesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Renovaciones</h1>
-          <p className="text-muted-foreground">
-            Contratos adjudicados que vencen pronto: o los defiende el adjudicatario actual o
-            se los disputa quien llegue primero.
-          </p>
-        </div>
+        <p className="max-w-[70ch] text-xs text-muted-foreground">
+          Contratos adjudicados que vencen pronto: o los defiende el adjudicatario actual o
+          se los disputa quien llegue primero.
+        </p>
         <Select value={meses} onValueChange={setMeses}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
@@ -244,7 +240,7 @@ export default function RenovacionesPage() {
       <PipelineRoleNav current="renovaciones" />
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Contratos venciendo"
           value={totales ? formatNumber(totales.contratos_venciendo) : "…"}
@@ -267,7 +263,7 @@ export default function RenovacionesPage() {
           value={totales ? formatNumber(totales.calientes) : "…"}
           icon={Flame}
         />
-      </div>
+      </KpiStrip>
 
       {/* Cartera en juego por empresa */}
       <Card>

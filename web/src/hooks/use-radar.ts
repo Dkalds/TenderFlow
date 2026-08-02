@@ -16,6 +16,13 @@ type ScoredOpportunity = components["schemas"]["ScoredOpportunity"];
 export type RadarTender = LicitacionSummary & {
   score?: number | null;
   band?: string | null;
+  /**
+   * Desglose por dimensión que devuelve el scoring del backend. El inspector
+   * del Radar lo pinta tal cual: la puntuación se calcula en servidor
+   * (ADR-014) y aquí no se deriva ninguna dimensión.
+   */
+  desglose?: Record<string, number>;
+  risk_flags?: string[];
 };
 
 /** Lo que devuelve el listado: sin `score` ni `band`, que llegan del scoring. */
@@ -86,7 +93,15 @@ export function useRadar(tecnologia: string | null = null) {
   const items: RadarTender[] = (listing.data?.items ?? [])
     .map<RadarTender>((item) => {
       const scored = scores.get(item.id_externo);
-      return scored ? { ...item, score: scored.score, band: scored.band } : item;
+      return scored
+        ? {
+            ...item,
+            score: scored.score,
+            band: scored.band,
+            desglose: scored.desglose,
+            risk_flags: scored.risk_flags,
+          }
+        : item;
     })
     // Orden por el score que devolvió el backend, descendente; los que no tienen
     // score van al final conservando su orden de publicación. Sin `score` aún en
@@ -100,5 +115,7 @@ export function useRadar(tecnologia: string | null = null) {
     /** El score aún no ha llegado: el orden mostrado todavía no es el final. */
     isRanking: scoring.isPending && ids.length > 0,
     error: listing.error,
+    /** Reintento manual desde el estado de error de la consola. */
+    refetch: listing.refetch,
   };
 }
