@@ -4,8 +4,9 @@
 sintéticos (sin tocar la BD). ``overview`` ya agrega vía SQL
 (``db.repositories.aggregates``) — sus tests de este fichero siembran datos
 reales (``tmp_db``) en vez de mockear ``load_stats_base_df`` (que el módulo ya
-no importa); ``load_adjudicaciones`` sigue mockeado porque overview.py sigue
-llamándolo tal cual para hhi/pct_oferta_unica/lead_time_medio.
+no importa); ``_adj_indicadores`` (hhi/pct_oferta_unica/lead_time_medio, hoy
+también SQL vía ``overview_adjudicaciones_indicadores``) se mockea con su
+valor neutro para mantener estos smoke tests centrados en ``licitaciones``.
 """
 
 from __future__ import annotations
@@ -21,6 +22,13 @@ from services.analytics.organo_detail import (
 )
 from services.analytics.organos import OrganosFilters, get_organos
 from services.analytics.overview import OverviewFilters, get_overview
+
+# Valor neutro de overview_adjudicaciones_indicadores (BD de adjudicaciones vacía).
+_ADJ_IND_NEUTRAL: dict[str, float | None] = {
+    "hhi": 0.0,
+    "pct_oferta_unica": 0.0,
+    "lead_time_medio": None,
+}
 
 _LICITACION_FIELDS = {
     "id_externo",
@@ -337,7 +345,7 @@ def test_get_organo_detail_unknown_organo():
 
 def test_get_overview_basic(tmp_db):
     _insert_licitaciones(_lic_rows())
-    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
+    with patch("services.analytics.overview._adj_indicadores", return_value=_ADJ_IND_NEUTRAL):
         result = get_overview(OverviewFilters())
     assert result.total_licitaciones == 3
     assert result.organos_unicos == 2
@@ -347,7 +355,7 @@ def test_get_overview_basic(tmp_db):
 
 
 def test_get_overview_empty(tmp_db):
-    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
+    with patch("services.analytics.overview._adj_indicadores", return_value=_ADJ_IND_NEUTRAL):
         result = get_overview(OverviewFilters())
     assert result.total_licitaciones == 0
     assert result.ccaa_cubiertas == 0
@@ -357,7 +365,7 @@ def test_get_overview_q_filters_titulo_organo_id(tmp_db):
     """El filtro q hace substring case-insensitive sobre titulo/órgano/id,
     en paridad con la búsqueda del listado (KPI bar honesto con q activo)."""
     _insert_licitaciones(_lic_rows())
-    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
+    with patch("services.analytics.overview._adj_indicadores", return_value=_ADJ_IND_NEUTRAL):
         por_titulo = get_overview(OverviewFilters(q="sap"))
         por_organo = get_overview(OverviewFilters(q="org b"))
         sin_match = get_overview(OverviewFilters(q="nomatch-xyz"))
@@ -384,7 +392,7 @@ def test_get_overview_importe_min_excludes_below_and_nan(tmp_db):
         }
     )
     _insert_licitaciones(rows)
-    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
+    with patch("services.analytics.overview._adj_indicadores", return_value=_ADJ_IND_NEUTRAL):
         result = get_overview(OverviewFilters(importe_min=500_000.0))
     # Solo L1 (1M) y L2 (500K); L3 (200K) y L5 (None) quedan fuera.
     assert result.total_licitaciones == 2
@@ -409,7 +417,7 @@ def test_get_overview_ccaa_cubiertas_ignores_nulls(tmp_db):
         }
     )
     _insert_licitaciones(rows)
-    with patch("services.analytics.overview.load_adjudicaciones", return_value=pd.DataFrame()):
+    with patch("services.analytics.overview._adj_indicadores", return_value=_ADJ_IND_NEUTRAL):
         result = get_overview(OverviewFilters())
     # La fila con ccaa=None se excluye → siguen siendo 2 (Madrid, Cataluña).
     assert result.ccaa_cubiertas == 2
