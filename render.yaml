@@ -23,6 +23,12 @@ services:
       # Ruta a la CA de Supabase para verify-full (cert público). Ver db/certs/README.md.
       - key: DATABASE_SSL_ROOT_CERT
         sync: false
+      # Tamaño del pool psycopg hacia el session pooler de Supavisor. El
+      # default de config/settings.py (5) se quedaba corto: las agregaciones
+      # de analytics retenían las 5 conexiones y el resto de endpoints
+      # esperaba en cola (pool-1 connection timeout, 2026-08-01).
+      - key: DB_POOL_SIZE
+        value: "12"
       # ── Redis (cache compartido + rate limiting) — OBLIGATORIO en prod ──
       # Formato: redis://[:password@]host[:port][/db]
       - key: REDIS_URL

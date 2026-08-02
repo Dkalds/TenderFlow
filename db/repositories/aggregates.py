@@ -26,10 +26,11 @@ valida es ``NOT VALID``, no cubre datos previos a la migración). Por eso:
 - Las ventanas relativas a "ahora" (últimos N días/horas) reciben el cutoff ya
   calculado en Python (``datetime.now(UTC).isoformat()`` — mismo formato que
   ``db.connection.now_utc_iso()``) como parámetro, comparado con ``>=``/``<``
-  de forma lexicográfica, igual que los filtros. Se guardan con un regex de
-  prefijo ISO (``~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'``) para excluir filas
-  claramente malformadas del cálculo, replicando el ``errors="coerce"`` +
-  ``dropna`` que hacía pandas fila a fila.
+  de forma lexicográfica, igual que los filtros. Se guardan con un rango
+  lexicográfico sargable (``>= '1900' AND < '3000'``, ver ``_iso_guard``) para
+  excluir filas claramente malformadas del cálculo, replicando el
+  ``errors="coerce"`` + ``dropna`` que hacía pandas fila a fila sin renunciar
+  al índice btree de la columna.
 """
 
 from __future__ import annotations
@@ -43,12 +44,18 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-_ISO_DATE_RE = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}"
-
 
 def _iso_guard(column: str) -> str:
-    """Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna)."""
-    return f"{column} ~ '{_ISO_DATE_RE}'"
+    """Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna).
+
+    Rango lexicográfico y no regex: ``~`` no puede usar el btree y obliga a
+    evaluar el patrón fila a fila sobre todo lo que devuelva el índice de fecha
+    (32 s medidos en prod para 217 filas de resultado). El rango es sargable y
+    equivalente sobre datos ISO: el CHECK de v59 valida el formato en toda
+    escritura nueva y las filas legado se verificaron limpias en prod
+    (0 malformadas en licitaciones/adjudicaciones, 2026-08-02).
+    """
+    return f"({column} >= '1900' AND {column} < '3000')"
 
 
 def _escape_like(s: str) -> str:
@@ -205,6 +212,61 @@ class AggregateRepository:
             "ADJ": int(adj or 0),
             "ANUL": int(anul or 0),
             "total": int(total or 0),
+        }
+
+    def overview_adjudicaciones_indicadores(self) -> dict[str, float | None]:
+        """HHI, % oferta única y lead time medio, agregados en Postgres.
+
+        Sustituye la carga full-table ``adjudicaciones⋈licitaciones`` que
+        alimentaba estos tres KPIs vía pandas (27 s y ~170k filas por llamada
+        medidos en prod, y bloqueada en Render por
+        ``render_api_full_table_loads_blocked`` — que los dejaba a cero/None).
+        Sin filtros a propósito: estos indicadores siempre ignoraron los
+        filtros del endpoint (ver docstring de ``services/analytics/overview``).
+
+        La clave de empresa replica ``services/adjudicaciones.py`` (NIF
+        normalizado con fallback a nombre normalizado) usando además
+        ``empresa_id`` — la resolución de entidad ya hecha en ingesta — como
+        primera opción cuando existe.
+        """
+        empresa_key = (
+            "COALESCE(a.empresa_id::text, "
+            "NULLIF(upper(regexp_replace(a.nif, '[^A-Za-z0-9]', '', 'g')), ''), "
+            "NULLIF(upper(trim(a.nombre)), ''))"
+        )
+        adj_guard = _iso_guard("a.fecha_adjudicacion")
+        pub_guard = _iso_guard("l.fecha_publicacion")
+        sql = (
+            "SELECT "
+            "  (SELECT COALESCE(SUM(POWER(cuota * 100, 2)), 0) FROM ( "
+            "     SELECT SUM(a.importe_adjudicado) "
+            "            / NULLIF(SUM(SUM(a.importe_adjudicado)) OVER (), 0) AS cuota "
+            "     FROM adjudicaciones a "
+            "     WHERE a.importe_adjudicado IS NOT NULL "
+            f"      AND {empresa_key} IS NOT NULL "
+            f"    GROUP BY {empresa_key} "
+            "  ) shares) AS hhi, "
+            "  (SELECT 100.0 * COUNT(*) FILTER (WHERE n_ofertas_recibidas = 1) "
+            "          / NULLIF(COUNT(*) FILTER (WHERE n_ofertas_recibidas IS NOT NULL), 0) "
+            "   FROM adjudicaciones) AS pct_oferta_unica, "
+            "  (SELECT ROUND(AVG(lead)::numeric, 1) FROM ( "
+            "     SELECT substr(a.fecha_adjudicacion, 1, 10)::date "
+            "            - substr(l.fecha_publicacion, 1, 10)::date AS lead "
+            "     FROM adjudicaciones a "
+            "     JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+            f"    WHERE {adj_guard} AND {pub_guard} "
+            "  ) t WHERE lead > 0) AS lead_time_medio"
+        )
+        with connect_read() as c:
+            row = c.execute(sql).fetchone()
+        if row is None:
+            return {"hhi": 0.0, "pct_oferta_unica": 0.0, "lead_time_medio": None}
+        hhi, pct_oferta_unica, lead_time = row
+        lead_val = float(lead_time) if lead_time is not None and float(lead_time) > 0 else None
+        return {
+            "hhi": float(hhi or 0.0),
+            "pct_oferta_unica": float(pct_oferta_unica or 0.0),
+            "lead_time_medio": lead_val,
         }
 
     def overview_yoy_and_recent(

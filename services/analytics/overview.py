@@ -7,24 +7,22 @@ agregaba en el proceso web (capado a 4 hilos, ver ``api/app.py`` y el
 postmortem de ``services/_data_cache.py``). Postgres resuelve estos
 ``GROUP BY`` en milisegundos.
 
-``hhi``/``pct_oferta_unica``/``lead_time_medio`` siguen viniendo de
-``load_adjudicaciones()`` (servicio existente, sin filtros) — comportamiento
-preexistente que se preserva sin cambios: estos 3 valores YA ignoraban los
-filtros del endpoint antes de esta reescritura (no forman parte del "full
-scan de licitaciones" que motivó la migración; son agregados sobre
-``adjudicaciones`` sin filtrar, baratos y ya cacheados en ese servicio).
+``hhi``/``pct_oferta_unica``/``lead_time_medio`` se agregan también en
+Postgres (``overview_adjudicaciones_indicadores``) — antes venían del
+DataFrame full-table de ``load_adjudicaciones()`` (27 s y ~170k filas por
+llamada medidos en prod), que en Render además estaba bloqueado por
+``render_api_full_table_loads_blocked`` y dejaba los tres KPIs a cero/None.
+Siguen ignorando los filtros del endpoint, como siempre hicieron.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.licitaciones import load_adjudicaciones
 
 log = get_logger(__name__)
 
@@ -125,54 +123,20 @@ def _to_repo_filters(filters: OverviewFilters) -> LicitacionesFilters:
     )
 
 
-def _load_adj_df() -> pd.DataFrame:
-    """Load adjudicaciones dataframe (sin filtros — comportamiento preexistente)."""
+def _adj_indicadores() -> dict[str, float | None]:
+    """HHI, % oferta única y lead time medio — agregados en Postgres, sin filtros."""
     try:
-        return load_adjudicaciones()
+        return _repo.overview_adjudicaciones_indicadores()
     except Exception:
-        return pd.DataFrame()
-
-
-def _hhi(adj: pd.DataFrame) -> float:
-    """Herfindahl-Hirschman Index from adjudicaciones by adjudicatario importe."""
-    if adj.empty or "empresa_key" not in adj.columns or "importe_adjudicado" not in adj.columns:
-        return 0.0
-    imp = adj.dropna(subset=["empresa_key", "importe_adjudicado"])
-    if imp.empty:
-        return 0.0
-    total = float(imp["importe_adjudicado"].sum())
-    if total <= 0:
-        return 0.0
-    cuotas = imp.groupby("empresa_key")["importe_adjudicado"].sum() / total * 100
-    return float((cuotas**2).sum())
-
-
-def _pct_oferta_unica(adj: pd.DataFrame) -> float:
-    """% adjudicaciones where n_ofertas_recibidas == 1."""
-    if adj.empty or "n_ofertas_recibidas" not in adj.columns:
-        return 0.0
-    valid = adj["n_ofertas_recibidas"].dropna()
-    if len(valid) == 0:
-        return 0.0
-    return float((valid == 1).sum() / len(valid) * 100)
-
-
-def _lead_time_medio(adj: pd.DataFrame) -> float | None:
-    """Mean lead time in days from adjudicaciones."""
-    if adj.empty or "lead_time_dias" not in adj.columns:
-        return None
-    valid = adj["lead_time_dias"].dropna()
-    if len(valid) == 0:
-        return None
-    v = float(valid.mean())
-    return round(v, 1) if v > 0 else None
+        log.warning("overview_adj_indicadores_failed", exc_info=True)
+        return {"hhi": 0.0, "pct_oferta_unica": 0.0, "lead_time_medio": None}
 
 
 def get_overview(filters: OverviewFilters) -> OverviewResult:
     """Compute the full overview payload — agregaciones vía SQL en Postgres."""
     log.info("analytics_overview_start", filters=filters.model_dump(exclude_none=True))
     repo_filters = _to_repo_filters(filters)
-    adj = _load_adj_df()
+    adj_ind = _adj_indicadores()
 
     k = _repo.overview_kpis(repo_filters)
 
@@ -254,11 +218,11 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         por_mes=por_mes,
         top_organos=top_organos,
         funnel_estados=funnel_estados,
-        hhi=_hhi(adj),
-        pct_oferta_unica=_pct_oferta_unica(adj),
+        hhi=adj_ind["hhi"] or 0.0,
+        pct_oferta_unica=adj_ind["pct_oferta_unica"] or 0.0,
         pct_pyme=0.0,  # Placeholder — requires pyme flag in adjudicaciones
         concentracion_top10=concentracion_top10,
-        lead_time_medio=_lead_time_medio(adj),
+        lead_time_medio=adj_ind["lead_time_medio"],
         tasa_anulacion=tasa_anulacion,
         concentracion_geo_top3=concentracion_geo_top3,
         ccaa_cubiertas=ccaa_cubiertas,
