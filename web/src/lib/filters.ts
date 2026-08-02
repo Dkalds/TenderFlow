@@ -187,6 +187,63 @@ export function useFilters(): FiltersState {
 }
 
 /**
+ * Instantánea completa del ámbito: el valor crudo de los diez parámetros que
+ * gobierna el estado de filtros. Es lo que apila el historial de deshacer /
+ * rehacer de la barra de ámbito (`lib/scope-history.ts`), que necesita
+ * restaurar el objeto entero y no una clave suelta.
+ */
+export type ScopeSnapshot = Record<keyof typeof filterParsers, string>;
+
+const SCOPE_KEYS = Object.keys(filterParsers) as (keyof typeof filterParsers)[];
+
+export const EMPTY_SCOPE: ScopeSnapshot = Object.fromEntries(
+  SCOPE_KEYS.map((key) => [key, ""]),
+) as ScopeSnapshot;
+
+/** Serialización estable de una instantánea, para comparar sin `deepEqual`. */
+export function scopeKey(snapshot: ScopeSnapshot): string {
+  return SCOPE_KEYS.map((key) => `${key}=${snapshot[key] ?? ""}`).join("&");
+}
+
+/**
+ * Lee y escribe el ámbito completo de una vez. Separado de `useFilters` porque
+ * el historial restaura los diez parámetros en una sola actualización de URL:
+ * hacerlo con los setters individuales produciría diez entradas de historial y
+ * diez refetch en cascada.
+ */
+export function useScopeSnapshot(): {
+  snapshot: ScopeSnapshot;
+  applySnapshot: (next: ScopeSnapshot) => void;
+} {
+  const [params, setParams] = useQueryStates(filterParsers, {
+    history: "replace",
+    shallow: true,
+  });
+
+  // Se memoiza contra la serialización del ámbito, no contra el objeto de
+  // `params`: así la instantánea mantiene identidad estable mientras el ámbito
+  // no cambie de verdad, que es lo que el historial necesita para no apilar una
+  // entrada por render. Mismo patrón `join()` que `useFilterParams` más abajo.
+  const serialized = JSON.stringify(SCOPE_KEYS.map((key) => params[key] ?? ""));
+  const snapshot = useMemo(
+    () => Object.fromEntries(SCOPE_KEYS.map((key) => [key, params[key] ?? ""])) as ScopeSnapshot,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep primitiva estable
+    [serialized],
+  );
+
+  const applySnapshot = useCallback(
+    (next: ScopeSnapshot) => {
+      setParams(
+        Object.fromEntries(SCOPE_KEYS.map((key) => [key, next[key] ?? ""])) as ScopeSnapshot,
+      );
+    },
+    [setParams],
+  );
+
+  return { snapshot, applySnapshot };
+}
+
+/**
  * Convert current filter state to API query params.
  * Only includes non-empty/non-null values.
  */

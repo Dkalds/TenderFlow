@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { legacyRedirects } from "./src/lib/space-views";
 
 /**
  * Content-Security-Policy en modo **Report-Only**: no bloquea nada, solo reporta
@@ -36,6 +37,20 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
+  },
+
+  /**
+   * Redirects de las rutas que un espacio del rediseño ha absorbido.
+   *
+   * La tabla vive en `src/lib/space-views.ts` y sólo emite el redirect cuando
+   * el espacio destino existe de verdad, así que la migración por lotes nunca
+   * deja una URL apuntando a un 404. Son permanentes (308): la ruta antigua no
+   * va a volver, y así los marcadores y los buscadores se actualizan solos.
+   * Next arrastra la query entrante, de modo que un enlace con filtros llega
+   * al espacio con su ámbito intacto.
+   */
+  async redirects() {
+    return legacyRedirects().map((redirect) => ({ ...redirect, permanent: true }));
   },
 
   /**
