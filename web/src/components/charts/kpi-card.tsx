@@ -71,7 +71,10 @@ export const KpiCard = React.memo(function KpiCard({
   const card = (
     <Card
       className={cn(
-        "group relative h-full min-h-[7.75rem] overflow-hidden transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg",
+        // El diseño no apila tarjetas con sombra: son celdas planas y
+        // compactas de una tira de dato. Alto mínimo de 84px en vez de 124, sin
+        // elevación y sin desplazamiento al hover — un KPI no es un botón.
+        "group relative h-full min-h-[5.25rem] overflow-hidden border-border/60 bg-card/70 shadow-none transition-colors duration-140 hover:border-primary/45",
         href && "cursor-pointer",
         className,
       )}
@@ -82,11 +85,11 @@ export const KpiCard = React.memo(function KpiCard({
           className={cn("absolute inset-y-0 left-0 w-1", ACCENT_BG[accent])}
         />
       )}
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="pr-8 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <CardHeader className="flex flex-row items-center justify-between px-3.5 pb-1.5 pt-3">
+        <CardTitle className="pr-8 font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
           {title}
         </CardTitle>
-        <div className="absolute right-4 top-4 flex items-center gap-1.5">
+        <div className="absolute right-3 top-2.5 flex items-center gap-1.5">
           {anomaly && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -99,29 +102,31 @@ export const KpiCard = React.memo(function KpiCard({
             </Tooltip>
           )}
           {Icon && (
-            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
-              <Icon className="h-4 w-4" />
+            <span className="grid h-6 w-6 place-items-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+              <Icon className="h-3.5 w-3.5" />
             </span>
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3.5 pb-3">
         {loading ? (
-          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-6 w-24 rounded" />
         ) : (
           // Static render, no count-up: this is the number the user came to
           // read, and it re-triggers on every filter change — animating it
           // fails the frequency gate (find-animation-opportunities) and the
           // previous count-up re-rendered on every animation frame.
-          <span className="tf-kpi block text-foreground">{value ?? "-"}</span>
+          <span className="tf-tnum block font-mono text-[22px] font-semibold leading-none text-foreground">
+            {value ?? "—"}
+          </span>
         )}
 
         {!loading && (subtitle || trend != null || target) && (
-          <div className="mt-1.5 flex items-center gap-2 text-xs">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]">
             {trend != null && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-semibold tabular-nums",
+                  "inline-flex items-center gap-0.5 rounded px-1 py-0.5 font-mono font-semibold tabular-nums",
                   trend >= 0
                     ? "bg-success/12 text-success"
                     : "bg-destructive/12 text-destructive"

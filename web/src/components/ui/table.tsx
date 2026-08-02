@@ -8,7 +8,10 @@ const Table = React.forwardRef<
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      // 12.5px, no 14: la tabla de la consola es densa y tabular. Bajar el
+      // cuerpo un punto y medio es lo que mete cuatro filas más en pantalla sin
+      // tocar la legibilidad.
+      className={cn("w-full caption-bottom text-[12.5px]", className)}
       {...props}
     />
   </div>
@@ -57,7 +60,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b border-border/60 transition-colors hover:bg-primary/[0.04] data-[state=selected]:bg-primary/[0.06]",
+      "border-b border-border/30 transition-colors duration-110 hover:bg-primary/[0.05] data-[state=selected]:bg-primary/[0.06]",
       className
     )}
     {...props}
@@ -73,7 +76,8 @@ const TableHead = React.forwardRef<
     ref={ref}
     data-slot="table-head"
     className={cn(
-      "h-10 px-2 text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      // Cabecera mono en versalitas, como el resto de rótulos de columna.
+      "h-8 px-2 text-left align-middle font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
       className
     )}
     {...props}
@@ -89,7 +93,10 @@ const TableCell = React.forwardRef<
     ref={ref}
     data-slot="table-cell"
     className={cn(
-      "p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      // Cifras siempre tabulares: sin `tnum` las columnas de importe bailan al
+      // cambiar de página y se pierde la comparación vertical, que es para lo
+      // que existe una tabla.
+      "px-2 py-1.5 align-middle tabular-nums [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
       className
     )}
     {...props}
