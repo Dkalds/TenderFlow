@@ -13,6 +13,7 @@ valor, por lo que compartir la misma lista entre llamadas es seguro.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -26,6 +27,22 @@ _T = TypeVar("_T")
 # no se escriba. La invalidación principal es por ingesta real; diez minutos
 # evitan reconstruir las cargas full-table una vez por minuto sin necesidad.
 _DEFAULT_TTL = 600.0
+
+
+def render_api_full_table_loads_blocked() -> bool:
+    """Impide materializaciones full-table dentro del proceso API de Render.
+
+    Render expone ``RENDER``/``RENDER_SERVICE_ID`` de forma automática. El
+    scraper y los workers quedan fuera mediante ``APP_PROFILE`` porque pueden
+    necesitar cargas batch; el cortacircuitos protege únicamente el proceso
+    web, donde una petición concurrente no debe poder agotar la memoria de la
+    instancia. Se retirará cuando todos los consumidores analíticos trabajen
+    con agregaciones o proyecciones acotadas en Postgres.
+    """
+    from config import settings
+
+    on_render = os.getenv("RENDER", "").lower() == "true" or bool(os.getenv("RENDER_SERVICE_ID"))
+    return on_render and settings.APP_PROFILE == "api"
 
 
 class SignalAwareCache(Generic[_T]):
