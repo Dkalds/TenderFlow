@@ -21,12 +21,17 @@ Replay helpers:
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+_CACHE_INVALIDATION_EVENT = "cache.invalidated"
+_CACHE_INVALIDATION_AGGREGATE_ID = "global"
+_CACHE_INVALIDATION_AGGREGATE_TYPE = "cache"
 
 
 def append_event(
@@ -127,6 +132,46 @@ def get_events_by_type(
         ev["payload"] = json.loads(ev.pop("payload_json", "{}") or "{}")
         events.append(ev)
     return events
+
+
+def append_cache_invalidation_event() -> int:
+    """Persiste una señal global de invalidación visible entre procesos.
+
+    El scraper de GitHub Actions y el API de Render no comparten filesystem,
+    pero sí la base Postgres. El event log append-only ya existente permite
+    transportar la señal sin añadir schema ni infraestructura nueva.
+    """
+    return append_event(
+        _CACHE_INVALIDATION_EVENT,
+        _CACHE_INVALIDATION_AGGREGATE_ID,
+        _CACHE_INVALIDATION_AGGREGATE_TYPE,
+        {},
+    )
+
+
+def get_latest_cache_invalidation_timestamp() -> float:
+    """Devuelve el instante de la última invalidación global, o ``0.0``."""
+    with connect_read() as c:
+        row = c.execute(
+            "SELECT created_at FROM domain_events "
+            "WHERE event_type = ? AND aggregate_type = ? AND aggregate_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (
+                _CACHE_INVALIDATION_EVENT,
+                _CACHE_INVALIDATION_AGGREGATE_TYPE,
+                _CACHE_INVALIDATION_AGGREGATE_ID,
+            ),
+        ).fetchone()
+    if row is None or row[0] is None:
+        return 0.0
+    try:
+        parsed = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+    except ValueError:
+        log.warning("cache_invalidation_timestamp_invalid", value=str(row[0]))
+        return 0.0
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.timestamp()
 
 
 # ── Replay helpers ─────────────────────────────────────────────────────────────

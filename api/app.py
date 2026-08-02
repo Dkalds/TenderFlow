@@ -106,31 +106,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log.error("api_startup_db_error", error=str(exc))
         raise  # fail fast en todos los entornos
 
-    # Precalentar la caché de DataFrames al arrancar — evita que la primera
-    # request tarde 2-4 min cargando 28k filas desde SQLite.  El prewarm
-    # corre en un hilo para no bloquear el event loop de uvicorn.
-
-    async def _prewarm_caches() -> None:
-        try:
-            import time as _t
-
-            t0 = _t.monotonic()
-            from services.adjudicaciones import load_raw_adjudicaciones
-            from services.licitaciones import load_stats_base_df
-
-            await asyncio.to_thread(load_stats_base_df)
-            await asyncio.to_thread(load_raw_adjudicaciones)
-            elapsed = int((_t.monotonic() - t0) * 1000)
-            log.info("api_prewarm_done", elapsed_ms=elapsed)
-        except Exception as exc:
-            log.warning("api_prewarm_failed", error=str(exc))
-
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
     app.state.pending_background_tasks = set()
 
-    _prewarm_task = asyncio.ensure_future(_prewarm_caches())
-    app.state.pending_background_tasks.add(_prewarm_task)
-    _prewarm_task.add_done_callback(app.state.pending_background_tasks.discard)
+    # No precalentar las cachés analíticas full-table durante el startup. En el
+    # incidente de Render del 2026-08-02, estas dos cargas sin límite
+    # (licitaciones como DataFrame y adjudicaciones como list[dict]) agotaban
+    # los 2 GiB del contenedor antes de emitir ``api_prewarm_done`` y dejaban el
+    # servicio en un bucle de reinicios. Los endpoints analíticos conservan la
+    # carga lazy mientras sus agregados se migran a SQL (backlog P1).
+    log.info("analytics_full_table_prewarm_disabled")
 
     # Limitar hilos del threadpool de anyio — evita CPU starvation en instancias
     # con pocos vCPUs (ej. Render Free 0.1 vCPU).  Sin este límite, FastAPI

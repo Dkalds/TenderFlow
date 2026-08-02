@@ -22,9 +22,10 @@ from shared.cache_signal import get_signal_timestamp
 
 _T = TypeVar("_T")
 
-# TTL por defecto: cota superior de obsolescencia aunque la señal de ingesta
-# no se escriba (defensivo). La invalidación principal es por señal.
-_DEFAULT_TTL = 60.0
+# TTL por defecto: cota superior de obsolescencia aunque la señal compartida
+# no se escriba. La invalidación principal es por ingesta real; diez minutos
+# evitan reconstruir las cargas full-table una vez por minuto sin necesidad.
+_DEFAULT_TTL = 600.0
 
 
 class SignalAwareCache(Generic[_T]):
