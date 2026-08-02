@@ -4,8 +4,8 @@ Inserta datos mínimos para que el entorno local arranque sin errores 404 en la 
   - Schema inicializado (alembic upgrade head o init_db)
   - ~20 licitaciones de ejemplo vía upsert_licitaciones_with_history (camino real)
   - Adjudicaciones de ejemplo vía replace_adjudicaciones_batch
-  - Usuario demo (demo@tenderflow.dev) + API key (impresa en stdout)
-  - Watchlist de ejemplo para el usuario demo
+  - Usuario demo (demo@tenderflow.dev / demo1234!) + API key (impresa en stdout)
+  - Usuario admin (admin@tenderflow.dev / admin1234!) con is_admin activo
   - Con --with-predicciones: filas sintéticas en predicciones_baja (marca demo=True)
 
 Uso:
@@ -427,12 +427,46 @@ def step_usuario_demo() -> tuple[int, str]:
         from db.database import now_utc_iso
 
         c.execute(
-            "INSERT OR IGNORE INTO api_keys (key_hash, name, created_at, is_active) "
-            "VALUES (?, ?, ?, 1)",
+            "INSERT INTO api_keys (key_hash, name, created_at, is_active) "
+            "VALUES (?, ?, ?, 1) ON CONFLICT (key_hash) DO NOTHING",
             (key_hash, "seed-demo-key", now_utc_iso()),
         )
     print(f"[seed] API key demo: {raw_key}")
     return user_id, raw_key
+
+
+def step_usuario_admin() -> int:
+    """Crea el usuario admin de desarrollo y devuelve su ``user_id``.
+
+    Los tests E2E necesitan un usuario con ``is_admin`` para ejercitar las rutas
+    de administración por el camino de éxito: el usuario demo no es admin, así
+    que sin este segundo usuario esas páginas solo se pueden verificar en su
+    estado "Acceso restringido". El fuzzer del contrato API usa la misma cuenta
+    como dueña de su clave para alcanzar los endpoints con scope ``admin``.
+
+    Idempotente: si el usuario ya existe lo reutiliza y se limita a re-aplicar
+    el flag.
+    """
+    import argon2
+
+    from db.users import create_user, get_user_by_email, set_admin_by_email
+
+    email = "admin@tenderflow.dev"
+    existing = get_user_by_email(email)
+    if existing:
+        user_id: int = int(existing["id"])
+        print(f"[seed] Usuario admin ya existe (id={user_id})")
+    else:
+        ph = argon2.PasswordHasher()
+        user_id = create_user(
+            email=email,
+            password_hash=ph.hash("admin1234!"),
+            display_name="Admin User",
+        )
+        print(f"[seed] Usuario admin creado (id={user_id}, email={email})")
+
+    set_admin_by_email(email, is_admin=True)
+    return user_id
 
 
 def step_predicciones(licitacion_ids: list[str]) -> None:
@@ -446,9 +480,12 @@ def step_predicciones(licitacion_ids: list[str]) -> None:
     ]
     with connect() as c:
         c.executemany(
-            "INSERT OR REPLACE INTO predicciones_baja "
+            "INSERT INTO predicciones_baja "
             "(licitacion_id, p10, p50, p90, model_version, computed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (licitacion_id) DO UPDATE SET "
+            "p10 = EXCLUDED.p10, p50 = EXCLUDED.p50, p90 = EXCLUDED.p90, "
+            "model_version = EXCLUDED.model_version, computed_at = EXCLUDED.computed_at",
             rows,
         )
     print(f"[seed] Predicciones demo insertadas: {len(rows)} filas")
@@ -482,6 +519,7 @@ def main() -> int:
         n = step_licitaciones()
         step_adjudicaciones()
         step_usuario_demo()
+        step_usuario_admin()
 
         if args.with_predicciones:
             ids = [d["id_externo"] for d in _SAMPLE_LICITACIONES]
