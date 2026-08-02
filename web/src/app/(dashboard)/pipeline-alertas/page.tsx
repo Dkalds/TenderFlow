@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { ExportPopover } from "@/components/export-popover";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AlertsFeed } from "./_components/alerts-feed";
@@ -273,19 +273,19 @@ export default function PipelineAlertasPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pipeline &amp; Alertas</h1>
-          <p className="text-muted-foreground">
-            {loadingPipeline
-              ? "Oportunidades activas que están cerrando y alertas suscribibles."
-              : `${formatNumber(pipelineData?.total_en_plazo)} oportunidades en plazo · ${compactEur(pipelineData?.valor_total)} en juego (próximos 12 meses).`}
-          </p>
-        </div>
+      {/* El nombre lo pone la cabecera del espacio; el titular cuantificado
+          sobrevive como línea de estado, que es lo que aporta dato. */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <p className="text-xs text-muted-foreground">
+          {loadingPipeline
+            ? "Oportunidades activas que están cerrando y alertas suscribibles."
+            : `${formatNumber(pipelineData?.total_en_plazo)} oportunidades en plazo · ${compactEur(pipelineData?.valor_total)} en juego (próximos 12 meses).`}
+        </p>
+        <div className="flex-1" />
         <ExportPopover
           endpoint="/api/v1/exports/download"
           extraParams={{ seccion: "pipeline-alertas" }}
+          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
         />
       </div>
 
@@ -294,7 +294,7 @@ export default function PipelineAlertasPage() {
       {/* ============================================================ */}
       {/*  KPIs (conteo + valor económico)                            */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Vencen ≤ 7 días"
           value={loadingPipeline ? undefined : formatNumber(pipelineData?.vencen_7d)}
@@ -341,7 +341,7 @@ export default function PipelineAlertasPage() {
           loading={loadingNotif}
           href="#ultimas-alertas"
         />
-      </div>
+      </KpiStrip>
 
       {/* ============================================================ */}
       {/*  ALERTAS: reglas suscribibles + últimas alertas             */}

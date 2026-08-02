@@ -7,23 +7,18 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useDebounce } from "@/hooks/use-debounce";
-import { KpiCard } from "@/components/charts/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { ExportPopover } from "@/components/export-popover";
 import { foldText, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import {
   Building2,
+  X,
   Hash,
   Trophy,
   BarChart3,
@@ -200,10 +195,11 @@ export default function OrganosPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-0 gap-4">
+      <div className="min-w-0 flex-1 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Órganos</h1>
+          <h1 className="sr-only">Órganos</h1>
           <p className="text-muted-foreground">
             Ranking de órganos de contratación.
           </p>
@@ -229,7 +225,7 @@ export default function OrganosPage() {
       />
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Total Órganos"
           value={isLoading ? undefined : formatNumber(data?.total_organos ?? items.length)}
@@ -261,7 +257,7 @@ export default function OrganosPage() {
           icon={Trophy}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Top charts: by count + by importe */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -274,6 +270,7 @@ export default function OrganosPage() {
                 <Badge variant="secondary" className="ml-2 text-xs">filtrado</Badge>
               )}
             </CardTitle>
+            <CardDescription>clic en una barra abre el órgano</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -302,6 +299,7 @@ export default function OrganosPage() {
                 <Badge variant="secondary" className="ml-2 text-xs">filtrado</Badge>
               )}
             </CardTitle>
+            <CardDescription>clic en una barra abre el órgano</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -310,7 +308,10 @@ export default function OrganosPage() {
               <OrganosRankingChart
                 data={top15ByImporte}
                 dataKey="importe"
-                fill={CHART_SERIES[1]}
+                // Mismo color que el ranking por cantidad: son el mismo
+                // conjunto (órganos) medido de otra forma. El color de serie
+                // se reserva para distinguir series, no paneles.
+                fill={CHART_SERIES[0]}
                 tooltipLabel="Importe"
                 formatValue={formatCurrency}
                 onBarClick={handleOrganoClick}
@@ -441,20 +442,30 @@ export default function OrganosPage() {
         </CardContent>
       </Card>
 
-      {/* Drill-down Sheet */}
-      <Sheet
-        open={!!selectedOrgano}
-        // startTransition: cerrar este Sheet desmonta/oculta charts pesados
-        // (Recharts) — diferirlo evita bloquear el hilo principal en el
-        // propio evento de clic del overlay (INP).
-        onOpenChange={(open) => !open && startTransition(() => setSelectedOrgano(null))}
-      >
-        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="text-lg leading-tight pr-8">
+      </div>
+
+      {/* El drill-down era un Sheet modal que tapaba el ranking del que venías,
+          justo cuando lo que quieres es comparar dos órganos. Ahora vive en el
+          mismo plano y el ranking sigue ahí para saltar al siguiente. */}
+      {selectedOrgano && (
+        <aside
+          aria-label={`Detalle de ${selectedOrgano}`}
+          className="hidden w-[420px] flex-none flex-col overflow-hidden rounded-xl border border-border/60 bg-card/40 xl:flex"
+        >
+          <div className="flex flex-none items-start gap-2 border-b border-border/60 px-3.5 py-2.5">
+            <h2 className="min-w-0 flex-1 text-[13px] font-semibold leading-tight">
               {selectedOrgano}
-            </SheetTitle>
-          </SheetHeader>
+            </h2>
+            <button
+              type="button"
+              aria-label="Cerrar detalle del órgano"
+              onClick={() => startTransition(() => setSelectedOrgano(null))}
+              className="tf-pressable grid h-6 w-6 flex-none place-items-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-4">
 
           {detailLoading ? (
             <div className="mt-6 space-y-4">
@@ -620,8 +631,9 @@ export default function OrganosPage() {
               Sin datos del órgano.
             </p>
           )}
-        </SheetContent>
-      </Sheet>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

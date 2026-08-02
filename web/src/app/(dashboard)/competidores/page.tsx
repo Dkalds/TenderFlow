@@ -1,5 +1,6 @@
 "use client";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Panel, PanelTabs } from "@/components/console/panel";
 
 import React, { startTransition, useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
@@ -44,7 +45,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Stagger } from "@/components/motion";
@@ -66,6 +66,7 @@ import {
   Search,
   Users,
   TrendingDown,
+  X,
 } from "lucide-react";
 
 interface Competitor {
@@ -247,6 +248,18 @@ const CompetitorRow = React.memo(function CompetitorRow({
   );
 });
 
+const CORTES = [
+  { key: "top20" as const, label: "Top 20" },
+  { key: "cuota" as const, label: "Cuota" },
+  { key: "ticket" as const, label: "Ticket vs cliente" },
+  { key: "ccaa" as const, label: "Actividad CCAA" },
+  { key: "treemap" as const, label: "Treemap" },
+  { key: "top5" as const, label: "Top 5 métricas" },
+  { key: "estac" as const, label: "Estacionalidad" },
+  { key: "bajas" as const, label: "Bajas" },
+  { key: "radar" as const, label: "Comparador" },
+] as const;
+
 export default function CompetidoresPage() {
   const { data, isLoading, error } = useFilteredQuery<CompetitorsData>(
     ["analytics", "competitors"],
@@ -287,6 +300,7 @@ export default function CompetidoresPage() {
   });
 
   const [search, setSearch] = useState("");
+  const [corte, setCorte] = useState<(typeof CORTES)[number]["key"]>("top20");
   const { ccaas, setCcaas } = useFilters();
   const activeCcaa = useMemo(() => new Set(ccaas), [ccaas]);
   const toggleCcaa = useCallback((ccaa: string) => setCcaas(toggleValue(ccaa, ccaas)), [ccaas, setCcaas]);
@@ -555,31 +569,35 @@ export default function CompetidoresPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Competidores</h1>
-          <p className="text-muted-foreground">
-            Cuota de mercado agrupada por empresa maestra, CIF o nombre normalizado.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="flex min-h-0 gap-4">
+      <div className="min-w-0 flex-1 space-y-4">
+        {/* El buscador filtra la tabla **y los nueve cortes**; antes había que
+            descubrirlo, ahora se anuncia. Exportar arrastra el ámbito activo. */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <SearchAutocomplete
             className="w-full sm:w-72"
-            placeholder="Buscar empresa..."
+            placeholder="Buscar empresa…"
             value={search}
             onChange={setSearch}
             suggestions={data?.competitors?.map((c) => c.nombre) ?? []}
             leftIcon={<Search className="h-4 w-4" />}
-            inputClassName="pl-9"
+            inputClassName="h-8 pl-9 text-xs"
           />
-          <ExportPopover extraParams={{ section: "competitors" }} />
+          {search.trim() && (
+            <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-1 text-[10.5px] font-medium text-primary">
+              filtra la tabla y los 9 cortes
+            </span>
+          )}
+          <div className="flex-1" />
+          <ExportPopover
+            extraParams={{ section: "competitors" }}
+            className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
+          />
         </div>
-      </div>
 
+        {/* Marcador del espacio: los cuatro KPIs del mercado competitivo. */}
       {/* KPI Row */}
-      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Stagger className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 lg:grid-cols-4 [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-card">
         <Stagger.Item>
           <KpiCard
             title="Total Adjudicaciones"
@@ -624,245 +642,9 @@ export default function CompetidoresPage() {
         </Stagger.Item>
       </Stagger>
 
-      {/* Charts Row 1: Bar + Pie */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Horizontal Bar: Top 20 by count */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Top 20 Competidores (por adjudicaciones)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[500px] w-full" />
-            ) : barData.length > 0 ? (
-              <ChartErrorBoundary>
-                <CompetitorsBarChart data={barData} />
-              </ChartErrorBoundary>
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Pie: Market share by importe */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Cuota de Mercado por Importe (Top 10)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : pieData.length > 0 ? (
-              <ChartErrorBoundary>
-                <CompetitorsPieChart data={pieData} />
-              </ChartErrorBoundary>
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts Row 2: Scatter + Heatmap */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Scatter: ticket_medio vs n_organos */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Ticket Medio vs Dependencia de Clientes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : scatterData.length > 0 ? (
-              <ChartErrorBoundary>
-                <CompetitorsScatterChart data={scatterData} top5Names={scatterTop5} />
-              </ChartErrorBoundary>
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* CCAA x Empresa Heatmap */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Actividad por CCAA y Empresa</CardTitle>
-            <p className="text-muted-foreground text-xs">Clic en una CCAA para filtrar</p>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : heatmapData.empresas.length > 0 ? (
-              <div className="overflow-x-auto">
-                <div
-                  className="grid gap-px text-xs"
-                  style={{
-                    gridTemplateColumns: `180px repeat(${heatmapData.ccaas.length}, minmax(50px, 1fr))`,
-                  }}
-                >
-                  {/* Header row */}
-                  <div className="text-muted-foreground p-1 font-medium" />
-                  {heatmapData.ccaas.map((ccaa) => (
-                    <button
-                      key={ccaa}
-                      type="button"
-                      onClick={() => toggleCcaa(ccaa)}
-                      aria-pressed={activeCcaa.has(ccaa)}
-                      className={`hover:bg-muted cursor-pointer truncate rounded-sm p-1 text-center font-medium transition-colors ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
-                      title={`Filtrar por ${ccaa}`}
-                    >
-                      {truncate(ccaa, 10)}
-                    </button>
-                  ))}
-                  {/* Data rows */}
-                  {heatmapData.empresas.map((empresa) => (
-                    <React.Fragment key={empresa}>
-                      <div key={`label-${empresa}`} className="truncate p-1 font-medium" title={empresa}>
-                        {truncate(empresa, 25)}
-                      </div>
-                      {heatmapData.ccaas.map((ccaa) => {
-                        const val = heatmapData.matrix[empresa]?.[ccaa] ?? 0;
-                        return (
-                          <div
-                            key={`${empresa}-${ccaa}`}
-                            className="cursor-default rounded-sm p-1 text-center transition-colors"
-                            style={{ backgroundColor: heatColor(val, heatmapData.max) }}
-                            title={`${empresa} - ${ccaa}: ${val}`}
-                          >
-                            {val > 0 ? val : ""}
-                          </div>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts Row 3: Treemap + Top 5 Metrics */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Cuota de Mercado (Treemap Top 20)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : treemapData.length > 0 ? (
-              <ChartErrorBoundary>
-                <CompetitorsTreemap data={treemapData} />
-              </ChartErrorBoundary>
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Posicionamiento Competitivo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : positioningData.length > 0 ? (
-              <ChartErrorBoundary>
-                <CompetitorsPositioningChart data={positioningData} />
-              </ChartErrorBoundary>
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Estacionalidad Mensual */}
-      {estacionalidadData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Estacionalidad del mercado (filtrado)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartErrorBoundary>
-              <CompetitorsEstacionalidadChart data={estacionalidadData} />
-            </ChartErrorBoundary>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Bajas por empresa: quién oferta más agresivo */}
-      {bajasSorted.rows.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingDown className="h-4 w-4" />
-              Empresas mas agresivas en precio (baja media)
-            </CardTitle>
-            <p className="text-muted-foreground mt-1 text-xs">
-              Ambito: respeta el filtro de CCAA; no aplica rango de fechas, CPV ni importe.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1.5">
-              {bajasSorted.rows.map((b) => (
-                <div key={b.grupo_id ?? b.grupo} className="flex items-center gap-2 text-sm">
-                  <span className="w-48 truncate" title={b.grupo}>
-                    {truncate(b.grupo, 32)}
-                  </span>
-                  <div className="bg-muted h-4 flex-1 overflow-hidden rounded-full">
-                    <div
-                      className="bg-primary h-full rounded-full"
-                      style={{ width: `${((b.baja_media_pct ?? 0) / bajasSorted.maxBaja) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-14 text-right text-xs tabular-nums">{formatPercent(b.baja_media_pct ?? 0)}</span>
-                  <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
-                    {formatNumber(b.contratos)}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="text-muted-foreground mt-3 text-xs">
-              Baja media = (presupuesto − adjudicado) / presupuesto, sobre empresas con ≥ 5 contratos. La cifra gris es
-              el nº de contratos.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Radar Comparator */}
-      {radarData && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Users className="h-4 w-4" />
-              Comparacion: {truncate(radarData.nameA, 25)} vs {truncate(radarData.nameB, 25)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RadarChart
-              data={radarData.dataA}
-              name={truncate(radarData.nameA, 20)}
-              compareData={radarData.dataB}
-              compareName={truncate(radarData.nameB, 20)}
-              height={400}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedCompanies.length > 0 && selectedCompanies.length < 2 && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
-          Selecciona 1 empresa mas en la tabla para comparar con radar. ({selectedCompanies.length}/2 seleccionadas)
-        </div>
-      )}
-
-      {/* Table */}
+        {/* La tabla gobierna los nueve cortes, así que va primero. Antes había
+            que bajar 2.400px de gráficos para llegar a la superficie de trabajo
+            que los filtra. */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -953,16 +735,292 @@ export default function CompetidoresPage() {
         </CardContent>
       </Card>
 
-      {/* Drill-down Sheet */}
-      <Sheet
-        open={!!drillDownCompany}
-        // startTransition: cerrar este Sheet desmonta el dossier de empresa
-        // (charts + tablas) — diferirlo evita bloquear el hilo principal en
-        // el propio evento de clic del overlay (INP).
-        onOpenChange={(open) => !open && startTransition(() => setDrillDownCompany(null))}
-      >
-        <SheetContent className="flex flex-col overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl">
-          {drillDownCompany && drillDownCompanyId != null ? (
+      {selectedCompanies.length > 0 && selectedCompanies.length < 2 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
+          Selecciona 1 empresa mas en la tabla para comparar con radar. ({selectedCompanies.length}/2 seleccionadas)
+        </div>
+      )}
+
+        {/* Los nueve gráficos, como cortes con pestañas de la misma tabla. */}
+        <Panel>
+          <PanelTabs
+            label="Cortes del análisis de competencia"
+            value={corte}
+            onChange={setCorte}
+            tabs={[...CORTES]}
+          />
+          <div className="pt-3.5">
+        {corte === "top20" && (
+          <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Top 20 Competidores (por adjudicaciones)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[500px] w-full" />
+            ) : barData.length > 0 ? (
+              <ChartErrorBoundary>
+                <CompetitorsBarChart data={barData} />
+              </ChartErrorBoundary>
+            ) : (
+              <EmptyState />
+            )}
+          </CardContent>
+        </Card>
+          </>
+        )}
+        {corte === "cuota" && (
+          <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Cuota de Mercado por Importe (Top 10)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[400px] w-full" />
+            ) : pieData.length > 0 ? (
+              <ChartErrorBoundary>
+                <CompetitorsPieChart data={pieData} />
+              </ChartErrorBoundary>
+            ) : (
+              <EmptyState />
+            )}
+          </CardContent>
+        </Card>
+          </>
+        )}
+        {corte === "ticket" && (
+          <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ticket Medio vs Dependencia de Clientes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[400px] w-full" />
+            ) : scatterData.length > 0 ? (
+              <ChartErrorBoundary>
+                <CompetitorsScatterChart data={scatterData} top5Names={scatterTop5} />
+              </ChartErrorBoundary>
+            ) : (
+              <EmptyState />
+            )}
+          </CardContent>
+        </Card>
+          </>
+        )}
+        {corte === "ccaa" && (
+          <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Actividad por CCAA y Empresa</CardTitle>
+            <p className="text-muted-foreground text-xs">Clic en una CCAA para filtrar</p>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[400px] w-full" />
+            ) : heatmapData.empresas.length > 0 ? (
+              <div className="overflow-x-auto">
+                <div
+                  className="grid gap-px text-xs"
+                  style={{
+                    gridTemplateColumns: `180px repeat(${heatmapData.ccaas.length}, minmax(50px, 1fr))`,
+                  }}
+                >
+                  {/* Header row */}
+                  <div className="text-muted-foreground p-1 font-medium" />
+                  {heatmapData.ccaas.map((ccaa) => (
+                    <button
+                      key={ccaa}
+                      type="button"
+                      onClick={() => toggleCcaa(ccaa)}
+                      aria-pressed={activeCcaa.has(ccaa)}
+                      className={`hover:bg-muted cursor-pointer truncate rounded-sm p-1 text-center font-medium transition-colors ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                      title={`Filtrar por ${ccaa}`}
+                    >
+                      {truncate(ccaa, 10)}
+                    </button>
+                  ))}
+                  {/* Data rows */}
+                  {heatmapData.empresas.map((empresa) => (
+                    <React.Fragment key={empresa}>
+                      <div key={`label-${empresa}`} className="truncate p-1 font-medium" title={empresa}>
+                        {truncate(empresa, 25)}
+                      </div>
+                      {heatmapData.ccaas.map((ccaa) => {
+                        const val = heatmapData.matrix[empresa]?.[ccaa] ?? 0;
+                        return (
+                          <div
+                            key={`${empresa}-${ccaa}`}
+                            className="cursor-default rounded-sm p-1 text-center transition-colors"
+                            style={{ backgroundColor: heatColor(val, heatmapData.max) }}
+                            title={`${empresa} - ${ccaa}: ${val}`}
+                          >
+                            {val > 0 ? val : ""}
+                          </div>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <EmptyState />
+            )}
+          </CardContent>
+        </Card>
+          </>
+        )}
+        {corte === "treemap" && (
+          <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Cuota de Mercado (Treemap Top 20)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[400px] w-full" />
+            ) : treemapData.length > 0 ? (
+              <ChartErrorBoundary>
+                <CompetitorsTreemap data={treemapData} />
+              </ChartErrorBoundary>
+            ) : (
+              <EmptyState />
+            )}
+          </CardContent>
+        </Card>
+          </>
+        )}
+        {corte === "top5" && (
+          <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Posicionamiento Competitivo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[400px] w-full" />
+            ) : positioningData.length > 0 ? (
+              <ChartErrorBoundary>
+                <CompetitorsPositioningChart data={positioningData} />
+              </ChartErrorBoundary>
+            ) : (
+              <EmptyState />
+            )}
+          </CardContent>
+        </Card>
+          </>
+        )}
+        {corte === "estac" && (
+          <>
+      {estacionalidadData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Estacionalidad del mercado (filtrado)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartErrorBoundary>
+              <CompetitorsEstacionalidadChart data={estacionalidadData} />
+            </ChartErrorBoundary>
+          </CardContent>
+        </Card>
+      )}
+          </>
+        )}
+        {corte === "bajas" && (
+          <>
+      {bajasSorted.rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingDown className="h-4 w-4" />
+              Empresas mas agresivas en precio (baja media)
+            </CardTitle>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Ambito: respeta el filtro de CCAA; no aplica rango de fechas, CPV ni importe.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {bajasSorted.rows.map((b) => (
+                <div key={b.grupo_id ?? b.grupo} className="flex items-center gap-2 text-sm">
+                  <span className="w-48 truncate" title={b.grupo}>
+                    {truncate(b.grupo, 32)}
+                  </span>
+                  <div className="bg-muted h-4 flex-1 overflow-hidden rounded-full">
+                    <div
+                      className="bg-primary h-full rounded-full"
+                      style={{ width: `${((b.baja_media_pct ?? 0) / bajasSorted.maxBaja) * 100}%` }}
+                    />
+                  </div>
+                  <span className="w-14 text-right text-xs tabular-nums">{formatPercent(b.baja_media_pct ?? 0)}</span>
+                  <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
+                    {formatNumber(b.contratos)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground mt-3 text-xs">
+              Baja media = (presupuesto − adjudicado) / presupuesto, sobre empresas con ≥ 5 contratos. La cifra gris es
+              el nº de contratos.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+          </>
+        )}
+        {corte === "radar" && (
+          <>
+      {radarData && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="h-4 w-4" />
+              Comparacion: {truncate(radarData.nameA, 25)} vs {truncate(radarData.nameB, 25)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RadarChart
+              data={radarData.dataA}
+              name={truncate(radarData.nameA, 20)}
+              compareData={radarData.dataB}
+              compareName={truncate(radarData.nameB, 20)}
+              height={400}
+            />
+          </CardContent>
+        </Card>
+      )}
+          </>
+        )}
+          </div>
+        </Panel>
+      </div>
+
+      {/* El dossier deja de ser un Sheet modal que tapaba la tabla de la que
+          venías: vive en el mismo plano, a la derecha, y la tabla sigue ahí
+          para saltar a la siguiente empresa sin cerrar nada. */}
+      {drillDownCompany && (
+        <aside
+          aria-label="Dossier de empresa"
+          className="hidden w-[420px] flex-none flex-col overflow-hidden rounded-xl border border-border/60 bg-card/40 xl:flex"
+        >
+          <div className="flex h-9 flex-none items-center gap-2 border-b border-border/60 px-3">
+            <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Dossier
+            </span>
+            <div className="flex-1" />
+            <button
+              type="button"
+              aria-label="Cerrar dossier"
+              onClick={() => startTransition(() => setDrillDownCompany(null))}
+              className="tf-pressable grid h-6 w-6 place-items-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+          {drillDownCompanyId != null ? (
             <CompanyQuickView
               empresaId={drillDownCompanyId}
               groupIds={drillDownGroupIds}
@@ -981,8 +1039,9 @@ export default function CompetidoresPage() {
               }
             />
           ) : null}
-        </SheetContent>
-      </Sheet>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

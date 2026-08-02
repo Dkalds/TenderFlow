@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { LucideIcon } from "lucide-react";
+import { EMPTY } from "@/lib/utils";
 import { KpiCard } from "@/components/charts/kpi-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -81,9 +82,11 @@ describe("KpiCard", () => {
     expect(container.querySelector(".text-destructive")).toBeNull();
   });
 
-  it("shows dash when value is not provided", () => {
+  it("usa la raya de vacío de la casa cuando no hay valor", () => {
+    // `lib/utils.ts` declara `EMPTY = "—"` y el resto de la app la usa; el KPI
+    // pintaba un guion corto y era el único sitio que no seguía la convención.
     render(<KpiCard title="Total" />);
-    expect(screen.getByText("-")).toBeInTheDocument();
+    expect(screen.getByText(EMPTY)).toBeInTheDocument();
   });
 
   it("shows trendLabel alongside trend", () => {

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -237,23 +237,17 @@ export default function RedOrganoEmpresaPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Estructura de mercado</h1>
-          <p className="text-muted-foreground">
-            Quién es incumbente en cada órgano, qué tan cerrada está su base de
-            proveedores y qué licitaciones sostienen cada relación.
-          </p>
-        </div>
+      <div className="flex items-center">
+        <div className="flex-1" />
         <ExportPopover
           endpoint="/api/v1/exports/download"
           extraParams={{ seccion: "red-organo-empresa" }}
+          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
         />
       </div>
 
       {/* KPI Row — lectura de concentración */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Órganos analizados"
           value={isLoading ? undefined : formatNumber(totalOrganos)}
@@ -281,8 +275,13 @@ export default function RedOrganoEmpresaPage() {
           icon={Network}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
+      {/* Ranking y grafo lado a lado. Ambas pantallas ya evitaban abrir con la
+          maraña, pero el grafo estaba debajo: al re-centrar en un vecino
+          perdías de vista la fila de la que venías. Ahora eliges un órgano y su
+          vecindario aparece a la derecha sin que la tabla se mueva. */}
+      <div className="grid items-start gap-4 xl:grid-cols-2">
       {/* HERO: leaderboard de concentración / incumbencia */}
       <Card>
         <CardHeader>
@@ -469,6 +468,7 @@ export default function RedOrganoEmpresaPage() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       {/* Drill-down de arista: licitaciones que sustentan la relación */}
       {/* startTransition: cerrar diferido evita bloquear el hilo principal en

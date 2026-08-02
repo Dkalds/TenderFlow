@@ -114,7 +114,7 @@ export default function FeatureFlagsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Feature Flags</h1>
+          <h1 className="sr-only">Feature Flags</h1>
           <p className="text-muted-foreground">
             Toggles de funcionalidades en tiempo real
             {apiAvailable ? " (sincronizado con API)" : " (local)"}.

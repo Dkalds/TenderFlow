@@ -31,6 +31,8 @@ interface LicitacionDetail {
   fecha_fin: string | null;
   descripcion: string | null;
   score?: number;
+  /** Banda del scoring (`Caliente|Atractiva|Tibia|Descarte`), si ya llegó. */
+  band?: string | null;
   score_desglose?: Record<string, number>;
   risk_flags?: string[];
 }

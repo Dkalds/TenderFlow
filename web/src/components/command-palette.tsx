@@ -31,7 +31,20 @@ import {
   Star,
   Sun,
 } from "lucide-react";
-import { SECTIONS } from "@/lib/navigation";
+import {
+  ADMIN_ONLY_SPACES,
+  CONSOLE_GROUP_ORDER,
+  CONSOLE_SPACES,
+  type ConsoleGroup,
+} from "@/lib/console-spaces";
+
+/** Encabezados de los grupos del rail, en la paleta. */
+const GROUP_LABELS: Record<ConsoleGroup, string> = {
+  trabajo: "Trabajo diario",
+  analisis: "Análisis",
+  personal: "Mi seguimiento",
+  organizacion: "Organización",
+};
 import { useUiStore } from "@/lib/ui-store";
 import { useAdmin } from "@/hooks/use-admin";
 import { useDensity } from "@/lib/density";
@@ -78,7 +91,38 @@ function CommandPaletteInner() {
     [setOpen],
   );
 
-  const visibleSections = SECTIONS.filter((s) => !s.adminOnly || isAdmin);
+  // Un grupo por familia de espacios; cada espacio multivista despliega sus
+  // vistas como destinos propios.
+  const spaceGroups = React.useMemo(() => {
+    const spaces = CONSOLE_SPACES.filter(
+      (space) => !ADMIN_ONLY_SPACES.has(space.key) || isAdmin,
+    );
+    return CONSOLE_GROUP_ORDER.map((group) => ({
+      label: GROUP_LABELS[group],
+      items: spaces
+        .filter((space) => space.group === group)
+        .flatMap((space) => {
+          const base = {
+            icon: space.icon,
+            href: `/${space.slug}`,
+            label: space.label,
+            value: `${space.label} ${space.description}`,
+            hint: undefined as string | undefined,
+          };
+          if (!space.views || space.views.length < 2) return [base];
+          return [
+            base,
+            ...space.views.map((view) => ({
+              icon: space.icon,
+              href: `/${space.slug}?vista=${view.key}`,
+              label: view.label,
+              value: `${space.label} ${view.label}${view.from ? ` /${view.from}` : ""}`,
+              hint: space.label as string | undefined,
+            })),
+          ];
+        }),
+    })).filter((group) => group.items.length > 0);
+  }, [isAdmin]);
   const idQuery = search.trim();
   const showJump = looksLikeLicitacionId(idQuery);
   const showSearch = idQuery.length >= 2 && !showJump;
@@ -273,23 +317,29 @@ function CommandPaletteInner() {
             </Command.Group>
           )}
 
-          {visibleSections.map((section) => (
+          {/* Destinos: los espacios de la consola, no las rutas heredadas. Cada
+              vista es su propia entrada, así que ⌘K salta directo al corte
+              (`/mercado?vista=geografia`) en vez de pasar por un redirect. */}
+          {spaceGroups.map((group) => (
             <Command.Group
-              key={section.label}
-              heading={section.label}
+              key={group.label}
+              heading={group.label}
               className="px-1 text-[11px] font-medium text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
             >
-              {section.pages.map((page) => {
-                const Icon = page.icon;
+              {group.items.map((item) => {
+                const Icon = item.icon;
                 return (
                   <Command.Item
-                    key={page.slug}
-                    value={`${page.label} ${page.description}`}
-                    onSelect={() => run(() => router.push(withFilters(`/${page.slug}`)))}
+                    key={item.href}
+                    value={item.value}
+                    onSelect={() => run(() => router.push(withFilters(item.href)))}
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
                   >
                     <Icon className="h-4 w-4 text-muted-foreground" />
-                    {page.label}
+                    {item.label}
+                    {item.hint && (
+                      <span className="ml-auto text-[11px] text-muted-foreground">{item.hint}</span>
+                    )}
                   </Command.Item>
                 );
               })}

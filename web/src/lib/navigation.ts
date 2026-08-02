@@ -32,6 +32,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import { SPACE_VIEWS } from "@/lib/space-views";
 
 export type GlobalFilterKey =
   | "q"
@@ -433,13 +434,39 @@ export function findProductSpace(slug: string): ProductSpace | undefined {
 }
 
 /**
+ * Páginas heredadas que un espacio de la consola absorbió (`lib/space-views.ts`).
+ *
+ * Un espacio no declara su contrato de filtros a mano: lo hereda de las rutas
+ * que agrupa. Si ninguna de ellas consumía el ámbito —el caso de Ops y Admin—
+ * el espacio tampoco lo consume, y la barra de ámbito no aparece fingiendo que
+ * filtra algo.
+ */
+function absorbedPages(slug: string): NavPage[] {
+  const views = SPACE_VIEWS[slug];
+  if (!views) return [];
+  const pages: NavPage[] = [];
+  for (const view of views) {
+    const page = view.from ? findPage(view.from) : undefined;
+    if (page) pages.push(page);
+  }
+  return pages;
+}
+
+/**
  * Whether the page at `pathname` consumes the global filter state.
  * Rutas desconocidas devuelven `true` (comportamiento histórico).
  */
 export function pathUsesGlobalFilters(pathname: string): boolean {
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
-  return page ? page.usesGlobalFilters !== false : true;
+  if (page) return page.usesGlobalFilters !== false;
+
+  const absorbed = absorbedPages(slug);
+  // Unión: basta con que una de las vistas del espacio use el ámbito para que
+  // el espacio lo use. Si el espacio no agrupa nada conocido, se mantiene el
+  // comportamiento histórico de las rutas desconocidas.
+  if (absorbed.length) return absorbed.some((item) => item.usesGlobalFilters !== false);
+  return true;
 }
 
 /**
@@ -450,7 +477,17 @@ export function pathUsesGlobalFilters(pathname: string): boolean {
 export function pageGlobalFilterKeys(pathname: string): GlobalFilterKey[] | null {
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
-  return page?.globalFilterKeys ?? null;
+  if (page) return page.globalFilterKeys ?? null;
+
+  const absorbed = absorbedPages(slug);
+  if (!absorbed.length) return null;
+  // Si alguna vista del espacio consume todos los filtros, el espacio también:
+  // recortar la barra al subconjunto de otra vista escondería un control que
+  // esa vista sí aplica.
+  if (absorbed.some((item) => !item.globalFilterKeys)) return null;
+  const union = new Set<GlobalFilterKey>();
+  for (const item of absorbed) for (const key of item.globalFilterKeys ?? []) union.add(key);
+  return [...union];
 }
 
 /**
