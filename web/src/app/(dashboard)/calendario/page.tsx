@@ -195,7 +195,7 @@ export default function CalendarioPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Calendario</h1>
+          <h1 className="sr-only">Calendario</h1>
           <p className="text-muted-foreground">
             Heatmap de publicaciones por fecha.
           </p>

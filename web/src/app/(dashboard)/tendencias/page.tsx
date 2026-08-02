@@ -198,7 +198,7 @@ export default function TendenciasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Tendencias</h1>
+        <h1 className="sr-only">Tendencias</h1>
         <p className="text-muted-foreground">Evolucion de publicaciones y montos a lo largo del tiempo.</p>
       </div>
 

@@ -131,7 +131,7 @@ export default function ClustersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Clusters</h1>
+        <h1 className="sr-only">Clusters</h1>
         <p className="text-muted-foreground">
           Agrupacion semantica de licitaciones por similitud de titulo (KMeans).
         </p>
