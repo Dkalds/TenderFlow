@@ -5,7 +5,6 @@ import { ArrowDownRight, ArrowUpRight, CalendarDays, Eye, ExternalLink } from "l
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
 
@@ -149,14 +148,14 @@ export function CompanyQuickView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <SheetHeader className="border-b px-5 py-5 pr-14 text-left md:px-6">
+      <div className="flex flex-col space-y-2 border-b px-5 py-5 pr-14 text-left md:px-6">
         <div className="flex flex-wrap items-center gap-2">
           {company.nif ? <Badge variant="outline">NIF {company.nif}</Badge> : null}
           {profile?.empresa.es_ute ? <Badge variant="info">UTE</Badge> : null}
           {profile?.empresa.grupo ? <Badge variant="secondary">Grupo {profile.empresa.grupo}</Badge> : null}
         </div>
-        <SheetTitle className="mt-2 text-xl leading-tight md:text-2xl">{company.nombre}</SheetTitle>
-        <SheetDescription className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <h2 className="mt-2 text-xl leading-tight font-semibold text-foreground md:text-2xl">{company.nombre}</h2>
+        <p className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <span className="inline-flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
             Última adjudicación: {formatDate(totals?.ultima_adjudicacion)}
@@ -164,8 +163,8 @@ export function CompanyQuickView({
           {profile?.actividad_historica.primera_adjudicacion ? (
             <span>En contratación pública desde {formatDate(profile.actividad_historica.primera_adjudicacion)}</span>
           ) : null}
-        </SheetDescription>
-      </SheetHeader>
+        </p>
+      </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 md:px-6">
         {isLoadingProfile ? (

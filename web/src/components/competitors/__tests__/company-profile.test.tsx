@@ -1,8 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { Sheet, SheetContent } from "@/components/ui/sheet";
-
 import { initialCompanyProfilePeriod } from "../company-profile";
 import { CompanyQuickView } from "../company-quick-view";
 import {
@@ -151,35 +149,31 @@ describe("company profile presentation helpers", () => {
 
   it("restores operational KPIs, yearly progress and recent awards in the company quick view", () => {
     render(
-      <Sheet open>
-        <SheetContent>
-          <CompanyQuickView
-            empresaId={7}
-            company={{
-              nombre: "Ejemplo Digital",
-              nif: "B12345678", // pragma: allowlist secret
-              count: 4,
-              importe: 500000,
-              cuota: 8,
-              baja_media: 12,
-              ofertas_medias: 2.5,
-            }}
-            profile={{
-              ...profile,
-              por_anio: [
-                { anio: 2024, contratos: 3, importe: 400000 },
-                { anio: 2025, contratos: 4, importe: 500000 },
-              ],
-            }}
-            recentAwards={recentAwards}
-            isLoadingProfile={false}
-            isLoadingAwards={false}
-            watched={false}
-            watchPending={false}
-            onToggleWatch={vi.fn()}
-          />
-        </SheetContent>
-      </Sheet>,
+      <CompanyQuickView
+        empresaId={7}
+        company={{
+          nombre: "Ejemplo Digital",
+          nif: "B12345678", // pragma: allowlist secret
+          count: 4,
+          importe: 500000,
+          cuota: 8,
+          baja_media: 12,
+          ofertas_medias: 2.5,
+        }}
+        profile={{
+          ...profile,
+          por_anio: [
+            { anio: 2024, contratos: 3, importe: 400000 },
+            { anio: 2025, contratos: 4, importe: 500000 },
+          ],
+        }}
+        recentAwards={recentAwards}
+        isLoadingProfile={false}
+        isLoadingAwards={false}
+        watched={false}
+        watchPending={false}
+        onToggleWatch={vi.fn()}
+      />,
     );
 
     expect(screen.getByText("Operativa en cifras")).toBeInTheDocument();
