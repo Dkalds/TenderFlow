@@ -41,9 +41,7 @@ def render_api_full_table_loads_blocked() -> bool:
     """
     from config import settings
 
-    on_render = os.getenv("RENDER", "").lower() == "true" or bool(
-        os.getenv("RENDER_SERVICE_ID")
-    )
+    on_render = os.getenv("RENDER", "").lower() == "true" or bool(os.getenv("RENDER_SERVICE_ID"))
     return on_render and settings.APP_PROFILE == "api"
 
 
