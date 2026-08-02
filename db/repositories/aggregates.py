@@ -377,6 +377,14 @@ class AggregateRepository:
         limite_48h_iso: str,
         hace_24h_iso: str,
     ) -> dict[str, int]:
+        """Los cuatro contadores del bloque "para hoy", en un solo SELECT.
+
+        Compartido por ``services/analytics/overview.py`` (que ignora
+        ``total_activas``) y por ``services/analytics/resumen.py``
+        (``/analytics/resumen/hoy``, que los usa los cuatro): son los mismos
+        contadores sobre el mismo conjunto filtrado, así que duplicar el SQL
+        sería duplicar también las convenciones de fecha y el P75.
+        """
         where, params = _build_where(filters)
         pub_guard = _iso_guard("fecha_publicacion")
         lim_guard = _iso_guard("fecha_limite")
@@ -392,20 +400,77 @@ class AggregateRepository:
             "  ) AS calientes_hoy, "
             f"  COUNT(*) FILTER (WHERE {lim_guard} AND fecha_limite >= ? AND fecha_limite <= ?)"
             "     AS vencen_48h, "
-            f"  COUNT(*) FILTER (WHERE {pub_guard} AND fecha_publicacion >= ?) AS nuevas_24h "
+            f"  COUNT(*) FILTER (WHERE {pub_guard} AND fecha_publicacion >= ?) AS nuevas_24h, "
+            "  COUNT(*) FILTER (WHERE estado IN ('PUB', 'EV')) AS total_activas "
             "FROM filtered"
         )
         run_params = [*params, hoy_iso, hoy_iso, limite_48h_iso, hace_24h_iso]
         with connect_read() as c:
             row = c.execute(sql, run_params).fetchone()
         if row is None:
-            return {"calientes_hoy": 0, "vencen_48h": 0, "nuevas_24h": 0}
-        calientes, vencen, nuevas = row
+            return {"calientes_hoy": 0, "vencen_48h": 0, "nuevas_24h": 0, "total_activas": 0}
+        calientes, vencen, nuevas, activas = row
         return {
             "calientes_hoy": int(calientes or 0),
             "vencen_48h": int(vencen or 0),
             "nuevas_24h": int(nuevas or 0),
+            "total_activas": int(activas or 0),
         }
+
+    # ── Resumen ──────────────────────────────────────────────────────────
+
+    _RESUMEN_ITEM_COLS = (
+        "id_externo, titulo, importe, fecha_publicacion, estado, "
+        "organo_contratacion, tipo_contrato, ccaa"
+    )
+
+    def resumen_timeline_items(
+        self, filters: LicitacionesFilters, *, limit: int
+    ) -> list[dict[str, Any]]:
+        """Las ``limit`` licitaciones más recientes (scatter de ``/resumen/timeline``).
+
+        El ``ORDER BY ... DESC LIMIT`` lo resuelve el btree de
+        ``fecha_publicacion`` hacia atrás: se materializan ``limit`` filas, no
+        la tabla entera como hacía el ``sort_values().head()`` de pandas.
+        """
+        where, params = _build_where(filters)
+        guard = _iso_guard("fecha_publicacion")
+        sql = (
+            f"SELECT {self._RESUMEN_ITEM_COLS} FROM licitaciones "
+            f"WHERE {where} AND {guard} "
+            "ORDER BY fecha_publicacion DESC LIMIT ?"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, limit]))
+
+    def resumen_novedades(
+        self, *, desde_iso: str, sample_limit: int
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """(total, muestra) de licitaciones publicadas después de ``desde_iso``.
+
+        La muestra va ordenada por ``fecha_publicacion`` descendente — el
+        ``head(10)`` de pandas devolvía las primeras filas en el orden en que
+        las servía la BD (arbitrario y no estable entre llamadas); las más
+        recientes son además las que el banner quiere enseñar.
+        """
+        guard = _iso_guard("fecha_publicacion")
+        where = f"{guard} AND fecha_publicacion > ?"
+        with connect_read() as c:
+            row = c.execute(
+                f"SELECT COUNT(*) FROM licitaciones WHERE {where}", [desde_iso]
+            ).fetchone()
+            count = int(row[0]) if row and row[0] is not None else 0
+            if count == 0:
+                return 0, []
+            sample = rows_to_dicts(
+                c.execute(
+                    "SELECT id_externo, titulo, importe, organo_contratacion "
+                    f"FROM licitaciones WHERE {where} "
+                    "ORDER BY fecha_publicacion DESC LIMIT ?",
+                    [desde_iso, sample_limit],
+                )
+            )
+        return count, sample
 
     # ── Tecnologias ──────────────────────────────────────────────────────
 
