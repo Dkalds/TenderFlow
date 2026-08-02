@@ -85,3 +85,26 @@ def test_check_signal_read_failure_returns_false(tmp_path):
         from shared.cache_signal import check_cache_signal
 
         assert check_cache_signal(0.0) is False
+
+
+def test_database_signal_is_visible_without_shared_filesystem(tmp_db, tmp_path):
+    """Otro proceso puede observar la señal usando solo el Postgres común."""
+    from shared.cache_signal import (
+        _reset_signal_poll_cache,
+        get_signal_timestamp,
+        signal_cache_invalidation,
+    )
+
+    missing_local_file = tmp_path / "other-process" / ".cache_invalidation"
+    with (
+        patch("shared.cache_signal._database_signal_enabled", return_value=True),
+        patch("shared.cache_signal._write_local_signal"),
+        patch("shared.cache_signal._signal_path", return_value=missing_local_file),
+    ):
+        _reset_signal_poll_cache()
+        signal_cache_invalidation()
+        _reset_signal_poll_cache()  # simula el estado inicial del proceso lector
+
+        assert get_signal_timestamp() > 0.0
+
+    _reset_signal_poll_cache()

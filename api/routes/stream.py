@@ -23,7 +23,7 @@ del último evento procesado (reconexión idempotente).
 Diseño
 ------
 * Poll interno sobre ``shared.cache_signal.check_cache_signal()`` cada
-  ``POLL_INTERVAL`` segundos (por defecto 5 s). Sin pubsub, sin Redis.
+  ``POLL_INTERVAL`` segundos (por defecto 5 s), respaldado por Postgres.
 * Heartbeat cada ``HEARTBEAT_INTERVAL`` segundos (por defecto 30 s) para
   mantener la conexión TCP viva a través de proxies y load-balancers.
 * Máximo ``MAX_DURATION_SECONDS`` por conexión (por defecto 300 s = 5 min)
@@ -119,7 +119,7 @@ async def _event_generator(
             last_heartbeat = now
 
         # Comprobar señal de nueva ingesta
-        if check_cache_signal(last_signal_check):
+        if await run_db(check_cache_signal, last_signal_check):
             new_signal_ts = time.time()
             try:
                 items = await run_db(_fetch_recent, last_signal_check, batch)

@@ -88,6 +88,20 @@ def test_get_events_by_type_returns_all_matching(tmp_db):
     assert all(e["event_type"] == "feedback.submitted" for e in events)
 
 
+def test_cache_invalidation_event_is_visible_to_a_new_read(tmp_db):
+    """La señal persistida se observa desde otra conexión del pool."""
+    from db.events import (
+        append_cache_invalidation_event,
+        get_latest_cache_invalidation_timestamp,
+    )
+
+    assert get_latest_cache_invalidation_timestamp() == 0.0
+    event_id = append_cache_invalidation_event()
+
+    assert event_id > 0
+    assert get_latest_cache_invalidation_timestamp() > 0.0
+
+
 def test_replay_watchlist_reconstructs_state(tmp_db):
     """replay_watchlist returns active items after add/remove events."""
     from db.events import append_event, replay_watchlist

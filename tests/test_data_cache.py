@@ -10,6 +10,12 @@ import weakref
 from services._data_cache import SignalAwareCache
 
 
+def test_default_ttl_avoids_minutely_full_table_rebuilds():
+    cache: SignalAwareCache[int] = SignalAwareCache()
+
+    assert cache._ttl == 600.0
+
+
 def test_caches_value_between_calls():
     calls = {"n": 0}
 
