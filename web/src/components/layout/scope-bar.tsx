@@ -532,7 +532,14 @@ export function ScopeBar() {
       </Tooltip>
 
       <div className="flex flex-none items-center gap-1 border-l border-border/70 pl-2.5">
-        <ExportPopover className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs" />
+        {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
+            propia exportación con el corte de esa sección, y dos botones con la
+            misma etiqueta a cuatro dedos de distancia no se distinguen. Este
+            saca lo que gobierna esta barra — el ámbito activo. */}
+        <ExportPopover
+          label="Exportar ámbito"
+          className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs"
+        />
         <NotificationBell />
       </div>
     </header>
