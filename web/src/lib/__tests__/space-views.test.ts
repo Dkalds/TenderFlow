@@ -31,11 +31,11 @@ describe("SPACE_VIEWS", () => {
   });
 
   it("absorbe 19 rutas heredadas, todas distintas", () => {
-    const froms = allViews()
+    const origenes = allViews()
       .map(([, view]) => view.from)
       .filter(Boolean);
-    expect(froms).toHaveLength(19);
-    expect(new Set(froms).size).toBe(19);
+    expect(origenes).toHaveLength(19);
+    expect(new Set(origenes).size).toBe(19);
   });
 
   it("da a cada vista una clave única dentro de su espacio y una etiqueta", () => {
