@@ -42,8 +42,7 @@ def _description(name: str) -> str:
     desc = match.group(1).strip()
     if len(desc) > 140:
         # Cortar en el último espacio dentro del límite: un corte a lo bruto
-        # parte palabras a la mitad ("wit", "structur") que codespell marca
-        # como typos.
+        # parte palabras a la mitad, que codespell considera errores.
         cut = desc[:137].rstrip()
         boundary = cut.rfind(" ")
         if boundary > 0:
