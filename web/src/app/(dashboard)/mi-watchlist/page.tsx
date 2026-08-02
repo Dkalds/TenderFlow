@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
+import { SpaceShell } from "@/components/layout/space-shell";
 import {
   useRemoveWatchlistItem,
   useWatchlistItems,
@@ -671,7 +672,8 @@ export default function MiWatchlistPage() {
   /* ---------------------------------------------------------------- */
 
   return (
-    <div className="space-y-6">
+    <SpaceShell spaceKey="mi-watchlist">
+      <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -1067,6 +1069,7 @@ export default function MiWatchlistPage() {
       )}
         </>
       )}
-    </div>
+      </div>
+    </SpaceShell>
   );
 }

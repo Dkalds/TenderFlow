@@ -212,15 +212,14 @@ export function findConsoleSpace(pathname: string): ConsoleSpace | undefined {
 }
 
 /**
- * Rutas ya migradas al chrome de consola (rail + barra de ámbito). El resto
- * conserva el chrome heredado hasta que le toque su lote: quitarles el
- * breadcrumb, las pestañas y la barra de filtros antes de tener su espacio
- * sería exactamente la pérdida de funcionalidad que la regla prohíbe.
+ * Rutas con el chrome de consola (rail + barra de ámbito). Hoy son los 14
+ * espacios: la migración está completa y ninguna ruta del dashboard se quedó
+ * con el cromo heredado.
  *
- * Un espacio entra aquí cuando su ruta existe de verdad. Mientras no exista,
- * el rail apunta a la primera ruta heredada que absorberá (`landingHref`) y no
- * hay redirect: mandar `/tendencias` a un `/mercado` que todavía no está
- * construido sería cambiar una pantalla viva por un 404.
+ * El mecanismo sigue vivo por si hay que revertir un espacio: sacarlo de
+ * `BUILT_SPACE_ROUTES` le devuelve el breadcrumb, las pestañas y el KPI bar, y
+ * apaga su redirect en el mismo gesto — mandar `/tendencias` a un `/mercado`
+ * que no existe cambiaría una pantalla viva por un 404.
  */
 export const CONSOLE_ROUTES = new Set<string>(BUILT_SPACE_ROUTES);
 

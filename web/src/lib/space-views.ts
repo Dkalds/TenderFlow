@@ -57,7 +57,22 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
  * redirige — mandar `/tendencias` a un `/mercado` inexistente cambiaría una
  * pantalla viva por un 404.
  */
-export const BUILT_SPACE_ROUTES: readonly string[] = ["resumen", "radar", "detalle"];
+export const BUILT_SPACE_ROUTES: readonly string[] = [
+  "resumen",
+  "radar",
+  "detalle",
+  "oportunidades",
+  "mercado",
+  "competencia",
+  "relaciones",
+  "investigador",
+  "mi-pipeline",
+  "mi-watchlist",
+  "mi-perfil",
+  "empresas",
+  "equipo",
+  "ops",
+];
 
 export interface LegacyRedirect {
   source: string;

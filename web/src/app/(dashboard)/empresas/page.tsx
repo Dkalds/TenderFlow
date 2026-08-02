@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
+import { SpaceShell } from "@/components/layout/space-shell";
 
 /* ------------------------------------------------------------------ */
 /*  Types (espejo de /api/v1/empresas y /api/v1/competitive)           */
@@ -150,16 +151,8 @@ export default function EmpresasPage() {
   });
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Empresas</h1>
-        <p className="text-muted-foreground">
-          Maestro de empresas canónicas: cada adjudicatario resuelto a una única entidad
-          (NIF + aliases + UTEs).
-        </p>
-      </div>
-
+    <SpaceShell spaceKey="empresas">
+      <div className="space-y-6">
       {/* KPIs de cobertura del maestro */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -291,7 +284,8 @@ export default function EmpresasPage() {
       </Card>
 
       {selectedId != null && <EmpresaPerfil empresaId={selectedId} />}
-    </div>
+      </div>
+    </SpaceShell>
   );
 }
 

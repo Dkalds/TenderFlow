@@ -44,7 +44,9 @@ Mientras un espacio no esté construido, el rail enlaza a la primera ruta que
 absorberá y no hay redirect: mandar `/tendencias` a un `/mercado` inexistente
 cambiaría una pantalla viva por un 404.
 
-### Hecho
+### Estado: los 14 espacios, cubriendo las 25 rutas
+
+**Rediseñadas a fondo**, con su superficie reconstruida:
 
 - **Resumen** (`/resumen`) — lo urgente en tarjetas grandes con su destino
   visible; el contexto en tira compacta con delta y aviso de anomalía.
@@ -55,12 +57,33 @@ cambiaría una pantalla viva por un 404.
   inspector de cinco pestañas (`components/detail-inspector.tsx`) en el mismo
   plano, en vez del Sheet modal de once bloques apilados.
 
-### Pendiente
+**Consolidadas**, con el cromo de consola y su conmutador de vistas
+(`components/layout/space-shell.tsx`). Cada vista monta la pantalla original
+completa, así que no se ha tocado una sola de sus funciones:
 
-Mercado (8 vistas) · Oportunidades · Competencia (2) · Relaciones (2) ·
-Investigador · Mi Pipeline (2) · Mi Watchlist · Mi perfil · Empresas · Equipo ·
-Ops y Admin (5). Los prototipos de cada uno ya existen y traen su inventario de
-funciones dentro.
+| Espacio | Vistas | Rutas absorbidas |
+| --- | --- | --- |
+| `/mercado` | 8 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos |
+| `/competencia` | 2 | competidores · utes |
+| `/relaciones` | 2 | red-organo-empresa · ecosistema-partners |
+| `/mi-pipeline` | 2 | pipeline-alertas · renovaciones |
+| `/ops` | 5 | observabilidad · calidad-datos · administración · feature-flags · active-learning |
+
+**Con cabecera de espacio** y su pantalla intacta: `/oportunidades`,
+`/investigador`, `/mi-watchlist`, `/mi-perfil`, `/empresas`, `/equipo`.
+
+La vista vive en `?vista=`, no en el path: cambiar de corte no navega, así que
+**el ámbito y la selección sobreviven al cambio**. Las vistas se cargan bajo
+demanda (`next/dynamic`) — ocho pantallas de gráficos en un bundle costarían el
+arranque del espacio entero para ver un corte.
+
+### Deuda declarada
+
+Los ficheros de las rutas absorbidas siguen en `app/(dashboard)/<ruta>/page.tsx`
+y son quienes montan cada vista; su ruta HTTP está redirigida, así que el
+`page.tsx` funciona ya sólo como componente. Moverlos a `_views/` es limpieza
+pendiente, no funcionalidad: hacerlo ahora habría mezclado 20 movimientos de
+fichero con el cambio de arquitectura en el mismo diff.
 
 ## Sistema de movimiento
 

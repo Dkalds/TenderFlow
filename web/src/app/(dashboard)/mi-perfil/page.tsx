@@ -12,6 +12,7 @@ import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
+import { SpaceShell } from "@/components/layout/space-shell";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -299,9 +300,10 @@ export default function MiPerfilPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <SpaceShell spaceKey="mi-perfil">
+      <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Mi perfil de scoring</h1>
+        <h1 className="sr-only">Mi perfil de scoring</h1>
         <p className="text-muted-foreground mt-1">
           Personaliza cómo se puntúan las oportunidades. Los cambios aplican en el panel de
           detalle y en el ranking de la vista de Tecnologías.
@@ -485,6 +487,7 @@ export default function MiPerfilPage() {
           <p className="text-sm text-destructive">Los pesos deben sumar 100 para guardar.</p>
         )}
       </div>
-    </div>
+      </div>
+    </SpaceShell>
   );
 }

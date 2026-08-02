@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Building2, Loader2, Plus, UserPlus, Users } from "lucide-react";
+import { Building2, Loader2, Plus, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SpaceShell } from "@/components/layout/space-shell";
 import {
   type OrganizationMember,
   type OrganizationMembershipStatus,
@@ -209,20 +210,8 @@ export default function EquipoPage() {
   const canManage = activeOrganization ? ["owner", "admin"].includes(activeOrganization.role) : false;
 
   return (
-    <div className="space-y-5">
-      <section className="flex flex-col gap-4 rounded-xl border border-border bg-card/75 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-7">
-        <div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            <Users className="h-3.5 w-3.5" />
-            Organización
-          </div>
-          <h1 className="tf-display">Equipo y organizaciones</h1>
-          <p className="mt-2 max-w-2xl text-muted-foreground">
-            Crea espacios compartidos e incorpora a personas que ya tienen cuenta en TenderFlow.
-          </p>
-        </div>
-      </section>
-
+    <SpaceShell spaceKey="equipo">
+      <div className="space-y-5">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -299,6 +288,7 @@ export default function EquipoPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </SpaceShell>
   );
 }
