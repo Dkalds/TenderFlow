@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-DOSPLAZOS-0011</id>
+  <title>Servicios de arquitectura SAP en procedimiento restringido</title>
+  <updated>2026-06-14T09:12:33+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-DOSPLAZOS-0011" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-DOSPLAZOS-0011; Órgano de Contratación: Ministerio de Defensa; Importe: 540000.00 EUR; Estado: PUB</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-DOSPLAZOS-0011</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Ministerio de Defensa</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <cacext:ValidNoticeInfo>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-02-01</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Servicios de arquitectura SAP en procedimiento restringido</cbc:Name>
+      <cbc:TypeCode>2</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">540000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Madrid</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES300</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+    <cac:TenderingProcess>
+      <cac:ParticipationRequestReceptionPeriod>
+        <cbc:EndDate>2026-03-02</cbc:EndDate>
+        <cbc:EndTime>14:00:00</cbc:EndTime>
+      </cac:ParticipationRequestReceptionPeriod>
+      <cac:TenderSubmissionDeadlinePeriod>
+        <cbc:EndDate>2026-04-15</cbc:EndDate>
+        <cbc:EndTime>23:59:00</cbc:EndTime>
+      </cac:TenderSubmissionDeadlinePeriod>
+    </cac:TenderingProcess>
+  </cacext:ContractFolderStatus>
+</entry>

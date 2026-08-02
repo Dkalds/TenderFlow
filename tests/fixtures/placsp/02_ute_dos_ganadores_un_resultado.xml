@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-UTE-0002</id>
+  <title>Implantación de plataforma SAP para gestión tributaria</title>
+  <updated>2026-06-14T09:12:33+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-UTE-0002" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-UTE-0002; Órgano de Contratación: Agencia Estatal de Administración Tributaria; Importe: 280000.00 EUR; Estado: ADJ</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-UTE-0002</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>ADJ</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Agencia Estatal de Administración Tributaria</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <cacext:ValidNoticeInfo>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-03-18</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Implantación de plataforma SAP para gestión tributaria</cbc:Name>
+      <cbc:TypeCode>2</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">280000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Madrid</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES300</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+    <cac:TenderingProcess>
+      <cac:TenderSubmissionDeadlinePeriod>
+        <cbc:EndDate>2026-04-20</cbc:EndDate>
+        <cbc:EndTime>23:59:00</cbc:EndTime>
+      </cac:TenderSubmissionDeadlinePeriod>
+    </cac:TenderingProcess>
+    <cac:TenderResult>
+      <cbc:AwardDate>2026-05-11</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>3</cbc:ReceivedTenderQuantity>
+      <cbc:LowerTenderAmount>248000.00</cbc:LowerTenderAmount>
+      <cbc:HigherTenderAmount>301000.00</cbc:HigherTenderAmount>
+      <cac:AwardedTenderedProject>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount>252000.00</cbc:TaxExclusiveAmount>
+          <cbc:PayableAmount>304920.00</cbc:PayableAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+      <cac:WinningParty>
+        <cac:PartyName><cbc:Name>Tecnologias Unidas SA</cbc:Name></cac:PartyName>
+        <cac:PartyIdentification><cbc:ID>A78000010</cbc:ID></cac:PartyIdentification>
+      </cac:WinningParty>
+      <cac:WinningParty>
+        <cac:PartyName><cbc:Name>Sistemas Avanzados SL</cbc:Name></cac:PartyName>
+        <cac:PartyIdentification><cbc:ID>B78000011</cbc:ID></cac:PartyIdentification>
+      </cac:WinningParty>
+    </cac:TenderResult>
+  </cacext:ContractFolderStatus>
+</entry>
