@@ -674,18 +674,13 @@ export default function MiWatchlistPage() {
   return (
     <SpaceShell spaceKey="mi-watchlist">
       <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <Star className="h-7 w-7" />
-          Mi Watchlist
-        </h1>
-        <p className="text-muted-foreground">
-          Reglas de seguimiento guardadas en tu cuenta: el conteo de coincidencias
-          es real (sobre todo el dataset) y las alertas por frecuencia se envían
-          desde el servidor.
-        </p>
-      </div>
+      {/* El nombre lo pone la cabecera del espacio; queda la nota que explica
+          de dónde sale el conteo, que no es evidente y sí importa. */}
+      <p className="max-w-[80ch] text-xs text-muted-foreground">
+        Reglas de seguimiento guardadas en tu cuenta: el conteo de coincidencias
+        es real (sobre todo el dataset) y las alertas por frecuencia se envían
+        desde el servidor.
+      </p>
 
       {/* Tabs: reglas de criterio vs. licitaciones individuales marcadas */}
       <div className="inline-flex rounded-lg border border-border/70 p-1" role="tablist">

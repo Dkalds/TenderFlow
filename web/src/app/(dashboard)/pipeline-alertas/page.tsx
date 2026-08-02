@@ -273,19 +273,19 @@ export default function PipelineAlertasPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pipeline &amp; Alertas</h1>
-          <p className="text-muted-foreground">
-            {loadingPipeline
-              ? "Oportunidades activas que están cerrando y alertas suscribibles."
-              : `${formatNumber(pipelineData?.total_en_plazo)} oportunidades en plazo · ${compactEur(pipelineData?.valor_total)} en juego (próximos 12 meses).`}
-          </p>
-        </div>
+      {/* El nombre lo pone la cabecera del espacio; el titular cuantificado
+          sobrevive como línea de estado, que es lo que aporta dato. */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <p className="text-xs text-muted-foreground">
+          {loadingPipeline
+            ? "Oportunidades activas que están cerrando y alertas suscribibles."
+            : `${formatNumber(pipelineData?.total_en_plazo)} oportunidades en plazo · ${compactEur(pipelineData?.valor_total)} en juego (próximos 12 meses).`}
+        </p>
+        <div className="flex-1" />
         <ExportPopover
           endpoint="/api/v1/exports/download"
           extraParams={{ seccion: "pipeline-alertas" }}
+          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
         />
       </div>
 

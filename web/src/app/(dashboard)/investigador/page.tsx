@@ -148,7 +148,7 @@ export default function InvestigadorPage() {
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [config, setConfig] = useState<InvestigadorConfig>(DEFAULT_CONFIG);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
 
   // Modo "Preguntar": hilo de chat multi-turno (historial en cliente).
@@ -505,6 +505,10 @@ export default function InvestigadorPage() {
         </Card>
       )}
 
+      {/* Resultados y conversación **conviven**: antes se excluían, así que
+          preguntar por un resultado te hacía perder la lista desde la que
+          preguntabas. En pantalla ancha van en paneles contiguos. */}
+      <div className="grid items-start gap-4 xl:grid-cols-2">
       {/* ---- Search results ---- */}
       {!loading && searchResults && (
         <div className="space-y-3">
@@ -586,6 +590,7 @@ export default function InvestigadorPage() {
           </CardContent>
         </Card>
       )}
+      </div>
 
       {/* ---- Empty state (no example chips shown above already) ---- */}
       {showEmpty && (

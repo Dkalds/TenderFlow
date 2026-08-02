@@ -158,7 +158,7 @@ export default function ObservabilidadPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Observabilidad</h1>
+          <h1 className="sr-only">Observabilidad</h1>
           <p className="text-muted-foreground">
             Salud de infraestructura y servicios (SRE). Para la integridad del
             dato (completitud, DLQ, drops de escritura) ve a{" "}

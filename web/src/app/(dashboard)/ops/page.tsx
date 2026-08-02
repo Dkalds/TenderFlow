@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { OpsHealthStrip } from "./_components/health-strip";
 
 /**
  * Ops y Admin — las cinco rutas internas bajo una sola puerta.
@@ -39,6 +40,7 @@ export default function OpsPage() {
 
   return (
     <SpaceShell spaceKey="ops" view={view} onViewChange={setView}>
+      <OpsHealthStrip />
       <View />
     </SpaceShell>
   );

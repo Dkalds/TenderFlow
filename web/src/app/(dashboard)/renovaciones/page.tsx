@@ -218,15 +218,11 @@ export default function RenovacionesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Renovaciones</h1>
-          <p className="text-muted-foreground">
-            Contratos adjudicados que vencen pronto: o los defiende el adjudicatario actual o
-            se los disputa quien llegue primero.
-          </p>
-        </div>
+        <p className="max-w-[70ch] text-xs text-muted-foreground">
+          Contratos adjudicados que vencen pronto: o los defiende el adjudicatario actual o
+          se los disputa quien llegue primero.
+        </p>
         <Select value={meses} onValueChange={setMeses}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />

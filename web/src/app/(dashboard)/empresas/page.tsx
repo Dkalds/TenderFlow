@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { PanelEmpty, PanelTabs, StatCell, StatStrip } from "@/components/console/panel";
 import { CompanyYearTrend } from "@/components/competitors/company-year-trend";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,12 +23,10 @@ import {
 } from "@/components/ui/table";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
 import {
-  Briefcase,
   Check,
   Eye,
   EyeOff,
   Handshake,
-  Percent,
   Search,
   ShieldQuestion,
   X,
@@ -150,40 +148,66 @@ export default function EmpresasPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["watchlist-empresas"] }),
   });
 
+  const pendientes = stats?.revisiones_pendientes ?? 0;
+  const [vista, setVista] = useState<"maestro" | "revision">("maestro");
+
   return (
     <SpaceShell spaceKey="empresas">
       <div className="space-y-6">
-      {/* KPIs de cobertura del maestro */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Empresas canónicas"
-          value={stats ? formatNumber(stats.empresas) : "…"}
-          icon={Briefcase}
-        />
-        <KpiCard
-          title="Importe resuelto"
+      {/* Tira de cobertura del maestro. El importe resuelto se pone en ámbar
+          por debajo del 95%: si un 8% del importe no está enlazado, las cuotas
+          de Competencia arrastran ese error sin decirlo. */}
+      <StatStrip>
+        <StatCell label="Empresas canónicas" value={stats ? formatNumber(stats.empresas) : "…"} />
+        <StatCell
+          label="Importe resuelto"
           value={stats ? `${stats.pct_importe.toFixed(1)}%` : "…"}
-          subtitle={
+          hint={
             stats
               ? `${formatNumber(stats.adjudicaciones_enlazadas)} de ${formatNumber(stats.adjudicaciones_total)} adjudicaciones`
               : undefined
           }
-          icon={Percent}
+          accent={
+            stats && stats.pct_importe < 95 ? "hsl(var(--warning))" : undefined
+          }
+          badge={
+            stats && stats.pct_importe < 95 ? (
+              <span className="inline-flex h-4 flex-none items-center rounded border border-[hsl(var(--warning)/0.38)] bg-[hsl(var(--warning)/0.14)] px-1 font-mono text-[8.5px] font-semibold text-[hsl(var(--warning))]">
+                BAJO 95%
+              </span>
+            ) : undefined
+          }
         />
-        <KpiCard
-          title="Vigiladas"
-          value={watchlist ? formatNumber(watchlist.items.length) : "…"}
-          icon={Eye}
-        />
-        <KpiCard
-          title="Revisiones pendientes"
+        <StatCell label="Vigiladas" value={watchlist ? formatNumber(watchlist.items.length) : "…"} />
+        <StatCell
+          label="Revisiones pendientes"
           value={stats ? formatNumber(stats.revisiones_pendientes) : "…"}
-          icon={ShieldQuestion}
+          hint={pendientes > 0 ? "hay matches dudosos por resolver" : "nada pendiente"}
+          onClick={pendientes > 0 ? () => setVista("revision") : undefined}
         />
-      </div>
+      </StatStrip>
 
-      {(stats?.revisiones_pendientes ?? 0) > 0 && <ReviewQueue />}
+      {/* La cola de revisión deja de ser un bloque que aparece y desaparece
+          según haya trabajo: es una vista con contador, así que se sabe que
+          existe aunque hoy esté vacía. */}
+      <PanelTabs
+        label="Vistas del maestro"
+        value={vista}
+        onChange={setVista}
+        tabs={[
+          { key: "maestro" as const, label: "Maestro" },
+          { key: "revision" as const, label: "Cola de revisión", badge: pendientes },
+        ]}
+      />
 
+      {vista === "revision" ? (
+        pendientes > 0 ? (
+          <ReviewQueue />
+        ) : (
+          <PanelEmpty message="No hay matches dudosos pendientes de revisar." />
+        )
+      ) : (
+      <>
       {/* Buscador + tabla */}
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -284,6 +308,8 @@ export default function EmpresasPage() {
       </Card>
 
       {selectedId != null && <EmpresaPerfil empresaId={selectedId} />}
+      </>
+      )}
       </div>
     </SpaceShell>
   );
