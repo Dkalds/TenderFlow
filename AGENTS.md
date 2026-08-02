@@ -6,8 +6,10 @@ editás una regla común, editála aquí.**
 
 Este archivo contiene únicamente reglas siempre relevantes. El detalle
 operativo vive en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md), el estado
-calculado en [docs/STATUS.md](docs/STATUS.md) y el trabajo priorizado en
-[docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md).
+calculado en [docs/STATUS.md](docs/STATUS.md), el trabajo priorizado en
+[docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) y el diagnóstico
+UX/UI del frontend con su roadmap por olas en
+[docs/UX_AUDIT.md](docs/UX_AUDIT.md).
 
 ---
 

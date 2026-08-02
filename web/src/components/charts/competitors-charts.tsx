@@ -72,7 +72,7 @@ export const CompetitorsBarChart = React.memo(function CompetitorsBarChart({ dat
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(400, data.length * 32)}>
-        <BarChart data={data} layout="vertical" margin={{ left: 180 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 180 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis type="number" tick={{ fontSize: 12 }} />
           <YAxis
@@ -128,7 +128,7 @@ export const CompetitorsScatterChart = React.memo(function CompetitorsScatterCha
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={400}>
-        <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+        <ScatterChart accessibilityLayer margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             type="number"
@@ -233,7 +233,7 @@ export const CompetitorsPositioningChart = React.memo(function CompetitorsPositi
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={400}>
-        <ScatterChart margin={{ top: 20, right: 20, bottom: 30, left: 20 }}>
+        <ScatterChart accessibilityLayer margin={{ top: 20, right: 20, bottom: 30, left: 20 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             type="number"
@@ -308,7 +308,7 @@ export const CompetitorsEstacionalidadChart = React.memo(function CompetitorsEst
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={300}>
-        <ComposedChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <ComposedChart accessibilityLayer data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
           <YAxis yAxisId="left" tick={{ fontSize: 12 }} />

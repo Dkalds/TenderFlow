@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import type { RadarTender } from "@/hooks/use-radar";
 
 const push = vi.fn();
@@ -7,9 +7,13 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
-vi.mock("sonner", () => ({
-  toast: { success: (...a: unknown[]) => toastSuccess(...a), error: (...a: unknown[]) => toastError(...a) },
-}));
+const toastCall = vi.fn();
+vi.mock("sonner", () => {
+  const toast = (...a: unknown[]) => toastCall(...a);
+  toast.success = (...a: unknown[]) => toastSuccess(...a);
+  toast.error = (...a: unknown[]) => toastError(...a);
+  return { toast };
+});
 
 const createPursuit = vi.fn().mockResolvedValue({ id: 7 });
 vi.mock("@/hooks/use-pursuits", () => ({
@@ -26,8 +30,9 @@ vi.mock("@/hooks/use-watchlist-items", () => ({
 const radarState: {
   data?: { items: RadarTender[] };
   isLoading: boolean;
+  isRanking: boolean;
   error: unknown;
-} = { data: undefined, isLoading: false, error: null };
+} = { data: undefined, isLoading: false, isRanking: false, error: null };
 vi.mock("@/hooks/use-radar", () => ({ useRadar: () => radarState }));
 
 // RadarPage lee `filters.tecnologias` vía el hook nuqs-backed `useFilters`;
@@ -76,6 +81,7 @@ function tender(overrides: Partial<RadarTender> = {}): RadarTender {
 beforeEach(() => {
   radarState.data = { items: [tender()] };
   radarState.isLoading = false;
+  radarState.isRanking = false;
   radarState.error = null;
   watchedItems.length = 0;
 });
@@ -101,10 +107,27 @@ describe("RadarPage", () => {
     expect(screen.getByText("Score 61")).toBeInTheDocument();
   });
 
-  it("only says 'Nueva señal' when the tender really has no score", () => {
+  it("only says 'Sin puntuar' when the tender really has no score", () => {
     render(<RadarPage />);
 
-    expect(screen.getByText("Nueva señal")).toBeInTheDocument();
+    expect(screen.getByText("Sin puntuar")).toBeInTheDocument();
+  });
+
+  it("shows a skeleton instead of a band while the ranking is still in flight", () => {
+    // "Sin puntuar" antes de que llegue el scoring se lee como una categoría
+    // del dato, no como "todavía no lo sé".
+    radarState.isRanking = true;
+
+    render(<RadarPage />);
+
+    expect(screen.queryByText("Sin puntuar")).not.toBeInTheDocument();
+    expect(screen.getByText(/Ordenando por afinidad/)).toBeInTheDocument();
+  });
+
+  it("states the scope of the list instead of implying a market-wide ranking", () => {
+    render(<RadarPage />);
+
+    expect(screen.getByText(/señales recientes, ordenadas por afinidad/)).toBeInTheDocument();
   });
 
   it("renders the countdown to the deadline the API now returns", () => {
@@ -159,7 +182,25 @@ describe("RadarPage", () => {
     expect(screen.queryByText("Mantenimiento SAP")).not.toBeInTheDocument();
     expect(screen.getByText("Radar al día")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Restaurar descartadas" }));
+    fireEvent.click(screen.getByRole("button", { name: /Restaurar 1 descartada/ }));
+    expect(screen.getByText("Mantenimiento SAP")).toBeInTheDocument();
+  });
+
+  it("offers an inline undo and says the dismissal is session-scoped", () => {
+    // No hay endpoint de dismiss en el backend, así que el descarte se pierde
+    // al recargar. Mientras siga así, la UI lo declara en vez de dejar que el
+    // usuario lo crea definitivo, y ofrece deshacer sin buscar la acción masiva.
+    render(<RadarPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Descartar/ }));
+
+    expect(toastCall).toHaveBeenCalledWith(
+      "Señal descartada en esta sesión",
+      expect.objectContaining({ action: expect.objectContaining({ label: "Deshacer" }) }),
+    );
+
+    // Deshacer devuelve la señal a la lista.
+    const { action } = toastCall.mock.calls[0][1] as { action: { onClick: () => void } };
+    act(() => action.onClick());
     expect(screen.getByText("Mantenimiento SAP")).toBeInTheDocument();
   });
 

@@ -8,7 +8,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { GlobalFilterBar } from "@/components/layout/global-filter-bar";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalCopilot } from "@/components/copilot-panel";
-import { Toaster } from "@/components/toaster";
+import { KeyboardHelp } from "@/components/keyboard-help";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +28,10 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
-      >
-        Saltar al contenido
-      </a>
+      {/* El skip link vive una sola vez, en el layout raíz, y apunta al landmark
+          `<main id="main-content">` de DashboardShell. Aquí había un segundo
+          enlace hacia un `<div id="main">` interno: dos anclas compitiendo, y la
+          de este layout ni siquiera era el landmark. */}
       <Sidebar />
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
@@ -48,13 +46,13 @@ export default function DashboardLayout({
             {/* No page-transition fade: navigation is the 100+/day tier
                 (emil-design-eng / find-animation-opportunities) — NProgress's
                 top bar is the sole in-flight indicator now. */}
-            <div id="main" className="mt-4"><Suspense fallback={null}>{children}</Suspense></div>
+            <div className="mt-4"><Suspense fallback={null}>{children}</Suspense></div>
           </div>
         </DashboardShell>
       </div>
       <CommandPalette />
       <GlobalCopilot />
-      <Toaster />
+      <KeyboardHelp />
     </div>
   );
 }

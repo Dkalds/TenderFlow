@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Globe } from "lucide-react";
 import { ExportPopover } from "@/components/export-popover";
+import { PageHeader } from "@/components/layout/page-header";
 import { CopilotBar } from "@/components/copilot-panel";
 import { t } from "@/lib/i18n";
 import { getEstadoChartColor } from "@/lib/chart-colors";
@@ -106,22 +108,15 @@ export default function ResumenPage() {
 
   return (
     <div className="space-y-6">
-      <section className="tf-card-shadow relative overflow-hidden rounded-xl border border-border bg-card/70 p-5">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent"
-        />
-        <div className="relative flex items-start justify-between gap-4">
-          <div>
-            <h1 className="tf-h1">Resumen</h1>
-            <p className="text-muted-foreground">
-              Qué requiere tu atención hoy en el mercado.
-            </p>
-          </div>
-          <ExportPopover />
-        </div>
-        <CopilotBar className="relative mt-4 max-w-2xl" />
-      </section>
+      <PageHeader
+        variant="hero"
+        eyebrow="Inteligencia de mercado"
+        eyebrowIcon={Globe}
+        title="Resumen"
+        description="Qué requiere tu atención hoy en el mercado."
+        actions={<ExportPopover />}
+      />
+      <CopilotBar className="max-w-2xl" />
 
       <NovedadesBanner data={novedades.data} isLoading={novedades.isLoading} />
 

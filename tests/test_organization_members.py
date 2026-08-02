@@ -18,7 +18,11 @@ from shared.dto import OrganizationMembershipUpsert
 def _user(email: str, *, display_name: str | None = None) -> int:
     from db.users import create_user
 
-    return create_user(email=email, password_hash="test-hash", display_name=display_name)
+    return create_user(
+        email=email,
+        password_hash="test-hash",  # pragma: allowlist secret
+        display_name=display_name,
+    )
 
 
 def test_add_member_by_email_enrolls_existing_active_user(tmp_db):

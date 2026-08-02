@@ -83,7 +83,7 @@ describe("GlobalFilterBar", () => {
 
   it("adds a CCAA through the select control", () => {
     renderBar();
-    fireEvent.change(screen.getByLabelText("Filtrar por CCAA"), { target: { value: "CT" } });
+    fireEvent.change(screen.getByLabelText("Filtrar por comunidad autónoma"), { target: { value: "CT" } });
     expect(setters.setCcaas).toHaveBeenCalledWith(["MD", "CT"]);
   });
 
@@ -101,14 +101,14 @@ describe("GlobalFilterBar", () => {
 
   it("applies a date preset via the quick-range menu", () => {
     renderBar();
-    openMenu(screen.getByRole("button", { name: /Rangos de fecha rapidos/ }));
+    openMenu(screen.getByRole("button", { name: /Rangos de fecha rápidos/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Todo" }));
     expect(setters.setRango).toHaveBeenCalledWith({ desde: null, hasta: null });
   });
 
   it("debounces the minimum amount input before calling setImporteMin", async () => {
     renderBar();
-    fireEvent.change(screen.getByLabelText("Importe minimo"), { target: { value: "50000" } });
+    fireEvent.change(screen.getByLabelText("Importe mínimo"), { target: { value: "50000" } });
     expect(setters.setImporteMin).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -120,7 +120,7 @@ describe("GlobalFilterBar", () => {
 
   it("applies an amount preset instantly via the preset menu", () => {
     renderBar();
-    openMenu(screen.getByRole("button", { name: /Presets de importe minimo/ }));
+    openMenu(screen.getByRole("button", { name: /Atajos de importe mínimo/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "> 500K" }));
     expect(setters.setImporteMin).toHaveBeenCalledWith(500_000);
   });
@@ -156,12 +156,12 @@ describe("GlobalFilterBar", () => {
     paramsRef.current = {};
     renderBar();
     // El único filtro que aplica Renovaciones es tecnología.
-    expect(screen.getByLabelText("Filtrar por tecnologia")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filtrar por tecnología")).toBeInTheDocument();
     // El resto de controles globales no se muestran (no mienten).
     expect(screen.queryByLabelText("Buscar licitaciones")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Filtrar por CCAA")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Filtrar por comunidad autónoma")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Filtrar por estado")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Importe minimo")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Importe mínimo")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Fecha desde")).not.toBeInTheDocument();
   });
 
@@ -181,7 +181,7 @@ describe("GlobalFilterBar", () => {
     pathnameRef.current = "/radar";
     paramsRef.current = { tecnologia: "IA" };
     renderBar();
-    const select = screen.getByLabelText("Filtrar por tecnologia") as HTMLSelectElement;
+    const select = screen.getByLabelText("Filtrar por tecnología") as HTMLSelectElement;
     expect(select.value).toBe("IA");
     expect(screen.getByText("Todas")).toBeInTheDocument();
     // No debe renderizarse el chip acumulable "Quitar IA".
@@ -192,7 +192,7 @@ describe("GlobalFilterBar", () => {
     pathnameRef.current = "/radar";
     paramsRef.current = { tecnologia: "IA" };
     renderBar();
-    fireEvent.change(screen.getByLabelText("Filtrar por tecnologia"), { target: { value: "Cloud" } });
+    fireEvent.change(screen.getByLabelText("Filtrar por tecnología"), { target: { value: "Cloud" } });
     expect(setters.setTecnologias).toHaveBeenCalledWith(["Cloud"]);
   });
 
@@ -200,7 +200,7 @@ describe("GlobalFilterBar", () => {
     pathnameRef.current = "/radar";
     paramsRef.current = { tecnologia: "IA" };
     renderBar();
-    fireEvent.change(screen.getByLabelText("Filtrar por tecnologia"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Filtrar por tecnología"), { target: { value: "" } });
     expect(setters.setTecnologias).toHaveBeenCalledWith([]);
   });
 });

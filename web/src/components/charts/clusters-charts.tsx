@@ -81,7 +81,7 @@ export function ClustersBarChart({ data }: { data: ClusterBarEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(320, data.length * 32)}>
-        <BarChart data={data} layout="vertical" margin={{ left: 150 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 150 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis type="number" tick={{ fontSize: 11 }} />
           <YAxis dataKey="label" type="category" width={150} tick={{ fontSize: 10 }} />
@@ -101,7 +101,7 @@ export function ClustersBoxChart({ data }: { data: BoxDatum[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(320, data.length * 32)}>
-        <BarChart data={data} layout="vertical" margin={{ left: 130 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 130 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             type="number"

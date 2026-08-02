@@ -289,7 +289,7 @@ export default function RenovacionesPage() {
           ) : (
             <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={topCartera} layout="vertical" margin={{ left: 120 }}>
+                <BarChart accessibilityLayer data={topCartera} layout="vertical" margin={{ left: 120 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis
                     type="number"

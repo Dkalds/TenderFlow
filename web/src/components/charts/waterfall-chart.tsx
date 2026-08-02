@@ -56,7 +56,7 @@ export function WaterfallChart({ data, height = 300, className }: WaterfallChart
   return (
     <div role="img" aria-label="Gráfico de cascada" className={cn("w-full", className)}>
       <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={transformed} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+        <BarChart accessibilityLayer data={transformed} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <XAxis dataKey="period" tick={{ fontSize: 12 }} />
           <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatNumber(v)} />
           <Tooltip

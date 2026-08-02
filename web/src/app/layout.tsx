@@ -5,6 +5,8 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/components/providers";
 import { RouteProgress } from "@/components/route-progress";
+import { Toaster } from "@/components/toaster";
+import { LiveRegion } from "@/components/live-region";
 import "nprogress/nprogress.css";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
@@ -39,7 +41,7 @@ export const metadata: Metadata = {
     default: "TenderFlow",
   },
   description:
-    "Inteligencia de mercado para licitaciones de tecnologia del sector publico.",
+    "Inteligencia de mercado para licitaciones de tecnología del sector público.",
   icons: {
     icon: [
       { url: "/favicon.ico" },
@@ -72,6 +74,10 @@ export default async function RootLayout({
         <Providers nonce={nonce}>
           <RouteProgress />
           {children}
+          {/* El Toaster vivía en `(dashboard)/layout.tsx`, así que cualquier
+              `toast()` disparado en /login se descartaba en silencio. */}
+          <Toaster />
+          <LiveRegion />
         </Providers>
         <SpeedInsights />
         <Analytics />

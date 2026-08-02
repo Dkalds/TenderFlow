@@ -69,7 +69,7 @@ export function TimelineSection({
           ) : scatterData.length > 0 ? (
             <ChartErrorBoundary>
               <ResponsiveContainer width="100%" height={380}>
-                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                <ScatterChart accessibilityLayer margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis
                     dataKey="x"

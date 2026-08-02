@@ -54,7 +54,7 @@ export function TecnologiasEvolutionChart({
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={340}>
-        <AreaChart data={data}>
+        <AreaChart accessibilityLayer data={data}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
           <YAxis
@@ -98,7 +98,7 @@ export function TecnologiasVolumeBarChart({
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(300, data.length * 28)}>
-        <BarChart data={data} layout="vertical" margin={{ left: 110 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 110 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis type="number" tick={{ fontSize: 11 }} />
           <YAxis dataKey="tecnologia" type="category" width={100} tick={{ fontSize: 11 }} />
@@ -129,7 +129,7 @@ export function TecnologiasImporteBarChart({
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(300, data.length * 28)}>
-        <BarChart data={data} layout="vertical" margin={{ left: 110 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 110 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             type="number"
@@ -196,7 +196,7 @@ export function TecnologiasGeoBarChart({
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={Math.max(360, data.length * 34)}>
-        <BarChart data={data} layout="vertical" margin={{ left: 90 }}>
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 90 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis type="number" tick={{ fontSize: 11 }} />
           <YAxis dataKey="ccaa" type="category" width={84} tick={{ fontSize: 10 }} />

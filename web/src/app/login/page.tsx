@@ -129,7 +129,10 @@ function LoginPageContent() {
         className="pointer-events-none absolute inset-0 z-0 [background:radial-gradient(closest-side,hsl(var(--background)/0.85),transparent_70%)]"
       />
 
-      <div className="relative z-10 w-full max-w-md space-y-8">
+      {/* Landmark `main` con el mismo id que en el dashboard: el skip link del
+          layout raíz se renderiza en todas las rutas y aquí apuntaba a un
+          ancla inexistente. */}
+      <main id="main-content" tabIndex={-1} className="relative z-10 w-full max-w-md space-y-8">
         {/* Logo / Title */}
         <div className="flex flex-col items-center gap-3 text-center">
           <TenderFlowLogo showText={false} boxSize={48} />
@@ -387,7 +390,7 @@ function LoginPageContent() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }

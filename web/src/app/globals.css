@@ -466,6 +466,36 @@
   top: 0;
 }
 
+/*
+ * Densidad compacta.
+ *
+ * `DashboardShell` declara `data-density` en el `<main>` y aquí se aprieta el
+ * espaciado de los primitivos que gobiernan el ritmo vertical de una pantalla
+ * de datos: padding de tarjeta y alto de fila de tabla. Antes el toggle
+ * aplicaba `[&_.container]:px-2`, y `.container` no aparece en ningún
+ * componente del proyecto — el control existía y no hacía nada.
+ *
+ * Se toca sólo el espaciado, no el tamaño de letra: reducir el cuerpo del texto
+ * es lo primero que rompe la legibilidad de una tabla densa, y el objetivo es
+ * ver más filas, no letra más pequeña.
+ */
+[data-density="compact"] [data-slot="card-header"] {
+  padding: 0.875rem 1rem;
+}
+
+[data-density="compact"] [data-slot="card-content"] {
+  padding: 0 1rem 1rem;
+}
+
+[data-density="compact"] [data-slot="table-head"] {
+  height: 2rem;
+}
+
+[data-density="compact"] [data-slot="table-cell"] {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
 /* Base typography */
 body {
   font-size: 0.875rem;

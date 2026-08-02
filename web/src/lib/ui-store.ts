@@ -28,6 +28,11 @@ interface UiState {
   setSavedViewsOpen: (open: boolean) => void;
   /** Open the saved views popover (and close the command palette). */
   openSavedViews: () => void;
+
+  /** Overlay de ayuda de atajos (`?`). Sin él los atajos son indescubribles. */
+  shortcutsHelpOpen: boolean;
+  setShortcutsHelpOpen: (open: boolean) => void;
+  toggleShortcutsHelp: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -50,4 +55,8 @@ export const useUiStore = create<UiState>((set) => ({
   savedViewsOpen: false,
   setSavedViewsOpen: (open) => set({ savedViewsOpen: open }),
   openSavedViews: () => set({ savedViewsOpen: true, commandOpen: false }),
+
+  shortcutsHelpOpen: false,
+  setShortcutsHelpOpen: (open) => set({ shortcutsHelpOpen: open }),
+  toggleShortcutsHelp: () => set((s) => ({ shortcutsHelpOpen: !s.shortcutsHelpOpen })),
 }));

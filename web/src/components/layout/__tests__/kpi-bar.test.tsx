@@ -67,7 +67,7 @@ describe("KpiBarConnected", () => {
     );
   }
 
-  it("maps overview data into KPI tiles (billions formatting)", () => {
+  it("maps overview data into KPI tiles without the ambiguous 'B' abbreviation", () => {
     renderConnected({
       total_licitaciones: 12345,
       importe_total: 2_500_000_000,
@@ -76,7 +76,10 @@ describe("KpiBarConnected", () => {
       yoy_delta: 8.2,
     });
     expect(screen.getByText("Total:")).toBeInTheDocument();
-    expect(screen.getByText("2.5B €")).toBeInTheDocument();
+    // Regresión: se emitía "2.5B €", que en castellano se lee como 2,5 billones
+    // (10¹²) — mil veces la cifra real. `Intl` en es-ES abrevia en millones.
+    expect(screen.getByText(/2500\s*M/)).toBeInTheDocument();
+    expect(screen.queryByText(/B\s*€/)).not.toBeInTheDocument();
   });
 
   it("formats thousands and a negative YoY", () => {
@@ -86,7 +89,7 @@ describe("KpiBarConnected", () => {
       licitaciones_30d: 2,
       yoy_delta: -1.5,
     });
-    expect(screen.getByText("5K €")).toBeInTheDocument();
+    expect(screen.getByText(/5\s*mil/)).toBeInTheDocument();
   });
 
   it("hides entirely on pages that do not use global filters", () => {
