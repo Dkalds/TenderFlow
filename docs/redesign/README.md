@@ -77,13 +77,37 @@ La vista vive en `?vista=`, no en el path: cambiar de corte no navega, así que
 demanda (`next/dynamic`) — ocho pantallas de gráficos en un bundle costarían el
 arranque del espacio entero para ver un corte.
 
+### El contrato de filtros lo hereda el espacio
+
+Un espacio no declara a mano si consume el ámbito: lo deduce de las rutas que
+absorbe (`absorbedPages` en `lib/navigation.ts`). Basta con que una vista lo use
+para que el espacio lo use; si ninguna lo usa —el caso de Ops y Admin— la barra
+de ámbito no aparece. Sin esto, Ops pintaba chips que no filtraban nada, que es
+exactamente la clase de mentira que el resto del rediseño se dedica a quitar.
+
 ### Deuda declarada
 
 Los ficheros de las rutas absorbidas siguen en `app/(dashboard)/<ruta>/page.tsx`
 y son quienes montan cada vista; su ruta HTTP está redirigida, así que el
-`page.tsx` funciona ya sólo como componente. Moverlos a `_views/` es limpieza
-pendiente, no funcionalidad: hacerlo ahora habría mezclado 20 movimientos de
-fichero con el cambio de arquitectura en el mismo diff.
+`page.tsx` funciona ya sólo como componente. Moverlos a `_views/` sigue
+pendiente, y no es sólo mover ficheros:
+
+- cada una lleva su `layout.tsx` con el `metadata.title` y su `loading.tsx`;
+- `/competidores` cuelga la subruta `/competidores/empresa/[empresaId]`, que
+  tiene que seguir viva (el redirect es de ruta exacta, no de prefijo).
+
+Mezclar veinte movimientos de fichero con el cambio de arquitectura en el mismo
+diff habría hecho ilegible el uno y arriesgado el otro.
+
+### Qué está verificado y qué no
+
+En verde: tests unitarios, lint, typecheck, build, invariantes de datos, y los
+19 redirects comprobados contra el servidor real (308 con la query intacta).
+
+**Sin verificar: el aspecto con datos reales.** No hay backend en el entorno de
+desarrollo remoto, así que no hay QA visual. Los e2e de Playwright fallan 27 de
+43 por `ERR_CERT_AUTHORITY_INVALID` al cargar scripts externos — comprobado que
+fallan **igual en el commit base**, así que es del entorno y no del rediseño.
 
 ## Sistema de movimiento
 
