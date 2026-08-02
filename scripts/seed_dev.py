@@ -331,11 +331,14 @@ def _build_licitacion(d: dict) -> object:
 def _build_adjudicacion(d: dict) -> object:
     from db.database import Adjudicacion
 
+    # Los nombres del dict de ejemplo (`adjudicatario`, `importe`, `fecha`) no
+    # son los de la dataclass: se traducen aquí en vez de renombrar los datos,
+    # que es como los lee quien edita el seed.
     return Adjudicacion(
         licitacion_id=d["licitacion_id"],
-        adjudicatario=d["adjudicatario"],
-        importe=d.get("importe"),
-        fecha=d.get("fecha"),
+        nombre=d["adjudicatario"],
+        importe_adjudicado=d.get("importe"),
+        fecha_adjudicacion=d.get("fecha"),
     )
 
 
@@ -371,13 +374,20 @@ def step_licitaciones() -> int:
     from db.database import upsert_licitaciones_with_history
 
     items = [_build_licitacion(d) for d in _SAMPLE_LICITACIONES]
-    result = upsert_licitaciones_with_history(items)
-    n = result.inserted + result.modified + result.unchanged
-    print(
-        f"[seed] Licitaciones: {result.inserted} nuevas, "
-        f"{result.modified} actualizadas, {result.unchanged} sin cambios ({n} total)"
+    result = upsert_licitaciones_with_history(items, "seed")
+    # `inserted`/`modified`/`unchanged` son listas de id_externo, no conteos:
+    # sumarlas concatenaba y el mensaje escupía los 15 ids tres veces.
+    nuevas, actualizadas, iguales = (
+        len(result.inserted),
+        len(result.modified),
+        len(result.unchanged),
     )
-    return n
+    total = nuevas + actualizadas + iguales
+    print(
+        f"[seed] Licitaciones: {nuevas} nuevas, "
+        f"{actualizadas} actualizadas, {iguales} sin cambios ({total} total)"
+    )
+    return total
 
 
 def step_adjudicaciones() -> None:
