@@ -117,6 +117,22 @@ const COLUMNS: { key: string; label: string; width: string; sortable?: boolean; 
 
 const TABLE_MIN_WIDTH = 1246;
 
+/**
+ * Columnas que el backend sabe ordenar, y el valor de `sort` que espera.
+ *
+ * `GET /licitaciones` acepta `sort` con seis valores (`db/repositories/
+ * licitaciones.py::_SORT_MAP`) y **descarta en silencio cualquier otro**. La
+ * tabla enviaba `sort_by`/`sort_order`, que ese endpoint no lee: la cabecera
+ * pintaba su flecha y las filas no se movían. Las tres columnas de aquí se
+ * ordenan en servidor sobre el total; el resto se ordena en cliente sobre la
+ * página cargada, y la tabla lo dice en vez de fingir un orden global.
+ */
+const SERVER_SORT: Record<string, string> = {
+  titulo: "titulo",
+  importe: "importe",
+  fecha_publicacion: "fecha_publicacion",
+};
+
 const SHORTCUTS = [
   { key: "J K", label: "recorrer" },
   { key: "⏎", label: "abrir ficha" },
@@ -226,9 +242,13 @@ export default function DetallePage() {
       limit: String(pagination.pageSize),
       offset: String(pagination.pageIndex * pagination.pageSize),
     };
-    if (sorting.length > 0) {
-      params.sort_by = sorting[0].id;
-      params.sort_order = sorting[0].desc ? "desc" : "asc";
+    const active = sorting[0];
+    const serverKey = active ? SERVER_SORT[active.id] : undefined;
+    if (active && serverKey) {
+      // El prefijo `-` invierte el sentido por defecto de cada columna: para
+      // fecha el default es descendente y para importe/título ascendente.
+      const defaultIsDesc = serverKey === "fecha_publicacion";
+      params.sort = active.desc === defaultIsDesc ? serverKey : `-${serverKey}`;
     }
     return params;
   }, [pagination, sorting, filterParams]);
@@ -291,21 +311,40 @@ export default function DetallePage() {
     return map;
   }, [scoring]);
 
-  const mergedRows = useMemo<MergedRow[]>(
-    () =>
-      (data?.items ?? []).map((row) => {
-        const scored = scoreMap.get(row.id_externo);
-        const published = row.fecha_publicacion ? new Date(row.fecha_publicacion).getTime() : 0;
-        return {
-          ...row,
-          score: scored?.score,
-          band: scored?.band,
-          desglose: scored?.desglose,
-          isNew: published > lastViewed,
-        };
-      }),
-    [data, scoreMap, lastViewed],
-  );
+  const activeSort = sorting[0];
+  // Orden en cliente sólo para las columnas que el backend no sabe ordenar.
+  // Es un orden sobre la página cargada, no sobre el total, y el pie lo dice.
+  const clientSorted = Boolean(activeSort && !SERVER_SORT[activeSort.id]);
+
+  const mergedRows = useMemo<MergedRow[]>(() => {
+    const rows = (data?.items ?? []).map((row) => {
+      const scored = scoreMap.get(row.id_externo);
+      const published = row.fecha_publicacion ? new Date(row.fecha_publicacion).getTime() : 0;
+      return {
+        ...row,
+        score: scored?.score,
+        band: scored?.band,
+        desglose: scored?.desglose,
+        isNew: published > lastViewed,
+      };
+    });
+
+    if (!activeSort || SERVER_SORT[activeSort.id]) return rows;
+
+    const key = activeSort.id as keyof MergedRow;
+    return rows.sort((a, b) => {
+      const left = a[key];
+      const right = b[key];
+      if (left == null && right == null) return 0;
+      if (left == null) return 1;
+      if (right == null) return -1;
+      const compared =
+        typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right), "es", { sensitivity: "base" });
+      return activeSort.desc ? -compared : compared;
+    });
+  }, [data, scoreMap, lastViewed, activeSort]);
 
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / pagination.pageSize));
 
@@ -804,6 +843,14 @@ export default function DetallePage() {
         {/* Pie: contador, atajos y paginación */}
         <div className="flex h-11 flex-none items-center gap-3 border-t border-border/70 bg-card/60 px-3.5">
           <span className="tf-tnum text-[11px] text-muted-foreground">{showingLine}</span>
+          {clientSorted && (
+            <span
+              className="rounded border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.12)] px-1.5 py-0.5 text-[10.5px] text-[hsl(var(--warning))]"
+              title="El backend sólo ordena por título, importe y fecha; el resto se ordena sobre las filas ya cargadas."
+            >
+              orden sobre esta página
+            </span>
+          )}
           <div className="flex-1" />
           {SHORTCUTS.map((shortcut) => (
             <span

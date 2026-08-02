@@ -1,5 +1,14 @@
 ﻿import { describe, it, expect } from "vitest";
-import { SECTIONS, ALL_PAGES, PRODUCT_SPACES, findPage, findProductSpace, findSection } from "@/lib/navigation";
+import {
+  SECTIONS,
+  ALL_PAGES,
+  PRODUCT_SPACES,
+  findPage,
+  findProductSpace,
+  findSection,
+  pageGlobalFilterKeys,
+  pathUsesGlobalFilters,
+} from "@/lib/navigation";
 
 describe("primary product spaces", () => {
   it("organizes the product around Radar, Oportunidades and Mercado", () => {
@@ -100,5 +109,35 @@ describe("ALL_PAGES", () => {
       expect(typeof page.section).toBe("string");
       expect(typeof page.slug).toBe("string");
     }
+  });
+});
+
+/**
+ * Contrato de filtros de los espacios de la consola. Un espacio no lo declara
+ * a mano: lo hereda de las rutas que absorbe. Esto es lo que evita que Ops
+ * pinte una barra de ámbito que no filtra nada.
+ */
+describe("contrato de filtros de los espacios", () => {
+  it("Ops no consume el ámbito: ninguna de sus cinco rutas lo hacía", () => {
+    expect(pathUsesGlobalFilters("/ops")).toBe(false);
+  });
+
+  it("Mercado sí lo consume: sus ocho vistas son análisis del ámbito", () => {
+    expect(pathUsesGlobalFilters("/mercado")).toBe(true);
+  });
+
+  it("Mi Pipeline lo consume porque al menos una de sus vistas lo hace", () => {
+    // /renovaciones sólo aplica tecnología, pero /pipeline-alertas aplica todo.
+    expect(pathUsesGlobalFilters("/mi-pipeline")).toBe(true);
+    expect(pageGlobalFilterKeys("/mi-pipeline")).toBeNull();
+  });
+
+  it("Competencia hereda el contrato completo de competidores y UTEs", () => {
+    expect(pathUsesGlobalFilters("/competencia")).toBe(true);
+    expect(pageGlobalFilterKeys("/competencia")).toBeNull();
+  });
+
+  it("una ruta desconocida mantiene el comportamiento histórico", () => {
+    expect(pathUsesGlobalFilters("/ruta-que-no-existe")).toBe(true);
   });
 });
