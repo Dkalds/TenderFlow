@@ -128,15 +128,14 @@ export default function UtesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">UTEs</h1>
-          <p className="text-muted-foreground">
-            Analisis de Uniones Temporales de Empresas.
-          </p>
-        </div>
-        <ExportPopover extraParams={{ section: "utes" }} />
+      {/* El nombre del corte lo pone la cabecera del espacio; aquí queda la
+          acción, que es lo único que no puede vivir allí. */}
+      <div className="flex items-center">
+        <div className="flex-1" />
+        <ExportPopover
+          extraParams={{ section: "utes" }}
+          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
+        />
       </div>
 
       {/* KPI Row — 5 cards */}

@@ -48,12 +48,19 @@ export function SpaceShell({
   view,
   onViewChange,
   actions,
+  bleed,
   children,
 }: {
   spaceKey: string;
   view?: string;
   onViewChange?: (view: string) => void;
   actions?: React.ReactNode;
+  /**
+   * Sin relleno ni scroll propio: la pantalla gobierna su superficie entera.
+   * Lo usan los tableros y las tablas, donde el contenido llega hasta el borde
+   * y cada columna hace su propio scroll.
+   */
+  bleed?: boolean;
   children: React.ReactNode;
 }) {
   const space = CONSOLE_SPACES.find((candidate) => candidate.key === spaceKey);
@@ -100,7 +107,14 @@ export function SpaceShell({
         {actions}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4">{children}</div>
+      <div
+        className={cn(
+          "min-h-0 flex-1",
+          bleed ? "overflow-hidden" : "overflow-y-auto px-4 pb-6 pt-4",
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }

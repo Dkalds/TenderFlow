@@ -287,18 +287,13 @@ export default function EcosistemaPartnersPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Ecosistema Partners
-          </h1>
-          <p className="text-muted-foreground">
-            Clústeres de empresas que co-licitan en UTE y con quién conviene aliarse
-            por segmento.
-          </p>
-        </div>
-        <ExportPopover endpoint="/api/v1/exports/download" extraParams={{ seccion: "ecosistema-partners" }} />
+      <div className="flex items-center">
+        <div className="flex-1" />
+        <ExportPopover
+          endpoint="/api/v1/exports/download"
+          extraParams={{ seccion: "ecosistema-partners" }}
+          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
+        />
       </div>
 
       {/* KPI Row */}
