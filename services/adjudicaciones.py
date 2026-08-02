@@ -12,7 +12,7 @@ import pandas as pd
 
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
-from services._data_cache import SignalAwareCache
+from services._data_cache import SignalAwareCache, render_api_full_table_loads_blocked
 
 log = get_logger(__name__)
 
@@ -111,6 +111,9 @@ def load_raw_adjudicaciones(
     para forzar recarga.
     """
     if limit is None and ccaa_filter is None:
+        if render_api_full_table_loads_blocked():
+            log.warning("analytics_full_table_load_blocked", dataset="adjudicaciones")
+            return []
         return _raw_adj_cache.get(_repo.load_raw_with_licitaciones)
     return _repo.load_raw_with_licitaciones(limit=limit, ccaa_filter=ccaa_filter)
 
