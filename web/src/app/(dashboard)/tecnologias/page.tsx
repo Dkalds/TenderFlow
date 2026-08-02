@@ -5,13 +5,13 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 const TecnologiasEvolutionChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasEvolutionChart })), { ssr: false, loading: () => <Skeleton className="h-[340px] w-full rounded-md" /> });
 const TecnologiasVolumeBarChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasVolumeBarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 const TecnologiasImporteBarChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasImporteBarChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 const TecnologiasDonutChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasDonutChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
 const TecnologiasGeoBarChart = dynamic(() => import("@/components/charts/tecnologias-charts").then(m => ({ default: m.TecnologiasGeoBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -290,7 +290,7 @@ export default function TecnologiasPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Tecnologias detectadas"
           value={isLoading ? undefined : formatNumber(data?.n_tecnologias ?? 0)}
@@ -322,7 +322,7 @@ export default function TecnologiasPage() {
           icon={Percent}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Cobertura del clasificador — sin_clasificar como métrica de calidad accionable */}
       {(() => {
@@ -401,9 +401,9 @@ export default function TecnologiasPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Volumen por tecnologia</CardTitle>
-            <p className="text-xs text-muted-foreground">
+            <CardDescription>
               Nº de licitaciones (color = importe)
-            </p>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -419,9 +419,9 @@ export default function TecnologiasPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Importe por tecnologia</CardTitle>
-            <p className="text-xs text-muted-foreground">
+            <CardDescription>
               Importe acumulado (color = nº licitaciones)
-            </p>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -458,7 +458,7 @@ export default function TecnologiasPage() {
               <MapIcon className="h-4 w-4" />
               Distribucion geografica por tecnologia
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Top 10 CCAA</p>
+            <CardDescription>Top 10 CCAA</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -480,7 +480,7 @@ export default function TecnologiasPage() {
               <Grid3x3 className="h-4 w-4" />
               Top organos por tecnologia
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Nº de licitaciones</p>
+            <CardDescription>Nº de licitaciones</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">

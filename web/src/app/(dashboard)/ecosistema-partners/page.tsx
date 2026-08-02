@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import dynamic from "next/dynamic";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -297,7 +297,7 @@ export default function EcosistemaPartnersPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Total Empresas"
           value={isLoading ? undefined : formatNumber(data?.competitors.length)}
@@ -332,7 +332,7 @@ export default function EcosistemaPartnersPage() {
           icon={Users}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Tab Toggle */}
       <div className="flex items-center gap-1 rounded-lg border p-1 w-fit">
@@ -616,7 +616,7 @@ export default function EcosistemaPartnersPage() {
       />
 
       {/* KPI cards for winners */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Top Ganador (por Count)"
           value={isLoading ? undefined : truncate(topWinners[0]?.nombre ?? "-", 30)}
@@ -641,7 +641,7 @@ export default function EcosistemaPartnersPage() {
           icon={TrendingUp}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Bar: Top 15 by count */}

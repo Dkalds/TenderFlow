@@ -7,8 +7,8 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useDebounce } from "@/hooks/use-debounce";
-import { KpiCard } from "@/components/charts/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
@@ -225,7 +225,7 @@ export default function OrganosPage() {
       />
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Total Órganos"
           value={isLoading ? undefined : formatNumber(data?.total_organos ?? items.length)}
@@ -257,7 +257,7 @@ export default function OrganosPage() {
           icon={Trophy}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Top charts: by count + by importe */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -270,6 +270,7 @@ export default function OrganosPage() {
                 <Badge variant="secondary" className="ml-2 text-xs">filtrado</Badge>
               )}
             </CardTitle>
+            <CardDescription>clic en una barra abre el órgano</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -298,6 +299,7 @@ export default function OrganosPage() {
                 <Badge variant="secondary" className="ml-2 text-xs">filtrado</Badge>
               )}
             </CardTitle>
+            <CardDescription>clic en una barra abre el órgano</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -306,7 +308,10 @@ export default function OrganosPage() {
               <OrganosRankingChart
                 data={top15ByImporte}
                 dataKey="importe"
-                fill={CHART_SERIES[1]}
+                // Mismo color que el ranking por cantidad: son el mismo
+                // conjunto (órganos) medido de otra forma. El color de serie
+                // se reserva para distinguir series, no paneles.
+                fill={CHART_SERIES[0]}
                 tooltipLabel="Importe"
                 formatValue={formatCurrency}
                 onBarClick={handleOrganoClick}

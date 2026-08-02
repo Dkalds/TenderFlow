@@ -6,8 +6,8 @@ import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
-import { KpiCard } from "@/components/charts/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
@@ -184,7 +184,7 @@ export default function GeografiaPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="CCAA Mas Activa"
           value={isLoading ? undefined : topCcaa}
@@ -211,7 +211,7 @@ export default function GeografiaPage() {
           icon={DollarSign}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Choropleth Map */}
       <Card>
@@ -260,7 +260,7 @@ export default function GeografiaPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">CCAAs por Cantidad</CardTitle>
-            <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
+            <CardDescription>Clic en una CCAA para filtrar</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -279,7 +279,7 @@ export default function GeografiaPage() {
             <CardTitle className="text-base">
               Distribucion por Importe
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
+            <CardDescription>Clic en una CCAA para filtrar</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -297,7 +297,7 @@ export default function GeografiaPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Todas las CCAAs</CardTitle>
-          <p className="text-xs text-muted-foreground">Clic en una CCAA para filtrar</p>
+          <CardDescription>Clic en una CCAA para filtrar</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (

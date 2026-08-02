@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { ExportPopover } from "@/components/export-popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -247,7 +247,7 @@ export default function RedOrganoEmpresaPage() {
       </div>
 
       {/* KPI Row — lectura de concentración */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Órganos analizados"
           value={isLoading ? undefined : formatNumber(totalOrganos)}
@@ -275,7 +275,7 @@ export default function RedOrganoEmpresaPage() {
           icon={Network}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Ranking y grafo lado a lado. Ambas pantallas ya evitaban abrir con la
           maraña, pero el grafo estaba debajo: al re-centrar en un vecino

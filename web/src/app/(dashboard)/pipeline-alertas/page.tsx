@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { ExportPopover } from "@/components/export-popover";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AlertsFeed } from "./_components/alerts-feed";
@@ -294,7 +294,7 @@ export default function PipelineAlertasPage() {
       {/* ============================================================ */}
       {/*  KPIs (conteo + valor económico)                            */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Vencen ≤ 7 días"
           value={loadingPipeline ? undefined : formatNumber(pipelineData?.vencen_7d)}
@@ -341,7 +341,7 @@ export default function PipelineAlertasPage() {
           loading={loadingNotif}
           href="#ultimas-alertas"
         />
-      </div>
+      </KpiStrip>
 
       {/* ============================================================ */}
       {/*  ALERTAS: reglas suscribibles + últimas alertas             */}

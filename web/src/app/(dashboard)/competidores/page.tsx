@@ -597,7 +597,7 @@ export default function CompetidoresPage() {
 
         {/* Marcador del espacio: los cuatro KPIs del mercado competitivo. */}
       {/* KPI Row */}
-      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Stagger className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 lg:grid-cols-4 [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-card">
         <Stagger.Item>
           <KpiCard
             title="Total Adjudicaciones"

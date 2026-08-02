@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 const WaterfallChart = dynamic(() => import("@/components/charts/waterfall-chart").then(m => ({ default: m.WaterfallChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -203,7 +203,7 @@ export default function TendenciasPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <KpiStrip columns={5}>
         <KpiCard title="Total Licitaciones" value={isLoading ? undefined : formatNumber(totalCount)} icon={Hash} loading={isLoading} />
         <KpiCard title="Importe Total" value={isLoading ? undefined : formatCurrency(totalImporte)} icon={DollarSign} loading={isLoading} />
         <KpiCard
@@ -232,7 +232,7 @@ export default function TendenciasPage() {
           icon={CalendarDays}
           loading={isLoading}
         />
-      </div>
+      </KpiStrip>
 
       {/* Bar Chart: Licitaciones per month */}
       <Card>

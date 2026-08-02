@@ -181,3 +181,41 @@ export const KpiCard = React.memo(function KpiCard({
 
   return card;
 });
+
+/**
+ * Tira de KPIs — la forma del diseño para el marcador de una pantalla.
+ *
+ * Cuatro tarjetas separadas por un hueco leen como cuatro objetos que compiten;
+ * pegadas con un divisor de 1px leen como **una fila de dato**, que es lo que
+ * son. El envoltorio apaga el borde y el redondeo de las tarjetas hijas en vez
+ * de exigir una variante en cada llamada.
+ */
+export function KpiStrip({
+  columns = 4,
+  className,
+  children,
+}: {
+  columns?: 2 | 3 | 4 | 5;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60",
+        COLUMNS[columns],
+        "[&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-card",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+const COLUMNS: Record<2 | 3 | 4 | 5, string> = {
+  2: "sm:grid-cols-2",
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+  5: "lg:grid-cols-5",
+};

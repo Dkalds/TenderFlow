@@ -12,7 +12,7 @@ import type {
   RenovacionesResumenResult,
 } from "@/lib/api-types";
 import { useFilters } from "@/lib/filters";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -240,7 +240,7 @@ export default function RenovacionesPage() {
       <PipelineRoleNav current="renovaciones" />
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiStrip columns={4}>
         <KpiCard
           title="Contratos venciendo"
           value={totales ? formatNumber(totales.contratos_venciendo) : "…"}
@@ -263,7 +263,7 @@ export default function RenovacionesPage() {
           value={totales ? formatNumber(totales.calientes) : "…"}
           icon={Flame}
         />
-      </div>
+      </KpiStrip>
 
       {/* Cartera en juego por empresa */}
       <Card>
