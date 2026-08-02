@@ -17,10 +17,8 @@ import {
   Handshake,
   type LucideIcon,
   LayoutDashboard,
-  Link2,
   ListChecks,
   Map,
-  Network,
   Puzzle,
   RadioTower,
   Search,
@@ -286,27 +284,6 @@ export const SECTIONS: NavSection[] = [
         description:
           "Análisis de Uniones Temporales de Empresas: alianzas, estructura y contratos ganados.",
         icon: Handshake,
-      },
-    ],
-  },
-  {
-    label: "Relaciones",
-    space: "Mercado",
-    icon: Network,
-    pages: [
-      {
-        label: "Ecosistema Partners",
-        slug: "ecosistema-partners",
-        description:
-          "Grafo de co-adjudicaciones, ganadores por segmento y buscador de partners.",
-        icon: Network,
-      },
-      {
-        label: "Red Órgano-Empresa",
-        slug: "red-organo-empresa",
-        description:
-          "Grafo bipartito de relaciones contractuales entre órganos contratantes y empresas.",
-        icon: Link2,
       },
     ],
   },
