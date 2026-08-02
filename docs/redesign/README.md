@@ -72,6 +72,37 @@ completa, así que no se ha tocado una sola de sus funciones:
 **Con cabecera de espacio** y su pantalla intacta: `/oportunidades`,
 `/investigador`, `/mi-watchlist`, `/mi-perfil`, `/empresas`, `/equipo`.
 
+### Los movimientos estructurales, uno por pantalla
+
+Consolidar no era el objetivo: era el envase. Esto es lo que cambia dentro.
+
+| Pantalla | El movimiento |
+| --- | --- |
+| Resumen | Lo urgente en tarjetas grandes con su destino visible; el contexto en tira con delta y anomalía |
+| Radar | Consola tabular: J/K · S · X con deshacer · ⏎, inspector siguiendo a la selección |
+| Detalle | Los once bloques del Sheet modal en cinco pestañas, en el mismo plano que la tabla |
+| Oportunidades | Carriles a alto de pantalla con scroll propio; en la ficha, **Decisión abre** (era el último de seis paneles) |
+| Competencia | La tabla que gobierna los nueve gráficos va primero; los nueve pasan a cortes con pestañas; el dossier sale del modal |
+| Relaciones | Ranking y grafo lado a lado: re-centrar en un vecino ya no te quita de vista la fila de la que venías |
+| Investigador | `alpha` y `top_k` visibles; resultados y conversación conviven en vez de excluirse |
+| Mercado · Órganos | El drill-down sale del Sheet y convive con el ranking |
+| Empresas | La cola de revisión pasa de bloque condicional a vista con contador; importe resuelto en ámbar bajo el 95% |
+| Equipo | Los cuatro roles pasan de etiqueta a matriz de permisos |
+| Ops y Admin | Tira de salud común a las cinco vistas: fuentes, frescura, DLQ y etiquetado |
+
+El patrón que se repite: **lo que era un modal encima pasa a vivir al lado**.
+Un Sheet obliga a cerrar para volver a mirar, y comparar es justamente mirar
+dos cosas seguidas.
+
+### Vocabulario compartido
+
+`components/console/panel.tsx` es la parte del sistema de gráficos que aterriza
+en código: una forma de panel, un título, los tres estados con el alto del
+contenido real —para que la página no salte al cargar—, la tira de estadísticas
+en rejilla de 1px y los cortes con pestañas. Las reglas duras que hereda: color
+de serie por índice y nunca a mano, «Otros» siempre en `chart-8`, nunca dos ejes
+Y en un panel, y clic en una marca filtra el ámbito en vez de navegar.
+
 La vista vive en `?vista=`, no en el path: cambiar de corte no navega, así que
 **el ámbito y la selección sobreviven al cambio**. Las vistas se cargan bajo
 demanda (`next/dynamic`) — ocho pantallas de gráficos en un bundle costarían el
