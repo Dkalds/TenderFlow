@@ -1,12 +1,12 @@
 """Tests unitarios para services/analytics organos + organo_detail + overview.
 
-``organos``/``organo_detail`` parchean sus cargas de datos con DataFrames
-sintéticos (sin tocar la BD). ``overview`` ya agrega vía SQL
-(``db.repositories.aggregates``) — sus tests de este fichero siembran datos
-reales (``tmp_db``) en vez de mockear ``load_stats_base_df`` (que el módulo ya
-no importa); ``_adj_indicadores`` (hhi/pct_oferta_unica/lead_time_medio, hoy
+Los tres módulos agregan/proyectan vía SQL (ADR-023) — los tests siembran
+datos reales (``tmp_db``) en vez de mockear loaders: ``organos`` y
+``overview`` sobre ``db.repositories.aggregates``, ``organo_detail`` sobre
+las proyecciones acotadas por órgano (licitaciones + adjudicaciones). En
+``overview``, ``_adj_indicadores`` (hhi/pct_oferta_unica/lead_time_medio,
 también SQL vía ``overview_adjudicaciones_indicadores``) se mockea con su
-valor neutro para mantener estos smoke tests centrados en ``licitaciones``.
+valor neutro para mantener esos smoke tests centrados en ``licitaciones``.
 """
 
 from __future__ import annotations
@@ -141,22 +141,22 @@ def _adj_rows() -> list[dict]:
     ]
 
 
-def _typed(df: pd.DataFrame) -> pd.DataFrame:
-    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
-    (ver ``services/licitaciones.py::_build``) para los mocks de organos.py y
-    organo_detail.py — sus fixtures usan fechas ISO en crudo, así que el mock
-    debe entregarlas ya convertidas para reflejar el contrato real. Los mocks
-    de overview.py (Frente B, fuera de mi alcance) no se tocan: ese módulo
-    sigue reconvirtiendo internamente, así que su fixture puede seguir cruda.
-    """
-    if df.empty:
-        return df
-    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-    if "importe" in df.columns:
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    return df
+def _seed_adjudicaciones(rows: list[dict]) -> None:
+    """Siembra adjudicaciones reales (las licitaciones deben existir ya)."""
+    from db.upsert import Adjudicacion, replace_adjudicaciones_batch
+
+    grouped: dict[str, list[Adjudicacion]] = {}
+    for r in rows:
+        grouped.setdefault(r["licitacion_id"], []).append(
+            Adjudicacion(
+                licitacion_id=r["licitacion_id"],
+                nombre=r["nombre"],
+                importe_adjudicado=r.get("importe_adjudicado"),
+                fecha_adjudicacion=r.get("fecha_adjudicacion"),
+            )
+        )
+    _total, _dropped, failed = replace_adjudicaciones_batch(grouped)
+    assert failed == 0
 
 
 # ── _lead_time_median ───────────────────────────────────────────────────────
@@ -273,18 +273,30 @@ def test_get_organos_q_filters_before_limit(tmp_db):
 # ── get_organo_detail ───────────────────────────────────────────────────────
 
 
-def test_get_organo_detail_lead_time_and_fields():
-    with (
-        patch(
-            "services.analytics.organo_detail.load_stats_base_df",
-            return_value=_typed(pd.DataFrame(_lic_rows())),
-        ),
-        patch(
-            "services.analytics.organo_detail.load_raw_adjudicaciones",
-            return_value=_adj_rows(),
-        ),
-    ):
-        result = get_organo_detail("ORG A", OrganoDetailFilters())
+def _seed_organo_detail() -> None:
+    """Licitaciones de ORG A/ORG B + adjudicaciones de ORG A (lead 10 y 20 días)."""
+    _insert_licitaciones(_lic_rows())
+    _seed_adjudicaciones(
+        [
+            {
+                "licitacion_id": "L1",
+                "nombre": "EMPRESA UNO",
+                "importe_adjudicado": 900_000.0,
+                "fecha_adjudicacion": "2025-01-11",
+            },
+            {
+                "licitacion_id": "L2",
+                "nombre": "EMPRESA DOS",
+                "importe_adjudicado": 450_000.0,
+                "fecha_adjudicacion": "2025-01-21",
+            },
+        ]
+    )
+
+
+def test_get_organo_detail_lead_time_and_fields(tmp_db):
+    _seed_organo_detail()
+    result = get_organo_detail("ORG A", OrganoDetailFilters())
 
     # KPIs
     assert result.kpis.total_licitaciones == 2
@@ -302,22 +314,27 @@ def test_get_organo_detail_lead_time_and_fields():
     assert scored["L1"].empresa == "EMPRESA UNO"
     assert scored["L1"].tipo_contrato_desc == "Servicios"
     assert scored["L1"].tipo_proyecto is not None
+    # baja_pct vive: (1 - 900k/1M) x 100 — antes llegaba siempre null porque
+    # el loader raw no traía la columna derivada.
+    assert scored["L1"].baja_pct == 10.0
+    assert scored["L1"].fecha_adjudicacion == "11/01/2025"
 
 
-def test_get_organo_detail_unknown_organo():
-    with (
-        patch(
-            "services.analytics.organo_detail.load_stats_base_df",
-            return_value=_typed(pd.DataFrame(_lic_rows())),
-        ),
-        patch(
-            "services.analytics.organo_detail.load_raw_adjudicaciones",
-            return_value=_adj_rows(),
-        ),
-    ):
-        result = get_organo_detail("ORG INEXISTENTE", OrganoDetailFilters())
+def test_get_organo_detail_unknown_organo(tmp_db):
+    _seed_organo_detail()
+    result = get_organo_detail("ORG INEXISTENTE", OrganoDetailFilters())
     assert result.kpis.total_licitaciones == 0
     assert result.top_scored == []
+
+
+def test_get_organo_detail_filtros_en_sql(tmp_db):
+    """fecha_desde recorta las licitaciones del órgano en el WHERE."""
+    from datetime import date
+
+    _seed_organo_detail()
+    result = get_organo_detail("ORG A", OrganoDetailFilters(fecha_desde=date(2025, 1, 15)))
+    # L1/L2 se publicaron el 2025-01-01 → fuera del rango.
+    assert result.kpis.total_licitaciones == 0
 
 
 # ── get_overview (smoke) ────────────────────────────────────────────────────

@@ -376,6 +376,28 @@ class AdjudicacionRepository:
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [pattern, *params]))
 
+    # ── Drill-down por órgano (ADR-023) ──────────────────────────────────
+
+    def load_por_organo(self, organo: str) -> list[dict[str, Any]]:
+        """Proyección ACOTADA de las adjudicaciones de UN órgano.
+
+        Justificación ADR-023: acotada por definición al órgano pedido; el
+        lead-time mediano y el lookup por licitación del drill-down siguen en
+        pandas sobre este subconjunto. ``nombre`` aplica la identidad
+        maestro-canónico-o-raw (la misma expresión que los grafos
+        órgano↔empresa); ``fecha_publicacion``/``importe_licitacion`` vienen
+        del join para el lead-time y la baja porcentual.
+        """
+        sql = (
+            f"SELECT a.licitacion_id, {_EMPRESA_KEY_SQL} AS nombre, "
+            "       a.importe_adjudicado, a.fecha_adjudicacion, "
+            "       l.fecha_publicacion, l.importe AS importe_licitacion "
+            f"{_GRAPH_FROM}"
+            "WHERE l.organo_contratacion = ?"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [organo]))
+
     # ── Grafo órgano↔empresa (ADR-023) ───────────────────────────────────
 
     def organ_company_totals(

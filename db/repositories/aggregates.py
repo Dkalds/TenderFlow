@@ -1137,6 +1137,26 @@ class AggregateRepository:
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [ids]))
 
+    # ── Drill-down por órgano ────────────────────────────────────────────
+
+    def licitaciones_por_organo(
+        self, organo: str, filters: LicitacionesFilters
+    ) -> list[dict[str, Any]]:
+        """Proyección ACOTADA de las licitaciones de UN órgano (ADR-023).
+
+        El scoring simple y la estacionalidad del drill-down operan en pandas
+        sobre este subconjunto — acotado por definición al órgano pedido.
+        """
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT id_externo, titulo, organo_contratacion, importe, cpv, "
+            "       tipo_contrato, estado, fecha_publicacion, ccaa, tecnologia, url "
+            "FROM licitaciones "
+            f"WHERE {where} AND organo_contratacion = ?"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, organo]))
+
     # ── Scoring / pipeline: proyecciones acotadas y contexto ─────────────
 
     # Columnas que _score_row (services/analytics/scoring.py) necesita leer.

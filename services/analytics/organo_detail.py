@@ -1,4 +1,17 @@
-"""Organo detail analytics — drill-down for a single contracting body."""
+"""Organo detail analytics — drill-down for a single contracting body.
+
+Consume proyecciones ACOTADAS al órgano pedido (ADR-023):
+``AggregateRepository.licitaciones_por_organo`` (filtros globales en el
+``WHERE``) y ``AdjudicacionRepository.load_por_organo``. Hasta 2026-08 cargaba
+las dos tablas completas a pandas en el proceso API — bloqueado en Render por
+el cortacircuitos full-table, que dejaba este endpoint vacío en producción.
+El scoring simple, la estacionalidad y el lead-time siguen en pandas sobre el
+subconjunto acotado. De paso viven dos campos que llegaban siempre nulos: la
+identidad del adjudicatario usa el maestro canónico cuando existe (el código
+prefería ``nombre_canonico``, pero el loader raw nunca lo traía) y
+``baja_pct`` se calcula de ``importe_adjudicado``/``importe_licitacion`` (el
+loader raw tampoco traía esa columna derivada).
+"""
 
 from __future__ import annotations
 
@@ -8,17 +21,20 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.adjudicaciones import AdjudicacionRepository
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.adjudicaciones import load_raw_adjudicaciones
 from services.classification import (
     ESTADO_LABELS,
     cpv_label,
     detect_project_type,
     tipo_contrato_label,
 )
-from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
+_adj_repo = AdjudicacionRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -85,24 +101,13 @@ class OrganoDetailResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _load_df() -> pd.DataFrame:
-    return load_stats_base_df()
-
-
-def _apply_filters(df: pd.DataFrame, filters: Any) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if getattr(filters, "fecha_desde", None) is not None:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_publicacion"] >= ts]
-    if getattr(filters, "fecha_hasta", None) is not None:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_publicacion"] <= ts]
-    if getattr(filters, "ccaa", None):
-        df = df[df["ccaa"] == filters.ccaa]
-    if getattr(filters, "tecnologia", None):
-        df = df[df["tecnologia"] == filters.tecnologia]
-    return df
+def _to_repo_filters(filters: OrganoDetailFilters) -> LicitacionesFilters:
+    return LicitacionesFilters(
+        fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
+        fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
+        ccaa=filters.ccaa,
+        tecnologia=filters.tecnologia,
+    )
 
 
 def _simple_score(row: pd.Series) -> float:
@@ -148,6 +153,36 @@ def _lead_time_median(adj_df: pd.DataFrame) -> float | None:
     return float(valid.median())
 
 
+def _adj_lookup_for(adj_df: pd.DataFrame, ids: pd.Series) -> dict[str, dict[str, Any]]:
+    """Mejor adjudicación (mayor importe) por licitación de ``ids``."""
+    lookup: dict[str, dict[str, Any]] = {}
+    if adj_df.empty:
+        return lookup
+    sub = adj_df[adj_df["licitacion_id"].isin(ids)].copy()
+    if sub.empty:
+        return lookup
+    sub = sub.sort_values("_importe", ascending=False)
+    sub = sub.drop_duplicates(subset=["licitacion_id"], keep="first")
+    for _, row in sub.iterrows():
+        importe_lic = row.get("_importe_licitacion")
+        importe_adj = row.get("_importe")
+        baja = None
+        if pd.notna(importe_adj) and pd.notna(importe_lic) and float(importe_lic) > 0:
+            baja = float((1 - float(importe_adj) / float(importe_lic)) * 100)
+        fecha_adj = None
+        if pd.notna(row.get("fecha_adjudicacion")):
+            try:
+                fecha_adj = str(pd.Timestamp(row["fecha_adjudicacion"]).strftime("%d/%m/%Y"))
+            except (ValueError, TypeError):
+                pass
+        lookup[str(row["licitacion_id"])] = {
+            "empresa": str(row["nombre"]) if pd.notna(row.get("nombre")) else None,
+            "baja_pct": baja,
+            "fecha_adjudicacion": fecha_adj,
+        }
+    return lookup
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -156,22 +191,22 @@ def _lead_time_median(adj_df: pd.DataFrame) -> float | None:
 def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetailResult:
     """Drill-down for a single contracting body."""
     log.info("analytics_organo_detail_start", organo=organo)
-    df = _load_df()
-    df = _apply_filters(df, filters)
-
-    if df.empty:
+    rows = _repo.licitaciones_por_organo(organo, _to_repo_filters(filters))
+    if not rows:
         return OrganoDetailResult()
 
-    df = df[df["organo_contratacion"] == organo]
-    if df.empty:
-        return OrganoDetailResult()
+    df = pd.DataFrame(rows)
+    df = df.assign(
+        fecha_publicacion=pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True),
+        importe=pd.to_numeric(df["importe"], errors="coerce"),
+    )
 
     # KPIs
     total = len(df)
     importe_total = float(df["importe"].sum(skipna=True))
     notna_imp = int(df["importe"].notna().sum())
     importe_medio = float(importe_total / notna_imp) if notna_imp else 0.0
-    adjudicado = len(df[df["estado"] == "ADJ"]) if "estado" in df.columns else 0
+    adjudicado = len(df[df["estado"] == "ADJ"])
     pct_adj = (adjudicado / total * 100) if total else 0.0
 
     kpis = OrganoKpis(
@@ -182,50 +217,32 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         lead_time_medio=None,
     )
 
-    # Adjudicatarios from adjudicaciones
-    adj_rows = load_raw_adjudicaciones()
-    adj_df = pd.DataFrame(adj_rows)
+    # Adjudicatarios del órgano (proyección acotada)
+    adj_df = pd.DataFrame(_adj_repo.load_por_organo(organo))
     top_adj: list[TopAdjudicatario] = []
-
     if not adj_df.empty:
-        # Normalise importe column
-        imp_col = "importe_adjudicado" if "importe_adjudicado" in adj_df.columns else "importe"
-        if imp_col in adj_df.columns:
-            adj_df["_importe"] = pd.to_numeric(adj_df[imp_col], errors="coerce")
-        else:
-            adj_df["_importe"] = float("nan")
-
-        # Filter to this organ
-        if "organo_contratacion" in adj_df.columns:
-            adj_org = adj_df[adj_df["organo_contratacion"] == organo].copy()
-        else:
-            adj_org = adj_df.copy()
-
-        nombre_col = (
-            "nombre_canonico"
-            if "nombre_canonico" in adj_org.columns
-            else ("nombre" if "nombre" in adj_org.columns else "adjudicatario")
+        adj_df = adj_df.assign(
+            _importe=pd.to_numeric(adj_df["importe_adjudicado"], errors="coerce"),
+            _importe_licitacion=pd.to_numeric(adj_df["importe_licitacion"], errors="coerce"),
         )
-
-        if nombre_col in adj_org.columns:
-            g = (
-                adj_org.groupby(nombre_col)
-                .agg(count=(nombre_col, "count"), importe=("_importe", "sum"))
-                .sort_values("count", ascending=False)
-                .head(20)
-                .reset_index()
+        g = (
+            adj_df.groupby("nombre")
+            .agg(count=("nombre", "count"), importe=("_importe", "sum"))
+            .sort_values("count", ascending=False)
+            .head(20)
+            .reset_index()
+        )
+        top_adj = [
+            TopAdjudicatario(
+                nombre=str(row["nombre"]),
+                count=int(row["count"]),
+                importe=float(row["importe"] or 0),
             )
-            top_adj = [
-                TopAdjudicatario(
-                    nombre=str(row[nombre_col]),
-                    count=int(row["count"]),
-                    importe=float(row["importe"] or 0),
-                )
-                for _, row in g.iterrows()
-            ]
+            for _, row in g.iterrows()
+        ]
 
         # Lead time mediano (pub → adj) sobre las adjudicaciones del órgano
-        kpis.lead_time_medio = _lead_time_median(adj_org)
+        kpis.lead_time_medio = _lead_time_median(adj_df)
 
     # Top adjudicatario en kpis
     if top_adj:
@@ -246,58 +263,21 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         ]
 
     # Top scored — enrich with adjudicacion data
-    df = df.copy()
-    df["_score"] = df.apply(_simple_score, axis=1)
+    df = df.assign(_score=df.apply(_simple_score, axis=1))
     top_scored_df = df.nlargest(30, "_score").copy()
-
-    # Build best-adjudicacion lookup per licitacion
-    adj_lookup: dict[str, dict[str, Any]] = {}
-    if not adj_df.empty and "licitacion_id" in adj_df.columns:
-        adj_for_scored = adj_df[adj_df["licitacion_id"].isin(top_scored_df["id_externo"])].copy()
-        if not adj_for_scored.empty:
-            adj_for_scored = adj_for_scored.sort_values("_importe", ascending=False)
-            adj_for_scored = adj_for_scored.drop_duplicates(subset=["licitacion_id"], keep="first")
-            for _, row in adj_for_scored.iterrows():
-                lid = str(row["licitacion_id"])
-                empresa = None
-                if nombre_col in row.index:
-                    empresa = str(row[nombre_col]) if pd.notna(row[nombre_col]) else None
-                baja = (
-                    float(row["baja_pct"])
-                    if "baja_pct" in row.index and pd.notna(row.get("baja_pct"))
-                    else None
-                )
-                fecha_adj = None
-                if "fecha_adjudicacion" in row.index and pd.notna(row.get("fecha_adjudicacion")):
-                    try:
-                        fecha_adj = str(
-                            pd.Timestamp(row["fecha_adjudicacion"]).strftime("%d/%m/%Y")
-                        )
-                    except Exception:
-                        pass
-                adj_lookup[lid] = {
-                    "empresa": empresa,
-                    "baja_pct": baja,
-                    "fecha_adjudicacion": fecha_adj,
-                }
+    adj_lookup = _adj_lookup_for(adj_df, top_scored_df["id_externo"])
 
     top_scored = []
     for _, row in top_scored_df.iterrows():
         eid = str(row.get("id_externo", ""))
         adj_info = adj_lookup.get(eid, {})
         score = float(row["_score"])
-        estado_raw = (
-            str(row["estado"]) if "estado" in row.index and pd.notna(row.get("estado")) else None
-        )
-        titulo_raw = (
-            str(row["titulo"]) if "titulo" in row.index and pd.notna(row.get("titulo")) else None
-        )
+        estado_raw = str(row["estado"]) if pd.notna(row.get("estado")) else None
+        titulo_raw = str(row["titulo"]) if pd.notna(row.get("titulo")) else None
         tipo_contrato_raw = (
-            str(row["tipo_contrato"])
-            if "tipo_contrato" in row.index and pd.notna(row.get("tipo_contrato"))
-            else None
+            str(row["tipo_contrato"]) if pd.notna(row.get("tipo_contrato")) else None
         )
-        cpv_raw = str(row["cpv"]) if "cpv" in row.index and pd.notna(row.get("cpv")) else None
+        cpv_raw = str(row["cpv"]) if pd.notna(row.get("cpv")) else None
         top_scored.append(
             TopScored(
                 id_externo=eid,
@@ -305,17 +285,15 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
                 importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
                 score=score,
                 banda=_score_to_banda(score),
-                ccaa=str(row["ccaa"])
-                if "ccaa" in row.index and pd.notna(row.get("ccaa"))
-                else None,
+                ccaa=str(row["ccaa"]) if pd.notna(row.get("ccaa")) else None,
                 estado=estado_raw,
                 estado_desc=ESTADO_LABELS.get(estado_raw.strip(), estado_raw)
                 if estado_raw
                 else None,
-                modulos_str=str(row["modulos_str"])
-                if "modulos_str" in row.index and pd.notna(row.get("modulos_str"))
-                else None,
-                url=str(row["url"]) if "url" in row.index and pd.notna(row.get("url")) else None,
+                # La proyección de stats nunca trajo modulos_str (derivado del
+                # loader enriquecido, sin uso aquí) — se preserva el None.
+                modulos_str=None,
+                url=str(row["url"]) if pd.notna(row.get("url")) else None,
                 tipo_proyecto=detect_project_type(titulo_raw) if titulo_raw else None,
                 tipo_contrato_desc=tipo_contrato_label(tipo_contrato_raw)
                 if tipo_contrato_raw
