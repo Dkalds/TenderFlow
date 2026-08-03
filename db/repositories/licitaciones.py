@@ -536,26 +536,6 @@ class LicitacionRepository:
 
     # ── Métodos para services (carga raw/stats/FTS/drift/stream) ─────────
 
-    def load_raw(self, *, columns: str, limit: int | None = None) -> list[dict[str, Any]]:
-        """Carga licitaciones clasificadas (raw, sin enriquecimiento)."""
-        sql = (
-            "SELECT " + columns + " FROM licitaciones "
-            "WHERE tecnologia IS NOT NULL AND tecnologia != '' "
-            "ORDER BY fecha_publicacion DESC"
-        )
-        params: list[Any] = []
-        if limit is not None and limit > 0:
-            sql += " LIMIT ?"
-            params.append(int(limit))
-        with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
-
-    def load_stats(self, columns: str) -> list[dict[str, Any]]:
-        """Carga ligera de licitaciones para KPIs y stats."""
-        with connect_read() as c:
-            cur = c.execute("SELECT " + columns + " FROM licitaciones")
-            return rows_to_dicts(cur)
-
     def load_uncertainty_zone(self, lo: float, hi: float, limit: int) -> list[dict[str, Any]]:
         """Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)."""
         with connect_read() as c:

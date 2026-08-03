@@ -166,3 +166,18 @@ Supabase Postgres (OLTP)
   un resultado ya pequeño), el default es tratarlo como agregación SQL
   cuando el conjunto traído a pandas es post-agregación (cientos de filas,
   no decenas de miles).
+
+## Addendum — migración completada (2026-08-03)
+
+Los 27 endpoints analíticos agregan hoy en Postgres
+(`db/repositories/aggregates.py`, `db/repositories/adjudicaciones.py`) o
+consumen proyecciones acotadas con justificación inline (los dos casos que
+este ADR anticipó: `clusters.py` — sklearn sobre `clustering_universe`, tope
+de filas + filtros en el `WHERE` — y el motor de forecast, que recibe la
+serie mensual ya agregada). Con el último consumidor migrado se retiraron
+TODAS las mitigaciones del síntoma: `load_stats_base_df()` /
+`load_raw_adjudicaciones()` y sus `SignalAwareCache` full-table, el prewarm,
+el cortacircuitos `render_api_full_table_loads_blocked` y su métrica/alerta
+(`analytics_degraded_responses_total` / `AnalyticsDegradedServing`). Un
+tripwire en `tests/test_api_startup.py` impide que los loaders full-table
+vuelvan por la puerta de atrás.

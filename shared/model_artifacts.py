@@ -59,7 +59,7 @@ def _download_release_asset(asset_name: str, dest: Path) -> bool:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     try:
-        req = urllib.request.Request(_RELEASES_URL, headers=headers)  # noqa: S310 — HTTPS fijo
+        req = urllib.request.Request(_RELEASES_URL, headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
             release: dict[str, Any] = json.loads(resp.read())
         asset = next(

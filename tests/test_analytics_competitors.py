@@ -1,7 +1,7 @@
 """Tests unitarios para services/analytics/competitors.get_competitors.
 
-Parchean ``load_raw_adjudicaciones`` con filas sintéticas (el mismo shape que
-``load_raw_with_licitaciones``) para validar, sin tocar la BD:
+Parchean ``load_for_competitors`` con filas sintéticas (el mismo shape que la
+proyección del repositorio) para validar, sin tocar la BD:
 
 * agrupación por empresa canónica del maestro v35 (no por string crudo),
 * % de oferta única / sin competencia calculados con ``n_ofertas_recibidas``,

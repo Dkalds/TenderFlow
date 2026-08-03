@@ -85,13 +85,6 @@ try:
         "Número de escritores concurrentes activos contra la BD",
     )
 
-    # ── Analytics: degradación por cortacircuitos full-table (ADR-023) ────
-    analytics_degraded_responses_total = Counter(
-        "analytics_degraded_responses_total",
-        "Cargas analíticas bloqueadas por el cortacircuitos full-table (payload degradado)",
-        ["dataset"],  # licitaciones | adjudicaciones
-    )
-
     # ── Parser field completeness ─────────────────────────────────────────
     parser_field_null_total = Counter(
         "parser_field_null_total",
@@ -166,7 +159,6 @@ except ImportError:  # pragma: no cover
     db_pool_acquire_timeout_total = _NoopMetric()  # type: ignore[assignment]
     db_write_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_concurrent_writers = _NoopMetric()  # type: ignore[assignment]
-    analytics_degraded_responses_total = _NoopMetric()  # type: ignore[assignment]
     parser_field_null_total = _NoopMetric()  # type: ignore[assignment]
     parser_entries_total = _NoopMetric()  # type: ignore[assignment]
     upsert_rows_dropped_total = _NoopMetric()  # type: ignore[assignment]

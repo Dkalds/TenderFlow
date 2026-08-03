@@ -102,23 +102,18 @@ def _disable_rate_limiter(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clear_service_data_caches():
-    """Limpia las cachés de full-table de la capa de servicios entre tests.
+    """Limpia las cachés en memoria de la capa de servicios entre tests.
 
-    ``load_stats_dataframe`` / ``load_raw_adjudicaciones`` cachean el snapshot
-    en memoria (TTL + señal de ingesta). En tests que mutan la BD y luego leen,
-    una caché caliente serviría datos obsoletos; limpiarla antes/después aísla
-    cada test.
+    Las señales de scoring cachean su snapshot agregado (TTL + señal de
+    ingesta). En tests que mutan la BD y luego leen, una caché caliente
+    serviría datos obsoletos; limpiarla antes/después aísla cada test. (Las
+    cachés full-table de licitaciones/adjudicaciones se retiraron con la
+    migración ADR-023 — la analítica agrega en SQL y no cachea en proceso.)
     """
-    from services.adjudicaciones import clear_raw_adj_cache
     from services.analytics.scoring_signals import clear_scoring_signals_cache
-    from services.licitaciones import clear_stats_cache
 
-    clear_stats_cache()
-    clear_raw_adj_cache()
     clear_scoring_signals_cache()
     yield
-    clear_stats_cache()
-    clear_raw_adj_cache()
     clear_scoring_signals_cache()
 
 

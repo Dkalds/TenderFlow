@@ -92,41 +92,6 @@ class AdjudicacionRepository:
 
         return items, total
 
-    # ── Métodos para services/adjudicaciones.py ──────────────────────────
-
-    def load_raw_with_licitaciones(
-        self,
-        *,
-        limit: int | None = None,
-        ccaa_filter: tuple[str, ...] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Carga adjudicaciones raw con datos de la licitación asociada."""
-        sql = (
-            "SELECT a.*, l.titulo, l.organo_contratacion, l.url AS url_lic, "
-            "       l.fecha_publicacion, l.tecnologia, l.estado, "
-            "       l.importe AS importe_licitacion, "
-            "       e.nombre_canonico AS empresa_nombre_master, "
-            "       e.nif_canonico AS empresa_nif_master, "
-            "       e.es_ute AS empresa_es_ute, "
-            "       e.grupo_id AS empresa_grupo_id, "
-            "       g.nombre AS empresa_grupo_master "
-            "FROM adjudicaciones a "
-            "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-            "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
-            "LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
-        )
-        params: list[Any] = []
-        if ccaa_filter:
-            placeholders = ",".join("?" for _ in ccaa_filter)
-            sql += f"WHERE a.ccaa IN ({placeholders}) "
-            params.extend(ccaa_filter)
-        sql += "ORDER BY a.fecha_adjudicacion DESC"
-        if limit is not None and limit > 0:
-            sql += " LIMIT ?"
-            params.append(int(limit))
-        with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
-
     # ── Columnas usadas por services/analytics/competitors.py ────────────
     _COMPETITOR_COLS = (
         "a.licitacion_id, a.nombre, a.nif, a.empresa_id, a.es_pyme, "
@@ -150,15 +115,13 @@ class AdjudicacionRepository:
     ) -> list[dict[str, Any]]:
         """Carga la proyección/filtro necesarios para ``services.analytics.competitors``.
 
-        Recorte de ``load_raw_with_licitaciones`` (misma unión adjudicaciones
-        + licitaciones + maestro de empresas) con dos optimizaciones: solo las
-        columnas que consume la resolución de identidad + las 16
-        agregaciones posteriores (no ``a.*``), y los 4 filtros que antes se
-        aplicaban en pandas DESPUÉS de cargar todo (``tecnologia``, ``estado``,
-        rango de fechas, ``importe_min`` sobre ``importe_licitacion``) ahora
-        también en el ``WHERE``. La resolución de identidad (union-find sobre
-        NIF/nombre normalizados) y las agregaciones siguen en pandas — no son
-        reducibles a un ``GROUP BY`` plano (ver informe de la tarea).
+        Unión adjudicaciones + licitaciones + maestro de empresas, con solo
+        las columnas que consume la resolución de identidad + las 16
+        agregaciones posteriores (no ``a.*``) y los 4 filtros (``tecnologia``,
+        ``estado``, rango de fechas, ``importe_min`` sobre
+        ``importe_licitacion``) en el ``WHERE``. La resolución de identidad
+        (union-find sobre NIF/nombre normalizados) y las agregaciones siguen
+        en pandas — no son reducibles a un ``GROUP BY`` plano.
         """
         sql = (
             "SELECT " + self._COMPETITOR_COLS + " "

@@ -1,4 +1,10 @@
-"""Tests para services/_data_cache.SignalAwareCache."""
+"""Tests para services/_data_cache.SignalAwareCache.
+
+El cortacircuitos ``render_api_full_table_loads_blocked`` y sus tests se
+retiraron al completar ADR-023 (la analítica agrega en SQL; no quedan cargas
+full-table que bloquear) — ver el tripwire de loaders retirados en
+``test_api_startup.py``.
+"""
 
 from __future__ import annotations
 
@@ -7,59 +13,13 @@ import threading
 import time
 import weakref
 
-import pandas as pd
-
-from services._data_cache import SignalAwareCache, render_api_full_table_loads_blocked
+from services._data_cache import SignalAwareCache
 
 
-def test_default_ttl_avoids_minutely_full_table_rebuilds():
+def test_default_ttl_avoids_minutely_rebuilds():
     cache: SignalAwareCache[int] = SignalAwareCache()
 
     assert cache._ttl == 600.0
-
-
-def test_render_api_blocks_full_table_loads(monkeypatch):
-    from config import settings
-
-    monkeypatch.setenv("RENDER_SERVICE_ID", "srv-test")
-    monkeypatch.delenv("RENDER", raising=False)
-    monkeypatch.setattr(settings, "APP_PROFILE", "api")
-
-    assert render_api_full_table_loads_blocked() is True
-
-
-def test_render_worker_keeps_batch_loads_enabled(monkeypatch):
-    from config import settings
-
-    monkeypatch.setenv("RENDER", "true")
-    monkeypatch.delenv("RENDER_SERVICE_ID", raising=False)
-    monkeypatch.setattr(settings, "APP_PROFILE", "worker")
-
-    assert render_api_full_table_loads_blocked() is False
-
-
-def test_render_api_licitaciones_loader_fails_closed(monkeypatch):
-    from services import licitaciones
-
-    def unexpected_load() -> list[dict[str, object]]:
-        raise AssertionError("no debe consultar la tabla completa")
-
-    monkeypatch.setattr(licitaciones, "render_api_full_table_loads_blocked", lambda: True)
-    monkeypatch.setattr(licitaciones, "load_stats_dataframe", unexpected_load)
-
-    assert licitaciones.load_stats_base_df().equals(pd.DataFrame())
-
-
-def test_render_api_adjudicaciones_loader_fails_closed(monkeypatch):
-    from services import adjudicaciones
-
-    def unexpected_load(*args: object, **kwargs: object) -> list[dict[str, object]]:
-        raise AssertionError("no debe consultar la tabla completa")
-
-    monkeypatch.setattr(adjudicaciones, "render_api_full_table_loads_blocked", lambda: True)
-    monkeypatch.setattr(adjudicaciones._repo, "load_raw_with_licitaciones", unexpected_load)
-
-    assert adjudicaciones.load_raw_adjudicaciones() == []
 
 
 def test_caches_value_between_calls():

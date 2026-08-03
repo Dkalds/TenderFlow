@@ -24,25 +24,10 @@
 #
 
 groups:
-  - name: analytics_degradation
-    # Cortacircuitos de cargas full-table (ADR-023): mientras queden endpoints
-    # analiticos sin migrar a agregacion SQL, en Render responden 200 con
-    # payload degradado (clave "degraded": true). Esta alerta hace visible esa
-    # degradacion, que de otro modo solo se ve en los logs.
-    rules:
-      - alert: AnalyticsDegradedServing
-        expr: increase(analytics_degraded_responses_total[15m]) > 0
-        for: 0m
-        labels:
-          severity: warning
-          adr: "023"
-        annotations:
-          summary: "Analytics sirviendo respuestas degradadas (full-table bloqueado)"
-          description: >
-            analytics_degraded_responses_total sube: al menos un endpoint
-            analitico respondio con payload vacio/degradado porque su carga
-            full-table esta bloqueada en el proceso API (ADR-023). Migrar ese
-            consumidor a agregacion SQL (db/repositories/aggregates.py).
+  # El grupo analytics_degradation (AnalyticsDegradedServing) se retiro en
+  # 2026-08 al completar ADR-023: todos los endpoints analiticos agregan en
+  # SQL o usan proyecciones acotadas, el cortacircuitos full-table ya no
+  # existe y su metrica analytics_degraded_responses_total dejo de emitirse.
 
   - name: llm_budget
     # Presupuesto LLM (RFC llm-dependencia-gestionada). En modo monitor estas

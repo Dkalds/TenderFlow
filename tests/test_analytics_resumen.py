@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
-import pandas as pd
 import pytest
 
 from services.analytics.resumen import (
@@ -35,21 +34,6 @@ def _iso(offset_days: int = 0) -> str:
     """Fecha ISO UTC desplazada `offset_days` días desde ahora."""
     dt = datetime.now(UTC) + timedelta(days=offset_days)
     return dt.strftime("%Y-%m-%dT%H:%M:%S+00:00")
-
-
-def _typed(df: pd.DataFrame) -> pd.DataFrame:
-    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
-    (ver ``services/licitaciones.py::_build``): los fixtures de este módulo
-    usan fechas ISO en crudo, así que el mock debe entregarlas ya convertidas
-    para reflejar el contrato real."""
-    if df.empty:
-        return df
-    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-    if "importe" in df.columns:
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    return df
 
 
 def _row(

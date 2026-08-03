@@ -8,7 +8,7 @@ Cubre los dos modos del endpoint /api/v1/analytics/scoring:
   global P10/P90 para que el score este siempre alineado con lo que se ve
   (ADR-014: el backend es la fuente, el front solo alinea por id).
 
-Data access mockeado en load_stats_dataframe y en los loaders de senales
+Data access mockeado en los repos SQL y en los loaders de senales
 (load_competencia_stats, load_margen_stats) sin dependencia de BD.
 Los loaders de senales se parchean sobre el modulo scoring (donde estan
 importados por nombre) para que los mocks sean efectivos.

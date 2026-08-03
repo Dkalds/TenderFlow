@@ -163,20 +163,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [web/src/lib/i18n.ts](../web/src/lib/i18n.ts)
 - **Riesgo:** bajo (a) / alto (b). **Requiere decisión del usuario antes de tocar código.**
 
-### [P1] Dejar de materializar tablas completas en el proceso del API (memoria en Render)
-- **Área:** services/adjudicaciones.py, services/licitaciones.py, services/analytics/*
-- **Problema:** El API mantiene dos cargas full-table en memoria y las reconstruye cada 60 s. `_stats_df_cache` guarda un DataFrame con **todas** las licitaciones (`LicitacionRepository.load_stats` no lleva `LIMIT`) y `_raw_adj_cache` guarda el join `adjudicaciones ⋈ licitaciones ⋈ empresas ⋈ grupos` (`a.*` + 13 columnas, tampoco acotado) como **`list[dict]`** — la representación más cara posible: un `dict` por fila con ~25 claves, frente al mismo dato tipado en un DataFrame. Encima, todo consumidor con filtro **esquiva la caché** (`services/adjudicaciones.py:113-115`: si `ccaa_filter` no es `None`, se relanza la query completa) y reconstruye su propio DataFrame por request — `red_organo_empresa.py` lo hace en 4 call sites, más `utes.py` y `ecosistema_partners.py`. Con el limiter de anyio en 4 hilos eso son hasta 4 materializaciones full-table simultáneas. El resultado no es un leak (no hay contenedor que crezca sin cota — verificado) sino un baseline alto más un churn de cientos de miles de objetos `str`/`dict` efímeros por ciclo que fragmenta las arenas de pymalloc: el RSS sube y no vuelve a bajar, que es exactamente lo que se ve en la gráfica de Render.
-- **Progreso 2026-08-03 (revisión de arquitectura):** migrados a agregación SQL/proyección acotada: trends, geography, organos, pipeline, scoring, compare, trends-cpv, proyectos-modulos y resumen sankey/top (además de overview/tecnologias/resumen previos). El bypass del cortacircuitos vía `ccaa_filter` está cerrado y la degradación es medible (`analytics_degraded_responses_total` + alerta `AnalyticsDegradedServing`). Segunda tanda del mismo día: quality (completitud + check ISO en SQL), forecast (serie mensual agregada + universo acotado de re-licitación) y los 6 de adjudicaciones — utes (KPIs/ranking/evolución por `AdjudicacionRepository`, socios por proyección acotada de filas UTE — de paso repara `socios_frecuentes` y partnership-graph, que llegaban siempre vacíos porque exigían una columna `es_ute` que el loader raw nunca produjo), organ-company-graph/ego/concentration (aristas ya agregadas por `organ_company_edges` + shaping en `*_from_edge_aggregates`) y organ-company-edge (drill-down acotado en SQL). **Quedan en full-table:** organo_detail y clusters (candidato a justificación ADR-023 con proyección acotada). Al migrar esos dos: retirar `load_raw_adjudicaciones`/`_raw_adj_cache` y `load_stats_base_df`/`_stats_df_cache` (ya sin consumidores) y el propio cortacircuitos. Al terminar: retirar `_stats_df_cache`/`_raw_adj_cache`, el contrato no-`.copy()` y el propio cortacircuitos.
-- **Progreso 2026-08-02:** hotfix de disponibilidad: el startup ya no precalienta ambas cargas full-table después de confirmar en Render un bucle de OOM/reinicio cada ~5,5 minutos; la invalidación viaja por Postgres entre el scraper y el API y el TTL defensivo sube de 60 s a 10 min. La primera versión mostró que las peticiones del dashboard seguían disparando las mismas cargas de forma lazy, así que el proceso API de Render incorpora además un cortacircuitos fail-closed: los loaders full-table devuelven un resultado vacío y registran `analytics_full_table_load_blocked`, mientras las agregaciones ya migradas a SQL siguen disponibles. Esto contiene el OOM, pero **no cierra** el ítem: hay que migrar los consumidores restantes a SQL/proyecciones acotadas para retirar la degradación temporal.
-- **Dirección ya establecida:** ADR-023 (cómputo en vivo / agregación SQL) y los commits `ab520da` (overview/tecnologias a SQL) y `a274d8a` (drop del `.copy()` por request) van por aquí. Esto es continuar esas olas, no abrir una dirección nueva.
-- **Acceptance criteria:**
-  - Los agregados que hoy se calculan en pandas sobre la tabla completa se resuelven con `GROUP BY` en Postgres, por olas y con la suite como red.
-  - Mientras siga existiendo una caché de adjudicaciones, guardarla como DataFrame tipado y no como `list[dict]`.
-  - El camino con `ccaa_filter` deja de reconstruir la tabla entera por request (filtrar en SQL, como ya hace `load_for_competitors`).
-  - Medir antes/después con `process_resident_memory_bytes` (ya exportado por `prometheus_client`) en vez de a ojo.
-- **Files de partida:** [services/adjudicaciones.py](../services/adjudicaciones.py), [services/licitaciones.py](../services/licitaciones.py), [services/analytics/red_organo_empresa.py](../services/analytics/red_organo_empresa.py), [db/repositories/adjudicaciones.py](../db/repositories/adjudicaciones.py)
-- **Riesgo:** medio — toca la capa de lectura analítica y varios consumidores; mitigable haciéndolo por olas como las anteriores.
-
 ### [P2] Cerrar los huecos de aislamiento por user_key encontrados en la auditoría de tenencia
 - **Área:** db/watchlist.py, db/saved_filters.py, api/routes/watchlist_rules.py
 - **Problema:** [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) audita que toda query contra una tabla user-scoped filtre por `user_key`, y encontró 3 violaciones reales que quedaron explícitamente allowlisted como huecos pendientes (no como precedente): `db/watchlist.py::remove_entry`/`update_frequency` (`DELETE`/`UPDATE ... WHERE id = ?` sin `user_key`, sin caller HTTP hoy), `db/saved_filters.py::delete_saved_filter` (mismo patrón; no explotable hoy porque `api/routes/saved_filters.py` valida propiedad antes de llamar, pero el repository no se defiende solo), y `api/routes/watchlist_rules.py::post_rule._create` (`UPDATE watchlist_rules SET email = ? WHERE id = ?` sin `user_key`, inconsistente con `put_rule._update` que sí lo añade).
@@ -325,6 +311,23 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-03] **P1: Dejar de materializar tablas completas en el proceso del API (memoria en Render) — ADR-023 COMPLETADO** —
+  Los 27 endpoints analíticos agregan en Postgres o consumen proyecciones acotadas con
+  justificación inline. Últimas olas del día: quality, forecast, los 6 de adjudicaciones
+  (utes / organ-company-graph×3 / organ-company-edge / partnership-graph), organo_detail
+  (proyecciones por órgano) y clusters (sklearn sobre `clustering_universe`, tope de filas +
+  filtros en `WHERE` — la excepción justificada que el ADR anticipó). Con el último consumidor
+  migrado se retiró TODO el andamiaje del síntoma: `load_stats_base_df`/`load_stats_dataframe`/
+  `load_raw`/`load_dataframe` y `load_raw_adjudicaciones`/`load_adjudicaciones` (los dos últimos
+  además sin consumidores reales), `_stats_df_cache`/`_raw_adj_cache` y su contrato no-`.copy()`,
+  los métodos de repo full-table (`load_raw_with_licitaciones`, `LicitacionRepository.load_raw`/
+  `load_stats`), el cortacircuitos `render_api_full_table_loads_blocked` y su métrica/alerta
+  (`analytics_degraded_responses_total`/`AnalyticsDegradedServing`, retiradas al quedarse sin
+  emisor posible). Tripwire en `tests/test_api_startup.py` contra el regreso de loaders
+  full-table; addendum de cierre en el ADR-023. El AC de "medir antes/después con
+  `process_resident_memory_bytes`" queda como verificación manual post-deploy en Render
+  (la métrica ya se exporta; no hay entorno aquí para medirla).
 
 - [2026-08-03] **P2: `quality.py` vuelve a detectar fechas legacy malformadas (y agrega en SQL, ADR-023)** —
   Resuelto con la opción que el AC no contemplaba pero que el propio ADR-023 impuso: el check ISO

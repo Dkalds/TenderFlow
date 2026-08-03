@@ -2,10 +2,10 @@
 
 Los cinco endpoints agregan en Postgres vía ``db.repositories.aggregates``
 (ADR-023). Antes materializaban la tabla ``licitaciones`` completa en pandas
-(``load_stats_base_df``), que en el proceso web de Render devuelve un
-DataFrame vacío desde que existe ``render_api_full_table_loads_blocked``
-(ver ``services/_data_cache.py``): respondían 200 con el payload a cero y la
-pantalla salía en blanco, sin error que lo delatara.
+(``load_stats_base_df``, ya retirado), que en el proceso web de Render
+devolvía un DataFrame vacío por el cortacircuitos full-table (también
+retirado al completar la migración): respondían 200 con el payload a cero y
+la pantalla salía en blanco, sin error que lo delatara.
 """
 
 from __future__ import annotations
