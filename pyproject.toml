@@ -14,7 +14,6 @@ dependencies = [
     "python-dateutil>=2.8.2,<3",
     "tenacity>=8.2.0,<10",
     "openpyxl>=3.1.0,<4",
-    "libsql>=0.1.0,<0.3",
     "python-dotenv>=1.0.0,<2",
     "pydantic-settings>=2.0.0,<3",
     "structlog>=24.1.0,<26",
@@ -253,10 +252,6 @@ disallow_untyped_calls = false
 module = [
     "duckdb",
     "duckdb.*",
-    "libsql",
-    "libsql.*",
-    "libsql_experimental",
-    "libsql_experimental.*",
     "pybreaker",
     "lxml",
     "lxml.*",
@@ -306,7 +301,6 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 addopts = "-v --tb=short --cov=. --cov-report=term-missing"
 filterwarnings = [
-    "ignore::DeprecationWarning:libsql",
 ]
 markers = [
     "unit: tests unitarios rápidos (default, sin I/O externo)",

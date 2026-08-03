@@ -47,8 +47,9 @@ RUN pip install --no-cache-dir --no-deps . \
     && find /usr/local/lib/python3.13 -name '*.pyc' -delete
 
 RUN mkdir -p /data && chown appuser:appuser /data
-ENV DB_PATH=/data/licitaciones.db \
-    DATA_DIR=/data \
+# Sin DB_PATH: SQLite se retiró en ADR-021; el único motor es Postgres vía
+# DATABASE_URL.
+ENV DATA_DIR=/data \
     FORWARDED_ALLOW_IPS=127.0.0.1 \
     # ── Memoria — Render Free es 512 MB. ────────────────────────────────────
     # glibc malloc abre por defecto 8×CPU arenas que fragmentan el heap; con

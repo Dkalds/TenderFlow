@@ -83,13 +83,12 @@ def _resolve_empresas_post_ingestion(fuente: str) -> None:
 
 
 def _signal_post_ingestion(fuente: str) -> None:
-    """Señaliza al dashboard y FAISS que hubo nueva ingestión de datos.
+    """Invalida la caché del API tras una ingestión (shared.cache_signal).
 
-    Combina dos operaciones que se repiten en process_month y process_daily:
-    1. Invalidación de caché del dashboard (shared.cache_signal).
-    2. Evento de dominio ``faiss.index_stale`` para reconstrucción del índice.
-
-    Fail-open: cualquier error se loguea como debug sin propagar.
+    Fail-open: cualquier error se loguea como debug sin propagar. El evento
+    ``faiss.index_stale`` que también se emitía aquí se retiró en 2026-08:
+    FAISS salió del producto en la Fase 3 de reducción de superficie
+    (2026-07-04) y ningún consumidor leía ese evento.
     """
     try:
         from shared.cache_signal import signal_cache_invalidation
@@ -97,18 +96,6 @@ def _signal_post_ingestion(fuente: str) -> None:
         signal_cache_invalidation()
     except Exception:
         log.debug("cache_signal_failed", fuente=fuente)
-
-    try:
-        from db.events import append_event
-
-        append_event(
-            "faiss.index_stale",
-            "faiss_index",
-            "ml_index",
-            {"reason": "ingestion_completed", "fuente": fuente},
-        )
-    except Exception:
-        log.debug("faiss_index_stale_event_failed", fuente=fuente)
 
 
 # ── ML fallback para entries sin keywords ─────────────────────────────────

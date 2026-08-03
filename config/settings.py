@@ -73,8 +73,8 @@ class Settings(BaseSettings):
     # VESTIGIAL (ADR-021): ya no apunta a ninguna BD — SQLite se retiró y el
     # único motor es Postgres vía DATABASE_URL. Sobrevive porque lo leen los
     # caminos DuckDB/backup pendientes de migrar (`db/analytics.py`,
-    # `services/analytics_engine.py`, `scripts/restore_db.py`), documentados
-    # como ítems abiertos del backlog. **No usar en código nuevo.**
+    # `scripts/restore_db.py`), documentados como ítems abiertos del backlog.
+    # **No usar en código nuevo.**
     DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None
 
@@ -368,7 +368,9 @@ class Settings(BaseSettings):
     #   "paraphrase-multilingual-MiniLM-L12-v2"   (~400 MB, rápido)
     #   "paraphrase-multilingual-mpnet-base-v2"    (~1.1 GB, mejor calidad)
     EMBEDDING_MODEL: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    # Versión lógica del índice FAISS — si cambia, se regenera el índice
+    # Versión lógica de los embeddings persistidos (documento_chunks) — si
+    # cambia, se re-embebe. (El índice FAISS al que aludía originalmente se
+    # retiró en 2026-07.)
     EMBEDDING_VERSION: str = "v1"
 
     # ── Scoring de oportunidades ─────────────────────────────────────────

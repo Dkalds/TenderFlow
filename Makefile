@@ -45,6 +45,9 @@ check-api-contract:  ## Ratchet del contrato API↔web (ninguna operación nueva
 check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y markers
 	python scripts/check_agent_docs.py
 
+smoke-prod:  ## Chequeo sintético contra producción (SMOKE_BASE_URL + SMOKE_API_KEY)
+	python scripts/smoke_prod.py
+
 audit-truth:  ## Auditoría de verdad del dato: fecha_limite, multi-lote, UTE, baja (requiere BD)
 	python scripts/audit_domain_truth.py
 
@@ -58,8 +61,10 @@ test-all:  ## Ejecuta TODOS los tests sin excepción
 test-integration:  ## Tests de integración (requieren BD real)
 	pytest tests/ -m integration
 
+# Sin --timeout: pytest-timeout no está en requirements-dev y el flag rompía
+# el target con "unrecognized argument" (revisión de arquitectura 2026-08).
 test-perf:  ## Tests de rendimiento (marker slow)
-	pytest tests/test_performance.py -m slow --timeout=120
+	pytest tests/test_performance.py -m slow
 
 # ── Tests por categoría (markers nuevos en F0) ───────────────────────────
 test-unit:  ## Tests unitarios rápidos
