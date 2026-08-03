@@ -45,5 +45,7 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+# storageState con cookies de sesión: se regenera en cada ejecución
+/playwright/.auth/
 
 .vercel
