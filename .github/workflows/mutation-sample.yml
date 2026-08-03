@@ -59,13 +59,20 @@ jobs:
           # único job, no dependencia de la suite.
           pip install "mutmut==2.5.1"
 
+      # El input del `workflow_dispatch` viaja por `env:` y se trocea con
+      # `read -ra`, nunca interpolado en el `run:`: `${{ github.* }}` dentro del
+      # script permite inyectar comandos en el runner (semgrep
+      # run-shell-injection). El script además valida cada módulo contra su
+      # lista de choices, así que un valor desconocido falla en argparse.
       - name: Run mutation sample
         env:
           ENV: dev
           TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_mutation  # pragma: allowlist secret
+          MODULES: ${{ github.event.inputs.modules }}
         run: |
-          if [ -n "${{ github.event.inputs.modules }}" ]; then
-            python scripts/run_mutation_sample.py --modules ${{ github.event.inputs.modules }}
+          if [ -n "$MODULES" ]; then
+            read -ra modulos <<< "$MODULES"
+            python scripts/run_mutation_sample.py --modules "${modulos[@]}"
           else
             # Rotación determinista por número de semana: cada ejecución toca
             # dos módulos distintos y el ciclo cubre todos con el tiempo.
