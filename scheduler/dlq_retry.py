@@ -88,6 +88,11 @@ def _is_due(failure: dict[str, Any]) -> bool:
 
 _BULK_SOURCE_RE = _re.compile(r"^bulk_(?P<year>\d{4})(?P<month>\d{2})$")
 
+# Prefijo de las fuentes bulk (``bulk_YYYYMM``). Reintentarlas significa
+# reprocesar el mes entero con ``process_month``, que es trabajo de horas: el
+# carril diario las excluye y las cubre el workflow manual `scrape-bulk.yml`.
+_BULK_SOURCE_PREFIX = "bulk_"
+
 
 def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
     """Ejecuta el scraper correspondiente a *fuente*.
@@ -206,6 +211,8 @@ def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | None:
 def retry_failed_extractions(
     max_retries: int | None = None,
     batch_size: int | None = None,
+    *,
+    include_bulk: bool = True,
 ) -> int:
     """Reintenta extracciones fallidas pendientes en la DLQ.
 
@@ -218,6 +225,12 @@ def retry_failed_extractions(
     Args:
         max_retries: Máximo de reintentos (default: env ``DLQ_MAX_RETRIES`` o 5).
         batch_size:  Entradas por ciclo (default: env ``DLQ_BATCH_SIZE`` o 10).
+        include_bulk: Si es False, ignora las entradas ``bulk_YYYYMM``.
+            Reintentar una es ejecutar ``process_month`` completo — descarga y
+            reparseo de los ZIP de un mes entero. Con el default (True) el
+            carril diario se comía su propio timeout drenando meses bulk:
+            ``sweep_exhausted`` sigue corriendo igual, sólo se acota **qué**
+            se reintenta.
 
     Returns:
         Número de fallos que se han resuelto exitosamente.
@@ -245,10 +258,13 @@ def retry_failed_extractions(
             )
 
     # ── Paso 2: cargar candidatos activos ────────────────────────────────────
-    unresolved = list_unresolved(limit=batch_size * 3)
+    unresolved = list_unresolved(
+        limit=batch_size * 3,
+        exclude_fuente_prefix=None if include_bulk else _BULK_SOURCE_PREFIX,
+    )
 
     if not unresolved:
-        log.debug("dlq_retry_nothing_pending")
+        log.debug("dlq_retry_nothing_pending", include_bulk=include_bulk)
         return 0
 
     # Filtrar solo los que ya han cumplido el backoff
@@ -258,7 +274,12 @@ def retry_failed_extractions(
         log.debug("dlq_retry_all_in_backoff", total_unresolved=len(unresolved))
         return 0
 
-    log.info("dlq_retry_starting", due=len(due), total_unresolved=len(unresolved))
+    log.info(
+        "dlq_retry_starting",
+        due=len(due),
+        total_unresolved=len(unresolved),
+        include_bulk=include_bulk,
+    )
     run_id = bind_run_context(entrypoint="dlq_retry", batch=len(due))
 
     # ── Paso 3: reintentar ───────────────────────────────────────────────────

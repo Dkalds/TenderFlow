@@ -8,7 +8,7 @@ Inteligencia de licitaciones del Sector Público español.
 
 | Módulo | Descripción |
 |--------|-------------|
-| **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (ZIPs mensuales bulk + feed ATOM en vivo), PSCP y TACRC (activos en el cron diario) y TED (implementado, pendiente de cablear). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
+| **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (feed ATOM en vivo en el cron diario; ZIPs mensuales bulk sólo a demanda vía `scrape-bulk.yml`), PSCP y TACRC (activos en el cron diario) y TED (implementado, pendiente de cablear). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
 | **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
 | **Base de datos** | **Postgres** en producción, CI y desarrollo — motor único ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md) Supabase, psycopg3 + pool gestionado; Turso retirado en [ADR-020](docs/adr/ADR-020-retirada-turso.md) y SQLite en [ADR-021](docs/adr/ADR-021-retirada-sqlite.md)). Upsert batcheado e idempotente, historial de cambios, DLQ |
 | **Web frontend** | Next.js 16 con dashboard analítico (KPIs, pipeline, competidores, tendencias), búsqueda y administración |
@@ -167,8 +167,8 @@ tenderflow/
 ├── .github/workflows/            # CI/CD
 │   ├── ci.yml                    #   Lint, tipos, tests, pre-commit, audit, docker build
 │   ├── security.yml              #   Semgrep SAST + Trivy + rotation reminder
-│   ├── scrape.yml                #   Bulk mensual (diario 06:00 UTC)
 │   ├── scrape-daily.yml          #   Feed ATOM/conectores en vivo (cada 4h)
+│   ├── scrape-bulk.yml           #   Refresh de N meses (manual, sin cron)
 │   ├── healthcheck.yml           #   Healthcheck (cada 6h)
 │   ├── train-model.yml           #   Entrenamiento programado del clasificador
 │   └── ...                       #   backup, changelog, release, release-sdk

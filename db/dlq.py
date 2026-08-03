@@ -76,16 +76,34 @@ def record_failure(
         log.warning("dlq_persist_failed", error=str(e), fuente=fuente)
 
 
-def list_unresolved(limit: int = 100) -> list[dict[str, Any]]:
-    """Devuelve fallos abiertos (no resueltos y no agotados)."""
+def list_unresolved(
+    limit: int = 100, *, exclude_fuente_prefix: str | None = None
+) -> list[dict[str, Any]]:
+    """Devuelve fallos abiertos (no resueltos y no agotados).
+
+    Args:
+        limit: Máximo de filas a devolver.
+        exclude_fuente_prefix: Si se indica, descarta las entradas cuya
+            ``fuente`` empieza por ese prefijo. El filtro va en SQL, **no**
+            sobre el resultado: filtrar en Python después del ``LIMIT`` deja
+            sin candidatos al caller cuando el prefijo excluido copa las
+            primeras filas del orden (exactamente el caso del carril diario,
+            donde las entradas ``bulk_`` son las más numerosas).
+    """
+    where = "WHERE resolved_at IS NULL AND exhausted_at IS NULL"
+    params: list[Any] = []
+    if exclude_fuente_prefix:
+        where += " AND fuente NOT LIKE ? || '%'"
+        params.append(exclude_fuente_prefix)
+    params.append(limit)
+
     with connect() as c:
         cur = c.execute(
             "SELECT id, run_id, fuente, scope, error_type, error_message, "
             "retry_count, created_at, last_attempt_at "
-            "FROM failed_extractions "
-            "WHERE resolved_at IS NULL AND exhausted_at IS NULL "
+            f"FROM failed_extractions {where} "
             "ORDER BY created_at DESC LIMIT ?",
-            (limit,),
+            tuple(params),
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]

@@ -11,8 +11,12 @@ además un bug visible: quien elegía digest diario o semanal no recibía email.
 Este script convierte esa afirmación en invariante verificado. Por cada job de
 ``build_default_registry()`` comprueba, según su ``plane``:
 
-- ``actions``  → su ``module`` debe aparecer en algún ``python -m`` de
-  ``.github/workflows/*.yml``.
+- ``actions``  → su ``module`` debe aparecer en algún ``python -m`` de un
+  workflow **programado** (con ``schedule:`` y ``cron:``).
+- ``manual``   → su ``module`` debe aparecer en un workflow
+  ``workflow_dispatch``-only. Es el caso legítimo de "no corre solo, y es
+  a propósito": si el workflow desaparece, el job sigue siendo humo y el
+  gate lo detecta igual.
 - ``pipeline`` → su nombre debe estar cubierto por ``CANONICAL_STEPS``.
 - ``loop``     → nada que verificar (solo corre en Docker Compose, y se
   considera una decisión explícita, no un olvido).
@@ -53,22 +57,24 @@ _CRON_LINE = re.compile(r"^\s*-\s*cron:", re.MULTILINE)
 
 
 def _modules_invoked_by_workflows() -> tuple[set[str], set[str]]:
-    """(módulos en workflows CON schedule, módulos en cualquier workflow).
+    """(módulos en workflows CON schedule, módulos en workflows SIN schedule).
 
     La distinción importa: un workflow ``workflow_dispatch``-only satisfacía el
     chequeo antiguo aunque nadie lo dispare nunca — exactamente la clase de
     "job muerto en producción" que este script existe para detectar. Un job
-    ``plane='actions'`` debe aparecer en un workflow *programado*.
+    ``plane='actions'`` debe aparecer en un workflow *programado*; uno
+    ``plane='manual'``, en uno *sin* schedule, que es donde declara vivir.
     """
     scheduled: set[str] = set()
-    anywhere: set[str] = set()
+    dispatch_only: set[str] = set()
     for wf in sorted(_WORKFLOWS_DIR.glob("*.yml")):
         text = wf.read_text(encoding="utf-8")
         found = _PYTHON_M.findall(text)
-        anywhere.update(found)
         if _SCHEDULE_TRIGGER.search(text) and _CRON_LINE.search(text):
             scheduled.update(found)
-    return scheduled, anywhere
+        else:
+            dispatch_only.update(found)
+    return scheduled, dispatch_only
 
 
 def check() -> tuple[list[dict[str, Any]], list[str]]:
@@ -76,7 +82,7 @@ def check() -> tuple[list[dict[str, Any]], list[str]]:
     from scheduler.jobs import build_default_registry
     from scheduler.pipeline_runs import CANONICAL_STEPS
 
-    scheduled, anywhere = _modules_invoked_by_workflows()
+    scheduled, dispatch_only = _modules_invoked_by_workflows()
     steps = set(CANONICAL_STEPS)
 
     rows: list[dict[str, Any]] = []
@@ -89,16 +95,28 @@ def check() -> tuple[list[dict[str, Any]], list[str]]:
                 problems.append(f"{job.name}: plane='actions' sin `module` declarado")
             elif job.module in scheduled:
                 cubierto_por = f"python -m {job.module}"
-            elif job.module in anywhere:
+            elif job.module in dispatch_only:
                 problems.append(
                     f"{job.name}: plane='actions' pero `python -m {job.module}` solo "
                     "aparece en workflows workflow_dispatch-only (sin schedule) — "
-                    "job muerto salvo disparo manual"
+                    "job muerto salvo disparo manual. Si no correr solo es la "
+                    "decisión, declararlo plane='manual'"
                 )
             else:
                 problems.append(
                     f"{job.name}: plane='actions' pero ningún workflow ejecuta "
                     f"`python -m {job.module}` — job muerto en producción"
+                )
+        elif job.plane == "manual":
+            if not job.module:
+                problems.append(f"{job.name}: plane='manual' sin `module` declarado")
+            elif job.module in dispatch_only:
+                cubierto_por = f"python -m {job.module} (workflow_dispatch)"
+            else:
+                problems.append(
+                    f"{job.name}: plane='manual' pero ningún workflow "
+                    f"workflow_dispatch-only ejecuta `python -m {job.module}` — "
+                    "no hay forma de dispararlo ni a mano"
                 )
         elif job.plane == "pipeline":
             step = _ALIAS_PIPELINE.get(job.name, job.name)

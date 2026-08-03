@@ -65,8 +65,8 @@ Detener los jobs que escriben en la BD:
 
 ```bash
 # En GH Actions: deshabilitar temporalmente los workflows de escritura
-gh workflow disable scrape.yml
 gh workflow disable scrape-daily.yml
+gh workflow disable scrape-bulk.yml
 gh workflow disable ml-scoring.yml
 gh workflow disable backup.yml
 ```
@@ -162,8 +162,8 @@ python -m scheduler.run_update --daily
 ## Paso 7 — Re-habilitar workers
 
 ```bash
-gh workflow enable scrape.yml
 gh workflow enable scrape-daily.yml
+gh workflow enable scrape-bulk.yml
 gh workflow enable ml-scoring.yml
 gh workflow enable backup.yml
 docker compose start scheduler
@@ -261,7 +261,7 @@ Si algo falla en el Paso 5 o posterior:
 # 2. Reiniciar API
 docker compose restart api
 # 3. Re-deshabilitar workflows si ya habían sido re-habilitados
-gh workflow disable scrape.yml  # etc.
+gh workflow disable scrape-daily.yml  # etc.
 # 4. Re-scrape del gap (bulk de los últimos días)
 python -m scheduler.run_update --months 1
 ```

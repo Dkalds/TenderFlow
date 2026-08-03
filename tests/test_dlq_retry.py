@@ -186,6 +186,55 @@ def test_retry_bulk_bad_format(tmp_db, monkeypatch):
     assert result == 0
 
 
+def test_retry_skips_bulk_when_include_bulk_false(tmp_db, monkeypatch):
+    """Carril diario: una entrada bulk_YYYYMM no dispara process_month."""
+    from db import dlq
+
+    dlq.record_failure("run-1", "bulk_202601", RuntimeError("err"))
+    monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
+    with patch("scraper.pipeline.process_month") as process_month:
+        from scheduler.dlq_retry import retry_failed_extractions
+
+        result = retry_failed_extractions(include_bulk=False)
+
+    process_month.assert_not_called()
+    assert result == 0
+    # Sigue pendiente y sin quemar un reintento: la cubre `scrape-bulk.yml`.
+    pendiente = dlq.list_unresolved()[0]
+    assert pendiente["fuente"] == "bulk_202601"
+    assert pendiente["retry_count"] == 0
+
+
+def test_retry_without_bulk_still_drains_other_sources(tmp_db, monkeypatch):
+    """El filtro va en SQL: las entradas bulk no pueden copar el LIMIT.
+
+    Con el filtro aplicado en Python *después* del LIMIT, una DLQ con muchos
+    meses bulk delante dejaba al carril diario sin candidatos que reintentar.
+    """
+    from db import dlq
+
+    for i in range(1, 7):
+        dlq.record_failure("run-1", f"bulk_2026{i:02d}", RuntimeError("err"))
+    dlq.record_failure("run-1", "place_live_atom", RuntimeError("err"))
+
+    monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
+    monkeypatch.setenv("DLQ_BATCH_SIZE", "2")
+    with (
+        patch("scraper.pipeline.process_daily", return_value={"status": "ok"}) as process_daily,
+        patch("scraper.pipeline.process_month") as process_month,
+    ):
+        from scheduler.dlq_retry import retry_failed_extractions
+
+        result = retry_failed_extractions(include_bulk=False)
+
+    process_daily.assert_called_once()
+    process_month.assert_not_called()
+    assert result == 1
+    assert {f["fuente"] for f in dlq.list_unresolved()} == {
+        f"bulk_2026{i:02d}" for i in range(1, 7)
+    }
+
+
 def test_retry_atom_success(tmp_db, monkeypatch):
     """Reintento place_live_atom exitoso → resuelto."""
     from db import dlq

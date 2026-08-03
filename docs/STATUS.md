@@ -6,14 +6,14 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-08-01
+Generado: 2026-08-03
 
 ## Paridad de planos de orquestación (ADR-012)
 
 | Job | Plano | Cubierto por |
 |---|---|---|
 | `daily_atom` | actions | python -m scheduler.run_update |
-| `recent_bulk` | actions | python -m scheduler.run_update |
+| `recent_bulk` | manual | python -m scheduler.run_update (workflow_dispatch) |
 | `retention_cleanup` | pipeline | CANONICAL_STEPS[retention_cleanup] |
 | `ml_scoring_baja` | actions | python -m scheduler.jobs.ml_predicciones |
 | `ml_retrain_baja` | pipeline | CANONICAL_STEPS[ml_retrain] |

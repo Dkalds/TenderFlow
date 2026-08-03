@@ -153,3 +153,68 @@ class TestCanonicalPipelineSteps:
         # All other steps still ran
         assert results["kpi_precompute"] == "ok"
         assert results["aggregates_precompute"] == "ok"
+
+
+class TestLaneAwareSteps:
+    """El carril diario y el bulk no hacen el mismo trabajo en cada paso.
+
+    Reintentar una entrada DLQ ``bulk_YYYYMM`` es reprocesar el mes entero.
+    Hacerlo dentro del carril diario se comía su timeout y GitHub cancelaba el
+    job a mitad de la cadena post-ingesta (runs de 2026-08-01/03).
+    """
+
+    def test_daily_lane_skips_bulk_months_in_dlq(self) -> None:
+        from scheduler.pipeline_runs import LANE_DAILY, _run_dlq_retry
+
+        with patch("scheduler.dlq_retry.retry_failed_extractions") as retry:
+            _run_dlq_retry(lane=LANE_DAILY)
+
+        retry.assert_called_once_with(include_bulk=False)
+
+    def test_bulk_lane_retries_bulk_months(self) -> None:
+        from scheduler.pipeline_runs import LANE_BULK, _run_dlq_retry
+
+        with patch("scheduler.dlq_retry.retry_failed_extractions") as retry:
+            _run_dlq_retry(lane=LANE_BULK)
+
+        retry.assert_called_once_with(include_bulk=True)
+
+    def test_default_lane_is_the_permissive_one(self) -> None:
+        """Un caller que no declare carril no pierde trabajo en silencio."""
+        from scheduler.pipeline_runs import _run_dlq_retry
+
+        with patch("scheduler.dlq_retry.retry_failed_extractions") as retry:
+            _run_dlq_retry()
+
+        retry.assert_called_once_with(include_bulk=True)
+
+    def test_post_ingestion_forwards_lane_only_to_lane_aware_steps(self) -> None:
+        """``lane`` llega a dlq_retry y a nadie más: el resto no lo acepta."""
+        from scheduler.pipeline_runs import LANE_DAILY, _run_post_ingestion_steps
+
+        with (
+            patch("scheduler.pipeline_runs._run_ml_scoring") as ml_scoring,
+            patch("scheduler.pipeline_runs._run_ml_tecnologias"),
+            patch("scheduler.pipeline_runs._run_analytics_export"),
+            patch("scheduler.pipeline_runs._run_kpi_precompute"),
+            patch("scheduler.pipeline_runs._run_aggregates_precompute"),
+            patch("scheduler.pipeline_runs._run_watchlist_notify"),
+            patch("scheduler.pipeline_runs._run_digests"),
+            patch("scheduler.pipeline_runs._run_dlq_retry") as dlq_retry,
+            patch("scheduler.pipeline_runs._run_anomaly_checks"),
+            patch("scheduler.pipeline_runs._run_retention_cleanup"),
+            patch("scheduler.pipeline_runs._run_ml_retrain"),
+            patch("scheduler.pipeline_runs._run_sap_active_learning"),
+            patch("scheduler.pipeline_runs._run_drift_checks"),
+        ):
+            results = _run_post_ingestion_steps(lane=LANE_DAILY)
+
+        dlq_retry.assert_called_once_with(lane=LANE_DAILY)
+        ml_scoring.assert_called_once_with()
+        assert results["dlq_retry"] == "ok"
+
+    def test_lane_aware_steps_all_have_an_implementation(self) -> None:
+        """Si un paso sale de CANONICAL_STEPS, no puede quedar en la frozenset."""
+        from scheduler.pipeline_runs import _LANE_AWARE_STEPS, CANONICAL_STEPS
+
+        assert set(CANONICAL_STEPS) >= _LANE_AWARE_STEPS

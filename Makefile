@@ -1,4 +1,4 @@
-.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -127,8 +127,13 @@ install-uv:  ## Instala dependencias desde uv.lock (uv sync)
 scrape:  ## Backfill de un mes específico (YEAR=2024 MONTH=1)
 	python -m scheduler.run_update --backfill $(YEAR) $(MONTH)
 
-scrape-daily:  ## Ejecuta scraper en modo diario (ATOM feed)
-	python -m scheduler.run_update
+# Sin --daily, run_update cae al carril bulk (refresh de MONTHS meses): el
+# target llevaba corriendo el bulk bajo el nombre del diario.
+scrape-daily:  ## Ejecuta el carril diario (feed ATOM en vivo)
+	python -m scheduler.run_update --daily
+
+scrape-bulk:  ## Refresca los últimos N meses (MONTHS=3) — equivalente a scrape-bulk.yml
+	python -m scheduler.run_update --months $(or $(MONTHS),3)
 
 # ── KPIs ─────────────────────────────────────────────────────────────────
 kpi:  ## Pre-computa KPIs
