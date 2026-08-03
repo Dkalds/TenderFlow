@@ -83,7 +83,9 @@ analytics = [
 # Cifrado de webhooks y secretos derivados.
 # Instalar con: pip install tenderflow[crypto]
 crypto = [
-    "cryptography>=42.0,<50",
+    # Suelo alineado con requirements.in: por debajo de 50.0.0 el extra
+    # arrastraría CVE-2026-69247/69248/69249 (ver nota allí).
+    "cryptography>=50.0.0,<51",
 ]
 # Extracción de texto de adjuntos (pliegos), plan Pliegos+RAG (F7).
 # Instalar con: pip install tenderflow[pliegos]

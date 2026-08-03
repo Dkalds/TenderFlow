@@ -43,7 +43,7 @@ click==8.3.3
     # via uvicorn
 colorama==0.4.6
     # via click
-cryptography==48.0.1
+cryptography==50.0.0
     # via -r requirements.in
 distro==1.9.0
     # via openai
