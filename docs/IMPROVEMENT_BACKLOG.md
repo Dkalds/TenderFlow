@@ -166,7 +166,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ### [P1] Dejar de materializar tablas completas en el proceso del API (memoria en Render)
 - **Área:** services/adjudicaciones.py, services/licitaciones.py, services/analytics/*
 - **Problema:** El API mantiene dos cargas full-table en memoria y las reconstruye cada 60 s. `_stats_df_cache` guarda un DataFrame con **todas** las licitaciones (`LicitacionRepository.load_stats` no lleva `LIMIT`) y `_raw_adj_cache` guarda el join `adjudicaciones ⋈ licitaciones ⋈ empresas ⋈ grupos` (`a.*` + 13 columnas, tampoco acotado) como **`list[dict]`** — la representación más cara posible: un `dict` por fila con ~25 claves, frente al mismo dato tipado en un DataFrame. Encima, todo consumidor con filtro **esquiva la caché** (`services/adjudicaciones.py:113-115`: si `ccaa_filter` no es `None`, se relanza la query completa) y reconstruye su propio DataFrame por request — `red_organo_empresa.py` lo hace en 4 call sites, más `utes.py` y `ecosistema_partners.py`. Con el limiter de anyio en 4 hilos eso son hasta 4 materializaciones full-table simultáneas. El resultado no es un leak (no hay contenedor que crezca sin cota — verificado) sino un baseline alto más un churn de cientos de miles de objetos `str`/`dict` efímeros por ciclo que fragmenta las arenas de pymalloc: el RSS sube y no vuelve a bajar, que es exactamente lo que se ve en la gráfica de Render.
-- **Progreso 2026-08-03 (revisión de arquitectura):** migrados a agregación SQL/proyección acotada: trends, geography, organos, pipeline, scoring, compare, trends-cpv, proyectos-modulos y resumen sankey/top (además de overview/tecnologias/resumen previos). El bypass del cortacircuitos vía `ccaa_filter` está cerrado y la degradación es medible (`analytics_degraded_responses_total` + alerta `AnalyticsDegradedServing`). **Quedan en full-table:** organo_detail, quality, forecast, clusters (candidato a justificación ADR-023 con proyección acotada) y los 6 de adjudicaciones (utes, organ-company-graph ×3, organ-company-edge, partnership-graph — hoy devuelven vacío en Render por el guard, ya sin riesgo de OOM). Al terminar: retirar `_stats_df_cache`/`_raw_adj_cache`, el contrato no-`.copy()` y el propio cortacircuitos.
+- **Progreso 2026-08-03 (revisión de arquitectura):** migrados a agregación SQL/proyección acotada: trends, geography, organos, pipeline, scoring, compare, trends-cpv, proyectos-modulos y resumen sankey/top (además de overview/tecnologias/resumen previos). El bypass del cortacircuitos vía `ccaa_filter` está cerrado y la degradación es medible (`analytics_degraded_responses_total` + alerta `AnalyticsDegradedServing`). Segunda tanda del mismo día: quality (completitud + check ISO en SQL) y forecast (serie mensual agregada + universo acotado de re-licitación). **Quedan en full-table:** organo_detail, clusters (candidato a justificación ADR-023 con proyección acotada) y los 6 de adjudicaciones (utes, organ-company-graph ×3, organ-company-edge, partnership-graph — hoy devuelven vacío en Render por el guard, ya sin riesgo de OOM). Al terminar: retirar `_stats_df_cache`/`_raw_adj_cache`, el contrato no-`.copy()` y el propio cortacircuitos.
 - **Progreso 2026-08-02:** hotfix de disponibilidad: el startup ya no precalienta ambas cargas full-table después de confirmar en Render un bucle de OOM/reinicio cada ~5,5 minutos; la invalidación viaja por Postgres entre el scraper y el API y el TTL defensivo sube de 60 s a 10 min. La primera versión mostró que las peticiones del dashboard seguían disparando las mismas cargas de forma lazy, así que el proceso API de Render incorpora además un cortacircuitos fail-closed: los loaders full-table devuelven un resultado vacío y registran `analytics_full_table_load_blocked`, mientras las agregaciones ya migradas a SQL siguen disponibles. Esto contiene el OOM, pero **no cierra** el ítem: hay que migrar los consumidores restantes a SQL/proyecciones acotadas para retirar la degradación temporal.
 - **Dirección ya establecida:** ADR-023 (cómputo en vivo / agregación SQL) y los commits `ab520da` (overview/tecnologias a SQL) y `a274d8a` (drop del `.copy()` por request) van por aquí. Esto es continuar esas olas, no abrir una dirección nueva.
 - **Acceptance criteria:**
@@ -185,24 +185,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Cada entrada se retira de `_KNOWN_GAPS_PENDING_FIX`/`_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX` en `tests/test_user_key_sql_isolation.py` al arreglarse (el ratchet solo puede encoger).
 - **Files de partida:** [db/watchlist.py](../db/watchlist.py), [db/saved_filters.py](../db/saved_filters.py), [api/routes/watchlist_rules.py](../api/routes/watchlist_rules.py), [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)
 - **Riesgo:** bajo — ninguna es explotable hoy (sin caller o con chequeo de propiedad en la ruta), pero son IDOR latentes si se reutiliza el repository sin ese cuidado.
-
-### [P2] `services/analytics/quality.py` ya no detecta fechas legacy malformadas
-- **Área:** services/analytics/quality.py
-- **Problema:** `_iso_date_stats()` detecta fechas legacy malformadas (p.ej. `"31/12/2025"`) comparando el string **crudo** de `fecha_publicacion` contra un regex ISO. Desde que `load_stats_base_df()` convierte esa columna a `Timestamp` (commit `622c859`), la función ya no recibe el string crudo — `pct_fecha_iso`/`fechas_no_iso` tienden a valores espurios (100%/0). El test existente (`test_quality_date_format_vs_completeness`) sigue en verde porque mockea `load_stats_base_df` directamente con strings, sin ejercitar el `_build()` real — es un falso negativo de cobertura, no una prueba de que el check funcione. Encontrado por la propia auditoría de Frente A al hacer el cambio; no corregido porque es una decisión de diseño, no una limpieza mecánica.
-- **Acceptance criteria:**
-  - Decidir entre: (a) `quality.py` usa `load_stats_dataframe()` (sin caché, sin conversión) para este check específico — recomendado, cambio de una línea; o (b) `_iso_date_stats` compara contra el `Timestamp` ya convertido de otra forma (p. ej. contando `NaT` tras `errors="coerce"`, que ya captura "no parseable como fecha" sin necesitar el string crudo).
-  - El test de regresión ejercita el `_build()` real (vía `tmp_db` con datos sembrados, no un mock de `load_stats_base_df`), para que no vuelva a quedar como falso negativo.
-- **Files de partida:** [services/analytics/quality.py](../services/analytics/quality.py), [tests/test_analytics_quality.py](../tests/test_analytics_quality.py)
-- **Riesgo:** bajo — un KPI de calidad de datos, sin impacto en escritura ni en otros endpoints.
-
-### [P2] `db/model_registry.py` no verifica el sha256 del modelo servido contra el registrado
-- **Área:** db/model_registry.py
-- **Problema:** `register_version`/`get_active` almacenan el `sha256` del artefacto como metadata de auditoría, pero nada en `get_active`/`activate_version` verifica ese hash contra el fichero que realmente se sirve al cargar el modelo activo. Encontrado durante el trabajo de integridad de modelos (commit `74d5aaf`, que sí verifica los 4 loaders contra un pin/checksum co-ubicado): esa verificación es independiente del registry, así que un artefacto en disco que ya no coincide con el `sha256` registrado (sustituido manualmente, o por un despliegue que dejó el fichero desactualizado) no se detecta por esta vía.
-- **Acceptance criteria:**
-  - `get_active()` (o el punto donde el llamador resuelve la ruta del artefacto activo) compara el `sha256` calculado del fichero contra el registrado, y falla/loguea si difieren.
-  - Test de regresión: registrar una versión, mutar el fichero en disco, confirmar que se detecta la discrepancia.
-- **Files de partida:** [db/model_registry.py](../db/model_registry.py), [shared/model_integrity.py](../shared/model_integrity.py)
-- **Riesgo:** bajo — es hardening adicional sobre un control que ya existe (los 4 loaders verifican su propio pin/checksum); esto cierra el hueco de que el registry mismo no lo hace.
 
 ### [P2] UI de webhooks y GDPR self-service
 - **Área:** web/, api/
@@ -343,6 +325,20 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-03] **P2: `quality.py` vuelve a detectar fechas legacy malformadas (y agrega en SQL, ADR-023)** —
+  Resuelto con la opción que el AC no contemplaba pero que el propio ADR-023 impuso: el check ISO
+  corre ahora **en SQL** sobre el string crudo de `fecha_publicacion`
+  (`AggregateRepository.quality_completitud`, regex `~ '^\d{4}-\d{2}-\d{2}'`), así que la
+  conversión a `Timestamp` del loader pandas — la causa del falso 100%/0 — desaparece del camino
+  junto con el loader mismo. `forecast_svc` migró en el mismo lote (`forecast_monthly` +
+  proyección acotada `retendering_universe`/`adjudicaciones_para_forecast`; el motor
+  Holt-Winters recibe la serie mensual ya agregada vía `forecast_volume_from_monthly`).
+  Los tests de regresión (`test_analytics_quality.py`, `test_analytics_forecast_svc.py`)
+  siembran `tmp_db` — incluida una fila `"31/12/2025"` real — en vez de mockear
+  `load_stats_base_df`, cerrando también el falso negativo de cobertura que señalaba el ítem.
+
+- [2026-08-03] **P2: sha256 del modelo servido verificado contra el registry** — `shared/model_artifacts.py::resolve_active_artifact()` compara el hash calculado del fichero activo contra el registrado en `model_registry` en cada carga (mismatch → `ModelArtifactMismatch`, ausente → intento de descarga desde GitHub Releases y verificación posterior; sin sha256 registrado → warning). Los loaders consumen la ruta ya verificada. Regresión en `tests/test_model_artifacts.py` (registrar → mutar fichero → detectar). Commit `39d63b5`.
 
 - [2026-08-03] **Implementación de la revisión de arquitectura (rama `claude/architecture-review-dgmnkx`)** —
   Cierra de una vez varios ítems y abre los de seguimiento listados al final:

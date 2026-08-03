@@ -1,22 +1,46 @@
 """Tests for the Data Quality analytics service.
 
-Cubre los dos arreglos de integridad del panel de Calidad de Datos:
+Caracterización de la migración pandas -> SQL (ADR-023): siembran licitaciones
+reales en el schema aislado (``tmp_db``) — la completitud y el check de formato
+la resuelve ``AggregateRepository.quality_completitud`` — y afirman los mismos
+valores que daba el motor pandas. Cubre además los arreglos de integridad:
 
 - **DLQ real**: ``dlq_count`` consulta ``failed_extractions`` en vez del stub que
   devolvía siempre 0 (el panel veía 0 pérdidas aunque hubiera fallos).
 - **Formato de fecha** (no completitud): una fecha presente pero ``DD/MM/YYYY``
   cuenta como completa, pero NO como ISO → ``pct_fecha_iso``/``fechas_no_iso``.
-
-Data access mockeado en ``load_stats_dataframe``; la DLQ se mockea en su origen.
+  El check ahora corre en SQL sobre el string crudo — el camino pandas lo perdía
+  al convertir la columna a ``Timestamp`` (ítem del backlog cerrado 2026-08-03).
 """
 
 from __future__ import annotations
 
 from unittest.mock import patch
 
-import pandas as pd
+import pytest
 
 import services.analytics.quality as q_mod
+
+pytestmark = pytest.mark.usefixtures("tmp_db")
+
+
+def _seed(rows: list[dict]) -> None:
+    from db.upsert import Licitacion, upsert_licitaciones
+
+    upsert_licitaciones(
+        [
+            Licitacion(
+                id_externo=r["id_externo"],
+                titulo=r.get("titulo", "t"),
+                fecha_publicacion=r.get("fecha_publicacion"),
+                importe=r.get("importe"),
+                cpv=r.get("cpv"),
+                estado=r.get("estado"),
+                ccaa=r.get("ccaa"),
+            )
+            for r in rows
+        ]
+    )
 
 
 def _rows() -> list[dict]:
@@ -62,10 +86,8 @@ def _rows() -> list[dict]:
 
 def test_quality_date_format_vs_completeness():
     """pct_fecha (completitud) y pct_fecha_iso (formato) son métricas distintas."""
-    with (
-        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())),
-        patch("db.dlq.count_unresolved", return_value=0),
-    ):
+    _seed(_rows())
+    with patch("db.dlq.count_unresolved", return_value=0):
         res = q_mod.get_quality()
 
     # Completitud: 3 de 4 no nulas = 75%.
@@ -75,22 +97,31 @@ def test_quality_date_format_vs_completeness():
     assert res.fechas_no_iso == 1
 
 
+def test_quality_completitud_columnas_incluye_importe():
+    """El desglose por columna refleja los conteos reales (importe 100%, cpv 100%)."""
+    _seed(_rows())
+    with patch("db.dlq.count_unresolved", return_value=0):
+        res = q_mod.get_quality()
+
+    por_col = {c.columna: c.pct for c in res.completitud_columnas}
+    assert por_col["importe"] == 100.0
+    assert por_col["cpv"] == 100.0
+    assert por_col["fecha_publicacion"] == 75.0
+    # Columnas nunca sembradas → 0%.
+    assert por_col["url"] == 0.0
+
+
 def test_quality_dlq_count_is_real_not_stub():
     """dlq_count refleja la DLQ real (antes era un stub fijo en 0)."""
-    with (
-        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())),
-        patch("db.dlq.count_unresolved", return_value=7),
-    ):
+    _seed(_rows())
+    with patch("db.dlq.count_unresolved", return_value=7):
         res = q_mod.get_quality()
     assert res.dlq_count == 7
 
 
 def test_quality_dlq_count_on_empty_dataset():
     """Sin registros analíticos, el conteo de DLQ sigue siendo real."""
-    with (
-        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame([])),
-        patch("db.dlq.count_unresolved", return_value=3),
-    ):
+    with patch("db.dlq.count_unresolved", return_value=3):
         res = q_mod.get_quality()
     assert res.total_records == 0
     assert res.dlq_count == 3
@@ -98,10 +129,8 @@ def test_quality_dlq_count_on_empty_dataset():
 
 def test_quality_dlq_count_best_effort_on_error():
     """Si la DLQ no está disponible, dlq_count cae a 0 sin romper el panel."""
-    with (
-        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(_rows())),
-        patch("db.dlq.count_unresolved", side_effect=RuntimeError("no table")),
-    ):
+    _seed(_rows())
+    with patch("db.dlq.count_unresolved", side_effect=RuntimeError("no table")):
         res = q_mod.get_quality()
     assert res.dlq_count == 0
     # El resto de métricas se calcula igualmente.
@@ -109,14 +138,13 @@ def test_quality_dlq_count_best_effort_on_error():
 
 
 def test_quality_all_iso_dates():
-    rows = [
-        {"id_externo": "A", "fecha_publicacion": "2026-01-01", "importe": 1.0},
-        {"id_externo": "B", "fecha_publicacion": "2026-01-02T10:00:00+00:00", "importe": 2.0},
-    ]
-    with (
-        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)),
-        patch("db.dlq.count_unresolved", return_value=0),
-    ):
+    _seed(
+        [
+            {"id_externo": "A", "fecha_publicacion": "2026-01-01", "importe": 1.0},
+            {"id_externo": "B", "fecha_publicacion": "2026-01-02T10:00:00+00:00", "importe": 2.0},
+        ]
+    )
+    with patch("db.dlq.count_unresolved", return_value=0):
         res = q_mod.get_quality()
     assert res.pct_fecha_iso == 100.0
     assert res.fechas_no_iso == 0
@@ -148,10 +176,7 @@ def test_quality_organization_scope_counts_real_rows(tmp_db):
     # las columnas organization_id/visibility en el INSERT (quedan NULL).
     repo.add_item("legacy-key", user_id, "QUALITY-1", None)
 
-    with (
-        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame([])),
-        patch("db.dlq.count_unresolved", return_value=0),
-    ):
+    with patch("db.dlq.count_unresolved", return_value=0):
         res = q_mod.get_quality()
 
     assert res.filas_sin_organizacion >= 1
@@ -161,7 +186,6 @@ def test_quality_organization_scope_counts_real_rows(tmp_db):
 def test_quality_organization_scope_best_effort_without_tables():
     """Sin tablas escopadas disponibles, cae a 100%/0 sin romper el panel."""
     with (
-        patch.object(q_mod, "load_stats_base_df", return_value=pd.DataFrame([])),
         patch("db.dlq.count_unresolved", return_value=0),
         patch(
             "db.repositories.organizations.OrganizationRepository.scope_coverage",

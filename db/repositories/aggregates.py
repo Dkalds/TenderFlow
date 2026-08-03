@@ -1043,6 +1043,100 @@ class AggregateRepository:
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, n]))
 
+    # ── Quality ──────────────────────────────────────────────────────────
+
+    _QUALITY_TEXT_COLS = (
+        "id_externo",
+        "titulo",
+        "organo_contratacion",
+        "estado",
+        "fecha_publicacion",
+        "ccaa",
+        "cpv",
+        "url",
+        "tecnologia",
+        "tipo_contrato",
+        "provincia",
+    )
+
+    def quality_completitud(self) -> dict[str, Any]:
+        """Total, conteos de completitud por columna y formato ISO de fechas.
+
+        El check ISO opera sobre el STRING crudo de ``fecha_publicacion`` —
+        que es exactamente lo que el camino pandas perdió cuando
+        ``load_stats_base_df`` empezó a convertir la columna a ``Timestamp``
+        (ítem del backlog «quality.py ya no detecta fechas legacy
+        malformadas»): en SQL la columna TEXT sigue cruda.
+        """
+        selects = ["COUNT(*) AS total"]
+        for col in self._QUALITY_TEXT_COLS:
+            selects.append(f"COUNT(*) FILTER (WHERE {col} IS NOT NULL AND trim({col}) != '')")
+        selects.append("COUNT(*) FILTER (WHERE importe IS NOT NULL)")
+        selects.append(
+            r"COUNT(*) FILTER (WHERE fecha_publicacion ~ '^\d{4}-\d{2}-\d{2}') AS fecha_iso"
+        )
+        sql = "SELECT " + ", ".join(selects) + " FROM licitaciones"
+        with connect_read() as c:
+            row = c.execute(sql).fetchone()
+        if row is None:
+            return {"total": 0, "cols": {}, "importe": 0, "fecha_iso": 0}
+        cols = {col: int(row[i + 1] or 0) for i, col in enumerate(self._QUALITY_TEXT_COLS)}
+        return {
+            "total": int(row[0] or 0),
+            "cols": cols,
+            "importe": int(row[len(self._QUALITY_TEXT_COLS) + 1] or 0),
+            "fecha_iso": int(row[len(self._QUALITY_TEXT_COLS) + 2] or 0),
+        }
+
+    # ── Forecast ─────────────────────────────────────────────────────────
+
+    def forecast_monthly(
+        self, filters: LicitacionesFilters, *, metric: str
+    ) -> list[dict[str, Any]]:
+        """Serie mensual (mes YYYY-MM, valor) para el forecast de volumen."""
+        where, params = _build_where(filters)
+        guard = _iso_guard("fecha_publicacion")
+        agg = "COALESCE(SUM(importe), 0)" if metric == "sum" else "COUNT(*)"
+        sql = (
+            f"SELECT substr(fecha_publicacion, 1, 7) AS mes, {agg} AS valor "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} "
+            "GROUP BY mes ORDER BY mes"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def retendering_universe(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """Proyección acotada para el forecast de re-licitación (ADR-023).
+
+        Solo filas que PUEDEN producir una fecha de fin estimada (duración
+        positiva o ``fecha_fin`` explícita) — el resto quedaba descartado por
+        ``dias_hasta_fin`` NaN en el pandas original.
+        """
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT id_externo, titulo, organo_contratacion, importe, "
+            "       fecha_publicacion, duracion_valor, duracion_unidad, "
+            "       fecha_inicio, fecha_fin "
+            "FROM licitaciones "
+            f"WHERE {where} AND ((duracion_valor IS NOT NULL AND duracion_valor > 0) "
+            "       OR fecha_fin IS NOT NULL)"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def adjudicaciones_para_forecast(self, ids: list[str]) -> list[dict[str, Any]]:
+        """Adjudicaciones (columnas del forecast) para una lista de licitaciones."""
+        if not ids:
+            return []
+        sql = (
+            "SELECT licitacion_id, fecha_adjudicacion, importe_adjudicado, "
+            "       n_ofertas_recibidas, nombre "
+            "FROM adjudicaciones WHERE licitacion_id = ANY(?)"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [ids]))
+
     # ── Scoring / pipeline: proyecciones acotadas y contexto ─────────────
 
     # Columnas que _score_row (services/analytics/scoring.py) necesita leer.

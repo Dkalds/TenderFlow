@@ -202,6 +202,16 @@ def forecast_volume(
             .rename(columns={"_mes": "mes"})
         )
 
+    return forecast_volume_from_monthly(hist, months_ahead=months_ahead)
+
+
+def forecast_volume_from_monthly(hist: pd.DataFrame, *, months_ahead: int = 6) -> pd.DataFrame:
+    """Núcleo del forecast sobre una serie mensual YA agregada (ADR-023).
+
+    ``hist`` debe traer columnas ``mes`` (Timestamp inicio de mes) y ``valor``.
+    Permite alimentar el forecast desde el ``GROUP BY`` mensual de Postgres en
+    vez de materializar la tabla entera para re-agregarla aquí.
+    """
     hist = hist.sort_values("mes").reset_index(drop=True)
     if len(hist) < 3:
         return pd.DataFrame()
