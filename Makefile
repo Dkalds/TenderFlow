@@ -48,6 +48,9 @@ check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y m
 smoke-prod:  ## Chequeo sintético contra producción (SMOKE_BASE_URL + SMOKE_API_KEY)
 	python scripts/smoke_prod.py
 
+check-coverage-modules:  ## Pisos de cobertura por módulo (correr tras make test / coverage xml)
+	python scripts/check_coverage_per_module.py
+
 audit-truth:  ## Auditoría de verdad del dato: fecha_limite, multi-lote, UTE, baja (requiere BD)
 	python scripts/audit_domain_truth.py
 

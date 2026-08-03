@@ -93,13 +93,9 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
 
     # El ranking se pide con al menos 10 filas: la concentración top-10 se
     # calcula sobre él aunque el caller pida un limit menor.
-    ranking = _repo.organos_ranking(
-        repo_filters, q_folded=q_folded, limit=max(filters.limit, 10)
-    )
+    ranking = _repo.organos_ranking(repo_filters, q_folded=q_folded, limit=max(filters.limit, 10))
 
-    concentracion_top10 = (
-        sum(int(r["count"]) for r in ranking[:10]) / total * 100 if total else 0.0
-    )
+    concentracion_top10 = sum(int(r["count"]) for r in ranking[:10]) / total * 100 if total else 0.0
 
     organos = [
         OrganoEntry(

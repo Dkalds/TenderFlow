@@ -115,6 +115,22 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] Hacer real la taxonomía de markers: `integration` inferido por uso de fixtures PG
+- **Área:** tests/conftest.py, Makefile, docs/testing.md, AGENTS.md §3.4
+- **Problema:** el auto-marking por nombre deja ~97% de la suite como `unit`, incluidos los ~726 tests que abren un schema Postgres real (fixtures `tmp_db`/`api_db`/`client`). El bucket `integration` está vacío por inferencia (exige `/integration/` en el path o `integration_` en el nombre, que no usa nadie) y `make test-unit` es en la práctica "casi toda la suite". La taxonomía es cosmética.
+- **Por qué no se hizo en la revisión 2026-08:** inferir `integration` desde el uso de fixtures cambia qué corre `make test-unit`/`make check` (el gate local perdería ~726 tests de golpe) y contradice el invariante documentado "categoría por nombre" (AGENTS.md §3.4) — necesita decisión consciente + actualización del invariante + posible re-partición de los targets del Makefile, no un cambio mecánico colado en otra rama.
+- **Acceptance criteria:**
+  - Decisión registrada (ADR o nota en AGENTS.md): categoría por nombre vs por fixture.
+  - Si se adopta por-fixture: `make test-unit` sigue siendo el gate rápido útil (definir qué corre), CI sigue ejecutando todo, y docs/testing.md + AGENTS.md §3.4 se actualizan en el mismo cambio.
+- **Riesgo:** medio — toca el gate de desarrollo local de todo el mundo.
+
+### [P2] Paralelizar la suite: pytest-xdist + template database
+- **Área:** tests/conftest.py, requirements-dev.in, ci.yml
+- **Problema:** ~726 tests re-ejecutan el DDL completo (~50 tablas) en su propio schema, en serie — sin `pytest-xdist` (no está en requirements-dev). El techo de 25 min del job de CI es una restricción real. `CREATE DATABASE ... TEMPLATE tf_template` (o clonación de schema) + xdist con una BD por worker debería recortar la suite a la mitad o menos.
+- **Por qué no se hizo en la revisión 2026-08:** añade dependencia (gate §6) y necesita validarse contra el Postgres real de CI — a ciegas desde una sesión sin Postgres es exactamente el tipo de cambio de infraestructura de tests que se rompe en formas no obvias.
+- **Acceptance criteria:** suite verde con `-n auto` en CI; tiempo total del job `test` medido antes/después en el PR; aislamiento intacto (ningún test ve datos de otro).
+- **Riesgo:** medio — infraestructura de tests; mitigable haciéndolo en PR propio con CI como juez.
+
 ### [P1] `e2e/responsive.spec.ts` no prueba nada: la experiencia móvil no tiene cobertura
 - **Área:** web/e2e/responsive.spec.ts
 - **Problema:** los dos tests del fichero solo afirman `expect(page.locator("body")).toBeVisible()`. El primero construye un localizador `_hamburger` con tres estrategias encadenadas y **nunca lo usa** (el prefijo `_` existe para callar al linter de variables sin usar). Es decir: la única cobertura declarada de responsive pasa siempre, incluso con la navegación móvil rota. Relevante porque la sidebar es `hidden md:flex` y por debajo de `md` el conmutador de espacios de producto no existe en ninguna parte — un fallo real ahí no lo detecta nadie.
@@ -123,6 +139,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - A 1440px: la sidebar es visible y el hamburguesa no.
   - El test falla si se elimina el drawer móvil (verificarlo borrándolo temporalmente).
 - **Files de partida:** [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [web/src/components/layout/top-nav.tsx](../web/src/components/layout/top-nav.tsx)
+- **Nota 2026-08-03 (revisión de arquitectura):** el bloqueo estructural es que el job e2e de CI corre SIN backend (por eso es `continue-on-error` y por eso el spec degeneró en asserts vacuos: sin login no se llega al shell). El AC de arriba solo es alcanzable aprovisionando un backend sembrado en el job e2e (Postgres service + seed + API) y volviéndolo bloqueante — hacer ambos en el mismo cambio.
 - **Riesgo:** bajo — solo test.
 
 ### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select

@@ -173,9 +173,7 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
     # percentiles P10/P90 globales desde SQL; la afinidad es por-fila, así que
     # calcularla sobre la ventana equivale a calcularla sobre la tabla entera
     # y consultar estos ids.
-    score_df = score_dataframe(
-        all_df, all_df, importe_percentiles=_repo.importe_percentiles()
-    )
+    score_df = score_dataframe(all_df, all_df, importe_percentiles=_repo.importe_percentiles())
     if not score_df.empty:
         all_df["id_externo"] = all_df["id_externo"].astype(str)
         all_df = all_df.merge(score_df, on="id_externo", how="left")
