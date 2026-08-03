@@ -63,6 +63,20 @@ def _escape_like(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
+# Aproximación SQL de shared/services fold_text (NFKD sin tildes + casefold)
+# sin la extensión ``unaccent`` (no habilitada; habilitarla exige migración con
+# gate humano). Cubre el repertorio acentuado real de los nombres de órganos
+# españoles; cualquier carácter fuera del mapa queda igual (mismo resultado
+# que fold_text para ASCII).
+_FOLD_SRC = "áàäâéèëêíìïîóòöôúùüûñçÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑÇ"
+_FOLD_DST = "aaaaeeeeiiiioooouuuuncAAAAEEEEIIIIOOOOUUUUNC"
+
+
+def _fold_expr(column: str) -> str:
+    """Expresión SQL que pliega tildes y mayúsculas de ``column``."""
+    return f"lower(translate({column}, '{_FOLD_SRC}', '{_FOLD_DST}'))"
+
+
 @dataclass(frozen=True)
 class LicitacionesFilters:
     """Filtros comunes sobre ``licitaciones`` para las agregaciones de analytics.
@@ -606,6 +620,303 @@ class AggregateRepository:
             rows = rows_to_dicts(c.execute(sql, [*params, *tech_codes]))
         rows.sort(key=lambda r: (r["importe"] is None, -(r["importe"] or 0)))
         return rows[:limit]
+
+    # ── Geography ────────────────────────────────────────────────────────
+
+    def geography_by_ccaa(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(ccaa, count, importe) ordenado por count DESC; ccaa NULL excluida."""
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT ccaa, COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            "WHERE " + where + " AND ccaa IS NOT NULL "
+            "GROUP BY ccaa ORDER BY count DESC, ccaa"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def geography_by_provincia(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(provincia, count, importe) sobre TODO el dataset filtrado."""
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT provincia, COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            "WHERE " + where + " AND provincia IS NOT NULL AND trim(provincia) != '' "
+            "GROUP BY provincia ORDER BY count DESC, provincia"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    # ── Trends ───────────────────────────────────────────────────────────
+
+    def trends_daily(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(dia YYYY-MM-DD, count, importe) — base para series month/week/day.
+
+        El roll-up a semana/mes se hace en Python sobre este resultado ya
+        agregado (cientos de filas, post-agregación permitida por ADR-023):
+        evita duplicar en SQL el formato de etiqueta semanal de pandas
+        (``%Y-W%V`` sobre el lunes de la semana).
+        """
+        where, params = _build_where(filters)
+        guard = _iso_guard("fecha_publicacion")
+        sql = (
+            "SELECT substr(fecha_publicacion, 1, 10) AS dia, "
+            "       COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} "
+            "GROUP BY dia ORDER BY dia"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def trends_heatmap(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(mes YYYY-MM, estado, value) para el heatmap mes x estado."""
+        where, params = _build_where(filters)
+        guard = _iso_guard("fecha_publicacion")
+        sql = (
+            "SELECT substr(fecha_publicacion, 1, 7) AS mes, estado, COUNT(*) AS value "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} AND estado IS NOT NULL "
+            "GROUP BY mes, estado ORDER BY mes, estado"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def trends_yoy(
+        self,
+        filters: LicitacionesFilters,
+        *,
+        hace_365d_iso: str,
+        hace_730d_iso: str,
+    ) -> dict[str, float]:
+        """Conteos e importes de las ventanas [hoy-365d, ∞) y [hoy-730d, hoy-365d)."""
+        where, params = _build_where(filters)
+        col = "fecha_publicacion"
+        guard = _iso_guard(col)
+        sql = (
+            "SELECT "
+            f"  COUNT(*) FILTER (WHERE {guard} AND {col} >= ?) AS cnt_cur, "
+            f"  COUNT(*) FILTER (WHERE {guard} AND {col} < ? AND {col} >= ?) AS cnt_prev, "
+            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} >= ?), 0) AS imp_cur, "
+            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} < ? AND {col} >= ?), 0)"
+            "     AS imp_prev "
+            "FROM licitaciones WHERE " + where
+        )
+        run_params = [
+            hace_365d_iso,
+            hace_365d_iso,
+            hace_730d_iso,
+            hace_365d_iso,
+            hace_365d_iso,
+            hace_730d_iso,
+            *params,
+        ]
+        with connect_read() as c:
+            row = c.execute(sql, run_params).fetchone()
+        if row is None:
+            return {"cnt_cur": 0.0, "cnt_prev": 0.0, "imp_cur": 0.0, "imp_prev": 0.0}
+        return {
+            "cnt_cur": float(row[0] or 0),
+            "cnt_prev": float(row[1] or 0),
+            "imp_cur": float(row[2] or 0.0),
+            "imp_prev": float(row[3] or 0.0),
+        }
+
+    # Bins del histograma de importe (mismos cortes que pd.cut right=False del
+    # servicio original: [izq, der)). El primer bin excluye importes negativos,
+    # igual que pandas dejaba fuera de todos los bins los valores < 0.
+    _HISTOGRAM_BINS: tuple[tuple[str, float, float | None], ...] = (
+        ("0-1K", 0, 1_000),
+        ("1K-10K", 1_000, 10_000),
+        ("10K-50K", 10_000, 50_000),
+        ("50K-100K", 50_000, 100_000),
+        ("100K-500K", 100_000, 500_000),
+        ("500K-1M", 500_000, 1_000_000),
+        ("1M-5M", 1_000_000, 5_000_000),
+        ("5M+", 5_000_000, None),
+    )
+
+    def trends_histogram(self, filters: LicitacionesFilters) -> list[tuple[str, int]]:
+        """Conteo por bin logarítmico de importe (orden fijo de bins).
+
+        Devuelve lista vacía si no hay ningún importe no nulo en el dataset
+        filtrado (paridad con el ``[]`` que devolvía el pandas original).
+        """
+        where, params = _build_where(filters)
+        filters_sql: list[str] = []
+        for _label, lo, hi in self._HISTOGRAM_BINS:
+            if hi is None:
+                filters_sql.append(f"COUNT(*) FILTER (WHERE importe >= {lo:.0f})")
+            else:
+                filters_sql.append(
+                    f"COUNT(*) FILTER (WHERE importe >= {lo:.0f} AND importe < {hi:.0f})"
+                )
+        sql = (
+            "SELECT COUNT(*), " + ", ".join(filters_sql) + " FROM licitaciones "
+            "WHERE " + where + " AND importe IS NOT NULL"
+        )
+        with connect_read() as c:
+            row = c.execute(sql, params).fetchone()
+        if row is None or int(row[0] or 0) == 0:
+            return []
+        return [
+            (label, int(row[i + 1] or 0))
+            for i, (label, _lo, _hi) in enumerate(self._HISTOGRAM_BINS)
+        ]
+
+    # ── Organos ──────────────────────────────────────────────────────────
+
+    def _organos_where(self, filters: LicitacionesFilters, q: str | None) -> tuple[str, list[Any]]:
+        """WHERE común de /organos: filtros estándar + búsqueda plegada en el nombre.
+
+        ``q`` llega YA plegado por el servicio (``fold_text``); aquí solo se
+        pliega la columna. Búsqueda separada del ``q`` genérico de
+        ``_build_where`` porque este busca solo en el nombre del órgano y sin
+        tildes/mayúsculas.
+        """
+        where, params = _build_where(filters)
+        if q:
+            where += f" AND {_fold_expr('organo_contratacion')} LIKE ? ESCAPE '\\'"
+            params.append(f"%{_escape_like(q)}%")
+        return where, params
+
+    def organos_totales(
+        self, filters: LicitacionesFilters, *, q_folded: str | None
+    ) -> tuple[int, int, float]:
+        """(filas totales, órganos únicos, importe total) del dataset filtrado."""
+        where, params = self._organos_where(filters, q_folded)
+        sql = (
+            "SELECT COUNT(*), COUNT(DISTINCT organo_contratacion), "
+            "COALESCE(SUM(importe), 0) FROM licitaciones WHERE " + where
+        )
+        with connect_read() as c:
+            row = c.execute(sql, params).fetchone()
+        if row is None:
+            return 0, 0, 0.0
+        return int(row[0] or 0), int(row[1] or 0), float(row[2] or 0.0)
+
+    def organos_ranking(
+        self, filters: LicitacionesFilters, *, q_folded: str | None, limit: int
+    ) -> list[dict[str, Any]]:
+        """Ranking (count DESC) con la CCAA modal por órgano.
+
+        ``mode() WITHIN GROUP (ORDER BY ccaa)`` replica el ``mode().iloc[0]``
+        de pandas (empates → primera por orden alfabético) e ignora NULLs.
+        """
+        where, params = self._organos_where(filters, q_folded)
+        sql = (
+            "SELECT organo_contratacion, COUNT(*) AS count, "
+            "       COALESCE(SUM(importe), 0) AS importe, "
+            "       mode() WITHIN GROUP (ORDER BY ccaa) AS ccaa_mode "
+            "FROM licitaciones "
+            "WHERE " + where + " AND organo_contratacion IS NOT NULL "
+            "GROUP BY organo_contratacion ORDER BY count DESC, organo_contratacion LIMIT ?"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, limit]))
+
+    def organos_treemap(
+        self, filters: LicitacionesFilters, *, q_folded: str | None, top_organos: int
+    ) -> list[dict[str, Any]]:
+        """(organo, tipo_contrato, importe) para los top-N órganos por count."""
+        where, params = self._organos_where(filters, q_folded)
+        sql = (
+            "WITH top_org AS ("
+            "  SELECT organo_contratacion FROM licitaciones "
+            "  WHERE " + where + " AND organo_contratacion IS NOT NULL "
+            "  GROUP BY organo_contratacion ORDER BY COUNT(*) DESC LIMIT ?"
+            ") "
+            "SELECT l.organo_contratacion AS organo, l.tipo_contrato, "
+            "       SUM(l.importe) AS importe "
+            "FROM licitaciones l "
+            "WHERE " + where + " AND l.organo_contratacion IN "
+            "      (SELECT organo_contratacion FROM top_org) "
+            "  AND l.tipo_contrato IS NOT NULL AND l.importe IS NOT NULL "
+            "GROUP BY l.organo_contratacion, l.tipo_contrato "
+            "HAVING SUM(l.importe) > 0"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, top_organos, *params]))
+
+    # ── Scoring / pipeline: proyecciones acotadas y contexto ─────────────
+
+    # Columnas que _score_row (services/analytics/scoring.py) necesita leer.
+    _SCORING_COLS = (
+        "id_externo, titulo, organo_contratacion, importe, cpv, "
+        "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion"
+    )
+
+    def importe_percentiles(self) -> tuple[float, float]:
+        """(P10, P90) de importe sobre TODA la tabla (contexto de scoring).
+
+        Sin filtros a propósito: el contexto de percentiles del scoring se
+        calcula sobre el dataset completo para no sesgarse por el subconjunto
+        filtrado (misma semántica que el ``base_df`` original).
+        ``percentile_cont`` interpola linealmente, igual que
+        ``Series.quantile`` por defecto.
+        """
+        sql = (
+            "SELECT percentile_cont(0.10) WITHIN GROUP (ORDER BY importe), "
+            "       percentile_cont(0.90) WITHIN GROUP (ORDER BY importe) "
+            "FROM licitaciones WHERE importe IS NOT NULL"
+        )
+        with connect_read() as c:
+            row = c.execute(sql).fetchone()
+        if row is None or row[0] is None:
+            return 0.0, 0.0
+        return float(row[0]), float(row[1] or 0.0)
+
+    def scoring_candidates(
+        self, *, estados: tuple[str, ...] = ("PUB", "EV")
+    ) -> list[dict[str, Any]]:
+        """Proyección acotada de candidatas a oportunidad (estados activos).
+
+        ADR-023: el scoring puntuaba la tabla entera vía pandas; una
+        licitación cerrada/adjudicada nunca es una "oportunidad", así que el
+        universo puntuable son los estados activos — una fracción del total.
+        """
+        placeholders = ",".join("?" for _ in estados)
+        sql = (
+            f"SELECT {self._SCORING_COLS} FROM licitaciones "
+            f"WHERE estado IN ({placeholders})"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, list(estados)))
+
+    def licitaciones_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+        """Proyección de scoring para una lista exacta de ids (modo page-aligned)."""
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        sql = (
+            f"SELECT {self._SCORING_COLS} FROM licitaciones "
+            f"WHERE id_externo IN ({placeholders})"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, ids))
+
+    def pipeline_window(
+        self,
+        filters: LicitacionesFilters,
+        *,
+        hoy_iso: str,
+        hasta_iso: str,
+    ) -> list[dict[str, Any]]:
+        """Licitaciones con fecha_limite en (hoy, hoy+dias] — la ventana del pipeline.
+
+        Proyección acotada por construcción: la ventana de vencimientos (≤365
+        días) es una fracción pequeña de la tabla, y los buckets/scoring
+        posteriores operan en Python sobre ese resultado ya reducido.
+        """
+        where, params = _build_where(filters)
+        guard = _iso_guard("fecha_limite")
+        sql = (
+            f"SELECT {self._SCORING_COLS} FROM licitaciones "
+            f"WHERE {where} AND {guard} AND fecha_limite > ? AND fecha_limite < ? "
+            "ORDER BY fecha_limite"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, hoy_iso, hasta_iso]))
 
     def tecnologia_detalle_kpis(
         self, filters: LicitacionesFilters, *, tech_codes: list[str]

@@ -1,17 +1,25 @@
-"""Organos analytics — ranking of contracting bodies."""
+"""Organos analytics — ranking of contracting bodies.
+
+Agrega en Postgres vía :class:`AggregateRepository` (ADR-023); hasta 2026-08
+cargaba la tabla completa a pandas en el proceso API — bloqueado en Render por
+el cortacircuitos full-table, que dejaba este endpoint vacío en producción.
+La búsqueda ``q`` sigue siendo accent/case-insensitive: el servicio pliega la
+aguja con ``fold_text`` y el repositorio pliega la columna en SQL.
+"""
 
 from __future__ import annotations
 
 from datetime import date
 
-import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.licitaciones import load_stats_base_df
 from services.normalization import fold_text
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -58,48 +66,13 @@ class OrganosResult(BaseModel):
     treemap_breakdown: list[TreemapItem] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _load_df() -> pd.DataFrame:
-    return load_stats_base_df()
-
-
-def _fold_series(s: pd.Series) -> pd.Series:
-    """Versión vectorizada de fold_text: sin tildes + casefold, NaN → ""."""
-    return (
-        s.fillna("")
-        .str.normalize("NFKD")
-        .str.encode("ascii", "ignore")
-        .str.decode("ascii")
-        .str.casefold()
+def _to_repo_filters(filters: OrganosFilters) -> LicitacionesFilters:
+    return LicitacionesFilters(
+        fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
+        fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
+        ccaa=filters.ccaa,
+        tecnologia=filters.tecnologia,
     )
-
-
-def _apply_filters(df: pd.DataFrame, filters: OrganosFilters) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if filters.fecha_desde is not None:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_publicacion"] >= ts]
-    if filters.fecha_hasta is not None:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_publicacion"] <= ts]
-    if filters.ccaa:
-        df = df[df["ccaa"] == filters.ccaa]
-    if filters.tecnologia:
-        df = df[df["tecnologia"] == filters.tecnologia]
-    if filters.q:
-        # Matching accent/case-insensitive sobre el nombre del órgano,
-        # ANTES de agrupar/limitar: así un órgano fuera del top-N sigue
-        # siendo encontrable ("Informatica" matchea "Informática").
-        mask = _fold_series(df["organo_contratacion"]).str.contains(
-            fold_text(filters.q), regex=False
-        )
-        df = df[mask]
-    return df
 
 
 # ---------------------------------------------------------------------------
@@ -110,74 +83,43 @@ def _apply_filters(df: pd.DataFrame, filters: OrganosFilters) -> pd.DataFrame:
 def get_organos(filters: OrganosFilters) -> OrganosResult:
     """Compute organo ranking with concentration metrics."""
     log.info("analytics_organos_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df()
-    df = _apply_filters(df, filters)
+    repo_filters = _to_repo_filters(filters)
+    q_folded = fold_text(filters.q) if filters.q else None
 
-    if df.empty:
+    total, total_organos, importe_total = _repo.organos_totales(repo_filters, q_folded=q_folded)
+    if total == 0:
         log.info("analytics_organos_done", total=0)
         return OrganosResult()
 
-    total = len(df)
-    total_organos = int(df["organo_contratacion"].nunique())
-    # Importe total sobre TODO el dataset filtrado (no la suma del top-N que
-    # devuelve `organos`): la card "Importe Total" debe reflejar el mercado real.
-    importe_total = float(df["importe"].sum(skipna=True) or 0.0)
-
-    # Group by organo
-    g = (
-        df.groupby("organo_contratacion")
-        .agg(count=("id_externo", "count"), importe=("importe", "sum"))
-        .sort_values("count", ascending=False)
-        .reset_index()
-    )
-    g["pct"] = g["count"] / total * 100
-
-    # Most common ccaa per organo
-    ccaa_mode = (
-        df.dropna(subset=["ccaa"])
-        .groupby("organo_contratacion")["ccaa"]
-        .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else "")
+    # El ranking se pide con al menos 10 filas: la concentración top-10 se
+    # calcula sobre él aunque el caller pida un limit menor.
+    ranking = _repo.organos_ranking(
+        repo_filters, q_folded=q_folded, limit=max(filters.limit, 10)
     )
 
-    # Concentration of top 10
-    concentracion_top10 = float(g.head(10)["pct"].sum()) if len(g) >= 10 else float(g["pct"].sum())
-
-    # Limit results
-    g_limited = g.head(filters.limit)
+    concentracion_top10 = (
+        sum(int(r["count"]) for r in ranking[:10]) / total * 100 if total else 0.0
+    )
 
     organos = [
         OrganoEntry(
-            organo_contratacion=row["organo_contratacion"],
-            count=int(row["count"]),
-            importe=float(row["importe"] or 0),
-            pct=round(float(row["pct"]), 2),
-            ccaa=ccaa_mode.get(row["organo_contratacion"]),
+            organo_contratacion=str(r["organo_contratacion"]),
+            count=int(r["count"]),
+            importe=float(r["importe"] or 0),
+            pct=round(int(r["count"]) / total * 100, 2),
+            ccaa=r.get("ccaa_mode"),
         )
-        for _, row in g_limited.iterrows()
+        for r in ranking[: filters.limit]
     ]
 
-    # Treemap breakdown: top 30 organos x tipo_contrato
-    treemap_breakdown: list[TreemapItem] = []
-    if "tipo_contrato" in df.columns:
-        top30_organos = set(g.head(30)["organo_contratacion"])
-        tm_df = df[df["organo_contratacion"].isin(top30_organos)].dropna(
-            subset=["importe", "tipo_contrato"]
+    treemap_breakdown = [
+        TreemapItem(
+            organo=str(r["organo"]),
+            tipo_contrato=str(r["tipo_contrato"]),
+            importe=float(r["importe"]),
         )
-        if not tm_df.empty:
-            tm_g = (
-                tm_df.groupby(["organo_contratacion", "tipo_contrato"])["importe"]
-                .sum()
-                .reset_index()
-            )
-            treemap_breakdown = [
-                TreemapItem(
-                    organo=str(row["organo_contratacion"]),
-                    tipo_contrato=str(row["tipo_contrato"]),
-                    importe=float(row["importe"]),
-                )
-                for _, row in tm_g.iterrows()
-                if float(row["importe"]) > 0
-            ]
+        for r in _repo.organos_treemap(repo_filters, q_folded=q_folded, top_organos=30)
+    ]
 
     result = OrganosResult(
         organos=organos,

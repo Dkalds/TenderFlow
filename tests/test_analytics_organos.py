@@ -184,15 +184,13 @@ def test_lead_time_median_ignores_negative_diffs():
     assert _lead_time_median(pd.DataFrame(rows)) == 8.0
 
 
-# ── get_organos ─────────────────────────────────────────────────────────────
+# ── get_organos (caracterización pandas -> SQL, ADR-023: siembra tmp_db) ────
 
 
-def test_get_organos_ranking_and_pct():
-    with patch(
-        "services.analytics.organos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_lic_rows())),
-    ):
-        result = get_organos(OrganosFilters())
+def test_get_organos_ranking_and_pct(tmp_db):
+    _insert_licitaciones(_lic_rows())
+
+    result = get_organos(OrganosFilters())
 
     assert result.total_organos == 2
     # ORG A tiene 2 licitaciones, ORG B 1 → ORG A primero
@@ -204,16 +202,16 @@ def test_get_organos_ranking_and_pct():
     assert result.organos[0].importe == 1_500_000.0
     # importe_total sobre TODO el dataset (ORG A 1.5M + ORG B 0.2M)
     assert result.importe_total == 1_700_000.0
+    # CCAA modal de ORG A (ambas filas Madrid)
+    assert result.organos[0].ccaa == "Madrid"
 
 
-def test_get_organos_totales_sobre_dataset_completo_no_top_n():
+def test_get_organos_totales_sobre_dataset_completo_no_top_n(tmp_db):
     """importe_total y concentracion_top10 reflejan TODO el dataset, no el top-N
     que devuelve `organos` (regresión: antes el frontend los sumaba sobre el top-50)."""
-    with patch(
-        "services.analytics.organos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_lic_rows())),
-    ):
-        result = get_organos(OrganosFilters(limit=1))
+    _insert_licitaciones(_lic_rows())
+
+    result = get_organos(OrganosFilters(limit=1))
 
     # Aunque solo se devuelve 1 órgano (top-1 = ORG A)…
     assert len(result.organos) == 1
@@ -224,35 +222,33 @@ def test_get_organos_totales_sobre_dataset_completo_no_top_n():
     assert result.concentracion_top10 == 100.0
 
 
-def test_get_organos_empty():
-    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame([])):
-        result = get_organos(OrganosFilters())
+def test_get_organos_empty(tmp_db):
+    result = get_organos(OrganosFilters())
     assert result.total_organos == 0
     assert result.organos == []
 
 
-def test_get_organos_q_accent_insensitive():
+def _organo_con_tildes() -> dict:
+    return {
+        "id_externo": "L4",
+        "titulo": "CPD",
+        "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
+        "importe": 50_000.0,
+        "estado": "PUB",
+        "fecha_publicacion": "2025-03-01",
+        "ccaa": "Madrid",
+        "tipo_contrato": "2",
+        "url": None,
+        "modulos_str": None,
+    }
+
+
+def test_get_organos_q_accent_insensitive(tmp_db):
     """q sin tildes encuentra órganos con tildes (y viceversa), case-insensitive."""
-    rows = _lic_rows()
-    rows.append(
-        {
-            "id_externo": "L4",
-            "titulo": "CPD",
-            "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
-            "importe": 50_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": "2025-03-01",
-            "ccaa": "Madrid",
-            "tipo_contrato": "2",
-            "url": None,
-            "modulos_str": None,
-        }
-    )
-    with patch(
-        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
-        con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
+    _insert_licitaciones([*_lic_rows(), _organo_con_tildes()])
+
+    sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
+    con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
 
     for result in (sin_tildes, con_tildes):
         assert [o.organo_contratacion for o in result.organos] == [
@@ -260,29 +256,13 @@ def test_get_organos_q_accent_insensitive():
         ]
 
 
-def test_get_organos_q_filters_before_limit():
+def test_get_organos_q_filters_before_limit(tmp_db):
     """Un órgano fuera del top-limit sigue siendo encontrable con q."""
-    rows = _lic_rows()  # ORG A: 2 lics, ORG B: 1 lic
-    rows.append(
-        {
-            "id_externo": "L4",
-            "titulo": "CPD",
-            "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
-            "importe": 50_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": "2025-03-01",
-            "ccaa": "Madrid",
-            "tipo_contrato": "2",
-            "url": None,
-            "modulos_str": None,
-        }
-    )
+    _insert_licitaciones([*_lic_rows(), _organo_con_tildes()])
+
     # limit=1: sin q solo saldría ORG A; con q el match aparece igual
-    with patch(
-        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        sin_q = get_organos(OrganosFilters(limit=1))
-        con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
+    sin_q = get_organos(OrganosFilters(limit=1))
+    con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
 
     assert [o.organo_contratacion for o in sin_q.organos] == ["ORG A"]
     assert [o.organo_contratacion for o in con_q.organos] == [
