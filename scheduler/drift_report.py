@@ -209,6 +209,34 @@ def run_drift_report() -> dict[str, Any]:
     json_path.write_text(json.dumps(results, indent=2, ensure_ascii=False))
     results["json_path"] = str(json_path)
 
+    # ── Persistir resumen en ops_events ──────────────────────────────────
+    # El JSON/HTML de arriba muere con el runner efímero de Actions; nada lo
+    # subía como artifact, así que el único rastro era una línea de log
+    # (revisión de arquitectura 2026-08). ops_events es la tabla compartida
+    # que ya leen healthcheck y los tripwires — el resumen sobrevive ahí.
+    try:
+        from observability.ops_events import record_event
+
+        record_event(
+            "drift_report",
+            value=1.0 if results["drift_detected"] else 0.0,
+            detail=json.dumps(
+                {
+                    "drift_detected": results["drift_detected"],
+                    "ref_n": results["ref_n"],
+                    "cur_n": results["cur_n"],
+                    "columns_drift": [
+                        col
+                        for col, v in results["columns"].items()
+                        if isinstance(v, dict) and v.get("drift")
+                    ],
+                },
+                ensure_ascii=False,
+            )[:500],
+        )
+    except Exception:
+        log.debug("drift_report_ops_event_failed", exc_info=True)
+
     if results["drift_detected"]:
         log.warning(
             "drift_detected", columns=[k for k, v in results["columns"].items() if v.get("drift")]

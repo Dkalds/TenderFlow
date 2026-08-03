@@ -44,6 +44,7 @@ CANONICAL_STEPS: list[str] = [
     "anomaly_checks",
     "retention_cleanup",
     "ml_retrain",
+    "sap_active_learning",
     "drift_checks",
 ]
 
@@ -213,6 +214,36 @@ def _run_ml_retrain() -> str:
     from scheduler.jobs.ml_predicciones import run_retrain
 
     return _run_periodic("ml_retrain", _SEGUNDOS_MES, run_retrain)
+
+
+def _run_sap_active_learning() -> str:
+    """Active learning del clasificador SAP (una vez por semana).
+
+    ``maybe_retrain_classifier`` (feedback ≥50 → retrain + gate de promoción
+    de tres métricas) estaba implementado y testeado pero SIN ningún caller de
+    producción: el feedback se acumulaba en ``ml_feedback`` para un contador
+    de UI y nada lo consumía (revisión de arquitectura 2026-08). La función ya
+    no-opea por debajo del umbral, así que la ventana semanal solo limita el
+    coste del conteo. OJO runners efímeros: si promociona una versión nueva,
+    el artefacto debe subirse a la Release (canal de ``ensure_downloaded``) —
+    la propia función lo avisa en su log de promoción.
+    """
+
+    def _run() -> None:
+        from scheduler.concept_drift import maybe_retrain_classifier
+
+        result = maybe_retrain_classifier()
+        if result.get("triggered") and result.get("new_version") is not None:
+            log.warning(
+                "sap_active_learning_promoted_artifact_needs_release_upload",
+                detail=(
+                    "una versión nueva quedó activa en model_versions; subir el "
+                    ".pkl a la Release de GitHub o el siguiente runner no podrá "
+                    "resolver el artefacto (shared/model_artifacts.py)"
+                ),
+            )
+
+    return _run_periodic("sap_active_learning", _SEGUNDOS_SEMANA, _run)
 
 
 def _run_drift_checks() -> str:

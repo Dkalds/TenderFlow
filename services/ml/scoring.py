@@ -13,7 +13,6 @@ el frontend puede distinguirlo y etiquetarlo como estimación histórica.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
@@ -55,14 +54,22 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
         return {"status": "sin_abiertas", "filas": 0}
 
     from db.model_registry import get_active
+    from shared.model_artifacts import resolve_active_artifact
 
+    # resolve_active_artifact verifica el sha256 registrado (y descarga el
+    # asset de la Release si el runner efímero no tiene el fichero). Un
+    # artefacto irresoluble degrada a baseline; un MISMATCH propaga — servir
+    # predicciones de un artefacto equivocado es peor que no servirlas.
     activa = get_active(MODEL_NAME)
+    artefacto = resolve_active_artifact(MODEL_NAME) if activa else None
     preds: list[Prediccion]
-    if activa:
-        modelo = BajaModel.load(Path(str(activa["path"])))
+    if activa and artefacto is not None:
+        modelo = BajaModel.load(artefacto)
         preds = modelo.predict(filas)
         version: int | None = int(activa["version"])
     else:
+        if activa:
+            log.warning("baja_model_artifact_unresolvable_fallback_baseline")
         preds = predecir_baseline(filas, _media_global_baja())
         version = None
 
@@ -151,8 +158,13 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
     Se materializa con model_version='baseline' para que la UI lo distinga.
     """
     from db.model_registry import get_active
+    from shared.model_artifacts import resolve_active_artifact
 
     activa = get_active("retencion_model")
+    artefacto = resolve_active_artifact("retencion_model") if activa else None
+    if activa and artefacto is None:
+        log.warning("retencion_model_artifact_unresolvable_fallback_baseline")
+        activa = None
 
     from services.ml.retencion_labels import features_para_vencimientos
 
@@ -163,7 +175,8 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
     if activa:
         from services.ml.retencion_model import RetencionModel
 
-        modelo = RetencionModel.load(Path(str(activa["path"])))
+        assert artefacto is not None
+        modelo = RetencionModel.load(artefacto)
         probas = modelo.predict_proba_retencion(filas)
         computed_at = now_utc_iso()
         version_int: int | None = int(activa["version"])
