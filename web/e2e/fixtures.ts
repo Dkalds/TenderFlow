@@ -8,14 +8,14 @@
 
 export const DEMO_USER = {
   email: "demo@tenderflow.dev",
-  password: "demo1234!",
+  password: "demo1234!", // pragma: allowlist secret -- credencial del seed de desarrollo
 } as const;
 
 /** Usuario con `is_admin`: sin él las rutas de administración solo se pueden
  *  verificar en su estado "Acceso restringido". */
 export const ADMIN_USER = {
   email: "admin@tenderflow.dev",
-  password: "admin1234!",
+  password: "admin1234!", // pragma: allowlist secret -- credencial del seed de desarrollo
 } as const;
 
 export const STORAGE_STATE_USER = "playwright/.auth/user.json";
