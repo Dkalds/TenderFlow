@@ -36,42 +36,10 @@ _SPEC = _ROOT / "api" / "openapi.json"
 # Para quitar una línea: dale a la ruta un `response_model` (o un tipo de
 # retorno Pydantic) y borra su entrada de aquí.
 # **Añadir líneas está prohibido.** Una ruta nueva nace tipada.
-ALLOWED_OPAQUE: frozenset[str] = frozenset(
-    {
-        "DELETE /api/v1/competitive/watchlist/{empresa_id}",
-        "DELETE /api/v1/saved-filters/{filter_id}",
-        "GET /api/v1/competitive/bajas",
-        "GET /api/v1/competitive/bajas/referencia",
-        "GET /api/v1/competitive/cuota",
-        "GET /api/v1/competitive/hhi",
-        "GET /api/v1/competitive/watchlist",
-        "GET /api/v1/exports/calendario.ics",
-        "GET /api/v1/exports/download",
-        "GET /api/v1/exports/{job_id}",
-        "GET /api/v1/feedback/model-info",
-        "GET /api/v1/feedback/queue",
-        "GET /api/v1/feedback/stats",
-        "GET /api/v1/health/live",
-        "GET /api/v1/meta/filters",
-        "GET /api/v1/meta/last-extraction",
-        "GET /api/v1/models/{name}",
-        "GET /api/v1/resoluciones",
-        "GET /api/v1/saved-filters",
-        "GET /api/v1/security/audit/verify",
-        "GET /api/v1/webhooks/{webhook_id}",
-        "PATCH /api/v1/webhooks/{webhook_id}",
-        "POST /api/v1/admin/users/{user_id}/deactivate",
-        "POST /api/v1/competitive/watchlist",
-        "POST /api/v1/exports",
-        "POST /api/v1/models/{name}/activate/{version}",
-        "POST /api/v1/notifications/alerts/read",
-        "POST /api/v1/notifications/read",
-        "POST /api/v1/saved-filters",
-        "POST /api/v1/webhooks/{webhook_id}/ping",
-        "PUT /api/v1/admin/users/{user_id}/admin",
-        "PUT /api/v1/feature-flags",
-    }
-)
+# 2026-08-03: la allowlist llegó a CERO — las 65 operaciones opacas del
+# arranque del ratchet están tipadas. Cualquier operación nueva con
+# respuesta opaca falla el check directamente: no se añaden entradas.
+ALLOWED_OPAQUE: frozenset[str] = frozenset()
 
 
 _SUCCESS_CODES = ("200", "201", "202")

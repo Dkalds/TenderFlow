@@ -25,6 +25,7 @@ from services.notifications import (
     mark_all_alerts_read,
     mark_all_read,
 )
+from shared.dto import StatusOk
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -148,17 +149,17 @@ async def get_notifications(
 async def post_mark_read(
     body: MarkReadRequest,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, str]:
+) -> StatusOk:
     if body.ids:
         await run_db(mark_all_read, _user_key(ctx), body.ids)
-    return {"status": "ok"}
+    return StatusOk(status="ok")
 
 
 @router.post("/alerts/read", summary="Marcar alertas como leidas")
 async def post_mark_alerts_read(
     body: MarkAlertsReadRequest,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, str]:
+) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
     resolved_id = ctx["organization_id"]
@@ -166,4 +167,4 @@ async def post_mark_alerts_read(
         await run_db(mark_all_alerts_read, user_key, resolved_id)
     elif body.ids:
         await run_db(mark_alerts_read, user_key, body.ids, resolved_id)
-    return {"status": "ok"}
+    return StatusOk(status="ok")

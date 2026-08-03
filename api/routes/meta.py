@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Response
+from pydantic import BaseModel
 
 from api.cache import cache_get, cache_key, cache_set
 from api.concurrency import run_db
@@ -21,6 +22,19 @@ _FILTERS_CACHE_KEY = cache_key("meta", "filters")
 _FILTERS_TTL = 300  # 5 minutos
 
 
+class MetaFilters(BaseModel):
+    """Valores únicos disponibles para los selectores de filtros."""
+
+    estado: list[str]
+    ccaa: list[str]
+    tecnologia: list[str]
+    cpv: list[str]
+
+
+class LastExtraction(BaseModel):
+    last_extraction: str | None
+
+
 @router.get(
     "/filters",
     summary="Valores válidos para los filtros de búsqueda",
@@ -29,7 +43,7 @@ _FILTERS_TTL = 300  # 5 minutos
 async def get_filter_options(
     response: Response,
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> MetaFilters:
     """Devuelve los valores únicos disponibles para cada filtro de licitaciones.
 
     Útil para construir selectores y validar parámetros en el cliente.
@@ -47,12 +61,12 @@ async def get_filter_options(
     cached = cache_get(_FILTERS_CACHE_KEY)
     if cached is not None:
         response.headers["X-Cache"] = "HIT"
-        return cast(dict[str, Any], cached)
+        return MetaFilters(**cast("dict[str, Any]", cached))
 
     result = await run_db(_lic_repo.get_filter_options)
     cache_set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
     response.headers["X-Cache"] = "MISS"
-    return result
+    return MetaFilters(**result)
 
 
 @router.get(
@@ -62,7 +76,7 @@ async def get_filter_options(
 )
 async def get_last_extraction(
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, str | None]:
+) -> LastExtraction:
     """Devuelve la fecha/hora de la última extracción del scraper."""
     date = await run_db(_lic_repo.get_last_extraction_date)
-    return {"last_extraction": date}
+    return LastExtraction(last_extraction=date)

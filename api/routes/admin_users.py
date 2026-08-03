@@ -21,6 +21,7 @@ from db.users import (
     set_admin,
 )
 from observability.logging import get_logger
+from shared.dto import StatusOk
 
 log = get_logger(__name__)
 
@@ -46,6 +47,13 @@ class AdminUserOut(BaseModel):
     created_at: str | None = None
     deactivated_at: str | None = None
     last_access: str | None = None
+
+
+class AdminUserAction(BaseModel):
+    """Resultado de una acción de moderación sobre un usuario."""
+
+    status: str
+    action: str
 
 
 def _safe_user(user: dict[str, Any]) -> AdminUserOut:
@@ -91,7 +99,7 @@ def admin_set_admin(
     user_id: int,
     body: SetAdminBody,
     admin: dict[str, Any] = Depends(require_admin),
-) -> dict[str, str]:
+) -> StatusOk:
     """Promover/degradar admin de un usuario."""
     if user_id == admin.get("user_id"):
         raise HTTPException(status_code=400, detail="Cannot change own admin status.")
@@ -105,7 +113,7 @@ def admin_set_admin(
         resource=f"user:{user_id}",
         detail=f"is_admin={body.is_admin}",
     )
-    return {"status": "ok"}
+    return StatusOk(status="ok")
 
 
 @router.post("/{user_id}/deactivate")
@@ -113,7 +121,7 @@ def admin_deactivate_user(
     user_id: int,
     body: DeactivateBody,
     admin: dict[str, Any] = Depends(require_admin),
-) -> dict[str, str]:
+) -> AdminUserAction:
     """Desactivar, reactivar o anonimizar un usuario."""
     if user_id == admin.get("user_id"):
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself.")
@@ -138,4 +146,4 @@ def admin_deactivate_user(
         resource=f"user:{user_id}",
         detail=body.action,
     )
-    return {"status": "ok", "action": body.action}
+    return AdminUserAction(status="ok", action=body.action)

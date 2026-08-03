@@ -32,17 +32,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Acceptance criteria:** tipo `CompanyUteParticipation` en `company-profile-types.ts` reflejando el DTO; una sección en el dossier (`company-profile-summary.tsx` o vecino) listando las UTEs con sus `otros_miembros`, dejando claro que esos importes son **adicionales** a los totales directos de la empresa, no una desagregación de ellos (evitar que el usuario los sume dos veces mentalmente).
 - **Riesgo:** bajo — solo lectura de un campo ya validado por el contrato OpenAPI/TS; sin cambio de backend.
 
-### [P1] Tipar el contrato API↔web — 65 operaciones con respuesta opaca
-- **Área:** api/routes/*, services/*, scripts/check_openapi_contract.py
-- **Problema:** 65 operaciones devuelven `dict[str, Any]`, de modo que en `web/src/generated/api.d.ts` su `200` es `{ [key: string]: unknown }` y el frontend reescribe la forma a mano. El invariante §3.5/§3.8 ("los DTOs Pydantic son el contrato API↔web") se cumple sólo a medias, y el job *Codegen Drift Check* **no lo detecta**: compara el artefacto generado consigo mismo, o sea que verifica que está sincronizado, no que el contrato diga algo. Una ruta que devuelve `dict[str, Any]` lo pasa perfectamente. Resultado: tablero verde sobre un contrato que para un tercio de la superficie no describe nada, y cualquier renombre de campo en backend rompe el frontend en runtime sin que mypy ni tsc se enteren.
-- **Mecanismo ya en marcha:** `scripts/check_openapi_contract.py` es un ratchet con allowlist que **sólo puede encoger** (patrón TID251), bloqueante en CI y en `make check-api-contract`. Impide que la superficie opaca crezca; el trabajo restante es vaciarlo por olas.
-- **Acceptance criteria:**
-  - La allowlist de `ALLOWED_OPAQUE` llega a 0.
-  - Cada ola sustituye además las interfaces duplicadas del frontend por `Schemas[...]` en `web/src/lib/api-types.ts`.
-- **Orden sugerido (por densidad):** `watchlist` (8), `auth` (7), `empresas` (5), `licitaciones` (5), `me` (4), el resto.
-- **Nota de modelado:** declarar los campos **sin default** cuando la query siempre devuelve la columna (clave presente, valor posiblemente `None`). Ponerles default los marca opcionales en el OpenAPI y obliga al cliente a tratar `undefined` donde nunca ocurre — se vio en la primera ola, donde las interfaces a mano del frontend afirmaban campos siempre presentes que el DTO con defaults contradecía.
-- **Riesgo:** medio — es cambio de contrato, pero **aditivo**: tipar lo que hoy es `unknown` no rompe consumidores.
-
 ### [P2] Mejorar el ranking de retrieval de producción (MRR 0.689)
 - **Área:** db/search_backend.py, services/licitaciones.py
 - **Problema:** Medido al migrar el eval RAG al motor real (ADR-018) sobre el golden set de 15 preguntas: SQLite/FTS5 da MRR ≈0.78 y Postgres/`tsvector`+`ts_rank_cd` da **0.689**. El `hit_rate@5` es **1.000 en ambos** — producción encuentra siempre el documento esperado dentro del top-5, pero lo ordena peor. No es una regresión de la migración: es la calidad real que ven los usuarios de `/ask` hoy, que nadie medía porque el eval corría sobre FTS5. El eval ratchea en `MRR_MIN = 0.65` (`tests/eval/test_eval_rag.py`), así que una regresión adicional salta. Con SQLite retirado (ADR-021) ya no hay comparación entre motores: 0.75 es el objetivo, no una paridad.
@@ -295,6 +284,23 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-03] **P1: Contrato API↔web COMPLETO — `ALLOWED_OPAQUE` llegó a 0 (65 → 0)** —
+  Las 128 rutas declaran DTO Pydantic; en `web/src/generated/api.d.ts` ya no queda ningún
+  `{ [key: string]: unknown }` en un 2xx. Por olas: watchlist (9, incl. `feed.xml` con
+  `response_class` para no fingir un 200 JSON), auth (8, el callback OAuth declara su 302 real),
+  me (5, `/me/data` como ZIP declarado), empresas (5), licitaciones (6: explain/documentos/
+  tech-scores/eventos/prediccion-baja/bulk-get), competitive (7, con `MetricScope` reutilizado),
+  exports (4: PDF/CSV/XLSX/ICS con sus content-types y `ExportJobStatus` en el 202),
+  saved-filters (3), feedback (3, cola de active learning tipada hasta el bloque del modelo),
+  webhooks (3), notifications (2), admin (2), models (2), meta (2) y health/resoluciones/
+  audit-verify/feature-flags. Envelopes compartidos en `shared/dto.py` (StatusOk/CreatedId/
+  TotalCount/DetailMessage/StatusMessage/SessionsRevoked); campos sin default cuando la clave
+  siempre viaja (nota de modelado aplicada). Frontend: mi-watchlist y use-watchlist-items
+  consumen `Schemas[...]` en vez de interfaces a mano, y `api-types.ts` exporta aliases de las
+  superficies nuevas. El ratchet queda vacío y BLOQUEANTE: una ruta nueva con respuesta opaca
+  falla `make check-api-contract` sin allowlist a la que acogerse. Verificado: mypy strict
+  (574 files), tsc + eslint + 944 vitest, check_openapi_contract 0/0.
 
 - [2026-08-03] **P2: Unificados los árboles de navegación — `CONSOLE_SPACES`+`SPACE_VIEWS` como única fuente** —
   Con los 14 espacios construidos, el cromo heredado era inalcanzable (toda ruta absorbida

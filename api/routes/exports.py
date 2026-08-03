@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 
 from api.auth import AuthContext, require_api_key
 from api.routes.auth import get_current_session_user
@@ -157,6 +158,13 @@ def _run_export(job_id: str, filters: dict[str, Any]) -> None:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
+class ExportJobStatus(BaseModel):
+    """Estado del job de exportación asíncrona (202 + sondeo)."""
+
+    id: str
+    status: str
+
+
 @router.post("", status_code=202, deprecated=True)
 def create_export(
     background_tasks: BackgroundTasks,
@@ -164,7 +172,7 @@ def create_export(
     estado: str | None = None,
     q: str | None = None,
     ctx: AuthContext = Depends(require_api_key),
-) -> dict[str, str]:
+) -> ExportJobStatus:
     """Crea un job de exportación PDF asíncrono.
 
     .. deprecated::
@@ -198,10 +206,20 @@ def create_export(
     filters = {k: v for k, v in {"ccaa": ccaa, "estado": estado, "q": q}.items() if v}
     background_tasks.add_task(_run_export, job_id, filters)
     log.info("export_pdf.created", job_id=job_id, filters=filters)
-    return {"id": job_id, "status": "pending"}
+    return ExportJobStatus(id=job_id, status="pending")
 
 
-@router.get("/{job_id}", deprecated=True)
+# response_class=Response evita el content application/json {} por defecto:
+# el 200 es el PDF; el estado intermedio viaja como 202 con ExportJobStatus.
+@router.get(
+    "/{job_id}",
+    deprecated=True,
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "PDF generado"},
+        202: {"model": ExportJobStatus, "description": "Job pendiente o en curso"},
+    },
+)
 def get_export(
     job_id: str,
     ctx: AuthContext = Depends(require_api_key),
@@ -258,7 +276,22 @@ __all__ = ["router"]
 # ── Synchronous CSV/Excel download ───────────────────────────────────────────
 
 
-@router.get("/download")
+# response_class=StreamingResponse: la respuesta es el fichero (CSV/XLSX/PDF),
+# no hay 200 application/json que documentar.
+@router.get(
+    "/download",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "content": {
+                "text/csv": {},
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {},
+                "application/pdf": {},
+            },
+            "description": "Fichero exportado con los filtros actuales",
+        }
+    },
+)
 async def download_export(
     format: Literal["csv", "excel", "pdf"] = Query("csv"),
     q: str | None = Query(None),
@@ -399,6 +432,9 @@ def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> 
 @router.get(
     "/calendario.ics",
     summary="Calendario ICS con deadlines y vencimientos de favoritos",
+    # response_class=Response evita el content application/json {} por defecto
+    # (es un .ics; su contrato lo declara `responses`).
+    response_class=Response,
     responses={
         200: {"content": {"text/calendar": {}}, "description": "Archivo iCalendar (.ics)"},
         401: {"description": "Token invalido o ausente"},

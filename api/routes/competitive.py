@@ -39,6 +39,7 @@ from services.competitive.renovaciones import (
     totales_renovaciones,
 )
 from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
+from shared.metric_scope import MetricScope
 
 log = get_logger(__name__)
 
@@ -134,6 +135,96 @@ async def get_renovaciones_resumen(
 # ── Bajas ─────────────────────────────────────────────────────────────────
 
 
+# ── DTOs del contrato (campos sin default: la query siempre trae la clave) ──
+
+
+class BajaAgregada(BaseModel):
+    """Baja media por grupo (empresa/órgano/CPV/CCAA)."""
+
+    # Solo el group_by=empresa lleva id del maestro — clave condicional.
+    grupo_id: int | None = None
+    grupo: str | None
+    contratos: int
+    baja_media_pct: float | None
+    baja_min_pct: float | None
+    baja_max_pct: float | None
+    importe_total: float
+    ofertas_medias: float | None
+
+
+class BajasResult(BaseModel):
+    items: list[BajaAgregada]
+    group_by: str
+
+
+class BajaReferencia(BaseModel):
+    """Baja media y rango del segmento pedido (órgano y/o prefijo CPV)."""
+
+    contratos: int | None = None
+    baja_media_pct: float | None = None
+    baja_min_pct: float | None = None
+    baja_max_pct: float | None = None
+    ofertas_medias: float | None = None
+    organo: str | None
+    cpv_prefix: str | None
+
+
+class CuotaEmpresa(BaseModel):
+    empresa_id: int | None
+    empresa: str | None
+    es_ute: int
+    contratos: int
+    importe: float
+    ofertas_medias: float | None
+    cuota_pct: float | None
+
+
+class CuotaResult(BaseModel):
+    items: list[CuotaEmpresa]
+    scope: MetricScope
+
+
+class HhiSegmento(BaseModel):
+    segmento: str | None
+    empresas: int
+    importe_total: float
+    contratos: int
+    hhi: float | None
+
+
+class HhiResult(BaseModel):
+    items: list[HhiSegmento]
+    segment_by: str
+    scope: MetricScope
+
+
+class WatchlistEmpresaItem(BaseModel):
+    """Empresa vigilada, con nombre canónico del maestro."""
+
+    id: int
+    empresa_id: int
+    nombre_canonico: str
+    nif_canonico: str | None
+    email: str | None
+    frequency: str | None
+    created_at: str | None
+    last_notified_at: str | None
+    organization_id: int | None
+    visibility: str | None
+
+
+class WatchlistEmpresasResult(BaseModel):
+    items: list[WatchlistEmpresaItem]
+
+
+class WatchlistEmpresaStatus(BaseModel):
+    """Alta/baja de vigilancia; ``id`` solo cuando se creó una entrada nueva."""
+
+    status: str
+    empresa_id: int
+    id: int | None = None
+
+
 @router.get("/bajas", summary="Baja media por empresa, órgano, CPV o CCAA")
 async def get_bajas(
     group_by: str = Query("empresa", pattern="^(empresa|organo|cpv|ccaa)$"),
@@ -142,7 +233,7 @@ async def get_bajas(
     ccaa: str | None = Query(None, max_length=50),
     limit: int = Query(100, ge=1, le=500),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> BajasResult:
     items = await run_db(
         bajas_agregadas,
         group_by=group_by,
@@ -151,7 +242,7 @@ async def get_bajas(
         ccaa=ccaa,
         limit=limit,
     )
-    return {"items": items, "group_by": group_by}
+    return BajasResult(items=[BajaAgregada(**item) for item in items], group_by=group_by)
 
 
 @router.get("/bajas/referencia", summary="Baja de referencia para un segmento")
@@ -159,9 +250,9 @@ async def get_baja_referencia(
     organo: str | None = Query(None, max_length=300),
     cpv: str | None = Query(None, max_length=8),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> BajaReferencia:
     """'¿Cuánto hay que bajar para ganar en este órgano/CPV?'"""
-    return await run_db(baja_de_referencia, organo=organo, cpv_prefix=cpv)
+    return BajaReferencia(**await run_db(baja_de_referencia, organo=organo, cpv_prefix=cpv))
 
 
 # ── Mercado ───────────────────────────────────────────────────────────────
@@ -174,10 +265,10 @@ async def get_cuota(
     desde: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     limit: int = Query(50, ge=1, le=500),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> CuotaResult:
     items = await run_db(cuota_mercado, cpv_prefix=cpv, ccaa=ccaa, desde=desde, limit=limit)
     scope = await run_db(metric_scope, cpv_prefix=cpv, ccaa=ccaa, desde=desde)
-    return {"items": items, "scope": scope}
+    return CuotaResult(items=[CuotaEmpresa(**item) for item in items], scope=scope)
 
 
 @router.get("/hhi", summary="Concentración HHI por segmento")
@@ -185,10 +276,12 @@ async def get_hhi(
     segment_by: str = Query("cpv", pattern="^(cpv|ccaa|organo|tecnologia)$"),
     min_contratos: int = Query(5, ge=1, le=100),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> HhiResult:
     items = await run_db(concentracion_hhi, segment_by=segment_by, min_contratos=min_contratos)
     scope = await run_db(metric_scope)
-    return {"items": items, "segment_by": segment_by, "scope": scope}
+    return HhiResult(
+        items=[HhiSegmento(**item) for item in items], segment_by=segment_by, scope=scope
+    )
 
 
 @router.get(
@@ -290,16 +383,16 @@ class WatchlistEmpresaRequest(BaseModel):
 @router.get("/watchlist", summary="Empresas vigiladas por el usuario")
 async def get_watchlist(
     ctx: dict[str, Any] = Depends(require_organization()),
-) -> dict[str, Any]:
+) -> WatchlistEmpresasResult:
     items = await run_db(list_entries, _user_key(ctx), ctx["organization_id"])
-    return {"items": items}
+    return WatchlistEmpresasResult(items=[WatchlistEmpresaItem(**item) for item in items])
 
 
 @router.post("/watchlist", status_code=status.HTTP_201_CREATED, summary="Vigilar una empresa")
 async def post_watchlist(
     body: WatchlistEmpresaRequest,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> WatchlistEmpresaStatus:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     entry = WatchlistEmpresaEntry(
         user_key=_user_key(ctx),
@@ -318,20 +411,20 @@ async def post_watchlist(
             detail="Empresa no encontrada en el maestro.",
         ) from exc
     if entry_id is None:
-        return {"status": "ya_existia", "empresa_id": body.empresa_id}
+        return WatchlistEmpresaStatus(status="ya_existia", empresa_id=body.empresa_id)
     log.info("watchlist_empresa_added", empresa_id=body.empresa_id)
-    return {"status": "ok", "id": entry_id, "empresa_id": body.empresa_id}
+    return WatchlistEmpresaStatus(status="ok", id=entry_id, empresa_id=body.empresa_id)
 
 
 @router.delete("/watchlist/{empresa_id}", summary="Dejar de vigilar una empresa")
 async def delete_watchlist(
     empresa_id: int,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
-) -> dict[str, Any]:
+) -> WatchlistEmpresaStatus:
     removed = await run_db(remove_entry, _user_key(ctx), empresa_id, ctx["organization_id"])
     if not removed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="La empresa no estaba en tu watchlist.",
         )
-    return {"status": "ok", "empresa_id": empresa_id}
+    return WatchlistEmpresaStatus(status="ok", empresa_id=empresa_id)

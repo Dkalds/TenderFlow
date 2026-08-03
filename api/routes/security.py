@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from pydantic import BaseModel
 
 from api.auth import AuthContext, require_scope
 from api.middleware import _trusted_client_ip
@@ -196,6 +197,19 @@ async def leaked_key_notification(
 # ── Audit log integrity endpoint ──────────────────────────────────────────────
 
 
+class AuditChainVerification(BaseModel):
+    """Resultado de recalcular el hash chain del audit log.
+
+    ``valid`` es None cuando la cadena no está disponible (migración
+    pendiente) — distinto de False, que significa manipulación detectada.
+    """
+
+    valid: bool | None
+    checked: int
+    first_tampered_id: int | None
+    error: str | None
+
+
 @router.get(
     "/audit/verify",
     summary="Verificar integridad del audit log (hash chain)",
@@ -203,7 +217,7 @@ async def leaked_key_notification(
 )
 async def verify_audit_integrity(
     auth: AuthContext = Depends(require_scope("admin")),
-) -> dict[str, Any]:
+) -> AuditChainVerification:
     """Recorre el audit log y verifica que el hash chain no ha sido alterado.
 
     Requiere autenticación + scope ``admin``.
@@ -213,4 +227,4 @@ async def verify_audit_integrity(
     """
     from db.audit import verify_hash_chain
 
-    return verify_hash_chain()
+    return AuditChainVerification.model_validate(verify_hash_chain())
