@@ -235,6 +235,13 @@ class Settings(BaseSettings):
     API_KEY_DEFAULT_SCOPES: str = "data:read"
     API_KEY_DEFAULT_TTL_DAYS: int = 90
     API_KEY_MAX_TTL_DAYS: int = 365
+    # Límite global del RateLimitMiddleware. `api/app.py` los leía con
+    # `getattr(settings, ...)` y `Settings` no los declaraba: con
+    # `extra="ignore"`, exportar la variable no hacía nada y el límite era
+    # siempre 120/60s, pese a que docs/runbooks/rate-limit-reset.md los
+    # documenta como palanca de operación. Declararlos los vuelve reales.
+    API_RATE_LIMIT_MAX_CALLS: int = 120
+    API_RATE_LIMIT_WINDOW_SECONDS: float = 60.0
     # Operaciones irreversibles requieren autenticación reciente; si la cuenta
     # usa MFA también se exige una elevación reciente de segundo factor.
     SENSITIVE_ACTION_MAX_AGE_SECONDS: int = 900

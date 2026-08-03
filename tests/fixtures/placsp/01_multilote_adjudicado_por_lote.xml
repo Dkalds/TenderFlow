@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-MULTILOTE-0001</id>
+  <title>Servicios SAP S/4HANA en tres lotes</title>
+  <updated>2026-06-14T09:12:33+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-MULTILOTE-0001" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-MULTILOTE-0001; Órgano de Contratación: Ministerio de Hacienda y Función Pública; Importe: 910000.00 EUR; Estado: ADJ</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-MULTILOTE-0001</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>ADJ</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Ministerio de Hacienda y Función Pública</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <cacext:ValidNoticeInfo>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-04-02</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-04-10</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Servicios SAP S/4HANA en tres lotes</cbc:Name>
+      <cbc:TypeCode>2</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">910000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Madrid</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES300</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+    <cac:TenderingProcess>
+      <cac:TenderSubmissionDeadlinePeriod>
+        <cbc:EndDate>2026-05-04</cbc:EndDate>
+        <cbc:EndTime>18:00:00</cbc:EndTime>
+      </cac:TenderSubmissionDeadlinePeriod>
+    </cac:TenderingProcess>
+    <cac:ProcurementProjectLot>
+      <cbc:ID>1</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote 1: licencias SAP S/4HANA</cbc:Name>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>48000000-8</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">420000.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:ProcurementProjectLot>
+      <cbc:ID>2</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote 2: servicios de implantación SAP</cbc:Name>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">310000.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:ProcurementProjectLot>
+      <cbc:ID>3</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote 3: soporte y mantenimiento SAP</cbc:Name>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">180000.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:TenderResult>
+      <cbc:AwardDate>2026-05-20</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>4</cbc:ReceivedTenderQuantity>
+      <cac:ProcurementProjectLotReference><cbc:ID>1</cbc:ID></cac:ProcurementProjectLotReference>
+      <cac:AwardedTenderedProject>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount>398000.00</cbc:TaxExclusiveAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+      <cac:WinningParty>
+        <cac:PartyName><cbc:Name>Integradora Iberica SA</cbc:Name></cac:PartyName>
+        <cac:PartyIdentification><cbc:ID>A28000001</cbc:ID></cac:PartyIdentification>
+      </cac:WinningParty>
+    </cac:TenderResult>
+    <cac:TenderResult>
+      <cbc:AwardDate>2026-05-20</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>6</cbc:ReceivedTenderQuantity>
+      <cac:ProcurementProjectLotReference><cbc:ID>2</cbc:ID></cac:ProcurementProjectLotReference>
+      <cac:AwardedTenderedProject>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount>295500.00</cbc:TaxExclusiveAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+      <cac:WinningParty>
+        <cac:PartyName><cbc:Name>Consultoria Digital SL</cbc:Name></cac:PartyName>
+        <cac:PartyIdentification><cbc:ID>B28000002</cbc:ID></cac:PartyIdentification>
+      </cac:WinningParty>
+    </cac:TenderResult>
+    <cac:TenderResult>
+      <cbc:AwardDate>2026-05-20</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>3</cbc:ReceivedTenderQuantity>
+      <cac:ProcurementProjectLotReference><cbc:ID>3</cbc:ID></cac:ProcurementProjectLotReference>
+      <cac:AwardedTenderedProject>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount>171200.00</cbc:TaxExclusiveAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+      <cac:WinningParty>
+        <cac:PartyName><cbc:Name>Integradora Iberica SA</cbc:Name></cac:PartyName>
+        <cac:PartyIdentification><cbc:ID>A28000001</cbc:ID></cac:PartyIdentification>
+      </cac:WinningParty>
+    </cac:TenderResult>
+  </cacext:ContractFolderStatus>
+</entry>
