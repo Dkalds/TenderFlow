@@ -113,7 +113,86 @@ class SearchRequest(BaseModel):
     allowed_ids: list[str] | None = None
 
 
+# ── Envelopes genéricos del contrato (tipado de operaciones opacas) ─────────
+#
+# Nota de modelado (backlog «Tipar el contrato API↔web»): los campos van SIN
+# default cuando la query siempre devuelve la clave (valor posiblemente None).
+# Un default los marcaría opcionales en OpenAPI y obligaría al cliente a
+# tratar `undefined` donde nunca ocurre.
+
+
+class StatusOk(BaseModel):
+    """Respuesta mínima de una mutación sin payload propio."""
+
+    status: str
+
+
+class CreatedId(BaseModel):
+    """Respuesta de creación con el id asignado."""
+
+    id: int
+
+
+class TotalCount(BaseModel):
+    """Conteo agregado sin items (previews, badges)."""
+
+    total: int
+
+
 # ── Watchlist (F1) ──────────────────────────────────────────────────────────
+
+
+class WatchlistRuleMatch(BaseModel):
+    """Licitación que coincide con una regla (proyección de matches)."""
+
+    id_externo: str
+    titulo: str | None
+    organo_contratacion: str | None
+    importe: float | None
+    cpv: str | None
+    ccaa: str | None
+    estado: str | None
+    fecha_publicacion: str | None
+    url: str | None
+
+
+class WatchlistRuleMatchesResult(BaseModel):
+    """Matches de una regla + conteo total sin recortar por ``limit``."""
+
+    items: list[WatchlistRuleMatch]
+    total: int
+
+
+class WatchlistFavoriteItem(BaseModel):
+    """Favorito del usuario enriquecido con la licitación (LEFT JOIN)."""
+
+    id: int
+    id_externo: str
+    created_at: PgDateTime | None
+    organization_id: int | None
+    visibility: str | None
+    titulo: str | None
+    importe: float | None
+    estado: str | None
+    fecha_publicacion: str | None
+
+
+class WatchlistFavoritesResult(BaseModel):
+    """Listado de favoritos del usuario."""
+
+    items: list[WatchlistFavoriteItem]
+
+
+class WatchlistFavoriteCreated(BaseModel):
+    """Registro devuelto al crear (idempotente) un favorito."""
+
+    id: int
+    user_key: str
+    user_id: int | None
+    id_externo: str
+    organization_id: int | None
+    visibility: str | None
+    created_at: PgDateTime | None
 
 
 class WatchlistEntry(BaseModel):

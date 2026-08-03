@@ -20,6 +20,11 @@ from api.tenancy import require_organization, resolve_organization_ctx
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
+from shared.dto import (
+    WatchlistFavoriteCreated,
+    WatchlistFavoriteItem,
+    WatchlistFavoritesResult,
+)
 
 log = get_logger(__name__)
 
@@ -59,7 +64,7 @@ class WatchlistItemBody(BaseModel):
 async def get_items(
     organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_organization()),
-) -> dict[str, list[dict[str, Any]]]:
+) -> WatchlistFavoritesResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
     items = await run_db(
@@ -68,14 +73,14 @@ async def get_items(
         ctx["organization_id"],
         _user_id(ctx),
     )
-    return {"items": items}
+    return WatchlistFavoritesResult(items=[WatchlistFavoriteItem(**item) for item in items])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Añadir un favorito")
 async def post_item(
     body: WatchlistItemBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> WatchlistFavoriteCreated:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     item = await run_db(
         _repo.add_item,
@@ -86,7 +91,7 @@ async def post_item(
         body.visibility,
     )
     log.info("watchlist_item_created", id_externo=body.id_externo)
-    return item
+    return WatchlistFavoriteCreated(**item)
 
 
 @router.delete(

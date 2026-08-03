@@ -2447,8 +2447,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Búsqueda semántica híbrida (FAISS + FTS5/BM25)
-         * @description Ejecuta una búsqueda híbrida sobre el índice FAISS y el índice de texto completo FTS5. Combina puntuaciones semánticas y léxicas con reranking ponderado (alpha·FAISS + (1-alpha)·FTS5).
+         * Búsqueda de texto completo (FTS/BM25)
+         * @description Ejecuta una búsqueda de texto completo (Postgres tsvector/ts_rank_cd) con fallback LIKE. Los campos alpha/embedding_model son legacy sin efecto desde la retirada de FAISS (2026-07).
          */
         post: operations["semantic_search_api_v1_search_semantic_post"];
         delete?: never;
@@ -3506,6 +3506,14 @@ export interface components {
              * @default 0
              */
             total_cpvs: number;
+        };
+        /**
+         * CreatedId
+         * @description Respuesta de creación con el id asignado.
+         */
+        CreatedId: {
+            /** Id */
+            id: number;
         };
         /**
          * CrossGeoEntry
@@ -5539,7 +5547,7 @@ export interface components {
         SemanticSearchRequest: {
             /**
              * Alpha
-             * @description Peso de FAISS vs FTS5 (1.0 = solo semántica, 0.0 = solo léxica)
+             * @description LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad
              * @default 0.7
              */
             alpha: number;
@@ -5550,7 +5558,7 @@ export interface components {
             ccaa?: string[];
             /**
              * Embedding Model
-             * @description Nombre del modelo de embeddings (vacío = modelo por defecto de settings)
+             * @description LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad
              * @default
              */
             embedding_model: string;
@@ -5594,7 +5602,7 @@ export interface components {
             q: string;
             /**
              * Source
-             * @description Motor usado: FAISS+FTS5 | FAISS | FTS5 | LIKE
+             * @description Motor usado: FTS5 | LIKE
              */
             source: string;
             /** Top K */
@@ -5671,6 +5679,14 @@ export interface components {
             sources: components["schemas"]["SourceFreshness"][];
             /** Total Sources */
             total_sources: number;
+        };
+        /**
+         * StatusOk
+         * @description Respuesta mínima de una mutación sin payload propio.
+         */
+        StatusOk: {
+            /** Status */
+            status: string;
         };
         /**
          * TeamRequirement
@@ -5971,6 +5987,14 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /**
+         * TotalCount
+         * @description Conteo agregado sin items (previews, badges).
+         */
+        TotalCount: {
+            /** Total */
+            total: number;
+        };
         /** TotpCodeRequest */
         TotpCodeRequest: {
             /** Code */
@@ -6268,6 +6292,58 @@ export interface components {
             visibility: string;
         };
         /**
+         * WatchlistFavoriteCreated
+         * @description Registro devuelto al crear (idempotente) un favorito.
+         */
+        WatchlistFavoriteCreated: {
+            /** Created At */
+            created_at: string | null;
+            /** Id */
+            id: number;
+            /** Id Externo */
+            id_externo: string;
+            /** Organization Id */
+            organization_id: number | null;
+            /** User Id */
+            user_id: number | null;
+            /** User Key */
+            user_key: string;
+            /** Visibility */
+            visibility: string | null;
+        };
+        /**
+         * WatchlistFavoriteItem
+         * @description Favorito del usuario enriquecido con la licitación (LEFT JOIN).
+         */
+        WatchlistFavoriteItem: {
+            /** Created At */
+            created_at: string | null;
+            /** Estado */
+            estado: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion: string | null;
+            /** Id */
+            id: number;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe: number | null;
+            /** Organization Id */
+            organization_id: number | null;
+            /** Titulo */
+            titulo: string | null;
+            /** Visibility */
+            visibility: string | null;
+        };
+        /**
+         * WatchlistFavoritesResult
+         * @description Listado de favoritos del usuario.
+         */
+        WatchlistFavoritesResult: {
+            /** Items */
+            items: components["schemas"]["WatchlistFavoriteItem"][];
+        };
+        /**
          * WatchlistItemBody
          * @description Cuerpo de creación de un favorito.
          */
@@ -6317,8 +6393,45 @@ export interface components {
             visibility: string;
         };
         /**
+         * WatchlistRuleMatch
+         * @description Licitación que coincide con una regla (proyección de matches).
+         */
+        WatchlistRuleMatch: {
+            /** Ccaa */
+            ccaa: string | null;
+            /** Cpv */
+            cpv: string | null;
+            /** Estado */
+            estado: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe: number | null;
+            /** Organo Contratacion */
+            organo_contratacion: string | null;
+            /** Titulo */
+            titulo: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * WatchlistRuleMatchesResult
+         * @description Matches de una regla + conteo total sin recortar por ``limit``.
+         */
+        WatchlistRuleMatchesResult: {
+            /** Items */
+            items: components["schemas"]["WatchlistRuleMatch"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * WatchlistRuleOut
          * @description Regla devuelta al cliente, enriquecida con el conteo real de matches.
+         *
+         *     Sin defaults (nota de modelado del backlog de contrato): una regla listada
+         *     siempre trae ``id``, su conteo y el email de entrega (posiblemente null).
          */
         WatchlistRuleOut: {
             /**
@@ -6331,7 +6444,7 @@ export interface components {
             /** Cpv */
             cpv?: string | null;
             /** Email */
-            email?: string | null;
+            email: string | null;
             /**
              * Frequency
              * @default daily
@@ -6339,13 +6452,10 @@ export interface components {
              */
             frequency: "immediate" | "daily" | "weekly";
             /** Id */
-            id?: number | null;
+            id: number;
             /** Keyword */
             keyword?: string | null;
-            /**
-             * Match Count
-             * @default 0
-             */
+            /** Match Count */
             match_count: number;
             /** Min Importe */
             min_importe?: number | null;
@@ -6359,6 +6469,14 @@ export interface components {
              * @enum {string}
              */
             visibility: "private" | "organization";
+        };
+        /**
+         * WatchlistRulesResult
+         * @description Listado de reglas del usuario (contrato tipado del GET).
+         */
+        WatchlistRulesResult: {
+            /** Items */
+            items: components["schemas"]["WatchlistRuleOut"][];
         };
         /**
          * WaterfallPoint
@@ -11456,7 +11574,6 @@ export interface operations {
                 };
                 content: {
                     "application/atom+xml": unknown;
-                    "application/json": unknown;
                 };
             };
             /** @description Token inválido o ausente */
@@ -11506,11 +11623,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: {
-                            [key: string]: unknown;
-                        }[];
-                    };
+                    "application/json": components["schemas"]["WatchlistFavoritesResult"];
                 };
             };
             /** @description Validation Error */
@@ -11547,9 +11660,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatchlistFavoriteCreated"];
                 };
             };
             /** @description Validation Error */
@@ -11621,9 +11732,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: components["schemas"]["WatchlistRuleOut"][];
-                    };
+                    "application/json": components["schemas"]["WatchlistRulesResult"];
                 };
             };
             /** @description Validation Error */
@@ -11660,9 +11769,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["CreatedId"];
                 };
             };
             /** @description Validation Error */
@@ -11699,9 +11806,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["TotalCount"];
                 };
             };
             /** @description Validation Error */
@@ -11740,9 +11845,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -11780,9 +11883,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -11821,9 +11922,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatchlistRuleMatchesResult"];
                 };
             };
             /** @description Validation Error */

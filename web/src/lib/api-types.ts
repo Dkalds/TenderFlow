@@ -39,3 +39,8 @@ export type RenovacionesResult = Schemas["RenovacionesResult"];
 export type CarteraEmpresa = Schemas["CarteraEmpresa"];
 export type RenovacionesTotales = Schemas["RenovacionesTotales"];
 export type RenovacionesResumenResult = Schemas["RenovacionesResumenResult"];
+
+// Watchlist — ola de tipado del contrato (backlog «65 operaciones opacas»).
+export type WatchlistRuleOut = Schemas["WatchlistRuleOut"];
+export type WatchlistRuleMatch = Schemas["WatchlistRuleMatch"];
+export type WatchlistFavoriteItem = Schemas["WatchlistFavoriteItem"];

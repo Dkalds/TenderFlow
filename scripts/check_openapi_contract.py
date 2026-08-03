@@ -43,7 +43,6 @@ ALLOWED_OPAQUE: frozenset[str] = frozenset(
         "DELETE /api/v1/me",
         "DELETE /api/v1/me/profile",
         "DELETE /api/v1/saved-filters/{filter_id}",
-        "DELETE /api/v1/watchlist/rules/{rule_id}",
         "GET /api/v1/auth/oauth/google/authorize",
         "GET /api/v1/auth/oauth/google/callback",
         "GET /api/v1/competitive/bajas",
@@ -74,10 +73,6 @@ ALLOWED_OPAQUE: frozenset[str] = frozenset(
         "GET /api/v1/resoluciones",
         "GET /api/v1/saved-filters",
         "GET /api/v1/security/audit/verify",
-        "GET /api/v1/watchlist/feed.xml",
-        "GET /api/v1/watchlist/items",
-        "GET /api/v1/watchlist/rules",
-        "GET /api/v1/watchlist/rules/{rule_id}/matches",
         "GET /api/v1/webhooks/{webhook_id}",
         "PATCH /api/v1/webhooks/{webhook_id}",
         "POST /api/v1/admin/users/{user_id}/deactivate",
@@ -95,14 +90,10 @@ ALLOWED_OPAQUE: frozenset[str] = frozenset(
         "POST /api/v1/notifications/alerts/read",
         "POST /api/v1/notifications/read",
         "POST /api/v1/saved-filters",
-        "POST /api/v1/watchlist/items",
-        "POST /api/v1/watchlist/rules",
-        "POST /api/v1/watchlist/rules/preview",
         "POST /api/v1/webhooks/{webhook_id}/ping",
         "PUT /api/v1/admin/users/{user_id}/admin",
         "PUT /api/v1/feature-flags",
         "PUT /api/v1/me/profile",
-        "PUT /api/v1/watchlist/rules/{rule_id}",
     }
 )
 
