@@ -57,9 +57,14 @@ class PrediccionBajaResult(BaseModel):
     # Los bloques son condicionales (ver el docstring del DTO): la ausencia de
     # `p50` significa "el batch nunca scoreó esta licitación", distinto de un
     # p50 nulo. Al tipar la respuesta, la serialización pasó a emitir todos los
-    # campos con `null` y esa distinción se perdía; `exclude_none` conserva el
-    # contrato que el endpoint ya tenía sin tipar.
-    response_model_exclude_none=True,
+    # campos con `null` y esa distinción se perdía.
+    #
+    # `exclude_unset`, NO `exclude_none`: `prediccion_baja` arma el dict por
+    # bloques, así que lo que no vino de la BD ni se pasa al constructor y
+    # queda sin marcar. Con `exclude_none` se caía además `model_version` nulo,
+    # que sí significa algo — "baseline histórico, no modelo" — y que el
+    # contrato de trazabilidad exige emitir siempre que haya predicción.
+    response_model_exclude_unset=True,
 )
 async def get_prediccion_baja(
     licitacion_id: str,

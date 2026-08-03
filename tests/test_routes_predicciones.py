@@ -5,6 +5,69 @@ from __future__ import annotations
 import pytest
 
 # ---------------------------------------------------------------------------
+# Contrato de serialización (sin BD: solo el DTO)
+#
+# Los dos extremos se pisan entre sí y cada uno vive en un fichero distinto, así
+# que se fijan juntos aquí. Al tipar la respuesta se emitían todos los campos
+# con `null` y `"p50" not in data` dejó de cumplirse; al corregirlo con
+# `exclude_none` se cayó `model_version` nulo y se rompió el subset que exige
+# `test_ml_baja_model.py::test_api_prediccion_baja`. `exclude_unset` es el
+# único que satisface ambos, y estos tests corren sin Postgres — el fallo se ve
+# en el gate local, no diez minutos después en CI.
+# ---------------------------------------------------------------------------
+
+
+def _dump(data: dict) -> dict:
+    """Serializa como lo hace la ruta (`response_model_exclude_unset=True`)."""
+    from api.routes.predicciones import PrediccionBajaResult
+
+    return PrediccionBajaResult(**data).model_dump(exclude_unset=True)
+
+
+def test_serializacion_scoreada_expone_model_version_nulo():
+    """`model_version` nulo = baseline histórico: significa algo, va en la respuesta."""
+    out = _dump(
+        {
+            "licitacion_id": "ABIERTA",
+            "p10": 0.1,
+            "p50": 0.12,
+            "p90": 0.2,
+            "model_version": None,
+            "computed_at": "2026-01-01",
+            "serving": "baseline",
+        }
+    )
+    assert {"p10", "p50", "p90", "model_version", "computed_at", "serving"} <= set(out)
+    assert out["model_version"] is None
+
+
+def test_serializacion_sin_estimacion_omite_el_bloque_de_prediccion():
+    """Sin fila en predicciones_baja no hay p50 — ausente, no nulo."""
+    out = _dump({"licitacion_id": "PRED004", "baja_real": 0.2, "importe_adjudicado": 40000})
+    assert "p50" not in out
+    assert "model_version" not in out
+    assert out["baja_real"] == 0.2
+
+
+def test_serializacion_scoreada_y_adjudicada_trae_los_dos_bloques():
+    out = _dump(
+        {
+            "licitacion_id": "PRED003",
+            "p10": 0.1,
+            "p50": 0.12,
+            "p90": 0.2,
+            "model_version": "v3",
+            "computed_at": "2026-01-01",
+            "serving": "modelo",
+            "baja_real": 0.12,
+            "importe_adjudicado": 88000,
+        }
+    )
+    assert out["p50"] == 0.12
+    assert out["baja_real"] == 0.12
+
+
+# ---------------------------------------------------------------------------
 # Helpers de seed
 # ---------------------------------------------------------------------------
 
