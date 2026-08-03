@@ -36,7 +36,13 @@ prometheus-fastapi-instrumentator>=8.0.0,<9
 # Password hashing seguro para autenticación
 bcrypt>=4.0,<5
 # Cifrado simétrico (Fernet/AES) para secretos TOTP y derivación de webhook keys
-cryptography>=48.0.1,<50
+# Suelo en 50.0.0 por CVE-2026-69247 (oráculo Bleichenbacher en PKCS#7 decrypt,
+# corregida solo en 50.0.0); 49.0.0 cierra las otras dos de la misma tanda
+# (CVE-2026-69248 name constraints, CVE-2026-69249 DoS en chain building).
+# Ninguna es alcanzable desde aquí -- este repo solo usa Fernet y primitivas
+# RSA/EC, ni x509.verification ni pkcs7 -- pero `pip-audit --strict` de
+# security.yml corre sin supresiones a propósito, así que el suelo es la vía.
+cryptography>=50.0.0,<51
 # argon2-cffi: algoritmo preferido para nuevos hashes (bcrypt mantenido para compatibilidad)
 argon2-cffi>=23.1.0,<25
 # Migraciones de base de datos (Alembic gestiona v14+ tras el baseline casero)
