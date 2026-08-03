@@ -1,0 +1,81 @@
+name: Mutation sample
+
+# El porcentaje de cobertura mide qué líneas se ejecutan, no si alguna
+# aserción las vigila: un test que llama a una función y comprueba que "no
+# lanza" cubre sus líneas y no detecta ninguna regresión. mutmut rompe el
+# código a propósito y mira si los tests se enteran.
+#
+# NO es bloqueante por diseño: un mutante superviviente puede significar
+# "falta un test" o "esa mutación es equivalente y da igual", y distinguirlo
+# necesita criterio humano. La señal se consume abriendo ítems de backlog, no
+# bloqueando PRs — al revés que los ratchets, que sí son binarios.
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      modules:
+        description: "Módulos a mutar (separados por espacio). Vacío = rotación semanal."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  mutate:
+    name: Mutación sobre una muestra de módulos
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: tenderflow
+          POSTGRES_PASSWORD: tenderflow  # pragma: allowlist secret -- contenedor efímero de CI, no es un secreto real
+          POSTGRES_DB: tenderflow_mutation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e ".[pliegos]"
+          # Instalación inline (mismo patrón que diff-cover): tooling de un
+          # único job, no dependencia de la suite.
+          pip install "mutmut==2.5.1"
+
+      - name: Run mutation sample
+        env:
+          ENV: dev
+          TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_mutation  # pragma: allowlist secret
+        run: |
+          if [ -n "${{ github.event.inputs.modules }}" ]; then
+            python scripts/run_mutation_sample.py --modules ${{ github.event.inputs.modules }}
+          else
+            # Rotación determinista por número de semana: cada ejecución toca
+            # dos módulos distintos y el ciclo cubre todos con el tiempo.
+            python scripts/run_mutation_sample.py --week "$(date +%V)"
+          fi
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mutation-report
+          path: mutation-report.json
+          if-no-files-found: ignore
