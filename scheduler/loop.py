@@ -235,6 +235,22 @@ def main() -> int:
     global _heavy_executor
 
     configure_logging(json_logs=os.environ.get("LOG_FORMAT") == "json")
+
+    # ADR-012: un solo plano de orquestación por entorno. Este proceso solo
+    # arranca si SCHEDULER_PLANE declara explícitamente que el plano activo es
+    # este loop. Hasta 2026-08 la variable se leía en healthcheck/ops_events
+    # pero NADIE la escribía ni la aplicaba: docker-compose levantaba el loop
+    # incondicionalmente y nada impedía dos planos activos contra la misma BD.
+    plane = os.environ.get("SCHEDULER_PLANE", "")
+    if plane != "docker":
+        log.error(
+            "scheduler_loop_refused_wrong_plane",
+            scheduler_plane=plane or "(sin definir)",
+            hint="exportá SCHEDULER_PLANE=docker para activar este plano (ADR-012); "
+            "el plano por defecto es GitHub Actions",
+        )
+        return 2
+
     configure_tracing()
     configure_sentry(service="scheduler")
 

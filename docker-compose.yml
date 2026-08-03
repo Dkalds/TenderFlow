@@ -73,11 +73,18 @@ services:
     image: tenderflow-api:latest
     container_name: tenderflow-scheduler
     restart: unless-stopped
+    # ADR-012: el plano de orquestación por defecto es GitHub Actions. Este
+    # servicio solo se levanta con el profile explícito
+    # (`docker compose --profile scheduler up`) Y declara SCHEDULER_PLANE=docker
+    # — scheduler.loop se niega a arrancar sin esa variable, así que ya no es
+    # posible tener dos planos activos contra la misma BD por accidente.
+    profiles: ["scheduler"]
     # El scheduler no expone puerto — solo escribe en la BD compartida
     env_file:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://tenderflow:tenderflow@postgres:5432/tenderflow?sslmode=disable}  # pragma: allowlist secret -- contenedor local de dev, no es una credencial real
+      SCHEDULER_PLANE: docker
       SCHEDULER_DAILY_INTERVAL_MINUTES: ${SCHEDULER_DAILY_INTERVAL_MINUTES:-240}
       SCHEDULER_BULK_INTERVAL_MINUTES: ${SCHEDULER_BULK_INTERVAL_MINUTES:-1440}
       SCHEDULER_BULK_MONTHS: ${SCHEDULER_BULK_MONTHS:-3}

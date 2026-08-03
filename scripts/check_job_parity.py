@@ -48,12 +48,27 @@ _ALIAS_PIPELINE: dict[str, str] = {
 }
 
 
-def _modules_invoked_by_workflows() -> set[str]:
-    """Módulos que algún workflow arranca con ``python -m``."""
-    modules: set[str] = set()
+_SCHEDULE_TRIGGER = re.compile(r"^\s*schedule:\s*$", re.MULTILINE)
+_CRON_LINE = re.compile(r"^\s*-\s*cron:", re.MULTILINE)
+
+
+def _modules_invoked_by_workflows() -> tuple[set[str], set[str]]:
+    """(módulos en workflows CON schedule, módulos en cualquier workflow).
+
+    La distinción importa: un workflow ``workflow_dispatch``-only satisfacía el
+    chequeo antiguo aunque nadie lo dispare nunca — exactamente la clase de
+    "job muerto en producción" que este script existe para detectar. Un job
+    ``plane='actions'`` debe aparecer en un workflow *programado*.
+    """
+    scheduled: set[str] = set()
+    anywhere: set[str] = set()
     for wf in sorted(_WORKFLOWS_DIR.glob("*.yml")):
-        modules.update(_PYTHON_M.findall(wf.read_text(encoding="utf-8")))
-    return modules
+        text = wf.read_text(encoding="utf-8")
+        found = _PYTHON_M.findall(text)
+        anywhere.update(found)
+        if _SCHEDULE_TRIGGER.search(text) and _CRON_LINE.search(text):
+            scheduled.update(found)
+    return scheduled, anywhere
 
 
 def check() -> tuple[list[dict[str, Any]], list[str]]:
@@ -61,7 +76,7 @@ def check() -> tuple[list[dict[str, Any]], list[str]]:
     from scheduler.jobs import build_default_registry
     from scheduler.pipeline_runs import CANONICAL_STEPS
 
-    invoked = _modules_invoked_by_workflows()
+    scheduled, anywhere = _modules_invoked_by_workflows()
     steps = set(CANONICAL_STEPS)
 
     rows: list[dict[str, Any]] = []
@@ -72,13 +87,19 @@ def check() -> tuple[list[dict[str, Any]], list[str]]:
         if job.plane == "actions":
             if not job.module:
                 problems.append(f"{job.name}: plane='actions' sin `module` declarado")
-            elif job.module not in invoked:
+            elif job.module in scheduled:
+                cubierto_por = f"python -m {job.module}"
+            elif job.module in anywhere:
+                problems.append(
+                    f"{job.name}: plane='actions' pero `python -m {job.module}` solo "
+                    "aparece en workflows workflow_dispatch-only (sin schedule) — "
+                    "job muerto salvo disparo manual"
+                )
+            else:
                 problems.append(
                     f"{job.name}: plane='actions' pero ningún workflow ejecuta "
                     f"`python -m {job.module}` — job muerto en producción"
                 )
-            else:
-                cubierto_por = f"python -m {job.module}"
         elif job.plane == "pipeline":
             step = _ALIAS_PIPELINE.get(job.name, job.name)
             if step not in steps:
