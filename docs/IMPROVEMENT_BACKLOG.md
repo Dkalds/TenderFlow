@@ -132,7 +132,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Se decide **dónde** se sanea cada forma: validador Pydantic compartido en los DTO para el cuerpo, y middleware en la frontera HTTP para el path — es una decisión de diseño, no un parche por endpoint.
   - Ambas entradas devuelven 4xx (400/422), no 500.
   - Las tres entradas salen de `KNOWN_5XX` en `scripts/fuzz_api_contract.py`. El propio gate lo exige: falla también si una entrada de la allowlist deja de fallar, así que no se puede arreglar y olvidar la limpieza.
-- **Nota sobre el gate:** `KNOWN_5XX` está calibrada para `MAX_EXAMPLES_GATE = 25`. Con `derandomize=True` el corpus depende de ese número (se comprobó: `search/semantic` falla con 10 ejemplos y no con 25), así que cambiarlo obliga a recalibrar la allowlist con `--list`.
+- **Nota sobre el gate:** el fuzzer bloquea por operaciones con 5xx **que no estén en `KNOWN_5XX`**, y solo avisa cuando una entrada de la lista no falla. La asimetría es deliberada: `derandomize=True` fija las entradas generadas, pero no el estado de la BD, que el propio fuzzer muta mientras corre — dos ejecuciones seguidas del mismo comando dieron 3 y 1 operaciones con 5xx. Exigir coincidencia exacta convertiría el gate en un generador de rojos espurios (bastaría añadir una licitación al seed). Para limpiar la lista tras arreglar algo, correr `--list` sobre una base recién migrada y sembrada.
 - **Files de partida:** [scripts/fuzz_api_contract.py](../scripts/fuzz_api_contract.py), [shared/dto.py](../shared/dto.py), [api/middleware.py](../api/middleware.py)
 - **Riesgo:** bajo-medio — toca validación de entrada compartida.
 

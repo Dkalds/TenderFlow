@@ -20,32 +20,37 @@ precisamente para que ese falso verde se vea de un vistazo.
 
 El ratchet
 ----------
-``KNOWN_5XX`` congela las operaciones que ya fallaban al introducir el gate.
-Como el resto de ratchets del repo (TID251, ``check_openapi_contract.py``),
-**solo puede encoger**: el script falla tanto por una operación nueva que
-devuelve 5xx como por una entrada de la allowlist que ya no falla —esa segunda
-mitad es la que obliga a borrarla cuando se arregla, en vez de dejarla
-pudriéndose.
+``KNOWN_5XX`` lista las operaciones que ya devolvían 5xx al introducir el gate.
+**El gate falla cuando aparece una operación con 5xx que no está en esa lista.**
+Añadir líneas está prohibido: si tu cambio hace fallar una operación, arreglala.
 
-Añadir líneas a ``KNOWN_5XX`` está prohibido. Si tu cambio hace fallar una
-operación, arreglala.
+Una entrada de la lista que en una ejecución concreta no falla se avisa, pero
+no tumba el job. Es una diferencia deliberada respecto a los otros ratchets del
+repo (TID251, ``check_openapi_contract.py``), y el motivo está en la sección
+siguiente: aquí el resultado no depende solo del código.
 
-Determinismo
-------------
-``derandomize=True``: mismos ejemplos en cada ejecución. Sin eso, "esta entrada
-ya no falla" podría significar solo "esta vez tocó otra entrada", y la mitad
-del ratchet que detecta entradas obsoletas mentiría.
+Por qué esta mitad no es un error
+---------------------------------
+``derandomize=True`` fija las **entradas** que genera Hypothesis, pero no el
+**estado de la base**: el fuzzer crea, modifica y borra filas mientras corre, y
+lo que devuelve una operación depende de lo que hicieron las anteriores. Dos
+ejecuciones seguidas del mismo comando sobre la misma base dieron 3 y 1
+operaciones con 5xx respectivamente — no por aleatoriedad, sino porque la
+segunda partía de los datos que dejó la primera.
 
-El corpus depende de ``--max-examples``, así que ``KNOWN_5XX`` está calibrada
-para ``MAX_EXAMPLES_GATE`` y solo con ese valor se puede concluir que una
-entrada sobra. Se comprobó en la práctica: ``POST /api/v1/search/semantic``
-falla con 10 ejemplos y no con 25. Con otro valor el script avisa y no tumba la
-ejecución por entradas obsoletas; las nuevas siempre fallan, con cualquier
-corpus.
+Con eso, exigir que la lista coincida exactamente convertiría el gate en un
+generador de rojos espurios: bastaría añadir una licitación al seed para que
+una operación dejara de tocar el camino que fallaba. Lo que sí es siempre
+concluyente —y por eso es lo único bloqueante— es lo contrario: si una
+operación devuelve 5xx, hay una excepción sin manejar, con independencia de
+cómo llegara ahí.
+
+Para limpiar la lista tras arreglar algo, ejecutá ``--list`` **sobre una base
+recién migrada y sembrada** (como hace CI) y comparalo con la lista actual.
 
 Uso::
 
-    python scripts/fuzz_api_contract.py           # gate (exit 1 si hay nuevas)
+    python scripts/fuzz_api_contract.py           # gate (exit 1 si hay 5xx nuevos)
     python scripts/fuzz_api_contract.py --list    # imprime lo que falla, exit 0
     python scripts/fuzz_api_contract.py --max-examples 50   # exploración manual
 """
@@ -85,14 +90,13 @@ EXCLUDED_OPERATIONS: frozenset[str] = frozenset(
     }
 )
 
-# Número de ejemplos del gate. **La allowlist de abajo está calibrada para este
-# valor exacto**: `derandomize=True` hace que el corpus dependa de él, así que
-# con otro número las entradas dejan de corresponder una a una (se comprobó:
-# `search/semantic` falla con 10 ejemplos y no con 25). Cambiarlo obliga a
-# recalibrar `KNOWN_5XX` con `--list`.
+# Ejemplos por operación en el gate. Más ejemplos exploran más superficie y
+# encuentran más: con 10 no aparecía el 5xx de `watchlist/items` que sí aparece
+# con 25. Subirlo es bienvenido —el coste es tiempo de job—; bajarlo debilita el
+# gate sin avisar.
 MAX_EXAMPLES_GATE = 25
 
-# ── Ratchet: operaciones que YA devolvían 5xx (solo puede encoger) ───────────
+# ── Operaciones que ya devolvían 5xx al introducir el gate ──────────────────
 # Todas comparten forma: una entrada malformada atraviesa la validación y
 # revienta en una capa que no la esperaba.
 #
@@ -104,8 +108,7 @@ MAX_EXAMPLES_GATE = 25
 # El arreglo correcto no es endpoint por endpoint sino decidir dónde se sanea
 # (validador compartido en los DTO, middleware en la frontera HTTP, o ambos):
 # es un cambio transversal con su propia discusión, anotado en
-# docs/IMPROVEMENT_BACKLOG.md. Al resolverlo, estas líneas se borran — el
-# propio gate lo exige.
+# docs/IMPROVEMENT_BACKLOG.md. Al resolverlo, borrá su línea de aquí.
 KNOWN_5XX: frozenset[str] = frozenset(
     {
         "POST /api/v1/licitaciones/bulk-get",
@@ -283,9 +286,8 @@ def main() -> int:
         type=int,
         default=MAX_EXAMPLES_GATE,
         help=(
-            "Ejemplos por operación. Con un valor distinto del del gate "
-            f"({MAX_EXAMPLES_GATE}) el corpus cambia y la mitad del ratchet que "
-            "detecta entradas obsoletas deja de ser fiable."
+            f"Ejemplos por operación (el gate usa {MAX_EXAMPLES_GATE}). Más "
+            "ejemplos exploran más superficie y tardan más."
         ),
     )
     parser.add_argument(
@@ -321,24 +323,21 @@ def main() -> int:
             print(f"  {label}: {informe.por_operacion[label].repro}")
         print("\nUn 4xx es una respuesta válida; un 5xx es una excepción sin manejar.")
 
-    # Las entradas obsoletas solo son concluyentes con el corpus del gate: con
-    # otro `--max-examples`, "ya no falla" puede significar solo "esta vez tocó
-    # otra entrada". Se informa igual, pero no tumba la ejecución.
-    corpus_del_gate = args.max_examples == MAX_EXAMPLES_GATE
+    # Informativo, nunca bloqueante: que una entrada no falle en ESTA ejecución
+    # no prueba que esté arreglada, porque el resultado depende del estado que
+    # dejaron las operaciones anteriores (ver "Por qué esta mitad no es un
+    # error" en el docstring). Confirmalo con `--list` sobre una base limpia.
     if resueltas:
-        if corpus_del_gate:
-            print("\n[ACCIÓN] Entrada(s) de KNOWN_5XX que ya no fallan — el ratchet solo")
-            print("puede encoger, borralas de la allowlist:")
-        else:
-            print(
-                f"\n[AVISO] Con --max-examples {args.max_examples} (el gate usa "
-                f"{MAX_EXAMPLES_GATE}) estas entradas no fallaron, pero el corpus es"
-            )
-            print("otro: no se puede concluir que sobren.")
+        print("\n[AVISO] Entrada(s) de KNOWN_5XX que no fallaron en esta ejecución:")
         for label in resueltas:
             print(f"  {label}")
+        print(
+            "Si ya están arregladas, borralas de la allowlist. Comprobalo con "
+            "`--list` sobre una base recién migrada y sembrada: el resultado "
+            "depende del estado de la BD, no solo del código."
+        )
 
-    if nuevas or (resueltas and corpus_del_gate):
+    if nuevas:
         return 1
 
     print("\nSin 5xx fuera de la allowlist.")
