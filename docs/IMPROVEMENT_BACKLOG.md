@@ -115,21 +115,12 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### [P2] Hacer real la taxonomía de markers: `integration` inferido por uso de fixtures PG
-- **Área:** tests/conftest.py, Makefile, docs/testing.md, AGENTS.md §3.4
-- **Problema:** el auto-marking por nombre deja ~97% de la suite como `unit`, incluidos los ~726 tests que abren un schema Postgres real (fixtures `tmp_db`/`api_db`/`client`). El bucket `integration` está vacío por inferencia (exige `/integration/` en el path o `integration_` en el nombre, que no usa nadie) y `make test-unit` es en la práctica "casi toda la suite". La taxonomía es cosmética.
-- **Por qué no se hizo en la revisión 2026-08:** inferir `integration` desde el uso de fixtures cambia qué corre `make test-unit`/`make check` (el gate local perdería ~726 tests de golpe) y contradice el invariante documentado "categoría por nombre" (AGENTS.md §3.4) — necesita decisión consciente + actualización del invariante + posible re-partición de los targets del Makefile, no un cambio mecánico colado en otra rama.
-- **Acceptance criteria:**
-  - Decisión registrada (ADR o nota en AGENTS.md): categoría por nombre vs por fixture.
-  - Si se adopta por-fixture: `make test-unit` sigue siendo el gate rápido útil (definir qué corre), CI sigue ejecutando todo, y docs/testing.md + AGENTS.md §3.4 se actualizan en el mismo cambio.
-- **Riesgo:** medio — toca el gate de desarrollo local de todo el mundo.
-
-### [P2] Paralelizar la suite: pytest-xdist + template database
-- **Área:** tests/conftest.py, requirements-dev.in, ci.yml
-- **Problema:** ~726 tests re-ejecutan el DDL completo (~50 tablas) en su propio schema, en serie — sin `pytest-xdist` (no está en requirements-dev). El techo de 25 min del job de CI es una restricción real. `CREATE DATABASE ... TEMPLATE tf_template` (o clonación de schema) + xdist con una BD por worker debería recortar la suite a la mitad o menos.
-- **Por qué no se hizo en la revisión 2026-08:** añade dependencia (gate §6) y necesita validarse contra el Postgres real de CI — a ciegas desde una sesión sin Postgres es exactamente el tipo de cambio de infraestructura de tests que se rompe en formas no obvias.
-- **Acceptance criteria:** suite verde con `-n auto` en CI; tiempo total del job `test` medido antes/después en el PR; aislamiento intacto (ningún test ve datos de otro).
-- **Riesgo:** medio — infraestructura de tests; mitigable haciéndolo en PR propio con CI como juez.
+### [P2] Paralelizar la suite: activar `-n auto` en CI y medir
+- **Área:** ci.yml
+- **Problema original:** ~726 tests re-ejecutan el DDL completo (~50 tablas) en su propio schema, en serie; el techo de 25 min del job de CI es una restricción real.
+- **Progreso 2026-08-03:** infraestructura implementada como opt-in — `pytest-xdist` en requirements-dev, `make test-parallel` (`-n auto`), y `_pg_schema_ddl` es xdist-safe (lock de fichero en el tmp compartido del run: un solo worker ejecuta alembic + pg_dump + vaciado de `public`, el resto lee el DDL cacheado; los schemas por test ya llevaban el pid, sin colisiones entre workers). No activado en `ci.yml` a propósito: cambiar la línea de pytest de CI a ciegas desde una sesión sin Postgres es exactamente el tipo de cambio que se rompe en formas no obvias.
+- **Acceptance criteria (lo que queda):** en un PR propio, cambiar el paso de CI a `pytest -n auto …`, suite verde, tiempo del job `test` medido antes/después; aislamiento intacto (ningún test ve datos de otro). Si el recorte no llega, evaluar `CREATE DATABASE … TEMPLATE` por worker como siguiente palanca.
+- **Riesgo:** bajo ya — la parte propensa a romperse (coordinación del fixture de sesión) está hecha y el fallback es no pasar `-n`.
 
 ### [P1] `e2e/responsive.spec.ts` no prueba nada: la experiencia móvil no tiene cobertura
 - **Área:** web/e2e/responsive.spec.ts
@@ -311,6 +302,17 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-03] **P2: Taxonomía de markers real — `integration` inferido por uso de fixtures PG** —
+  Decisión registrada en AGENTS.md (invariante §3.4): la categoría sigue saliendo del nombre,
+  PERO un test cuyo cierre de fixtures incluya `tmp_db`/`api_db` (directo o transitivo —
+  `client`/`api_key`/`auth` los declaran; `item.fixturenames` trae el cierre) se infiere `integration`
+  aunque su fichero no lo diga. `unit` vuelve a significar "sin BD". El gate local NO encoge:
+  `make check` pasa a `-m "(unit or integration) and not slow"` (misma cobertura que antes del
+  cambio) y `make test-unit` queda como bucle rápido sin BD; CI ejecuta la suite completa sin
+  filtro, así que no le afecta. docs/testing.md + AGENTS.md §3.4 + Makefile actualizados juntos,
+  como pedía el AC (de paso: la ayuda de `test-all` decía "todo excepto integration" y ejecuta
+  todo — corregida).
 
 - [2026-08-03] **P1: Dejar de materializar tablas completas en el proceso del API (memoria en Render) — ADR-023 COMPLETADO** —
   Los 27 endpoints analíticos agregan en Postgres o consumen proyecciones acotadas con

@@ -1,4 +1,4 @@
-.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -31,10 +31,12 @@ typecheck:  ## Type checking con mypy
 audit:  ## Auditoría de dependencias
 	pip-audit --strict --desc
 
-check:  ## Lint + typecheck + tests unitarios (ideal para desarrollo)
+# `(unit or integration)`: misma cobertura que antes de inferir `integration`
+# por uso de fixtures PG — el gate local no encoge, solo la taxonomía es real.
+check:  ## Lint + typecheck + tests unit+integration (ideal para desarrollo)
 	ruff check .
 	mypy .
-	pytest tests/ -m "unit and not slow" -q
+	pytest tests/ -m "(unit or integration) and not slow" -q
 
 check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloqueante)
 	python scripts/check_frontend_invariants.py --strict
@@ -61,6 +63,13 @@ test:  ## Suite de tests estándar (excluye integration_e2e)
 test-all:  ## Ejecuta TODOS los tests sin excepción
 	pytest tests/
 
+# Opt-in (2026-08): el fixture de sesión materializa el DDL una sola vez entre
+# workers (lock de fichero en el tmp compartido del run) y los schemas por test
+# llevan el pid, así que no colisionan. Validar tiempos en CI (activar -n auto
+# en ci.yml midiendo antes/después) antes de hacerlo default.
+test-parallel:  ## Suite en paralelo con pytest-xdist (-n auto, opt-in)
+	pytest tests/ -n auto --ignore=tests/test_integration_e2e.py
+
 test-integration:  ## Tests de integración (requieren BD real)
 	pytest tests/ -m integration
 
@@ -70,7 +79,9 @@ test-perf:  ## Tests de rendimiento (marker slow)
 	pytest tests/test_performance.py -m slow
 
 # ── Tests por categoría (markers nuevos en F0) ───────────────────────────
-test-unit:  ## Tests unitarios rápidos
+# `unit` es real desde 2026-08: un test cuyo cierre de fixtures abre Postgres
+# (`_pg_schema` → tmp_db/api_db/client…) se infiere `integration`, no `unit`.
+test-unit:  ## Tests unitarios rápidos (sin BD real)
 	pytest tests/ -m "unit and not slow"
 
 test-e2e:  ## Tests end-to-end

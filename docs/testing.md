@@ -2,21 +2,31 @@
 
 Guía para ejecutar, escribir y entender los tests del proyecto.
 
-## Auto-marking por convención de nombre
+## Auto-marking por convención de nombre + uso de fixtures
 
-`tests/conftest.py` asigna markers automáticamente según tokens en el nombre del archivo o función. **No marcar tests manualmente.**
+`tests/conftest.py` asigna markers automáticamente. **No marcar tests manualmente.**
 
-| Token en nombre                                        | Marker        |
+| Regla                                                  | Marker        |
 |--------------------------------------------------------|---------------|
-| `_e2e`, `visual_regression`                         | `e2e`         |
+| `_e2e`, `visual_regression` en el nombre               | `e2e`         |
 | `performance`, `load`                                  | `load`        |
 | `property`, `properties`, `property_based`             | `property`    |
-| `integration_e2e`                                      | `integration` |
+| `integration_e2e` (o `/integration/` en el path)       | `integration` |
+| Cierre de fixtures incluye `tmp_db`/`api_db` (BD real) | `integration` |
 | Todo lo demás                                          | `unit` (default) |
 
-Prioridad de evaluación: e2e > load > property > integration > unit.
+Prioridad de evaluación: e2e > load > property > integration (nombre) >
+integration (fixture PG) > unit.
 
-Si necesitás que un test tenga otro marker, **renombrá el archivo o la función** — no uses `@pytest.mark.xxx`.
+La regla por fixture (2026-08) hace la taxonomía **real**: un test que abre un
+schema Postgres — directamente (`tmp_db`, `api_db`) o transitivamente
+(`client`, `api_key`, `auth`…, que declaran `api_db` en su cierre) — queda
+`integration` sea cual sea el nombre del fichero, y `unit` vuelve a significar
+"sin I/O externo". `make check` ejecuta `unit or integration` (misma cobertura
+que antes del cambio); `make test-unit` es el bucle rápido sin BD.
+
+Si necesitás que un test tenga otro marker de NOMBRE, **renombrá el archivo o
+la función** — no uses `@pytest.mark.xxx`.
 
 ## Fixtures disponibles
 
@@ -47,10 +57,12 @@ def test_parser_properties_handles_empty(tmp_db):
 ## Ejecutar tests por categoría
 
 ```bash
-make test-unit         # unit (sin slow) — usar durante desarrollo
+make check             # lint + typecheck + unit e integration (gate local)
+make test-unit         # unit (sin slow, sin BD) — bucle rápido de desarrollo
 make test              # suite completa excepto integration_e2e
-make test-all          # todo excepto integration
-make test-integration  # solo integration
+make test-parallel     # ídem con pytest-xdist -n auto (opt-in, ver Makefile)
+make test-all          # TODOS los tests
+make test-integration  # solo integration (requiere TEST_DATABASE_URL)
 make test-e2e          # solo e2e
 make test-property     # solo property
 make test-load         # solo load
