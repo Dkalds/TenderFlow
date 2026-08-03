@@ -355,12 +355,39 @@ def test_rotate_exige_key_id_explicito() -> None:
 
 def test_rotate_rechaza_key_de_otro_usuario(monkeypatch: pytest.MonkeyPatch) -> None:
     """El step-up prueba quién pide la rotación, no que la key sea suya."""
-    monkeypatch.setattr(me_routes, "_get_user_id_from_key_id", lambda key_id: 99)
+    monkeypatch.setattr(
+        me_routes._key_repo,
+        "get_rotatable",
+        lambda key_id: {"user_id": 99, "name": "ajena", "scopes": "read"},
+    )
 
     with pytest.raises(HTTPException) as exc:
         me_routes.rotate_my_key(ctx={"user_id": 4, "auth_method": "session"}, key_id=11)
 
     assert exc.value.status_code == 404
+
+
+def test_rotate_no_resucita_una_key_revocada(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Una key revocada o caducada no se puede rotar.
+
+    Mientras la rotación se autenticaba con la propia key solo se podía rotar
+    una viva. Al pasar a step-up por sesión esa garantía se perdía: bastaba con
+    conocer el id de una key revocada para acuñar otra activa con sus scopes,
+    anulando la revocación del webhook de secret scanning de GitHub y la del
+    alta de baja de un usuario. ``get_rotatable`` devuelve ``None`` para una
+    key no activa, y el endpoint responde 404 sin emitir nada.
+    """
+    creadas: list[dict[str, Any]] = []
+    monkeypatch.setattr(me_routes._key_repo, "get_rotatable", lambda key_id: None)
+    monkeypatch.setattr(
+        me_routes, "create_api_key", lambda **kw: (creadas.append(kw), "no-deberia")[1]
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        me_routes.rotate_my_key(ctx={"user_id": 4, "auth_method": "session"}, key_id=11)
+
+    assert exc.value.status_code == 404
+    assert creadas == []
 
 
 def test_rotate_usa_step_up_de_sesion() -> None:
@@ -374,8 +401,11 @@ def test_rotate_rota_la_key_propia(monkeypatch: pytest.MonkeyPatch) -> None:
     """Camino feliz: expira la key indicada y emite una nueva para el usuario."""
     expiries: list[tuple[int, str]] = []
     creadas: list[dict[str, Any]] = []
-    monkeypatch.setattr(me_routes, "_get_user_id_from_key_id", lambda key_id: 4)
-    monkeypatch.setattr(me_routes, "get_key_name_and_scopes", lambda key_id: ("mi-key", "read"))
+    monkeypatch.setattr(
+        me_routes._key_repo,
+        "get_rotatable",
+        lambda key_id: {"user_id": 4, "name": "mi-key", "scopes": "read"},
+    )
     monkeypatch.setattr(
         me_routes, "set_key_expiry", lambda key_id, expires: expiries.append((key_id, expires))
     )
@@ -421,6 +451,9 @@ def test_oauth_admin_degrada_si_salio_de_la_lista(monkeypatch: pytest.MonkeyPatc
     llamadas: list[tuple[int, bool]] = []
     monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "jefe@example.com")
     monkeypatch.setattr(auth_routes, "set_admin", lambda uid, value: llamadas.append((uid, value)))
+    # La degradación se registra en el log, y para saber si hay algo que
+    # registrar hace falta el estado previo.
+    monkeypatch.setattr(auth_routes, "is_admin", lambda uid: True)
 
     auth_routes._sync_oauth_admin(3, "exjefe@example.com")
 
@@ -436,3 +469,30 @@ def test_oauth_admin_no_toca_nada_si_la_lista_esta_vacia(monkeypatch: pytest.Mon
     auth_routes._sync_oauth_admin(3, "quien@example.com")
 
     assert llamadas == []
+
+
+# ---------------------------------------------------------------------------
+# El gate de MFA necesita una salida de producto, o encierra fuera a la cuenta
+# ---------------------------------------------------------------------------
+
+
+def test_login_devuelve_mfa_required_para_que_el_spa_pida_el_codigo() -> None:
+    """``UserInfo`` expone ``mfa_required``: es la señal que usa el SPA.
+
+    Sin ella el frontend redirige al dashboard y la sesión pendiente choca
+    contra el 403 del gate en cada endpoint, sin forma de elevarse.
+    """
+    assert "mfa_required" in auth_routes.UserInfo.model_fields
+
+
+def test_callback_oauth_manda_a_verificar_si_la_cuenta_tiene_mfa() -> None:
+    """El callback no puede mandar al dashboard una sesión pendiente de MFA.
+
+    Con Google no hay respuesta JSON que el SPA pueda inspeccionar —es una
+    navegación de nivel superior—, así que el destino tiene que llevar la señal
+    en la URL. El resto del flujo (login por contraseña) la recibe en el body.
+    """
+    fuente = inspect.getsource(auth_routes.google_callback)
+
+    assert "is_totp_required" in fuente
+    assert "/login?mfa=required" in fuente

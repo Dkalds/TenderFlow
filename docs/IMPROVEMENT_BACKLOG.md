@@ -125,6 +125,17 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] El origen de una concesión de `is_admin` no se registra, y OAuth pisa al panel
+- **Área:** api/routes/auth.py, api/routes/admin_users.py, db/users.py, db/alembic
+- **Problema:** `_sync_oauth_admin` refleja `OAUTH_ADMIN_EMAILS` sobre `is_admin` en ambos sentidos (antes solo promovía, así que sacar a alguien de la lista no le revocaba nada — cerrado en la revisión de seguridad). El efecto colateral es que, con la lista configurada, **OAuth manda sobre el panel**: a quien se promovió con `admin_users.admin_set_admin` y además entra con Google se le retira el flag en su siguiente login. Se eligió ese lado a propósito —dejar admin a un ex-administrador es peor que obligar a re-promover a uno legítimo— y la degradación se registra con `log.warning("oauth_admin_revoked")` para que sea diagnosticable, pero sigue siendo silenciosa desde el punto de vista del usuario.
+- **Causa de fondo:** `users.is_admin` es un booleano sin procedencia. Sin saber *quién* concedió el flag no se puede decidir correctamente quién puede retirarlo.
+- **Acceptance criteria:**
+  - Columna que registre el origen de la concesión (p.ej. `admin_granted_by` con valores `oauth` / `panel`), vía nueva revisión Alembic (append-only, §3.3).
+  - `_sync_oauth_admin` solo degrada concesiones de origen `oauth`; las del panel sobreviven al login de Google.
+  - Test que promueve desde el panel, hace login OAuth con la lista configurada sin ese email, y verifica que el flag **se conserva**.
+- **Files de partida:** [api/routes/auth.py](../api/routes/auth.py), [api/routes/admin_users.py](../api/routes/admin_users.py)
+- **Riesgo:** bajo en código, medio en proceso — requiere migración de schema, que necesita OK humano (§6).
+
 ### [P1] `e2e/responsive.spec.ts` no prueba nada: la experiencia móvil no tiene cobertura
 - **Área:** web/e2e/responsive.spec.ts
 - **Problema:** los dos tests del fichero solo afirman `expect(page.locator("body")).toBeVisible()`. El primero construye un localizador `_hamburger` con tres estrategias encadenadas y **nunca lo usa** (el prefijo `_` existe para callar al linter de variables sin usar). Es decir: la única cobertura declarada de responsive pasa siempre, incluso con la navegación móvil rota. Relevante porque la sidebar es `hidden md:flex` y por debajo de `md` el conmutador de espacios de producto no existe en ninguna parte — un fallo real ahí no lo detecta nadie.

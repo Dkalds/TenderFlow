@@ -95,6 +95,33 @@ class ApiKeyRepository:
             return None
         return row[0], str(row[1] or "*")
 
+    def get_rotatable(self, key_id: int) -> dict[str, Any] | None:
+        """Devuelve ``{user_id, name, scopes}`` de una key rotable, o ``None``.
+
+        Rotable = existe, sigue activa y no ha caducado. El filtro no es
+        cosmético: mientras la rotación se autenticaba con la propia key
+        (``require_api_key`` → ``lookup_active_key``) solo se podía rotar una
+        credencial viva. Al mover el endpoint a step-up por sesión, esa
+        garantía se perdía — bastaba con conocer el id de una key revocada
+        para acuñar otra activa con sus mismos scopes, anulando tanto la
+        revocación manual como la automática del webhook de secret scanning de
+        GitHub (``api/routes/security.py``) y la del alta de baja de un usuario.
+        """
+        with connect_read() as c:
+            row = c.execute(
+                "SELECT user_id, name, scopes FROM api_keys "
+                "WHERE id = ? AND is_active = 1 "
+                "AND (expires_at IS NULL OR expires_at > ?)",
+                (key_id, now_utc_iso()),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "user_id": int(row[0]) if row[0] is not None else None,
+            "name": str(row[1]),
+            "scopes": str(row[2] or "*"),
+        }
+
     def get_name(self, key_hash: str) -> str | None:
         with connect_read() as c:
             row = c.execute(
@@ -103,10 +130,18 @@ class ApiKeyRepository:
         return str(row[0]) if row else None
 
     def get_all_for_user(self, user_id: int) -> list[dict[str, Any]]:
+        """Lista las keys del usuario. Nunca incluye el hash ni el token.
+
+        Devuelve ``id`` porque es el único identificador con el que el dueño
+        puede señalar qué key rotar: ``POST /me/keys/rotate`` lo exige desde
+        que pasó a step-up por sesión, y sin este campo no había forma de
+        obtenerlo — el endpoint quedaba inalcanzable desde la UI.
+        """
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT name, created_at, expires_at FROM api_keys WHERE user_id = ?",
+                    "SELECT id, name, created_at, expires_at, is_active "
+                    "FROM api_keys WHERE user_id = ?",
                     (user_id,),
                 )
                 cols = [d[0] for d in cur.description]

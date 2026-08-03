@@ -668,15 +668,38 @@ async def google_authorize(response: Response) -> dict[str, str]:
 def _sync_oauth_admin(user_id: int, email: str) -> None:
     """Refleja ``OAUTH_ADMIN_EMAILS`` sobre ``is_admin`` en ambos sentidos.
 
-    Antes solo promovía: sacar a alguien de la lista no le quitaba admin nunca.
-    La sincronización se salta cuando la lista está vacía porque ese caso no
+    Antes solo promovía: sacar a alguien de la lista no le quitaba admin nunca,
+    así que revocar un administrador exigía acordarse de tocar la BD a mano.
+
+    La sincronización se salta cuando la lista está vacía, porque ese caso no
     significa "nadie es admin" sino "OAuth no gobierna el flag": la otra fuente
-    legítima es el panel de administración (``admin_users.admin_set_admin``), y
-    degradar aquí desadministraría a todos sus promovidos en el próximo login.
+    legítima es el panel (``admin_users.admin_set_admin``), y degradar ahí
+    desadministraría a todos sus promovidos en el próximo login.
+
+    **Precedencia, con la lista configurada:** ``OAUTH_ADMIN_EMAILS`` manda
+    sobre el panel para las cuentas que entran por Google. A alguien promovido
+    desde el panel que además use Google SSO se le retira el flag en su
+    siguiente login. Es deliberado —entre dejar admin a un ex-administrador y
+    obligar a re-promover a uno legítimo, el riesgo asimétrico está claro— pero
+    es una degradación silenciosa, así que se registra en el log con nivel
+    warning para que sea diagnosticable. La solución completa (una columna que
+    registre el origen de la concesión, y que el panel gane sobre la lista)
+    necesita migración y está anotada en el backlog.
     """
     if not csv_set(settings.OAUTH_ADMIN_EMAILS):
         return
-    set_admin(user_id, oauth_email_is_admin(email))
+    should_be_admin = oauth_email_is_admin(email)
+    if not should_be_admin and is_admin(user_id):
+        log.warning(
+            "oauth_admin_revoked",
+            user_id=user_id,
+            hint=(
+                "La cuenta tenía is_admin pero su email no está en OAUTH_ADMIN_EMAILS. "
+                "Si la promoción venía del panel de administración, volvé a aplicarla "
+                "tras añadir el email a la lista."
+            ),
+        )
+    set_admin(user_id, should_be_admin)
 
 
 def _oauth_error_redirect(frontend_url: str, error: str) -> Response:
@@ -769,8 +792,13 @@ async def google_callback(
     log_access(auth_method="google_oauth", user_id=user_id)
     log.info("oauth_login_success", user_id=user_id)
 
-    # Redirect to frontend dashboard with session cookie
-    redirect = RedirectResponse(url=f"{frontend_url}/resumen", status_code=302)
+    # Con MFA confirmado la sesión nace pendiente: mandarla al dashboard la
+    # dejaría en una pantalla que responde 403 en todo. El SPA lee `?mfa=required`
+    # y muestra la verificación del segundo factor sobre la sesión ya creada.
+    from db.totp import is_totp_required
+
+    destino = "/login?mfa=required" if is_totp_required(user_id) else "/resumen"
+    redirect = RedirectResponse(url=f"{frontend_url}{destino}", status_code=302)
     redirect.delete_cookie(_OAUTH_PKCE_COOKIE, path="/api/v1/auth/oauth/google")
     _set_session_cookie(redirect, user_id, request)
     return redirect

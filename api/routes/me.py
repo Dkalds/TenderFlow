@@ -47,8 +47,6 @@ from services.gdpr import (
     export_watchlist,
     export_watchlist_items,
     export_watchlist_rules,
-    get_key_name_and_scopes,
-    get_user_id_from_key_id,
     revoke_all_api_keys_for_user,
     set_key_expiry,
 )
@@ -64,11 +62,6 @@ class DeleteMyDataRequest(BaseModel):
     """Explicit confirmation prevents a forged or accidental destructive call."""
 
     confirmation: Literal["DELETE"]
-
-
-def _get_user_id_from_key_id(key_id: int) -> int | None:
-    """Proxy a services.gdpr — compatibilidad interna."""
-    return get_user_id_from_key_id(key_id)
 
 
 def _user_key(ctx: dict[str, Any]) -> str:
@@ -272,16 +265,15 @@ def rotate_my_key(
         )
 
     user_id = int(ctx["user_id"])
-    # Sin esta comprobación, el step-up solo probaría *quién* pide la rotación,
-    # no que la key sea suya: cualquier usuario podría rotar la de otro.
-    if _get_user_id_from_key_id(key_id) != user_id:
+    # `get_rotatable` exige que la key exista, siga activa y no haya caducado.
+    # Consultar solo por id resucitaba credenciales revocadas: el step-up prueba
+    # *quién* pide la rotación, no que la key siga siendo legítima ni que sea
+    # suya. Ambas cosas se comprueban aquí.
+    rotatable = _key_repo.get_rotatable(key_id)
+    if rotatable is None or rotatable["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="API key no encontrada.")
 
-    key_info = get_key_name_and_scopes(key_id)
-    if not key_info:
-        raise HTTPException(status_code=404, detail="API key no encontrada.")
-
-    name, scopes = key_info
+    name, scopes = rotatable["name"], rotatable["scopes"]
 
     # Marcar la key actual con expires_at = now + grace_days
     grace_expires = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()

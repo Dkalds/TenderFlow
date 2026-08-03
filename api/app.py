@@ -542,8 +542,18 @@ try:
                 is_unexpired = record is not None and (
                     record.expires_at is None or now_utc_iso() <= record.expires_at
                 )
+                # Este handler valida la key por su cuenta en vez de depender de
+                # `require_api_key`, así que la comprobación de propietario
+                # activo hay que repetirla aquí: sin ella, la key de un usuario
+                # dado de baja seguía leyendo las métricas.
+                owner_active = True
+                if record is not None and record.user_id is not None:
+                    from db.users import get_user_by_id
+
+                    owner_active = get_user_by_id(record.user_id) is not None
                 if (
                     is_unexpired
+                    and owner_active
                     and (settings.ENV == "dev" or is_bound)
                     and ("*" in scope_set or "metrics:read" in scope_set)
                 ):
