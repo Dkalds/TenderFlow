@@ -3,18 +3,16 @@
 These cover the React parity work: technology cross-tabs and detail,
 SAP module YoY / tipo x estado / CPV breakdowns, and real semantic clustering.
 
-``proyectos_modulos``/``clusters`` siguen mockeando ``load_stats_base_df`` (no
-tocados por la migración SQL de analytics). ``tecnologias`` ya agrega vía
-Postgres (``db.repositories.aggregates``) — sus tests usan datos reales
-(``tmp_db``) en vez de mockear un loader que el módulo ya no importa.
+Los tres módulos agregan/proyectan vía SQL (ADR-023) — todos los tests
+siembran datos reales (``tmp_db``) en vez de mockear loaders que los módulos
+ya no importan (``clusters`` consume la proyección acotada
+``clustering_universe``; el motor sklearn corre sin mocks).
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
 
-import pandas as pd
 import pytest
 
 import services.analytics.clusters as clusters_mod
@@ -155,19 +153,11 @@ def test_tecnologias_empty(tmp_db):
 # ---------------------------------------------------------------------------
 
 
-def _typed(df: pd.DataFrame) -> pd.DataFrame:
-    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
-    (ver ``services/licitaciones.py::_build``) para los mocks de
-    proyectos_modulos.py — su fixture usa fechas ISO en crudo, así que el mock
-    debe entregarlas ya convertidas para reflejar el contrato real."""
-    if df.empty:
-        return df
-    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-    if "importe" in df.columns:
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    return df
+def _insert_rows(rows: list[dict]) -> None:
+    """Siembra ``rows`` como licitaciones reales (claves = campos de ``Licitacion``)."""
+    from db.upsert import Licitacion, upsert_licitaciones
+
+    upsert_licitaciones([Licitacion(**row) for row in rows])
 
 
 def _pm_rows() -> list[dict]:
@@ -218,9 +208,9 @@ def _pm_rows() -> list[dict]:
     return rows
 
 
-def test_proyectos_modulos_yoy_tipo_estado_cpv():
-    with patch.object(pm_mod, "load_stats_base_df", return_value=_typed(pd.DataFrame(_pm_rows()))):
-        res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
+def test_proyectos_modulos_yoy_tipo_estado_cpv(tmp_db):
+    _insert_rows(_pm_rows())
+    res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
 
     assert res.top_modulo_yoy is not None
     assert res.top_modulo_yoy.modulo == "S/4HANA"
@@ -236,24 +226,25 @@ def test_proyectos_modulos_yoy_tipo_estado_cpv():
     assert all(c.cpv_desc for c in res.cpv)
 
 
-def test_proyectos_modulos_importe_distinct_sin_doble_conteo():
+def test_proyectos_modulos_importe_distinct_sin_doble_conteo(tmp_db):
     """Una licitación con varios módulos SAP cuenta su importe UNA vez (no por módulo)."""
-    rows = [
-        {
-            "id_externo": "M1",
-            "titulo": "Implantacion SAP FI y CO integrados",  # detecta FI + CO
-            "organo_contratacion": "Org",
-            "ccaa": "Madrid",
-            "cpv": "72000000",
-            "importe": 1_000_000.0,
-            "tecnologia": "SAP",
-            "estado": "ADJ",
-            "tipo_contrato": "2",
-            "fecha_publicacion": _iso(30),
-        },
-    ]
-    with patch.object(pm_mod, "load_stats_base_df", return_value=_typed(pd.DataFrame(rows))):
-        res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
+    _insert_rows(
+        [
+            {
+                "id_externo": "M1",
+                "titulo": "Implantacion SAP FI y CO integrados",  # detecta FI + CO
+                "organo_contratacion": "Org",
+                "ccaa": "Madrid",
+                "cpv": "72000000",
+                "importe": 1_000_000.0,
+                "tecnologia": "SAP",
+                "estado": "ADJ",
+                "tipo_contrato": "2",
+                "fecha_publicacion": _iso(30),
+            },
+        ]
+    )
+    res = pm_mod.get_proyectos_modulos(pm_mod.ProyectosModulosFilters())
 
     # FI y CO detectados → 2 filas de módulo…
     mods = {m.modulo for m in res.modulos}
@@ -296,10 +287,9 @@ def _cluster_rows(n: int = 30) -> list[dict]:
     return rows
 
 
-def test_clusters_shape_and_labels():
-    rows = _cluster_rows(30)
-    with patch.object(clusters_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)):
-        res = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
+def test_clusters_shape_and_labels(tmp_db):
+    _insert_rows(_cluster_rows(30))
+    res = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
 
     assert res.total == 30
     assert res.n_clusters_detectados == 3
@@ -322,20 +312,27 @@ def test_clusters_shape_and_labels():
     assert sizes == sorted(sizes, reverse=True)
 
 
-def test_clusters_deterministic():
-    rows = _cluster_rows(30)
-    with patch.object(clusters_mod, "load_stats_base_df", return_value=pd.DataFrame(rows)):
-        a = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
-        b = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
+def test_clusters_deterministic(tmp_db):
+    _insert_rows(_cluster_rows(30))
+    a = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
+    b = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
     assert [(c.cluster_id, c.n, c.label) for c in a.clusters] == [
         (c.cluster_id, c.n, c.label) for c in b.clusters
     ]
 
 
-def test_clusters_too_few_rows():
-    with patch.object(
-        clusters_mod, "load_stats_base_df", return_value=pd.DataFrame(_cluster_rows(5))
-    ):
-        res = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
+def test_clusters_too_few_rows(tmp_db):
+    _insert_rows(_cluster_rows(5))
+    res = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3))
     assert res.total == 5
     assert res.clusters == []
+
+
+def test_clusters_filtro_ccaa_en_sql(tmp_db):
+    """El filtro ccaa recorta el universo en el WHERE (no en pandas)."""
+    rows = _cluster_rows(30)
+    for r in rows[:20]:
+        r["ccaa"] = "Cataluña"
+    _insert_rows(rows)
+    res = clusters_mod.get_clusters(clusters_mod.ClustersFilters(n_clusters=3, ccaa="Madrid"))
+    assert res.total == 10

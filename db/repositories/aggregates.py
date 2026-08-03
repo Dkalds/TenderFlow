@@ -1137,6 +1137,37 @@ class AggregateRepository:
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [ids]))
 
+    # ── Clustering online ────────────────────────────────────────────────
+
+    def clustering_universe(
+        self, filters: LicitacionesFilters, *, max_rows: int
+    ) -> tuple[list[dict[str, Any]], int]:
+        """(filas proyectadas, total sin recortar) para el clustering online.
+
+        Justificación ADR-023: el clustering TF-IDF + KMeans no es expresable
+        en SQL, pero la carga queda acotada — 7 columnas y como mucho
+        ``max_rows`` filas (las más recientes por ``fecha_publicacion``, un
+        recorte determinista que sustituye al ``sample`` aleatorio del camino
+        full-table). ``total`` se calcula aparte para que el recorte no
+        distorsione el conteo reportado.
+        """
+        where, params = _build_where(filters)
+        base = f"FROM licitaciones WHERE {where} AND titulo IS NOT NULL"
+        with connect_read() as c:
+            row = c.execute(f"SELECT COUNT(*) {base}", params).fetchone()
+            total = int(row[0] or 0) if row is not None else 0
+            if total == 0:
+                return [], 0
+            rows = rows_to_dicts(
+                c.execute(
+                    "SELECT id_externo, titulo, organo_contratacion, importe, "
+                    "       ccaa, estado, cpv "
+                    f"{base} ORDER BY fecha_publicacion DESC NULLS LAST LIMIT ?",
+                    [*params, max_rows],
+                )
+            )
+        return rows, total
+
     # ── Drill-down por órgano ────────────────────────────────────────────
 
     def licitaciones_por_organo(
