@@ -1,4 +1,4 @@
-.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -47,6 +47,18 @@ check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y m
 
 audit-truth:  ## Auditoría de verdad del dato: fecha_limite, multi-lote, UTE, baja (requiere BD)
 	python scripts/audit_domain_truth.py
+
+audit-truth-check:  ## Igual que audit-truth pero falla si un umbral se supera (lo que corre el cron)
+	python scripts/audit_domain_truth.py --check
+
+fuzz-api:  ## Fuzzing del contrato API: ninguna operación puede devolver 5xx (requiere BD sembrada)
+	python scripts/fuzz_api_contract.py
+
+mutation-sample:  ## Mutation testing sobre una muestra de módulos (MODULES="a.py b.py")
+	python scripts/run_mutation_sample.py $(if $(MODULES),--modules $(MODULES),)
+
+capture-placsp-fixtures:  ## Extrae expedientes reales de los ZIP cacheados al corpus golden
+	python scripts/capture_placsp_fixtures.py --listar
 
 # ── Tests ────────────────────────────────────────────────────────────────
 test:  ## Suite de tests estándar (excluye integration_e2e)
