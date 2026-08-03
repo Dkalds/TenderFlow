@@ -23,8 +23,10 @@ from llm.budget import (
 
 _T0 = 1_780_000_000.0  # epoch fijo (2026) — solo importa que sea estable
 
-_ALICE = "a1b2c3d4e5f60718"  # forma de una user_key real (sha256[:16])
-_BOB = "0918273645fedcba"
+# Valores inventados con la forma de una user_key real (sha256[:16]) para que el
+# test ejercite claves del mismo tamaño que producción. No son credenciales.
+_ALICE = "a1b2c3d4e5f60718"  # pragma: allowlist secret
+_BOB = "0918273645fedcba"  # pragma: allowlist secret
 
 
 @pytest.fixture(autouse=True)

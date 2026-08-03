@@ -133,3 +133,4 @@ colateral
 visuales
 controlable
 contiguos
+aplicable
