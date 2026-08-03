@@ -1,7 +1,12 @@
 """Tests unitarios para services/analytics/resumen.py
 
-Parchea load_stats_dataframe, load_raw_adjudicaciones y db.users.get_user_by_id
-con datos sintéticos; ningún test toca la base de datos.
+``novedades``/``hoy``/``timeline`` agregan en Postgres, así que sus tests
+insertan un dataset sintético en un schema aislado (``tmp_db``) y comprueban
+el resultado contra la BD real — son los tests de caracterización de la
+migración pandas -> SQL y deben dar los mismos valores que daban con pandas.
+
+``sankey``/``top`` siguen en pandas: sus tests parchean ``load_stats_base_df``
+y ``load_raw_adjudicaciones`` con datos sintéticos y no tocan la BD.
 """
 
 from __future__ import annotations
@@ -76,45 +81,59 @@ def _row(
     }
 
 
+def _insert(rows: list[dict]) -> None:
+    """Inserta filas de ``_row`` en la BD del test (para los endpoints SQL)."""
+    from db.upsert import Licitacion, upsert_licitaciones
+
+    upsert_licitaciones(
+        [
+            Licitacion(
+                id_externo=r["id_externo"],
+                titulo=r["titulo"],
+                organo_contratacion=r["organo_contratacion"],
+                importe=r["importe"],
+                estado=r["estado"],
+                fecha_publicacion=r["fecha_publicacion"],
+                fecha_limite=r["fecha_limite"],
+                ccaa=r["ccaa"],
+                tecnologia=r["tecnologia"],
+                tipo_contrato=r["tipo_contrato"],
+                fecha_extraccion=r["fecha_publicacion"],
+            )
+            for r in rows
+        ]
+    )
+
+
 # ---------------------------------------------------------------------------
 # get_resumen_novedades
 # ---------------------------------------------------------------------------
 
 
-def test_novedades_user_sin_last_login():
+def test_novedades_user_sin_last_login(tmp_db):
     """User con last_login=None → count=0, sample=[]."""
-    user_mock = {"id": 1, "last_login": None}
-    rows = [_row("L001", fecha_pub_offset=-1), _row("L002", fecha_pub_offset=-2)]
+    _insert([_row("L001", fecha_pub_offset=-1), _row("L002", fecha_pub_offset=-2)])
 
-    with (
-        patch(
-            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-        ),
-        patch("db.users.get_user_by_id", return_value=user_mock),
-    ):
+    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": None}):
         result = get_resumen_novedades(1)
 
     assert result.count == 0
     assert result.sample == []
 
 
-def test_novedades_con_new_since():
+def test_novedades_con_new_since(tmp_db):
     """User con last_login hace 2 días → licitaciones publicadas ayer cuentan como novedades."""
     last_login = (datetime.now(UTC) - timedelta(days=2)).isoformat()
-    user_mock = {"id": 1, "last_login": last_login}
 
-    rows = [
-        _row("NEW1", fecha_pub_offset=-1),  # después del login → novedad
-        _row("NEW2", fecha_pub_offset=-1),  # después del login → novedad
-        _row("OLD1", fecha_pub_offset=-5),  # antes del login → no cuenta
-    ]
+    _insert(
+        [
+            _row("NEW1", fecha_pub_offset=-1),  # después del login → novedad
+            _row("NEW2", fecha_pub_offset=-1),  # después del login → novedad
+            _row("OLD1", fecha_pub_offset=-5),  # antes del login → no cuenta
+        ]
+    )
 
-    with (
-        patch(
-            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-        ),
-        patch("db.users.get_user_by_id", return_value=user_mock),
-    ):
+    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": last_login}):
         result = get_resumen_novedades(1)
 
     assert result.count == 2
@@ -123,12 +142,23 @@ def test_novedades_con_new_since():
     assert ids == {"NEW1", "NEW2"}
 
 
-def test_novedades_user_no_existe():
+def test_novedades_sample_capado_a_10(tmp_db):
+    """count refleja el total; la muestra se capa a 10 y trae las más recientes."""
+    last_login = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+    _insert([_row(f"N{i:02d}", fecha_pub_offset=-i) for i in range(1, 16)])
+
+    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": last_login}):
+        result = get_resumen_novedades(1)
+
+    assert result.count == 15
+    assert len(result.sample) == 10
+    # Orden descendente por fecha_publicacion: N01 es la más reciente.
+    assert [s.id_externo for s in result.sample] == [f"N{i:02d}" for i in range(1, 11)]
+
+
+def test_novedades_user_no_existe(tmp_db):
     """get_user_by_id devuelve None → ResumenNovedadesResult vacío."""
-    with (
-        patch("services.analytics.resumen.load_stats_base_df", return_value=pd.DataFrame([])),
-        patch("db.users.get_user_by_id", return_value=None),
-    ):
+    with patch("db.users.get_user_by_id", return_value=None):
         result = get_resumen_novedades(99)
 
     assert result.count == 0
@@ -140,10 +170,9 @@ def test_novedades_user_no_existe():
 # ---------------------------------------------------------------------------
 
 
-def test_hoy_dataset_vacio():
-    """DataFrame vacío → todos los KPIs en 0."""
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=pd.DataFrame([])):
-        result = get_resumen_hoy(ResumenHoyFilters())
+def test_hoy_dataset_vacio(tmp_db):
+    """Sin filas → todos los KPIs en 0."""
+    result = get_resumen_hoy(ResumenHoyFilters())
 
     assert result.calientes == 0
     assert result.vencen_48h == 0
@@ -151,61 +180,74 @@ def test_hoy_dataset_vacio():
     assert result.total_activas == 0
 
 
-def test_hoy_calientes_y_vencen():
+def test_hoy_calientes_y_vencen(tmp_db):
     """Licitaciones con fecha_limite próxima (≤48h) → vencen_48h > 0.
 
     El cálculo de ``calientes`` requiere estado PUB/EV + importe >= P75 + fecha_limite > now.
-    Usamos 4 filas con importes variados para que P75 sea conocido.
+    Usamos 4 filas con importes variados para que P75 sea conocido: P75 = 162.500,
+    así que solo A1 (200k, límite futuro) es caliente.
     """
-    rows = [
-        # 2 filas que vencen en 24h (dentro de las 48h)
-        _row("A1", importe=200_000.0, estado="PUB", fecha_limite_offset=1),
-        _row("A2", importe=150_000.0, estado="PUB", fecha_limite_offset=1),
-        # 2 filas que vencen lejos
-        _row("B1", importe=50_000.0, estado="PUB", fecha_limite_offset=60),
-        _row("B2", importe=10_000.0, estado="PUB", fecha_limite_offset=90),
-    ]
+    _insert(
+        [
+            # 2 filas que vencen en 24h (dentro de las 48h)
+            _row("A1", importe=200_000.0, estado="PUB", fecha_limite_offset=1),
+            _row("A2", importe=150_000.0, estado="PUB", fecha_limite_offset=1),
+            # 2 filas que vencen lejos
+            _row("B1", importe=50_000.0, estado="PUB", fecha_limite_offset=60),
+            _row("B2", importe=10_000.0, estado="PUB", fecha_limite_offset=90),
+        ]
+    )
 
-    with patch(
-        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        result = get_resumen_hoy(ResumenHoyFilters())
+    result = get_resumen_hoy(ResumenHoyFilters())
 
-    assert result.vencen_48h > 0
+    assert result.vencen_48h == 2
+    assert result.calientes == 1
     assert result.total_activas == 4
 
 
-def test_hoy_filtro_ccaa():
+def test_hoy_filtro_ccaa(tmp_db):
     """Filtro ccaa='Madrid' → total_activas solo incluye filas de Madrid."""
-    rows = [
-        _row("M1", ccaa="Madrid", estado="PUB"),
-        _row("M2", ccaa="Madrid", estado="PUB"),
-        _row("C1", ccaa="Cataluña", estado="PUB"),
-    ]
+    _insert(
+        [
+            _row("M1", ccaa="Madrid", estado="PUB"),
+            _row("M2", ccaa="Madrid", estado="PUB"),
+            _row("C1", ccaa="Cataluña", estado="PUB"),
+        ]
+    )
 
-    with patch(
-        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        result = get_resumen_hoy(ResumenHoyFilters(ccaa="Madrid"))
+    result = get_resumen_hoy(ResumenHoyFilters(ccaa="Madrid"))
 
     assert result.total_activas == 2
 
 
-def test_hoy_solo_estados_activos_cuentan():
+def test_hoy_solo_estados_activos_cuentan(tmp_db):
     """total_activas solo cuenta estado PUB y EV; ADJ/RES no."""
-    rows = [
-        _row("P1", estado="PUB"),
-        _row("E1", estado="EV"),
-        _row("R1", estado="RES"),  # no activa
-        _row("A1", estado="ADJ"),  # no activa
-    ]
+    _insert(
+        [
+            _row("P1", estado="PUB"),
+            _row("E1", estado="EV"),
+            _row("R1", estado="RES"),  # no activa
+            _row("A1", estado="ADJ"),  # no activa
+        ]
+    )
 
-    with patch(
-        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        result = get_resumen_hoy(ResumenHoyFilters())
+    result = get_resumen_hoy(ResumenHoyFilters())
 
     assert result.total_activas == 2
+
+
+def test_hoy_nuevas_24h(tmp_db):
+    """nuevas_24h cuenta solo lo publicado en las últimas 24 horas."""
+    _insert(
+        [
+            _row("H1", fecha_pub_offset=0),
+            _row("H2", fecha_pub_offset=-3),
+        ]
+    )
+
+    result = get_resumen_hoy(ResumenHoyFilters())
+
+    assert result.nuevas_24h == 1
 
 
 # ---------------------------------------------------------------------------
@@ -213,17 +255,11 @@ def test_hoy_solo_estados_activos_cuentan():
 # ---------------------------------------------------------------------------
 
 
-def test_timeline_scatter_devuelve_items():
+def test_timeline_scatter_devuelve_items(tmp_db):
     """Scatter devuelve campos id_externo, importe y fecha_publicacion."""
-    rows = [
-        _row("T1", importe=500_000.0),
-        _row("T2", importe=250_000.0),
-    ]
+    _insert([_row("T1", importe=500_000.0), _row("T2", importe=250_000.0)])
 
-    with patch(
-        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        result = get_timeline_scatter(TimelineScatterFilters())
+    result = get_timeline_scatter(TimelineScatterFilters())
 
     assert len(result.items) == 2
     ids = {item.id_externo for item in result.items}
@@ -233,22 +269,18 @@ def test_timeline_scatter_devuelve_items():
         assert item.fecha_publicacion is not None
 
 
-def test_timeline_scatter_vacio():
-    """DataFrame vacío → items=[]."""
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=pd.DataFrame([])):
-        result = get_timeline_scatter(TimelineScatterFilters())
+def test_timeline_scatter_vacio(tmp_db):
+    """Sin filas → items=[]."""
+    result = get_timeline_scatter(TimelineScatterFilters())
 
     assert result.items == []
 
 
-def test_timeline_scatter_campos_completos():
+def test_timeline_scatter_campos_completos(tmp_db):
     """Cada item expone todos los campos definidos en TimelineScatterItem."""
-    rows = [_row("F1", organo="Ayuntamiento", ccaa="Madrid", tipo_contrato="3")]
+    _insert([_row("F1", organo="Ayuntamiento", ccaa="Madrid", tipo_contrato="3")])
 
-    with patch(
-        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        result = get_timeline_scatter(TimelineScatterFilters())
+    result = get_timeline_scatter(TimelineScatterFilters())
 
     item = result.items[0]
     assert item.id_externo == "F1"
@@ -256,6 +288,24 @@ def test_timeline_scatter_campos_completos():
     assert item.ccaa == "Madrid"
     assert item.tipo_contrato == "3"
     assert item.estado == "PUB"
+
+
+def test_timeline_scatter_orden_descendente_y_filtro_fecha(tmp_db):
+    """Ordena por fecha_publicacion descendente y respeta fecha_desde."""
+    _insert(
+        [
+            _row("VIEJA", fecha_pub_offset=-40),
+            _row("MEDIA", fecha_pub_offset=-10),
+            _row("NUEVA", fecha_pub_offset=-1),
+        ]
+    )
+
+    result = get_timeline_scatter(TimelineScatterFilters())
+    assert [i.id_externo for i in result.items] == ["NUEVA", "MEDIA", "VIEJA"]
+
+    desde = (datetime.now(UTC) - timedelta(days=20)).date()
+    filtrado = get_timeline_scatter(TimelineScatterFilters(fecha_desde=desde))
+    assert [i.id_externo for i in filtrado.items] == ["NUEVA", "MEDIA"]
 
 
 # ---------------------------------------------------------------------------
