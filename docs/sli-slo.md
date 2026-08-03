@@ -49,7 +49,7 @@ los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
 | **SLI** | `(tiempo_total - tiempo_inaccesible) / tiempo_total × 100` |
 | **SLO** | ≥ 99% mensual |
 | **Medición** | Healthcheck externo cada 5 minutos (ver `scheduler/healthcheck.py`) |
-| **Alerta** | PagerDuty / email si baja de 99% en ventana de 1h |
+| **Alerta** | Email (observability/alerts.py) si baja de 99% en ventana de 1h — no hay PagerDuty en este stack |
 | **Error budget** | 7.2 min/día, 3.6h/mes |
 
 ### 2. Frescura de datos

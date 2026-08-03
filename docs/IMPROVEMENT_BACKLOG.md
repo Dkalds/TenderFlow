@@ -32,16 +32,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Acceptance criteria:** tipo `CompanyUteParticipation` en `company-profile-types.ts` reflejando el DTO; una sección en el dossier (`company-profile-summary.tsx` o vecino) listando las UTEs con sus `otros_miembros`, dejando claro que esos importes son **adicionales** a los totales directos de la empresa, no una desagregación de ellos (evitar que el usuario los sume dos veces mentalmente).
 - **Riesgo:** bajo — solo lectura de un campo ya validado por el contrato OpenAPI/TS; sin cambio de backend.
 
-### [P1] Export/borrado GDPR de la watchlist CPV es un no-op silencioso — consulta una tabla inexistente
-- **Área:** db/repositories/watchlist.py, services/gdpr.py
-- **Problema:** `WatchlistRepository.export_by_user_key`/`anonymize_by_user_key` (usadas por el flujo GDPR de `/me/data` y `/me` DELETE) consultan una tabla llamada literalmente `"watchlist"`, que **no existe** — la tabla real es `watchlist_cpv`. El `except Exception` que envuelve la query traga el error sin loguearlo, así que el export devuelve una lista vacía y el borrado no borra nada, sin que ningún log ni test lo señale. Encontrado durante la auditoría de tenencia de [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) (no es una de las 10 tablas que ese test cubre, por eso no lo capturó).
-- **Acceptance criteria:**
-  - `export_by_user_key`/`anonymize_by_user_key` apuntan a `watchlist_cpv`.
-  - El `except Exception` que envolvía la query deja de ser necesario, o si se mantiene por otra razón, loguea el error en vez de tragarlo en silencio.
-  - Test de regresión: sembrar una entrada de watchlist CPV real, exportar/anonimizar por `user_key`, y confirmar que el dato aparece/desaparece — no solo que la llamada no lanza.
-- **Files de partida:** [db/repositories/watchlist.py](../db/repositories/watchlist.py), [services/gdpr.py](../services/gdpr.py)
-- **Riesgo:** bajo — el fix es un nombre de tabla; el riesgo real es de cumplimiento (GDPR Art. 15/17 no se está cumpliendo hoy para este dato), no de código.
-
 ### [P1] Tipar el contrato API↔web — 65 operaciones con respuesta opaca
 - **Área:** api/routes/*, services/*, scripts/check_openapi_contract.py
 - **Problema:** 65 operaciones devuelven `dict[str, Any]`, de modo que en `web/src/generated/api.d.ts` su `200` es `{ [key: string]: unknown }` y el frontend reescribe la forma a mano. El invariante §3.5/§3.8 ("los DTOs Pydantic son el contrato API↔web") se cumple sólo a medias, y el job *Codegen Drift Check* **no lo detecta**: compara el artefacto generado consigo mismo, o sea que verifica que está sincronizado, no que el contrato diga algo. Una ruta que devuelve `dict[str, Any]` lo pasa perfectamente. Resultado: tablero verde sobre un contrato que para un tercio de la superficie no describe nada, y cualquier renombre de campo en backend rompe el frontend en runtime sin que mypy ni tsc se enteren.
@@ -159,6 +149,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ### [P1] Dejar de materializar tablas completas en el proceso del API (memoria en Render)
 - **Área:** services/adjudicaciones.py, services/licitaciones.py, services/analytics/*
 - **Problema:** El API mantiene dos cargas full-table en memoria y las reconstruye cada 60 s. `_stats_df_cache` guarda un DataFrame con **todas** las licitaciones (`LicitacionRepository.load_stats` no lleva `LIMIT`) y `_raw_adj_cache` guarda el join `adjudicaciones ⋈ licitaciones ⋈ empresas ⋈ grupos` (`a.*` + 13 columnas, tampoco acotado) como **`list[dict]`** — la representación más cara posible: un `dict` por fila con ~25 claves, frente al mismo dato tipado en un DataFrame. Encima, todo consumidor con filtro **esquiva la caché** (`services/adjudicaciones.py:113-115`: si `ccaa_filter` no es `None`, se relanza la query completa) y reconstruye su propio DataFrame por request — `red_organo_empresa.py` lo hace en 4 call sites, más `utes.py` y `ecosistema_partners.py`. Con el limiter de anyio en 4 hilos eso son hasta 4 materializaciones full-table simultáneas. El resultado no es un leak (no hay contenedor que crezca sin cota — verificado) sino un baseline alto más un churn de cientos de miles de objetos `str`/`dict` efímeros por ciclo que fragmenta las arenas de pymalloc: el RSS sube y no vuelve a bajar, que es exactamente lo que se ve en la gráfica de Render.
+- **Progreso 2026-08-03 (revisión de arquitectura):** migrados a agregación SQL/proyección acotada: trends, geography, organos, pipeline, scoring, compare, trends-cpv, proyectos-modulos y resumen sankey/top (además de overview/tecnologias/resumen previos). El bypass del cortacircuitos vía `ccaa_filter` está cerrado y la degradación es medible (`analytics_degraded_responses_total` + alerta `AnalyticsDegradedServing`). **Quedan en full-table:** organo_detail, quality, forecast, clusters (candidato a justificación ADR-023 con proyección acotada) y los 6 de adjudicaciones (utes, organ-company-graph ×3, organ-company-edge, partnership-graph — hoy devuelven vacío en Render por el guard, ya sin riesgo de OOM). Al terminar: retirar `_stats_df_cache`/`_raw_adj_cache`, el contrato no-`.copy()` y el propio cortacircuitos.
 - **Progreso 2026-08-02:** hotfix de disponibilidad: el startup ya no precalienta ambas cargas full-table después de confirmar en Render un bucle de OOM/reinicio cada ~5,5 minutos; la invalidación viaja por Postgres entre el scraper y el API y el TTL defensivo sube de 60 s a 10 min. La primera versión mostró que las peticiones del dashboard seguían disparando las mismas cargas de forma lazy, así que el proceso API de Render incorpora además un cortacircuitos fail-closed: los loaders full-table devuelven un resultado vacío y registran `analytics_full_table_load_blocked`, mientras las agregaciones ya migradas a SQL siguen disponibles. Esto contiene el OOM, pero **no cierra** el ítem: hay que migrar los consumidores restantes a SQL/proyecciones acotadas para retirar la degradación temporal.
 - **Dirección ya establecida:** ADR-023 (cómputo en vivo / agregación SQL) y los commits `ab520da` (overview/tecnologias a SQL) y `a274d8a` (drop del `.copy()` por request) van por aquí. Esto es continuar esas olas, no abrir una dirección nueva.
 - **Acceptance criteria:**
@@ -335,6 +326,61 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-03] **Implementación de la revisión de arquitectura (rama `claude/architecture-review-dgmnkx`)** —
+  Cierra de una vez varios ítems y abre los de seguimiento listados al final:
+  (1) **GDPR watchlist CPV** (era P1 arriba): `export_by_user_key`/`anonymize_by_user_key`
+  apuntan a `watchlist_cpv`, anonimizan la PII real (`user_key`/`email`/`user_id` —
+  `name` nunca existió en esa tabla) y dejan de tragar errores; regresión en
+  `tests/test_gdpr_watchlist_cpv.py` (sembrar → exportar/anonimizar → verificar).
+  (2) **Cortacircuitos full-table sin bypass**: el guard de `load_raw_adjudicaciones`
+  aplica a cualquier carga sin `limit` (antes `ccaa_filter` lo esquivaba — superficie
+  de OOM residual de utes/organ-company-graph*/partnership) y ambas rutas bloqueadas
+  incrementan `analytics_degraded_responses_total` con regla de alerta nueva
+  (`AnalyticsDegradedServing`). (3) **ADR-023, olas 2 y 3**: trends, geography,
+  organos, pipeline, scoring, compare, trends-cpv, proyectos-modulos y resumen
+  sankey/top agregan en Postgres (métodos nuevos en `db/repositories/aggregates.py`,
+  detección de módulos SAP vía `~*` en el motor, ventana del pipeline como proyección
+  acotada, scoring sobre la proyección de estados activos con P10/P90 por
+  `percentile_cont`); tests de caracterización convertidos a datos sembrados en
+  `tmp_db`. (4) **Camino de alerta real**: el job label del único alert critical
+  corregido (`tenderflow-api`), grupo de tripwires SQLite retirado, `/metrics`
+  acepta `Authorization: Bearer` y `prometheus.render.yml` lo usa vía secret file
+  (acción manual documentada inline), `healthcheck --alert` devuelve exit 2 en
+  critical, cada paso canónico fallido emite `notify()` y los pasos de ML dejan de
+  tragar excepciones a debug, DLQ con dispatch real para pscp/ted/tacrc/regionales/
+  watched-company (fuentes sin dispatch se agotan con causa exacta),
+  `job_locks.acquire` atómico (`INSERT … ON CONFLICT`), drift "crit" ya no se
+  degrada a WARN. (5) **Seguridad**: un solo validador de API keys
+  (`validate_api_key_credential` — la rama de `require_any_auth` carecía de la
+  re-comparación constant-time, el dummy anti-timing y el 503), OAuth fail-closed
+  en prod con allowlists vacíos (`OAUTH_ALLOWED_DOMAINS=*` como vía explícita),
+  CSRF también en `fetchWithAuth`, y `FORWARDED_ALLOW_IPS="*"` pasa a semántica
+  "un salto de confianza" (último hop de XFF, no el primero — RFC-051).
+  (6) **Orquestación (ADR-012 con enforcement)**: scrape.yml plegado en
+  scrape-daily.yml (mismo workflow y concurrency group, dos crons), ENV=prod en
+  todos los steps, secrets TURSO_* fuera, presupuestos por step alineados con el
+  timeout, `SCHEDULER_PLANE=actions` declarado y por primera vez aplicado —
+  `scheduler.loop` se niega a arrancar sin `SCHEDULER_PLANE=docker` y el servicio
+  de compose queda tras `profiles:[scheduler]`; `check_job_parity.py` rechaza
+  módulos que solo aparecen en workflows dispatch-only; `CANONICAL_STEPS` es la
+  única fuente del orden ejecutado. (7) **Smoke sintético post-deploy**
+  (`scripts/smoke_prod.py` + `make smoke-prod` + `smoke.yml`): valida que los
+  endpoints insignia devuelven datos, no solo 200. (8) **Demolición**:
+  `services/analytics_engine.py` (0 callers) y su test, scripts one-off muertos
+  (migrate_sqlite_to_pg, verify_pg_parity, run_precompute, obsidian_*), dependencia
+  `libsql` (0 imports desde ADR-020), `DB_PATH` del Dockerfile, evento
+  `faiss.index_stale` sin consumidor, OpenAPI de `/search/semantic` que anunciaba
+  FAISS, `docker-compose.override.yml` que pisaba pgvector:pg16 con postgres:17
+  sin pgvector (rompía alembic v56 en local), y verdades de docs restauradas
+  (C4 sin SQLite, testing.md con las fixtures Postgres reales, sli-slo sin
+  PagerDuty inexistente, Makefile test-perf ejecutable). **Todo verificado con
+  ruff+mypy strict y suite web (typecheck/lint/vitest) en local; los tests Python
+  quedan escritos para CI — esta sesión no tiene Postgres.** Sigue abierto y
+  anotado abajo: resto de ADR-023 (organo_detail, quality, forecast, clusters y
+  los 6 endpoints de adjudicaciones), ML wiring (artefactos + active learning),
+  contrato tipado (65 opacas), marker integration real + xdist, y el checklist
+  manual F3d.
 
 - [2026-08-02] **La invalidación de caché ya cruza GitHub Actions→Render y los full-table snapshots dejan de reconstruirse cada minuto** — `shared/cache_signal.py` escribía un fichero local en el runner efímero mientras el API intentaba leer otro fichero dentro de su contenedor; en producción la señal era siempre `0.0` y el TTL de 60 s terminaba siendo el único refresco. La señal se transporta ahora por `domain_events`, el event log Postgres que ambos procesos ya comparten, y se sondea como máximo cada 5 s por proceso; el fichero queda como fallback local/fail-open. Se eligió Postgres en vez del Redis propuesto originalmente porque los workflows del scraper no reciben `REDIS_URL`: Redis habría dejado el problema incompleto o exigido editar CI (acción con confirmación humana según AGENTS.md §6). `SignalAwareCache` sube su TTL defensivo de 60 s a 600 s, por lo que la reconstrucción normal ocurre por ingesta real y el reloj queda sólo como cota de obsolescencia. El poll del SSE se mueve al threadpool porque la señal ya puede tocar BD. Tests: round-trip del evento por conexiones separadas, visibilidad sin filesystem compartido y guarda del TTL. Queda abierto el P1 estructural de retirar las materializaciones full-table del API; este cambio elimina el churn por minuto, no su baseline residente.
 

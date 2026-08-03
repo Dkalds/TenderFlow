@@ -22,8 +22,8 @@ Si necesitás que un test tenga otro marker, **renombrá el archivo o la funció
 
 | Fixture   | Depende de     | Descripción                                                      |
 |-----------|----------------|------------------------------------------------------------------|
-| `tmp_db`  | `monkeypatch`, `tmp_path` | BD SQLite temporal con migraciones aplicadas. Aislada por test. Devuelve `(db_mod, tmp_path)`. |
-| `api_db`  | `tmp_path`, `monkeypatch` | BD temporal con todas las migraciones, orientada a tests de API. Devuelve `db_path`. |
+| `tmp_db`  | `_pg_schema`   | Schema Postgres aislado por test (DDL completo + seeds de migración replicados; ver `conftest.py::_pg_schema_ddl`). Requiere `TEST_DATABASE_URL`. Devuelve `(db_mod, None)` — el segundo elemento era el path SQLite y sobrevive por compatibilidad de firma. |
+| `api_db`  | `_pg_schema`   | Mismo schema aislado, orientado a tests de API (inicializa `db_mod`). |
 | `api_key` | `api_db`       | Crea una API Key de test y devuelve el token en bruto (string).  |
 | `client`  | `api_db`       | `TestClient` de FastAPI con BD temporal (`raise_server_exceptions=True`). |
 | `auth`    | `api_key`      | Dict con headers de autenticación: `{"X-API-Key": "<token>"}`.   |
@@ -54,7 +54,7 @@ make test-integration  # solo integration
 make test-e2e          # solo e2e
 make test-property     # solo property
 make test-load         # solo load
-make test-perf         # test_performance.py con timeout 120s
+make test-perf         # test_performance.py (marker slow)
 ```
 
 ## Skips condicionales
@@ -65,8 +65,10 @@ Algunos tests se saltan **a propósito** según el entorno. No son deuda: cada
 | Test | Condición de skip | Por qué es correcto |
 |------|-------------------|---------------------|
 | `test_shared_schemas.py` | `pandera` no instalado (`importorskip`) o `LicitacionSchema` es NoOp | La validación pandera es un extra opcional (`[schemas]`); sin él el schema degrada a NoOp y no hay nada que validar. |
-| `test_unit_coverage_batch1b.py::TestFallbackActors` | `dramatiq` **sí** está instalado | Estos tests cubren el camino *fallback* (sin broker). Con dramatiq activo, el fallback no se ejecuta. |
-| `test_visual_regression.py` | El puerto 8599 ya está en uso | Evita chocar con una instancia local ya levantada. |
+
+(Los archivos `test_unit_coverage_batch1b.py` y `test_visual_regression.py`
+que esta tabla citaba se redistribuyeron/retiraron — las filas se eliminaron
+en 2026-08 al detectar que documentaban tests inexistentes.)
 
 Regla general: usar `pytest.importorskip("dep")` para dependencias opcionales y
 `pytest.skip(motivo)` con un mensaje claro para condiciones de entorno. En CI,
