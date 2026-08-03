@@ -1,18 +1,39 @@
-"""Resumen analytics — novedades, hoy, timeline, sankey, top licitaciones."""
+"""Resumen analytics — novedades, hoy, timeline, sankey, top licitaciones.
+
+``novedades``/``hoy``/``timeline`` — los tres endpoints que alimentan la
+pantalla de Resumen — agregan en Postgres vía ``db.repositories.aggregates``.
+Antes materializaban la tabla ``licitaciones`` completa en pandas
+(``load_stats_base_df``), que en el proceso web de Render devuelve un
+DataFrame vacío desde que existe ``render_api_full_table_loads_blocked``
+(ver ``services/_data_cache.py``): los tres respondían 200 con el payload a
+cero y la pantalla salía en blanco, sin error que lo delatara.
+
+``sankey`` y ``top`` siguen en pandas y por tanto siguen vacíos en Render.
+No los consume ninguna pantalla del frontend (solo existen en el router y en
+el cliente generado), así que se migrarán cuando vuelvan a tener consumidor.
+"""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.adjudicaciones import load_raw_adjudicaciones
 from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
+
+# Cota de puntos del scatter de /resumen/timeline (la misma que aplicaba el
+# ``head(1000)`` de pandas, ahora empujada al ``LIMIT`` de la query).
+_TIMELINE_LIMIT = 1000
+_NOVEDADES_SAMPLE = 10
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +156,23 @@ def _load_df() -> pd.DataFrame:
     return df
 
 
+def _to_repo_filters(filters: Any) -> LicitacionesFilters:
+    """Traduce los filtros del endpoint (fecha_desde/hasta, ccaa, tecnologia).
+
+    Los tres DTOs de filtros de este módulo comparten esos cuatro campos; el
+    resto de campos de :class:`LicitacionesFilters` no los expone ningún
+    endpoint de resumen.
+    """
+    fecha_desde = getattr(filters, "fecha_desde", None)
+    fecha_hasta = getattr(filters, "fecha_hasta", None)
+    return LicitacionesFilters(
+        ccaa=getattr(filters, "ccaa", None),
+        tecnologia=getattr(filters, "tecnologia", None),
+        fecha_desde=fecha_desde.isoformat() if fecha_desde else None,
+        fecha_hasta=fecha_hasta.isoformat() if fecha_hasta else None,
+    )
+
+
 def _apply_filters(df: pd.DataFrame, filters: Any) -> pd.DataFrame:
     if df.empty:
         return df
@@ -170,28 +208,22 @@ def get_resumen_novedades(user_id: int) -> ResumenNovedadesResult:
     if not last_login:
         return ResumenNovedadesResult()
 
-    df = _load_df()
-    if df.empty:
-        return ResumenNovedadesResult()
-
+    # ``last_login`` llega como string ISO o datetime según el driver; se
+    # normaliza con la misma tolerancia que antes (valor ilegible -> sin
+    # novedades, nunca una excepción) al formato ISO que espera el repository.
     ts = pd.to_datetime(last_login, errors="coerce", utc=True)
     if pd.isna(ts):
         return ResumenNovedadesResult()
 
-    nuevas = df[df["fecha_publicacion"] > ts]
-    count = len(nuevas)
-
-    sample_df = nuevas.head(10)
+    count, rows = _repo.resumen_novedades(desde_iso=ts.isoformat(), sample_limit=_NOVEDADES_SAMPLE)
     sample = [
         ResumenNovedadesSample(
-            id_externo=str(row.get("id_externo", "")),
-            titulo=row.get("titulo") if pd.notna(row.get("titulo")) else None,
-            importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
-            organo_contratacion=(
-                row.get("organo_contratacion") if pd.notna(row.get("organo_contratacion")) else None
-            ),
+            id_externo=str(row["id_externo"]),
+            titulo=row.get("titulo"),
+            importe=float(row["importe"]) if row.get("importe") is not None else None,
+            organo_contratacion=row.get("organo_contratacion"),
         )
-        for _, row in sample_df.iterrows()
+        for row in rows
     ]
 
     log.info("analytics_resumen_novedades_done", count=count)
@@ -201,42 +233,20 @@ def get_resumen_novedades(user_id: int) -> ResumenNovedadesResult:
 def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
     """Para hoy — calientes, vencen 48h, nuevas 24h, total activas."""
     log.info("analytics_resumen_hoy_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df()
-    df = _apply_filters(df, filters)
 
-    if df.empty:
-        return ResumenHoyResult()
-
-    hoy = pd.Timestamp.now("UTC")
-
-    # Total activas
-    activas = df[df["estado"].isin(["PUB", "EV"])]
-    total_activas = len(activas)
-
-    # Calientes: estado in (PUB, EV) AND importe >= P75 AND fecha_limite > now
-    importes_validos = df["importe"].dropna()
-    p75 = float(importes_validos.quantile(0.75)) if len(importes_validos) > 0 else 0.0
-    calientes_mask = activas["importe"].ge(p75) & activas.get(
-        "fecha_limite_dt", pd.Series(dtype="datetime64[ns, UTC]")
-    ).gt(hoy)
-    calientes = int(calientes_mask.sum()) if not calientes_mask.empty else 0
-
-    # Vencen 48h
-    vencen_48h = 0
-    if "fecha_limite_dt" in df.columns:
-        limite_48h = hoy + pd.Timedelta(hours=48)
-        mask_48h = df["fecha_limite_dt"].between(hoy, limite_48h)
-        vencen_48h = int(mask_48h.sum())
-
-    # Nuevas 24h
-    hace_24h = hoy - pd.Timedelta(hours=24)
-    nuevas_24h = int((df["fecha_publicacion"] >= hace_24h).sum())
+    hoy = datetime.now(UTC)
+    counts = _repo.overview_para_hoy(
+        _to_repo_filters(filters),
+        hoy_iso=hoy.isoformat(),
+        limite_48h_iso=(hoy + timedelta(hours=48)).isoformat(),
+        hace_24h_iso=(hoy - timedelta(hours=24)).isoformat(),
+    )
 
     result = ResumenHoyResult(
-        calientes=calientes,
-        vencen_48h=vencen_48h,
-        nuevas_24h=nuevas_24h,
-        total_activas=total_activas,
+        calientes=counts["calientes_hoy"],
+        vencen_48h=counts["vencen_48h"],
+        nuevas_24h=counts["nuevas_24h"],
+        total_activas=counts["total_activas"],
     )
     log.info("analytics_resumen_hoy_done")
     return result
@@ -245,32 +255,20 @@ def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
 def get_timeline_scatter(filters: TimelineScatterFilters) -> TimelineScatterResult:
     """Scatter data for all licitaciones (max 1000)."""
     log.info("analytics_timeline_scatter_start")
-    df = _load_df()
-    df = _apply_filters(df, filters)
 
-    if df.empty:
-        return TimelineScatterResult()
-
-    df = df.sort_values("fecha_publicacion", ascending=False).head(1000)
-
+    rows = _repo.resumen_timeline_items(_to_repo_filters(filters), limit=_TIMELINE_LIMIT)
     items = [
         TimelineScatterItem(
-            id_externo=str(row.get("id_externo", "")),
-            titulo=row.get("titulo") if pd.notna(row.get("titulo")) else None,
-            importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
-            fecha_publicacion=(
-                row["fecha_publicacion"].isoformat()
-                if pd.notna(row.get("fecha_publicacion"))
-                else None
-            ),
-            estado=row.get("estado") if pd.notna(row.get("estado")) else None,
-            organo_contratacion=row.get("organo_contratacion")
-            if pd.notna(row.get("organo_contratacion"))
-            else None,
-            tipo_contrato=row.get("tipo_contrato") if pd.notna(row.get("tipo_contrato")) else None,
-            ccaa=row.get("ccaa") if pd.notna(row.get("ccaa")) else None,
+            id_externo=str(row["id_externo"]),
+            titulo=row.get("titulo"),
+            importe=float(row["importe"]) if row.get("importe") is not None else None,
+            fecha_publicacion=row.get("fecha_publicacion"),
+            estado=row.get("estado"),
+            organo_contratacion=row.get("organo_contratacion"),
+            tipo_contrato=row.get("tipo_contrato"),
+            ccaa=row.get("ccaa"),
         )
-        for _, row in df.iterrows()
+        for row in rows
     ]
 
     log.info("analytics_timeline_scatter_done", count=len(items))

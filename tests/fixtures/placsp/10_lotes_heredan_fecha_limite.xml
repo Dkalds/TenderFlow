@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-HERENCIA-0010</id>
+  <title>Suministro de hardware y licencias SAP</title>
+  <updated>2026-06-14T09:12:33+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-HERENCIA-0010" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-HERENCIA-0010; Órgano de Contratación: Universidad Complutense de Madrid; Importe: 160000.00 EUR; Estado: PUB</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-HERENCIA-0010</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Universidad Complutense de Madrid</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <cacext:ValidNoticeInfo>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-06-05</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Suministro de hardware y licencias SAP</cbc:Name>
+      <cbc:TypeCode>1</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">160000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Madrid</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES300</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+    <cac:TenderingProcess>
+      <cac:TenderSubmissionDeadlinePeriod>
+        <cbc:EndDate>2026-07-06</cbc:EndDate>
+        <cbc:EndTime>23:59:00</cbc:EndTime>
+      </cac:TenderSubmissionDeadlinePeriod>
+    </cac:TenderingProcess>
+    <cac:ProcurementProjectLot>
+      <cbc:ID>1</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote 1: puestos de trabajo</cbc:Name>
+        <cac:BudgetAmount>
+          <cbc:TotalAmount currencyID="EUR">64000.00</cbc:TotalAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:ProcurementProjectLot>
+      <cbc:ID>2</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote 2: servidores</cbc:Name>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">96000.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+      <cac:TenderingProcess>
+        <cac:TenderSubmissionDeadlinePeriod>
+          <cbc:EndDate>2026-07-20</cbc:EndDate>
+          <cbc:EndTime>10:00:00</cbc:EndTime>
+        </cac:TenderSubmissionDeadlinePeriod>
+      </cac:TenderingProcess>
+    </cac:ProcurementProjectLot>
+  </cacext:ContractFolderStatus>
+</entry>

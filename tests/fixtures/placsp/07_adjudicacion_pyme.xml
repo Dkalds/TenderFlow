@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-PYME-0007</id>
+  <title>Migración de datos a SAP S/4HANA</title>
+  <updated>2026-06-14T09:12:33+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-PYME-0007" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-PYME-0007; Órgano de Contratación: Gobierno Vasco; Importe: 62000.00 EUR; Estado: ADJ</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-PYME-0007</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>ADJ</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Gobierno Vasco</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <cacext:ValidNoticeInfo>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-03-02</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Migración de datos a SAP S/4HANA</cbc:Name>
+      <cbc:TypeCode>2</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">62000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Bizkaia</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES213</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+    <cac:TenderingProcess>
+      <cac:TenderSubmissionDeadlinePeriod>
+        <cbc:EndDate>2026-04-01</cbc:EndDate>
+        <cbc:EndTime>12:00:00</cbc:EndTime>
+      </cac:TenderSubmissionDeadlinePeriod>
+    </cac:TenderingProcess>
+    <cac:TenderResult>
+      <cbc:AwardDate>2026-04-28</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>7</cbc:ReceivedTenderQuantity>
+      <cbc:LowerTenderAmount>51000.00</cbc:LowerTenderAmount>
+      <cbc:HigherTenderAmount>68400.00</cbc:HigherTenderAmount>
+      <cbc:ResultCode>2</cbc:ResultCode>
+      <cac:AwardedTenderedProject>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount>53900.00</cbc:TaxExclusiveAmount>
+          <cbc:PayableAmount>65219.00</cbc:PayableAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+      <cac:WinningParty>
+        <cac:PartyName><cbc:Name>Consultores SAP del Norte SL</cbc:Name></cac:PartyName>
+        <cac:PartyIdentification><cbc:ID>B95000123</cbc:ID></cac:PartyIdentification>
+        <cbc:SMEAwardedIndicator>true</cbc:SMEAwardedIndicator>
+      </cac:WinningParty>
+    </cac:TenderResult>
+  </cacext:ContractFolderStatus>
+</entry>

@@ -90,6 +90,12 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     `make check-frontend-invariants`.
 - Para contratos API: `make check-api-contract`. Para customizaciones de
     agentes: `make check-agent-docs`.
+- Gates que exigen BD sembrada y por eso no entran en `make check`: `make
+    fuzz-api` (ninguna operación puede devolver 5xx; ratchet `KNOWN_5XX` que
+    solo encoge) y los E2E de Playwright, que en CI corren contra Postgres +
+    API + build de producción y **bloquean el merge**. `make audit-truth-check`
+    mide la verdad del dato contra una BD real y su versión programada avisa
+    por email. `make mutation-sample` es informe periódico, no gate.
 
 Los tests usan exclusivamente Postgres y requieren `TEST_DATABASE_URL`. Si
 faltan dependencias, Postgres o el CLI de Graphify, ejecutá solo los controles

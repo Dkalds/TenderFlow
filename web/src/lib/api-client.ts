@@ -50,6 +50,22 @@ export function getCsrfToken(): string | null {
 /**
  * Fetch wrapper that includes CSRF token for mutations.
  */
+/**
+ * Rutas donde un 401 es la respuesta normal del flujo, no una sesión caducada.
+ *
+ * Sin esta distinción, escribir mal la contraseña disparaba el `window.
+ * location.href = "/login"` de abajo: el navegador recargaba /login, el
+ * componente se destruía antes de pintar nada y el usuario veía la pantalla
+ * parpadear sin ningún mensaje. El `setError("Credenciales incorrectas")` del
+ * formulario sí se ejecutaba — no llegaba a verse. Lo detectó el E2E al
+ * comprobar que un intento fallido muestra el error.
+ */
+const RUTAS_CON_401_ESPERADO = ["/auth/login", "/auth/register", "/auth/totp/verify"];
+
+function esRespuestaEsperada401(url: string): boolean {
+  return RUTAS_CON_401_ESPERADO.some((ruta) => url.includes(ruta));
+}
+
 export async function apiMutate<T>(
   method: "POST" | "PUT" | "PATCH" | "DELETE",
   url: string,
@@ -67,7 +83,7 @@ export async function apiMutate<T>(
   });
 
   if (!res.ok) {
-    if (res.status === 401 && typeof window !== "undefined") {
+    if (res.status === 401 && typeof window !== "undefined" && !esRespuestaEsperada401(url)) {
       window.location.href = "/login";
       throw new ApiError(401, "Session expired");
     }

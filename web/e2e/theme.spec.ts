@@ -1,33 +1,40 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Theme", () => {
-  test("should toggle between light and dark mode", async ({ page }) => {
-    await page.goto("/resumen");
+/**
+ * Conmutador de tema.
+ *
+ * El test anterior envolvía todo su cuerpo en `if (await themeToggle.count() >
+ * 0)`. Como sin sesión /resumen redirigía al login, que no tiene conmutador, la
+ * condición era falsa siempre y el test pasaba sin ejecutar una sola aserción.
+ * Con sesión el botón existe, así que aquí no hay condicional.
+ */
 
-    // Find the theme toggle button (usually has sun/moon icon)
-    const themeToggle = page.getByRole("button", { name: /theme|tema|dark|light|sol|luna/i }).or(
-      page.locator("[data-testid='theme-toggle']")
-    );
+test("alterna claro/oscuro y la elección sobrevive a una recarga", async ({ page }) => {
+  await page.goto("/resumen");
 
-    if (await themeToggle.count() > 0) {
-      const htmlEl = page.locator("html");
+  // El conmutador vive dentro del menú de cuenta del rail de consola, no como
+  // botón suelto: hay que abrirlo primero.
+  await page.getByRole("button", { name: "Menú de cuenta" }).click();
+  const conmutador = page.getByRole("menuitem", { name: /modo (claro|oscuro)/i });
+  await expect(conmutador).toBeVisible();
 
-      // Click toggle
-      await themeToggle.click();
-      await page.waitForTimeout(300);
+  const html = page.locator("html");
+  const eraOscuro = (await html.getAttribute("class"))?.includes("dark") ?? false;
 
-      // Check that the class changed
-      const classAfterClick = await htmlEl.getAttribute("class");
+  await conmutador.click();
+  if (eraOscuro) {
+    await expect(html).not.toHaveClass(/dark/);
+  } else {
+    await expect(html).toHaveClass(/dark/);
+  }
 
-      // Click again to toggle back
-      await themeToggle.click();
-      await page.waitForTimeout(300);
-
-      const classAfterSecondClick = await htmlEl.getAttribute("class");
-
-      // Classes should be different after toggling
-      // (this is a soft assertion since theme implementation varies)
-      expect(classAfterSecondClick).not.toBe(classAfterClick);
-    }
-  });
+  // La preferencia se guarda (next-themes → localStorage): tras recargar sigue
+  // aplicada. Sin esta comprobación, un fallo de persistencia pasaría
+  // desapercibido porque en la misma vista todo parece correcto.
+  await page.reload();
+  if (eraOscuro) {
+    await expect(html).not.toHaveClass(/dark/);
+  } else {
+    await expect(html).toHaveClass(/dark/);
+  }
 });

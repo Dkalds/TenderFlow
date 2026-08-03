@@ -136,15 +136,41 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [api/routes/auth.py](../api/routes/auth.py), [api/routes/admin_users.py](../api/routes/admin_users.py)
 - **Riesgo:** bajo en código, medio en proceso — requiere migración de schema, que necesita OK humano (§6).
 
-### [P1] `e2e/responsive.spec.ts` no prueba nada: la experiencia móvil no tiene cobertura
-- **Área:** web/e2e/responsive.spec.ts
-- **Problema:** los dos tests del fichero solo afirman `expect(page.locator("body")).toBeVisible()`. El primero construye un localizador `_hamburger` con tres estrategias encadenadas y **nunca lo usa** (el prefijo `_` existe para callar al linter de variables sin usar). Es decir: la única cobertura declarada de responsive pasa siempre, incluso con la navegación móvil rota. Relevante porque la sidebar es `hidden md:flex` y por debajo de `md` el conmutador de espacios de producto no existe en ninguna parte — un fallo real ahí no lo detecta nadie.
+### [P2] Una entrada malformada devuelve 500 en tres endpoints (byte NUL y bytes no-UTF8)
+- **Área:** api/routes/*, api/middleware.py, shared/dto.py, db/
+- **Problema:** dos formas de la misma clase, encontradas por `scripts/fuzz_api_contract.py`. (a) Un `\x00` dentro de una cadena viaja hasta Postgres, que no lo admite en columnas de texto, y el `DataError` sale como 500: `POST /api/v1/licitaciones/bulk-get` y `PUT /api/v1/feature-flags`. (b) Bytes que no son UTF-8 válido en el path (`%ff`) rompen la decodificación antes de que la ruta llegue a ejecutarse: `DELETE /api/v1/watchlist/items/{id_externo}`. En ambos casos basta un carácter enviado por cualquier cliente.
 - **Acceptance criteria:**
-  - A 375px: el botón hamburguesa es visible, abre el drawer, y desde él se alcanza una página de cada espacio de producto.
-  - A 1440px: la sidebar es visible y el hamburguesa no.
-  - El test falla si se elimina el drawer móvil (verificarlo borrándolo temporalmente).
-- **Files de partida:** [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [web/src/components/layout/top-nav.tsx](../web/src/components/layout/top-nav.tsx)
-- **Riesgo:** bajo — solo test.
+  - Se decide **dónde** se sanea cada forma: validador Pydantic compartido en los DTO para el cuerpo, y middleware en la frontera HTTP para el path — es una decisión de diseño, no un parche por endpoint.
+  - Ambas entradas devuelven 4xx (400/422), no 500.
+  - Las tres entradas salen de `KNOWN_5XX` en `scripts/fuzz_api_contract.py`. El propio gate lo exige: falla también si una entrada de la allowlist deja de fallar, así que no se puede arreglar y olvidar la limpieza.
+- **Nota sobre el gate:** el fuzzer bloquea por operaciones con 5xx **que no estén en `KNOWN_5XX`**, y solo avisa cuando una entrada de la lista no falla. La asimetría es deliberada: `derandomize=True` fija las entradas generadas, pero no el estado de la BD, que el propio fuzzer muta mientras corre — dos ejecuciones seguidas del mismo comando dieron 3 y 1 operaciones con 5xx. Exigir coincidencia exacta convertiría el gate en un generador de rojos espurios (bastaría añadir una licitación al seed). Para limpiar la lista tras arreglar algo, correr `--list` sobre una base recién migrada y sembrada.
+- **Files de partida:** [scripts/fuzz_api_contract.py](../scripts/fuzz_api_contract.py), [shared/dto.py](../shared/dto.py), [api/middleware.py](../api/middleware.py)
+- **Riesgo:** bajo-medio — toca validación de entrada compartida.
+
+### [P2] Calibrar los umbrales de la auditoría de verdad del dato
+- **Área:** scripts/audit_domain_truth.py
+- **Problema:** `MAX_PCT_SIN_FECHA_LIMITE = 60`, `MAX_PCT_FILAS_UTE = 8` y `MAX_DELTA_BAJA_PUNTOS = 5` se eligieron holgados para que el primer mes detecte empeoramientos bruscos sin ahogar en ruido. No son la calidad real medida.
+- **Acceptance criteria:**
+  - Tras una semana de ejecuciones de `.github/workflows/domain-truth.yml`, comparar los `domain-truth.json` archivados y bajar cada umbral al valor medido con margen, dejando el histórico en el docstring (patrón de `tests/eval/test_eval_rag.py`).
+- **Files de partida:** [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
+- **Riesgo:** bajo — solo umbrales.
+
+### [P2] Sustituir los fixtures sintéticos del corpus CODICE por expedientes reales
+- **Área:** tests/fixtures/placsp/
+- **Problema:** los once casos del corpus golden son estructuralmente fieles al CODICE pero escritos a mano: la sesión que los creó no tenía ZIP mensuales cacheados ni acceso al feed. El valor del corpus está en codificar variabilidad que nadie imaginó, y eso solo lo dan los datos reales.
+- **Acceptance criteria:**
+  - `ENV=dev python scripts/capture_placsp_fixtures.py --caso <caso>` sustituye cada fixture sintético por uno real, y `python -m tests.test_codice_parser_golden --update` regenera el golden con el diff revisado.
+- **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
+- **Riesgo:** bajo — solo tests.
+
+### [P2] Vaciar el grandfathering de excepciones tragadas (32 funciones)
+- **Área:** db/, services/
+- **Problema:** `tests/test_swallowed_exceptions_guard.py` congela 32 funciones cuyo `except Exception` devuelve un fallback sin dejar rastro. Entre ellas, el camino de autenticación (`api_keys`, `sessions`, `totp`), la cadena de auditoría y los fallbacks de búsqueda: un fallo de infraestructura se presenta como "clave inválida" o "sin resultados" y nadie puede distinguirlo.
+- **Acceptance criteria:**
+  - Cada arreglo añade `log.warning("<evento>", exc_info=True)` antes del fallback y borra su entrada de `_GRANDFATHERED_PENDING_FIX` (el ratchet falla si la entrada sobra).
+  - Prioridad sugerida: autenticación → auditoría → búsqueda → analítica.
+- **Files de partida:** [tests/test_swallowed_exceptions_guard.py](../tests/test_swallowed_exceptions_guard.py)
+- **Riesgo:** bajo — aditivo (solo añade logs).
 
 ### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select
 - **Área:** web/src/components/layout/global-filter-bar.tsx
@@ -346,6 +372,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-02] **Los cuatro puntos ciegos de la arquitectura de tests, cerrados con gates que sí se ejecutan** — El E2E de Playwright tenía `continue-on-error: true` y sus specs aceptaban "estoy en el dashboard O en el login" como éxito: sin backend todas las rutas redirigían a `/login`, así que el bucle de 26 páginas cargaba 26 veces la misma pantalla y pasaba con la aplicación entera rota. Ahora el job aprovisiona Postgres, migra, siembra datos deterministas, levanta la API y sirve el build de producción, y **bloquea el merge**; los seis specs exigen contenido concreto del seed (esto cierra el [P1] de `e2e/responsive.spec.ts`, cuyo drawer móvil ya se verifica sin `.or()` ni condicionales). Se añade `scripts/fuzz_api_contract.py` como gate bloqueante sobre las 137 operaciones de la API, `tests/test_codice_parser_golden.py` con un corpus de 11 expedientes que congela el árbol de parseo entero, `tests/test_swallowed_exceptions_guard.py` (ratchet sobre 39 `except Exception` mudos), un workflow nocturno que ejecuta la auditoría de verdad del dato con umbrales y alerta por email, y mutation testing semanal no bloqueante. Por el camino aparecieron seis bugs que CI no veía: el seed no corría contra Postgres (sintaxis SQLite, argumento ausente y campos inexistentes en la dataclass), `codegen-best-effort.mjs` **destruía** `web/src/generated/api.d.ts` al construir con la API viva (openapi-typescript v7 devuelve un AST y el script hacía `JSON.stringify`), `GET /admin/users` devolvía 500 con un `limit` negativo, y `API_RATE_LIMIT_MAX_CALLS` —documentada en el runbook como palanca de operación— no existía en `Settings`, así que exportarla no hacía absolutamente nada.
 
 - [2026-08-02] **La invalidación de caché ya cruza GitHub Actions→Render y los full-table snapshots dejan de reconstruirse cada minuto** — `shared/cache_signal.py` escribía un fichero local en el runner efímero mientras el API intentaba leer otro fichero dentro de su contenedor; en producción la señal era siempre `0.0` y el TTL de 60 s terminaba siendo el único refresco. La señal se transporta ahora por `domain_events`, el event log Postgres que ambos procesos ya comparten, y se sondea como máximo cada 5 s por proceso; el fichero queda como fallback local/fail-open. Se eligió Postgres en vez del Redis propuesto originalmente porque los workflows del scraper no reciben `REDIS_URL`: Redis habría dejado el problema incompleto o exigido editar CI (acción con confirmación humana según AGENTS.md §6). `SignalAwareCache` sube su TTL defensivo de 60 s a 600 s, por lo que la reconstrucción normal ocurre por ingesta real y el reloj queda sólo como cota de obsolescencia. El poll del SSE se mueve al threadpool porque la señal ya puede tocar BD. Tests: round-trip del evento por conexiones separadas, visibilidad sin filesystem compartido y guarda del TTL. Queda abierto el P1 estructural de retirar las materializaciones full-table del API; este cambio elimina el churn por minuto, no su baseline residente.
 

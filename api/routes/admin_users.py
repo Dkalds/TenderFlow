@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.routes.dual_auth import require_admin
@@ -66,7 +66,10 @@ def _safe_user(user: dict[str, Any]) -> AdminUserOut:
 @router.get("")
 def admin_list_users(
     include_deactivated: bool = False,
-    limit: int = 200,
+    # Sin cota, un `limit` negativo llegaba tal cual al `LIMIT` de la query y
+    # Postgres respondía con InvalidRowCountInLimitClause -> 500. Acotarlo aquí
+    # lo convierte en el 422 que corresponde a un parámetro inválido.
+    limit: int = Query(200, ge=1, le=1000),
     admin: dict[str, Any] = Depends(require_admin),
 ) -> list[AdminUserOut]:
     """Lista todos los usuarios (solo admin)."""
