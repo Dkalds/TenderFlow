@@ -36,9 +36,26 @@ class TestFeedbackEndpoints:
 
     @patch("api.routes.feedback._repo")
     def test_feedback_stats(self, mock_repo, client, auth):
-        mock_repo.stats = MagicMock(return_value={"total": 5, "relevant": 3})
+        # Las claves son las que devuelve FeedbackRepository.stats y las que
+        # exige el DTO FeedbackStats; el mock antiguo (`relevant`) no coincidía
+        # con ninguno de los dos y solo pasaba porque la respuesta era un dict
+        # sin tipar.
+        mock_repo.stats = MagicMock(
+            return_value={
+                "total": 5,
+                "positivos": 3,
+                "negativos": 2,
+                "last_feedback_at": "2026-01-01T00:00:00Z",
+            }
+        )
         resp = client.get("/api/v1/feedback/stats", headers=auth)
         assert resp.status_code == 200
+        assert resp.json() == {
+            "total": 5,
+            "positivos": 3,
+            "negativos": 2,
+            "last_feedback_at": "2026-01-01T00:00:00Z",
+        }
 
     @patch("api.routes.feedback._lic_repo")
     def test_feedback_queue_random(self, mock_lic, client, auth):

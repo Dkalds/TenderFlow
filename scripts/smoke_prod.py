@@ -83,6 +83,12 @@ def _fetch(base: str, path: str) -> tuple[int, Any]:
     cookie = os.environ.get("SMOKE_SESSION_COOKIE", "")
     if cookie:
         req.add_header("Cookie", f"session={cookie}")
+    # `url` sale de SMOKE_BASE_URL (config de despliegue, no de un request de
+    # usuario) y el guard de arriba ya rechaza cualquier esquema que no sea
+    # http(s), que es justo lo que la regla teme (`file://`). Este módulo es
+    # stdlib-only a propósito — ver el docstring —, así que cambiar a
+    # `requests`, la alternativa que sugiere la regla, no es una opción.
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
     with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 — URL de config propia
         body = resp.read()
         return resp.status, json.loads(body) if body else None

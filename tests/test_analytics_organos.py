@@ -14,6 +14,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from services.analytics.organo_detail import (
     OrganoDetailFilters,
@@ -315,8 +316,10 @@ def test_get_organo_detail_lead_time_and_fields(tmp_db):
     assert scored["L1"].tipo_contrato_desc == "Servicios"
     assert scored["L1"].tipo_proyecto is not None
     # baja_pct vive: (1 - 900k/1M) x 100 — antes llegaba siempre null porque
-    # el loader raw no traía la columna derivada.
-    assert scored["L1"].baja_pct == 10.0
+    # el loader raw no traía la columna derivada. `approx` porque el cálculo es
+    # IEEE754 puro ((1 - 0.9) * 100 == 9.999999999999998), igual que en
+    # test_analytics_resumen.py::test_top_licitaciones_enriquece_con_adjudicatario.
+    assert scored["L1"].baja_pct == pytest.approx(10.0)
     assert scored["L1"].fecha_adjudicacion == "11/01/2025"
 
 

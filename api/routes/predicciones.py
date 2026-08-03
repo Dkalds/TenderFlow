@@ -54,6 +54,12 @@ class PrediccionBajaResult(BaseModel):
     "/licitaciones/{licitacion_id:path}/prediccion-baja",
     summary="Intervalo de baja esperada (p10/p50/p90)",
     responses={404: {"description": "Sin predicción para esa licitación"}},
+    # Los bloques son condicionales (ver el docstring del DTO): la ausencia de
+    # `p50` significa "el batch nunca scoreó esta licitación", distinto de un
+    # p50 nulo. Al tipar la respuesta, la serialización pasó a emitir todos los
+    # campos con `null` y esa distinción se perdía; `exclude_none` conserva el
+    # contrato que el endpoint ya tenía sin tipar.
+    response_model_exclude_none=True,
 )
 async def get_prediccion_baja(
     licitacion_id: str,

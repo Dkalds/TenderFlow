@@ -24,9 +24,30 @@ import services.analytics.quality as q_mod
 pytestmark = pytest.mark.usefixtures("tmp_db")
 
 
+def _drop_iso_check() -> None:
+    """Suelta el CHECK de formato ISO en el schema aislado del test.
+
+    ``v59_pg_date_format_checks`` añade
+    ``ck_licitaciones_fecha_publicacion_iso`` como **NOT VALID**: bloquea los
+    INSERT nuevos pero NO valida las filas ya presentes, así que en producción
+    conviven filas pre-cutover con ``DD/MM/YYYY``. Esas son exactamente las que
+    ``pct_fecha_iso``/``fechas_no_iso`` existen para contar — sin soltar el
+    CHECK, el test no puede crear el caso que la métrica mide. Solo afecta al
+    schema efímero de ``tmp_db``.
+    """
+    from db.connection import connect
+
+    with connect() as c:
+        c.execute(
+            "ALTER TABLE licitaciones "
+            "DROP CONSTRAINT IF EXISTS ck_licitaciones_fecha_publicacion_iso"
+        )
+
+
 def _seed(rows: list[dict]) -> None:
     from db.upsert import Licitacion, upsert_licitaciones
 
+    _drop_iso_check()
     upsert_licitaciones(
         [
             Licitacion(

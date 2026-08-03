@@ -353,9 +353,10 @@ def _insert_adjudicacion(
     with connect() as c:
         c.execute(
             "INSERT INTO adjudicaciones "
-            "(licitacion_id, nombre, nif, importe_adjudicado, fecha_adjudicacion) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (licitacion_id, nombre, nif, importe_adjudicado, now_utc_iso()),
+            "(licitacion_id, nombre, nif, importe_adjudicado, fecha_adjudicacion, "
+            "fecha_extraccion) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (licitacion_id, nombre, nif, importe_adjudicado, now_utc_iso(), now_utc_iso()),
         )
 
 

@@ -22,11 +22,11 @@ Uso::
 from __future__ import annotations
 
 import hashlib
-import json
 import os
-import urllib.request
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from observability.logging import get_logger
 
@@ -59,9 +59,9 @@ def _download_release_asset(asset_name: str, dest: Path) -> bool:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     try:
-        req = urllib.request.Request(_RELEASES_URL, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            release: dict[str, Any] = json.loads(resp.read())
+        resp = requests.get(_RELEASES_URL, headers=headers, timeout=30)
+        resp.raise_for_status()
+        release: dict[str, Any] = resp.json()
         asset = next(
             (a for a in release.get("assets", []) if a.get("name") == asset_name),
             None,
@@ -74,9 +74,14 @@ def _download_release_asset(asset_name: str, dest: Path) -> bool:
             log.warning("model_artifact_download_url_no_https", asset=asset_name)
             return False
         dest.parent.mkdir(parents=True, exist_ok=True)
-        req = urllib.request.Request(url, headers=headers)  # noqa: S310 — HTTPS validado
-        with urllib.request.urlopen(req, timeout=120) as resp, dest.open("wb") as out:  # noqa: S310
-            while chunk := resp.read(_CHUNK):
+        # `stream=True`: los artefactos de modelo pesan cientos de MB y el runner
+        # de Actions no tiene RAM para materializarlos antes de escribirlos.
+        with (
+            requests.get(url, headers=headers, timeout=120, stream=True) as asset_resp,
+            dest.open("wb") as out,
+        ):
+            asset_resp.raise_for_status()
+            for chunk in asset_resp.iter_content(chunk_size=_CHUNK):
                 out.write(chunk)
         log.info("model_artifact_downloaded", asset=asset_name, dest=str(dest))
         return True
