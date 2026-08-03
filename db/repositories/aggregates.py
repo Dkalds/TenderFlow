@@ -92,6 +92,7 @@ class LicitacionesFilters:
     fecha_hasta: str | None = None
     importe_min: float | None = None
     q: str | None = None
+    cpv: str | None = None
 
 
 def _build_where(filters: LicitacionesFilters) -> tuple[str, list[Any]]:
@@ -124,6 +125,9 @@ def _build_where(filters: LicitacionesFilters) -> tuple[str, list[Any]]:
             "OR id_externo ILIKE ? ESCAPE '\\')"
         )
         params.extend([needle, needle, needle])
+    if filters.cpv:
+        clauses.append("cpv = ?")
+        params.append(filters.cpv)
 
     return " AND ".join(clauses), params
 
@@ -838,6 +842,207 @@ class AggregateRepository:
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, top_organos, *params]))
 
+    # ── Resumen: sankey y top licitaciones ───────────────────────────────
+
+    def resumen_sankey(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(tipo_contrato, estado, value) — flujo tipo→estado, NULLs excluidos."""
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT tipo_contrato, estado, COUNT(*) AS value FROM licitaciones "
+            "WHERE " + where + " AND tipo_contrato IS NOT NULL AND estado IS NOT NULL "
+            "GROUP BY tipo_contrato, estado ORDER BY tipo_contrato, estado"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def resumen_top_licitaciones(
+        self, filters: LicitacionesFilters, *, n: int
+    ) -> list[dict[str, Any]]:
+        """Top-N por importe con adjudicatario y agregados de adjudicación.
+
+        ``adjudicatario`` es el primer nombre no nulo del grupo (determinista
+        por id de fila); ``sum_adj``/``n_adj`` permiten al servicio replicar el
+        cálculo de baja del pandas original (que sumaba la columna
+        ``importe_licitacion`` del join — es decir, ``n_adj * importe``).
+        """
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT l.id_externo, l.titulo, l.organo_contratacion, l.importe, l.estado, "
+            "       adj.nombre AS adjudicatario, adj.sum_adj, adj.n_adj "
+            "FROM licitaciones l "
+            "LEFT JOIN LATERAL ("
+            "  SELECT (SELECT a2.nombre FROM adjudicaciones a2 "
+            "          WHERE a2.licitacion_id = l.id_externo AND a2.nombre IS NOT NULL "
+            "          ORDER BY a2.id LIMIT 1) AS nombre, "
+            "         SUM(a.importe_adjudicado) AS sum_adj, COUNT(*) AS n_adj "
+            "  FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo "
+            ") adj ON TRUE "
+            "WHERE " + where + " AND l.importe IS NOT NULL "
+            "ORDER BY l.importe DESC LIMIT ?"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, n]))
+
+    # ── Trends CPV ───────────────────────────────────────────────────────
+
+    def trends_cpv_ranking(
+        self, filters: LicitacionesFilters, *, top_n: int
+    ) -> tuple[int, list[dict[str, Any]], str | None, str | None]:
+        """(total_cpvs, top-N por importe, periodo_inicio, periodo_fin)."""
+        where, params = _build_where(filters)
+        guard = _iso_guard("fecha_publicacion")
+        base_where = f"{where} AND cpv IS NOT NULL AND {guard}"
+        with connect_read() as c:
+            row = c.execute(
+                "SELECT COUNT(DISTINCT cpv), min(substr(fecha_publicacion, 1, 7)), "
+                "       max(substr(fecha_publicacion, 1, 7)) "
+                f"FROM licitaciones WHERE {base_where}",
+                params,
+            ).fetchone()
+            total = int(row[0] or 0) if row else 0
+            inicio = row[1] if row else None
+            fin = row[2] if row else None
+            top = rows_to_dicts(
+                c.execute(
+                    "SELECT cpv, COALESCE(SUM(importe), 0) AS importe_total, "
+                    "       COUNT(*) AS count "
+                    f"FROM licitaciones WHERE {base_where} "
+                    "GROUP BY cpv ORDER BY importe_total DESC, cpv LIMIT ?",
+                    [*params, top_n],
+                )
+            )
+        return total, top, inicio, fin
+
+    def trends_cpv_series(
+        self, filters: LicitacionesFilters, *, cpvs: list[str]
+    ) -> list[dict[str, Any]]:
+        """(cpv, mes, count, importe) para los CPVs del top."""
+        if not cpvs:
+            return []
+        where, params = _build_where(filters)
+        guard = _iso_guard("fecha_publicacion")
+        placeholders = ",".join("?" for _ in cpvs)
+        sql = (
+            "SELECT cpv, substr(fecha_publicacion, 1, 7) AS mes, "
+            "       COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} AND cpv IN ({placeholders}) "
+            "GROUP BY cpv, mes ORDER BY cpv, mes"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, *cpvs]))
+
+    # ── Proyectos & módulos (detección regex en el motor) ────────────────
+
+    def proyectos_modulos_stats(
+        self,
+        filters: LicitacionesFilters,
+        *,
+        module_patterns: dict[str, str],
+        all_pattern: str,
+    ) -> tuple[dict[str, tuple[int, float]], int, float]:
+        """Conteo/importe por módulo + (clasificadas, importe distinct).
+
+        Los patrones llegan como regex POSIX (mismas alternancias escapadas que
+        compilaba el servicio con ``re.IGNORECASE``); ``~* ?`` los evalúa en el
+        motor sobre ``titulo`` — la columna de texto disponible en la
+        proyección de stats (la detección pandas usaba titulo+descripcion solo
+        si descripcion existía, y en stats no existe).
+        """
+        where, params = _build_where(filters)
+        selects: list[str] = []
+        run_params: list[Any] = []
+        for pattern in module_patterns.values():
+            selects.append("COUNT(*) FILTER (WHERE titulo ~* ?)")
+            selects.append("COALESCE(SUM(importe) FILTER (WHERE titulo ~* ?), 0)")
+            run_params.extend([pattern, pattern])
+        selects.append("COUNT(*) FILTER (WHERE titulo ~* ?)")
+        selects.append("COALESCE(SUM(importe) FILTER (WHERE titulo ~* ?), 0)")
+        run_params.extend([all_pattern, all_pattern])
+        sql = "SELECT " + ", ".join(selects) + " FROM licitaciones WHERE " + where
+        with connect_read() as c:
+            row = c.execute(sql, [*run_params, *params]).fetchone()
+        if row is None:
+            return {}, 0, 0.0
+        por_modulo: dict[str, tuple[int, float]] = {}
+        for i, mod in enumerate(module_patterns):
+            count = int(row[i * 2] or 0)
+            if count:
+                por_modulo[mod] = (count, float(row[i * 2 + 1] or 0.0))
+        total_clasificados = int(row[-2] or 0)
+        importe_distinct = float(row[-1] or 0.0)
+        return por_modulo, total_clasificados, importe_distinct
+
+    def proyectos_modulos_yoy(
+        self,
+        filters: LicitacionesFilters,
+        *,
+        module_patterns: dict[str, str],
+        hace_365d_iso: str,
+        hace_730d_iso: str,
+    ) -> dict[str, tuple[int, int]]:
+        """{módulo: (n_act, n_prev)} en ventanas de 12 meses consecutivas."""
+        where, params = _build_where(filters)
+        col = "fecha_publicacion"
+        guard = _iso_guard(col)
+        selects: list[str] = []
+        run_params: list[Any] = []
+        for pattern in module_patterns.values():
+            selects.append(f"COUNT(*) FILTER (WHERE titulo ~* ? AND {guard} AND {col} >= ?)")
+            selects.append(
+                f"COUNT(*) FILTER (WHERE titulo ~* ? AND {guard} AND {col} < ? AND {col} >= ?)"
+            )
+            run_params.extend([pattern, hace_365d_iso, pattern, hace_365d_iso, hace_730d_iso])
+        sql = "SELECT " + ", ".join(selects) + " FROM licitaciones WHERE " + where
+        with connect_read() as c:
+            row = c.execute(sql, [*run_params, *params]).fetchone()
+        if row is None:
+            return {}
+        return {
+            mod: (int(row[i * 2] or 0), int(row[i * 2 + 1] or 0))
+            for i, mod in enumerate(module_patterns)
+        }
+
+    def tipos_contrato_breakdown(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(tipo_contrato, count, importe) — NULL/'' excluidos, count DESC."""
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT tipo_contrato, COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            "WHERE " + where + " AND tipo_contrato IS NOT NULL AND trim(tipo_contrato) != '' "
+            "GROUP BY tipo_contrato ORDER BY count DESC, tipo_contrato"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def tipo_estado_crosstab(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(tipo_contrato, estado, n) — tipo NULL/'' y estado NULL excluidos.
+
+        Paridad con el ``groupby(["tipo","estado"])`` de pandas, que descartaba
+        los NaN de ambas columnas.
+        """
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT tipo_contrato, estado, COUNT(*) AS n FROM licitaciones "
+            "WHERE " + where + " AND tipo_contrato IS NOT NULL AND trim(tipo_contrato) != '' "
+            "AND estado IS NOT NULL "
+            "GROUP BY tipo_contrato, estado ORDER BY tipo_contrato, estado"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def cpv_top_por_count(self, filters: LicitacionesFilters, *, n: int) -> list[dict[str, Any]]:
+        """(cpv, count, importe) top-N por count — cpv NULL/'' excluido."""
+        where, params = _build_where(filters)
+        sql = (
+            "SELECT cpv, COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            "WHERE " + where + " AND cpv IS NOT NULL AND trim(cpv) != '' "
+            "GROUP BY cpv ORDER BY count DESC, cpv LIMIT ?"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, n]))
+
     # ── Scoring / pipeline: proyecciones acotadas y contexto ─────────────
 
     # Columnas que _score_row (services/analytics/scoring.py) necesita leer.
@@ -876,10 +1081,7 @@ class AggregateRepository:
         universo puntuable son los estados activos — una fracción del total.
         """
         placeholders = ",".join("?" for _ in estados)
-        sql = (
-            f"SELECT {self._SCORING_COLS} FROM licitaciones "
-            f"WHERE estado IN ({placeholders})"
-        )
+        sql = f"SELECT {self._SCORING_COLS} FROM licitaciones WHERE estado IN ({placeholders})"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, list(estados)))
 
@@ -888,10 +1090,7 @@ class AggregateRepository:
         if not ids:
             return []
         placeholders = ",".join("?" for _ in ids)
-        sql = (
-            f"SELECT {self._SCORING_COLS} FROM licitaciones "
-            f"WHERE id_externo IN ({placeholders})"
-        )
+        sql = f"SELECT {self._SCORING_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, ids))
 

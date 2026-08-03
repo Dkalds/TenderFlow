@@ -1,12 +1,9 @@
 """Tests unitarios para services/analytics/resumen.py
 
-``novedades``/``hoy``/``timeline`` agregan en Postgres, así que sus tests
-insertan un dataset sintético en un schema aislado (``tmp_db``) y comprueban
-el resultado contra la BD real — son los tests de caracterización de la
-migración pandas -> SQL y deben dar los mismos valores que daban con pandas.
-
-``sankey``/``top`` siguen en pandas: sus tests parchean ``load_stats_base_df``
-y ``load_raw_adjudicaciones`` con datos sintéticos y no tocan la BD.
+Los cinco endpoints agregan en Postgres (ADR-023): todos los tests insertan
+un dataset sintético en un schema aislado (``tmp_db``) y comprueban el
+resultado contra la BD real — caracterización de la migración pandas -> SQL
+con los mismos valores que daba pandas.
 """
 
 from __future__ import annotations
@@ -313,19 +310,18 @@ def test_timeline_scatter_orden_descendente_y_filtro_fecha(tmp_db):
 # ---------------------------------------------------------------------------
 
 
-def test_sankey_nodes_y_links():
-    """2 tipo_contrato × 2 estado → nodes y links no vacíos."""
-    rows = [
-        _row("S1", tipo_contrato="2", estado="PUB"),
-        _row("S2", tipo_contrato="2", estado="ADJ"),
-        _row("S3", tipo_contrato="3", estado="PUB"),
-        _row("S4", tipo_contrato="3", estado="ADJ"),
-    ]
+def test_sankey_nodes_y_links(tmp_db):
+    """2 tipo_contrato x 2 estado → nodes y links no vacíos."""
+    _insert(
+        [
+            _row("S1", tipo_contrato="2", estado="PUB"),
+            _row("S2", tipo_contrato="2", estado="ADJ"),
+            _row("S3", tipo_contrato="3", estado="PUB"),
+            _row("S4", tipo_contrato="3", estado="ADJ"),
+        ]
+    )
 
-    with patch(
-        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        result = get_sankey_flow(SankeyFilters())
+    result = get_sankey_flow(SankeyFilters())
 
     # Debe tener 2 nodos tipo + 2 nodos estado = 4 nodos
     assert len(result.nodes) == 4
@@ -342,34 +338,19 @@ def test_sankey_nodes_y_links():
         assert link.value >= 1
 
 
-def test_sankey_sin_columna_tipo_contrato():
-    """Filas sin campo tipo_contrato → SankeyResult vacío."""
-    rows = [
-        {
-            "id_externo": "X1",
-            "titulo": "Sin tipo",
-            "importe": 10_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": _iso(-5),
-            "ccaa": "Madrid",
-            "tecnologia": "SAP",
-            # tipo_contrato ausente a propósito
-        }
-    ]
+def test_sankey_sin_tipo_contrato(tmp_db):
+    """Filas con tipo_contrato nulo quedan fuera → SankeyResult vacío."""
+    _insert([_row("X1", tipo_contrato=None)])
 
-    with patch(
-        "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        result = get_sankey_flow(SankeyFilters())
+    result = get_sankey_flow(SankeyFilters())
 
     assert result.nodes == []
     assert result.links == []
 
 
-def test_sankey_dataset_vacio():
-    """DataFrame vacío → SankeyResult vacío."""
-    with patch("services.analytics.resumen.load_stats_base_df", return_value=pd.DataFrame([])):
-        result = get_sankey_flow(SankeyFilters())
+def test_sankey_dataset_vacio(tmp_db):
+    """Sin filas → SankeyResult vacío."""
+    result = get_sankey_flow(SankeyFilters())
 
     assert result.nodes == []
     assert result.links == []
@@ -380,45 +361,37 @@ def test_sankey_dataset_vacio():
 # ---------------------------------------------------------------------------
 
 
-def test_top_licitaciones_enriquece_con_adjudicatario():
-    """Top licitación con adjudicación → adjudicatario y baja_pct presentes."""
-    rows = [
-        _row("TOP1", importe=1_000_000.0),
-        _row("TOP2", importe=500_000.0),
-    ]
-    adj_rows = [
-        {
-            "id_externo": "TOP1",
-            "nombre": "EMPRESA GANADORA S.A.",
-            "importe_adjudicado": 800_000.0,
-            "importe_licitacion": 1_000_000.0,
-        }
-    ]
+def _insert_adjudicacion(
+    licitacion_id: str, nombre: str, importe_adjudicado: float, nif: str = "B00000000"
+) -> None:
+    from db.database import connect, now_utc_iso
 
-    with (
-        patch(
-            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-        ),
-        patch("services.analytics.resumen.load_raw_adjudicaciones", return_value=adj_rows),
-    ):
-        result = get_top_licitaciones(TopLicitacionesFilters(n=2))
+    with connect() as c:
+        c.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, nif, importe_adjudicado, fecha_adjudicacion) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (licitacion_id, nombre, nif, importe_adjudicado, now_utc_iso()),
+        )
+
+
+def test_top_licitaciones_enriquece_con_adjudicatario(tmp_db):
+    """Top licitación con adjudicación → adjudicatario y baja_pct presentes."""
+    _insert([_row("TOP1", importe=1_000_000.0), _row("TOP2", importe=500_000.0)])
+    _insert_adjudicacion("TOP1", "EMPRESA GANADORA S.A.", 800_000.0)
+
+    result = get_top_licitaciones(TopLicitacionesFilters(n=2))
 
     top1 = next(i for i in result.items if i.id_externo == "TOP1")
     assert top1.adjudicatario == "EMPRESA GANADORA S.A."
     assert top1.baja_pct == pytest.approx(20.0)  # (1 - 800k/1000k) x 100
 
 
-def test_top_licitaciones_sin_adjudicaciones():
+def test_top_licitaciones_sin_adjudicaciones(tmp_db):
     """Sin adjudicaciones → adjudicatario=None, baja_pct=None para todas."""
-    rows = [_row("T1", importe=300_000.0), _row("T2", importe=200_000.0)]
+    _insert([_row("T1", importe=300_000.0), _row("T2", importe=200_000.0)])
 
-    with (
-        patch(
-            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-        ),
-        patch("services.analytics.resumen.load_raw_adjudicaciones", return_value=[]),
-    ):
-        result = get_top_licitaciones(TopLicitacionesFilters(n=5))
+    result = get_top_licitaciones(TopLicitacionesFilters(n=5))
 
     assert len(result.items) == 2
     for item in result.items:
@@ -426,28 +399,18 @@ def test_top_licitaciones_sin_adjudicaciones():
         assert item.baja_pct is None
 
 
-def test_top_licitaciones_dataset_vacio():
-    """DataFrame vacío → items=[]."""
-    with (
-        patch("services.analytics.resumen.load_stats_base_df", return_value=pd.DataFrame([])),
-        patch("services.analytics.resumen.load_raw_adjudicaciones", return_value=[]),
-    ):
-        result = get_top_licitaciones(TopLicitacionesFilters())
+def test_top_licitaciones_dataset_vacio(tmp_db):
+    """Sin filas → items=[]."""
+    result = get_top_licitaciones(TopLicitacionesFilters())
 
     assert result.items == []
 
 
-def test_top_licitaciones_respeta_n():
+def test_top_licitaciones_respeta_n(tmp_db):
     """Solo devuelve las N más grandes por importe."""
-    rows = [_row(f"L{i}", importe=float(i * 10_000)) for i in range(1, 11)]
+    _insert([_row(f"L{i}", importe=float(i * 10_000)) for i in range(1, 11)])
 
-    with (
-        patch(
-            "services.analytics.resumen.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-        ),
-        patch("services.analytics.resumen.load_raw_adjudicaciones", return_value=[]),
-    ):
-        result = get_top_licitaciones(TopLicitacionesFilters(n=3))
+    result = get_top_licitaciones(TopLicitacionesFilters(n=3))
 
     assert len(result.items) == 3
     importes = [item.importe for item in result.items]
