@@ -15,6 +15,42 @@ _SUMMARY_COLS = (
     "fecha_adjudicacion, ccaa, es_pyme, n_ofertas_recibidas"
 )
 
+# Identidad de empresa para los grafos órgano↔empresa (ADR-023): nombre
+# canónico del maestro si existe y no está en blanco, si no el nombre raw del
+# adjudicatario — la misma regla que aplicaba `_prepare_df` en
+# services/analytics/red_organo_empresa.py sobre `empresa_nombre_master`.
+_EMPRESA_KEY_SQL = (
+    "COALESCE(CASE WHEN trim(e.nombre_canonico) != '' THEN e.nombre_canonico END, a.nombre)"
+)
+
+_GRAPH_FROM = (
+    "FROM adjudicaciones a "
+    "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+    "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
+)
+
+
+def _adj_filter_conditions(
+    *,
+    ccaa_filter: tuple[str, ...] | None,
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
+) -> tuple[list[str], list[Any]]:
+    """Condiciones de filtro comunes de las consultas UTE (sobre el alias ``a``)."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if ccaa_filter:
+        placeholders = ",".join("?" for _ in ccaa_filter)
+        conditions.append(f"a.ccaa IN ({placeholders})")
+        params.extend(ccaa_filter)
+    if fecha_desde and _DATE_RE.match(fecha_desde):
+        conditions.append("a.fecha_adjudicacion >= ?")
+        params.append(fecha_desde)
+    if fecha_hasta and _DATE_RE.match(fecha_hasta):
+        conditions.append("a.fecha_adjudicacion <= ?")
+        params.append(fecha_hasta)
+    return conditions, params
+
 
 class AdjudicacionRepository:
     def list_paginated(
@@ -210,3 +246,239 @@ class AdjudicacionRepository:
         if fuentes is not None:
             rows = [r for r in rows if (r.get("fuente") or "").lower() in fuentes]
         return rows
+
+    # ── Analítica UTE (ADR-023) ──────────────────────────────────────────
+    #
+    # El patrón regex que define «es UTE» lo pone el servicio llamador (es su
+    # regla de negocio); aquí solo se aplica con `~*` (case-insensitive) sobre
+    # el nombre raw del adjudicatario. `COALESCE(…, FALSE)` porque un nombre
+    # NULL debe contar como no-UTE (paridad con `str.contains(na=False)`).
+
+    def ute_kpis(
+        self,
+        *,
+        pattern: str,
+        ccaa_filter: tuple[str, ...] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> dict[str, Any]:
+        """Conteos/importes UTE vs individual + nº de nombres UTE distintos."""
+        conditions, params = _adj_filter_conditions(
+            ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+        )
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        sql = (
+            "SELECT COUNT(*) FILTER (WHERE es_ute) AS total_ute, "
+            "       COALESCE(SUM(importe_adjudicado) FILTER (WHERE es_ute), 0) AS importe_ute, "
+            "       COUNT(*) FILTER (WHERE NOT es_ute) AS total_individual, "
+            "       COALESCE(SUM(importe_adjudicado) FILTER (WHERE NOT es_ute), 0) "
+            "           AS importe_individual, "
+            "       COUNT(DISTINCT nombre) FILTER (WHERE es_ute) AS empresas_distintas "
+            "FROM (SELECT a.nombre, a.importe_adjudicado, "
+            "             COALESCE(a.nombre ~* ?, FALSE) AS es_ute "
+            f"      FROM adjudicaciones a{where}) t"
+        )
+        with connect_read() as c:
+            row = c.execute(sql, [pattern, *params]).fetchone()
+        if row is None:  # pragma: no cover - un SELECT agregado siempre trae fila
+            return {
+                "total_ute": 0,
+                "importe_ute": 0.0,
+                "total_individual": 0,
+                "importe_individual": 0.0,
+                "empresas_distintas": 0,
+            }
+        return {
+            "total_ute": int(row[0] or 0),
+            "importe_ute": float(row[1] or 0),
+            "total_individual": int(row[2] or 0),
+            "importe_individual": float(row[3] or 0),
+            "empresas_distintas": int(row[4] or 0),
+        }
+
+    def ute_top_miembros(
+        self,
+        *,
+        pattern: str,
+        ccaa_filter: tuple[str, ...] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Ranking de nombres UTE por nº de adjudicaciones (nombre completo)."""
+        conditions, params = _adj_filter_conditions(
+            ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+        )
+        where = " AND ".join(["COALESCE(a.nombre ~* ?, FALSE)", *conditions])
+        sql = (
+            "SELECT a.nombre AS nombre, COUNT(*) AS count, "
+            "       COALESCE(SUM(a.importe_adjudicado), 0) AS importe "
+            f"FROM adjudicaciones a WHERE {where} "
+            "GROUP BY a.nombre ORDER BY count DESC, importe DESC, nombre LIMIT ?"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [pattern, *params, limit]))
+
+    def ute_evolucion(
+        self,
+        *,
+        pattern: str,
+        ccaa_filter: tuple[str, ...] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Serie mensual (period YYYY-MM) de adjudicaciones UTE.
+
+        El guard sargable ``>= '1900' AND < '3000'`` descarta fechas no-ISO
+        (paridad con el ``dropna`` tras ``to_datetime(errors="coerce")``).
+        """
+        conditions, params = _adj_filter_conditions(
+            ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+        )
+        where = " AND ".join(
+            [
+                "COALESCE(a.nombre ~* ?, FALSE)",
+                "a.fecha_adjudicacion >= '1900'",
+                "a.fecha_adjudicacion < '3000'",
+                *conditions,
+            ]
+        )
+        sql = (
+            "SELECT substr(a.fecha_adjudicacion, 1, 7) AS period, "
+            "       COUNT(*) AS contratos, "
+            "       COALESCE(SUM(a.importe_adjudicado), 0) AS importe "
+            f"FROM adjudicaciones a WHERE {where} "
+            "GROUP BY period ORDER BY period"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [pattern, *params]))
+
+    def load_ute_rows(
+        self,
+        *,
+        pattern: str,
+        ccaa_filter: tuple[str, ...] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Proyección ACOTADA de filas UTE para el grafo de co-licitación.
+
+        Justificación ADR-023: el parseo de miembros de una UTE
+        (``parse_ute_members``) no es expresable en SQL, pero las filas cuyo
+        nombre matchea el patrón UTE son una fracción pequeña del total y solo
+        se proyectan 2 columnas — carga acotada, no full-table.
+        """
+        conditions, params = _adj_filter_conditions(
+            ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+        )
+        where = " AND ".join(["COALESCE(a.nombre ~* ?, FALSE)", *conditions])
+        sql = f"SELECT a.nombre, a.importe_adjudicado FROM adjudicaciones a WHERE {where}"
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [pattern, *params]))
+
+    # ── Grafo órgano↔empresa (ADR-023) ───────────────────────────────────
+
+    def organ_company_totals(
+        self, *, ccaa_filter: tuple[str, ...] | None = None
+    ) -> tuple[int, int]:
+        """(nº de órganos distintos, nº de empresas distintas) del dataset filtrado."""
+        sql = (
+            "SELECT COUNT(DISTINCT l.organo_contratacion), "
+            f"       COUNT(DISTINCT {_EMPRESA_KEY_SQL}) "
+            f"{_GRAPH_FROM}"
+        )
+        params: list[Any] = []
+        if ccaa_filter:
+            placeholders = ",".join("?" for _ in ccaa_filter)
+            sql += f"WHERE a.ccaa IN ({placeholders})"
+            params.extend(ccaa_filter)
+        with connect_read() as c:
+            row = c.execute(sql, params).fetchone()
+        if row is None:  # pragma: no cover - un SELECT agregado siempre trae fila
+            return 0, 0
+        return int(row[0] or 0), int(row[1] or 0)
+
+    def organ_company_edges(
+        self,
+        *,
+        ccaa_filter: tuple[str, ...] | None = None,
+        organo: str | None = None,
+        empresa_key: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Aristas órgano→empresa YA agregadas (una fila por par).
+
+        ``organo``/``empresa_key`` acotan el resultado al vecindario de una
+        entidad (ego-network) empujando el filtro al ``WHERE`` en vez de
+        materializar el grafo entero.
+        """
+        conditions = [
+            "l.organo_contratacion IS NOT NULL",
+            f"{_EMPRESA_KEY_SQL} IS NOT NULL",
+        ]
+        params: list[Any] = []
+        if ccaa_filter:
+            placeholders = ",".join("?" for _ in ccaa_filter)
+            conditions.append(f"a.ccaa IN ({placeholders})")
+            params.extend(ccaa_filter)
+        if organo is not None:
+            conditions.append("l.organo_contratacion = ?")
+            params.append(organo)
+        if empresa_key is not None:
+            conditions.append(f"{_EMPRESA_KEY_SQL} = ?")
+            params.append(empresa_key)
+        sql = (
+            "SELECT l.organo_contratacion AS organo_contratacion, "
+            f"       {_EMPRESA_KEY_SQL} AS empresa_key, "
+            "       COUNT(*) AS contratos, "
+            "       COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total, "
+            "       MIN(a.fecha_adjudicacion) AS fecha_min, "
+            "       MAX(a.fecha_adjudicacion) AS fecha_max "
+            f"{_GRAPH_FROM}"
+            f"WHERE {' AND '.join(conditions)} "
+            f"GROUP BY l.organo_contratacion, {_EMPRESA_KEY_SQL}"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def organ_company_edge_detail(
+        self,
+        *,
+        organo: str,
+        empresa_key: str,
+        ccaa_filter: tuple[str, ...] | None = None,
+        limit: int = 100,
+    ) -> tuple[list[dict[str, Any]], int, float]:
+        """(licitaciones top-``limit`` por importe, nº total, importe total) de una arista."""
+        conditions = [
+            "l.organo_contratacion = ?",
+            f"{_EMPRESA_KEY_SQL} = ?",
+        ]
+        params: list[Any] = [organo, empresa_key]
+        if ccaa_filter:
+            placeholders = ",".join("?" for _ in ccaa_filter)
+            conditions.append(f"a.ccaa IN ({placeholders})")
+            params.extend(ccaa_filter)
+        where = " AND ".join(conditions)
+        with connect_read() as c:
+            row = c.execute(
+                "SELECT COUNT(*), COALESCE(SUM(a.importe_adjudicado), 0) "
+                f"{_GRAPH_FROM}WHERE {where}",
+                params,
+            ).fetchone()
+            total = int(row[0] or 0) if row is not None else 0
+            importe_total = float(row[1] or 0) if row is not None else 0.0
+            if total == 0:
+                return [], 0, 0.0
+            rows = rows_to_dicts(
+                c.execute(
+                    "SELECT a.licitacion_id, l.titulo, a.importe_adjudicado, "
+                    "       substr(a.fecha_adjudicacion, 1, 10) AS fecha_adjudicacion, "
+                    "       l.url AS url_lic "
+                    f"{_GRAPH_FROM}WHERE {where} "
+                    "ORDER BY a.importe_adjudicado DESC NULLS LAST, "
+                    "         a.fecha_adjudicacion DESC, a.licitacion_id "
+                    "LIMIT ?",
+                    [*params, limit],
+                )
+            )
+        return rows, total, importe_total

@@ -1,9 +1,17 @@
 """Red Órgano-Empresa — grafo bipartito de adjudicaciones REALES.
 
-Wrapper de servicio sobre :func:`services.organ_company_graph.build_bipartite_graph`
-(que opera sobre un DataFrame puro) + el loader canónico de adjudicaciones. Expone
-nodos/aristas tipados para el endpoint. Las aristas representan **adjudicaciones
-reales** (órgano → empresa adjudicataria), no co-localización por CCAA.
+Agrega en Postgres vía :class:`AdjudicacionRepository` (ADR-023): las aristas
+(órgano, empresa) llegan YA agregadas del ``GROUP BY`` de
+``organ_company_edges`` y el shaping del grafo (top-N, grados, frecuencia)
+corre sobre ese resultado pequeño en
+:func:`services.organ_company_graph.bipartite_graph_from_edge_aggregates` /
+:func:`services.organ_concentration.organ_concentration_from_edge_aggregates`.
+Hasta 2026-08 cada endpoint materializaba el join completo de adjudicaciones
+en pandas — bloqueado en Render por el cortacircuitos full-table, que dejaba
+estos 4 endpoints vacíos en producción. Las aristas representan
+**adjudicaciones reales** (órgano → empresa adjudicataria), no co-localización
+por CCAA; la identidad de empresa (maestro canónico con fallback al nombre
+raw) vive en la expresión SQL del repositorio.
 """
 
 from __future__ import annotations
@@ -13,12 +21,14 @@ from typing import Any, Literal
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
-from services.adjudicaciones import load_raw_adjudicaciones
-from services.organ_company_graph import build_bipartite_graph
-from services.organ_concentration import build_organ_concentration
+from services.organ_company_graph import bipartite_graph_from_edge_aggregates
+from services.organ_concentration import organ_concentration_from_edge_aggregates
 
 log = get_logger(__name__)
+
+_repo = AdjudicacionRepository()
 
 
 class GraphFilters(BaseModel):
@@ -59,47 +69,40 @@ class OrganCompanyGraphResult(BaseModel):
     total_empresas: int = 0
 
 
-def _prepare_df(rows: list[dict[str, Any]]) -> pd.DataFrame:
-    """Construye las columnas que ``build_bipartite_graph`` espera.
+def _edges_df(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    """Aristas agregadas del repo → DataFrame con los tipos que el core espera.
 
-    ``nombre_canonico`` = nombre canónico de la empresa (resolución de entidades)
-    o, si no está resuelta, el nombre raw del adjudicatario. ``empresa_key`` usa el
-    mismo valor (la canonicalización ya colapsa variantes). ``fecha_adjudicacion``
-    se castea a datetime para el cálculo de frecuencia anual.
+    ``empresa_nombre`` == ``empresa_key`` a propósito: la expresión SQL ya
+    resuelve maestro-canónico-o-raw, así que la clave ES el nombre mostrable.
+    ``fecha_min``/``fecha_max`` se castean a datetime para la frecuencia anual.
     """
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    raw = df["nombre"] if "nombre" in df.columns else pd.Series([None] * len(df), index=df.index)
-    if "empresa_nombre_master" in df.columns:
-        master = df["empresa_nombre_master"]
-        valid_master = master.notna() & (master.astype(str).str.strip() != "")
-        df["nombre_canonico"] = master.where(valid_master, raw)
-    else:
-        df["nombre_canonico"] = raw
-    df["empresa_key"] = df["nombre_canonico"]
-    if "fecha_adjudicacion" in df.columns:
-        df["fecha_adjudicacion"] = pd.to_datetime(df["fecha_adjudicacion"], errors="coerce")
-    return df
+    return df.assign(
+        empresa_nombre=df["empresa_key"],
+        importe_total=pd.to_numeric(df["importe_total"], errors="coerce").fillna(0.0),
+        fecha_min=pd.to_datetime(df["fecha_min"], errors="coerce"),
+        fecha_max=pd.to_datetime(df["fecha_max"], errors="coerce"),
+    )
+
+
+def _ccaa_tuple(ccaa: str | None) -> tuple[str, ...] | None:
+    return tuple(ccaa.split(",")) if ccaa else None
 
 
 def get_organ_company_graph(filters: GraphFilters) -> OrganCompanyGraphResult:
     """Grafo bipartito órgano↔empresa de adjudicaciones reales, acotado en backend."""
     log.info("red_organo_empresa_start", filters=filters.model_dump(exclude_none=True))
-    ccaa_filter = tuple(filters.ccaa.split(",")) if filters.ccaa else None
-    df = _prepare_df(load_raw_adjudicaciones(ccaa_filter=ccaa_filter))
-    if df.empty:
+    ccaa_filter = _ccaa_tuple(filters.ccaa)
+    edges = _edges_df(_repo.organ_company_edges(ccaa_filter=ccaa_filter))
+    if edges.empty:
         return OrganCompanyGraphResult()
 
-    total_organos = (
-        int(df["organo_contratacion"].dropna().nunique())
-        if "organo_contratacion" in df.columns
-        else 0
-    )
-    total_empresas = int(df["empresa_key"].dropna().nunique())
+    total_organos, total_empresas = _repo.organ_company_totals(ccaa_filter=ccaa_filter)
 
-    graph = build_bipartite_graph(
-        df,
+    graph = bipartite_graph_from_edge_aggregates(
+        edges,
         min_contratos=filters.min_contratos,
         top_organos=filters.top_organos,
         top_empresas=filters.top_empresas,
@@ -155,13 +158,12 @@ class ConcentracionResult(BaseModel):
 def get_organ_concentration(filters: ConcentracionFilters) -> ConcentracionResult:
     """Ranking de órganos por concentración de su base de proveedores (HHI)."""
     log.info("organ_concentration_start", filters=filters.model_dump(exclude_none=True))
-    ccaa_filter = tuple(filters.ccaa.split(",")) if filters.ccaa else None
-    df = _prepare_df(load_raw_adjudicaciones(ccaa_filter=ccaa_filter))
-    if df.empty:
+    edges = _edges_df(_repo.organ_company_edges(ccaa_filter=_ccaa_tuple(filters.ccaa)))
+    if edges.empty:
         return ConcentracionResult()
 
-    data = build_organ_concentration(
-        df,
+    data = organ_concentration_from_edge_aggregates(
+        edges,
         min_contratos=filters.min_contratos,
         top_n=filters.top_n,
     )
@@ -191,33 +193,34 @@ class EgoFilters(BaseModel):
 def get_organ_company_ego(filters: EgoFilters) -> OrganCompanyGraphResult:
     """Vecindario inmediato de un órgano o empresa (grafo enfocado y legible)."""
     log.info("organ_company_ego_start", filters=filters.model_dump(exclude_none=True))
-    ccaa_filter = tuple(filters.ccaa.split(",")) if filters.ccaa else None
-    df = _prepare_df(load_raw_adjudicaciones(ccaa_filter=ccaa_filter))
-    if df.empty:
-        return OrganCompanyGraphResult()
-
+    ccaa_filter = _ccaa_tuple(filters.ccaa)
     if filters.entity_type == "organo":
-        sub = df[df["organo_contratacion"] == filters.entity_key]
-        graph = build_bipartite_graph(
+        sub = _edges_df(
+            _repo.organ_company_edges(ccaa_filter=ccaa_filter, organo=filters.entity_key)
+        )
+        graph = bipartite_graph_from_edge_aggregates(
             sub,
             min_contratos=filters.min_contratos,
             top_organos=1,
             top_empresas=filters.top_neighbors,
         )
     else:
-        sub = df[df["empresa_key"] == filters.entity_key]
-        graph = build_bipartite_graph(
+        sub = _edges_df(
+            _repo.organ_company_edges(ccaa_filter=ccaa_filter, empresa_key=filters.entity_key)
+        )
+        graph = bipartite_graph_from_edge_aggregates(
             sub,
             min_contratos=filters.min_contratos,
             top_organos=filters.top_neighbors,
             top_empresas=1,
         )
 
+    total_organos, total_empresas = _repo.organ_company_totals(ccaa_filter=ccaa_filter)
     result = OrganCompanyGraphResult(
         nodes=[GraphNode(**n) for n in graph["nodes"]],
         edges=[GraphEdge(**e) for e in graph["edges"]],
-        total_organos=int(df["organo_contratacion"].dropna().nunique()),
-        total_empresas=int(df["empresa_key"].dropna().nunique()),
+        total_organos=total_organos,
+        total_empresas=total_empresas,
     )
     log.info("organ_company_ego_done", nodes=len(result.nodes), edges=len(result.edges))
     return result
@@ -233,7 +236,7 @@ class EdgeDetailFilters(BaseModel):
 
     ccaa: str | None = None
     organo: str
-    empresa: str  # nombre_canonico (== empresa_key)
+    empresa: str  # nombre canónico (== empresa_key)
     limit: int = 100
 
 
@@ -264,44 +267,33 @@ def get_organ_company_edge(filters: EdgeDetailFilters) -> EdgeDetailResult:
         organo=filters.organo,
         empresa=filters.empresa,
     )
-    ccaa_filter = tuple(filters.ccaa.split(",")) if filters.ccaa else None
-    df = _prepare_df(load_raw_adjudicaciones(ccaa_filter=ccaa_filter))
-    if df.empty:
+    rows, n_licitaciones, importe_total = _repo.organ_company_edge_detail(
+        organo=filters.organo,
+        empresa_key=filters.empresa,
+        ccaa_filter=_ccaa_tuple(filters.ccaa),
+        limit=filters.limit,
+    )
+    if n_licitaciones == 0:
         return EdgeDetailResult(organo=filters.organo, empresa=filters.empresa)
-
-    sub = df[
-        (df["organo_contratacion"] == filters.organo) & (df["empresa_key"] == filters.empresa)
-    ].copy()
-    if sub.empty:
-        return EdgeDetailResult(organo=filters.organo, empresa=filters.empresa)
-
-    sub["importe_adjudicado"] = pd.to_numeric(sub["importe_adjudicado"], errors="coerce")
-    sub = sub.sort_values("importe_adjudicado", ascending=False, na_position="last")
-
-    def _iso(v: Any) -> str | None:
-        if pd.isna(v):
-            return None
-        try:
-            return pd.Timestamp(v).date().isoformat()
-        except (ValueError, TypeError):
-            return str(v)
 
     licitaciones = [
         EdgeLicitacion(
-            licitacion_id=(str(r["licitacion_id"]) if pd.notna(r.get("licitacion_id")) else None),
-            titulo=(str(r["titulo"]) if pd.notna(r.get("titulo")) else None),
+            licitacion_id=(str(r["licitacion_id"]) if r.get("licitacion_id") is not None else None),
+            titulo=(str(r["titulo"]) if r.get("titulo") is not None else None),
             importe_adjudicado=(
-                float(r["importe_adjudicado"]) if pd.notna(r.get("importe_adjudicado")) else None
+                float(r["importe_adjudicado"]) if r.get("importe_adjudicado") is not None else None
             ),
-            fecha_adjudicacion=_iso(r.get("fecha_adjudicacion")),
-            url=(str(r["url_lic"]) if pd.notna(r.get("url_lic")) else None),
+            fecha_adjudicacion=(
+                str(r["fecha_adjudicacion"]) if r.get("fecha_adjudicacion") is not None else None
+            ),
+            url=(str(r["url_lic"]) if r.get("url_lic") is not None else None),
         )
-        for _, r in sub.head(filters.limit).iterrows()
+        for r in rows
     ]
     return EdgeDetailResult(
         organo=filters.organo,
         empresa=filters.empresa,
-        n_licitaciones=len(sub),
-        importe_total=float(sub["importe_adjudicado"].sum(skipna=True)),
+        n_licitaciones=n_licitaciones,
+        importe_total=importe_total,
         licitaciones=licitaciones,
     )

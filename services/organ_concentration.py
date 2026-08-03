@@ -63,26 +63,53 @@ def build_organ_concentration(
         0.0
     )
 
-    total_organos = int(dff["organo_contratacion"].nunique())
+    edges_df = (
+        dff.groupby(["organo_contratacion", "empresa_key"], dropna=True)
+        .agg(
+            contratos=("empresa_key", "count"),
+            importe_total=("importe_adjudicado", "sum"),
+            empresa_nombre=("nombre_canonico", "first"),
+        )
+        .reset_index()
+    )
+    return organ_concentration_from_edge_aggregates(
+        edges_df, min_contratos=min_contratos, top_n=top_n
+    )
+
+
+def organ_concentration_from_edge_aggregates(
+    edges_df: pd.DataFrame,
+    *,
+    min_contratos: int = 5,
+    top_n: int = 25,
+) -> dict[str, Any]:
+    """Núcleo de la concentración sobre aristas YA agregadas (ADR-023).
+
+    ``edges_df`` trae una fila por par (``organo_contratacion``,
+    ``empresa_key``) con ``contratos``, ``importe_total`` y
+    ``empresa_nombre`` — el mismo shape que produce
+    ``AdjudicacionRepository.organ_company_edges``, para no materializar la
+    tabla de adjudicaciones y re-agregarla aquí.
+    """
+    if edges_df.empty:
+        return {"organos": [], "total_organos": 0}
+
+    total_organos = int(edges_df["organo_contratacion"].nunique())
 
     filas: list[dict[str, Any]] = []
-    for organo, grupo in dff.groupby("organo_contratacion", sort=False):
-        n_contratos = len(grupo)
+    for organo, grupo in edges_df.groupby("organo_contratacion", sort=False):
+        n_contratos = int(grupo["contratos"].sum())
         if n_contratos < min_contratos:
             continue
 
-        por_empresa = grupo.groupby("empresa_key").agg(
-            importe=("importe_adjudicado", "sum"),
-            nombre=("nombre_canonico", "first"),
-        )
-        importe_total = float(por_empresa["importe"].sum())
+        importe_total = float(grupo["importe_total"].sum())
 
         # Peso para las cuotas: importe si existe, si no nº de contratos.
         if importe_total > 0:
-            pesos = por_empresa["importe"]
+            pesos = grupo["importe_total"]
             base = importe_total
         else:
-            pesos = grupo.groupby("empresa_key").size().reindex(por_empresa.index).fillna(0)
+            pesos = grupo["contratos"].astype(float)
             base = float(pesos.sum())
 
         if base <= 0:
@@ -94,13 +121,13 @@ def build_organ_concentration(
         hhi = float((shares**2).sum())
         cuota_top1 = float(shares.iloc[0])
         cuota_top3 = float(shares.iloc[:3].sum())
-        top_key = shares.index[0]
-        top_empresa = str(por_empresa.loc[top_key, "nombre"])
+        top_idx = shares.index[0]
+        top_empresa = str(grupo.loc[top_idx, "empresa_nombre"])
 
         filas.append(
             {
                 "organo": str(organo),
-                "n_empresas": int(por_empresa.shape[0]),
+                "n_empresas": int(grupo.shape[0]),
                 "n_contratos": n_contratos,
                 "importe_total": importe_total,
                 "top_empresa": top_empresa,
