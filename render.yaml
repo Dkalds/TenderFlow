@@ -84,8 +84,16 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      # IPs o rangos CIDR del proxy de Render cuyo X-Forwarded-For se honra.
+      # Gestionado por entorno (sync: false) porque el rango depende de la
+      # región/plan: cópialo del panel de Render y ponlo aquí, nunca "*".
+      # Con "*" uvicorn acepta la cabecera de cualquier peer y el cliente elige
+      # qué IP ve la aplicación, tumbando rate limiting, lockout de login y la
+      # trazabilidad del audit log. El validator
+      # _validate_prod_forwarded_allow_ips hace fallar el arranque en ese caso:
+      # fallo ruidoso en el deploy, en vez de degradación silenciosa en runtime.
       - key: FORWARDED_ALLOW_IPS
-        value: "*"
+        sync: false
       # Sentry: observability/sentry.py es opt-in por SENTRY_DSN. Sin esta
       # variable, configure_sentry() en api/app.py es un no-op y producción
       # corre sin captura de errores ni trazas.

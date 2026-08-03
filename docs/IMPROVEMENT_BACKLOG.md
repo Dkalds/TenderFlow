@@ -125,6 +125,17 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] El origen de una concesión de `is_admin` no se registra, y OAuth pisa al panel
+- **Área:** api/routes/auth.py, api/routes/admin_users.py, db/users.py, db/alembic
+- **Problema:** `_sync_oauth_admin` refleja `OAUTH_ADMIN_EMAILS` sobre `is_admin` en ambos sentidos (antes solo promovía, así que sacar a alguien de la lista no le revocaba nada — cerrado en la revisión de seguridad). El efecto colateral es que, con la lista configurada, **OAuth manda sobre el panel**: a quien se promovió con `admin_users.admin_set_admin` y además entra con Google se le retira el flag en su siguiente login. Se eligió ese lado a propósito —dejar admin a un ex-administrador es peor que obligar a re-promover a uno legítimo— y la degradación se registra con `log.warning("oauth_admin_revoked")` para que sea diagnosticable, pero sigue siendo silenciosa desde el punto de vista del usuario.
+- **Causa de fondo:** `users.is_admin` es un booleano sin procedencia. Sin saber *quién* concedió el flag no se puede decidir correctamente quién puede retirarlo.
+- **Acceptance criteria:**
+  - Columna que registre el origen de la concesión (p.ej. `admin_granted_by` con valores `oauth` / `panel`), vía nueva revisión Alembic (append-only, §3.3).
+  - `_sync_oauth_admin` solo degrada concesiones de origen `oauth`; las del panel sobreviven al login de Google.
+  - Test que promueve desde el panel, hace login OAuth con la lista configurada sin ese email, y verifica que el flag **se conserva**.
+- **Files de partida:** [api/routes/auth.py](../api/routes/auth.py), [api/routes/admin_users.py](../api/routes/admin_users.py)
+- **Riesgo:** bajo en código, medio en proceso — requiere migración de schema, que necesita OK humano (§6).
+
 ### [P2] Una entrada malformada devuelve 500 en tres endpoints (byte NUL y bytes no-UTF8)
 - **Área:** api/routes/*, api/middleware.py, shared/dto.py, db/
 - **Problema:** dos formas de la misma clase, encontradas por `scripts/fuzz_api_contract.py`. (a) Un `\x00` dentro de una cadena viaja hasta Postgres, que no lo admite en columnas de texto, y el `DataError` sale como 500: `POST /api/v1/licitaciones/bulk-get` y `PUT /api/v1/feature-flags`. (b) Bytes que no son UTF-8 válido en el path (`%ff`) rompen la decodificación antes de que la ruta llegue a ejecutarse: `DELETE /api/v1/watchlist/items/{id_externo}`. En ambos casos basta un carácter enviado por cualquier cliente.

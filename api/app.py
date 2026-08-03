@@ -25,12 +25,14 @@ Arrancar el servidor::
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator as _PFI
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.errors import register_exception_handlers
@@ -233,7 +235,7 @@ except ImportError:
     log.debug("otel_fastapi_instrumentor_unavailable")
 
 # ---------------------------------------------------------------------------
-# CORS
+# CORS — orígenes permitidos (el middleware se monta en register_middlewares)
 # ---------------------------------------------------------------------------
 
 _cors_origins: list[str]
@@ -251,135 +253,181 @@ else:
     _cors_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
     log.info("cors_local_origins_enabled", env=settings.ENV, origins=_cors_origins)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
-    allow_headers=[
-        "X-API-Key",
-        "X-Correlation-Id",
-        "X-CSRF-Token",
-        "Idempotency-Key",
-        "Content-Type",
-        "Accept",
-        "Authorization",
-    ],
-)
-
 # ---------------------------------------------------------------------------
-# Middlewares (se añaden en orden inverso de ejecución)
+# Middlewares
 # ---------------------------------------------------------------------------
 
-# Security headers OWASP
-app.add_middleware(SecurityHeadersMiddleware)
 
-# ETag para respuestas GET JSON (cache condicional, F4)
-app.add_middleware(ETagMiddleware)
+class _BodyTooLargeError(Exception):
+    """Señal interna para abortar el pipeline cuando el body excede el límite."""
 
-# Request body size limit — protege contra payloads abusivos (1 MB máx.)
-# Raw ASGI middleware (evita anti-pattern BaseHTTPMiddleware y atributo privado _body).
-try:
-    from starlette.types import ASGIApp as _ASGIApp
-    from starlette.types import Receive as _Receive
-    from starlette.types import Scope as _Scope
-    from starlette.types import Send as _Send
 
-    class _MaxBodyMiddleware:
-        """Rechaza requests con body > 1 MB usando raw ASGI.
+class _MaxBodyMiddleware:
+    """Rechaza requests con body > 1 MB usando raw ASGI.
 
-        Comprueba Content-Length (fast path) y acumula tamaño en streaming
-        (slow path) sin buffering completo del body.
-        """
+    Comprueba Content-Length (fast path) y acumula tamaño en streaming
+    (slow path) sin buffering completo del body.
+    """
 
-        _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
-        _413_BODY = b'{"detail":"Request body demasiado grande (m\\u00e1x. 1 MB)."}'
+    _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+    _413_BODY = b'{"detail":"Request body demasiado grande (m\\u00e1x. 1 MB)."}'
 
-        def __init__(self, app: _ASGIApp) -> None:
-            self.app = app
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-        async def __call__(self, scope: _Scope, receive: _Receive, send: _Send) -> None:
-            if scope["type"] != "http":
-                await self.app(scope, receive, send)
-                return
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-            # Fast path: rechazar inmediatamente si Content-Length lo delata
-            headers = dict(scope.get("headers") or [])
-            cl_raw = headers.get(b"content-length")
-            if cl_raw is not None:
-                try:
-                    if int(cl_raw) > self._MAX_BYTES:
-                        await self._send_413(send)
-                        return
-                except (ValueError, UnicodeDecodeError):
-                    pass
-
-            # Slow path: para requests con body, envolver receive para contar bytes
-            method = scope.get("method", "")
-            if method in ("POST", "PUT", "PATCH"):
-                body_size = 0
-                max_bytes = self._MAX_BYTES
-
-                async def limiting_receive() -> dict:  # type: ignore[type-arg]
-                    nonlocal body_size
-                    message = await receive()
-                    if message.get("type") == "http.request":
-                        body_size += len(message.get("body", b""))
-                        if body_size > max_bytes:
-                            raise _BodyTooLargeError
-                    return dict(message)
-
-                try:
-                    await self.app(scope, limiting_receive, send)
-                except _BodyTooLargeError:
+        # Fast path: rechazar inmediatamente si Content-Length lo delata
+        headers = dict(scope.get("headers") or [])
+        cl_raw = headers.get(b"content-length")
+        if cl_raw is not None:
+            try:
+                if int(cl_raw) > self._MAX_BYTES:
                     await self._send_413(send)
-            else:
-                await self.app(scope, receive, send)
+                    return
+            except (ValueError, UnicodeDecodeError):
+                pass
 
-        async def _send_413(self, send: _Send) -> None:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 413,
-                    "headers": [
-                        [b"content-type", b"application/json"],
-                        [b"content-length", str(len(self._413_BODY)).encode()],
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": self._413_BODY})
+        # Slow path: para requests con body, envolver receive para contar bytes
+        method = scope.get("method", "")
+        if method in ("POST", "PUT", "PATCH"):
+            body_size = 0
+            max_bytes = self._MAX_BYTES
 
-    class _BodyTooLargeError(Exception):
-        """Señal interna para abortar el pipeline cuando el body excede el límite."""
+            async def limiting_receive() -> dict:  # type: ignore[type-arg]
+                nonlocal body_size
+                message = await receive()
+                if message.get("type") == "http.request":
+                    body_size += len(message.get("body", b""))
+                    if body_size > max_bytes:
+                        raise _BodyTooLargeError
+                return dict(message)
 
-    app.add_middleware(_MaxBodyMiddleware)
-except Exception:
-    log.warning("max_body_middleware_unavailable", exc_info=True)
+            try:
+                await self.app(scope, limiting_receive, send)
+            except _BodyTooLargeError:
+                await self._send_413(send)
+        else:
+            await self.app(scope, receive, send)
 
-# Compresión Brotli / GZip
-try:
-    from brotli_asgi import BrotliMiddleware
+    async def _send_413(self, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(self._413_BODY)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": self._413_BODY})
 
-    app.add_middleware(BrotliMiddleware, quality=4, minimum_size=1024)
-    log.info("brotli_compression_enabled")
-except ImportError:
-    from fastapi.middleware.gzip import GZipMiddleware
 
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
-    log.info("gzip_compression_enabled_brotli_unavailable")
+async def correlation_id_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Propaga X-Correlation-Id entre cliente, logs y respuesta."""
+    correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
 
-# Rate limiting per-API-Key
-app.add_middleware(
-    RateLimitMiddleware,
-    max_calls=int(getattr(settings, "API_RATE_LIMIT_MAX_CALLS", 120)),
-    window_seconds=float(getattr(settings, "API_RATE_LIMIT_WINDOW_SECONDS", 60)),
-)
+    # Limpiar y bindear variables de contexto structlog para esta request
+    clear_contextvars()
+    bind_contextvars(correlation_id=correlation_id)
 
-# Cost tracking — métrica Prometheus por endpoint
-app.add_middleware(CostTrackingMiddleware)
+    response = await call_next(request)
 
-# Access log estructurado (request/response)
-app.add_middleware(AccessLogMiddleware)
+    response.headers["X-Correlation-Id"] = correlation_id
+    return response
+
+
+def register_middlewares(target: FastAPI, *, cors_origins: list[str]) -> None:
+    """Monta el stack de middlewares del más interno al más externo.
+
+    ``add_middleware`` inserta al principio de la lista y el stack se construye
+    tomando el primer elemento como el más externo: **el último añadido es el
+    que ve la request primero**. Por eso este bloque se lee de dentro hacia
+    fuera, al revés del orden de ejecución.
+
+    El orden no es cosmético. ``RateLimitMiddleware`` y ``_MaxBodyMiddleware``
+    cortocircuitan la petición y emiten 429/413 sin llegar al router; con CORS
+    registrado el primero (es decir, el más interno) esas respuestas salían sin
+    ``Access-Control-Allow-Origin`` ni cabeceras OWASP, y el SPA veía un error
+    de red opaco en vez de un 429 accionable. CORS queda ahora el más externo y
+    ``SecurityHeadersMiddleware`` por fuera de ambos cortocircuitos.
+
+    Orden de ejecución resultante, de fuera hacia dentro::
+
+        CORS → SecurityHeaders → CorrelationId → AccessLog → CostTracking
+             → RateLimit → compresión → MaxBody → ETag → router
+    """
+    # ETag para respuestas GET JSON (cache condicional, F4)
+    target.add_middleware(ETagMiddleware)
+
+    # Request body size limit — protege contra payloads abusivos (1 MB máx.)
+    # Raw ASGI (evita el anti-patrón BaseHTTPMiddleware y el atributo privado _body).
+    try:
+        target.add_middleware(_MaxBodyMiddleware)
+    except Exception:
+        # Fail-loud (P4, 2026-05-24): la API arranca sin el límite, pero queda
+        # constancia en el log en vez de degradarse en silencio.
+        log.warning("max_body_middleware_unavailable", exc_info=True)
+
+    # Compresión Brotli / GZip
+    try:
+        from brotli_asgi import BrotliMiddleware
+
+        target.add_middleware(BrotliMiddleware, quality=4, minimum_size=1024)
+        log.info("brotli_compression_enabled")
+    except ImportError:
+        from fastapi.middleware.gzip import GZipMiddleware
+
+        target.add_middleware(GZipMiddleware, minimum_size=1024)
+        log.info("gzip_compression_enabled_brotli_unavailable")
+
+    # Rate limiting por IP
+    target.add_middleware(
+        RateLimitMiddleware,
+        max_calls=int(getattr(settings, "API_RATE_LIMIT_MAX_CALLS", 120)),
+        window_seconds=float(getattr(settings, "API_RATE_LIMIT_WINDOW_SECONDS", 60)),
+    )
+
+    # Cost tracking — métrica Prometheus por endpoint
+    target.add_middleware(CostTrackingMiddleware)
+
+    # Access log estructurado (request/response)
+    target.add_middleware(AccessLogMiddleware)
+
+    # Correlation-ID: por fuera del rate limit para que un 429 también sea
+    # correlacionable con su entrada de log.
+    target.add_middleware(BaseHTTPMiddleware, dispatch=correlation_id_middleware)
+
+    # Security headers OWASP — por fuera de todo lo que puede cortocircuitar.
+    target.add_middleware(SecurityHeadersMiddleware)
+
+    # CORS el más externo: sus cabeceras deben acompañar a cualquier respuesta,
+    # incluidas las que genera el propio stack de middlewares.
+    target.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+        allow_headers=[
+            "X-API-Key",
+            "X-Correlation-Id",
+            "X-CSRF-Token",
+            "Idempotency-Key",
+            "Content-Type",
+            "Accept",
+            "Authorization",
+        ],
+    )
+
+
+register_middlewares(app, cors_origins=_cors_origins)
 
 # ---------------------------------------------------------------------------
 # Routers
@@ -494,8 +542,18 @@ try:
                 is_unexpired = record is not None and (
                     record.expires_at is None or now_utc_iso() <= record.expires_at
                 )
+                # Este handler valida la key por su cuenta en vez de depender de
+                # `require_api_key`, así que la comprobación de propietario
+                # activo hay que repetirla aquí: sin ella, la key de un usuario
+                # dado de baja seguía leyendo las métricas.
+                owner_active = True
+                if record is not None and record.user_id is not None:
+                    from db.users import get_user_by_id
+
+                    owner_active = get_user_by_id(record.user_id) is not None
                 if (
                     is_unexpired
+                    and owner_active
                     and (settings.ENV == "dev" or is_bound)
                     and ("*" in scope_set or "metrics:read" in scope_set)
                 ):
@@ -515,30 +573,3 @@ try:
         log.info("prometheus_metrics_endpoint_enabled", path="/metrics")
 except ImportError:
     pass
-
-
-# ---------------------------------------------------------------------------
-# Middleware: Correlation-ID end-to-end
-# ---------------------------------------------------------------------------
-
-
-@app.middleware("http")
-async def correlation_id_middleware(
-    request: Request,
-    call_next: object,
-) -> Response:
-    """Propaga X-Correlation-Id entre cliente, logs y respuesta."""
-    from collections.abc import Awaitable
-    from collections.abc import Callable as _Callable
-
-    correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
-
-    # Limpiar y bindear variables de contexto structlog para esta request
-    clear_contextvars()
-    bind_contextvars(correlation_id=correlation_id)
-
-    next_fn: _Callable[[Request], Awaitable[Response]] = call_next  # type: ignore[assignment]
-    response = await next_fn(request)
-
-    response.headers["X-Correlation-Id"] = correlation_id
-    return response

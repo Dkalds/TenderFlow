@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import warnings
 from pathlib import Path
 from typing import Literal
@@ -401,6 +402,22 @@ class Settings(BaseSettings):
     # Por defecto solo loopback. En producción añadir la IP del servidor Prometheus.
     # Ej: "127.0.0.1,10.0.0.5,10.0.0.6"
     METRICS_ALLOWED_IPS: str = "127.0.0.1"
+    # IPs (o rangos CIDR) del reverse proxy cuyo ``X-Forwarded-For`` se considera
+    # confiable, separadas por coma. La consume uvicorn (`--forwarded-allow-ips`,
+    # que reescribe la IP del peer con la cabecera) y api.middleware
+    # ._trusted_client_ip, del que dependen el rate limiting, el lockout de login
+    # y la IP que queda registrada en el audit log.
+    #
+    # El comodín "*" hace que se acepte la cabecera venga de donde venga: el
+    # cliente pasa a elegir su propia IP y las tres defensas anteriores dejan de
+    # discriminar entre atacantes. Por eso el default es loopback y
+    # _validate_prod_forwarded_allow_ips impide arrancar con "*" en prod/staging.
+    #
+    # Hasta 2026-08-02 este campo no estaba declarado y model_config usa
+    # extra="ignore": la variable de entorno se descartaba en silencio y el
+    # getattr de api/middleware.py caía siempre al default. Si alguien la vuelve
+    # a quitar, la defensa deja de ser configurable sin que nada falle.
+    FORWARDED_ALLOW_IPS: str = "127.0.0.1"
 
     # ── Cache (Redis opcional) ────────────────────────────────────────────
     # Si se deja vacío se usa cache en memoria por proceso (default).
@@ -440,10 +457,17 @@ class Settings(BaseSettings):
     # Tope de gasto del proveedor LLM por ventana (USD). <= 0 desactiva el límite.
     LLM_BUDGET_USD_DAILY: float = 5.0
     LLM_BUDGET_USD_MONTHLY: float = 50.0
+    # El tope global protege la factura; el tope por usuario evita que una sola
+    # cuenta consuma la ventana diaria de todos (denegación de servicio por
+    # agotamiento de presupuesto). <= 0 lo desactiva, igual que sus hermanos.
+    LLM_BUDGET_USD_DAILY_PER_USER: float = 1.0
     # monitor: superar el presupuesto solo alerta (métrica + warning), no corta.
-    # enforce: /ask responde 429 sin llamar al proveedor. Default monitor para
-    # rodaje (medir antes de cortar), igual que el CSP Report-Only de fase 1.
-    LLM_BUDGET_MODE: Literal["monitor", "enforce"] = "monitor"
+    # enforce: /ask responde 429 sin llamar al proveedor. Default enforce: en
+    # monitor los topes de arriba no son un límite de gasto, solo un indicador,
+    # y la factura queda abierta. monitor sigue disponible para rodajes puntuales
+    # (medir el consumo real antes de fijar un tope), pero es una elección
+    # explícita y temporal, no el estado de reposo.
+    LLM_BUDGET_MODE: Literal["monitor", "enforce"] = "enforce"
     # Timeout (s) esperando al LLM en /ask. Antes era env directo en ask.py;
     # el nombre del env var se mantiene, así que despliegues existentes siguen
     # funcionando sin cambios.
@@ -588,6 +612,50 @@ class Settings(BaseSettings):
                 raise ValueError("DOCUMENT_ALLOWED_HOSTS es obligatorio en producción")
             if "*" in {host.strip() for host in self.WEBHOOK_ALLOWED_HOSTS.split(",")}:
                 raise ValueError("WEBHOOK_ALLOWED_HOSTS no puede contener el comodín global '*'")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_forwarded_allow_ips(self) -> Settings:
+        """Impide confiar en el ``X-Forwarded-For`` de cualquier peer en producción.
+
+        Con "*", uvicorn sobrescribe la IP del cliente con el primer elemento de
+        la cabecera, que lo escribe el propio cliente (el proxy añade la IP real
+        *detrás*). El atacante elige entonces qué IP ve la aplicación: el rate
+        limiting y el lockout de login se esquivan rotando el valor, y la IP del
+        audit log deja de ser evidencia de nada. Un valor vacío es igual de malo
+        por la vía contraria: deja el campo sin configurar en un despliegue que
+        sí está detrás de un proxy.
+        """
+        if not (self._is_prod_data and self._serves_http):
+            return self
+        entries = {ip.strip() for ip in self.FORWARDED_ALLOW_IPS.split(",") if ip.strip()}
+
+        def _confia_en_todos(entrada: str) -> bool:
+            """True si la entrada equivale a "confío en cualquier peer".
+
+            No basta con comparar contra "*": tanto uvicorn (``_TrustedHosts``,
+            uvicorn 0.46) como ``api.middleware._trusted_client_ip`` resuelven
+            rangos CIDR, así que ``0.0.0.0/0`` (o ``::/0``) reproduce el agujero
+            exacto que este validator existe para cerrar. Un prefijo de longitud
+            0 cubre todo el espacio de direcciones de su familia.
+            """
+            if entrada == "*":
+                return True
+            try:
+                return ipaddress.ip_network(entrada, strict=False).prefixlen == 0
+            except ValueError:
+                return False
+
+        if not entries or any(_confia_en_todos(entry) for entry in entries):
+            raise ValueError(
+                "FORWARDED_ALLOW_IPS no puede estar vacío ni contener el comodín '*' "
+                "(ni un rango que lo abarque todo, como '0.0.0.0/0' o '::/0') "
+                "en ENV=prod/staging con APP_PROFILE=api: con '*' cualquier cliente "
+                "puede falsificar su IP vía X-Forwarded-For y con ello se caen el "
+                "rate limiting, el lockout de login y la trazabilidad del audit log. "
+                "Configura la IP o el rango CIDR del reverse proxy que tenés delante "
+                '(ej: FORWARDED_ALLOW_IPS="10.0.0.0/8").'
+            )
         return self
 
     @model_validator(mode="after")

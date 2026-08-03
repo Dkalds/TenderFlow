@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { t } from "@/lib/i18n";
 import { apiMutate, ApiError } from "@/lib/api-client";
-import { LogIn, UserPlus, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { ParticleField } from "@/components/layout/particle-field";
 import { cn } from "@/lib/utils";
@@ -42,6 +42,12 @@ function LoginPageContent() {
     return oauthError ? t(OAUTH_ERROR_KEYS[oauthError] ?? "auth.oauthFailed") : null;
   });
   const [loading, setLoading] = useState(false);
+  // El callback de Google vuelve con `?mfa=required` cuando la cuenta tiene
+  // segundo factor: la sesión ya está creada, solo falta elevarla.
+  const [mfaPending, setMfaPending] = useState(
+    () => searchParams.get("mfa") === "required",
+  );
+  const [mfaCode, setMfaCode] = useState("");
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -54,9 +60,19 @@ function LoginPageContent() {
     setLoading(true);
 
     try {
-      await apiMutate("POST", "/api/v1/auth/login", { email, password });
-      const redirect = safeRedirectPath(searchParams.get("redirect"));
-      window.location.href = redirect;
+      const user = await apiMutate<{ mfa_required?: boolean }>("POST", "/api/v1/auth/login", {
+        email,
+        password,
+      });
+      // La contraseña deja la sesión creada pero *pendiente*: hasta verificar el
+      // segundo factor el backend responde 403 en todo lo que no sea /auth/me,
+      // /auth/logout y /auth/totp/verify. Redirigir aquí llevaría al usuario a
+      // un dashboard que no puede cargar nada.
+      if (user?.mfa_required) {
+        setMfaPending(true);
+        return;
+      }
+      window.location.href = safeRedirectPath(searchParams.get("redirect"));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.status === 401 ? "Credenciales incorrectas" : err.message);
@@ -64,6 +80,32 @@ function LoginPageContent() {
         setError("Error de conexion. Intenta de nuevo.");
       }
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyMfa(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      // La cookie de sesión ya existe, así que `apiMutate` adjunta el CSRF que
+      // el login dejó puesto — este endpoint lo exige.
+      await apiMutate("POST", "/api/v1/auth/totp/verify", { code: mfaCode.trim() });
+      window.location.href = safeRedirectPath(searchParams.get("redirect"));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(
+          err.status === 429
+            ? "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo."
+            : err.status === 401
+              ? "Código incorrecto. Revisa tu app de autenticación."
+              : err.message,
+        );
+      } else {
+        setError("Error de conexion. Intenta de nuevo.");
+      }
       setLoading(false);
     }
   }
@@ -183,6 +225,63 @@ function LoginPageContent() {
           </CardHeader>
 
           <CardContent>
+            {mfaPending ? (
+              <form onSubmit={handleVerifyMfa} className="space-y-4">
+                {error && (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="animate-in fade-in-0 slide-in-from-bottom-2 flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                  >
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label htmlFor="mfa-code" className="text-sm font-medium text-foreground">
+                    Código de verificación
+                  </label>
+                  <Input
+                    id="mfa-code"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="123456"
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value)}
+                    required
+                    autoComplete="one-time-code"
+                    aria-describedby="mfa-hint"
+                    disabled={loading}
+                  />
+                  <p id="mfa-hint" className="text-xs text-muted-foreground">
+                    Introduce el código de seis dígitos de tu app de autenticación. También
+                    puedes usar uno de tus códigos de recuperación.
+                  </p>
+                </div>
+
+                <Button type="submit" className="w-full" disabled={loading || !mfaCode.trim()}>
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  {loading ? t("common.loading") : "Verificar"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  disabled={loading}
+                  onClick={async () => {
+                    // Salir deja una sesión a medias si no se revoca: sigue
+                    // siendo válida para /auth/me aunque no supere el gate.
+                    await apiMutate("POST", "/api/v1/auth/logout").catch(() => undefined);
+                    window.location.href = "/login";
+                  }}
+                >
+                  Cancelar y volver
+                </Button>
+              </form>
+            ) : (
+              <>
             <div id="auth-panel" role="tabpanel" aria-labelledby={`tab-${mode}`}>
               {/* tf-stagger cascades each direct child's entrance (reusing
                   the app's one stagger token instead of hand-tuning a
@@ -386,6 +485,8 @@ function LoginPageContent() {
                 >
                   Dev Login (user #1)
                 </Button>
+              </>
+            )}
               </>
             )}
           </CardContent>

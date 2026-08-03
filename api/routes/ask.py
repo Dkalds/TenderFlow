@@ -152,14 +152,27 @@ def _check_ask_scope(user: dict[str, Any]) -> None:
             )
 
 
-def _check_budget() -> None:
+def _budget_subject(user: dict[str, Any]) -> str | None:
+    """Sujeto del presupuesto: la ``user_key`` opaca que adjunta el auth.
+
+    Nunca el email ni el ``user_id`` crudo: ``user_key`` es el identificador
+    canónico del repo para colgar estado de un usuario fuera de la BD.
+    """
+    raw = user.get("user_key")
+    return raw if isinstance(raw, str) and raw else None
+
+
+def _check_budget(user: dict[str, Any]) -> None:
     """Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
     agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
-    (RFC llm-dependencia-gestionada). En monitor solo instrumenta."""
+    (RFC llm-dependencia-gestionada). En monitor solo instrumenta.
+
+    Se verifica el tope global y el del propio usuario, para que una cuenta que
+    agota su cuota no arrastre a las demás."""
     from llm.budget import LLMBudgetExceeded, get_budget_guard
 
     try:
-        get_budget_guard().check()
+        get_budget_guard().check(_budget_subject(user))
     except LLMBudgetExceeded as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -290,8 +303,9 @@ def _stream_sse(
     return _generate()
 
 
-def _stream_ask(request: AskRequest) -> AsyncGenerator[str, None]:
+def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[str, None]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
+    from llm.budget import bind_budget_subject
     from llm.client import stream_llm_response
 
     _validate_model(request.model)
@@ -338,6 +352,11 @@ def _stream_ask(request: AskRequest) -> AsyncGenerator[str, None]:
     fuentes = _fuentes_documentos(docs)
 
     def _factory() -> Iterator[str]:
+        # El coste solo se conoce dentro de llm/client.py::_record_usage, que no
+        # ve al usuario. Se corre en un thread con contexto propio (to_thread lo
+        # copia), así que dejar ahí el sujeto lo atribuye sin filtrarlo a otras
+        # requests.
+        bind_budget_subject(scope_key)
         return stream_llm_response(
             question=request.question,
             docs=docs,
@@ -394,9 +413,9 @@ async def ask_question(
         user_key_id=user.get("user_id"),
     )
 
-    _check_budget()
+    _check_budget(user)
 
-    generator = _stream_ask(body)
+    generator = _stream_ask(body, _budget_subject(user))
 
     return StreamingResponse(
         generator,
@@ -445,10 +464,13 @@ async def resumen_licitacion(
         user_key_id=user.get("user_id"),
     )
 
-    _check_budget()
+    _check_budget(user)
 
+    from llm.budget import bind_budget_subject
     from llm.client import stream_llm_response
     from services.rag.context import build_licitacion_context, primary_doc_from_context
+
+    scope_key = _budget_subject(user)
 
     ctx = build_licitacion_context(id_externo, None)
     if ctx is None:
@@ -469,6 +491,8 @@ async def resumen_licitacion(
     }
 
     def _factory() -> Iterator[str]:
+        # Ver _stream_ask: el sujeto viaja por contexto hasta _record_usage.
+        bind_budget_subject(scope_key)
         return stream_llm_response(
             question=_RESUMEN_QUESTION,
             docs=[doc],
