@@ -129,23 +129,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - A 375px: el botón hamburguesa es visible, abre el drawer, y desde él se alcanza una página de cada espacio de producto.
   - A 1440px: la sidebar es visible y el hamburguesa no.
   - El test falla si se elimina el drawer móvil (verificarlo borrándolo temporalmente).
-- **Files de partida:** [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [web/src/components/layout/top-nav.tsx](../web/src/components/layout/top-nav.tsx)
+- **Files de partida:** [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx) (el top-nav citado originalmente se demolió en 2026-08; la navegación vive en el rail)
 - **Nota 2026-08-03 (revisión de arquitectura):** el bloqueo estructural es que el job e2e de CI corre SIN backend (por eso es `continue-on-error` y por eso el spec degeneró en asserts vacuos: sin login no se llega al shell). El AC de arriba solo es alcanzable aprovisionando un backend sembrado en el job e2e (Postgres service + seed + API) y volviéndolo bloqueante — hacer ambos en el mismo cambio.
 - **Riesgo:** bajo — solo test.
 
 ### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select
-- **Área:** web/src/components/layout/global-filter-bar.tsx
-- **Problema:** tres filtros usan `<select value="">` con un `onChange` que **añade** el valor a una lista de chips. El control nunca refleja lo seleccionado (su `value` es siempre `""`), no se puede quitar desde él, no hay búsqueda entre las 17 CCAA ni entre las tecnologías, y el teclado se comporta distinto que en el resto de la UI, que es Radix. `components/ui/select.tsx` existe y no se usa aquí.
+- **Área:** web/src/components/layout/scope-bar.tsx
+- **Problema:** tres filtros usan `<select value="">` con un `onChange` que **añade** el valor a una lista de chips. El control nunca refleja lo seleccionado (su `value` es siempre `""`), no se puede quitar desde él, no hay búsqueda entre las 17 CCAA ni entre las tecnologías, y el teclado se comporta distinto que en el resto de la UI, que es Radix. `components/ui/select.tsx` existe y no se usa aquí. (Detectado originalmente en `global-filter-bar.tsx`; ese componente murió con el cromo heredado en 2026-08, pero la `scope-bar` que lo sustituye heredó el mismo patrón en sus tres `<select>`.)
 - **Acceptance criteria:** un multi-select real (Radix o `Popover` + lista con búsqueda) que muestre lo seleccionado, permita quitar desde el propio control, y filtre por texto con `foldText` de `lib/utils.ts` (para que "informatica" encuentre "Informática").
-- **Files de partida:** [web/src/components/layout/global-filter-bar.tsx](../web/src/components/layout/global-filter-bar.tsx), [web/src/components/ui/select.tsx](../web/src/components/ui/select.tsx)
+- **Files de partida:** [web/src/components/layout/scope-bar.tsx](../web/src/components/layout/scope-bar.tsx), [web/src/components/ui/select.tsx](../web/src/components/ui/select.tsx)
 - **Riesgo:** bajo — el estado de filtros ya vive en la URL vía nuqs; solo cambia el control.
-
-### [P2] Unificar los dos árboles de navegación (`PRODUCT_SPACES` vs `SECTIONS`)
-- **Área:** web/src/lib/navigation.ts, web/src/components/layout/{sidebar,breadcrumb,page-tabs}.tsx
-- **Problema:** conviven dos arquitecturas de información desde que se introdujeron los espacios de producto; el propio `navigation.ts` lo declara transitorio ("during the gradual migration"). Mientras siga abierto: "Mercado" es a la vez un espacio y una sección dentro de sí mismo (el breadcrumb tiene que colapsar ese nivel para no decir "Mercado › Mercado › Órganos"), la sidebar mantiene dos listas con criterios distintos, y **17 de 28 páginas solo son alcanzables** por tabs, command palette o URL. Detalle en [UX_AUDIT.md](UX_AUDIT.md) §2.
-- **Acceptance criteria:** un solo árbol; sidebar, breadcrumb y PageTabs derivan de él sin casos especiales por etiqueta; ninguna página queda sin ruta de navegación desde el shell.
-- **Files de partida:** [web/src/lib/navigation.ts](../web/src/lib/navigation.ts)
-- **Riesgo:** alto — toca las 28 rutas y el modelo mental del producto; merece rama y revisión propias.
 
 ### [P2] Decidir si el producto es español-only y retirar o completar la capa de i18n
 - **Área:** web/src/lib/i18n.ts, web/public/locales/
@@ -302,6 +295,19 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-03] **P2: Unificados los árboles de navegación — `CONSOLE_SPACES`+`SPACE_VIEWS` como única fuente** —
+  Con los 14 espacios construidos, el cromo heredado era inalcanzable (toda ruta absorbida
+  redirige por `next.config` antes de pintar): demolidos `top-nav`, `sidebar`,
+  `global-filter-bar`, `breadcrumb`, `page-tabs` y `kpi-bar` (+ sus tests y `lib/sidebar.ts`),
+  la rama legacy de `console-frame.tsx` (ahora superficie única: rail + ámbito + shell, sin
+  mirar la ruta) y los 19 `loading.tsx` de rutas absorbidas; `/licitadores` redirige directo a
+  `/competencia?vista=competidores` sin layout/loading muertos. `lib/navigation.ts` queda como
+  registro de páginas y contratos de filtros (`ALL_PAGES`/`findPage` + helpers que la
+  `scope-bar` deriva vía `SPACE_VIEWS`); fuera `PRODUCT_SPACES`/`findProductSpace`/
+  `findSection`/`isConsoleRoute` (sin consumidores). El AC de "ninguna página sin ruta desde el
+  shell" lo cumple el rail: los espacios cubren las 33 rutas (las heredadas como `?vista=`).
+  Verificado: tsc, eslint y 944 tests vitest en verde; invariantes de frontend sin hallazgos.
 
 - [2026-08-03] **P2: Taxonomía de markers real — `integration` inferido por uso de fixtures PG** —
   Decisión registrada en AGENTS.md (invariante §3.4): la categoría sigue saliendo del nombre,

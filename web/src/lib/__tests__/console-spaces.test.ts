@@ -6,7 +6,6 @@ import {
   CONSOLE_SPACES,
   LEGACY_REDIRECTS,
   findConsoleSpace,
-  isConsoleRoute,
   isSpaceImplemented,
   landingHref,
   routeSlug,
@@ -98,23 +97,12 @@ describe("findConsoleSpace", () => {
   });
 });
 
-describe("isConsoleRoute", () => {
-  it("viste de consola los 14 espacios construidos", () => {
+describe("CONSOLE_ROUTES", () => {
+  it("cubre los 14 espacios construidos", () => {
     expect(CONSOLE_ROUTES.size).toBe(BUILT_SPACE_ROUTES.length);
     for (const slug of BUILT_SPACE_ROUTES) {
-      expect(isConsoleRoute(`/${slug}`)).toBe(true);
+      expect(CONSOLE_ROUTES.has(slug)).toBe(true);
     }
-  });
-
-  it("deja fuera rutas heredadas y desconocidas", () => {
-    expect(isConsoleRoute("/tendencias")).toBe(false);
-    expect(isConsoleRoute("/login")).toBe(false);
-    expect(isConsoleRoute("/")).toBe(false);
-  });
-
-  it("resuelve sobre el primer segmento, no sobre la URL entera", () => {
-    expect(isConsoleRoute("/detalle?lic=123")).toBe(true);
-    expect(isConsoleRoute("/oportunidades/p-1")).toBe(true);
   });
 });
 
