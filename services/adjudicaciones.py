@@ -12,6 +12,7 @@ import pandas as pd
 
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
+from observability.runtime_metrics import analytics_degraded_responses_total
 from services._data_cache import SignalAwareCache, render_api_full_table_loads_blocked
 
 log = get_logger(__name__)
@@ -109,12 +110,24 @@ def load_raw_adjudicaciones(
     El caso sin filtros (usado por la capa de analytics) se cachea en memoria
     con invalidación por TTL + señal de ingesta. Usar :func:`clear_raw_adj_cache`
     para forzar recarga.
+
+    El cortacircuitos de Render aplica a CUALQUIER carga sin ``limit``: un
+    ``ccaa_filter`` acota el WHERE pero no el número de filas, así que sigue
+    siendo una materialización no acotada en el proceso API (hasta 2026-08 ese
+    camino esquivaba el bloqueo — era la superficie de OOM residual de
+    /analytics/utes, organ-company-graph* y partnership-graph).
     """
-    if limit is None and ccaa_filter is None:
+    if limit is None:
         if render_api_full_table_loads_blocked():
-            log.warning("analytics_full_table_load_blocked", dataset="adjudicaciones")
+            log.warning(
+                "analytics_full_table_load_blocked",
+                dataset="adjudicaciones",
+                con_ccaa_filter=ccaa_filter is not None,
+            )
+            analytics_degraded_responses_total.labels(dataset="adjudicaciones").inc()
             return []
-        return _raw_adj_cache.get(_repo.load_raw_with_licitaciones)
+        if ccaa_filter is None:
+            return _raw_adj_cache.get(_repo.load_raw_with_licitaciones)
     return _repo.load_raw_with_licitaciones(limit=limit, ccaa_filter=ccaa_filter)
 
 

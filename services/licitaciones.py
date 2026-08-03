@@ -14,6 +14,7 @@ import pandas as pd
 from db.repositories.licitaciones import LicitacionRepository
 from observability.histograms import timed_query
 from observability.logging import get_logger
+from observability.runtime_metrics import analytics_degraded_responses_total
 from services._data_cache import SignalAwareCache, render_api_full_table_loads_blocked
 
 log = get_logger(__name__)
@@ -140,6 +141,7 @@ def load_stats_base_df() -> pd.DataFrame:
 
     if render_api_full_table_loads_blocked():
         log.warning("analytics_full_table_load_blocked", dataset="licitaciones")
+        analytics_degraded_responses_total.labels(dataset="licitaciones").inc()
         return pd.DataFrame()
 
     def _build() -> pd.DataFrame:

@@ -87,26 +87,28 @@ def _run_periodic(name: str, ttl_seconds: int, fn: Any) -> str:
 
 
 def _run_ml_scoring() -> None:
-    """Score keyword-route licitaciones (ml_proba IS NULL)."""
-    try:
-        from scraper.ml_training import precompute_ml_proba
+    """Score keyword-route licitaciones (ml_proba IS NULL).
 
-        precompute_ml_proba(force=False)
-    except Exception:
-        log.debug("pipeline_ml_scoring_failed")
+    Sin try/except propio: hasta 2026-08 tragaba cualquier excepción a nivel
+    debug y reportaba "ok" al ejecutor, así que un scoring roto era invisible.
+    El ejecutor canónico ya aísla y alerta los fallos de cada paso.
+    """
+    from scraper.ml_training import precompute_ml_proba
+
+    precompute_ml_proba(force=False)
 
 
 def _run_ml_tecnologias() -> None:
-    """Multi-technology scoring (feature-flagged)."""
-    try:
-        from config import settings as _settings
+    """Multi-technology scoring (feature-flagged).
 
-        if getattr(_settings, "ML_TECH_ENABLED", False):
-            from scraper.ml_training import precompute_ml_tecnologias
+    Sin try/except propio por el mismo motivo que ``_run_ml_scoring``.
+    """
+    from config import settings as _settings
 
-            precompute_ml_tecnologias(force=False)
-    except Exception:
-        log.debug("pipeline_ml_tecnologias_failed")
+    if getattr(_settings, "ML_TECH_ENABLED", False):
+        from scraper.ml_training import precompute_ml_tecnologias
+
+        precompute_ml_tecnologias(force=False)
 
 
 def _run_analytics_export() -> None:
@@ -249,35 +251,54 @@ def _run_anomaly_checks() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _notify_step_failure(step: str, exc: Exception) -> None:
+    """Alerta best-effort de un paso canónico fallido.
+
+    Hasta 2026-08 un paso fallido solo dejaba una línea de log en un runner
+    efímero de Actions: ningún notify(), ninguna métrica, exit code intacto.
+    Así se ocultó semanas el cursor PSCP atascado. El plano APScheduler
+    (loop.py) siempre alertó sus fallos; el plano activo no.
+    """
+    try:
+        from observability.alerts import notify
+
+        notify(
+            "error",
+            f"[pipeline] paso {step} falló",
+            body=f"{type(exc).__name__}: {exc}"[:500],
+            step=step,
+        )
+    except Exception:
+        log.warning("pipeline_step_alert_failed", step=step)
+
+
 def _run_post_ingestion_steps() -> dict[str, str]:
     """Ejecuta todos los pasos post-ingesta en orden canónico.
+
+    ``CANONICAL_STEPS`` es la única fuente del orden: las implementaciones se
+    resuelven por nombre contra este módulo (mantiene parcheable cada paso en
+    tests). Antes existían dos literales — la constante y una lista de tuplas
+    aquí — que había que sincronizar a mano y el checker de paridad solo leía
+    la constante.
 
     Returns:
         Dict ``{step_name: "ok" | "error"}`` con el resultado de cada paso.
     """
-    steps: list[tuple[str, Any]] = [
-        ("ml_scoring", _run_ml_scoring),
-        ("ml_tecnologias", _run_ml_tecnologias),
-        ("analytics_export", _run_analytics_export),
-        ("kpi_precompute", _run_kpi_precompute),
-        ("aggregates_precompute", _run_aggregates_precompute),
-        ("watchlist_notify", _run_watchlist_notify),
-        ("digests", _run_digests),
-        ("dlq_retry", _run_dlq_retry),
-        ("anomaly_checks", _run_anomaly_checks),
-        ("retention_cleanup", _run_retention_cleanup),
-        ("ml_retrain", _run_ml_retrain),
-        ("drift_checks", _run_drift_checks),
-    ]
-
     results: dict[str, str] = {}
-    for name, fn in steps:
+    for name in CANONICAL_STEPS:
+        fn = globals().get(f"_run_{name}")
+        if fn is None:
+            raise RuntimeError(
+                f"CANONICAL_STEPS contiene '{name}' sin implementación _run_{name} — "
+                "la constante y las funciones de paso divergieron"
+            )
         try:
             fn()
             results[name] = "ok"
-        except Exception:
+        except Exception as exc:
             log.exception("pipeline_step_failed", step=name)
             results[name] = "error"
+            _notify_step_failure(name, exc)
 
     return results
 

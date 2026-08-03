@@ -23,7 +23,13 @@ import re as _re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from db.dlq import increment_retry, list_unresolved, mark_resolved, sweep_exhausted
+from db.dlq import (
+    increment_retry,
+    list_unresolved,
+    mark_exhausted,
+    mark_resolved,
+    sweep_exhausted,
+)
 from observability.alerts import AlertLevel, notify
 from observability.logging import bind_run_context, get_logger
 
@@ -109,6 +115,49 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
         run_result = run_connector(connector)
         return run_result.errores == 0
 
+    # Conectores multi-fuente (ADR-009). Hasta 2026-08 sus entradas DLQ no
+    # tenían dispatch: quemaban los 5 ciclos de reintento sin hacer nada y
+    # acababan en una alerta de "agotó reintentos" que atribuía mal la causa.
+    if fuente == "pscp":
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.pscp import PscpConnector
+
+        return run_connector(PscpConnector()).errores == 0
+
+    if fuente == "ted":
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.ted import TedConnector
+
+        return run_connector(TedConnector()).errores == 0
+
+    if fuente == "galicia_rss":
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.galicia import GaliciaRssConnector
+
+        return run_connector(GaliciaRssConnector()).errores == 0
+
+    if fuente == "euskadi_rss":
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.euskadi import EuskadiRssConnector
+
+        return run_connector(EuskadiRssConnector()).errores == 0
+
+    if fuente == "tacrc":
+        from scraper.connectors.tacrc import run as run_tacrc
+
+        return int(run_tacrc().get("errores") or 0) == 0
+
+    if fuente == "placsp_watched_company_awards":
+        from db.repositories.watched_companies import WatchedCompanyRepository
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.watched_company_awards import (
+            PlacspWatchedCompanyAwardsConnector,
+        )
+
+        watched_nifs = WatchedCompanyRepository().list_canonical_nifs()
+        watched_connector = PlacspWatchedCompanyAwardsConnector(watched_nifs)
+        return run_connector(watched_connector).errores == 0
+
     from scraper.pipeline import _DAILY_SOURCE, process_daily
 
     if fuente == _DAILY_SOURCE or fuente.startswith("atom"):
@@ -118,11 +167,13 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
     raise ValueError(f"Unsupported DLQ source: {fuente!r}")
 
 
-def _retry_failure(failure: dict[str, Any], run_id: str) -> bool:
+def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | None:
     """Intenta re-ejecutar la extracción correspondiente a *failure*.
 
     Returns:
-        True si el reintento fue exitoso; False si falló de nuevo.
+        True si el reintento fue exitoso; False si falló de nuevo; ``None`` si
+        la fuente no tiene dispatch (reintentar jamás va a funcionar — el
+        caller la marca agotada de inmediato en vez de quemar ciclos).
     """
     fuente: str = str(failure.get("fuente") or "")
     scope: str = str(failure.get("scope") or "")
@@ -136,7 +187,7 @@ def _retry_failure(failure: dict[str, Any], run_id: str) -> bool:
             fuente=fuente,
             scope=scope,
         )
-        return False
+        return None
     except Exception as exc:
         log.exception(
             "dlq_retry_exception",
@@ -215,6 +266,24 @@ def retry_failed_extractions(
     for failure in due:
         fid = int(failure["id"])
         success = _retry_failure(failure, run_id)
+        if success is None:
+            # Fuente sin dispatch: agotarla ya, con causa exacta, en vez de
+            # quemar max_retries ciclos y alertar "agotó reintentos" como si
+            # la extracción hubiera fallado max_retries veces.
+            mark_exhausted(fid)
+            notify(
+                AlertLevel.WARN,
+                "DLQ: entrada sin dispatch de reintento",
+                (
+                    f"La fuente {failure.get('fuente')!r} no tiene mapeo en "
+                    f"dispatch_retry(); la entrada {fid} se marca agotada sin "
+                    "reintentos. Si la fuente es legítima, añadir su dispatch "
+                    "en scheduler/dlq_retry.py."
+                ),
+                fuente=failure.get("fuente"),
+                scope=failure.get("scope"),
+            )
+            continue
         if success:
             mark_resolved(fid)
             resolved += 1

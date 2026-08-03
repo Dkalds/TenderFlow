@@ -1,7 +1,7 @@
 """Job lock service — lightweight mutual exclusion for non-idempotent jobs (ADR-012).
 
 Provides ``acquire`` / ``release`` / ``is_held`` backed by the ``job_locks``
-table in SQLite. A lock has a TTL (``expires_at``); expired locks are
+table in Postgres. A lock has a TTL (``expires_at``); expired locks are
 transparently replaced on the next ``acquire`` call.
 
 Usage::
@@ -33,6 +33,14 @@ def acquire(name: str, ttl_seconds: int = 600, holder: str = "") -> bool:
 
     Returns True if the lock was acquired, False if it's already held by
     another holder and has not expired.
+
+    Un solo statement atómico (``INSERT … ON CONFLICT DO UPDATE … WHERE``):
+    hasta 2026-08 era un SELECT seguido de INSERT/UPDATE sin bloqueo, y dos
+    procesos arrancando a la vez (p. ej. los dos workflows de scrape que
+    coincidían a las 06:00 UTC) podían adquirir el mismo lock — exactamente el
+    escenario del que este módulo debe proteger. ``ON CONFLICT`` toma el row
+    lock del conflicto, y el ``WHERE`` solo cede el lock si el existente ya
+    expiró; ``rowcount`` distingue adquirido (1) de rechazado (0).
     """
     now = datetime.now(UTC)
     expires_at = now + timedelta(seconds=ttl_seconds)
@@ -40,32 +48,21 @@ def acquire(name: str, ttl_seconds: int = 600, holder: str = "") -> bool:
     expires_iso = expires_at.isoformat()
 
     with connect() as conn:
-        row = conn.execute(
-            "SELECT expires_at, holder FROM job_locks WHERE name = ?",
-            (name,),
-        ).fetchone()
+        cursor = conn.execute(
+            "INSERT INTO job_locks (name, acquired_at, expires_at, holder) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (name) DO UPDATE SET "
+            "acquired_at = excluded.acquired_at, "
+            "expires_at = excluded.expires_at, "
+            "holder = excluded.holder "
+            "WHERE job_locks.expires_at <= ?",
+            (name, now_iso, expires_iso, holder, now_iso),
+        )
+        acquired = cursor.rowcount > 0
 
-        if row is not None:
-            existing_expires = row[0]
-            # If the lock hasn't expired, reject
-            if existing_expires > now_iso:
-                log.debug(
-                    "job_lock_already_held",
-                    name=name,
-                    holder=row[1],
-                    expires_at=existing_expires,
-                )
-                return False
-            # Expired lock — replace it
-            conn.execute(
-                "UPDATE job_locks SET acquired_at = ?, expires_at = ?, holder = ? WHERE name = ?",
-                (now_iso, expires_iso, holder, name),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (?, ?, ?, ?)",
-                (name, now_iso, expires_iso, holder),
-            )
+    if not acquired:
+        log.debug("job_lock_already_held", name=name)
+        return False
 
     log.info("job_lock_acquired", name=name, holder=holder, ttl_seconds=ttl_seconds)
     return True

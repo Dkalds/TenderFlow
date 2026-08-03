@@ -24,6 +24,17 @@ rule_files:
 scrape_configs:
   - job_name: "tenderflow-api"
     metrics_path: /metrics
+    # /metrics exige en prod una API key con scope metrics:read. Prometheus no
+    # puede enviar X-API-Key, así que la API acepta la misma credencial como
+    # `Authorization: Bearer` (api/app.py::_prometheus_metrics). ACCIÓN MANUAL
+    # (Render dashboard → tenderflow-prometheus → Secret Files): crear el
+    # secret file /etc/secrets/metrics_token con una API key metrics:read
+    # (scripts/rotate_api_keys.py o make api-key). Sin este fichero el scrape
+    # sigue recibiendo 401 — que es exactamente lo que pasaba hasta 2026-08 y
+    # dejaba los SLOs de ADR-019 sin medición.
+    authorization:
+      type: Bearer
+      credentials_file: /etc/secrets/metrics_token
     static_configs:
       - targets: ["tenderflow-api:8080"]
         labels:

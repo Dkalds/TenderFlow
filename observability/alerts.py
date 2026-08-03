@@ -46,6 +46,9 @@ _LEVEL_NAMES = {
     "warn": AlertLevel.WARN,
     "warning": AlertLevel.WARN,
     "error": AlertLevel.ERROR,
+    # "crit" lo emite scheduler/drift_monitor.py; sin esta entrada caía al
+    # default WARN y un drift crítico se degradaba a aviso en silencio.
+    "crit": AlertLevel.CRITICAL,
     "critical": AlertLevel.CRITICAL,
 }
 
