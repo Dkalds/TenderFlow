@@ -1,0 +1,108 @@
+name: Scrape PLACSP bulk (refresh de N meses — manual)
+
+# Carril bulk: descarga los ZIP mensuales de PLACSP y refresca los últimos N
+# meses completos.
+#
+# **No tiene `schedule` a propósito.** Hasta 2026-08 corría a diario (primero
+# como `scrape.yml`, luego plegado en `scrape-daily.yml` como segundo cron de
+# las 05:30 UTC) y no aportaba nada: el carril ATOM de `scrape-daily.yml` ya
+# trae las novedades cada 4 horas, así que el bulk sólo reprocesaba meses
+# enteros que la ingesta incremental ya tenía. Lo que sí hacía era competir por
+# la BD y por la ventana del carril diario.
+#
+# Se dispara a mano (Actions → este workflow → "Run workflow") cuando hace
+# falta de verdad:
+#   - hueco histórico detectado (auditoría de datos, `make audit-truth-check`);
+#   - cambio de filtros/clasificador que obliga a reprocesar meses ya ingeridos;
+#   - entradas `bulk_YYYYMM` acumuladas en la DLQ (el carril diario ya no las
+#     reintenta — ver `scheduler/pipeline_runs.py::_run_dlq_retry`);
+#   - tras una caída larga de la BD, para cerrar lo que el ATOM no alcance.
+#
+# Comparte el `concurrency.group: scrape` con `scrape-daily.yml`: ADR-012 exige
+# un solo plano activo contra la misma BD, así que un bulk manual y un tick
+# diario nunca corren a la vez — el segundo espera a que acabe el primero.
+# Para backfill de un mes concreto y anterior a la ventana de N meses, usar
+# `python -m scheduler.run_update --backfill YEAR MONTH` (target `make scrape`).
+
+on:
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "Cuántos meses recientes refrescar"
+        default: "3"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  bulk:
+    runs-on: ubuntu-latest
+    # Un mes de PLACSP son varios ZIP de miles de avisos, y el step reintenta
+    # hasta dos veces: el bulk necesita bastante más presupuesto que el carril
+    # diario (55 min). Al ser manual, un job largo no bloquea ninguna cadencia.
+    timeout-minutes: 120
+
+    env:
+      # Mismo perfil que el carril diario: escribe en la BD de producción, así
+      # que los validators de datos (TLS de DATABASE_URL, alertas) tienen que
+      # estar activos. APP_PROFILE=scraper omite los secretos que sólo necesita
+      # el proceso HTTP.
+      ENV: prod
+      APP_PROFILE: scraper
+      # ADR-012: el plano de orquestación activo es GitHub Actions.
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run bulk refresh
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SCRAPER_MONTHS: ${{ inputs.months || 3 }}
+        run: |
+          MAX_RETRIES=2
+          DELAY_SECS=90
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "=== Intento $attempt/$MAX_RETRIES ==="
+            python -m scheduler.run_update --months "$SCRAPER_MONTHS" && exit 0
+            echo "Intento $attempt fallido."
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "Reintentando en ${DELAY_SECS}s..."
+              sleep $DELAY_SECS
+            fi
+          done
+          echo "Todos los intentos fallaron."
+          exit 1
+
+      - name: Healthcheck post-run
+        if: always()
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+        run: python -m scheduler.healthcheck --alert

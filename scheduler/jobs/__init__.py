@@ -51,8 +51,15 @@ def build_default_registry() -> list[ScheduledJob]:
             heavy=True,
         ),
         ScheduledJob(
+            # plane='manual' (2026-08): el refresh de N meses ya no tiene cron.
+            # El carril ATOM de daily_atom trae las novedades cada 4h, así que
+            # a diario el bulk sólo reprocesaba meses ya ingeridos y competía
+            # por la ventana del job diario. Vive en el workflow
+            # `.github/workflows/scrape-bulk.yml`, workflow_dispatch-only.
+            # `default_interval_minutes` sigue definiendo la cadencia del plano
+            # APScheduler (docker-compose), que no es el plano activo.
             name="recent_bulk",
-            plane="actions",
+            plane="manual",
             module="scheduler.run_update",
             fn=run_recent_bulk,
             interval_env="SCHEDULER_BULK_INTERVAL_MINUTES",

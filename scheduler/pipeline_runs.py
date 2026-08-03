@@ -50,6 +50,20 @@ CANONICAL_STEPS: list[str] = [
 
 
 # ---------------------------------------------------------------------------
+# Carriles
+# ---------------------------------------------------------------------------
+
+# El carril diario corre cada 4h dentro de un job de 55 min; el bulk se dispara
+# a mano (`.github/workflows/scrape-bulk.yml`) con 120 min. Un mismo paso
+# canónico puede por tanto permitirse más trabajo en un carril que en el otro:
+# los pasos listados en ``_LANE_AWARE_STEPS`` reciben ``lane=`` y deciden.
+LANE_DAILY = "daily"
+LANE_BULK = "bulk"
+
+_LANE_AWARE_STEPS = frozenset({"dlq_retry"})
+
+
+# ---------------------------------------------------------------------------
 # Pasos periódicos (cadencia propia dentro de la pipeline de 4h)
 # ---------------------------------------------------------------------------
 
@@ -265,10 +279,21 @@ def _run_drift_checks() -> str:
     return _run_periodic("drift_checks", _SEGUNDOS_SEMANA, _both)
 
 
-def _run_dlq_retry() -> None:
+def _run_dlq_retry(lane: str = LANE_BULK) -> None:
+    """Drena la DLQ. En el carril diario **no** reintenta meses bulk.
+
+    Una entrada ``bulk_YYYYMM`` se reintenta llamando a ``process_month``: la
+    descarga y el reparseo de los ZIP de un mes entero, más su resolución de
+    entidades. Con la DLQ arrastrando varios meses, ese trabajo se comía el
+    presupuesto entero del job diario y GitHub lo cancelaba a mitad de la
+    cadena post-ingesta (runs de 2026-08-01/03: cancelados dentro de
+    ``dlq_retry`` reprocesando siete ficheros ``...Completo3_2026MM....atom``).
+    El diario deja de tocarlas y las cubre `scrape-bulk.yml`, que es donde
+    reprocesar meses tiene sentido y presupuesto.
+    """
     from scheduler.dlq_retry import retry_failed_extractions
 
-    retry_failed_extractions()
+    retry_failed_extractions(include_bulk=lane != LANE_DAILY)
 
 
 def _run_anomaly_checks() -> None:
@@ -303,7 +328,7 @@ def _notify_step_failure(step: str, exc: Exception) -> None:
         log.warning("pipeline_step_alert_failed", step=step)
 
 
-def _run_post_ingestion_steps() -> dict[str, str]:
+def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
     """Ejecuta todos los pasos post-ingesta en orden canónico.
 
     ``CANONICAL_STEPS`` es la única fuente del orden: las implementaciones se
@@ -311,6 +336,12 @@ def _run_post_ingestion_steps() -> dict[str, str]:
     tests). Antes existían dos literales — la constante y una lista de tuplas
     aquí — que había que sincronizar a mano y el checker de paridad solo leía
     la constante.
+
+    Args:
+        lane: ``LANE_DAILY`` o ``LANE_BULK``. Sólo lo reciben los pasos de
+            ``_LANE_AWARE_STEPS``; el resto se ejecuta igual en ambos carriles.
+            El default es el carril bulk — el permisivo — para que un caller
+            que no lo declare no pierda trabajo en silencio.
 
     Returns:
         Dict ``{step_name: "ok" | "error"}`` con el resultado de cada paso.
@@ -324,7 +355,10 @@ def _run_post_ingestion_steps() -> dict[str, str]:
                 "la constante y las funciones de paso divergieron"
             )
         try:
-            fn()
+            if name in _LANE_AWARE_STEPS:
+                fn(lane=lane)
+            else:
+                fn()
             results[name] = "ok"
         except Exception as exc:
             log.exception("pipeline_step_failed", step=name)
@@ -369,7 +403,7 @@ def run_daily_pipeline() -> dict[str, Any]:
     if status != "ok" and status not in _HANDLED_STATUSES:
         raise RuntimeError(f"daily ingestion failed: {status}")
 
-    step_results = _run_post_ingestion_steps()
+    step_results = _run_post_ingestion_steps(lane=LANE_DAILY)
 
     return {
         "status": status,
@@ -441,7 +475,7 @@ def _run_daily_pipeline_connector() -> dict[str, Any]:
             except Exception:
                 log.warning("daily_connector_log_extraccion_failed")
 
-    step_results = _run_post_ingestion_steps()
+    step_results = _run_post_ingestion_steps(lane=LANE_DAILY)
 
     return {
         "status": status,
@@ -471,8 +505,12 @@ def _notify_degraded(label: str, failed: list[dict[str, Any]]) -> None:
             AlertLevel.WARN,
             f"{label}: {len(failed)} mes(es) con fallo recuperable",
             body=(
-                f"Meses fallidos: {failed}. Ya registrados en la DLQ; el paso "
-                "post-ingesta dlq_retry los reintentará automáticamente."
+                f"Meses fallidos: {failed}. Ya registrados en la DLQ. Los "
+                "reintenta el paso post-ingesta dlq_retry del propio carril "
+                "bulk, que desde 2026-08 se dispara a mano "
+                "(.github/workflows/scrape-bulk.yml): el carril diario ya no "
+                "reprocesa meses, así que vuelve a lanzar el bulk si estos "
+                "meses importan."
             ),
             failed_months=failed,
         )
@@ -487,9 +525,10 @@ def _finalize_ingestion(results: list[dict[str, Any]], *, label: str) -> dict[st
       hay nada que post-procesar (típicamente PLACSP caído o formato incompatible).
     - **Fallo parcial** (algunos meses fallaron): los fallos ya quedaron
       registrados en la DLQ vía ``record_failure``. Se ejecutan igualmente los
-      pasos post-ingesta —incluido ``dlq_retry``, que reintentará las descargas
-      fallidas— y se devuelve ``status="degraded"`` en lugar de abortar toda la
-      pipeline. Esto da paridad con ``run_daily_pipeline``.
+      pasos post-ingesta —incluido ``dlq_retry``, que en este carril sí
+      reintenta las descargas mensuales fallidas— y se devuelve
+      ``status="degraded"`` en lugar de abortar toda la pipeline. Esto da
+      paridad con ``run_daily_pipeline``.
     """
     failed = [r for r in results if r.get("status") not in _OK_STATUSES]
     succeeded = [r for r in results if r.get("status") in _OK_STATUSES]
@@ -507,7 +546,7 @@ def _finalize_ingestion(results: list[dict[str, Any]], *, label: str) -> dict[st
         )
         _notify_degraded(label, failed)
 
-    step_results = _run_post_ingestion_steps()
+    step_results = _run_post_ingestion_steps(lane=LANE_BULK)
 
     return {
         "status": "degraded" if failed else "ok",

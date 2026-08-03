@@ -83,6 +83,89 @@ def test_accepts_loop_only_job_as_explicit_decision():
 
 
 # ---------------------------------------------------------------------------
+# plane='manual' — dispatch-only a propósito (recent_bulk, 2026-08)
+# ---------------------------------------------------------------------------
+
+
+def test_accepts_manual_job_in_dispatch_only_workflow():
+    """El caso de recent_bulk: no corre solo, y eso es la decisión."""
+    registry = [_job("a_mano", plane="manual", module="scheduler.run_update")]
+    with (
+        patch.object(
+            check_job_parity,
+            "_modules_invoked_by_workflows",
+            return_value=(set(), {"scheduler.run_update"}),
+        ),
+        patch("scheduler.jobs.build_default_registry", return_value=registry),
+    ):
+        rows, problems = check_job_parity.check()
+
+    assert problems == []
+    assert "workflow_dispatch" in rows[0]["cubierto_por"]
+
+
+def test_detects_manual_job_with_no_dispatch_workflow():
+    """Sin workflow que lo invoque no hay forma de dispararlo ni a mano."""
+    registry = [_job("a_mano", plane="manual", module="scheduler.run_update")]
+    with (
+        patch.object(
+            check_job_parity,
+            "_modules_invoked_by_workflows",
+            # Sólo aparece en workflows programados: no hay disparo manual.
+            return_value=({"scheduler.run_update"}, set()),
+        ),
+        patch("scheduler.jobs.build_default_registry", return_value=registry),
+    ):
+        _rows, problems = check_job_parity.check()
+
+    assert len(problems) == 1
+    assert "ni a mano" in problems[0]
+
+
+def test_detects_manual_job_without_module():
+    registry = [_job("a_mano", plane="manual")]
+    with (
+        patch.object(
+            check_job_parity, "_modules_invoked_by_workflows", return_value=(set(), set())
+        ),
+        patch("scheduler.jobs.build_default_registry", return_value=registry),
+    ):
+        _rows, problems = check_job_parity.check()
+
+    assert len(problems) == 1
+    assert "sin `module`" in problems[0]
+
+
+def test_actions_job_only_in_dispatch_workflow_suggests_manual_plane():
+    """El mensaje tiene que decir cuál es la salida, no sólo que está mal."""
+    registry = [_job("mal_declarado", plane="actions", module="scheduler.run_update")]
+    with (
+        patch.object(
+            check_job_parity,
+            "_modules_invoked_by_workflows",
+            return_value=(set(), {"scheduler.run_update"}),
+        ),
+        patch("scheduler.jobs.build_default_registry", return_value=registry),
+    ):
+        _rows, problems = check_job_parity.check()
+
+    assert len(problems) == 1
+    assert "plane='manual'" in problems[0]
+
+
+def test_recent_bulk_is_declared_manual():
+    """Gate anti-regresión: el bulk por meses no vuelve a tener cron.
+
+    Si alguien lo re-declara ``actions``, ``test_real_registry_has_no_orphan_jobs``
+    ya no basta — pasaría en verde porque ``daily_atom`` comparte ``module``.
+    """
+    from scheduler.jobs import build_default_registry
+
+    bulk = next(j for j in build_default_registry() if j.name == "recent_bulk")
+    assert bulk.plane == "manual"
+
+
+# ---------------------------------------------------------------------------
 # El registry real está limpio
 # ---------------------------------------------------------------------------
 

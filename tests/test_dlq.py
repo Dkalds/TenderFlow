@@ -15,6 +15,31 @@ def test_record_and_list(tmp_db):
     assert items[0]["fuente"] == "bulk_202601"
 
 
+def test_list_unresolved_excludes_fuente_prefix(tmp_db):
+    """El filtro por prefijo va en SQL, antes del LIMIT."""
+    from db import dlq
+
+    dlq.record_failure("run-1", "bulk_202601", RuntimeError("x"))
+    dlq.record_failure("run-1", "bulk_202602", RuntimeError("x"))
+    dlq.record_failure("run-1", "place_live_atom", RuntimeError("x"))
+
+    assert len(dlq.list_unresolved()) == 3
+    sin_bulk = dlq.list_unresolved(exclude_fuente_prefix="bulk_")
+    assert [f["fuente"] for f in sin_bulk] == ["place_live_atom"]
+
+
+def test_list_unresolved_prefix_filter_survives_a_tight_limit(tmp_db):
+    """Con LIMIT 1 y bulk delante, el filtro tiene que dejar pasar la otra fila."""
+    from db import dlq
+
+    dlq.record_failure("run-1", "bulk_202601", RuntimeError("x"))
+    dlq.record_failure("run-1", "bulk_202602", RuntimeError("x"))
+    dlq.record_failure("run-1", "place_live_atom", RuntimeError("x"))
+
+    filas = dlq.list_unresolved(limit=1, exclude_fuente_prefix="bulk_")
+    assert [f["fuente"] for f in filas] == ["place_live_atom"]
+
+
 def test_mark_resolved_removes_from_unresolved(tmp_db):
     from db import dlq
 

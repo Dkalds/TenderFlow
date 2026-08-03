@@ -9,14 +9,20 @@ from typing import Any, Literal
 # Plano de orquestación responsable de ejecutar un job (ADR-012).
 #
 # - ``loop``     — solo el long-running scheduler de Docker Compose.
-# - ``actions``  — solo GitHub Actions (workflow propio con ``python -m``).
+# - ``actions``  — solo GitHub Actions, en un workflow **programado** (con cron).
+# - ``manual``   — GitHub Actions, en un workflow ``workflow_dispatch``-only:
+#                  no corre por sí solo y eso es la decisión, no un olvido
+#                  (``recent_bulk`` desde 2026-08). Sin este valor, la única
+#                  forma de declararlo era ``actions``, que el checker exige
+#                  ver en un workflow con cron: o mentía la declaración, o el
+#                  gate obligaba a programar un job que nadie quiere diario.
 # - ``pipeline`` — lo ejecuta la pipeline canónica (``scheduler/pipeline_runs.py``),
 #                  así que corre en cualquiera de los dos planos sin workflow propio.
 #
 # ``scripts/check_job_parity.py`` verifica en CI que la declaración coincide
 # con la realidad: un job ``actions`` sin step que lo invoque es un job muerto
 # en producción, que es exactamente el fallo que este campo previene.
-Plane = Literal["loop", "actions", "pipeline"]
+Plane = Literal["loop", "actions", "manual", "pipeline"]
 
 
 @dataclass(frozen=True)
@@ -34,7 +40,7 @@ class ScheduledJob:
         plane: Which orchestration plane is responsible for running this job
             in production. Checked by ``scripts/check_job_parity.py``.
         module: Module invocable with ``python -m`` when ``plane`` is
-            ``actions``. Empty for the other planes.
+            ``actions`` or ``manual``. Empty for the other planes.
     """
 
     name: str

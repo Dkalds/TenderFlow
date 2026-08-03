@@ -1,29 +1,20 @@
-name: Scrape PLACSP (ingesta unificada)
+name: Scrape PLACSP diario (ATOM live feed + conectores)
 
-# Un único workflow de ingesta con dos carriles (ADR-012):
-#   - Carril diario (ATOM live feed): cada 4 horas.
-#   - Carril bulk (refresh de N meses): una vez al día a las 05:30 UTC.
-# Hasta 2026-08 el carril bulk vivía en scrape.yml con OTRO concurrency group,
-# así que ambos podían correr a la vez contra la misma BD de producción y
-# ejecutar dos veces la cadena de pasos post-ingesta. Un solo workflow y un
-# solo group los serializa por construcción.
+# Carril diario de ingesta (ADR-012): feed ATOM en vivo de PLACSP cada 4 horas
+# más los conectores multi-fuente.
+#
+# El carril bulk (refresh de N meses) **no vive aquí**: tiene su propio
+# workflow manual, `scrape-bulk.yml`, sin `schedule`. Estuvo plegado en este
+# archivo como segundo cron (05:30 UTC) durante unas horas en 2026-08 y antes
+# como `scrape.yml` diario; en ambos casos reprocesaba a diario meses enteros
+# que el ATOM ya había traído, y competía con este carril por la BD. Los dos
+# comparten `concurrency.group: scrape`, así que siguen serializados entre sí.
 
 on:
   schedule:
-    # Carril diario: 00, 04, 08, 12, 16, 20 UTC
+    # Cada 4 horas: 00, 04, 08, 12, 16, 20 UTC
     - cron: "0 */4 * * *"
-    # Carril bulk: diario a las 05:30 UTC (huye de los ticks del carril diario)
-    - cron: "30 5 * * *"
-  workflow_dispatch:
-    inputs:
-      lane:
-        description: "Carril a ejecutar (daily | bulk)"
-        default: "daily"
-        required: false
-      months:
-        description: "Cuántos meses refrescar (solo carril bulk)"
-        default: "3"
-        required: false
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -71,32 +62,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run bulk refresh
-        if: github.event.schedule == '30 5 * * *' || inputs.lane == 'bulk'
-        env:
-          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
-          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
-          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
-          GITHUB_TOKEN: ${{ github.token }}
-          SCRAPER_MONTHS: ${{ inputs.months || 3 }}
-        run: |
-          MAX_RETRIES=2
-          DELAY_SECS=90
-          for attempt in $(seq 1 $MAX_RETRIES); do
-            echo "=== Intento $attempt/$MAX_RETRIES ==="
-            python -m scheduler.run_update --months "$SCRAPER_MONTHS" && exit 0
-            echo "Intento $attempt fallido."
-            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-              echo "Reintentando en ${DELAY_SECS}s..."
-              sleep $DELAY_SECS
-            fi
-          done
-          echo "Todos los intentos fallaron."
-          exit 1
-
       - name: Run daily scraper
-        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
@@ -110,10 +76,7 @@ jobs:
       # con 38/39 enlazados al maestro en la primera pasada). API pública sin
       # auth y sin dataset/índice por entorno que configurar, así que corre
       # sin gate de variable (a diferencia de PSCP/TACRC más abajo).
-      # Los conectores solo corren en el carril diario: el bulk del día ya
-      # dispara la cadena post-ingesta y el siguiente tick de 4h los cubre.
       - name: Run TED connector
-        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         # Presupuesto propio: no debe consumir el timeout del job si la API
         # pública se degrada.
@@ -124,13 +87,11 @@ jobs:
       # y cada fuente queda aislada para que una indisponibilidad regional no
       # impida la actualización nacional ni las demás fuentes.
       - name: Run Galicia RSS connector
-        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.galicia
 
       - name: Run Euskadi RSS connector
-        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.euskadi
@@ -139,7 +100,6 @@ jobs:
       # empresa está vigilada por NIF canónico. Sin NIF vigilados termina sin
       # descargar el feed; el timeout aísla cualquier degradación de PLACE.
       - name: Run watched-company awards connector
-        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.watched_company_awards
@@ -148,7 +108,7 @@ jobs:
       # variables estén configuradas tras validar las fuentes vivas
       # (scripts/probe_pscp.py · python -m scraper.connectors.tacrc --check).
       - name: Run PSCP Catalunya connector
-        if: vars.PSCP_DATASET_ID != '' && github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
+        if: vars.PSCP_DATASET_ID != ''
         continue-on-error: true
         # Presupuesto propio: si la API pública de Catalunya se cuelga o
         # pagina muchísimo, no debe consumir todo el timeout del job y dejar
@@ -160,7 +120,7 @@ jobs:
         run: python -m scraper.connectors.pscp
 
       - name: Run TACRC resoluciones connector
-        if: vars.TACRC_INDEX_URL != '' && github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
+        if: vars.TACRC_INDEX_URL != ''
         continue-on-error: true
         timeout-minutes: 10
         env:
