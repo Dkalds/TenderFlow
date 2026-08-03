@@ -18,59 +18,16 @@
 #   docker compose --profile monitoring up
 # Runbook: docs/runbooks/persistence-tripwires.md
 #
-# F3d (post-cutover ADR-016): los tripwires de SQLite se mantienen para el
-# periodo de rollback (>=14 dias); tras confirmar estabilidad en Postgres,
-# retirar el grupo persistence_tripwires y activar postgres_pool_alerts.
+# El grupo persistence_tripwires (tripwires SQLite de ADR-004) se retiro en
+# 2026-08 tras ADR-021 (SQLite eliminado): sus metricas ya no se emiten. La
+# latencia de escritura la cubre PgWriteLatencyHigh (postgres_pool_alerts).
 #
 
 groups:
-  - name: persistence_tripwires
-    # Tripwires SQLite/Turso (ADR-004).
-    # POST-CUTOVER: estas alertas dejaran de dispararse cuando DATABASE_URL apunte
-    # a Postgres (sqlite_busy_errors_total quedara en 0). Retirar este grupo en F3d
-    # tras 2 semanas estables en Postgres.
-    rules:
-      - alert: SQLiteBusyErrorsHigh
-        # ADR-004: >10 BUSY/h sostenido → evaluar migración a Postgres.
-        # POST-CUTOVER ADR-016: si esta alerta salta tras el flip, hay un
-        # call-site que no usa DATABASE_URL. Investigar db/connection.py logs.
-        expr: rate(sqlite_busy_errors_total[1h]) * 3600 > 10
-        for: 15m
-        labels:
-          severity: warning
-          adr: "004"
-        annotations:
-          summary: "SQLite BUSY errors por encima del tripwire (>10/h)"
-          description: >
-            rate(sqlite_busy_errors_total[1h]) supera 10/h sostenido.
-            Indica contención de escritura. Seguir
-            docs/runbooks/persistence-tripwires.md.
-
-      - alert: DBWriteLatencyHigh
-        # ADR-004: p99 de escritura >500ms → investigar contención.
-        expr: histogram_quantile(0.99, rate(db_write_duration_seconds_bucket[10m])) > 0.5
-        for: 15m
-        labels:
-          severity: warning
-          adr: "004"
-        annotations:
-          summary: "Latencia p99 de escritura DB > 500ms"
-          description: >
-            El p99 de db_write_duration_seconds supera 500ms durante 15m.
-            Investigar contención de escritura (ver runbook).
-
-      - alert: DBConcurrentWritersHigh
-        # ADR-004: >3 escritores concurrentes sostenido → review de arquitectura.
-        expr: max_over_time(db_concurrent_writers[10m]) > 3
-        for: 15m
-        labels:
-          severity: warning
-          adr: "004"
-        annotations:
-          summary: "Escritores concurrentes DB > 3"
-          description: >
-            db_concurrent_writers supera 3 sostenido. El supuesto single-writer
-            de ADR-004 ya no se sostiene; revisar arquitectura de persistencia.
+  # El grupo analytics_degradation (AnalyticsDegradedServing) se retiro en
+  # 2026-08 al completar ADR-023: todos los endpoints analiticos agregan en
+  # SQL o usan proyecciones acotadas, el cortacircuitos full-table ya no
+  # existe y su metrica analytics_degraded_responses_total dejo de emitirse.
 
   - name: llm_budget
     # Presupuesto LLM (RFC llm-dependencia-gestionada). En modo monitor estas
@@ -158,10 +115,31 @@ groups:
             Postgres. Investigar queries lentas en Supabase Dashboard →
             Query Performance.
 
+      - alert: PgConcurrentWritersHigh
+        # ADR-004: >3 escritores concurrentes sostenido → review de arquitectura.
+        # Se retiró por error junto con SQLiteBusyErrorsHigh al limpiar
+        # tripwires SQLite (2026-08): db_concurrent_writers sigue vivo con el
+        # pool psycopg_pool y el supuesto single-writer de ADR-004 es igual de
+        # relevante en Postgres -- de hecho más, porque el pool sí permite
+        # concurrencia real donde SQLite/WAL la impedía a nivel de motor.
+        expr: max_over_time(db_concurrent_writers[10m]) > 3
+        for: 15m
+        labels:
+          severity: warning
+          adr: "004"
+        annotations:
+          summary: "Escritores concurrentes DB > 3"
+          description: >
+            db_concurrent_writers supera 3 sostenido. El supuesto single-writer
+            de ADR-004 ya no se sostiene; revisar arquitectura de persistencia.
+
       - alert: PgPoolHealthCheckFailed
-        # La API no puede conectar al pool de Postgres.
-        # Se emite cuando el health endpoint devuelve db!=ok.
-        expr: up{job="tenderflow_api"} == 0
+        # La API no responde al scrape de Prometheus.
+        # OJO: el nombre del job debe coincidir con prometheus.render.yml
+        # ("tenderflow-api", con guion). Hasta 2026-08 esta regla usaba
+        # "tenderflow_api" (guion bajo) y la unica alerta critical no podia
+        # dispararse nunca.
+        expr: up{job="tenderflow-api"} == 0
         for: 2m
         labels:
           severity: critical
@@ -169,5 +147,5 @@ groups:
         annotations:
           summary: "API Tenderflow no disponible (posible fallo de pool Postgres)"
           description: >
-            El scrape de Prometheus a tenderflow_api devuelve 0 durante 2 minutos.
+            El scrape de Prometheus a tenderflow-api devuelve 0 durante 2 minutos.
             Verificar DATABASE_URL, pool psycopg y Supabase status.

@@ -44,8 +44,9 @@ services:
         sync: false
       - key: OAUTH_REDIRECT_URI
         sync: false
-      # Opcional. Si se dejan ambas vacías, cualquier cuenta de Google puede
-      # iniciar sesión (solo un warning en logs, no bloquea el arranque).
+      # OBLIGATORIO si GOOGLE_CLIENT_ID está definido: con ambos allowlists
+      # vacíos el arranque en prod se rechaza (fail-closed, 2026-08). Para
+      # login abierto deliberado usar OAUTH_ALLOWED_DOMAINS=*.
       - key: OAUTH_ALLOWED_DOMAINS
         sync: false
       - key: OAUTH_ALLOWED_EMAILS
@@ -92,6 +93,11 @@ services:
       # trazabilidad del audit log. El validator
       # _validate_prod_forwarded_allow_ips hace fallar el arranque en ese caso:
       # fallo ruidoso en el deploy, en vez de degradación silenciosa en runtime.
+      # Defensa en profundidad si "*" llegara a colarse fuera de prod/staging
+      # (dev, test): api/middleware.py::_trusted_client_ip trata ese caso como
+      # "un salto de confianza" y toma el ÚLTIMO hop de X-Forwarded-For (el que
+      # appendea el proxy), nunca el primero (que escribe el cliente) — ver
+      # RFC-051. No sustituye al validator: es la red bajo la red.
       - key: FORWARDED_ALLOW_IPS
         sync: false
       # Sentry: observability/sentry.py es opt-in por SENTRY_DSN. Sin esta

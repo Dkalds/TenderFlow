@@ -3,8 +3,16 @@
 Los tripwires de persistencia (``observability/alert_rules.yml``) son la
 materialización de los umbrales de ADR-004. Este test garantiza que el YAML es
 parseable, que está cableado en ``prometheus.yml`` vía ``rule_files``, y que las
-tres alertas documentadas siguen presentes — para que no se borren por
-accidente al editar la config de observabilidad.
+alertas documentadas siguen presentes — para que no se borren por accidente al
+editar la config de observabilidad.
+
+``SQLiteBusyErrorsHigh`` y ``DBWriteLatencyHigh`` (nombres pre-ADR-016) se
+retiraron a propósito en 2026-08: la primera monitoreaba
+``sqlite_busy_errors_total``, un contador que ya no existe (ADR-021,
+Postgres-only) y que ``PgPoolAcquireTimeoutHigh`` cubre de forma nativa para
+Postgres; la segunda quedó duplicada por ``PgWriteLatencyHigh`` (mismo
+histograma ``db_write_duration_seconds``, umbral ajustado). No van en
+``_EXPECTED_ALERTS``.
 """
 
 from __future__ import annotations
@@ -20,9 +28,8 @@ _RULES = _ROOT / "observability" / "alert_rules.yml"
 _PROM = _ROOT / "observability" / "prometheus.yml"
 
 _EXPECTED_ALERTS = {
-    "SQLiteBusyErrorsHigh",
-    "DBWriteLatencyHigh",
-    "DBConcurrentWritersHigh",
+    "PgWriteLatencyHigh",
+    "PgConcurrentWritersHigh",
 }
 
 

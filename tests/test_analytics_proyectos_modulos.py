@@ -1,16 +1,21 @@
 """Tests unitarios para services/analytics/proyectos_modulos.
 
-Parchea load_stats_dataframe con filas sintéticas; sin BD. Cubre las dos
-ramas de _build_modulos (columna explícita vs detección regex en títulos),
-el YoY y los agregados tipo×estado / CPV.
+Caracterización de la migración pandas -> SQL (ADR-023): siembran el dataset
+sintético en el schema aislado (``tmp_db``) — la detección de módulos corre
+ahora en el motor (``titulo ~* patrón``) con los mismos patrones que
+``_detect_modules`` compila en Python. Cubre la detección regex, el YoY y los
+agregados tipo×estado / CPV.
+
+Nota histórica: la rama de "columna explícita" (``modulo_sap``/``modulos``)
+desapareció con la migración — esa columna nunca existió en la proyección de
+stats, así que la rama era código muerto en producción. Su test se sustituye
+por uno de multi-módulo (un título que matchea dos módulos cuenta en ambos,
+pero el importe distinct solo una vez), que sí es contrato vigente.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
-
-import pandas as pd
 
 from services.analytics.proyectos_modulos import (
     ProyectosModulosFilters,
@@ -23,8 +28,28 @@ def _dias_atras(n: int) -> str:
     return (datetime.now(UTC) - timedelta(days=n)).strftime("%Y-%m-%d")
 
 
+def _insert(rows: list[dict]) -> None:
+    from db.upsert import Licitacion, upsert_licitaciones
+
+    upsert_licitaciones(
+        [
+            Licitacion(
+                id_externo=r["id_externo"],
+                titulo=r.get("titulo", "Contrato TI"),
+                importe=r.get("importe"),
+                estado=r.get("estado"),
+                fecha_publicacion=r.get("fecha_publicacion"),
+                tipo_contrato=r.get("tipo_contrato"),
+                cpv=r.get("cpv"),
+                tecnologia=r.get("tecnologia"),
+            )
+            for r in rows
+        ]
+    )
+
+
 def _rows_regex() -> list[dict]:
-    """Sin columna de módulos: fuerza la detección regex sobre títulos."""
+    """Fuerza la detección regex sobre títulos."""
     return [
         {
             "id_externo": "L1",
@@ -69,22 +94,7 @@ def _rows_regex() -> list[dict]:
     ]
 
 
-def _typed(df: pd.DataFrame) -> pd.DataFrame:
-    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
-    (ver ``services/licitaciones.py::_build``): los fixtures de este módulo
-    usan fechas en crudo, así que el mock debe entregarlas ya convertidas para
-    reflejar el contrato real."""
-    if df.empty:
-        return df
-    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-    if "importe" in df.columns:
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    return df
-
-
-# ── _detect_modules ─────────────────────────────────────────────────────────
+# ── _detect_modules (paridad con los patrones SQL) ──────────────────────────
 
 
 def test_detect_modules_basico():
@@ -98,15 +108,13 @@ def test_detect_modules_case_insensitive():
     assert "S/4HANA" in _detect_modules("migración a s/4hana")
 
 
-# ── rama regex (sin columna de módulos) ─────────────────────────────────────
+# ── detección regex en el motor ─────────────────────────────────────────────
 
 
-def test_modulos_deteccion_regex_en_titulos():
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_rows_regex())),
-    ):
-        result = get_proyectos_modulos(ProyectosModulosFilters())
+def test_modulos_deteccion_regex_en_titulos(tmp_db):
+    _insert(_rows_regex())
+
+    result = get_proyectos_modulos(ProyectosModulosFilters())
 
     modulos = {m.modulo: m for m in result.modulos}
     assert "Ariba" in modulos
@@ -118,13 +126,38 @@ def test_modulos_deteccion_regex_en_titulos():
     assert result.ticket_medio_sap == round(380_000.0 / 3, 2)
 
 
-def test_top_modulo_yoy_crecimiento():
+def test_modulos_multimodulo_cuenta_en_ambos_pero_importe_distinct(tmp_db):
+    """Un título con dos módulos cuenta en ambos; el importe distinct solo una vez."""
+    _insert(
+        [
+            {
+                "id_externo": "MM1",
+                "titulo": "Migración SAP HANA y SAP Ariba",
+                "importe": 100_000.0,
+                "estado": "PUB",
+                "fecha_publicacion": _dias_atras(10),
+                "tipo_contrato": "2",
+                "cpv": "72000000",
+                "tecnologia": "SAP",
+            }
+        ]
+    )
+
+    result = get_proyectos_modulos(ProyectosModulosFilters())
+
+    modulos = {m.modulo: m for m in result.modulos}
+    assert modulos["HANA"].count == 1
+    assert modulos["Ariba"].count == 1
+    # KPI a nivel licitación: una sola licitación clasificada, importe una vez.
+    assert result.total_clasificados == 1
+    assert result.importe_total_sap == 100_000.0
+
+
+def test_top_modulo_yoy_crecimiento(tmp_db):
     """2 menciones último año vs 1 el anterior → +100%."""
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_rows_regex())),
-    ):
-        result = get_proyectos_modulos(ProyectosModulosFilters())
+    _insert(_rows_regex())
+
+    result = get_proyectos_modulos(ProyectosModulosFilters())
 
     assert result.top_modulo_yoy is not None
     assert result.top_modulo_yoy.modulo == "Ariba"
@@ -132,94 +165,38 @@ def test_top_modulo_yoy_crecimiento():
     assert result.top_modulo_yoy.n_act == 2
 
 
-def test_top_modulo_yoy_nuevo_sentinel():
+def test_top_modulo_yoy_nuevo_sentinel(tmp_db):
     """Módulo sin histórico el año anterior → sentinel 999.0 (NUEVO)."""
-    rows = [
-        {
-            "id_externo": f"L{i}",
-            "titulo": "Soporte SuccessFactors",
-            "importe": 10_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": _dias_atras(20 + i),
-            "tipo_contrato": "2",
-            "cpv": "72000000",
-            "tecnologia": "SAP",
-        }
-        for i in range(2)
-    ]
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(rows)),
-    ):
-        result = get_proyectos_modulos(ProyectosModulosFilters())
+    _insert(
+        [
+            {
+                "id_externo": f"L{i}",
+                "titulo": "Soporte SuccessFactors",
+                "importe": 10_000.0,
+                "estado": "PUB",
+                "fecha_publicacion": _dias_atras(20 + i),
+                "tipo_contrato": "2",
+                "cpv": "72000000",
+                "tecnologia": "SAP",
+            }
+            for i in range(2)
+        ]
+    )
+
+    result = get_proyectos_modulos(ProyectosModulosFilters())
 
     assert result.top_modulo_yoy is not None
     assert result.top_modulo_yoy.modulo == "SuccessFactors"
     assert result.top_modulo_yoy.crecimiento_pct == 999.0
 
 
-# ── rama columna explícita ──────────────────────────────────────────────────
-
-
-def test_modulos_columna_explicita():
-    """Con columna `modulos` no se usa la regex: agrega directo por valor."""
-    rows = [
-        {
-            "id_externo": "L1",
-            "titulo": "Contrato uno",
-            "modulos": "FI",
-            "importe": 100_000.0,
-            "estado": "ADJ",
-            "fecha_publicacion": "2025-01-10",
-            "tipo_contrato": "2",
-            "cpv": "72000000",
-            "tecnologia": "SAP",
-        },
-        {
-            "id_externo": "L2",
-            "titulo": "Contrato dos",
-            "modulos": "FI",
-            "importe": 50_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": "2025-01-15",
-            "tipo_contrato": "2",
-            "cpv": "72000000",
-            "tecnologia": "SAP",
-        },
-        {
-            "id_externo": "L3",
-            "titulo": "Contrato tres",
-            "modulos": None,  # sin clasificar
-            "importe": 999_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": "2025-02-01",
-            "tipo_contrato": "3",
-            "cpv": "45000000",
-            "tecnologia": "SAP",
-        },
-    ]
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(rows)),
-    ):
-        result = get_proyectos_modulos(ProyectosModulosFilters())
-
-    assert [m.modulo for m in result.modulos] == ["FI"]
-    assert result.modulos[0].count == 2
-    assert result.total_clasificados == 2
-    assert result.importe_total_sap == 150_000.0
-    assert result.ticket_medio_sap == 75_000.0
-
-
 # ── agregados auxiliares ────────────────────────────────────────────────────
 
 
-def test_tipos_proyecto_y_tipo_estado():
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_rows_regex())),
-    ):
-        result = get_proyectos_modulos(ProyectosModulosFilters())
+def test_tipos_proyecto_y_tipo_estado(tmp_db):
+    _insert(_rows_regex())
+
+    result = get_proyectos_modulos(ProyectosModulosFilters())
 
     tipos = {t.tipo: t for t in result.tipos_proyecto}
     assert tipos["2"].count == 3
@@ -229,38 +206,29 @@ def test_tipos_proyecto_y_tipo_estado():
     assert {e.tipo for e in result.tipo_estado} == {"2", "3"}
 
 
-def test_cpv_top_con_descripcion():
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_rows_regex())),
-    ):
-        result = get_proyectos_modulos(ProyectosModulosFilters())
+def test_cpv_top_con_descripcion(tmp_db):
+    _insert(_rows_regex())
+
+    result = get_proyectos_modulos(ProyectosModulosFilters())
 
     cpvs = {c.cpv: c for c in result.cpv}
     assert cpvs["72000000"].count == 2
     assert isinstance(cpvs["72000000"].cpv_desc, str)
 
 
-def test_filtro_fechas_reduce_dataset():
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_rows_regex())),
-    ):
-        result = get_proyectos_modulos(
-            ProyectosModulosFilters(fecha_desde=(datetime.now(UTC) - timedelta(days=90)).date())
-        )
+def test_filtro_fechas_reduce_dataset(tmp_db):
+    _insert(_rows_regex())
+
+    result = get_proyectos_modulos(
+        ProyectosModulosFilters(fecha_desde=(datetime.now(UTC) - timedelta(days=90)).date())
+    )
 
     # Quedan L1, L2 (Ariba) y L4 (sin módulo); L3 (400 días) fuera
     assert result.total_clasificados == 2
 
 
-def test_dataset_vacio():
-    with patch(
-        "services.analytics.proyectos_modulos.load_stats_base_df",
-        return_value=pd.DataFrame([]),
-    ):
-        result = get_proyectos_modulos(ProyectosModulosFilters())
+def test_dataset_vacio(tmp_db):
+    result = get_proyectos_modulos(ProyectosModulosFilters())
     assert result.modulos == []
     assert result.total_clasificados == 0
     assert result.top_modulo_yoy is None
-    assert result.cpv == []

@@ -303,7 +303,7 @@ def test_deactivate_revoca_sesiones_y_keys(monkeypatch: pytest.MonkeyPatch) -> N
         5, admin_users.DeactivateBody(action="deactivate"), admin={"user_id": 1}
     )
 
-    assert resultado["status"] == "ok"
+    assert resultado.status == "ok"
     assert calls["deactivate"] == [5]
     assert calls["sessions"] == [5]
     assert calls["keys"] == [5]
@@ -424,7 +424,7 @@ def test_rotate_rota_la_key_propia(monkeypatch: pytest.MonkeyPatch) -> None:
         grace_days=7,
     )
 
-    assert resultado["new_token"] == "token-nuevo"
+    assert resultado.new_token == "token-nuevo"
     assert expiries[0][0] == 11
     assert creadas[0]["user_id"] == 4
     assert creadas[0]["scopes"] == "read"

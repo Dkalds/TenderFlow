@@ -1,17 +1,29 @@
-"""Pipeline analytics — upcoming deadlines and alerts."""
+"""Pipeline analytics — upcoming deadlines and alerts.
+
+ADR-023: la ventana de vencimientos se trae como proyección ACOTADA desde
+Postgres (``AggregateRepository.pipeline_window`` — solo las filas con
+``fecha_limite`` dentro de la ventana pedida, con los filtros en el WHERE) y
+los buckets/scoring posteriores operan en pandas sobre ese resultado ya
+pequeño. Hasta 2026-08 este módulo cargaba la tabla completa al proceso API —
+bloqueado en Render por el cortacircuitos full-table, que dejaba el endpoint
+vacío en producción. El contexto de percentiles del scoring viene de SQL
+(``importe_percentiles``), no de materializar la tabla.
+"""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.analytics.scoring import score_dataframe
-from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -101,56 +113,16 @@ class PipelineResult(BaseModel):
     urgencia_valor: list[UrgenciaValorPoint] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _load_df() -> pd.DataFrame:
-    df = load_stats_base_df()
-    if not df.empty and "fecha_limite" in df.columns:
-        # Parse fecha_limite if present. Usa assign() en vez de asignación
-        # in-place: load_stats_base_df() devuelve el DataFrame cacheado
-        # compartido (sin .copy()), así que mutar una columna aquí
-        # contaminaría la caché entre requests concurrentes.
-        df = df.assign(
-            fecha_limite_dt=pd.to_datetime(
-                df["fecha_limite"],
-                errors="coerce",
-                utc=True,
-            )
-        )
-    return df
-
-
-def _apply_filters(df: pd.DataFrame, filters: PipelineFilters) -> pd.DataFrame:
-    """Aplica los filtros globales (misma semántica que overview._apply_filters)."""
-    if df.empty:
-        return df
-    if filters.fecha_desde is not None:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_publicacion"] >= ts]
-    if filters.fecha_hasta is not None:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_publicacion"] <= ts]
-    if filters.ccaa:
-        df = df[df["ccaa"] == filters.ccaa]
-    if filters.tecnologia:
-        df = df[df["tecnologia"] == filters.tecnologia]
-    if filters.estado:
-        df = df[df["estado"] == filters.estado]
-    if filters.q:
-        needle = filters.q.strip().lower()
-        if needle:
-            mask = (
-                df["titulo"].fillna("").str.lower().str.contains(needle, regex=False)
-                | df["organo_contratacion"].fillna("").str.lower().str.contains(needle, regex=False)
-                | df["id_externo"].fillna("").str.lower().str.contains(needle, regex=False)
-            )
-            df = df[mask]
-    if filters.importe_min is not None:
-        df = df[df["importe"] >= filters.importe_min]
-    return df
+def _to_repo_filters(filters: PipelineFilters) -> LicitacionesFilters:
+    return LicitacionesFilters(
+        fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
+        fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
+        ccaa=filters.ccaa,
+        tecnologia=filters.tecnologia,
+        estado=filters.estado,
+        importe_min=filters.importe_min,
+        q=filters.q,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -161,51 +133,47 @@ def _apply_filters(df: pd.DataFrame, filters: PipelineFilters) -> pd.DataFrame:
 def get_pipeline(filters: PipelineFilters) -> PipelineResult:
     """Compute upcoming deadlines and urgency alerts."""
     log.info("analytics_pipeline_start", dias=filters.dias, limit=filters.limit)
-    df = _load_df()
-
-    if df.empty or "fecha_limite_dt" not in df.columns:
+    hoy = datetime.now(UTC)
+    rows = _repo.pipeline_window(
+        _to_repo_filters(filters),
+        hoy_iso=hoy.isoformat(),
+        # (fecha_limite - hoy).days <= dias  ⟺  fecha_limite < hoy + (dias+1)d
+        hasta_iso=(hoy + timedelta(days=filters.dias + 1)).isoformat(),
+    )
+    if not rows:
         log.info("analytics_pipeline_done", total=0)
         return PipelineResult()
 
-    # Dataset completo (pre-filtros de usuario) — contexto de percentiles/señales
-    # para el scoring, igual que get_scoring: no se sesga por el subconjunto filtrado.
-    base_df = df
-
-    df = _apply_filters(df, filters)
-
-    # Filter to future deadlines
-    hoy = pd.Timestamp.now("UTC")
-    df = df.dropna(subset=["fecha_limite_dt"])
-    df = df[df["fecha_limite_dt"] > hoy]
-
-    if df.empty:
+    all_df = pd.DataFrame(rows)
+    all_df = all_df.assign(
+        fecha_limite_dt=pd.to_datetime(all_df["fecha_limite"], errors="coerce", utc=True),
+        importe=pd.to_numeric(all_df["importe"], errors="coerce"),
+    )
+    all_df = all_df.dropna(subset=["fecha_limite_dt"])
+    hoy_ts = pd.Timestamp(hoy)
+    all_df = all_df[all_df["fecha_limite_dt"] > hoy_ts]
+    if all_df.empty:
+        log.info("analytics_pipeline_done", total=0)
+        return PipelineResult()
+    all_df = all_df.copy()
+    all_df["dias_restantes"] = (all_df["fecha_limite_dt"] - hoy_ts).dt.days
+    all_df = all_df[all_df["dias_restantes"] <= filters.dias]
+    if all_df.empty:
         log.info("analytics_pipeline_done", total=0)
         return PipelineResult()
 
-    # Calculate dias_restantes
-    df = df.copy()
-    df["dias_restantes"] = (df["fecha_limite_dt"] - hoy).dt.days
+    total_en_plazo = len(all_df)
+    vencen_7d = int((all_df["dias_restantes"] <= 7).sum())
+    vencen_30d = int((all_df["dias_restantes"] <= 30).sum())
+    valor_total = float(all_df["importe"].sum(skipna=True))
+    valor_7d = float(all_df.loc[all_df["dias_restantes"] <= 7, "importe"].sum(skipna=True))
+    valor_30d = float(all_df.loc[all_df["dias_restantes"] <= 30, "importe"].sum(skipna=True))
 
-    # Filter within requested window
-    df = df[df["dias_restantes"] <= filters.dias]
-
-    # Counts
-    total_en_plazo = len(df)
-    vencen_7d = int((df["dias_restantes"] <= 7).sum())
-    vencen_30d = int((df["dias_restantes"] <= 30).sum())
-
-    # Valor económico (suma de importe) sobre la misma ventana que los conteos.
-    # importe ya llega numérico desde load_stats_base_df(); sin reconversión.
-    valor_total = float(df["importe"].sum(skipna=True))
-    valor_7d = float(df.loc[df["dias_restantes"] <= 7, "importe"].sum(skipna=True))
-    valor_30d = float(df.loc[df["dias_restantes"] <= 30, "importe"].sum(skipna=True))
-
-    # Sort by urgency and limit
-    all_df = df.copy()  # keep full for extra computations
-
-    # Score toda la ventana (no solo los `limit` items devueltos) para que el
-    # conteo de "calientes" sea real sobre el dataset completo de la ventana.
-    score_df = score_dataframe(base_df, all_df)
+    # Score de toda la ventana (no solo los `limit` devueltos). Contexto:
+    # percentiles P10/P90 globales desde SQL; la afinidad es por-fila, así que
+    # calcularla sobre la ventana equivale a calcularla sobre la tabla entera
+    # y consultar estos ids.
+    score_df = score_dataframe(all_df, all_df, importe_percentiles=_repo.importe_percentiles())
     if not score_df.empty:
         all_df["id_externo"] = all_df["id_externo"].astype(str)
         all_df = all_df.merge(score_df, on="id_externo", how="left")
@@ -243,41 +211,37 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
 
     # por_horizonte: [0,7), [7,30), [30,90), [90,∞)
     por_horizonte: list[HorizonteCount] = []
-    if not all_df.empty:
-        bins = [0, 7, 30, 90, float("inf")]
-        labels = ["<7d", "7-30d", "30-90d", "90+d"]
-        all_df["_horizonte"] = pd.cut(
-            all_df["dias_restantes"], bins=bins, labels=labels, right=False
-        )
-        for label in labels:
-            subset = all_df[all_df["_horizonte"] == label]
-            por_horizonte.append(
-                HorizonteCount(
-                    horizonte=label,
-                    count=len(subset),
-                    importe=float(subset["importe"].sum(skipna=True)),
-                )
+    bins = [0, 7, 30, 90, float("inf")]
+    labels = ["<7d", "7-30d", "30-90d", "90+d"]
+    all_df["_horizonte"] = pd.cut(all_df["dias_restantes"], bins=bins, labels=labels, right=False)
+    for label in labels:
+        subset = all_df[all_df["_horizonte"] == label]
+        por_horizonte.append(
+            HorizonteCount(
+                horizonte=label,
+                count=len(subset),
+                importe=float(subset["importe"].sum(skipna=True)),
             )
+        )
 
     # por_trimestre: group by quarter of fecha_limite
     por_trimestre: list[TrimestreCount] = []
-    if not all_df.empty:
-        all_df["_quarter"] = all_df["fecha_limite_dt"].dt.to_period("Q")
-        q_grp = (
-            all_df.dropna(subset=["_quarter"])
-            .groupby("_quarter")
-            .agg(_count=("id_externo", "count"), _importe=("importe", "sum"))
-            .reset_index()
-            .sort_values("_quarter")
-        )
-        for _, row in q_grp.iterrows():
-            por_trimestre.append(
-                TrimestreCount(
-                    trimestre=str(row["_quarter"]),
-                    count=int(row["_count"]),
-                    importe=float(row["_importe"] or 0),
-                )
+    all_df["_quarter"] = all_df["fecha_limite_dt"].dt.to_period("Q")
+    q_grp = (
+        all_df.dropna(subset=["_quarter"])
+        .groupby("_quarter")
+        .agg(_count=("id_externo", "count"), _importe=("importe", "sum"))
+        .reset_index()
+        .sort_values("_quarter")
+    )
+    for _, row in q_grp.iterrows():
+        por_trimestre.append(
+            TrimestreCount(
+                trimestre=str(row["_quarter"]),
+                count=int(row["_count"]),
+                importe=float(row["_importe"] or 0),
             )
+        )
 
     # urgencia_valor: scatter (dias_restantes vs importe), max 200
     urgencia_valor: list[UrgenciaValorPoint] = []

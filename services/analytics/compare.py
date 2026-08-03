@@ -1,16 +1,23 @@
-"""Compare periods analytics — side-by-side period comparison."""
+"""Compare periods analytics — side-by-side period comparison.
+
+Agrega en Postgres (ADR-023) reutilizando ``AggregateRepository.overview_kpis``
+— dos llamadas con rangos de fecha distintos. Hasta 2026-08 cargaba la tabla
+completa a pandas en el proceso API (vacío en producción por el
+cortacircuitos full-table de Render).
+"""
 
 from __future__ import annotations
 
 from datetime import date
 
-import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -52,28 +59,20 @@ class CompareResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _load_df() -> pd.DataFrame:
-    return load_stats_base_df()
-
-
-def _period_stats(df: pd.DataFrame, desde: date, hasta: date) -> PeriodStats:
-    if df.empty:
-        return PeriodStats()
-    ts_desde = pd.Timestamp(desde, tz="UTC")
-    ts_hasta = pd.Timestamp(hasta, tz="UTC")
-    subset = df[(df["fecha_publicacion"] >= ts_desde) & (df["fecha_publicacion"] <= ts_hasta)]
-    if subset.empty:
-        return PeriodStats()
-    total = len(subset)
-    imp_total = float(subset["importe"].sum(skipna=True))
-    imp_medio = float(subset["importe"].mean(skipna=True) or 0)
-    organos = (
-        int(subset["organo_contratacion"].nunique())
-        if "organo_contratacion" in subset.columns
-        else 0
+def _period_stats(filters: CompareFilters, desde: date, hasta: date) -> PeriodStats:
+    kpis = _repo.overview_kpis(
+        LicitacionesFilters(
+            fecha_desde=desde.isoformat(),
+            fecha_hasta=hasta.isoformat(),
+            ccaa=filters.ccaa,
+            tecnologia=filters.tecnologia,
+        )
     )
     return PeriodStats(
-        total=total, importe_total=imp_total, importe_medio=imp_medio, organos=organos
+        total=int(kpis["total"]),
+        importe_total=float(kpis["importe_total"]),
+        importe_medio=float(kpis["importe_medio"]),
+        organos=int(kpis["organos"]),
     )
 
 
@@ -91,16 +90,9 @@ def _pct_delta(a: float, b: float) -> float:
 def get_compare_periods(filters: CompareFilters) -> CompareResult:
     """Compare two time periods side-by-side."""
     log.info("analytics_compare_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df()
 
-    if not df.empty:
-        if filters.ccaa:
-            df = df[df["ccaa"] == filters.ccaa]
-        if filters.tecnologia:
-            df = df[df["tecnologia"] == filters.tecnologia]
-
-    pa = _period_stats(df, filters.range_a_desde, filters.range_a_hasta)
-    pb = _period_stats(df, filters.range_b_desde, filters.range_b_hasta)
+    pa = _period_stats(filters, filters.range_a_desde, filters.range_a_hasta)
+    pb = _period_stats(filters, filters.range_b_desde, filters.range_b_hasta)
 
     deltas = PeriodDeltas(
         total_pct=_pct_delta(pa.total, pb.total),

@@ -1,7 +1,13 @@
 /**
- * Navigation configuration.
+ * Registro de páginas y su contrato de filtros globales.
  *
- * Single source of truth for the frontend navigation tree.
+ * La NAVEGACIÓN (rail, vistas, redirects) vive en `lib/console-spaces.ts` +
+ * `lib/space-views.ts` — única fuente desde la retirada del cromo heredado
+ * (2026-08: breadcrumb, pestañas de sección y KPI bar, muertos al quedar
+ * construidos los 14 espacios). Este módulo conserva lo que la consola sigue
+ * consumiendo: el catálogo de páginas (`ALL_PAGES`/`findPage`, buscador ⌘K y
+ * atajos) y el contrato de filtros por página que la barra de ámbito deriva —
+ * para un espacio, vía las rutas que absorbe (`SPACE_VIEWS`).
  */
 
 import {
@@ -74,54 +80,11 @@ export interface NavSection {
   icon: LucideIcon;
   pages: NavPage[];
   adminOnly?: boolean;
-  /**
-   * Espacio de producto al que pertenece la sección, **declarado**.
-   *
-   * Antes se infería por descarte ("si no es Radar ni Oportunidades, es
-   * Mercado"), de modo que el breadcrumb anunciaba "Mercado › Administración" y
-   * "Mercado › Calidad de Datos". Ops, Admin y Mi Pipeline no son análisis de
-   * mercado: se quedan sin espacio y el breadcrumb arranca en su sección.
-   */
-  space?: ProductSpace["label"];
 }
-
-/**
- * The product's primary mental model.  Legacy analytical routes stay in
- * `SECTIONS` beneath Mercado so bookmarks and the existing exploration tools
- * remain available during the gradual migration.
- */
-export interface ProductSpace {
-  label: "Radar" | "Oportunidades" | "Mercado";
-  slug: string;
-  description: string;
-  icon: LucideIcon;
-}
-
-export const PRODUCT_SPACES: ProductSpace[] = [
-  {
-    label: "Radar",
-    slug: "radar",
-    description: "Descubrimiento personalizado y acción directa.",
-    icon: RadioTower,
-  },
-  {
-    label: "Oportunidades",
-    slug: "oportunidades",
-    description: "Decisiones, equipo, oferta y resultado.",
-    icon: Briefcase,
-  },
-  {
-    label: "Mercado",
-    slug: "resumen",
-    description: "Consulta analítica con alcance explícito.",
-    icon: Globe,
-  },
-];
 
 export const SECTIONS: NavSection[] = [
   {
     label: "Radar",
-    space: "Radar",
     icon: RadioTower,
     pages: [
       {
@@ -137,7 +100,6 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Oportunidades",
-    space: "Oportunidades",
     icon: Briefcase,
     pages: [
       {
@@ -164,7 +126,6 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Inicio",
-    space: "Mercado",
     icon: LayoutDashboard,
     pages: [
       {
@@ -178,7 +139,6 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Licitaciones",
-    space: "Mercado",
     icon: Search,
     pages: [
       {
@@ -192,7 +152,6 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Tendencias",
-    space: "Mercado",
     icon: TrendingUp,
     pages: [
       {
@@ -219,7 +178,6 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Mercado",
-    space: "Mercado",
     icon: Globe,
     pages: [
       {
@@ -261,7 +219,6 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Competencia",
-    space: "Mercado",
     icon: Trophy,
     pages: [
       {
@@ -328,7 +285,6 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Investigador",
-    space: "Mercado",
     icon: Sparkles,
     pages: [
       {
@@ -407,30 +363,6 @@ export const ALL_PAGES = SECTIONS.flatMap((s) =>
  */
 export function findPage(slug: string) {
   return ALL_PAGES.find((p) => p.slug === slug);
-}
-
-/**
- * Find the section that contains a page slug.
- */
-export function findSection(slug: string) {
-  return SECTIONS.find((s) => s.pages.some((p) => p.slug === slug));
-}
-
-/**
- * Espacio de producto al que pertenece una ruta, según lo declarado en su
- * sección (`NavSection.space`).
- *
- * Devuelve `undefined` para las secciones que no viven bajo ningún espacio
- * (Mi Pipeline, Ops, Admin). Antes esta función devolvía `Mercado` para
- * cualquier ruta conocida que no fuese radar/oportunidades, y de ahí salían
- * breadcrumbs falsos como "Mercado › Administración".
- */
-export function findProductSpace(slug: string): ProductSpace | undefined {
-  const cleanSlug = slug.replace(/^\//, "").split("/")[0];
-  const sectionSpace = findSection(cleanSlug)?.space;
-  return sectionSpace
-    ? PRODUCT_SPACES.find((space) => space.label === sectionSpace)
-    : undefined;
 }
 
 /**

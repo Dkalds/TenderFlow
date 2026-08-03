@@ -1,8 +1,12 @@
-"""Servicio de licitaciones — acceso de lectura enriquecido.
+"""Servicio de licitaciones — acceso de lectura para API y jobs.
 
-Centraliza la lógica de carga, filtrado y paginación de licitaciones.
-Delega en ``db/repositories/licitaciones.py`` para queries SQL y aplica
-enriquecimiento (clasificadores, normalización) inline.
+Centraliza la lógica de carga, filtrado y paginación de licitaciones,
+delegando en ``db/repositories/licitaciones.py`` para queries SQL. Las
+analíticas ya NO pasan por aquí: agregan en Postgres vía
+``db/repositories/aggregates.py`` (ADR-023) — los loaders full-table
+(``load_stats_base_df``/``load_dataframe`` y sus cachés) se retiraron al
+migrar el último consumidor, junto con el cortacircuitos de Render que los
+bloqueaba.
 """
 
 from __future__ import annotations
@@ -14,38 +18,10 @@ import pandas as pd
 from db.repositories.licitaciones import LicitacionRepository
 from observability.histograms import timed_query
 from observability.logging import get_logger
-from services._data_cache import SignalAwareCache, render_api_full_table_loads_blocked
 
 log = get_logger(__name__)
 
 _repo = LicitacionRepository()
-
-# Caché del DataFrame base (con las conversiones de tipo canónicas ya
-# aplicadas — ver load_stats_base_df), única fuente de verdad para
-# stats/analytics. Invalidada por TTL o por la señal de ingesta
-# (shared.cache_signal). Analytics services llaman a load_stats_base_df() y
-# reciben un .copy(); SignalAwareCache serializa los misses concurrentes, así
-# que N threads con caché fría no construyen pd.DataFrame(rows) en paralelo.
-#
-# Antes existía además ``_stats_cache`` con la misma carga como list[dict] —
-# nadie fuera de load_stats_base_df() consumía esa lista, así que mantenerla
-# solo duplicaba en memoria el dataset full-table (~47k filas) sin necesidad.
-# Ver postmortem OOM Render 2026-07-14.
-_stats_df_cache: SignalAwareCache[pd.DataFrame] = SignalAwareCache()
-
-# ── Columnas reutilizadas por load_raw / stats ───────────────────────────
-_RAW_COLUMNS = (
-    "id_externo, titulo, organo_contratacion, importe, estado, "
-    "fecha_publicacion, ccaa, nuts_code, cpv, url, tecnologia, "
-    "tipo_contrato, moneda, provincia, duracion_valor, duracion_unidad, "
-    "fecha_limite, fecha_inicio, fecha_fin, fecha_extraccion"
-)
-
-_STATS_COLUMNS = (
-    "id_externo, titulo, organo_contratacion, importe, estado, "
-    "fecha_publicacion, ccaa, nuts_code, cpv, url, tecnologia, tipo_contrato, "
-    "moneda, provincia, fecha_limite, fecha_inicio, fecha_fin, fecha_extraccion"
-)
 
 
 # ── API paginada (usada por la REST API) ─────────────────────────────────
@@ -88,79 +64,6 @@ def get_licitacion_detail(id_externo: str) -> dict[str, Any] | None:
         return _repo.get_by_id(id_externo)
 
 
-# ── Carga raw para consumidores de datos (sin enriquecimiento) ───────────
-
-
-def load_raw(limit: int | None = None) -> list[dict[str, Any]]:
-    """Carga licitaciones clasificadas (raw, sin enriquecimiento).
-
-    Devuelve lista de dicts para que ``data_loader`` convierta a DataFrame
-    y aplique transformaciones de presentación.
-    """
-    from db.database import init_db
-
-    init_db()
-    with timed_query("svc_load_raw"):
-        return _repo.load_raw(columns=_RAW_COLUMNS, limit=limit)
-
-
-def load_stats_dataframe() -> list[dict[str, Any]]:
-    """Carga ligera de licitaciones para KPIs y stats (sin enriquecimiento), sin cachear.
-
-    Cada llamada relee la BD; el único llamador en producción es
-    :func:`load_stats_base_df`, que sí cachea el resultado (como DataFrame).
-    """
-    with timed_query("svc_load_stats"):
-        return _repo.load_stats(_STATS_COLUMNS)
-
-
-def load_stats_base_df() -> pd.DataFrame:
-    """Devuelve el DataFrame base de licitaciones para analytics, COMPARTIDO entre llamadas.
-
-    El DataFrame base se construye una única vez con las conversiones de tipo
-    canónicas ya aplicadas (fecha_publicacion/fecha_limite/fecha_inicio/fecha_fin
-    a datetime UTC vía ``pd.to_datetime(errors="coerce", utc=True)``; importe a
-    numérico vía ``pd.to_numeric(errors="coerce")``) y se invalida por TTL o por
-    la señal de ingesta (``_stats_df_cache``).
-
-    IMPORTANTE — ya no se devuelve ``.copy()``: el objeto devuelto es la
-    instancia cacheada compartida por todos los consumidores concurrentes
-    (antes se copiaba el DataFrame completo en cada llamada, multiplicando el
-    pico de memoria por N bajo N requests concurrentes con caché fría — ver
-    postmortem OOM Render 2026-07-14 en ``services/_data_cache.py``). Los
-    consumidores **no deben mutar el DataFrame recibido**: filtrar con
-    ``df = df[mask]`` o añadir columnas derivadas con ``df.assign(...)`` (que
-    devuelven un objeto nuevo) es seguro; escribir ``df["col"] = ...`` o
-    ``df.loc[...] = ...`` directamente sobre el frame recibido no lo es —
-    contamina la caché para todas las requests siguientes. Si una función
-    necesita mutar in-place (varias asignaciones secuenciales, ``.loc``
-    condicional), debe tomar su propia copia explícita primero
-    (``df = df.copy()``).
-    """
-
-    if render_api_full_table_loads_blocked():
-        log.warning("analytics_full_table_load_blocked", dataset="licitaciones")
-        return pd.DataFrame()
-
-    def _build() -> pd.DataFrame:
-        df = pd.DataFrame(load_stats_dataframe())
-        if df.empty:
-            return df
-        for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-        if "importe" in df.columns:
-            df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-        return df
-
-    return _stats_df_cache.get(_build)
-
-
-def clear_stats_cache() -> None:
-    """Invalida la caché de :func:`load_stats_base_df`."""
-    _stats_df_cache.clear()
-
-
 # ── Búsquedas especializadas ─────────────────────────────────────────────
 
 
@@ -175,108 +78,6 @@ def search_fts_ids(query: str, limit: int = 1000) -> list[str] | None:
     Returns ``None`` si FTS no está disponible o la query falla (fallback a str.contains).
     """
     return _repo.search_fts_ids(query, limit)
-
-
-# ── Proxies de conveniencia (transición gradual) ─────────────────────────
-
-
-def load_dataframe(limit: int | None = None) -> pd.DataFrame:
-    """Carga licitaciones enriquecidas desde la BD.
-
-    Obtiene datos raw via ``load_raw()`` y aplica enriquecimiento
-    (clasificadores, normalización, geo) inline.
-    """
-    from services.classification import (
-        ESTADO_LABELS,
-        TIPO_CONTRATO_LABELS,
-        cpv_label,
-        detect_modules,
-        detect_project_type,
-    )
-    from shared.dates import month_start
-    from shared.geo import nuts_to_ccaa
-
-    rows = load_raw(limit=limit)
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-
-    df["fecha_publicacion"] = pd.to_datetime(
-        df["fecha_publicacion"],
-        errors="coerce",
-        format="mixed",
-        utc=True,
-    )
-    df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    df["mes"] = month_start(df["fecha_publicacion"])
-    df["anyo"] = df["fecha_publicacion"].dt.year
-
-    # Enrichment
-    desc_col = (
-        df["descripcion"].fillna("")
-        if "descripcion" in df.columns
-        else pd.Series("", index=df.index)
-    )
-    text_blob = df["titulo"].fillna("") + " " + desc_col
-
-    try:
-        df["modulos"] = text_blob.apply(detect_modules)
-        df["modulos_str"] = df["modulos"].str.join(", ")
-    except Exception:
-        df["modulos"] = [[] for _ in range(len(df))]
-        df["modulos_str"] = ""
-
-    try:
-        df["tipo_proyecto"] = text_blob.apply(detect_project_type)
-    except Exception:
-        df["tipo_proyecto"] = "Otro"
-
-    try:
-        df["cpv_desc"] = df["cpv"].apply(cpv_label)
-    except Exception:
-        df["cpv_desc"] = ""
-
-    try:
-        stripped_estado = df["estado"].str.strip()
-        df["estado_desc"] = (
-            stripped_estado.map(ESTADO_LABELS).fillna(stripped_estado).fillna("Desconocido")
-        )
-    except Exception:
-        df["estado_desc"] = ""
-
-    try:
-        stripped_tc = df["tipo_contrato"].str.strip()
-        mapped_tc = stripped_tc.map(TIPO_CONTRATO_LABELS)
-        unmapped = mapped_tc.isna() & stripped_tc.notna() & (stripped_tc != "")
-        mapped_tc[unmapped] = "Tipo " + stripped_tc[unmapped]
-        df["tipo_contrato_desc"] = mapped_tc.fillna("—")
-    except Exception:
-        df["tipo_contrato_desc"] = ""
-
-    # Backfill CCAA
-    if "ccaa" in df.columns and "nuts_code" in df.columns:
-        try:
-            mask = df["ccaa"].isna() & df["nuts_code"].notna()
-            df.loc[mask, "ccaa"] = df.loc[mask, "nuts_code"].apply(nuts_to_ccaa)
-        except Exception:
-            pass
-
-    for col in ("ccaa", "estado", "tipo_contrato", "provincia", "tipo_proyecto"):
-        if col in df.columns:
-            df[col] = df[col].astype("category")
-
-    return df
-
-
-def load_adjudicaciones(
-    *,
-    limit: int | None = None,
-    ccaa_filter: tuple[str, ...] | None = None,
-) -> pd.DataFrame:
-    """Proxy a la carga de adjudicaciones enriquecidas."""
-    from services.adjudicaciones import load_adjudicaciones as _svc_adj
-
-    return _svc_adj(limit=limit, ccaa_filter=ccaa_filter)
 
 
 # ── Búsqueda avanzada (POST /licitaciones/search) ────────────────────────

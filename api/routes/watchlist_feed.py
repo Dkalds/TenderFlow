@@ -30,6 +30,10 @@ def _require_watchlist_read(
 @router.get(
     "/feed.xml",
     summary="Feed Atom con las últimas licitaciones que coinciden con tu watchlist",
+    # response_class=Response evita el content application/json {} por defecto:
+    # este endpoint es XML y su contrato lo declara `responses` (el checker de
+    # operaciones opacas solo mira application/json).
+    response_class=Response,
     responses={
         200: {"content": {"application/atom+xml": {}}, "description": "Feed Atom 1.0"},
         401: {"description": "Token inválido o ausente"},

@@ -42,6 +42,7 @@ import {
   Mail,
 } from "lucide-react";
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
+import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
 import { getJSON, setJSON } from "@/lib/storage";
 import { SpaceShell } from "@/components/layout/space-shell";
 import {
@@ -50,23 +51,12 @@ import {
 } from "@/hooks/use-watchlist-items";
 
 /* ------------------------------------------------------------------ */
-/*  Types — alineados con /api/v1/watchlist/rules                      */
+/*  Types — del contrato OpenAPI (la ruta ya declara sus DTOs)         */
 /* ------------------------------------------------------------------ */
 
 type Frequency = "immediate" | "daily" | "weekly";
 
-interface ApiRule {
-  id: number;
-  nombre: string | null;
-  keyword: string | null;
-  cpv: string | null;
-  min_importe: number | null;
-  ccaa: string | null;
-  frequency: Frequency;
-  active: boolean;
-  match_count: number;
-  email: string | null;
-}
+type ApiRule = WatchlistRuleOut;
 
 interface RuleBody {
   nombre: string | null;
@@ -109,15 +99,7 @@ function formStateToBody(form: RuleFormState, active: boolean): RuleBody {
   };
 }
 
-interface MatchItem {
-  id_externo?: string;
-  titulo?: string;
-  organo_contratacion?: string;
-  importe?: number;
-  estado?: string;
-  fecha_publicacion?: string;
-  [key: string]: unknown;
-}
+type MatchItem = WatchlistRuleMatch;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers de API (sesión vía cookie, igual que el resto del dash)    */
@@ -142,13 +124,13 @@ async function apiSend(
 
 function ruleToBody(rule: ApiRule, overrides: Partial<RuleBody> = {}): RuleBody {
   return {
-    nombre: rule.nombre,
-    keyword: rule.keyword,
-    cpv: rule.cpv,
-    min_importe: rule.min_importe,
-    ccaa: rule.ccaa,
-    frequency: rule.frequency,
-    active: rule.active,
+    nombre: rule.nombre ?? null,
+    keyword: rule.keyword ?? null,
+    cpv: rule.cpv ?? null,
+    min_importe: rule.min_importe ?? null,
+    ccaa: rule.ccaa ?? null,
+    frequency: rule.frequency ?? "daily",
+    active: rule.active ?? true,
     ...overrides,
   };
 }

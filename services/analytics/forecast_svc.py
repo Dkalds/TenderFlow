@@ -1,4 +1,13 @@
-"""Forecast analytics — volume forecasting and retendering predictions."""
+"""Forecast analytics — volume forecasting and retendering predictions.
+
+ADR-023: el forecast de volumen consume la serie mensual YA agregada en
+Postgres (``forecast_monthly`` → ``forecast_volume_from_monthly``) y el de
+re-licitación una proyección ACOTADA (solo filas con duración positiva o
+``fecha_fin`` explícita — las únicas que pueden producir una fecha de fin).
+Hasta 2026-08 ambos cargaban las dos tablas completas al proceso API —
+bloqueado en Render por el cortacircuitos full-table, que dejaba los
+endpoints vacíos en producción.
+"""
 
 from __future__ import annotations
 
@@ -8,12 +17,13 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.adjudicaciones import load_raw_adjudicaciones
-from services.analytics.forecast import build_forecast_df, forecast_volume
-from services.licitaciones import load_stats_base_df
+from services.analytics.forecast import build_forecast_df, forecast_volume_from_monthly
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -77,64 +87,15 @@ class RetenderingResult(BaseModel):
     resumen: RetenderingResumen = Field(default_factory=RetenderingResumen)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _load_licit_df() -> pd.DataFrame:
-    df = load_stats_base_df()
-    if not df.empty:
-        # Copia explícita: load_stats_base_df() devuelve el DataFrame cacheado
-        # compartido (sin .copy()), y esta función hace varias mutaciones
-        # in-place (incluyendo un .loc condicional) que contaminarían la
-        # caché entre requests concurrentes si operaran sobre el original.
-        df = df.copy()
-        df["duracion_valor"] = pd.to_numeric(
-            df.get("duracion_valor", pd.Series(dtype=float)), errors="coerce"
-        )
-        if "duracion_unidad" not in df.columns:
-            df["duracion_unidad"] = None
-        # tipo_proyecto enrichment
-        titulo_lower = df.get("titulo", pd.Series(dtype=str)).fillna("").str.lower()
-        df["tipo_proyecto"] = "Otro"
-        maint_mask = titulo_lower.str.contains("mantenimiento|soporte", na=False)
-        df.loc[maint_mask, "tipo_proyecto"] = "Mantenimiento"
-    return df
-
-
-def _load_adj_df() -> pd.DataFrame:
-    rows = load_raw_adjudicaciones()
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        if "fecha_adjudicacion" in df.columns:
-            df["fecha_adjudicacion"] = pd.to_datetime(
-                df["fecha_adjudicacion"], errors="coerce", utc=True
-            )
-        for col in ("importe_adjudicado", "n_ofertas_recibidas"):
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-        if "nombre" not in df.columns and "adjudicatario" in df.columns:
-            df["nombre"] = df["adjudicatario"]
-        if "licitacion_id" not in df.columns and "id_externo" in df.columns:
-            df["licitacion_id"] = df["id_externo"]
-    return df
-
-
-def _apply_filters(df: pd.DataFrame, filters: Any) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if getattr(filters, "fecha_desde", None) is not None:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_publicacion"] >= ts]
-    if getattr(filters, "fecha_hasta", None) is not None:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_publicacion"] <= ts]
-    if getattr(filters, "ccaa", None) and "ccaa" in df.columns:
-        df = df[df["ccaa"] == filters.ccaa]
-    if getattr(filters, "tecnologia", None) and "tecnologia" in df.columns:
-        df = df[df["tecnologia"] == filters.tecnologia]
-    return df
+def _to_repo_filters(filters: Any) -> LicitacionesFilters:
+    fecha_desde = getattr(filters, "fecha_desde", None)
+    fecha_hasta = getattr(filters, "fecha_hasta", None)
+    return LicitacionesFilters(
+        fecha_desde=fecha_desde.isoformat() if fecha_desde else None,
+        fecha_hasta=fecha_hasta.isoformat() if fecha_hasta else None,
+        ccaa=getattr(filters, "ccaa", None),
+        tecnologia=getattr(filters, "tecnologia", None),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,13 +106,17 @@ def _apply_filters(df: pd.DataFrame, filters: Any) -> pd.DataFrame:
 def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
     """Forecast licitaciones volume using Holt-Winters / linear fallback."""
     log.info("analytics_forecast_volume_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_licit_df()
-    df = _apply_filters(df, filters)
-
-    if df.empty:
+    monthly = _repo.forecast_monthly(_to_repo_filters(filters), metric=filters.metric)
+    if not monthly:
         return ForecastVolumeResult()
 
-    result_df = forecast_volume(df, months_ahead=filters.months_ahead, metric=filters.metric)
+    hist = pd.DataFrame(
+        {
+            "mes": [pd.Timestamp(str(r["mes"]) + "-01") for r in monthly],
+            "valor": [float(r["valor"] or 0) for r in monthly],
+        }
+    )
+    result_df = forecast_volume_from_monthly(hist, months_ahead=filters.months_ahead)
     if result_df.empty:
         return ForecastVolumeResult()
 
@@ -179,12 +144,31 @@ def get_retendering_forecast(filters: RetenderingFilters) -> RetenderingResult:
        y docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
     """
     log.info("analytics_retendering_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_licit_df()
-    df = _apply_filters(df, filters)
-    adj_df = _load_adj_df()
-
-    if df.empty:
+    rows = _repo.retendering_universe(_to_repo_filters(filters))
+    if not rows:
         return RetenderingResult()
+
+    df = pd.DataFrame(rows)
+    df = df.assign(
+        importe=pd.to_numeric(df["importe"], errors="coerce"),
+        duracion_valor=pd.to_numeric(df["duracion_valor"], errors="coerce"),
+    )
+    titulo_lower = df["titulo"].fillna("").str.lower()
+    df["tipo_proyecto"] = "Otro"
+    df.loc[titulo_lower.str.contains("mantenimiento|soporte", na=False), "tipo_proyecto"] = (
+        "Mantenimiento"
+    )
+
+    adj_rows = _repo.adjudicaciones_para_forecast(
+        [str(i) for i in df["id_externo"].astype(str).tolist()]
+    )
+    adj_df = pd.DataFrame(adj_rows)
+    if not adj_df.empty:
+        adj_df = adj_df.assign(
+            fecha_adjudicacion=pd.to_datetime(adj_df["fecha_adjudicacion"], errors="coerce"),
+            importe_adjudicado=pd.to_numeric(adj_df["importe_adjudicado"], errors="coerce"),
+            n_ofertas_recibidas=pd.to_numeric(adj_df["n_ofertas_recibidas"], errors="coerce"),
+        )
 
     forecast_df = build_forecast_df(
         df,

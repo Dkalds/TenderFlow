@@ -212,20 +212,12 @@ export function findConsoleSpace(pathname: string): ConsoleSpace | undefined {
 }
 
 /**
- * Rutas con el chrome de consola (rail + barra de ámbito). Hoy son los 14
- * espacios: la migración está completa y ninguna ruta del dashboard se quedó
- * con el cromo heredado.
- *
- * El mecanismo sigue vivo por si hay que revertir un espacio: sacarlo de
- * `BUILT_SPACE_ROUTES` le devuelve el breadcrumb, las pestañas y el KPI bar, y
- * apaga su redirect en el mismo gesto — mandar `/tendencias` a un `/mercado`
- * que no existe cambiaría una pantalla viva por un 404.
+ * Rutas de espacio ya construidas, como Set para lookups. La migración está
+ * completa (14/14): toda ruta del dashboard es superficie de consola y el
+ * cromo heredado (breadcrumb, pestañas, KPI bar) se retiró en 2026-08 —
+ * `console-frame.tsx` monta una única superficie sin mirar la ruta.
  */
 export const CONSOLE_ROUTES = new Set<string>(BUILT_SPACE_ROUTES);
-
-export function isConsoleRoute(pathname: string): boolean {
-  return CONSOLE_ROUTES.has(routeSlug(pathname));
-}
 
 /** ¿El espacio tiene ya su propia ruta, o sigue viviendo en las heredadas? */
 export function isSpaceImplemented(space: ConsoleSpace): boolean {

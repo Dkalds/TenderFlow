@@ -13,16 +13,10 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import type { WatchlistFavoriteItem } from "@/lib/api-types";
 
-export interface WatchlistItem {
-  id: number;
-  id_externo: string;
-  created_at: string;
-  titulo: string | null;
-  importe: number | null;
-  estado: string | null;
-  fecha_publicacion: string | null;
-}
+// Del contrato OpenAPI (la ruta ya declara su DTO) — antes duplicado a mano.
+export type WatchlistItem = WatchlistFavoriteItem;
 
 const WATCHLIST_ITEMS_KEY = ["watchlist-items"] as const;
 
@@ -32,6 +26,8 @@ function buildOptimisticItem(idExterno: string): WatchlistItem {
     id: -Date.now(),
     id_externo: idExterno,
     created_at: new Date().toISOString(),
+    organization_id: null,
+    visibility: null,
     titulo: null,
     importe: null,
     estado: null,

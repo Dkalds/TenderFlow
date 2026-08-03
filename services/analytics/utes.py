@@ -1,4 +1,14 @@
-"""UTE analytics — analysis of Uniones Temporales de Empresas."""
+"""UTE analytics — analysis of Uniones Temporales de Empresas.
+
+Agrega en Postgres vía :class:`AdjudicacionRepository` (ADR-023); hasta 2026-08
+cargaba el join completo de adjudicaciones a pandas en el proceso API —
+bloqueado en Render por el cortacircuitos full-table, que dejaba este endpoint
+vacío en producción. El grafo de socios se construye sobre la proyección
+ACOTADA de filas UTE (una fracción pequeña del total): además de acotar la
+carga, esto REPARA ``socios_frecuentes`` — el camino anterior exigía una
+columna ``es_ute`` que el loader raw nunca producía, así que la sección
+llegaba siempre vacía.
+"""
 
 from __future__ import annotations
 
@@ -7,11 +17,13 @@ from datetime import date
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
-from services.adjudicaciones import load_raw_adjudicaciones
 from services.partners import build_partnership_graph
 
 log = get_logger(__name__)
+
+_repo = AdjudicacionRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -77,27 +89,9 @@ class UTEResult(BaseModel):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-_UTE_PATTERN = r"(?i)UTE|UNION TEMPORAL|UNIÓN TEMPORAL"
-
-
-def _load_df(ccaa: str | None) -> pd.DataFrame:
-    ccaa_filter = (ccaa,) if ccaa else None
-    rows = load_raw_adjudicaciones(ccaa_filter=ccaa_filter)
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        if "fecha_adjudicacion" in df.columns:
-            df["fecha_adjudicacion"] = pd.to_datetime(
-                df["fecha_adjudicacion"], errors="coerce", utc=True
-            )
-        df["importe"] = pd.to_numeric(
-            df.get("importe_adjudicado", df.get("importe", pd.Series(dtype=float))),
-            errors="coerce",
-        )
-        if "empresa" not in df.columns and "adjudicatario" in df.columns:
-            df["empresa"] = df["adjudicatario"]
-        elif "empresa" not in df.columns and "nombre" in df.columns:
-            df["empresa"] = df["nombre"]
-    return df
+# Aplicado con `~*` (case-insensitive) sobre el nombre raw del adjudicatario;
+# misma semántica de substring que el `str.contains` del camino pandas previo.
+_UTE_PATTERN = r"UTE|UNION TEMPORAL|UNIÓN TEMPORAL"
 
 
 # ---------------------------------------------------------------------------
@@ -108,88 +102,76 @@ def _load_df(ccaa: str | None) -> pd.DataFrame:
 def get_utes(filters: UTEFilters) -> UTEResult:
     """UTE-specific analysis from adjudicaciones."""
     log.info("analytics_utes_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df(filters.ccaa)
+    ccaa_filter = (filters.ccaa,) if filters.ccaa else None
+    fecha_desde = filters.fecha_desde.isoformat() if filters.fecha_desde else None
+    fecha_hasta = filters.fecha_hasta.isoformat() if filters.fecha_hasta else None
 
-    if df.empty or "empresa" not in df.columns:
-        return UTEResult()
+    stats = _repo.ute_kpis(
+        pattern=_UTE_PATTERN,
+        ccaa_filter=ccaa_filter,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
 
-    # Apply date filters
-    if filters.fecha_desde is not None and "fecha_adjudicacion" in df.columns:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_adjudicacion"] >= ts]
-    if filters.fecha_hasta is not None and "fecha_adjudicacion" in df.columns:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_adjudicacion"] <= ts]
-
-    # Split UTE vs individual
-    ute_mask = df["empresa"].str.contains(_UTE_PATTERN, na=False)
-    ute_df = df[ute_mask]
-    ind_df = df[~ute_mask]
-
-    total_ute = len(ute_df)
-    importe_ute = float(ute_df["importe"].sum(skipna=True))
+    total_ute = stats["total_ute"]
+    importe_ute = stats["importe_ute"]
     ticket_ute = (importe_ute / total_ute) if total_ute > 0 else 0.0
 
-    total_ind = len(ind_df)
-    importe_ind = float(ind_df["importe"].sum(skipna=True))
+    total_ind = stats["total_individual"]
+    importe_ind = stats["importe_individual"]
     ticket_ind = (importe_ind / total_ind) if total_ind > 0 else 0.0
-
-    empresas_distintas = int(ute_df["empresa"].nunique()) if not ute_df.empty else 0
 
     kpis = UTEKpis(
         total_ute=total_ute,
         importe_ute=importe_ute,
         ticket_medio_ute=ticket_ute,
         ticket_medio_individual=ticket_ind,
-        empresas_distintas=empresas_distintas,
+        empresas_distintas=stats["empresas_distintas"],
     )
 
     # Top miembros (use full name since parsing UTE members is unreliable)
-    top_miembros: list[UTEMiembro] = []
-    if not ute_df.empty:
-        g = (
-            ute_df.groupby("empresa")
-            .agg(count=("empresa", "count"), importe=("importe", "sum"))
-            .sort_values("count", ascending=False)
-            .head(20)
-            .reset_index()
+    top_miembros = [
+        UTEMiembro(
+            nombre=str(r["nombre"]),
+            count=int(r["count"]),
+            importe=float(r["importe"] or 0),
         )
-        top_miembros = [
-            UTEMiembro(
-                nombre=str(row["empresa"]),
-                count=int(row["count"]),
-                importe=float(row["importe"] or 0),
-            )
-            for _, row in g.iterrows()
-        ]
+        for r in _repo.ute_top_miembros(
+            pattern=_UTE_PATTERN,
+            ccaa_filter=ccaa_filter,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            limit=20,
+        )
+    ]
 
     # Evolucion mensual
-    evolucion: list[UTEEvolucion] = []
-    if not ute_df.empty and "fecha_adjudicacion" in ute_df.columns:
-        work = ute_df.dropna(subset=["fecha_adjudicacion"]).copy()
-        if not work.empty:
-            work["period"] = work["fecha_adjudicacion"].dt.to_period("M").dt.to_timestamp()
-            g = (
-                work.groupby("period")
-                .agg(contratos=("empresa", "count"), importe=("importe", "sum"))
-                .reset_index()
-                .sort_values("period")
-            )
-            evolucion = [
-                UTEEvolucion(
-                    period=row["period"].strftime("%Y-%m"),
-                    contratos=int(row["contratos"]),
-                    importe=float(row["importe"] or 0),
-                )
-                for _, row in g.iterrows()
-            ]
+    evolucion = [
+        UTEEvolucion(
+            period=str(r["period"]),
+            contratos=int(r["contratos"]),
+            importe=float(r["importe"] or 0),
+        )
+        for r in _repo.ute_evolucion(
+            pattern=_UTE_PATTERN,
+            ccaa_filter=ccaa_filter,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+        )
+    ]
 
     # Socios frecuentes: pares de empresas que han co-licitado en UTE (real,
-    # parseado del nombre vía build_partnership_graph), ordenados por nº de UTEs.
+    # parseado del nombre vía build_partnership_graph sobre la proyección
+    # acotada de filas UTE), ordenados por nº de UTEs.
     socios_frecuentes: list[UTESocioPar] = []
-    if "es_ute" in df.columns and "nombre" in df.columns:
-        gdf = df.copy()
-        gdf["es_ute"] = gdf["es_ute"].fillna(0).astype(bool)
+    ute_rows = _repo.load_ute_rows(
+        pattern=_UTE_PATTERN,
+        ccaa_filter=ccaa_filter,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+    if ute_rows:
+        gdf = pd.DataFrame(ute_rows).assign(es_ute=True)
         graph = build_partnership_graph(gdf, min_contratos=1, top_nodes=80)
         top_edges = sorted(graph["edges"], key=lambda e: e["contratos"], reverse=True)[:20]
         socios_frecuentes = [

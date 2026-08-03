@@ -1324,9 +1324,10 @@ export interface paths {
          *        propia respuesta.
          *
          *        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
-         *        Eso sólo funciona con una única instancia que además no se reinicie: en
-         *        el plan actual de Render la instancia se recicla por inactividad, así
-         *        que un job aceptado con 202 desaparece y el sondeo devuelve 404 sin que
+         *        Eso sólo funciona con una única instancia que además no se reinicie:
+         *        cualquier deploy o reinicio de la instancia (el plan de pago de Render
+         *        ya no hiberna por inactividad, pero sí recicla en cada release) hace
+         *        desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
          *        nada lo registre como fallo; y al escalar a dos instancias el poll cae
          *        en la equivocada y responde 404 o 403 de forma no determinista.
          *
@@ -2475,8 +2476,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Búsqueda semántica híbrida (FAISS + FTS5/BM25)
-         * @description Ejecuta una búsqueda híbrida sobre el índice FAISS y el índice de texto completo FTS5. Combina puntuaciones semánticas y léxicas con reranking ponderado (alpha·FAISS + (1-alpha)·FTS5).
+         * Búsqueda de texto completo (FTS/BM25)
+         * @description Ejecuta una búsqueda de texto completo (Postgres tsvector/ts_rank_cd) con fallback LIKE. Los campos alpha/embedding_model son legacy sin efecto desde la retirada de FAISS (2026-07).
          */
         post: operations["semantic_search_api_v1_search_semantic_post"];
         delete?: never;
@@ -2755,6 +2756,16 @@ export interface components {
             nombre: string;
         };
         /**
+         * AdminUserAction
+         * @description Resultado de una acción de moderación sobre un usuario.
+         */
+        AdminUserAction: {
+            /** Action */
+            action: string;
+            /** Status */
+            status: string;
+        };
+        /**
          * AdminUserOut
          * @description Vista segura de usuario para administración; excluye credenciales.
          */
@@ -2854,6 +2865,72 @@ export interface components {
              */
             top_k: number;
         };
+        /**
+         * AuditChainVerification
+         * @description Resultado de recalcular el hash chain del audit log.
+         *
+         *     ``valid`` es None cuando la cadena no está disponible (migración
+         *     pendiente) — distinto de False, que significa manipulación detectada.
+         */
+        AuditChainVerification: {
+            /** Checked */
+            checked: number;
+            /** Error */
+            error: string | null;
+            /** First Tampered Id */
+            first_tampered_id: number | null;
+            /** Valid */
+            valid: boolean | null;
+        };
+        /**
+         * BajaAgregada
+         * @description Baja media por grupo (empresa/órgano/CPV/CCAA).
+         */
+        BajaAgregada: {
+            /** Baja Max Pct */
+            baja_max_pct: number | null;
+            /** Baja Media Pct */
+            baja_media_pct: number | null;
+            /** Baja Min Pct */
+            baja_min_pct: number | null;
+            /** Contratos */
+            contratos: number;
+            /** Grupo */
+            grupo: string | null;
+            /** Grupo Id */
+            grupo_id?: number | null;
+            /** Importe Total */
+            importe_total: number;
+            /** Ofertas Medias */
+            ofertas_medias: number | null;
+        };
+        /**
+         * BajaReferencia
+         * @description Baja media y rango del segmento pedido (órgano y/o prefijo CPV).
+         */
+        BajaReferencia: {
+            /** Baja Max Pct */
+            baja_max_pct?: number | null;
+            /** Baja Media Pct */
+            baja_media_pct?: number | null;
+            /** Baja Min Pct */
+            baja_min_pct?: number | null;
+            /** Contratos */
+            contratos?: number | null;
+            /** Cpv Prefix */
+            cpv_prefix: string | null;
+            /** Ofertas Medias */
+            ofertas_medias?: number | null;
+            /** Organo */
+            organo: string | null;
+        };
+        /** BajasResult */
+        BajasResult: {
+            /** Group By */
+            group_by: string;
+            /** Items */
+            items: components["schemas"]["BajaAgregada"][];
+        };
         /** BulkGetRequest */
         BulkGetRequest: {
             /**
@@ -2865,6 +2942,18 @@ export interface components {
              *     ]
              */
             ids: string[];
+        };
+        /**
+         * BulkGetResult
+         * @description Licitaciones encontradas (los IDs no pedidos u omitidos no aparecen).
+         */
+        BulkGetResult: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["LicitacionSummary"][];
+            /** Requested */
+            requested: number;
         };
         /**
          * CalibracionBajaDTO
@@ -3536,6 +3625,14 @@ export interface components {
             total_cpvs: number;
         };
         /**
+         * CreatedId
+         * @description Respuesta de creación con el id asignado.
+         */
+        CreatedId: {
+            /** Id */
+            id: number;
+        };
+        /**
          * CrossGeoEntry
          * @description tecnologia x ccaa cell.
          */
@@ -3558,6 +3655,29 @@ export interface components {
             organo: string;
             /** Tecnologia */
             tecnologia: string;
+        };
+        /** CuotaEmpresa */
+        CuotaEmpresa: {
+            /** Contratos */
+            contratos: number;
+            /** Cuota Pct */
+            cuota_pct: number | null;
+            /** Empresa */
+            empresa: string | null;
+            /** Empresa Id */
+            empresa_id: number | null;
+            /** Es Ute */
+            es_ute: number;
+            /** Importe */
+            importe: number;
+            /** Ofertas Medias */
+            ofertas_medias: number | null;
+        };
+        /** CuotaResult */
+        CuotaResult: {
+            /** Items */
+            items: components["schemas"]["CuotaEmpresa"][];
+            scope: components["schemas"]["MetricScope"];
         };
         /** CursorPaginatedResponse[LicitacionSummary] */
         CursorPaginatedResponse_LicitacionSummary_: {
@@ -3606,6 +3726,43 @@ export interface components {
             confirmation: "DELETE";
         };
         /**
+         * DetailMessage
+         * @description Mensaje informativo de una operación (misma clave que los errores HTTP).
+         */
+        DetailMessage: {
+            /** Detail */
+            detail: string;
+        };
+        /** DocumentoSummary */
+        DocumentoSummary: {
+            /** Content Type */
+            content_type?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Id */
+            id: number;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Status */
+            status: string;
+            /** Tipo */
+            tipo: string;
+            /** Uri */
+            uri: string;
+        };
+        /**
+         * DocumentosResult
+         * @description Adjuntos (pliegos) de una licitación, sin el texto extraído.
+         */
+        DocumentosResult: {
+            /** Id Externo */
+            id_externo: string;
+            /** Items */
+            items: components["schemas"]["DocumentoSummary"][];
+        };
+        /**
          * EdgeDetailResult
          * @description Licitaciones que sustentan una arista órgano→empresa.
          */
@@ -3642,6 +3799,139 @@ export interface components {
             titulo?: string | null;
             /** Url */
             url?: string | null;
+        };
+        /** EmpresaAlias */
+        EmpresaAlias: {
+            /** Alias Normalizado */
+            alias_normalizado: string;
+            /** Confianza */
+            confianza: number | null;
+            /** Fuente */
+            fuente: string | null;
+            /** Nif Variante */
+            nif_variante: string | null;
+        };
+        /**
+         * EmpresaDetail
+         * @description Empresa canónica con aliases y relaciones UTE.
+         */
+        EmpresaDetail: {
+            /** Aliases */
+            aliases: components["schemas"]["EmpresaAlias"][];
+            /** Created At */
+            created_at: string | null;
+            /** Empresa Id */
+            empresa_id: number;
+            /** Es Pyme */
+            es_pyme: number | null;
+            /** Es Ute */
+            es_ute: number;
+            /** Grupo */
+            grupo: string | null;
+            /** Nif Canonico */
+            nif_canonico: string | null;
+            /** Nombre Canonico */
+            nombre_canonico: string;
+            /** Participa En Utes */
+            participa_en_utes: components["schemas"]["EmpresaRef"][];
+            /** Updated At */
+            updated_at: string | null;
+            /** Ute Miembros */
+            ute_miembros: components["schemas"]["EmpresaRef"][];
+        };
+        /**
+         * EmpresaListItem
+         * @description Fila del buscador del maestro (agregados de adjudicaciones incluidos).
+         */
+        EmpresaListItem: {
+            /** Empresa Id */
+            empresa_id: number;
+            /** Es Pyme */
+            es_pyme: number | null;
+            /** Es Ute */
+            es_ute: number;
+            /** Grupo */
+            grupo: string | null;
+            /** Importe Total */
+            importe_total: number;
+            /** N Adjudicaciones */
+            n_adjudicaciones: number;
+            /** Nif Canonico */
+            nif_canonico: string | null;
+            /** Nombre Canonico */
+            nombre_canonico: string;
+        };
+        /**
+         * EmpresaRef
+         * @description Referencia mínima a otra empresa canónica (miembro/UTE contenedora).
+         */
+        EmpresaRef: {
+            /** Empresa Id */
+            empresa_id: number;
+            /** Nif Canonico */
+            nif_canonico?: string | null;
+            /** Nombre Canonico */
+            nombre_canonico: string;
+        };
+        /**
+         * EmpresaReviewItem
+         * @description Entrada pendiente de la cola de revisión humana de matches fuzzy.
+         */
+        EmpresaReviewItem: {
+            /** Alias Normalizado */
+            alias_normalizado: string | null;
+            /** Candidato Empresa Id */
+            candidato_empresa_id: number | null;
+            /** Candidato Nif */
+            candidato_nif: string | null;
+            /** Candidato Nombre */
+            candidato_nombre: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Id */
+            id: number;
+            /** Nif */
+            nif: string | null;
+            /** Nombre Original */
+            nombre_original: string | null;
+            /** Score */
+            score: number | null;
+        };
+        /** EmpresaReviewsResult */
+        EmpresaReviewsResult: {
+            /** Items */
+            items: components["schemas"]["EmpresaReviewItem"][];
+        };
+        /** EmpresasListResult */
+        EmpresasListResult: {
+            /** Items */
+            items: components["schemas"]["EmpresaListItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * EmpresasStats
+         * @description Cobertura de la resolución de entidades sobre adjudicaciones.
+         */
+        EmpresasStats: {
+            /** Adjudicaciones Enlazadas */
+            adjudicaciones_enlazadas: number;
+            /** Adjudicaciones Total */
+            adjudicaciones_total: number;
+            /** Empresas */
+            empresas: number;
+            /** Importe Enlazado */
+            importe_enlazado: number;
+            /** Importe Total */
+            importe_total: number;
+            /** Pct Filas */
+            pct_filas: number;
+            /** Pct Importe */
+            pct_importe: number;
+            /** Revisiones Pendientes */
+            revisiones_pendientes: number;
         };
         /** Estacionalidad */
         Estacionalidad: {
@@ -3741,6 +4031,55 @@ export interface components {
             tecnologia: string;
         };
         /**
+         * ExplainFeature
+         * @description Término y su contribución a la clasificación (modelo lineal).
+         */
+        ExplainFeature: {
+            /** Contribution */
+            contribution: number;
+            /** Term */
+            term: string;
+            /** Weight */
+            weight: number;
+        };
+        /**
+         * ExplainPayload
+         * @description Salida de ``TenderClassifier.explain`` (SHAP-equivalente lineal).
+         */
+        ExplainPayload: {
+            /** Confidence */
+            confidence: number;
+            /** Prediction */
+            prediction: boolean;
+            /** Top Features */
+            top_features: components["schemas"]["ExplainFeature"][];
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
+         * ExplainResult
+         * @description Explicabilidad de la clasificación de una licitación.
+         */
+        ExplainResult: {
+            explanation: components["schemas"]["ExplainPayload"] | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Tecnologia */
+            tecnologia: string | null;
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
+         * ExportJobStatus
+         * @description Estado del job de exportación asíncrona (202 + sondeo).
+         */
+        ExportJobStatus: {
+            /** Id */
+            id: string;
+            /** Status */
+            status: string;
+        };
+        /**
          * FactItem
          * @description Hecho textual con confianza y una o más citas.
          */
@@ -3751,6 +4090,46 @@ export interface components {
             description: string;
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
+        };
+        /**
+         * FeedbackQueueItem
+         * @description Candidato de etiquetado con contexto y confianza del modelo.
+         */
+        FeedbackQueueItem: {
+            /** Ccaa */
+            ccaa: string | null;
+            /** Confidence */
+            confidence: number;
+            /** Cpv */
+            cpv: string | null;
+            /** Descripcion */
+            descripcion: string;
+            /** Fecha Publicacion */
+            fecha_publicacion: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe: number | null;
+            model: components["schemas"]["QueueModelBlock"] | null;
+            /** Organo */
+            organo: string | null;
+            /** Tecnologia */
+            tecnologia: string | null;
+            /** Titulo */
+            titulo: string;
+            /** Uncertainty */
+            uncertainty: number;
+            /** Url Origen */
+            url_origen: string | null;
+        };
+        /** FeedbackQueueResult */
+        FeedbackQueueResult: {
+            /** Items */
+            items: components["schemas"]["FeedbackQueueItem"][];
+            /** Model Version */
+            model_version: string | null;
+            /** Strategy */
+            strategy: string;
         };
         /** FeedbackRequest */
         FeedbackRequest: {
@@ -3797,6 +4176,20 @@ export interface components {
             status: string;
             /** Stored At */
             stored_at: string;
+        };
+        /**
+         * FeedbackStats
+         * @description Conteos agregados de ml_feedback (SUM sobre tabla vacía → None).
+         */
+        FeedbackStats: {
+            /** Last Feedback At */
+            last_feedback_at: string | null;
+            /** Negativos */
+            negativos: number | null;
+            /** Positivos */
+            positivos: number | null;
+            /** Total */
+            total: number;
         };
         /** FlagIn */
         FlagIn: {
@@ -3985,6 +4378,27 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** HhiResult */
+        HhiResult: {
+            /** Items */
+            items: components["schemas"]["HhiSegmento"][];
+            scope: components["schemas"]["MetricScope"];
+            /** Segment By */
+            segment_by: string;
+        };
+        /** HhiSegmento */
+        HhiSegmento: {
+            /** Contratos */
+            contratos: number;
+            /** Empresas */
+            empresas: number;
+            /** Hhi */
+            hhi: number | null;
+            /** Importe Total */
+            importe_total: number;
+            /** Segmento */
+            segmento: string | null;
+        };
         /**
          * HistogramBin
          * @description Importe distribution bin.
@@ -4065,6 +4479,11 @@ export interface components {
             q1: number;
             /** Q3 */
             q3: number;
+        };
+        /** LastExtraction */
+        LastExtraction: {
+            /** Last Extraction */
+            last_extraction: string | null;
         };
         /** LicitacionDetail */
         LicitacionDetail: {
@@ -4150,6 +4569,13 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /** Liveness */
+        Liveness: {
+            /** Status */
+            status: string;
+            /** Timestamp */
+            timestamp: string;
+        };
         /**
          * LoginRequest
          * @description Credentials for email/password login.
@@ -4191,6 +4617,118 @@ export interface components {
             mes: string;
             /** N Licitaciones */
             n_licitaciones: number;
+        };
+        /**
+         * MetaFilters
+         * @description Valores únicos disponibles para los selectores de filtros.
+         */
+        MetaFilters: {
+            /** Ccaa */
+            ccaa: string[];
+            /** Cpv */
+            cpv: string[];
+            /** Estado */
+            estado: string[];
+            /** Tecnologia */
+            tecnologia: string[];
+        };
+        /**
+         * MetricScope
+         * @description Universo y denominador explícitos de un agregado analítico.
+         */
+        MetricScope: {
+            /** Caveat */
+            caveat: string;
+            /** Computed At */
+            computed_at: string;
+            /** Denominator Amount Eur */
+            denominator_amount_eur: number;
+            /** Denominator Records */
+            denominator_records: number;
+            /** Filter Versions */
+            filter_versions: string[];
+            /** Filters */
+            filters: {
+                [key: string]: string;
+            };
+            /** Label */
+            label: string;
+            /** Model Versions */
+            model_versions: string[];
+            /** Sources */
+            sources: string[];
+            /** Universe */
+            universe: string;
+            /** Window From */
+            window_from?: string | null;
+            /** Window To */
+            window_to?: string | null;
+        };
+        /** ModelActivated */
+        ModelActivated: {
+            /** Activated */
+            activated: boolean;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+        };
+        /** ModelHistoryEntry */
+        ModelHistoryEntry: {
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            } | null;
+            /** Trained At */
+            trained_at: string | null;
+            /** Version */
+            version: string;
+        };
+        /**
+         * ModelInfoResult
+         * @description Resumen del modelo activo (registry) para el panel de active learning.
+         */
+        ModelInfoResult: {
+            /** Active */
+            active: {
+                [key: string]: unknown;
+            } | null;
+            /** Feedbacks Since Train */
+            feedbacks_since_train: number;
+            /** History */
+            history: components["schemas"]["ModelHistoryEntry"][];
+            /** Name */
+            name: string;
+        };
+        /**
+         * ModelVersionOut
+         * @description Fila del model registry con ``metrics`` ya parseado del JSON.
+         */
+        ModelVersionOut: {
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: number;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            /** Path */
+            path: string | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Trained At */
+            trained_at: string | null;
+            /** Trained On N Feedbacks */
+            trained_on_n_feedbacks: number | null;
+            /** Trained On N Samples */
+            trained_on_n_samples: number | null;
+            /** Version */
+            version: number;
         };
         /**
          * ModuloEntry
@@ -4251,6 +4789,14 @@ export interface components {
              * @default 0
              */
             unread_count: number;
+        };
+        /**
+         * OAuthAuthorizeResult
+         * @description URL de autorización de Google para que el SPA redirija.
+         */
+        OAuthAuthorizeResult: {
+            /** Authorization Url */
+            authorization_url: string;
         };
         /**
          * OrganCompanyGraphResult
@@ -4788,6 +5334,35 @@ export interface components {
              */
             vencen_7d: number;
         };
+        /**
+         * PrediccionBajaResult
+         * @description Predicción materializada y/o baja real de una licitación.
+         *
+         *     Los bloques son condicionales por diseño (defaults legítimos): una
+         *     licitación abierta solo trae la estimación p10/p50/p90; una adjudicada
+         *     sin estimación previa solo trae la baja real; scoreada y adjudicada trae
+         *     ambos para comparar.
+         */
+        PrediccionBajaResult: {
+            /** Baja Real */
+            baja_real?: number | null;
+            /** Computed At */
+            computed_at?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Model Version */
+            model_version?: string | null;
+            /** P10 */
+            p10?: number | null;
+            /** P50 */
+            p50?: number | null;
+            /** P90 */
+            p90?: number | null;
+            /** Serving */
+            serving?: string | null;
+        };
         /** PriceScenario */
         PriceScenario: {
             /** Basis */
@@ -5195,6 +5770,26 @@ export interface components {
             total_records: number;
         };
         /**
+         * QueueModelBlock
+         * @description Scores del TechnologyClassifier para un candidato de la cola.
+         */
+        QueueModelBlock: {
+            /** Tech Max Proba */
+            tech_max_proba: number;
+            /** Tech Predicted */
+            tech_predicted: string[];
+            /** Tech Principal */
+            tech_principal: string | null;
+            /** Tech Scores */
+            tech_scores: {
+                [key: string]: number;
+            };
+            /** Tech Thresholds */
+            tech_thresholds: {
+                [key: string]: number;
+            };
+        };
+        /**
          * RegisterRequest
          * @description Datos para el alta self-service con email + password.
          */
@@ -5289,6 +5884,41 @@ export interface components {
             importe_alto_riesgo: number;
             /** Importe En Juego */
             importe_en_juego: number;
+        };
+        /**
+         * ResolucionOut
+         * @description Resolución de recurso contractual, con la licitación vinculada si la hay.
+         */
+        ResolucionOut: {
+            /** Expediente */
+            expediente: string | null;
+            /** Fecha */
+            fecha: string | null;
+            /** Id */
+            id: number;
+            /** Licitacion Id */
+            licitacion_id: string | null;
+            /** Licitacion Titulo */
+            licitacion_titulo: string | null;
+            /** Numero Recurso */
+            numero_recurso: string | null;
+            /** Numero Resolucion */
+            numero_resolucion: string | null;
+            /** Organo */
+            organo: string | null;
+            /** Resumen */
+            resumen: string | null;
+            /** Sentido */
+            sentido: string | null;
+            /** Tribunal */
+            tribunal: string | null;
+            /** Url Pdf */
+            url_pdf: string | null;
+        };
+        /** ResolucionesResult */
+        ResolucionesResult: {
+            /** Items */
+            items: components["schemas"]["ResolucionOut"][];
         };
         /** ResumenHoyResult */
         ResumenHoyResult: {
@@ -5388,6 +6018,30 @@ export interface components {
              */
             accept: boolean;
         };
+        /**
+         * ReviewResolved
+         * @description Resultado de resolver una revisión (empresa vinculada o creada).
+         */
+        ReviewResolved: {
+            /** Empresa Id */
+            empresa_id: number;
+            /** Review Id */
+            review_id: number;
+            /** Status */
+            status: string;
+        };
+        /**
+         * RotatedKey
+         * @description Rotación de API key: el token nuevo solo viaja en esta respuesta.
+         */
+        RotatedKey: {
+            /** Message */
+            message: string;
+            /** New Token */
+            new_token: string;
+            /** Old Key Expires At */
+            old_key_expires_at: string;
+        };
         /** SankeyLink */
         SankeyLink: {
             /** Source */
@@ -5445,6 +6099,18 @@ export interface components {
              * @default private
              */
             visibility: string;
+        };
+        /** SavedFilterSaved */
+        SavedFilterSaved: {
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+        };
+        /** SavedFiltersResult */
+        SavedFiltersResult: {
+            /** Items */
+            items: components["schemas"]["SavedFilter"][];
         };
         /**
          * ScatterPoint
@@ -5567,7 +6233,7 @@ export interface components {
         SemanticSearchRequest: {
             /**
              * Alpha
-             * @description Peso de FAISS vs FTS5 (1.0 = solo semántica, 0.0 = solo léxica)
+             * @description LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad
              * @default 0.7
              */
             alpha: number;
@@ -5578,7 +6244,7 @@ export interface components {
             ccaa?: string[];
             /**
              * Embedding Model
-             * @description Nombre del modelo de embeddings (vacío = modelo por defecto de settings)
+             * @description LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad
              * @default
              */
             embedding_model: string;
@@ -5622,11 +6288,21 @@ export interface components {
             q: string;
             /**
              * Source
-             * @description Motor usado: FAISS+FTS5 | FAISS | FTS5 | LIKE
+             * @description Motor usado: FTS5 | LIKE
              */
             source: string;
             /** Top K */
             top_k: number;
+        };
+        /**
+         * SessionsRevoked
+         * @description Resultado de revocar sesiones (logout-all, borrado de cuenta).
+         */
+        SessionsRevoked: {
+            /** Sessions Revoked */
+            sessions_revoked: number;
+            /** Status */
+            status: string;
         };
         /** SetAdminBody */
         SetAdminBody: {
@@ -5701,6 +6377,24 @@ export interface components {
             total_sources: number;
         };
         /**
+         * StatusMessage
+         * @description Mutación con mensaje legible además del status.
+         */
+        StatusMessage: {
+            /** Message */
+            message: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * StatusOk
+         * @description Respuesta mínima de una mutación sin payload propio.
+         */
+        StatusOk: {
+            /** Status */
+            status: string;
+        };
+        /**
          * TeamRequirement
          * @description Perfil o capacidad mínima del equipo.
          */
@@ -5717,6 +6411,27 @@ export interface components {
             quantity?: number | null;
             /** Role */
             role?: string | null;
+        };
+        /**
+         * TechScore
+         * @description Score de una tecnología para la licitación (clasificador multi-label).
+         */
+        TechScore: {
+            /** Computed At */
+            computed_at: string | null;
+            /** Probabilidad */
+            probabilidad: number;
+            /** Tecnologia */
+            tecnologia: string;
+            /** Threshold Aplicado */
+            threshold_aplicado: number | null;
+        };
+        /** TechScoresResult */
+        TechScoresResult: {
+            /** Id Externo */
+            id_externo: string;
+            /** Scores */
+            scores: components["schemas"]["TechScore"][];
         };
         /**
          * TecnologiaDetalleItem
@@ -5885,6 +6600,33 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /**
+         * TimelineEvento
+         * @description Hito de la línea de tiempo (evento materializado o implícito).
+         */
+        TimelineEvento: {
+            /** Campo */
+            campo: string | null;
+            /** Detalle */
+            detalle: string | null;
+            /** Fecha */
+            fecha: string | null;
+            /** Importe Delta */
+            importe_delta: number | null;
+            /** Tipo */
+            tipo: string;
+            /** Valor Antes */
+            valor_antes: string | null;
+            /** Valor Despues */
+            valor_despues: string | null;
+        };
+        /** TimelineResult */
+        TimelineResult: {
+            /** Items */
+            items: components["schemas"]["TimelineEvento"][];
+            /** Licitacion Id */
+            licitacion_id: string;
+        };
         /** TimelineScatterItem */
         TimelineScatterItem: {
             /** Ccaa */
@@ -5999,10 +6741,36 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /**
+         * TotalCount
+         * @description Conteo agregado sin items (previews, badges).
+         */
+        TotalCount: {
+            /** Total */
+            total: number;
+        };
         /** TotpCodeRequest */
         TotpCodeRequest: {
             /** Code */
             code: string;
+        };
+        /**
+         * TotpConfirmResult
+         * @description Confirmación de TOTP: los recovery codes se entregan una sola vez.
+         */
+        TotpConfirmResult: {
+            /** Recovery Codes */
+            recovery_codes: string[];
+            /** Status */
+            status: string;
+        };
+        /**
+         * TotpSetupResult
+         * @description Alta de TOTP: el secreto viaja solo aquí, como URI otpauth.
+         */
+        TotpSetupResult: {
+            /** Otpauth Uri */
+            otpauth_uri: string;
         };
         /**
          * TreemapItem
@@ -6273,6 +7041,32 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * WatchlistEmpresaItem
+         * @description Empresa vigilada, con nombre canónico del maestro.
+         */
+        WatchlistEmpresaItem: {
+            /** Created At */
+            created_at: string | null;
+            /** Email */
+            email: string | null;
+            /** Empresa Id */
+            empresa_id: number;
+            /** Frequency */
+            frequency: string | null;
+            /** Id */
+            id: number;
+            /** Last Notified At */
+            last_notified_at: string | null;
+            /** Nif Canonico */
+            nif_canonico: string | null;
+            /** Nombre Canonico */
+            nombre_canonico: string;
+            /** Organization Id */
+            organization_id: number | null;
+            /** Visibility */
+            visibility: string | null;
+        };
         /** WatchlistEmpresaRequest */
         WatchlistEmpresaRequest: {
             /**
@@ -6294,6 +7088,75 @@ export interface components {
              * @default private
              */
             visibility: string;
+        };
+        /**
+         * WatchlistEmpresaStatus
+         * @description Alta/baja de vigilancia; ``id`` solo cuando se creó una entrada nueva.
+         */
+        WatchlistEmpresaStatus: {
+            /** Empresa Id */
+            empresa_id: number;
+            /** Id */
+            id?: number | null;
+            /** Status */
+            status: string;
+        };
+        /** WatchlistEmpresasResult */
+        WatchlistEmpresasResult: {
+            /** Items */
+            items: components["schemas"]["WatchlistEmpresaItem"][];
+        };
+        /**
+         * WatchlistFavoriteCreated
+         * @description Registro devuelto al crear (idempotente) un favorito.
+         */
+        WatchlistFavoriteCreated: {
+            /** Created At */
+            created_at: string | null;
+            /** Id */
+            id: number;
+            /** Id Externo */
+            id_externo: string;
+            /** Organization Id */
+            organization_id: number | null;
+            /** User Id */
+            user_id: number | null;
+            /** User Key */
+            user_key: string;
+            /** Visibility */
+            visibility: string | null;
+        };
+        /**
+         * WatchlistFavoriteItem
+         * @description Favorito del usuario enriquecido con la licitación (LEFT JOIN).
+         */
+        WatchlistFavoriteItem: {
+            /** Created At */
+            created_at: string | null;
+            /** Estado */
+            estado: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion: string | null;
+            /** Id */
+            id: number;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe: number | null;
+            /** Organization Id */
+            organization_id: number | null;
+            /** Titulo */
+            titulo: string | null;
+            /** Visibility */
+            visibility: string | null;
+        };
+        /**
+         * WatchlistFavoritesResult
+         * @description Listado de favoritos del usuario.
+         */
+        WatchlistFavoritesResult: {
+            /** Items */
+            items: components["schemas"]["WatchlistFavoriteItem"][];
         };
         /**
          * WatchlistItemBody
@@ -6345,8 +7208,45 @@ export interface components {
             visibility: string;
         };
         /**
+         * WatchlistRuleMatch
+         * @description Licitación que coincide con una regla (proyección de matches).
+         */
+        WatchlistRuleMatch: {
+            /** Ccaa */
+            ccaa: string | null;
+            /** Cpv */
+            cpv: string | null;
+            /** Estado */
+            estado: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe: number | null;
+            /** Organo Contratacion */
+            organo_contratacion: string | null;
+            /** Titulo */
+            titulo: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * WatchlistRuleMatchesResult
+         * @description Matches de una regla + conteo total sin recortar por ``limit``.
+         */
+        WatchlistRuleMatchesResult: {
+            /** Items */
+            items: components["schemas"]["WatchlistRuleMatch"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * WatchlistRuleOut
          * @description Regla devuelta al cliente, enriquecida con el conteo real de matches.
+         *
+         *     Sin defaults (nota de modelado del backlog de contrato): una regla listada
+         *     siempre trae ``id``, su conteo y el email de entrega (posiblemente null).
          */
         WatchlistRuleOut: {
             /**
@@ -6359,7 +7259,7 @@ export interface components {
             /** Cpv */
             cpv?: string | null;
             /** Email */
-            email?: string | null;
+            email: string | null;
             /**
              * Frequency
              * @default daily
@@ -6367,13 +7267,10 @@ export interface components {
              */
             frequency: "immediate" | "daily" | "weekly";
             /** Id */
-            id?: number | null;
+            id: number;
             /** Keyword */
             keyword?: string | null;
-            /**
-             * Match Count
-             * @default 0
-             */
+            /** Match Count */
             match_count: number;
             /** Min Importe */
             min_importe?: number | null;
@@ -6387,6 +7284,14 @@ export interface components {
              * @enum {string}
              */
             visibility: "private" | "organization";
+        };
+        /**
+         * WatchlistRulesResult
+         * @description Listado de reglas del usuario (contrato tipado del GET).
+         */
+        WatchlistRulesResult: {
+            /** Items */
+            items: components["schemas"]["WatchlistRuleOut"][];
         };
         /**
          * WaterfallPoint
@@ -6435,6 +7340,44 @@ export interface components {
             secret: string;
             /** Url */
             url: string;
+        };
+        /**
+         * WebhookOut
+         * @description Webhook sin secret (el secret solo viaja al crearlo).
+         */
+        WebhookOut: {
+            /** Active */
+            active: number | null;
+            /** Created At */
+            created_at: string | null;
+            /** Event Types */
+            event_types: string[];
+            /** Failure Count */
+            failure_count: number | null;
+            /** Id */
+            id: number;
+            /** Last Status */
+            last_status: number | null;
+            /** Last Triggered At */
+            last_triggered_at: string | null;
+            /** Name */
+            name: string | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * WebhookPingResult
+         * @description Entrega de prueba; los campos son condicionales según el fallo.
+         */
+        WebhookPingResult: {
+            /** Attempts */
+            attempts?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Status Code */
+            status_code?: number | null;
+            /** Success */
+            success: boolean;
         };
         /** WebhookUpdate */
         WebhookUpdate: {
@@ -6638,9 +7581,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -6679,9 +7620,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["AdminUserAction"];
                 };
             };
             /** @description Validation Error */
@@ -8033,9 +8972,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["DetailMessage"];
                 };
             };
             /** @description Validation Error */
@@ -8068,9 +9005,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SessionsRevoked"];
                 };
             };
             /** @description Validation Error */
@@ -8130,9 +9065,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["OAuthAuthorizeResult"];
                 };
             };
         };
@@ -8152,7 +9085,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8223,9 +9156,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -8262,9 +9193,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TotpConfirmResult"];
                 };
             };
             /** @description Validation Error */
@@ -8297,9 +9226,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["TotpSetupResult"];
                 };
             };
             /** @description Validation Error */
@@ -8336,9 +9263,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -8378,9 +9303,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["BajasResult"];
                 };
             };
             /** @description Validation Error */
@@ -8416,9 +9339,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["BajaReferencia"];
                 };
             };
             /** @description Validation Error */
@@ -8456,9 +9377,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CuotaResult"];
                 };
             };
             /** @description Validation Error */
@@ -8587,9 +9506,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HhiResult"];
                 };
             };
             /** @description Validation Error */
@@ -8705,9 +9622,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatchlistEmpresasResult"];
                 };
             };
             /** @description Validation Error */
@@ -8744,9 +9659,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatchlistEmpresaStatus"];
                 };
             };
             /** @description Validation Error */
@@ -8784,9 +9697,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatchlistEmpresaStatus"];
                 };
             };
             /** @description Validation Error */
@@ -8824,9 +9735,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresasListResult"];
                 };
             };
             /** @description Validation Error */
@@ -8861,9 +9770,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresaReviewsResult"];
                 };
             };
             /** @description Validation Error */
@@ -8902,9 +9809,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ReviewResolved"];
                 };
             };
             /** @description Revisión inexistente o ya resuelta */
@@ -8944,9 +9849,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresasStats"];
                 };
             };
             /** @description Validation Error */
@@ -8981,9 +9884,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresaDetail"];
                 };
             };
             /** @description Empresa no encontrada */
@@ -9061,9 +9962,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["ExportJobStatus"];
                 };
             };
             /** @description Validation Error */
@@ -9092,7 +9991,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
                     "text/calendar": unknown;
                 };
             };
@@ -9125,13 +10023,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Fichero exportado con los filtros actuales */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/pdf": unknown;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                    "text/csv": unknown;
                 };
             };
             /** @description Validation Error */
@@ -9156,13 +10056,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description PDF generado */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description Job pendiente o en curso */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJobStatus"];
                 };
             };
             /** @description Validation Error */
@@ -9261,9 +10170,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -9339,9 +10246,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ModelInfoResult"];
                 };
             };
             /** @description API key inválida */
@@ -9385,9 +10290,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["FeedbackQueueResult"];
                 };
             };
             /** @description API key inválida */
@@ -9427,9 +10330,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["FeedbackStats"];
                 };
             };
             /** @description API key inválida */
@@ -9485,9 +10386,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["Liveness"];
                 };
             };
         };
@@ -9595,7 +10494,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BulkGetResult"];
                 };
             };
             /** @description API key inválida */
@@ -9815,9 +10714,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DocumentosResult"];
                 };
             };
             /** @description API key inválida */
@@ -9857,9 +10754,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ExplainResult"];
                 };
             };
             /** @description API key inválida */
@@ -10072,9 +10967,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TechScoresResult"];
                 };
             };
             /** @description API key inválida */
@@ -10167,9 +11060,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TimelineResult"];
                 };
             };
             /** @description Licitación no encontrada */
@@ -10211,9 +11102,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PrediccionBajaResult"];
                 };
             };
             /** @description Sin predicción para esa licitación */
@@ -10257,9 +11146,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StatusMessage"];
                 };
             };
             /** @description Validation Error */
@@ -10292,7 +11179,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
                     "application/zip": unknown;
                 };
             };
@@ -10372,9 +11258,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RotatedKey"];
                 };
             };
             /** @description Falta key_id — la sesión no identifica qué key rotar */
@@ -10468,9 +11352,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -10503,9 +11385,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -10538,9 +11418,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MetaFilters"];
                 };
             };
             /** @description API key inválida */
@@ -10580,9 +11458,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string | null;
-                    };
+                    "application/json": components["schemas"]["LastExtraction"];
                 };
             };
             /** @description API key inválida */
@@ -10620,9 +11496,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ModelVersionOut"];
                 };
             };
             /** @description Validation Error */
@@ -10654,9 +11528,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ModelActivated"];
                 };
             };
             /** @description Validation Error */
@@ -10764,9 +11636,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -10803,9 +11673,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -11293,9 +12161,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ResolucionesResult"];
                 };
             };
             /** @description Validation Error */
@@ -11331,9 +12197,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: components["schemas"]["SavedFilter"][];
-                    };
+                    "application/json": components["schemas"]["SavedFiltersResult"];
                 };
             };
             /** @description Validation Error */
@@ -11370,9 +12234,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["SavedFilterSaved"];
                 };
             };
             /** @description Validation Error */
@@ -11410,9 +12272,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -11478,9 +12338,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AuditChainVerification"];
                 };
             };
         };
@@ -11504,7 +12362,6 @@ export interface operations {
                 };
                 content: {
                     "application/atom+xml": unknown;
-                    "application/json": unknown;
                 };
             };
             /** @description Token inválido o ausente */
@@ -11554,11 +12411,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: {
-                            [key: string]: unknown;
-                        }[];
-                    };
+                    "application/json": components["schemas"]["WatchlistFavoritesResult"];
                 };
             };
             /** @description Validation Error */
@@ -11595,9 +12448,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatchlistFavoriteCreated"];
                 };
             };
             /** @description Validation Error */
@@ -11669,9 +12520,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: components["schemas"]["WatchlistRuleOut"][];
-                    };
+                    "application/json": components["schemas"]["WatchlistRulesResult"];
                 };
             };
             /** @description Validation Error */
@@ -11708,9 +12557,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["CreatedId"];
                 };
             };
             /** @description Validation Error */
@@ -11747,9 +12594,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["TotalCount"];
                 };
             };
             /** @description Validation Error */
@@ -11788,9 +12633,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -11828,9 +12671,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -11869,9 +12710,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatchlistRuleMatchesResult"];
                 };
             };
             /** @description Validation Error */
@@ -12007,9 +12846,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WebhookOut"];
                 };
             };
             /** @description API key inválida */
@@ -12116,9 +12953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WebhookOut"];
                 };
             };
             /** @description API key inválida */
@@ -12227,9 +13062,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WebhookPingResult"];
                 };
             };
             /** @description API key inválida */

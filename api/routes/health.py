@@ -156,10 +156,15 @@ async def health() -> HealthResponse:
     )
 
 
+class Liveness(BaseModel):
+    status: str
+    timestamp: str
+
+
 @router.get("/live", summary="Liveness probe — proceso vivo")
-async def liveness() -> dict[str, Any]:
+async def liveness() -> Liveness:
     """Kubernetes liveness probe. Siempre devuelve 200 si el proceso responde."""
-    return {"status": "alive", "timestamp": datetime.now(UTC).isoformat()}
+    return Liveness(status="alive", timestamp=datetime.now(UTC).isoformat())
 
 
 @router.get(

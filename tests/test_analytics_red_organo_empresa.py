@@ -1,12 +1,16 @@
 """Tests para services/analytics/red_organo_empresa — grafo de adjudicaciones REALES.
 
-Mockean ``load_raw_adjudicaciones`` con adjudicaciones sintéticas; las aristas deben
-salir de la relación contractual real (órgano → empresa), no de co-ocurrencia CCAA.
+Caracterización de la migración pandas -> SQL (ADR-023): siembran
+licitaciones + adjudicaciones reales en el schema aislado (``tmp_db``) — las
+aristas llegan YA agregadas de ``AdjudicacionRepository.organ_company_edges``
+— y afirman los mismos valores que daba el motor pandas. Las aristas deben
+salir de la relación contractual real (órgano → empresa), no de co-ocurrencia
+CCAA.
 """
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import pytest
 
 from services.analytics.red_organo_empresa import (
     ConcentracionFilters,
@@ -19,7 +23,39 @@ from services.analytics.red_organo_empresa import (
     get_organ_concentration,
 )
 
-_PATCH = "services.analytics.red_organo_empresa.load_raw_adjudicaciones"
+pytestmark = pytest.mark.usefixtures("tmp_db")
+
+
+def _seed(rows: list[dict]) -> None:
+    from db.upsert import (
+        Adjudicacion,
+        Licitacion,
+        replace_adjudicaciones_batch,
+        upsert_licitaciones,
+    )
+
+    lics = {}
+    grouped: dict[str, list[Adjudicacion]] = {}
+    for r in rows:
+        lic_id = r["licitacion_id"]
+        lics[lic_id] = Licitacion(
+            id_externo=lic_id,
+            titulo=r.get("titulo", f"Contrato {lic_id}"),
+            organo_contratacion=r.get("organo_contratacion"),
+            url=r.get("url"),
+        )
+        grouped.setdefault(lic_id, []).append(
+            Adjudicacion(
+                licitacion_id=lic_id,
+                nombre=r["nombre"],
+                importe_adjudicado=r.get("importe_adjudicado"),
+                fecha_adjudicacion=r.get("fecha_adjudicacion"),
+                ccaa=r.get("ccaa"),
+            )
+        )
+    upsert_licitaciones(list(lics.values()))
+    _total, _dropped, failed = replace_adjudicaciones_batch(grouped)
+    assert failed == 0
 
 
 def _rows() -> list[dict]:
@@ -27,52 +63,48 @@ def _rows() -> list[dict]:
         # Órgano A → EMPRESA UNO (2 contratos, 1000 + 2000)
         {
             "organo_contratacion": "Organo A",
-            "empresa_nombre_master": "EMPRESA UNO SL",
-            "nombre": "Empresa Uno",
+            "nombre": "EMPRESA UNO SL",
             "importe_adjudicado": 1000.0,
             "fecha_adjudicacion": "2025-01-10",
             "licitacion_id": "LIC-1",
             "titulo": "Servicios de mantenimiento",
-            "url_lic": "https://example.org/lic-1",
+            "url": "https://example.org/lic-1",
         },
         {
             "organo_contratacion": "Organo A",
-            "empresa_nombre_master": "EMPRESA UNO SL",
-            "nombre": "Empresa Uno",
+            "nombre": "EMPRESA UNO SL",
             "importe_adjudicado": 2000.0,
             "fecha_adjudicacion": "2025-02-10",
             "licitacion_id": "LIC-2",
             "titulo": "Obras de reforma",
-            "url_lic": "https://example.org/lic-2",
+            "url": "https://example.org/lic-2",
         },
         # Órgano A → EMPRESA DOS (1 contrato)
         {
             "organo_contratacion": "Organo A",
-            "empresa_nombre_master": "EMPRESA DOS SA",
-            "nombre": "Empresa Dos",
+            "nombre": "EMPRESA DOS SA",
             "importe_adjudicado": 500.0,
             "fecha_adjudicacion": "2025-03-10",
             "licitacion_id": "LIC-3",
             "titulo": "Suministro de material",
-            "url_lic": "https://example.org/lic-3",
+            "url": "https://example.org/lic-3",
         },
         # Órgano B → EMPRESA UNO (1 contrato)
         {
             "organo_contratacion": "Organo B",
-            "empresa_nombre_master": "EMPRESA UNO SL",
-            "nombre": "Empresa Uno",
+            "nombre": "EMPRESA UNO SL",
             "importe_adjudicado": 3000.0,
             "fecha_adjudicacion": "2025-01-20",
             "licitacion_id": "LIC-4",
             "titulo": "Consultoría",
-            "url_lic": "https://example.org/lic-4",
+            "url": "https://example.org/lic-4",
         },
     ]
 
 
 def test_graph_edges_are_real_adjudications():
-    with patch(_PATCH, return_value=_rows()):
-        res = get_organ_company_graph(GraphFilters(top_organos=10, top_empresas=10))
+    _seed(_rows())
+    res = get_organ_company_graph(GraphFilters(top_organos=10, top_empresas=10))
 
     # La arista (Organo A, EMPRESA UNO SL) refleja 2 contratos reales, importe 3000.
     edge = next(e for e in res.edges if e.organo == "Organo A" and e.empresa == "EMPRESA UNO SL")
@@ -90,8 +122,8 @@ def test_graph_edges_are_real_adjudications():
 
 
 def test_graph_min_contratos_filters_edges():
-    with patch(_PATCH, return_value=_rows()):
-        res = get_organ_company_graph(GraphFilters(min_contratos=2))
+    _seed(_rows())
+    res = get_organ_company_graph(GraphFilters(min_contratos=2))
 
     # Solo (Organo A, EMPRESA UNO SL) tiene >= 2 contratos.
     assert len(res.edges) == 1
@@ -100,19 +132,68 @@ def test_graph_min_contratos_filters_edges():
 
 
 def test_graph_empty_when_no_rows():
-    with patch(_PATCH, return_value=[]):
-        res = get_organ_company_graph(GraphFilters())
+    res = get_organ_company_graph(GraphFilters())
     assert res.nodes == []
     assert res.edges == []
     assert res.total_organos == 0
+
+
+def test_graph_identity_prefers_master_canonico(tmp_db):
+    """La identidad de empresa usa el maestro canónico y cae al nombre raw.
+
+    Dos adjudicaciones con nombres raw distintos («Empresa Uno», «EMPRESA UNO,
+    S.L.») enlazadas a la misma empresa canónica deben colapsar en un único
+    nodo con el nombre del maestro — la regla que antes aplicaba pandas en
+    ``_prepare_df`` y ahora vive en la expresión SQL del repositorio.
+    """
+    db_mod, _ = tmp_db
+    _seed(
+        [
+            {
+                "organo_contratacion": "Organo A",
+                "nombre": "Empresa Uno",
+                "importe_adjudicado": 1000.0,
+                "fecha_adjudicacion": "2025-01-10",
+                "licitacion_id": "LIC-M1",
+            },
+            {
+                "organo_contratacion": "Organo A",
+                "nombre": "EMPRESA UNO, S.L.",
+                "importe_adjudicado": 2000.0,
+                "fecha_adjudicacion": "2025-02-10",
+                "licitacion_id": "LIC-M2",
+            },
+        ]
+    )
+    from db.empresas import create_empresa, link_adjudicacion
+
+    with db_mod.connect() as conn:
+        empresa_id = create_empresa(conn, nombre_canonico="EMPRESA UNO SL")
+        ids = [
+            int(row[0])
+            for row in conn.execute(
+                "SELECT id FROM adjudicaciones WHERE licitacion_id IN (?, ?)",
+                ("LIC-M1", "LIC-M2"),
+            ).fetchall()
+        ]
+        for adj_id in ids:
+            link_adjudicacion(conn, adj_id, empresa_id)
+
+    res = get_organ_company_graph(GraphFilters())
+
+    assert res.total_empresas == 1
+    edge = next(e for e in res.edges if e.organo == "Organo A")
+    assert edge.empresa == "EMPRESA UNO SL"
+    assert edge.contratos == 2
+    assert edge.importe_total == 3000.0
 
 
 # ── Concentración por órgano ─────────────────────────────────────────────
 
 
 def test_concentracion_por_organo():
-    with patch(_PATCH, return_value=_rows()):
-        res = get_organ_concentration(ConcentracionFilters(min_contratos=1))
+    _seed(_rows())
+    res = get_organ_concentration(ConcentracionFilters(min_contratos=1))
 
     organo_a = next(o for o in res.organos if o.organo == "Organo A")
     # Organo A: EMPRESA UNO 3000 (85.7%) + EMPRESA DOS 500 (14.3%) → HHI ≈ 7551.
@@ -128,8 +209,8 @@ def test_concentracion_por_organo():
 
 
 def test_ego_organo_devuelve_solo_su_vecindario():
-    with patch(_PATCH, return_value=_rows()):
-        res = get_organ_company_ego(EgoFilters(entity_type="organo", entity_key="Organo A"))
+    _seed(_rows())
+    res = get_organ_company_ego(EgoFilters(entity_type="organo", entity_key="Organo A"))
     organos = {n.name for n in res.nodes if n.type == "organo"}
     empresas = {n.name for n in res.nodes if n.type == "empresa"}
     assert organos == {"Organo A"}
@@ -139,8 +220,8 @@ def test_ego_organo_devuelve_solo_su_vecindario():
 
 
 def test_ego_empresa_devuelve_sus_organos():
-    with patch(_PATCH, return_value=_rows()):
-        res = get_organ_company_ego(EgoFilters(entity_type="empresa", entity_key="EMPRESA UNO SL"))
+    _seed(_rows())
+    res = get_organ_company_ego(EgoFilters(entity_type="empresa", entity_key="EMPRESA UNO SL"))
     organos = {n.name for n in res.nodes if n.type == "organo"}
     empresas = {n.name for n in res.nodes if n.type == "empresa"}
     assert empresas == {"EMPRESA UNO SL"}
@@ -151,8 +232,8 @@ def test_ego_empresa_devuelve_sus_organos():
 
 
 def test_edge_detail_lista_licitaciones_reales():
-    with patch(_PATCH, return_value=_rows()):
-        res = get_organ_company_edge(EdgeDetailFilters(organo="Organo A", empresa="EMPRESA UNO SL"))
+    _seed(_rows())
+    res = get_organ_company_edge(EdgeDetailFilters(organo="Organo A", empresa="EMPRESA UNO SL"))
     assert res.n_licitaciones == 2
     assert res.importe_total == 3000.0
     ids = {lic.licitacion_id for lic in res.licitaciones}
@@ -160,10 +241,21 @@ def test_edge_detail_lista_licitaciones_reales():
     # Orden por importe desc: LIC-2 (2000) primero.
     assert res.licitaciones[0].licitacion_id == "LIC-2"
     assert res.licitaciones[0].url == "https://example.org/lic-2"
+    assert res.licitaciones[0].fecha_adjudicacion == "2025-02-10"
 
 
 def test_edge_detail_vacio_si_no_hay_relacion():
-    with patch(_PATCH, return_value=_rows()):
-        res = get_organ_company_edge(EdgeDetailFilters(organo="Organo B", empresa="EMPRESA DOS SA"))
+    _seed(_rows())
+    res = get_organ_company_edge(EdgeDetailFilters(organo="Organo B", empresa="EMPRESA DOS SA"))
     assert res.n_licitaciones == 0
     assert res.licitaciones == []
+
+
+def test_edge_detail_limit_no_recorta_totales():
+    _seed(_rows())
+    res = get_organ_company_edge(
+        EdgeDetailFilters(organo="Organo A", empresa="EMPRESA UNO SL", limit=1)
+    )
+    assert len(res.licitaciones) == 1
+    assert res.n_licitaciones == 2
+    assert res.importe_total == 3000.0

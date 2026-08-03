@@ -30,6 +30,66 @@ def _safe_float(val: Any) -> float:
         return 0.0
 
 
+class FeedbackStats(BaseModel):
+    """Conteos agregados de ml_feedback (SUM sobre tabla vacía → None)."""
+
+    total: int
+    positivos: int | None
+    negativos: int | None
+    last_feedback_at: str | None
+
+
+class ModelHistoryEntry(BaseModel):
+    version: str
+    trained_at: str | None
+    metrics: dict[str, Any] | None
+
+
+class ModelInfoResult(BaseModel):
+    """Resumen del modelo activo (registry) para el panel de active learning."""
+
+    name: str
+    # Fila cruda del registry (id/version/path/sha256/metrics/...): forma libre
+    # del almacén, None si aún no hay versión activa.
+    active: dict[str, Any] | None
+    feedbacks_since_train: int
+    history: list[ModelHistoryEntry]
+
+
+class QueueModelBlock(BaseModel):
+    """Scores del TechnologyClassifier para un candidato de la cola."""
+
+    tech_scores: dict[str, float]
+    tech_predicted: list[str]
+    tech_principal: str | None
+    tech_max_proba: float
+    tech_thresholds: dict[str, float]
+
+
+class FeedbackQueueItem(BaseModel):
+    """Candidato de etiquetado con contexto y confianza del modelo."""
+
+    id_externo: str
+    titulo: str
+    descripcion: str
+    cpv: str | None
+    importe: float | None
+    organo: str | None
+    ccaa: str | None
+    fecha_publicacion: str | None
+    url_origen: str | None
+    confidence: float
+    uncertainty: float
+    tecnologia: str | None
+    model: QueueModelBlock | None
+
+
+class FeedbackQueueResult(BaseModel):
+    items: list[FeedbackQueueItem]
+    strategy: str
+    model_version: str | None
+
+
 def _build_queue_items(
     candidates: list[dict[str, Any]],
     *,
@@ -255,9 +315,9 @@ async def submit_feedback(
 )
 async def feedback_stats(
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> FeedbackStats:
     """Devuelve estadísticas agregadas del feedback recogido."""
-    return await run_db(_repo.stats)
+    return FeedbackStats(**await run_db(_repo.stats))
 
 
 @router.get(
@@ -267,7 +327,7 @@ async def feedback_stats(
 )
 async def feedback_model_info(
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> ModelInfoResult:
     """Versión del modelo activo, etiquetas desde el último reentreno y tendencia
     de métricas — para que el etiquetado muestre su impacto, no se sienta gratis.
 
@@ -275,7 +335,7 @@ async def feedback_model_info(
     """
     from db.model_registry import active_model_summary
 
-    return await run_db(active_model_summary)
+    return ModelInfoResult(**await run_db(active_model_summary))
 
 
 @router.get(
@@ -287,7 +347,7 @@ async def feedback_queue(
     strategy: str = Query("uncertainty", description="uncertainty | random"),
     limit: int = Query(20, ge=1, le=200),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> FeedbackQueueResult:
     """Devuelve licitaciones priorizadas para etiquetado.
 
     - ``uncertainty``: prioriza las que el modelo clasifica con menor confianza.
@@ -319,7 +379,7 @@ async def feedback_queue(
         try:
             candidates = await run_db(_lic_repo.get_unlabelled_candidates, 500)
             if not candidates:
-                return {"items": [], "strategy": strategy, "model_version": None}
+                return FeedbackQueueResult(items=[], strategy=strategy, model_version=None)
 
             texts = [f"{c['titulo']} {c.get('descripcion') or ''}" for c in candidates]
 
@@ -340,7 +400,11 @@ async def feedback_queue(
             items = _build_queue_items(
                 sorted_candidates, include_model=True, tech_classifier=tech_clf
             )
-            return {"items": items, "strategy": strategy, "model_version": None}
+            return FeedbackQueueResult(
+                items=[FeedbackQueueItem(**item) for item in items],
+                strategy=strategy,
+                model_version=None,
+            )
 
         except Exception as exc:
             log.warning("uncertainty_sampling_failed", error=str(exc))
@@ -348,4 +412,8 @@ async def feedback_queue(
     # Random / fallback
     candidates = await run_db(_lic_repo.get_unlabelled_random, limit)
     items = _build_queue_items(candidates, include_model=True, tech_classifier=tech_clf)
-    return {"items": items, "strategy": "random", "model_version": None}
+    return FeedbackQueueResult(
+        items=[FeedbackQueueItem(**item) for item in items],
+        strategy="random",
+        model_version=None,
+    )

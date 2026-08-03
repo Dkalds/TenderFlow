@@ -1,16 +1,11 @@
 """Resumen analytics — novedades, hoy, timeline, sankey, top licitaciones.
 
-``novedades``/``hoy``/``timeline`` — los tres endpoints que alimentan la
-pantalla de Resumen — agregan en Postgres vía ``db.repositories.aggregates``.
-Antes materializaban la tabla ``licitaciones`` completa en pandas
-(``load_stats_base_df``), que en el proceso web de Render devuelve un
-DataFrame vacío desde que existe ``render_api_full_table_loads_blocked``
-(ver ``services/_data_cache.py``): los tres respondían 200 con el payload a
-cero y la pantalla salía en blanco, sin error que lo delatara.
-
-``sankey`` y ``top`` siguen en pandas y por tanto siguen vacíos en Render.
-No los consume ninguna pantalla del frontend (solo existen en el router y en
-el cliente generado), así que se migrarán cuando vuelvan a tener consumidor.
+Los cinco endpoints agregan en Postgres vía ``db.repositories.aggregates``
+(ADR-023). Antes materializaban la tabla ``licitaciones`` completa en pandas
+(``load_stats_base_df``, ya retirado), que en el proceso web de Render
+devolvía un DataFrame vacío por el cortacircuitos full-table (también
+retirado al completar la migración): respondían 200 con el payload a cero y
+la pantalla salía en blanco, sin error que lo delatara.
 """
 
 from __future__ import annotations
@@ -23,8 +18,6 @@ from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.adjudicaciones import load_raw_adjudicaciones
-from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
 
@@ -139,23 +132,6 @@ class TopLicitacionesResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _load_df() -> pd.DataFrame:
-    df = load_stats_base_df()
-    if not df.empty and "fecha_limite" in df.columns:
-        # Usa assign() en vez de asignación in-place: load_stats_base_df()
-        # devuelve el DataFrame cacheado compartido (sin .copy()), así que
-        # mutar una columna aquí contaminaría la caché entre requests
-        # concurrentes.
-        df = df.assign(
-            fecha_limite_dt=pd.to_datetime(
-                df["fecha_limite"],
-                errors="coerce",
-                utc=True,
-            )
-        )
-    return df
-
-
 def _to_repo_filters(filters: Any) -> LicitacionesFilters:
     """Traduce los filtros del endpoint (fecha_desde/hasta, ccaa, tecnologia).
 
@@ -171,22 +147,6 @@ def _to_repo_filters(filters: Any) -> LicitacionesFilters:
         fecha_desde=fecha_desde.isoformat() if fecha_desde else None,
         fecha_hasta=fecha_hasta.isoformat() if fecha_hasta else None,
     )
-
-
-def _apply_filters(df: pd.DataFrame, filters: Any) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if getattr(filters, "fecha_desde", None) is not None:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_publicacion"] >= ts]
-    if getattr(filters, "fecha_hasta", None) is not None:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_publicacion"] <= ts]
-    if getattr(filters, "ccaa", None):
-        df = df[df["ccaa"] == filters.ccaa]
-    if getattr(filters, "tecnologia", None):
-        df = df[df["tecnologia"] == filters.tecnologia]
-    return df
 
 
 # ---------------------------------------------------------------------------
@@ -276,39 +236,24 @@ def get_timeline_scatter(filters: TimelineScatterFilters) -> TimelineScatterResu
 
 
 def get_sankey_flow(filters: SankeyFilters) -> SankeyResult:
-    """Sankey: tipo_contrato → estado transitions."""
+    """Sankey: tipo_contrato → estado transitions (GROUP BY en Postgres)."""
     log.info("analytics_sankey_start")
-    df = _load_df()
-    df = _apply_filters(df, filters)
-
-    if df.empty:
+    counts = _repo.resumen_sankey(_to_repo_filters(filters))
+    if not counts:
         return SankeyResult()
 
-    if "tipo_contrato" not in df.columns or "estado" not in df.columns:
-        return SankeyResult()
-
-    work = df.dropna(subset=["tipo_contrato", "estado"])
-    if work.empty:
-        return SankeyResult()
-
-    counts = work.groupby(["tipo_contrato", "estado"]).size().reset_index(name="value")
-
-    # Build unique nodes
-    tipos = sorted(work["tipo_contrato"].unique())
-    estados = sorted(work["estado"].unique())
-    nodes: list[SankeyNode] = []
-    for t in tipos:
-        nodes.append(SankeyNode(id=f"tipo_{t}", label=t))
-    for e in estados:
-        nodes.append(SankeyNode(id=f"estado_{e}", label=e))
+    tipos = sorted({str(r["tipo_contrato"]) for r in counts})
+    estados = sorted({str(r["estado"]) for r in counts})
+    nodes: list[SankeyNode] = [SankeyNode(id=f"tipo_{t}", label=t) for t in tipos]
+    nodes.extend(SankeyNode(id=f"estado_{e}", label=e) for e in estados)
 
     links = [
         SankeyLink(
-            source=f"tipo_{row['tipo_contrato']}",
-            target=f"estado_{row['estado']}",
-            value=int(row["value"]),
+            source=f"tipo_{r['tipo_contrato']}",
+            target=f"estado_{r['estado']}",
+            value=int(r["value"]),
         )
-        for _, row in counts.iterrows()
+        for r in counts
     ]
 
     log.info("analytics_sankey_done", nodes=len(nodes), links=len(links))
@@ -316,55 +261,34 @@ def get_sankey_flow(filters: SankeyFilters) -> SankeyResult:
 
 
 def get_top_licitaciones(filters: TopLicitacionesFilters) -> TopLicitacionesResult:
-    """Top N licitaciones by importe, enriched with adjudicatario info."""
+    """Top N licitaciones by importe (ORDER BY … LIMIT en Postgres).
+
+    La baja replica la fórmula del pandas original, que comparaba la suma de
+    ``importe_adjudicado`` del grupo contra la suma de la columna
+    ``importe_licitacion`` del join (``n_adj * importe`` de la licitación).
+    """
     log.info("analytics_top_licitaciones_start", n=filters.n)
-    df = _load_df()
-    df = _apply_filters(df, filters)
-
-    if df.empty:
-        return TopLicitacionesResult()
-
-    top = df.dropna(subset=["importe"]).nlargest(filters.n, "importe")
-
-    # Load adjudicaciones for enrichment
-    adj_rows = load_raw_adjudicaciones()
-    adj_df = pd.DataFrame(adj_rows)
-
-    adj_map: dict[str, tuple[str | None, float | None]] = {}
-    if not adj_df.empty and "id_externo" in adj_df.columns:
-        adj_name_col = "nombre" if "nombre" in adj_df.columns else "adjudicatario"
-        if adj_name_col in adj_df.columns:
-            for id_ext, grp in adj_df.groupby("id_externo"):
-                nombre = (
-                    grp[adj_name_col].dropna().iloc[0]
-                    if not grp[adj_name_col].dropna().empty
-                    else None
-                )
-                baja = None
-                if "importe_adjudicado" in grp.columns and "importe_licitacion" in grp.columns:
-                    imp_adj = pd.to_numeric(grp["importe_adjudicado"], errors="coerce").sum()
-                    imp_lic = pd.to_numeric(grp["importe_licitacion"], errors="coerce").sum()
-                    if imp_lic > 0 and pd.notna(imp_adj):
-                        baja = float((1 - imp_adj / imp_lic) * 100)
-                adj_map[str(id_ext)] = (str(nombre) if nombre else None, baja)
+    rows = _repo.resumen_top_licitaciones(_to_repo_filters(filters), n=filters.n)
 
     items = []
-    for _, row in top.iterrows():
-        id_ext = str(row.get("id_externo", ""))
-        adj_info = adj_map.get(id_ext, (None, None))
+    for r in rows:
+        baja: float | None = None
+        n_adj = int(r.get("n_adj") or 0)
+        importe = r.get("importe")
+        if n_adj > 0 and importe:
+            imp_lic = n_adj * float(importe)
+            sum_adj = float(r.get("sum_adj") or 0.0)
+            if imp_lic > 0:
+                baja = float((1 - sum_adj / imp_lic) * 100)
         items.append(
             TopLicitacionItem(
-                id_externo=id_ext,
-                titulo=row.get("titulo") if pd.notna(row.get("titulo")) else None,
-                organo_contratacion=(
-                    row.get("organo_contratacion")
-                    if pd.notna(row.get("organo_contratacion"))
-                    else None
-                ),
-                importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
-                estado=row.get("estado") if pd.notna(row.get("estado")) else None,
-                adjudicatario=adj_info[0],
-                baja_pct=adj_info[1],
+                id_externo=str(r["id_externo"]),
+                titulo=r.get("titulo"),
+                organo_contratacion=r.get("organo_contratacion"),
+                importe=float(importe) if importe is not None else None,
+                estado=r.get("estado"),
+                adjudicatario=r.get("adjudicatario"),
+                baja_pct=baja,
             )
         )
 

@@ -1,21 +1,25 @@
-"""Data quality analytics — completeness metrics, scrape freshness."""
+"""Data quality analytics — completeness metrics, scrape freshness.
+
+Agrega en Postgres vía :class:`AggregateRepository` (ADR-023). Además de
+retirar la carga full-table (bloqueada en Render), esto CIERRA el ítem del
+backlog «quality.py ya no detecta fechas legacy malformadas»: el check ISO
+opera en SQL sobre el string crudo de ``fecha_publicacion``, que el camino
+pandas perdía al convertir la columna a ``Timestamp``.
+"""
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository
 from observability.logging import get_logger
-from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
 
-# Una fecha bien formada empieza por YYYY-MM-DD (ISO-8601). Cualquier otra cosa
-# no-nula (p. ej. DD/MM/YYYY legacy) es un fallo de FORMATO, no de completitud.
-_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -59,34 +63,6 @@ class QualityResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _pct_filled(df: pd.DataFrame, col: str) -> float:
-    """Percentage of non-null, non-empty values in a column."""
-    if col not in df.columns or df.empty:
-        return 0.0
-    filled = df[col].dropna()
-    if filled.dtype == object:
-        filled = filled[filled.astype(str).str.strip() != ""]
-    return float(len(filled) / len(df) * 100)
-
-
-def _iso_date_stats(df: pd.DataFrame, col: str) -> tuple[float, int]:
-    """(% en ISO-8601, nº no-ISO) sobre los valores NO nulos de ``col``.
-
-    Mide formato, no presencia: una fecha presente pero ``DD/MM/YYYY`` cuenta
-    como completa en :func:`_pct_filled` pero como no-ISO aquí.
-    """
-    if col not in df.columns or df.empty:
-        return 0.0, 0
-    present = df[col].dropna()
-    present = present[present.astype(str).str.strip() != ""]
-    n = len(present)
-    if n == 0:
-        return 0.0, 0
-    iso = present.astype(str).str.match(_ISO_DATE_RE)
-    n_iso = int(iso.sum())
-    return float(n_iso / n * 100), int(n - n_iso)
-
-
 def _last_scrape_hours() -> float | None:
     """Get hours since last extraction run, if available."""
     try:
@@ -127,8 +103,7 @@ def _dlq_count() -> int:
 
 def _organization_scope_coverage() -> tuple[float, int]:
     """(% de filas con organization_id, nº sin organization_id) en las 7
-    tablas escopadas por v64. Independiente de ``licitaciones`` -- por eso
-    no vive detrás del ``if df.empty`` de :func:`get_quality`."""
+    tablas escopadas por v64. Independiente de ``licitaciones``."""
     try:
         from db.repositories.organizations import OrganizationRepository
 
@@ -148,12 +123,13 @@ def _organization_scope_coverage() -> tuple[float, int]:
 
 
 def get_quality() -> QualityResult:
-    """Compute data quality metrics."""
+    """Compute data quality metrics (agregación SQL, ADR-023)."""
     log.info("analytics_quality_start")
-    df = load_stats_base_df()
+    stats = _repo.quality_completitud()
     pct_organization_scoped, filas_sin_organizacion = _organization_scope_coverage()
 
-    if df.empty:
+    total = stats["total"]
+    if total == 0:
         log.info("analytics_quality_done", total=0)
         return QualityResult(
             dlq_count=_dlq_count(),
@@ -161,38 +137,55 @@ def get_quality() -> QualityResult:
             filas_sin_organizacion=filas_sin_organizacion,
         )
 
-    pct_fecha_iso, fechas_no_iso = _iso_date_stats(df, "fecha_publicacion")
+    cols: dict[str, int] = stats["cols"]
+
+    def _pct(n: int) -> float:
+        return float(n / total * 100)
+
+    fechas_presentes = cols.get("fecha_publicacion", 0)
+    fecha_iso = stats["fecha_iso"]
+    pct_fecha_iso = float(fecha_iso / fechas_presentes * 100) if fechas_presentes else 0.0
+
+    completitud = [
+        ColumnCompleteness(columna=col, pct=_pct(cols[col]))
+        for col in (
+            "id_externo",
+            "titulo",
+            "organo_contratacion",
+        )
+    ]
+    completitud.append(ColumnCompleteness(columna="importe", pct=_pct(stats["importe"])))
+    completitud.extend(
+        ColumnCompleteness(columna=col, pct=_pct(cols[col]))
+        for col in (
+            "estado",
+            "fecha_publicacion",
+            "ccaa",
+            "cpv",
+            "url",
+            "tecnologia",
+            "tipo_contrato",
+            "provincia",
+        )
+    )
+
     result = QualityResult(
-        total_records=len(df),
-        pct_cpv=_pct_filled(df, "cpv"),
-        pct_importe=_pct_filled(df, "importe"),
-        pct_fecha=_pct_filled(df, "fecha_publicacion"),
-        pct_titulo=_pct_filled(df, "titulo"),
+        total_records=total,
+        pct_cpv=_pct(cols.get("cpv", 0)),
+        pct_importe=_pct(stats["importe"]),
+        pct_fecha=_pct(fechas_presentes),
+        pct_titulo=_pct(cols.get("titulo", 0)),
         pct_fecha_iso=pct_fecha_iso,
-        fechas_no_iso=fechas_no_iso,
+        fechas_no_iso=int(fechas_presentes - fecha_iso),
         last_scrape_hours_ago=_last_scrape_hours(),
         dlq_count=_dlq_count(),
         pct_organization_scoped=pct_organization_scoped,
         filas_sin_organizacion=filas_sin_organizacion,
-        completitud_columnas=[
-            ColumnCompleteness(columna=col, pct=_pct_filled(df, col))
-            for col in [
-                "id_externo",
-                "titulo",
-                "organo_contratacion",
-                "importe",
-                "estado",
-                "fecha_publicacion",
-                "ccaa",
-                "cpv",
-                "url",
-                "tecnologia",
-                "tipo_contrato",
-                "provincia",
-            ]
-        ],
-        cobertura_nif=_pct_filled(df, "nif") if "nif" in df.columns else 0.0,
-        cobertura_modulo_sap=_pct_filled(df, "modulo_sap") if "modulo_sap" in df.columns else 0.0,
+        completitud_columnas=completitud,
+        # nif / modulo_sap no son columnas de licitaciones: el pandas original
+        # devolvía 0.0 por el guard `if col in df.columns` — se preserva.
+        cobertura_nif=0.0,
+        cobertura_modulo_sap=0.0,
     )
     log.info("analytics_quality_done", total=result.total_records)
     return result

@@ -101,17 +101,21 @@ def test_export_feedback(tmp_db):
 
 
 # ---------------------------------------------------------------------------
-# export_watchlist / export_audit_log (may return [] if table name mismatch)
+# export_watchlist / export_audit_log
 # ---------------------------------------------------------------------------
 
 
-def test_export_watchlist_returns_empty_gracefully(tmp_db):
-    """watchlist table may not exist (gdpr queries 'watchlist' not 'watchlist_cpv')."""
+def test_export_watchlist_unknown_user_is_empty(tmp_db):
+    """Un user_key sin entradas exporta lista vacía (la tabla real es watchlist_cpv).
+
+    Histórico: este test se llamaba ``test_export_watchlist_returns_empty_gracefully``
+    y documentaba el bug de la tabla inexistente; el flujo real está cubierto en
+    ``tests/test_gdpr_watchlist_cpv.py``.
+    """
     _db_mod, _ = tmp_db
     from services.gdpr import export_watchlist
 
-    result = export_watchlist("somehash")
-    assert isinstance(result, list)
+    assert export_watchlist("somehash") == []
 
 
 def test_export_audit_log(tmp_db):

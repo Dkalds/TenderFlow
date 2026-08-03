@@ -271,10 +271,15 @@ def main() -> int:
             **{k: v for k, v in result["info"].items() if not isinstance(v, dict)},
         )
 
-    if args.alert:
-        # Alerts are sent via email; exit 0 so CI does not treat health status as a failure.
+    if args.alert and result["status"] == "degraded":
+        # El email ya avisó del estado degradado; el job de CI queda verde para
+        # no convertir cada aviso en un run rojo.
         return 0
 
+    # "critical" SIEMPRE devuelve exit != 0, también con --alert: hasta 2026-08
+    # este camino devolvía 0 incondicionalmente y el workflow healthcheck.yml
+    # era estructuralmente incapaz de fallar — un estado crítico solo se veía
+    # si alguien leía el email (si el SMTP estaba configurado).
     return {"healthy": 0, "degraded": 1, "critical": 2}.get(result["status"], 2)
 
 

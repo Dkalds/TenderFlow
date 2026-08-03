@@ -1,17 +1,25 @@
-"""Trends analytics — monthly/weekly evolution, heatmap data, forecast."""
+"""Trends analytics — monthly/weekly evolution, heatmap data, forecast.
+
+Agrega en Postgres vía :class:`AggregateRepository` (ADR-023): la serie se
+construye sobre el GROUP BY diario (cientos de filas post-agregación) y el
+roll-up a semana/mes se hace en Python. Hasta 2026-08 este módulo cargaba la
+tabla completa a pandas en el proceso API — bloqueado en Render por el
+cortacircuitos full-table, que dejaba el endpoint vacío en producción.
+"""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
-import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -72,80 +80,62 @@ class TrendsResult(BaseModel):
     mes_pico: dict[str, Any] | None = None
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _load_df() -> pd.DataFrame:
-    return load_stats_base_df()
-
-
-def _apply_filters(df: pd.DataFrame, filters: TrendsFilters) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if filters.fecha_desde is not None:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_publicacion"] >= ts]
-    if filters.fecha_hasta is not None:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_publicacion"] <= ts]
-    if filters.ccaa:
-        df = df[df["ccaa"] == filters.ccaa]
-    if filters.tecnologia:
-        df = df[df["tecnologia"] == filters.tecnologia]
-    return df
-
-
-def _build_series(df: pd.DataFrame, freq: str) -> list[TrendPoint]:
-    if df.empty or df["fecha_publicacion"].isna().all():
-        return []
-    work = df.dropna(subset=["fecha_publicacion"]).copy()
-    period_key = {"month": "M", "week": "W", "day": "D"}.get(freq, "M")
-    work["period"] = work["fecha_publicacion"].dt.to_period(period_key).dt.to_timestamp()
-    g = (
-        work.groupby("period")
-        .agg(count=("id_externo", "count"), importe=("importe", "sum"))
-        .reset_index()
-        .sort_values("period")
+def _to_repo_filters(filters: TrendsFilters) -> LicitacionesFilters:
+    return LicitacionesFilters(
+        fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
+        fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
+        ccaa=filters.ccaa,
+        tecnologia=filters.tecnologia,
     )
-    fmt = {"month": "%Y-%m", "week": "%Y-W%V", "day": "%Y-%m-%d"}.get(freq, "%Y-%m")
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers (roll-up en Python sobre el GROUP BY diario)
+# ---------------------------------------------------------------------------
+
+
+def _period_label(dia: str, freq: str) -> str | None:
+    """Etiqueta de periodo para un día ISO; ``None`` si el día no es parseable.
+
+    Réplica del formato pandas original: mes ``%Y-%m``, día ``%Y-%m-%d`` y
+    semana ``%Y-W%V`` calculada sobre el lunes de la semana (el timestamp de
+    inicio del periodo semanal de pandas).
+    """
+    if freq == "month":
+        return dia[:7]
+    if freq == "day":
+        return dia[:10]
+    try:
+        d = date.fromisoformat(dia[:10])
+    except ValueError:
+        return None
+    monday = d - timedelta(days=d.weekday())
+    return monday.strftime("%Y-W%V")
+
+
+def _build_series(daily: list[dict[str, Any]], freq: str) -> list[TrendPoint]:
+    buckets: dict[str, list[float]] = {}
+    for row in daily:
+        label = _period_label(str(row["dia"]), freq)
+        if label is None:
+            continue
+        agg = buckets.setdefault(label, [0, 0.0])
+        agg[0] += int(row["count"])
+        agg[1] += float(row["importe"] or 0)
     return [
-        TrendPoint(
-            period=row["period"].strftime(fmt),
-            count=int(row["count"]),
-            importe=float(row["importe"] or 0),
-        )
-        for _, row in g.iterrows()
+        TrendPoint(period=label, count=int(c), importe=imp) for label, (c, imp) in buckets.items()
     ]
 
 
-def _build_heatmap(df: pd.DataFrame) -> list[HeatmapCell]:
-    if df.empty or df["fecha_publicacion"].isna().all():
-        return []
-    work = df.dropna(subset=["fecha_publicacion"]).copy()
-    work["mes"] = work["fecha_publicacion"].dt.to_period("M").astype(str)
-    if "estado" not in work.columns:
-        return []
-    ct = work.groupby(["mes", "estado"]).size().reset_index(name="value")
-    return [
-        HeatmapCell(row=r["mes"], col=r["estado"], value=int(r["value"])) for _, r in ct.iterrows()
-    ]
-
-
-def _yoy(df: pd.DataFrame, days: int = 365) -> tuple[float, float]:
-    """YoY delta for count and importe."""
-    if df.empty:
-        return 0.0, 0.0
-    hoy = pd.Timestamp.now("UTC")
-    cur = df[df["fecha_publicacion"] >= (hoy - pd.Timedelta(days=days))]
-    prev = df[
-        (df["fecha_publicacion"] < (hoy - pd.Timedelta(days=days)))
-        & (df["fecha_publicacion"] >= (hoy - pd.Timedelta(days=days * 2)))
-    ]
-    cnt_cur, cnt_prev = len(cur), len(prev)
-    imp_cur = float(cur["importe"].sum(skipna=True))
-    imp_prev = float(prev["importe"].sum(skipna=True))
+def _yoy_from_repo(filters: LicitacionesFilters) -> tuple[float, float]:
+    hoy = datetime.now(UTC)
+    vals = _repo.trends_yoy(
+        filters,
+        hace_365d_iso=(hoy - timedelta(days=365)).isoformat(),
+        hace_730d_iso=(hoy - timedelta(days=730)).isoformat(),
+    )
+    cnt_cur, cnt_prev = vals["cnt_cur"], vals["cnt_prev"]
+    imp_cur, imp_prev = vals["imp_cur"], vals["imp_prev"]
     yoy_count = ((cnt_cur - cnt_prev) / cnt_prev * 100) if cnt_prev else 0.0
     yoy_importe = ((imp_cur - imp_prev) / imp_prev * 100) if imp_prev else 0.0
     return yoy_count, yoy_importe
@@ -166,42 +156,18 @@ def _build_waterfall(series: list[TrendPoint]) -> list[WaterfallPoint]:
     return result
 
 
-def _build_histogram(df: pd.DataFrame) -> list[HistogramBin]:
-    """Build log-scale histogram bins for importe."""
-    if df.empty:
-        return []
-    valid = df["importe"].dropna()
-    if valid.empty:
-        return []
-    bins = [0, 1_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000, float("inf")]
-    labels = ["0-1K", "1K-10K", "10K-50K", "50K-100K", "100K-500K", "500K-1M", "1M-5M", "5M+"]
-    counts = (
-        pd.cut(valid, bins=bins, labels=labels, right=False)
-        .value_counts()
-        .reindex(labels, fill_value=0)
-    )
-    return [HistogramBin(bin_label=str(label), count=int(c)) for label, c in counts.items()]
-
-
-def _find_mes_pico(df: pd.DataFrame) -> dict[str, Any] | None:
-    """Find the month with highest total importe."""
-    if df.empty or df["fecha_publicacion"].isna().all():
+def _find_mes_pico(daily: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Mes con mayor importe total (primer máximo en caso de empate)."""
+    monthly: dict[str, list[float]] = {}
+    for row in daily:
+        mes = str(row["dia"])[:7]
+        agg = monthly.setdefault(mes, [0, 0.0])
+        agg[0] += int(row["count"])
+        agg[1] += float(row["importe"] or 0)
+    if not monthly:
         return None
-    work = df.dropna(subset=["fecha_publicacion"]).copy()
-    work["mes"] = work["fecha_publicacion"].dt.to_period("M").dt.to_timestamp()
-    g = (
-        work.groupby("mes")
-        .agg(importe=("importe", "sum"), count=("id_externo", "count"))
-        .reset_index()
-    )
-    if g.empty:
-        return None
-    best = g.loc[g["importe"].idxmax()]
-    return {
-        "mes": best["mes"].strftime("%Y-%m"),
-        "importe": float(best["importe"] or 0),
-        "count": int(best["count"]),
-    }
+    best_mes, best = max(monthly.items(), key=lambda kv: kv[1][1])
+    return {"mes": best_mes, "importe": best[1], "count": int(best[0])}
 
 
 # ---------------------------------------------------------------------------
@@ -212,13 +178,15 @@ def _find_mes_pico(df: pd.DataFrame) -> dict[str, Any] | None:
 def get_trends(filters: TrendsFilters) -> TrendsResult:
     """Compute time-series trends, heatmap, and YoY deltas."""
     log.info("analytics_trends_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df()
-    df = _apply_filters(df, filters)
+    repo_filters = _to_repo_filters(filters)
 
-    freq = filters.group_by
-    series = _build_series(df, freq)
-    heatmap = _build_heatmap(df)
-    yoy_count, yoy_importe = _yoy(df)
+    daily = _repo.trends_daily(repo_filters)
+    series = _build_series(daily, filters.group_by)
+    heatmap = [
+        HeatmapCell(row=str(r["mes"]), col=str(r["estado"]), value=int(r["value"]))
+        for r in _repo.trends_heatmap(repo_filters)
+    ]
+    yoy_count, yoy_importe = _yoy_from_repo(repo_filters)
 
     result = TrendsResult(
         series=series,
@@ -226,8 +194,11 @@ def get_trends(filters: TrendsFilters) -> TrendsResult:
         yoy_count=yoy_count,
         yoy_importe=yoy_importe,
         waterfall=_build_waterfall(series),
-        histogram_bins=_build_histogram(df),
-        mes_pico=_find_mes_pico(df),
+        histogram_bins=[
+            HistogramBin(bin_label=label, count=count)
+            for label, count in _repo.trends_histogram(repo_filters)
+        ],
+        mes_pico=_find_mes_pico(daily),
     )
     log.info("analytics_trends_done", points=len(result.series))
     return result

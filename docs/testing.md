@@ -2,28 +2,38 @@
 
 Guía para ejecutar, escribir y entender los tests del proyecto.
 
-## Auto-marking por convención de nombre
+## Auto-marking por convención de nombre + uso de fixtures
 
-`tests/conftest.py` asigna markers automáticamente según tokens en el nombre del archivo o función. **No marcar tests manualmente.**
+`tests/conftest.py` asigna markers automáticamente. **No marcar tests manualmente.**
 
-| Token en nombre                                        | Marker        |
+| Regla                                                  | Marker        |
 |--------------------------------------------------------|---------------|
-| `_e2e`, `visual_regression`                         | `e2e`         |
+| `_e2e`, `visual_regression` en el nombre               | `e2e`         |
 | `performance`, `load`                                  | `load`        |
 | `property`, `properties`, `property_based`             | `property`    |
-| `integration_e2e`                                      | `integration` |
+| `integration_e2e` (o `/integration/` en el path)       | `integration` |
+| Cierre de fixtures incluye `tmp_db`/`api_db` (BD real) | `integration` |
 | Todo lo demás                                          | `unit` (default) |
 
-Prioridad de evaluación: e2e > load > property > integration > unit.
+Prioridad de evaluación: e2e > load > property > integration (nombre) >
+integration (fixture PG) > unit.
 
-Si necesitás que un test tenga otro marker, **renombrá el archivo o la función** — no uses `@pytest.mark.xxx`.
+La regla por fixture (2026-08) hace la taxonomía **real**: un test que abre un
+schema Postgres — directamente (`tmp_db`, `api_db`) o transitivamente
+(`client`, `api_key`, `auth`…, que declaran `api_db` en su cierre) — queda
+`integration` sea cual sea el nombre del fichero, y `unit` vuelve a significar
+"sin I/O externo". `make check` ejecuta `unit or integration` (misma cobertura
+que antes del cambio); `make test-unit` es el bucle rápido sin BD.
+
+Si necesitás que un test tenga otro marker de NOMBRE, **renombrá el archivo o
+la función** — no uses `@pytest.mark.xxx`.
 
 ## Fixtures disponibles
 
 | Fixture   | Depende de     | Descripción                                                      |
 |-----------|----------------|------------------------------------------------------------------|
-| `tmp_db`  | `monkeypatch`, `tmp_path` | BD SQLite temporal con migraciones aplicadas. Aislada por test. Devuelve `(db_mod, tmp_path)`. |
-| `api_db`  | `tmp_path`, `monkeypatch` | BD temporal con todas las migraciones, orientada a tests de API. Devuelve `db_path`. |
+| `tmp_db`  | `_pg_schema`   | Schema Postgres aislado por test (DDL completo + seeds de migración replicados; ver `conftest.py::_pg_schema_ddl`). Requiere `TEST_DATABASE_URL`. Devuelve `(db_mod, None)` — el segundo elemento era el path SQLite y sobrevive por compatibilidad de firma. |
+| `api_db`  | `_pg_schema`   | Mismo schema aislado, orientado a tests de API (inicializa `db_mod`). |
 | `api_key` | `api_db`       | Crea una API Key de test y devuelve el token en bruto (string).  |
 | `client`  | `api_db`       | `TestClient` de FastAPI con BD temporal (`raise_server_exceptions=True`). |
 | `auth`    | `api_key`      | Dict con headers de autenticación: `{"X-API-Key": "<token>"}`.   |
@@ -47,14 +57,16 @@ def test_parser_properties_handles_empty(tmp_db):
 ## Ejecutar tests por categoría
 
 ```bash
-make test-unit         # unit (sin slow) — usar durante desarrollo
+make check             # lint + typecheck + unit e integration (gate local)
+make test-unit         # unit (sin slow, sin BD) — bucle rápido de desarrollo
 make test              # suite completa excepto integration_e2e
-make test-all          # todo excepto integration
-make test-integration  # solo integration
+make test-parallel     # ídem con pytest-xdist -n auto (opt-in, ver Makefile)
+make test-all          # TODOS los tests
+make test-integration  # solo integration (requiere TEST_DATABASE_URL)
 make test-e2e          # solo e2e
 make test-property     # solo property
 make test-load         # solo load
-make test-perf         # test_performance.py con timeout 120s
+make test-perf         # test_performance.py (marker slow)
 ```
 
 ## Skips condicionales
@@ -65,8 +77,10 @@ Algunos tests se saltan **a propósito** según el entorno. No son deuda: cada
 | Test | Condición de skip | Por qué es correcto |
 |------|-------------------|---------------------|
 | `test_shared_schemas.py` | `pandera` no instalado (`importorskip`) o `LicitacionSchema` es NoOp | La validación pandera es un extra opcional (`[schemas]`); sin él el schema degrada a NoOp y no hay nada que validar. |
-| `test_unit_coverage_batch1b.py::TestFallbackActors` | `dramatiq` **sí** está instalado | Estos tests cubren el camino *fallback* (sin broker). Con dramatiq activo, el fallback no se ejecuta. |
-| `test_visual_regression.py` | El puerto 8599 ya está en uso | Evita chocar con una instancia local ya levantada. |
+
+(Los archivos `test_unit_coverage_batch1b.py` y `test_visual_regression.py`
+que esta tabla citaba se redistribuyeron/retiraron — las filas se eliminaron
+en 2026-08 al detectar que documentaban tests inexistentes.)
 
 Regla general: usar `pytest.importorskip("dep")` para dependencias opcionales y
 `pytest.skip(motivo)` con un mensaje claro para condiciones de entorno. En CI,

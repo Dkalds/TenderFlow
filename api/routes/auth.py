@@ -46,6 +46,7 @@ from shared.auth_core import (
     verify_oauth_state,
     verify_password,
 )
+from shared.dto import DetailMessage, StatusOk
 from shared.identity import user_key_from_email
 from shared.password_policy import check_password_strength
 
@@ -307,6 +308,25 @@ class UserInfo(BaseModel):
     mfa_required: bool = False
 
 
+class TotpSetupResult(BaseModel):
+    """Alta de TOTP: el secreto viaja solo aquí, como URI otpauth."""
+
+    otpauth_uri: str
+
+
+class TotpConfirmResult(BaseModel):
+    """Confirmación de TOTP: los recovery codes se entregan una sola vez."""
+
+    status: str
+    recovery_codes: list[str]
+
+
+class OAuthAuthorizeResult(BaseModel):
+    """URL de autorización de Google para que el SPA redirija."""
+
+    authorization_url: str
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -450,7 +470,7 @@ async def me(user: dict[str, Any] = Depends(get_session_user_pending_mfa)) -> Us
 async def logout(
     response: Response,
     user: dict[str, Any] = Depends(require_csrf_pending_mfa),
-) -> dict[str, str]:
+) -> DetailMessage:
     """Revoca la sesión server-side y borra sus cookies.
 
     Debe funcionar con MFA pendiente: abandonar un login a medias no puede
@@ -458,7 +478,7 @@ async def logout(
     """
     revoke_session(str(user["session_token"]))
     _clear_session_cookies(response)
-    return {"detail": "Logged out"}
+    return DetailMessage(detail="Logged out")
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +538,7 @@ async def require_recent_session_auth(
 async def setup_totp(
     response: Response,
     user: dict[str, Any] = Depends(require_recent_session_auth),
-) -> dict[str, str]:
+) -> TotpSetupResult:
     """Inicia el alta de TOTP; el secreto solo se revela en esta respuesta."""
     from db.totp import generate_totp_secret, get_totp_secret, get_totp_uri, save_totp_secret
 
@@ -528,7 +548,7 @@ async def setup_totp(
     secret = generate_totp_secret()
     save_totp_secret(user_id, secret, confirmed=False)
     response.headers["Cache-Control"] = "no-store"
-    return {"otpauth_uri": get_totp_uri(secret, str(user.get("email") or user_id))}
+    return TotpSetupResult(otpauth_uri=get_totp_uri(secret, str(user.get("email") or user_id)))
 
 
 @router.post("/totp/confirm")
@@ -536,7 +556,7 @@ async def confirm_totp(
     body: TotpCodeRequest,
     response: Response,
     user: dict[str, Any] = Depends(require_recent_session_auth),
-) -> dict[str, Any]:
+) -> TotpConfirmResult:
     """Confirma el primer código TOTP y entrega recovery codes una sola vez."""
     from db.sessions import mark_session_mfa_verified
     from db.totp import confirm_totp as confirm_totp_secret
@@ -559,14 +579,14 @@ async def confirm_totp(
 
     clear_mfa_attempts(user_id)
     response.headers["Cache-Control"] = "no-store"
-    return {"status": "ok", "recovery_codes": generate_recovery_codes(user_id)}
+    return TotpConfirmResult(status="ok", recovery_codes=generate_recovery_codes(user_id))
 
 
 @router.post("/totp/verify")
 async def verify_totp_login(
     body: TotpCodeRequest,
     user: dict[str, Any] = Depends(require_csrf_pending_mfa),
-) -> dict[str, str]:
+) -> StatusOk:
     """Eleva una sesión pendiente tras verificar TOTP o un recovery code.
 
     Es la única ruta que *tiene* que aceptar una sesión sin MFA verificado:
@@ -593,13 +613,13 @@ async def verify_totp_login(
     from db.rate_limits import clear_mfa_attempts
 
     clear_mfa_attempts(user_id)
-    return {"status": "ok"}
+    return StatusOk(status="ok")
 
 
 @router.delete("/totp")
 async def remove_totp(
     user: dict[str, Any] = Depends(require_recent_session_auth),
-) -> dict[str, str]:
+) -> StatusOk:
     """Desactiva MFA solo desde una sesión que ya superó MFA."""
     if user.get("mfa_required") and not user.get("mfa_verified_at"):
         raise HTTPException(
@@ -608,7 +628,7 @@ async def remove_totp(
     from db.totp import delete_totp
 
     delete_totp(int(user["user_id"]))
-    return {"status": "ok"}
+    return StatusOk(status="ok")
 
 
 # ---------------------------------------------------------------------------
@@ -617,7 +637,7 @@ async def remove_totp(
 
 
 @router.get("/oauth/google/authorize")
-async def google_authorize(response: Response) -> dict[str, str]:
+async def google_authorize(response: Response) -> OAuthAuthorizeResult:
     """Redirect URL for Google OAuth with PKCE.
 
     Returns JSON with ``authorization_url`` so the SPA can redirect the user.
@@ -662,7 +682,7 @@ async def google_authorize(response: Response) -> dict[str, str]:
     )
     authorization_url = f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
     log.info("oauth_authorize_redirect")
-    return {"authorization_url": authorization_url}
+    return OAuthAuthorizeResult(authorization_url=authorization_url)
 
 
 def _sync_oauth_admin(user_id: int, email: str) -> None:
@@ -716,14 +736,17 @@ def _oauth_error_redirect(frontend_url: str, error: str) -> Response:
     return redirect
 
 
-@router.get("/oauth/google/callback", response_model=None)
+# status_code=302: el callback SIEMPRE redirige (éxito → /resumen, error →
+# /login?error=<slug>) — nunca sirve JSON. Sin esto, OpenAPI documentaba un
+# 200 application/json {} que no existe (operación opaca en el ratchet).
+@router.get("/oauth/google/callback", response_model=None, status_code=302)
 async def google_callback(
     code: str,
     state: str,
     response: Response,
     request: Request,
     pkce_verifier: str | None = Cookie(default=None, alias=_OAUTH_PKCE_COOKIE),
-) -> UserInfo | Response:
+) -> Response:
     """Handle Google OAuth callback: exchange code, validate, set session."""
     frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 

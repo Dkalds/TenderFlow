@@ -31,6 +31,13 @@ from services.watchlist_rules import (
     list_rules,
     update_rule,
 )
+from shared.dto import (
+    CreatedId,
+    StatusOk,
+    TotalCount,
+    WatchlistRuleMatch,
+    WatchlistRuleMatchesResult,
+)
 
 log = get_logger(__name__)
 
@@ -74,10 +81,21 @@ class WatchlistRuleBody(BaseModel):
 
 
 class WatchlistRuleOut(WatchlistRule):
-    """Regla devuelta al cliente, enriquecida con el conteo real de matches."""
+    """Regla devuelta al cliente, enriquecida con el conteo real de matches.
 
-    match_count: int = 0
-    email: str | None = None  # email de entrega, si lo tiene
+    Sin defaults (nota de modelado del backlog de contrato): una regla listada
+    siempre trae ``id``, su conteo y el email de entrega (posiblemente null).
+    """
+
+    id: int
+    match_count: int
+    email: str | None  # email de entrega, si lo tiene
+
+
+class WatchlistRulesResult(BaseModel):
+    """Listado de reglas del usuario (contrato tipado del GET)."""
+
+    items: list[WatchlistRuleOut]
 
 
 def _rules_with_counts(user_key: str, organization_id: int | None = None) -> list[WatchlistRuleOut]:
@@ -145,18 +163,18 @@ def _matches_for(rule: WatchlistRule, limit: int) -> list[dict[str, Any]]:
 async def get_rules(
     organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_organization()),
-) -> dict[str, list[WatchlistRuleOut]]:
+) -> WatchlistRulesResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
     items = await run_db(_rules_with_counts, _user_key(ctx), ctx["organization_id"])
-    return {"items": items}
+    return WatchlistRulesResult(items=items)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Crear una regla")
 async def post_rule(
     body: WatchlistRuleBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, int]:
+) -> CreatedId:
     from db.database import connect
 
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
@@ -183,7 +201,7 @@ async def post_rule(
 
     rule_id = await run_db(_create)
     log.info("watchlist_rule_created", rule_id=rule_id, has_email=email is not None)
-    return {"id": rule_id}
+    return CreatedId(id=rule_id)
 
 
 @router.put("/{rule_id}", summary="Actualizar una regla propia")
@@ -191,7 +209,7 @@ async def put_rule(
     rule_id: int,
     body: WatchlistRuleBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, str]:
+) -> StatusOk:
     from db.database import connect
 
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
@@ -212,18 +230,18 @@ async def put_rule(
     ok = await run_db(_update)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
-    return {"status": "ok"}
+    return StatusOk(status="ok")
 
 
 @router.delete("/{rule_id}", summary="Eliminar una regla propia")
 async def delete_rule_route(
     rule_id: int,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
-) -> dict[str, str]:
+) -> StatusOk:
     ok = await run_db(delete_rule, _user_key(ctx), rule_id, ctx["organization_id"])
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
-    return {"status": "ok"}
+    return StatusOk(status="ok")
 
 
 @router.get("/{rule_id}/matches", summary="Licitaciones que coinciden con una regla")
@@ -231,20 +249,22 @@ async def get_rule_matches(
     rule_id: int,
     ctx: dict[str, Any] = Depends(require_organization()),
     limit: int = Query(default=50, ge=1, le=200),
-) -> dict[str, Any]:
+) -> WatchlistRuleMatchesResult:
     by_id = {r.id: r for r in await run_db(list_rules, _user_key(ctx), ctx["organization_id"])}
     rule = by_id.get(rule_id)
     if rule is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
     items = await run_db(_matches_for, rule, limit)
     total = await run_db(count_matches, rule)
-    return {"items": items, "total": total}
+    return WatchlistRuleMatchesResult(
+        items=[WatchlistRuleMatch(**item) for item in items], total=total
+    )
 
 
 @router.post("/preview", summary="Conteo de matches de unos criterios sin guardar")
 async def preview_matches(
     body: WatchlistRuleBody,
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, int]:
+) -> TotalCount:
     total = await run_db(count_matches, body.to_rule())
-    return {"total": total}
+    return TotalCount(total=total)

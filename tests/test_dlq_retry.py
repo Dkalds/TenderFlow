@@ -106,8 +106,13 @@ def test_retry_max_retries_skipped(tmp_db, monkeypatch):
     assert result == 0
 
 
-def test_retry_unknown_source_increments_retry(tmp_db, monkeypatch):
-    """Fuente desconocida → no resuelto, retry_count incrementado."""
+def test_retry_unknown_source_marks_exhausted_immediately(tmp_db, monkeypatch):
+    """Fuente sin dispatch → agotada de inmediato, sin quemar ciclos de reintento.
+
+    Hasta 2026-08 estas entradas incrementaban retry_count durante 5 ciclos
+    sin hacer nada y acababan en una alerta de "agotó reintentos" que
+    atribuía mal la causa.
+    """
     from db import dlq
 
     dlq.record_failure("run-1", "unknown_source_xyz", RuntimeError("err"))
@@ -116,8 +121,29 @@ def test_retry_unknown_source_increments_retry(tmp_db, monkeypatch):
 
     result = retry_failed_extractions()
     assert result == 0
-    items = dlq.list_unresolved()
-    assert items[0]["retry_count"] == 1
+    assert dlq.list_unresolved() == []
+    exhausted = dlq.list_exhausted()
+    assert len(exhausted) == 1
+    assert exhausted[0]["fuente"] == "unknown_source_xyz"
+
+
+def test_retry_connector_source_dispatches(tmp_db, monkeypatch):
+    """Las fuentes de conectores (pscp/ted/…) SÍ tienen dispatch de reintento."""
+    from unittest.mock import MagicMock
+
+    from db import dlq
+
+    dlq.record_failure("run-1", "pscp", RuntimeError("err"))
+    monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
+
+    ok_result = MagicMock(errores=0)
+    with patch("scraper.connectors.base.run_connector", return_value=ok_result):
+        from scheduler.dlq_retry import retry_failed_extractions
+
+        result = retry_failed_extractions()
+
+    assert result == 1
+    assert dlq.list_unresolved() == []
 
 
 def test_retry_bulk_success(tmp_db, monkeypatch):

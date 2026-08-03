@@ -132,5 +132,5 @@ class TestExportOwnershipCreate:
             q=None,
             ctx=_ctx(OWNER_HASH),
         )
-        job_id = result["id"]
+        job_id = result.id
         assert _store[job_id]["owner"] == OWNER_HASH

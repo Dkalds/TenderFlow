@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 
 from api.auth import AuthContext, require_api_key
 from api.routes.auth import get_current_session_user
@@ -157,6 +158,13 @@ def _run_export(job_id: str, filters: dict[str, Any]) -> None:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
+class ExportJobStatus(BaseModel):
+    """Estado del job de exportación asíncrona (202 + sondeo)."""
+
+    id: str
+    status: str
+
+
 @router.post("", status_code=202, deprecated=True)
 def create_export(
     background_tasks: BackgroundTasks,
@@ -164,7 +172,7 @@ def create_export(
     estado: str | None = None,
     q: str | None = None,
     ctx: AuthContext = Depends(require_api_key),
-) -> dict[str, str]:
+) -> ExportJobStatus:
     """Crea un job de exportación PDF asíncrono.
 
     .. deprecated::
@@ -172,9 +180,10 @@ def create_export(
        propia respuesta.
 
        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
-       Eso sólo funciona con una única instancia que además no se reinicie: en
-       el plan actual de Render la instancia se recicla por inactividad, así
-       que un job aceptado con 202 desaparece y el sondeo devuelve 404 sin que
+       Eso sólo funciona con una única instancia que además no se reinicie:
+       cualquier deploy o reinicio de la instancia (el plan de pago de Render
+       ya no hiberna por inactividad, pero sí recicla en cada release) hace
+       desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
        nada lo registre como fallo; y al escalar a dos instancias el poll cae
        en la equivocada y responde 404 o 403 de forma no determinista.
 
@@ -198,7 +207,7 @@ def create_export(
     filters = {k: v for k, v in {"ccaa": ccaa, "estado": estado, "q": q}.items() if v}
     background_tasks.add_task(_run_export, job_id, filters)
     log.info("export_pdf.created", job_id=job_id, filters=filters)
-    return {"id": job_id, "status": "pending"}
+    return ExportJobStatus(id=job_id, status="pending")
 
 
 __all__ = ["router"]
@@ -207,7 +216,22 @@ __all__ = ["router"]
 # ── Synchronous CSV/Excel download ───────────────────────────────────────────
 
 
-@router.get("/download")
+# response_class=StreamingResponse: la respuesta es el fichero (CSV/XLSX/PDF),
+# no hay 200 application/json que documentar.
+@router.get(
+    "/download",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "content": {
+                "text/csv": {},
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {},
+                "application/pdf": {},
+            },
+            "description": "Fichero exportado con los filtros actuales",
+        }
+    },
+)
 async def download_export(
     format: Literal["csv", "excel", "pdf"] = Query("csv"),
     q: str | None = Query(None),
@@ -348,6 +372,9 @@ def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> 
 @router.get(
     "/calendario.ics",
     summary="Calendario ICS con deadlines y vencimientos de favoritos",
+    # response_class=Response evita el content application/json {} por defecto
+    # (es un .ics; su contrato lo declara `responses`).
+    response_class=Response,
     responses={
         200: {"content": {"text/calendar": {}}, "description": "Archivo iCalendar (.ics)"},
         401: {"description": "Token invalido o ausente"},
@@ -435,7 +462,17 @@ async def calendario_ics(
 # ``/exports`` debe declararse por encima de este bloque.
 
 
-@router.get("/{job_id}", deprecated=True)
+# response_class=Response evita el content application/json {} por defecto:
+# el 200 es el PDF; el estado intermedio viaja como 202 con ExportJobStatus.
+@router.get(
+    "/{job_id}",
+    deprecated=True,
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "PDF generado"},
+        202: {"model": ExportJobStatus, "description": "Job pendiente o en curso"},
+    },
+)
 def get_export(
     job_id: str,
     ctx: AuthContext = Depends(require_api_key),

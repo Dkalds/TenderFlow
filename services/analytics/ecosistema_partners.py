@@ -1,9 +1,16 @@
 """Ecosistema Partners — grafo de co-licitación REAL (UTE / co-adjudicación).
 
 Wrapper de servicio sobre :func:`services.partners.build_partnership_graph` (que
-opera sobre un DataFrame puro) + el loader canónico de adjudicaciones. Las aristas
-empresa↔empresa existen **solo si han co-licitado** (UTE conjunta), con peso = nº de
-contratos compartidos + importe — no co-ocurrencia geográfica por CCAA.
+opera sobre un DataFrame puro) + la proyección ACOTADA de filas UTE de
+:class:`AdjudicacionRepository` (ADR-023). Las aristas empresa↔empresa existen
+**solo si han co-licitado** (UTE conjunta), con peso = nº de contratos
+compartidos + importe — no co-ocurrencia geográfica por CCAA.
+
+Además de retirar la carga full-table (bloqueada en Render), la proyección
+REPARA el endpoint: el camino anterior exigía una columna ``es_ute`` que el
+loader raw nunca producía, así que el grafo llegaba siempre vacío. El patrón
+``\\y``-delimitado replica en SQL el regex ``\\bU\\.?T\\.?E\\.?\\b`` con el que
+el enriquecimiento pandas derivaba ``es_ute``.
 """
 
 from __future__ import annotations
@@ -11,11 +18,16 @@ from __future__ import annotations
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
-from services.adjudicaciones import load_raw_adjudicaciones
 from services.partners import build_partnership_graph
 
 log = get_logger(__name__)
+
+_repo = AdjudicacionRepository()
+
+# `\y` es el límite de palabra de los regex POSIX de Postgres (≙ `\b` en Python).
+_ES_UTE_PATTERN = r"\yU\.?T\.?E\.?\y"
 
 
 class PartnerGraphFilters(BaseModel):
@@ -97,12 +109,12 @@ def get_partnership_graph(filters: PartnerGraphFilters) -> PartnershipGraphResul
     """Grafo de co-licitación real (UTE), acotado en backend."""
     log.info("ecosistema_partners_start", filters=filters.model_dump(exclude_none=True))
     ccaa_filter = tuple(filters.ccaa.split(",")) if filters.ccaa else None
-    df = pd.DataFrame(load_raw_adjudicaciones(ccaa_filter=ccaa_filter))
-    if df.empty or "es_ute" not in df.columns:
+    rows = _repo.load_ute_rows(pattern=_ES_UTE_PATTERN, ccaa_filter=ccaa_filter)
+    if not rows:
         return PartnershipGraphResult()
 
-    df["es_ute"] = df["es_ute"].fillna(0).astype(bool)
-    total_utes = int(df["es_ute"].sum())
+    df = pd.DataFrame(rows).assign(es_ute=True)
+    total_utes = len(rows)
 
     graph = build_partnership_graph(
         df,

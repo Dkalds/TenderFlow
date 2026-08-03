@@ -57,12 +57,39 @@ def build_bipartite_graph(
         .reset_index()
     )
 
+    return bipartite_graph_from_edge_aggregates(
+        edges_df,
+        min_contratos=min_contratos,
+        top_organos=top_organos,
+        top_empresas=top_empresas,
+    )
+
+
+def bipartite_graph_from_edge_aggregates(
+    edges_df: pd.DataFrame,
+    *,
+    min_contratos: int = 1,
+    top_organos: int = 30,
+    top_empresas: int = 30,
+) -> dict[str, list[dict[str, Any]]]:
+    """Núcleo del grafo sobre aristas YA agregadas (ADR-023).
+
+    ``edges_df`` trae una fila por par (``organo_contratacion``,
+    ``empresa_key``) con ``contratos``, ``importe_total``, ``empresa_nombre``
+    y opcionalmente ``fecha_min``/``fecha_max`` (datetime) para la frecuencia
+    anual. Permite alimentar el grafo desde el ``GROUP BY`` de Postgres en vez
+    de materializar la tabla de adjudicaciones para re-agregarla aquí.
+    """
+    if edges_df.empty:
+        return {"nodes": [], "edges": []}
+
     # Filter by minimum contratos
-    edges_df = edges_df[edges_df["contratos"] >= min_contratos]
+    edges_df = edges_df[edges_df["contratos"] >= min_contratos].copy()
     if edges_df.empty:
         return {"nodes": [], "edges": []}
 
     # Frecuencia anual: contratos / span en años (mín. 1 año)
+    has_fecha = "fecha_min" in edges_df.columns and "fecha_max" in edges_df.columns
     if has_fecha:
         span = (edges_df["fecha_max"] - edges_df["fecha_min"]).dt.days / 365.25
         span = span.clip(lower=1.0)

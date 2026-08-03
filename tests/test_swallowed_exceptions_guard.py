@@ -203,7 +203,6 @@ _LEGITIMATE_SILENT: frozenset[str] = frozenset(
         "db/connection.py::get_table_columns",
         # Probes de disponibilidad: el `return False` ES el resultado que el
         # llamante espera, no un fallback que oculte un fallo.
-        "services/analytics_engine.py::engine_available",
         "db/search_backend.py::PgTsBackend.available",
         # `check_db` devuelve "error", que viaja hasta /api/v1/health/ready y
         # se convierte en 503. La constancia es la respuesta HTTP.
@@ -216,8 +215,8 @@ _GRANDFATHERED_PENDING_FIX: frozenset[str] = frozenset(
         # ── Export/anonimización GDPR: el caso que originó este test ────────
         # Devuelven [] ante cualquier fallo, indistinguible de "sin datos".
         # Ver el P0 de watchlist/GDPR en docs/IMPROVEMENT_BACKLOG.md: al
-        # arreglarlo, estas tres entradas se borran de aquí.
-        "db/repositories/watchlist.py::WatchlistRepository.export_by_user_key",
+        # arreglarlo, estas entradas se borran de aquí.
+        # (`export_by_user_key` ya se arregló: sin `except` que trague el fallo.)
         "db/repositories/watchlist.py::WatchlistRepository.export_items_by_user_key",
         "db/repositories/audit.py::AuditRepository.export_by_user_key",
         # ── Camino de autenticación ─────────────────────────────────────────
@@ -254,10 +253,6 @@ _GRANDFATHERED_PENDING_FIX: frozenset[str] = frozenset(
         # (listas vacías, "Otro") sin señalar que el cálculo falló.
         "db/upsert.py::replace_adjudicaciones_batch",
         "db/repositories/extraction_runs.py::ExtractionRunRepository.load_recent_daily_statuses",
-        "services/licitaciones.py::load_dataframe",
-        "services/adjudicaciones.py::load_adjudicaciones",
-        "services/analytics/forecast.py::forecast_volume",
-        "services/analytics/organo_detail.py::get_organo_detail",
         "services/partners.py::_detect_communities",
     }
 )

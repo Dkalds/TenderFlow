@@ -1,10 +1,22 @@
 """Tests para services/adjudicaciones.py con BD real (tmp_db).
 
-Patrón: seed una licitación + adjudicaciones via replace_adjudicaciones,
-luego verificar el comportamiento del servicio de lectura.
+Los loaders full-table (``load_adjudicaciones``/``load_raw_adjudicaciones`` y
+su caché) se retiraron al completar ADR-023 — sus comportamientos viven ahora
+en SQL y se prueban donde se consumen: baja_pct y lead-time en
+``test_analytics_organos.py``, patrón UTE en ``test_analytics_utes.py`` /
+``test_analytics_ecosistema_partners.py``, identidad canónica en
+``test_analytics_red_organo_empresa.py``, filtros de competidores en
+``test_analytics_competitors_sql_filters.py``. Aquí quedan los caminos vivos
+del servicio (``load_licitadores``) y las garantías de persistencia
+(idempotencia, lotes múltiples) vía ``AdjudicacionRepository``.
 """
 
 from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.usefixtures("tmp_db")
+
 
 # ---------------------------------------------------------------------------
 # Helpers de seed (mismo patrón que test_services_licitaciones.py)
@@ -38,203 +50,33 @@ def _seed_adjudicacion(
     nombre: str = "Empresa SAP SL",
     nif: str = "B12345678",  # pragma: allowlist secret
     importe_adjudicado: float = 420_000.0,
-    importe_licitacion: float | None = 500_000.0,
-    es_ute: bool = False,
     fecha_adj: str = "2024-03-15",
     n_ofertas: int = 4,
+    ccaa: str | None = "Madrid",
 ) -> None:
     from db.upsert import Adjudicacion, replace_adjudicaciones
 
-    nombre_efectivo = "U.T.E. SAP-CONSULT" if es_ute else nombre
     replace_adjudicaciones(
         licitacion_id,
         [
             Adjudicacion(
                 licitacion_id=licitacion_id,
-                nombre=nombre_efectivo,
+                nombre=nombre,
                 nif=nif,
                 importe_adjudicado=importe_adjudicado,
                 fecha_adjudicacion=fecha_adj,
                 n_ofertas_recibidas=n_ofertas,
+                ccaa=ccaa,
             )
         ],
     )
 
 
-# ---------------------------------------------------------------------------
-# Carga enriquecida: baja_pct calculada correctamente
-# ---------------------------------------------------------------------------
+def _rows_for(licitacion_id: str) -> list[dict]:
+    from db.repositories.adjudicaciones import AdjudicacionRepository
 
-
-def test_adjudicaciones_baja_pct_calculada(tmp_db):
-    """baja_pct = (1 - adj/lic) × 100 debe calcularse en load_adjudicaciones."""
-    _seed_licitacion()
-    _seed_adjudicacion(importe_adjudicado=420_000.0)
-
-    from services.adjudicaciones import load_adjudicaciones
-
-    df = load_adjudicaciones()
-    assert not df.empty
-
-    row = df[df["licitacion_id"] == "ADJ-TEST-001"].iloc[0]
-    # baja_pct = (1 - 420k/500k) * 100 = 16.0
-    assert abs(row["baja_pct"] - 16.0) < 0.01
-
-
-def test_adjudicaciones_baja_pct_nula_sin_importe_licitacion(tmp_db):
-    """baja_pct es NaN cuando importe_licitacion es 0 o None."""
-    from db.upsert import Licitacion, upsert_licitaciones
-
-    upsert_licitaciones(
-        [
-            Licitacion(
-                id_externo="ADJ-SIN-IMP",
-                titulo="Sin importe de licitación",
-                importe=None,  # sin importe base
-                estado="ADJ",
-            )
-        ]
-    )
-    from db.upsert import Adjudicacion, replace_adjudicaciones
-
-    replace_adjudicaciones(
-        "ADJ-SIN-IMP",
-        [
-            Adjudicacion(
-                licitacion_id="ADJ-SIN-IMP", nombre="Empresa X", importe_adjudicado=100_000.0
-            )
-        ],
-    )
-
-    from services.adjudicaciones import load_adjudicaciones
-
-    df = load_adjudicaciones()
-    row = df[df["licitacion_id"] == "ADJ-SIN-IMP"]
-    assert not row.empty
-    import pandas as pd
-
-    assert pd.isna(row.iloc[0]["baja_pct"])
-
-
-# ---------------------------------------------------------------------------
-# es_ute detectado
-# ---------------------------------------------------------------------------
-
-
-def test_adjudicaciones_es_ute_detectado(tmp_db):
-    """Nombre que contiene U.T.E. → es_ute = True."""
-    _seed_licitacion("ADJ-UTE-001")
-    _seed_adjudicacion("ADJ-UTE-001", es_ute=True)
-
-    from services.adjudicaciones import load_adjudicaciones
-
-    df = load_adjudicaciones()
-    row = df[df["licitacion_id"] == "ADJ-UTE-001"]
-    assert not row.empty
-    assert bool(row.iloc[0]["es_ute"]) is True
-
-
-def test_adjudicaciones_es_ute_false_empresa_normal(tmp_db):
-    """Nombre estándar → es_ute = False."""
-    _seed_licitacion("ADJ-NORMAL-001")
-    _seed_adjudicacion("ADJ-NORMAL-001", nombre="TechCorp SA", es_ute=False)
-
-    from services.adjudicaciones import load_adjudicaciones
-
-    df = load_adjudicaciones()
-    row = df[df["licitacion_id"] == "ADJ-NORMAL-001"]
-    assert not row.empty
-    assert bool(row.iloc[0]["es_ute"]) is False
-
-
-# ---------------------------------------------------------------------------
-# lead_time_dias > 0 cuando fecha_adjudicacion > fecha_publicacion
-# ---------------------------------------------------------------------------
-
-
-def test_adjudicaciones_lead_time_positivo(tmp_db):
-    """lead_time_dias debe ser > 0 cuando la adjudicación es posterior a publicación."""
-    _seed_licitacion("ADJ-LT-001")
-    _seed_adjudicacion("ADJ-LT-001", fecha_adj="2024-06-20")
-    # fecha_publicacion en seed_licitacion es 2024-01-10 → lead ~161d
-
-    from services.adjudicaciones import load_adjudicaciones
-
-    df = load_adjudicaciones()
-    row = df[df["licitacion_id"] == "ADJ-LT-001"]
-    assert not row.empty
-
-    import pandas as pd
-
-    lt = row.iloc[0]["lead_time_dias"]
-    assert pd.notna(lt)
-    assert float(lt) > 0
-
-
-# ---------------------------------------------------------------------------
-# DataFrame vacío cuando no hay datos
-# ---------------------------------------------------------------------------
-
-
-def test_adjudicaciones_df_vacio_sin_datos(tmp_db):
-    """Sin adjudicaciones en BD, load_adjudicaciones devuelve DataFrame vacío."""
-    from services.adjudicaciones import load_adjudicaciones
-
-    df = load_adjudicaciones()
-    assert df.empty
-
-
-# ---------------------------------------------------------------------------
-# Caché: segunda llamada reutiliza el mismo objeto
-# ---------------------------------------------------------------------------
-
-
-def test_adjudicaciones_cache_segunda_llamada_mismo_objeto(tmp_db):
-    """load_raw_adjudicaciones sin filtros devuelve el mismo objeto en caché."""
-    _seed_licitacion("ADJ-CACHE-001")
-    _seed_adjudicacion("ADJ-CACHE-001")
-
-    from services.adjudicaciones import load_raw_adjudicaciones
-
-    resultado_1 = load_raw_adjudicaciones()
-    resultado_2 = load_raw_adjudicaciones()
-    # Mismo objeto en memoria — la caché debe devolver la misma referencia
-    assert resultado_1 is resultado_2
-
-
-def test_adjudicaciones_cache_con_filtro_no_cachea(tmp_db):
-    """load_raw_adjudicaciones con filtros no usa la caché (objetos distintos)."""
-    _seed_licitacion("ADJ-FILT-001")
-    _seed_adjudicacion("ADJ-FILT-001")
-
-    from services.adjudicaciones import load_raw_adjudicaciones
-
-    sin_filtro = load_raw_adjudicaciones()
-    con_filtro = load_raw_adjudicaciones(ccaa_filter=("Madrid",))
-    # Con filtros se bypass el caché → objetos distintos
-    assert sin_filtro is not con_filtro
-
-
-# ---------------------------------------------------------------------------
-# clear_raw_adj_cache invalida la caché
-# ---------------------------------------------------------------------------
-
-
-def test_adjudicaciones_clear_cache_invalida(tmp_db):
-    """clear_raw_adj_cache hace que la próxima llamada cargue desde BD."""
-    _seed_licitacion("ADJ-CLR-001")
-    _seed_adjudicacion("ADJ-CLR-001")
-
-    from services.adjudicaciones import clear_raw_adj_cache, load_raw_adjudicaciones
-
-    ref_antes = load_raw_adjudicaciones()  # llena la caché
-    clear_raw_adj_cache()
-    ref_despues = load_raw_adjudicaciones()  # recarga desde BD
-
-    # Tras clear el objeto es nuevo (diferente referencia)
-    assert ref_antes is not ref_despues
-    # Pero el contenido debe ser equivalente
-    assert len(ref_antes) == len(ref_despues)
+    items, _total = AdjudicacionRepository().list_paginated(licitacion_id=licitacion_id)
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -242,18 +84,13 @@ def test_adjudicaciones_clear_cache_invalida(tmp_db):
 # ---------------------------------------------------------------------------
 
 
-def test_adjudicaciones_replace_idempotente(tmp_db):
+def test_adjudicaciones_replace_idempotente():
     """Llamar replace_adjudicaciones dos veces con los mismos datos no duplica."""
     _seed_licitacion("ADJ-IDEM-001")
     _seed_adjudicacion("ADJ-IDEM-001")
     _seed_adjudicacion("ADJ-IDEM-001")  # segunda vez con mismos datos
 
-    from services.adjudicaciones import clear_raw_adj_cache, load_raw_adjudicaciones
-
-    clear_raw_adj_cache()
-    rows = load_raw_adjudicaciones()
-    filas_lic = [r for r in rows if r["licitacion_id"] == "ADJ-IDEM-001"]
-    assert len(filas_lic) == 1
+    assert len(_rows_for("ADJ-IDEM-001")) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +98,7 @@ def test_adjudicaciones_replace_idempotente(tmp_db):
 # ---------------------------------------------------------------------------
 
 
-def test_adjudicaciones_multiples_por_licitacion(tmp_db):
+def test_adjudicaciones_multiples_por_licitacion():
     """Una licitación puede tener varias adjudicaciones (lotes)."""
     from db.upsert import Adjudicacion, Licitacion, replace_adjudicaciones, upsert_licitaciones
 
@@ -295,30 +132,37 @@ def test_adjudicaciones_multiples_por_licitacion(tmp_db):
         ],
     )
 
-    from services.adjudicaciones import clear_raw_adj_cache, load_raw_adjudicaciones
-
-    clear_raw_adj_cache()
-    rows = load_raw_adjudicaciones()
-    filas = [r for r in rows if r["licitacion_id"] == "ADJ-MULTI-001"]
-    assert len(filas) == 2
+    assert len(_rows_for("ADJ-MULTI-001")) == 2
 
 
 # ---------------------------------------------------------------------------
-# empresa_key se construye correctamente
+# load_licitadores: proyección acotada con datos de la licitación
 # ---------------------------------------------------------------------------
 
 
-def test_adjudicaciones_empresa_key_usa_nif(tmp_db):
-    """empresa_key prefiere nif_norm sobre nombre_norm cuando nif está disponible."""
-    _seed_licitacion("ADJ-KEY-001")
-    _seed_adjudicacion("ADJ-KEY-001", nombre="Empresa Con NIF SL", nif="B99887766")
+def test_load_licitadores_incluye_datos_de_licitacion():
+    _seed_licitacion("ADJ-LIC-001")
+    _seed_adjudicacion("ADJ-LIC-001")
 
-    from services.adjudicaciones import load_adjudicaciones
+    from services.adjudicaciones import load_licitadores
 
-    df = load_adjudicaciones()
-    row = df[df["licitacion_id"] == "ADJ-KEY-001"]
-    assert not row.empty
-    # empresa_key debe ser no nulo cuando hay nif
-    import pandas as pd
+    rows = load_licitadores()
+    fila = next(r for r in rows if r["licitacion_id"] == "ADJ-LIC-001")
+    assert fila["nombre"] == "Empresa SAP SL"
+    assert fila["titulo"] == "Implantación SAP ERP"
+    assert fila["organo_contratacion"] == "Ministerio de Hacienda"
+    assert fila["tecnologia"] == "SAP"
 
-    assert pd.notna(row.iloc[0]["empresa_key"])
+
+def test_load_licitadores_filtra_por_ccaa():
+    _seed_licitacion("ADJ-CCAA-MAD")
+    _seed_adjudicacion("ADJ-CCAA-MAD", ccaa="Madrid")
+    _seed_licitacion("ADJ-CCAA-CAT")
+    _seed_adjudicacion("ADJ-CCAA-CAT", nombre="Empresa Catalana", ccaa="Cataluña")
+
+    from services.adjudicaciones import load_licitadores
+
+    rows = load_licitadores(ccaa_filter=("Madrid",))
+    ids = {r["licitacion_id"] for r in rows}
+    assert "ADJ-CCAA-MAD" in ids
+    assert "ADJ-CCAA-CAT" not in ids

@@ -1,19 +1,20 @@
 """Caché en memoria, consciente de la señal de invalidación de ingesta.
 
-Envuelve cargas de datos costosas (lecturas de tabla completa) de la capa de
-servicios. Sirve el valor cacheado mientras (a) no haya expirado el TTL y
-(b) no exista una señal de invalidación de caché más reciente que la última
-carga (ver :mod:`shared.cache_signal`, que el scraper actualiza al final de
-cada ingesta exitosa).
+Envuelve cargas de datos costosas de la capa de servicios. Sirve el valor
+cacheado mientras (a) no haya expirado el TTL y (b) no exista una señal de
+invalidación de caché más reciente que la última carga (ver
+:mod:`shared.cache_signal`, que el scraper actualiza al final de cada
+ingesta exitosa).
 
 Pensado para cargas sin argumentos que devuelven estructuras de **solo
-lectura**: los consumidores construyen ``pandas.DataFrame`` nuevos a partir del
-valor, por lo que compartir la misma lista entre llamadas es seguro.
+lectura** y ACOTADAS (hoy: las señales agregadas de scoring). Las cargas
+full-table de licitaciones/adjudicaciones que motivaron esta caché — y el
+cortacircuitos ``render_api_full_table_loads_blocked`` que las bloqueaba en
+Render — se retiraron al completar ADR-023: la analítica agrega en Postgres.
 """
 
 from __future__ import annotations
 
-import os
 import threading
 import time
 from collections.abc import Callable
@@ -24,25 +25,8 @@ from shared.cache_signal import get_signal_timestamp
 _T = TypeVar("_T")
 
 # TTL por defecto: cota superior de obsolescencia aunque la señal compartida
-# no se escriba. La invalidación principal es por ingesta real; diez minutos
-# evitan reconstruir las cargas full-table una vez por minuto sin necesidad.
+# no se escriba. La invalidación principal es por ingesta real.
 _DEFAULT_TTL = 600.0
-
-
-def render_api_full_table_loads_blocked() -> bool:
-    """Impide materializaciones full-table dentro del proceso API de Render.
-
-    Render expone ``RENDER``/``RENDER_SERVICE_ID`` de forma automática. El
-    scraper y los workers quedan fuera mediante ``APP_PROFILE`` porque pueden
-    necesitar cargas batch; el cortacircuitos protege únicamente el proceso
-    web, donde una petición concurrente no debe poder agotar la memoria de la
-    instancia. Se retirará cuando todos los consumidores analíticos trabajen
-    con agregaciones o proyecciones acotadas en Postgres.
-    """
-    from config import settings
-
-    on_render = os.getenv("RENDER", "").lower() == "true" or bool(os.getenv("RENDER_SERVICE_ID"))
-    return on_render and settings.APP_PROFILE == "api"
 
 
 class SignalAwareCache(Generic[_T]):

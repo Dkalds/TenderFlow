@@ -16,6 +16,7 @@ from api.routes.dual_auth import require_admin, require_any_auth
 from db.audit import log_event
 from observability.logging import get_logger
 from services.feature_flags import list_flags, set_flag
+from shared.dto import StatusOk
 
 log = get_logger(__name__)
 
@@ -63,7 +64,7 @@ def get_feature_flags(
 def set_feature_flags(
     body: SetFlagsBody,
     admin: dict[str, Any] = Depends(require_admin),
-) -> dict[str, str]:
+) -> StatusOk:
     """Persiste enabled/rollout de los flags (solo admin), auditando cada cambio.
 
     Preserva ``description``/``user_emails`` existentes (el toggle no debe borrarlos).
@@ -84,4 +85,4 @@ def set_feature_flags(
             resource=f"feature_flag:{f.flag}",
             detail=f"enabled={f.enabled} rollout_pct={f.rollout_pct}",
         )
-    return {"status": "ok"}
+    return StatusOk(status="ok")

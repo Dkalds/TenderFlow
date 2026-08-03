@@ -139,6 +139,23 @@ def _trusted_client_ip(request: Request) -> str:
             except ValueError:
                 return ip in allowed_proxies
 
+        if "*" in allowed_proxies:
+            # Semántica "un salto de confianza" para PaaS (Render): el único
+            # peer TCP posible es el proxy de la plataforma, que APPENDEA la IP
+            # real del cliente al final de X-Forwarded-For. El último hop es
+            # por tanto fiable; los de la izquierda los escribe el cliente.
+            # Hasta 2026-08 este caso devolvía request.client.host — que
+            # uvicorn, honrando el mismo FORWARDED_ALLOW_IPS="*", ya había
+            # reescrito con el hop MÁS A LA IZQUIERDA (spoofeable): el
+            # rate-limit por IP y el allowlist de /metrics se alimentaban de
+            # una IP elegida por el cliente (RFC-051).
+            forwarded = request.headers.get("X-Forwarded-For", "")
+            if forwarded:
+                last_hop = forwarded.split(",")[-1].strip()
+                if last_hop:
+                    return last_hop
+            return direct_ip or "unknown"
+
         if direct_ip and _is_trusted_proxy(direct_ip):
             # Petición viene de un proxy de confianza — honrar XFF
             forwarded = request.headers.get("X-Forwarded-For", "")

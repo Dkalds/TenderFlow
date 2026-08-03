@@ -17,7 +17,7 @@ _WATCHLIST_LIC_COLS = (
 
 
 class WatchlistRepository:
-    """Acceso a las tablas ``watchlist``/``watchlist_cpv`` y ``pending_digests``."""
+    """Acceso a las tablas ``watchlist_cpv``, ``watchlist_items`` y ``pending_digests``."""
 
     def query_licitaciones_since(self, cpv_prefix: str, since_date: str) -> list[dict[str, Any]]:
         """Licitaciones con CPV que empiece por ``cpv_prefix`` desde ``since_date``."""
@@ -121,28 +121,34 @@ class WatchlistRepository:
             )
 
     def export_by_user_key(self, user_key: str) -> list[dict[str, Any]]:
-        """Exporta entradas de watchlist del usuario (GDPR)."""
+        """Exporta entradas de watchlist CPV del usuario (GDPR Art. 15/20).
+
+        Histórico: hasta 2026-08 consultaba una tabla ``watchlist`` inexistente
+        con el error tragado por un ``except``, así que el export devolvía
+        siempre ``[]``. Sin ``except``: si la query falla, el export debe
+        fallar, no fingir que el usuario no tiene datos.
+        """
         with connect_read() as c:
-            try:
-                cur = c.execute(
-                    "SELECT * FROM watchlist WHERE user_key = ? LIMIT 5000",
-                    (user_key,),
-                )
-                return rows_to_dicts(cur)
-            except Exception:
-                return []
+            cur = c.execute(
+                "SELECT * FROM watchlist_cpv WHERE user_key = ? LIMIT 5000",
+                (user_key,),
+            )
+            return rows_to_dicts(cur)
 
     def anonymize_by_user_key(self, user_key: str) -> None:
-        """Anonimiza la watchlist del usuario (GDPR)."""
+        """Anonimiza la watchlist CPV del usuario (GDPR Art. 17).
+
+        ``watchlist_cpv`` no tiene columna ``name``; la PII real es
+        ``email``/``user_id`` (v53) además del propio ``user_key``. Un fallo
+        aquí debe propagarse: un borrado GDPR que falla en silencio es
+        incumplimiento, no robustez.
+        """
         with connect() as c:
-            try:
-                c.execute(
-                    "UPDATE watchlist SET user_key = 'DELETED', name = 'DELETED' "
-                    "WHERE user_key = ?",
-                    (user_key,),
-                )
-            except Exception:
-                log.debug("watchlist_anonymize_failed", exc_info=True)
+            c.execute(
+                "UPDATE watchlist_cpv SET user_key = 'DELETED', email = NULL, "
+                "user_id = NULL WHERE user_key = ?",
+                (user_key,),
+            )
 
     # ------------------------------------------------------------------
     # watchlist_items — favoritos de licitaciones individuales (v45)

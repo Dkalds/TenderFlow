@@ -73,21 +73,16 @@ try:
         "Número de veces que el pool de conexiones DB agotó el timeout de adquisición",
     )
 
-    # ── SQLite write health (ADR-004 tripwires) ───────────────────────────
-    sqlite_busy_errors_total = Counter(
-        "sqlite_busy_errors_total",
-        "Errores SQLITE_BUSY detectados (tripwire ADR-004: >10/h → evaluar Postgres)",
-    )
-
+    # ── DB write health ───────────────────────────────────────────────────
     db_write_duration_seconds = Histogram(
         "db_write_duration_seconds",
-        "Latencia de commits de escritura SQLite (tripwire ADR-004: p99 >500ms)",
+        "Latencia de commits de escritura a la BD (alerta PgWriteLatencyHigh: p99 >1s)",
         buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
     )
 
     db_concurrent_writers = Gauge(
         "db_concurrent_writers",
-        "Número de escritores SQLite concurrentes activos",
+        "Número de escritores concurrentes activos contra la BD",
     )
 
     # ── Parser field completeness ─────────────────────────────────────────
@@ -162,7 +157,6 @@ except ImportError:  # pragma: no cover
     scheduler_job_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_pool_size = _NoopMetric()  # type: ignore[assignment]
     db_pool_acquire_timeout_total = _NoopMetric()  # type: ignore[assignment]
-    sqlite_busy_errors_total = _NoopMetric()  # type: ignore[assignment]
     db_write_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_concurrent_writers = _NoopMetric()  # type: ignore[assignment]
     parser_field_null_total = _NoopMetric()  # type: ignore[assignment]

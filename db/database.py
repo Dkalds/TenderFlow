@@ -1,4 +1,4 @@
-"""Fachada de persistencia SQLite / Postgres para licitaciones.
+"""Fachada de persistencia Postgres para licitaciones (motor único, ADR-021).
 
 Este módulo es el **punto de entrada único** al subsistema de base de datos.
 Re-exporta todos los símbolos públicos de los tres submódulos especializados,

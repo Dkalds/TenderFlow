@@ -67,7 +67,12 @@ services:
   # Arrancar solo postgres: docker compose up postgres
   # Detener y borrar datos: docker compose down -v
   postgres:
-    image: postgres:17-alpine
+    # OJO: misma imagen que el compose base — la migración v56 hace
+    # `CREATE EXTENSION vector` y hasta 2026-08 este override (que se aplica
+    # AUTOMÁTICAMENTE en `docker compose up`) pisaba pgvector/pgvector:pg16
+    # con postgres:17-alpine sin pgvector, rompiendo `alembic upgrade head`
+    # exactamente en el setup local que documenta tests/conftest.py.
+    image: pgvector/pgvector:pg16
     container_name: tenderflow-postgres-dev
     restart: unless-stopped
     environment:

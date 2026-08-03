@@ -490,9 +490,8 @@ def close_pool() -> None:
 def connect() -> Iterator[Any]:
     """Context manager de escritura. Hace commit al salir, rollback en error.
 
-    Instrumenta latencia de commit y errores SQLITE_BUSY (tripwires ADR-004).
-    Los eventos se persisten en ops_events via buffer en memoria + flush
-    best-effort (ver observability/ops_events.py).
+    Instrumenta latencia de commit; los eventos se persisten en ops_events via
+    buffer en memoria + flush best-effort (ver observability/ops_events.py).
 
     Con backend Postgres (ADR-016): usa psycopg_pool; el shim qmark→%s se
     aplica automáticamente en cada execute().
@@ -509,7 +508,6 @@ def connect() -> Iterator[Any]:
     from observability.runtime_metrics import (
         db_concurrent_writers,
         db_write_duration_seconds,
-        sqlite_busy_errors_total,
     )
 
     conn = _get_conn()
@@ -526,11 +524,7 @@ def connect() -> Iterator[Any]:
             record_event("write_slow", value=round(dur, 3))
         # Flush best-effort del buffer de ops_events piggyback al commit exitoso
         _piggyback_flush()
-    except Exception as exc:
-        _exc_str = str(exc).lower()
-        if "busy" in _exc_str or "locked" in _exc_str:
-            sqlite_busy_errors_total.inc()
-            record_event("sqlite_busy", detail=str(exc)[:200])
+    except Exception:
         conn.rollback()
         raise
     finally:

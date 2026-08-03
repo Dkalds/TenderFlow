@@ -5,6 +5,13 @@ Server-side implementation of the pure sklearn clustering logic in
 embeddings with c-TF-IDF keyword labels). Returns per-cluster summaries,
 importe box-plot statistics and a bounded sample of tenders for drill-down.
 
+ADR-023 (excepción justificada): el clustering en sí NO es expresable en SQL,
+así que este módulo sigue en pandas/sklearn — pero sobre la proyección
+ACOTADA ``AggregateRepository.clustering_universe`` (7 columnas, filtros en el
+``WHERE`` y tope de ``_MAX_ROWS`` filas recientes), no sobre la tabla
+completa. Hasta 2026-08 cargaba el full-table cacheado — bloqueado en Render
+por el cortacircuitos, que dejaba este endpoint vacío en producción.
+
 sklearn/scipy (~60 MB RSS) are imported lazily inside the functions that
 need them rather than at module level, since this module is loaded
 unconditionally by ``api/routes/analytics.py`` and the clusters endpoint
@@ -25,15 +32,17 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.classification import cpv_label, estado_label
-from services.licitaciones import load_stats_base_df
 
 if TYPE_CHECKING:
     # Solo para type hints — el import real es lazy (ver docstring del modulo).
     from sklearn.cluster import KMeans, MiniBatchKMeans
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 _MIN_ROWS = 10
 _DEFAULT_CLUSTERS = 8
@@ -233,20 +242,12 @@ def _ctfidf_labels(texts: Iterable[str], labels: np.ndarray, top_n: int = 3) -> 
 # ---------------------------------------------------------------------------
 
 
-def _load_df() -> pd.DataFrame:
-    return load_stats_base_df()
-
-
-def _apply_filters(df: pd.DataFrame, filters: ClustersFilters) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if filters.fecha_desde is not None:
-        df = df[df["fecha_publicacion"] >= pd.Timestamp(filters.fecha_desde, tz="UTC")]
-    if filters.fecha_hasta is not None:
-        df = df[df["fecha_publicacion"] <= pd.Timestamp(filters.fecha_hasta, tz="UTC")]
-    if filters.ccaa:
-        df = df[df["ccaa"] == filters.ccaa]
-    return df
+def _to_repo_filters(filters: ClustersFilters) -> LicitacionesFilters:
+    return LicitacionesFilters(
+        fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
+        fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
+        ccaa=filters.ccaa,
+    )
 
 
 def _resolve_k(embeddings: np.ndarray, filters: ClustersFilters, n: int) -> int:
@@ -307,22 +308,17 @@ def _cluster_items(grp: pd.DataFrame) -> list[ClusterItem]:
 def get_clusters(filters: ClustersFilters) -> ClustersResult:
     """Cluster tenders by title similarity and summarise each cluster."""
     log.info("analytics_clusters_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df()
-    df = _apply_filters(df, filters)
-
-    if df.empty or "titulo" not in df.columns:
-        return ClustersResult(total=len(df))
-
-    work = df.dropna(subset=["titulo"]).copy()
-    total = len(work)
+    # Proyección acotada (7 columnas, LIMIT _MAX_ROWS filas recientes); el
+    # recorte determinista sustituye al sample aleatorio del camino full-table.
+    rows, total = _repo.clustering_universe(_to_repo_filters(filters), max_rows=_MAX_ROWS)
     if total < _MIN_ROWS:
         log.info("analytics_clusters_too_few", total=total)
         return ClustersResult(total=total)
 
-    # Bound latency on very large corpora (cache absorbs cold cost otherwise).
-    if total > _MAX_ROWS:
-        work = work.sample(_MAX_ROWS, random_state=42).reset_index(drop=True)
-        log.info("analytics_clusters_sampled", n=_MAX_ROWS, total=total)
+    work = pd.DataFrame(rows)
+    work = work.assign(importe=pd.to_numeric(work["importe"], errors="coerce"))
+    if total > len(work):
+        log.info("analytics_clusters_sampled", n=len(work), total=total)
 
     texts = work["titulo"].fillna("").astype(str).tolist()
 

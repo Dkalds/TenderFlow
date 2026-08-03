@@ -38,7 +38,9 @@ def test_detects_actions_job_with_no_workflow():
     """Un job 'actions' cuyo módulo no invoca ningún workflow está muerto."""
     registry = [_job("fantasma", plane="actions", module="scheduler.jobs.inexistente")]
     with (
-        patch.object(check_job_parity, "_modules_invoked_by_workflows", return_value=set()),
+        patch.object(
+            check_job_parity, "_modules_invoked_by_workflows", return_value=(set(), set())
+        ),
         patch("scheduler.jobs.build_default_registry", return_value=registry),
     ):
         _rows, problems = check_job_parity.check()
@@ -50,7 +52,9 @@ def test_detects_actions_job_with_no_workflow():
 def test_detects_actions_job_without_module():
     registry = [_job("sin_modulo", plane="actions")]
     with (
-        patch.object(check_job_parity, "_modules_invoked_by_workflows", return_value=set()),
+        patch.object(
+            check_job_parity, "_modules_invoked_by_workflows", return_value=(set(), set())
+        ),
         patch("scheduler.jobs.build_default_registry", return_value=registry),
     ):
         _rows, problems = check_job_parity.check()

@@ -39,3 +39,26 @@ export type RenovacionesResult = Schemas["RenovacionesResult"];
 export type CarteraEmpresa = Schemas["CarteraEmpresa"];
 export type RenovacionesTotales = Schemas["RenovacionesTotales"];
 export type RenovacionesResumenResult = Schemas["RenovacionesResumenResult"];
+
+// Watchlist — ola de tipado del contrato (backlog «65 operaciones opacas»).
+export type WatchlistRuleOut = Schemas["WatchlistRuleOut"];
+export type WatchlistRuleMatch = Schemas["WatchlistRuleMatch"];
+export type WatchlistFavoriteItem = Schemas["WatchlistFavoriteItem"];
+
+// Cierre del tipado del contrato (2026-08-03): ALLOWED_OPAQUE llegó a 0 —
+// las 128 rutas declaran DTO. Aliases de las superficies que las páginas
+// consumen con más frecuencia; el resto se importa como Schemas["..."].
+export type EmpresaListItem = Schemas["EmpresaListItem"];
+export type EmpresaDetail = Schemas["EmpresaDetail"];
+export type EmpresasStats = Schemas["EmpresasStats"];
+export type MetaFilters = Schemas["MetaFilters"];
+export type SavedFilter = Schemas["SavedFilter"];
+export type FeedbackQueueItem = Schemas["FeedbackQueueItem"];
+export type ModelInfoResult = Schemas["ModelInfoResult"];
+export type CuotaResult = Schemas["CuotaResult"];
+export type HhiResult = Schemas["HhiResult"];
+export type BajasResult = Schemas["BajasResult"];
+export type WebhookOut = Schemas["WebhookOut"];
+export type ResolucionOut = Schemas["ResolucionOut"];
+export type TimelineResult = Schemas["TimelineResult"];
+export type PrediccionBajaResult = Schemas["PrediccionBajaResult"];

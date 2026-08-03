@@ -292,6 +292,29 @@ async def create(
     return response_data
 
 
+class WebhookOut(BaseModel):
+    """Webhook sin secret (el secret solo viaja al crearlo)."""
+
+    id: int
+    name: str | None
+    url: str
+    event_types: list[str]
+    active: int | None
+    created_at: str | None
+    last_triggered_at: str | None
+    last_status: int | None
+    failure_count: int | None
+
+
+class WebhookPingResult(BaseModel):
+    """Entrega de prueba; los campos son condicionales según el fallo."""
+
+    success: bool
+    status_code: int | None = None
+    attempts: int | None = None
+    error: str | None = None
+
+
 @router.get(
     "",
     summary="Listar webhooks (sin secret)",
@@ -311,11 +334,11 @@ async def list_all(
 async def get_one(
     webhook_id: int,
     _ctx: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
+) -> WebhookOut:
     wh = _repo.get_by_id(webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
-    return wh
+    return WebhookOut(**wh)
 
 
 @router.patch(
@@ -331,7 +354,7 @@ async def update(
     webhook_id: int,
     body: WebhookUpdate,
     ctx: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
+) -> WebhookOut:
     """Actualiza nombre, URL, event_types o active de un webhook existente."""
     found = _repo.update(
         webhook_id,
@@ -348,7 +371,9 @@ async def update(
         resource=f"webhook:{webhook_id}",
     )
     wh = _repo.get_by_id(webhook_id)
-    return wh or {}
+    if wh is None:  # borrado concurrente entre el update y la relectura
+        raise HTTPException(status_code=404, detail="Webhook no encontrado.")
+    return WebhookOut(**wh)
 
 
 @router.delete(
@@ -386,7 +411,7 @@ async def delete(
 async def ping(
     webhook_id: int,
     _ctx: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
+) -> WebhookPingResult:
     """Envía un payload de prueba al URL del webhook para verificar conectividad."""
     import asyncio as _asyncio
     import hashlib
@@ -414,7 +439,7 @@ async def ping(
         _validate_webhook_url(url)
     except ValueError as exc:
         log.warning("webhook_ping_ssrf_blocked", webhook_id=webhook_id, error=str(exc))
-        return {"success": False, "error": f"SSRF blocked: {exc}"}
+        return WebhookPingResult(success=False, error=f"SSRF blocked: {exc}")
 
     headers = {
         "Content-Type": "application/json",
@@ -442,7 +467,7 @@ async def ping(
                 event_type="ping",
                 payload_size=len(payload),
             )
-            return {"success": ok, "status_code": status_code, "attempts": attempt + 1}
+            return WebhookPingResult(success=ok, status_code=status_code, attempts=attempt + 1)
         except (RequestException, ValueError) as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
@@ -455,7 +480,7 @@ async def ping(
         event_type="ping",
         payload_size=len(payload),
     )
-    return {"success": False, "error": str(last_exc), "attempts": max_attempts}
+    return WebhookPingResult(success=False, error=str(last_exc), attempts=max_attempts)
 
 
 @router.get(

@@ -32,27 +32,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Acceptance criteria:** tipo `CompanyUteParticipation` en `company-profile-types.ts` reflejando el DTO; una sección en el dossier (`company-profile-summary.tsx` o vecino) listando las UTEs con sus `otros_miembros`, dejando claro que esos importes son **adicionales** a los totales directos de la empresa, no una desagregación de ellos (evitar que el usuario los sume dos veces mentalmente).
 - **Riesgo:** bajo — solo lectura de un campo ya validado por el contrato OpenAPI/TS; sin cambio de backend.
 
-### [P1] Export/borrado GDPR de la watchlist CPV es un no-op silencioso — consulta una tabla inexistente
-- **Área:** db/repositories/watchlist.py, services/gdpr.py
-- **Problema:** `WatchlistRepository.export_by_user_key`/`anonymize_by_user_key` (usadas por el flujo GDPR de `/me/data` y `/me` DELETE) consultan una tabla llamada literalmente `"watchlist"`, que **no existe** — la tabla real es `watchlist_cpv`. El `except Exception` que envuelve la query traga el error sin loguearlo, así que el export devuelve una lista vacía y el borrado no borra nada, sin que ningún log ni test lo señale. Encontrado durante la auditoría de tenencia de [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) (no es una de las 10 tablas que ese test cubre, por eso no lo capturó).
-- **Acceptance criteria:**
-  - `export_by_user_key`/`anonymize_by_user_key` apuntan a `watchlist_cpv`.
-  - El `except Exception` que envolvía la query deja de ser necesario, o si se mantiene por otra razón, loguea el error en vez de tragarlo en silencio.
-  - Test de regresión: sembrar una entrada de watchlist CPV real, exportar/anonimizar por `user_key`, y confirmar que el dato aparece/desaparece — no solo que la llamada no lanza.
-- **Files de partida:** [db/repositories/watchlist.py](../db/repositories/watchlist.py), [services/gdpr.py](../services/gdpr.py)
-- **Riesgo:** bajo — el fix es un nombre de tabla; el riesgo real es de cumplimiento (GDPR Art. 15/17 no se está cumpliendo hoy para este dato), no de código.
-
-### [P1] Tipar el contrato API↔web — 65 operaciones con respuesta opaca
-- **Área:** api/routes/*, services/*, scripts/check_openapi_contract.py
-- **Problema:** 65 operaciones devuelven `dict[str, Any]`, de modo que en `web/src/generated/api.d.ts` su `200` es `{ [key: string]: unknown }` y el frontend reescribe la forma a mano. El invariante §3.5/§3.8 ("los DTOs Pydantic son el contrato API↔web") se cumple sólo a medias, y el job *Codegen Drift Check* **no lo detecta**: compara el artefacto generado consigo mismo, o sea que verifica que está sincronizado, no que el contrato diga algo. Una ruta que devuelve `dict[str, Any]` lo pasa perfectamente. Resultado: tablero verde sobre un contrato que para un tercio de la superficie no describe nada, y cualquier renombre de campo en backend rompe el frontend en runtime sin que mypy ni tsc se enteren.
-- **Mecanismo ya en marcha:** `scripts/check_openapi_contract.py` es un ratchet con allowlist que **sólo puede encoger** (patrón TID251), bloqueante en CI y en `make check-api-contract`. Impide que la superficie opaca crezca; el trabajo restante es vaciarlo por olas.
-- **Acceptance criteria:**
-  - La allowlist de `ALLOWED_OPAQUE` llega a 0.
-  - Cada ola sustituye además las interfaces duplicadas del frontend por `Schemas[...]` en `web/src/lib/api-types.ts`.
-- **Orden sugerido (por densidad):** `watchlist` (8), `auth` (7), `empresas` (5), `licitaciones` (5), `me` (4), el resto.
-- **Nota de modelado:** declarar los campos **sin default** cuando la query siempre devuelve la columna (clave presente, valor posiblemente `None`). Ponerles default los marca opcionales en el OpenAPI y obliga al cliente a tratar `undefined` donde nunca ocurre — se vio en la primera ola, donde las interfaces a mano del frontend afirmaban campos siempre presentes que el DTO con defaults contradecía.
-- **Riesgo:** medio — es cambio de contrato, pero **aditivo**: tipar lo que hoy es `unknown` no rompe consumidores.
-
 ### [P2] Mejorar el ranking de retrieval de producción (MRR 0.689)
 - **Área:** db/search_backend.py, services/licitaciones.py
 - **Problema:** Medido al migrar el eval RAG al motor real (ADR-018) sobre el golden set de 15 preguntas: SQLite/FTS5 da MRR ≈0.78 y Postgres/`tsvector`+`ts_rank_cd` da **0.689**. El `hit_rate@5` es **1.000 en ambos** — producción encuentra siempre el documento esperado dentro del top-5, pero lo ordena peor. No es una regresión de la migración: es la calidad real que ven los usuarios de `/ask` hoy, que nadie medía porque el eval corría sobre FTS5. El eval ratchea en `MRR_MIN = 0.65` (`tests/eval/test_eval_rag.py`), así que una regresión adicional salta. Con SQLite retirado (ADR-021) ya no hay comparación entre motores: 0.75 es el objetivo, no una paridad.
@@ -125,6 +104,13 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] Paralelizar la suite: activar `-n auto` en CI y medir
+- **Área:** ci.yml
+- **Problema original:** ~726 tests re-ejecutan el DDL completo (~50 tablas) en su propio schema, en serie; el techo de 25 min del job de CI es una restricción real.
+- **Progreso 2026-08-03:** infraestructura implementada como opt-in — `pytest-xdist` en requirements-dev, `make test-parallel` (`-n auto`), y `_pg_schema_ddl` es xdist-safe (lock de fichero en el tmp compartido del run: un solo worker ejecuta alembic + pg_dump + vaciado de `public`, el resto lee el DDL cacheado; los schemas por test ya llevaban el pid, sin colisiones entre workers). No activado en `ci.yml` a propósito: cambiar la línea de pytest de CI a ciegas desde una sesión sin Postgres es exactamente el tipo de cambio que se rompe en formas no obvias.
+- **Acceptance criteria (lo que queda):** en un PR propio, cambiar el paso de CI a `pytest -n auto …`, suite verde, tiempo del job `test` medido antes/después; aislamiento intacto (ningún test ve datos de otro). Si el recorte no llega, evaluar `CREATE DATABASE … TEMPLATE` por worker como siguiente palanca.
+- **Riesgo:** bajo ya — la parte propensa a romperse (coordinación del fixture de sesión) está hecha y el fallback es no pasar `-n`.
+
 ### [P2] El origen de una concesión de `is_admin` no se registra, y OAuth pisa al panel
 - **Área:** api/routes/auth.py, api/routes/admin_users.py, db/users.py, db/alembic
 - **Problema:** `_sync_oauth_admin` refleja `OAUTH_ADMIN_EMAILS` sobre `is_admin` en ambos sentidos (antes solo promovía, así que sacar a alguien de la lista no le revocaba nada — cerrado en la revisión de seguridad). El efecto colateral es que, con la lista configurada, **OAuth manda sobre el panel**: a quien se promovió con `admin_users.admin_set_admin` y además entra con Google se le retira el flag en su siguiente login. Se eligió ese lado a propósito —dejar admin a un ex-administrador es peor que obligar a re-promover a uno legítimo— y la degradación se registra con `log.warning("oauth_admin_revoked")` para que sea diagnosticable, pero sigue siendo silenciosa desde el punto de vista del usuario.
@@ -173,18 +159,11 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Riesgo:** bajo — aditivo (solo añade logs).
 
 ### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select
-- **Área:** web/src/components/layout/global-filter-bar.tsx
-- **Problema:** tres filtros usan `<select value="">` con un `onChange` que **añade** el valor a una lista de chips. El control nunca refleja lo seleccionado (su `value` es siempre `""`), no se puede quitar desde él, no hay búsqueda entre las 17 CCAA ni entre las tecnologías, y el teclado se comporta distinto que en el resto de la UI, que es Radix. `components/ui/select.tsx` existe y no se usa aquí.
+- **Área:** web/src/components/layout/scope-bar.tsx
+- **Problema:** tres filtros usan `<select value="">` con un `onChange` que **añade** el valor a una lista de chips. El control nunca refleja lo seleccionado (su `value` es siempre `""`), no se puede quitar desde él, no hay búsqueda entre las 17 CCAA ni entre las tecnologías, y el teclado se comporta distinto que en el resto de la UI, que es Radix. `components/ui/select.tsx` existe y no se usa aquí. (Detectado originalmente en `global-filter-bar.tsx`; ese componente murió con el cromo heredado en 2026-08, pero la `scope-bar` que lo sustituye heredó el mismo patrón en sus tres `<select>`.)
 - **Acceptance criteria:** un multi-select real (Radix o `Popover` + lista con búsqueda) que muestre lo seleccionado, permita quitar desde el propio control, y filtre por texto con `foldText` de `lib/utils.ts` (para que "informatica" encuentre "Informática").
-- **Files de partida:** [web/src/components/layout/global-filter-bar.tsx](../web/src/components/layout/global-filter-bar.tsx), [web/src/components/ui/select.tsx](../web/src/components/ui/select.tsx)
+- **Files de partida:** [web/src/components/layout/scope-bar.tsx](../web/src/components/layout/scope-bar.tsx), [web/src/components/ui/select.tsx](../web/src/components/ui/select.tsx)
 - **Riesgo:** bajo — el estado de filtros ya vive en la URL vía nuqs; solo cambia el control.
-
-### [P2] Unificar los dos árboles de navegación (`PRODUCT_SPACES` vs `SECTIONS`)
-- **Área:** web/src/lib/navigation.ts, web/src/components/layout/{sidebar,breadcrumb,page-tabs}.tsx
-- **Problema:** conviven dos arquitecturas de información desde que se introdujeron los espacios de producto; el propio `navigation.ts` lo declara transitorio ("during the gradual migration"). Mientras siga abierto: "Mercado" es a la vez un espacio y una sección dentro de sí mismo (el breadcrumb tiene que colapsar ese nivel para no decir "Mercado › Mercado › Órganos"), la sidebar mantiene dos listas con criterios distintos, y **17 de 28 páginas solo son alcanzables** por tabs, command palette o URL. Detalle en [UX_AUDIT.md](UX_AUDIT.md) §2.
-- **Acceptance criteria:** un solo árbol; sidebar, breadcrumb y PageTabs derivan de él sin casos especiales por etiqueta; ninguna página queda sin ruta de navegación desde el shell.
-- **Files de partida:** [web/src/lib/navigation.ts](../web/src/lib/navigation.ts)
-- **Riesgo:** alto — toca las 28 rutas y el modelo mental del producto; merece rama y revisión propias.
 
 ### [P2] Decidir si el producto es español-only y retirar o completar la capa de i18n
 - **Área:** web/src/lib/i18n.ts, web/public/locales/
@@ -192,19 +171,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Acceptance criteria:** decisión de producto registrada y, según ella, (a) retirar `lib/i18n.ts` + `public/locales/` inlineando las 40 claves, o (b) plan de extracción de cadenas con selector de idioma y `lang` dinámico.
 - **Files de partida:** [web/src/lib/i18n.ts](../web/src/lib/i18n.ts)
 - **Riesgo:** bajo (a) / alto (b). **Requiere decisión del usuario antes de tocar código.**
-
-### [P1] Dejar de materializar tablas completas en el proceso del API (memoria en Render)
-- **Área:** services/adjudicaciones.py, services/licitaciones.py, services/analytics/*
-- **Problema:** El API mantiene dos cargas full-table en memoria y las reconstruye cada 60 s. `_stats_df_cache` guarda un DataFrame con **todas** las licitaciones (`LicitacionRepository.load_stats` no lleva `LIMIT`) y `_raw_adj_cache` guarda el join `adjudicaciones ⋈ licitaciones ⋈ empresas ⋈ grupos` (`a.*` + 13 columnas, tampoco acotado) como **`list[dict]`** — la representación más cara posible: un `dict` por fila con ~25 claves, frente al mismo dato tipado en un DataFrame. Encima, todo consumidor con filtro **esquiva la caché** (`services/adjudicaciones.py:113-115`: si `ccaa_filter` no es `None`, se relanza la query completa) y reconstruye su propio DataFrame por request — `red_organo_empresa.py` lo hace en 4 call sites, más `utes.py` y `ecosistema_partners.py`. Con el limiter de anyio en 4 hilos eso son hasta 4 materializaciones full-table simultáneas. El resultado no es un leak (no hay contenedor que crezca sin cota — verificado) sino un baseline alto más un churn de cientos de miles de objetos `str`/`dict` efímeros por ciclo que fragmenta las arenas de pymalloc: el RSS sube y no vuelve a bajar, que es exactamente lo que se ve en la gráfica de Render.
-- **Progreso 2026-08-02:** hotfix de disponibilidad: el startup ya no precalienta ambas cargas full-table después de confirmar en Render un bucle de OOM/reinicio cada ~5,5 minutos; la invalidación viaja por Postgres entre el scraper y el API y el TTL defensivo sube de 60 s a 10 min. La primera versión mostró que las peticiones del dashboard seguían disparando las mismas cargas de forma lazy, así que el proceso API de Render incorpora además un cortacircuitos fail-closed: los loaders full-table devuelven un resultado vacío y registran `analytics_full_table_load_blocked`, mientras las agregaciones ya migradas a SQL siguen disponibles. Esto contiene el OOM, pero **no cierra** el ítem: hay que migrar los consumidores restantes a SQL/proyecciones acotadas para retirar la degradación temporal.
-- **Dirección ya establecida:** ADR-023 (cómputo en vivo / agregación SQL) y los commits `ab520da` (overview/tecnologias a SQL) y `a274d8a` (drop del `.copy()` por request) van por aquí. Esto es continuar esas olas, no abrir una dirección nueva.
-- **Acceptance criteria:**
-  - Los agregados que hoy se calculan en pandas sobre la tabla completa se resuelven con `GROUP BY` en Postgres, por olas y con la suite como red.
-  - Mientras siga existiendo una caché de adjudicaciones, guardarla como DataFrame tipado y no como `list[dict]`.
-  - El camino con `ccaa_filter` deja de reconstruir la tabla entera por request (filtrar en SQL, como ya hace `load_for_competitors`).
-  - Medir antes/después con `process_resident_memory_bytes` (ya exportado por `prometheus_client`) en vez de a ojo.
-- **Files de partida:** [services/adjudicaciones.py](../services/adjudicaciones.py), [services/licitaciones.py](../services/licitaciones.py), [services/analytics/red_organo_empresa.py](../services/analytics/red_organo_empresa.py), [db/repositories/adjudicaciones.py](../db/repositories/adjudicaciones.py)
-- **Riesgo:** medio — toca la capa de lectura analítica y varios consumidores; mitigable haciéndolo por olas como las anteriores.
 
 ### [P2] Cerrar los huecos de aislamiento por user_key encontrados en la auditoría de tenencia
 - **Área:** db/watchlist.py, db/saved_filters.py, api/routes/watchlist_rules.py
@@ -214,24 +180,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Cada entrada se retira de `_KNOWN_GAPS_PENDING_FIX`/`_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX` en `tests/test_user_key_sql_isolation.py` al arreglarse (el ratchet solo puede encoger).
 - **Files de partida:** [db/watchlist.py](../db/watchlist.py), [db/saved_filters.py](../db/saved_filters.py), [api/routes/watchlist_rules.py](../api/routes/watchlist_rules.py), [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)
 - **Riesgo:** bajo — ninguna es explotable hoy (sin caller o con chequeo de propiedad en la ruta), pero son IDOR latentes si se reutiliza el repository sin ese cuidado.
-
-### [P2] `services/analytics/quality.py` ya no detecta fechas legacy malformadas
-- **Área:** services/analytics/quality.py
-- **Problema:** `_iso_date_stats()` detecta fechas legacy malformadas (p.ej. `"31/12/2025"`) comparando el string **crudo** de `fecha_publicacion` contra un regex ISO. Desde que `load_stats_base_df()` convierte esa columna a `Timestamp` (commit `622c859`), la función ya no recibe el string crudo — `pct_fecha_iso`/`fechas_no_iso` tienden a valores espurios (100%/0). El test existente (`test_quality_date_format_vs_completeness`) sigue en verde porque mockea `load_stats_base_df` directamente con strings, sin ejercitar el `_build()` real — es un falso negativo de cobertura, no una prueba de que el check funcione. Encontrado por la propia auditoría de Frente A al hacer el cambio; no corregido porque es una decisión de diseño, no una limpieza mecánica.
-- **Acceptance criteria:**
-  - Decidir entre: (a) `quality.py` usa `load_stats_dataframe()` (sin caché, sin conversión) para este check específico — recomendado, cambio de una línea; o (b) `_iso_date_stats` compara contra el `Timestamp` ya convertido de otra forma (p. ej. contando `NaT` tras `errors="coerce"`, que ya captura "no parseable como fecha" sin necesitar el string crudo).
-  - El test de regresión ejercita el `_build()` real (vía `tmp_db` con datos sembrados, no un mock de `load_stats_base_df`), para que no vuelva a quedar como falso negativo.
-- **Files de partida:** [services/analytics/quality.py](../services/analytics/quality.py), [tests/test_analytics_quality.py](../tests/test_analytics_quality.py)
-- **Riesgo:** bajo — un KPI de calidad de datos, sin impacto en escritura ni en otros endpoints.
-
-### [P2] `db/model_registry.py` no verifica el sha256 del modelo servido contra el registrado
-- **Área:** db/model_registry.py
-- **Problema:** `register_version`/`get_active` almacenan el `sha256` del artefacto como metadata de auditoría, pero nada en `get_active`/`activate_version` verifica ese hash contra el fichero que realmente se sirve al cargar el modelo activo. Encontrado durante el trabajo de integridad de modelos (commit `74d5aaf`, que sí verifica los 4 loaders contra un pin/checksum co-ubicado): esa verificación es independiente del registry, así que un artefacto en disco que ya no coincide con el `sha256` registrado (sustituido manualmente, o por un despliegue que dejó el fichero desactualizado) no se detecta por esta vía.
-- **Acceptance criteria:**
-  - `get_active()` (o el punto donde el llamador resuelve la ruta del artefacto activo) compara el `sha256` calculado del fichero contra el registrado, y falla/loguea si difieren.
-  - Test de regresión: registrar una versión, mutar el fichero en disco, confirmar que se detecta la discrepancia.
-- **Files de partida:** [db/model_registry.py](../db/model_registry.py), [shared/model_integrity.py](../shared/model_integrity.py)
-- **Riesgo:** bajo — es hardening adicional sobre un control que ya existe (los 4 loaders verifican su propio pin/checksum); esto cierra el hueco de que el registry mismo no lo hace.
 
 ### [P2] UI de webhooks y GDPR self-service
 - **Área:** web/, api/
@@ -372,6 +320,143 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-03] **P1: Contrato API↔web COMPLETO — `ALLOWED_OPAQUE` llegó a 0 (65 → 0)** —
+  Las 128 rutas declaran DTO Pydantic; en `web/src/generated/api.d.ts` ya no queda ningún
+  `{ [key: string]: unknown }` en un 2xx. Por olas: watchlist (9, incl. `feed.xml` con
+  `response_class` para no fingir un 200 JSON), auth (8, el callback OAuth declara su 302 real),
+  me (5, `/me/data` como ZIP declarado), empresas (5), licitaciones (6: explain/documentos/
+  tech-scores/eventos/prediccion-baja/bulk-get), competitive (7, con `MetricScope` reutilizado),
+  exports (4: PDF/CSV/XLSX/ICS con sus content-types y `ExportJobStatus` en el 202),
+  saved-filters (3), feedback (3, cola de active learning tipada hasta el bloque del modelo),
+  webhooks (3), notifications (2), admin (2), models (2), meta (2) y health/resoluciones/
+  audit-verify/feature-flags. Envelopes compartidos en `shared/dto.py` (StatusOk/CreatedId/
+  TotalCount/DetailMessage/StatusMessage/SessionsRevoked); campos sin default cuando la clave
+  siempre viaja (nota de modelado aplicada). Frontend: mi-watchlist y use-watchlist-items
+  consumen `Schemas[...]` en vez de interfaces a mano, y `api-types.ts` exporta aliases de las
+  superficies nuevas. El ratchet queda vacío y BLOQUEANTE: una ruta nueva con respuesta opaca
+  falla `make check-api-contract` sin allowlist a la que acogerse. Verificado: mypy strict
+  (574 files), tsc + eslint + 944 vitest, check_openapi_contract 0/0.
+
+- [2026-08-03] **P2: Unificados los árboles de navegación — `CONSOLE_SPACES`+`SPACE_VIEWS` como única fuente** —
+  Con los 14 espacios construidos, el cromo heredado era inalcanzable (toda ruta absorbida
+  redirige por `next.config` antes de pintar): demolidos `top-nav`, `sidebar`,
+  `global-filter-bar`, `breadcrumb`, `page-tabs` y `kpi-bar` (+ sus tests y `lib/sidebar.ts`),
+  la rama legacy de `console-frame.tsx` (ahora superficie única: rail + ámbito + shell, sin
+  mirar la ruta) y los 19 `loading.tsx` de rutas absorbidas; `/licitadores` redirige directo a
+  `/competencia?vista=competidores` sin layout/loading muertos. `lib/navigation.ts` queda como
+  registro de páginas y contratos de filtros (`ALL_PAGES`/`findPage` + helpers que la
+  `scope-bar` deriva vía `SPACE_VIEWS`); fuera `PRODUCT_SPACES`/`findProductSpace`/
+  `findSection`/`isConsoleRoute` (sin consumidores). El AC de "ninguna página sin ruta desde el
+  shell" lo cumple el rail: los espacios cubren las 33 rutas (las heredadas como `?vista=`).
+  Verificado: tsc, eslint y 944 tests vitest en verde; invariantes de frontend sin hallazgos.
+
+- [2026-08-03] **P2: Taxonomía de markers real — `integration` inferido por uso de fixtures PG** —
+  Decisión registrada en AGENTS.md (invariante §3.4): la categoría sigue saliendo del nombre,
+  PERO un test cuyo cierre de fixtures incluya `tmp_db`/`api_db` (directo o transitivo —
+  `client`/`api_key`/`auth` los declaran; `item.fixturenames` trae el cierre) se infiere `integration`
+  aunque su fichero no lo diga. `unit` vuelve a significar "sin BD". El gate local NO encoge:
+  `make check` pasa a `-m "(unit or integration) and not slow"` (misma cobertura que antes del
+  cambio) y `make test-unit` queda como bucle rápido sin BD; CI ejecuta la suite completa sin
+  filtro, así que no le afecta. docs/testing.md + AGENTS.md §3.4 + Makefile actualizados juntos,
+  como pedía el AC (de paso: la ayuda de `test-all` decía "todo excepto integration" y ejecuta
+  todo — corregida).
+  **Corrección 2026-08-03 (auditando el merge con master):** los tokens `load`/`property` se
+  miraban también en el NOMBRE del test, no solo en la ruta del módulo, y como substring daban
+  ~100 falsos positivos (`test_load_dataframe`, `test_upsert_result_properties`,
+  `test_load_rejects_when_pin_mismatch`, todo `test_ml_*::test_load_*`…). Ninguno es
+  load-testing ni Hypothesis: eran tests normales marcados `load`/`property`, **fuera** del
+  `-m "(unit or integration) and not slow"` de `make check` — es decir, sin ejecutar en el gate
+  local y sin que nadie lo notara. Ahora esos dos tokens solo se evalúan contra la ruta
+  (`test_performance.py`, `test_property_based.py`, `test_load_scraper_placsp.py`… llevan el
+  token en el nombre del fichero, que es la señal real). Los ~100 tests vuelven a `unit`, y 17
+  que sí abren Postgres pasan correctamente a `integration` por el cierre de fixtures.
+
+- [2026-08-03] **P1: Dejar de materializar tablas completas en el proceso del API (memoria en Render) — ADR-023 COMPLETADO** —
+  Los 27 endpoints analíticos agregan en Postgres o consumen proyecciones acotadas con
+  justificación inline. Últimas olas del día: quality, forecast, los 6 de adjudicaciones
+  (utes / organ-company-graph×3 / organ-company-edge / partnership-graph), organo_detail
+  (proyecciones por órgano) y clusters (sklearn sobre `clustering_universe`, tope de filas +
+  filtros en `WHERE` — la excepción justificada que el ADR anticipó). Con el último consumidor
+  migrado se retiró TODO el andamiaje del síntoma: `load_stats_base_df`/`load_stats_dataframe`/
+  `load_raw`/`load_dataframe` y `load_raw_adjudicaciones`/`load_adjudicaciones` (los dos últimos
+  además sin consumidores reales), `_stats_df_cache`/`_raw_adj_cache` y su contrato no-`.copy()`,
+  los métodos de repo full-table (`load_raw_with_licitaciones`, `LicitacionRepository.load_raw`/
+  `load_stats`), el cortacircuitos `render_api_full_table_loads_blocked` y su métrica/alerta
+  (`analytics_degraded_responses_total`/`AnalyticsDegradedServing`, retiradas al quedarse sin
+  emisor posible). Tripwire en `tests/test_api_startup.py` contra el regreso de loaders
+  full-table; addendum de cierre en el ADR-023. El AC de "medir antes/después con
+  `process_resident_memory_bytes`" queda como verificación manual post-deploy en Render
+  (la métrica ya se exporta; no hay entorno aquí para medirla).
+
+- [2026-08-03] **P2: `quality.py` vuelve a detectar fechas legacy malformadas (y agrega en SQL, ADR-023)** —
+  Resuelto con la opción que el AC no contemplaba pero que el propio ADR-023 impuso: el check ISO
+  corre ahora **en SQL** sobre el string crudo de `fecha_publicacion`
+  (`AggregateRepository.quality_completitud`, regex `~ '^\d{4}-\d{2}-\d{2}'`), así que la
+  conversión a `Timestamp` del loader pandas — la causa del falso 100%/0 — desaparece del camino
+  junto con el loader mismo. `forecast_svc` migró en el mismo lote (`forecast_monthly` +
+  proyección acotada `retendering_universe`/`adjudicaciones_para_forecast`; el motor
+  Holt-Winters recibe la serie mensual ya agregada vía `forecast_volume_from_monthly`).
+  Los tests de regresión (`test_analytics_quality.py`, `test_analytics_forecast_svc.py`)
+  siembran `tmp_db` — incluida una fila `"31/12/2025"` real — en vez de mockear
+  `load_stats_base_df`, cerrando también el falso negativo de cobertura que señalaba el ítem.
+
+- [2026-08-03] **P2: sha256 del modelo servido verificado contra el registry** — `shared/model_artifacts.py::resolve_active_artifact()` compara el hash calculado del fichero activo contra el registrado en `model_registry` en cada carga (mismatch → `ModelArtifactMismatch`, ausente → intento de descarga desde GitHub Releases y verificación posterior; sin sha256 registrado → warning). Los loaders consumen la ruta ya verificada. Regresión en `tests/test_model_artifacts.py` (registrar → mutar fichero → detectar). Commit `39d63b5`.
+
+- [2026-08-03] **Implementación de la revisión de arquitectura (rama `claude/architecture-review-dgmnkx`)** —
+  Cierra de una vez varios ítems y abre los de seguimiento listados al final:
+  (1) **GDPR watchlist CPV** (era P1 arriba): `export_by_user_key`/`anonymize_by_user_key`
+  apuntan a `watchlist_cpv`, anonimizan la PII real (`user_key`/`email`/`user_id` —
+  `name` nunca existió en esa tabla) y dejan de tragar errores; regresión en
+  `tests/test_gdpr_watchlist_cpv.py` (sembrar → exportar/anonimizar → verificar).
+  (2) **Cortacircuitos full-table sin bypass**: el guard de `load_raw_adjudicaciones`
+  aplica a cualquier carga sin `limit` (antes `ccaa_filter` lo esquivaba — superficie
+  de OOM residual de utes/organ-company-graph*/partnership) y ambas rutas bloqueadas
+  incrementan `analytics_degraded_responses_total` con regla de alerta nueva
+  (`AnalyticsDegradedServing`). (3) **ADR-023, olas 2 y 3**: trends, geography,
+  organos, pipeline, scoring, compare, trends-cpv, proyectos-modulos y resumen
+  sankey/top agregan en Postgres (métodos nuevos en `db/repositories/aggregates.py`,
+  detección de módulos SAP vía `~*` en el motor, ventana del pipeline como proyección
+  acotada, scoring sobre la proyección de estados activos con P10/P90 por
+  `percentile_cont`); tests de caracterización convertidos a datos sembrados en
+  `tmp_db`. (4) **Camino de alerta real**: el job label del único alert critical
+  corregido (`tenderflow-api`), grupo de tripwires SQLite retirado, `/metrics`
+  acepta `Authorization: Bearer` y `prometheus.render.yml` lo usa vía secret file
+  (acción manual documentada inline), `healthcheck --alert` devuelve exit 2 en
+  critical, cada paso canónico fallido emite `notify()` y los pasos de ML dejan de
+  tragar excepciones a debug, DLQ con dispatch real para pscp/ted/tacrc/regionales/
+  watched-company (fuentes sin dispatch se agotan con causa exacta),
+  `job_locks.acquire` atómico (`INSERT … ON CONFLICT`), drift "crit" ya no se
+  degrada a WARN. (5) **Seguridad**: un solo validador de API keys
+  (`validate_api_key_credential` — la rama de `require_any_auth` carecía de la
+  re-comparación constant-time, el dummy anti-timing y el 503), OAuth fail-closed
+  en prod con allowlists vacíos (`OAUTH_ALLOWED_DOMAINS=*` como vía explícita),
+  CSRF también en `fetchWithAuth`, y `FORWARDED_ALLOW_IPS="*"` pasa a semántica
+  "un salto de confianza" (último hop de XFF, no el primero — RFC-051).
+  (6) **Orquestación (ADR-012 con enforcement)**: scrape.yml plegado en
+  scrape-daily.yml (mismo workflow y concurrency group, dos crons), ENV=prod en
+  todos los steps, secrets TURSO_* fuera, presupuestos por step alineados con el
+  timeout, `SCHEDULER_PLANE=actions` declarado y por primera vez aplicado —
+  `scheduler.loop` se niega a arrancar sin `SCHEDULER_PLANE=docker` y el servicio
+  de compose queda tras `profiles:[scheduler]`; `check_job_parity.py` rechaza
+  módulos que solo aparecen en workflows dispatch-only; `CANONICAL_STEPS` es la
+  única fuente del orden ejecutado. (7) **Smoke sintético post-deploy**
+  (`scripts/smoke_prod.py` + `make smoke-prod` + `smoke.yml`): valida que los
+  endpoints insignia devuelven datos, no solo 200. (8) **Demolición**:
+  `services/analytics_engine.py` (0 callers) y su test, scripts one-off muertos
+  (migrate_sqlite_to_pg, verify_pg_parity, run_precompute, obsidian_*), dependencia
+  `libsql` (0 imports desde ADR-020), `DB_PATH` del Dockerfile, evento
+  `faiss.index_stale` sin consumidor, OpenAPI de `/search/semantic` que anunciaba
+  FAISS, `docker-compose.override.yml` que pisaba pgvector:pg16 con postgres:17
+  sin pgvector (rompía alembic v56 en local), y verdades de docs restauradas
+  (C4 sin SQLite, testing.md con las fixtures Postgres reales, sli-slo sin
+  PagerDuty inexistente, Makefile test-perf ejecutable). **Todo verificado con
+  ruff+mypy strict y suite web (typecheck/lint/vitest) en local; los tests Python
+  quedan escritos para CI — esta sesión no tiene Postgres.** Sigue abierto y
+  anotado abajo: resto de ADR-023 (organo_detail, quality, forecast, clusters y
+  los 6 endpoints de adjudicaciones), ML wiring (artefactos + active learning),
+  contrato tipado (65 opacas), marker integration real + xdist, y el checklist
+  manual F3d.
 
 - [2026-08-02] **Los cuatro puntos ciegos de la arquitectura de tests, cerrados con gates que sí se ejecutan** — El E2E de Playwright tenía `continue-on-error: true` y sus specs aceptaban "estoy en el dashboard O en el login" como éxito: sin backend todas las rutas redirigían a `/login`, así que el bucle de 26 páginas cargaba 26 veces la misma pantalla y pasaba con la aplicación entera rota. Ahora el job aprovisiona Postgres, migra, siembra datos deterministas, levanta la API y sirve el build de producción, y **bloquea el merge**; los seis specs exigen contenido concreto del seed (esto cierra el [P1] de `e2e/responsive.spec.ts`, cuyo drawer móvil ya se verifica sin `.or()` ni condicionales). Se añade `scripts/fuzz_api_contract.py` como gate bloqueante sobre las 137 operaciones de la API, `tests/test_codice_parser_golden.py` con un corpus de 11 expedientes que congela el árbol de parseo entero, `tests/test_swallowed_exceptions_guard.py` (ratchet sobre 39 `except Exception` mudos), un workflow nocturno que ejecuta la auditoría de verdad del dato con umbrales y alerta por email, y mutation testing semanal no bloqueante. Por el camino aparecieron seis bugs que CI no veía: el seed no corría contra Postgres (sintaxis SQLite, argumento ausente y campos inexistentes en la dataclass), `codegen-best-effort.mjs` **destruía** `web/src/generated/api.d.ts` al construir con la API viva (openapi-typescript v7 devuelve un AST y el script hacía `JSON.stringify`), `GET /admin/users` devolvía 500 con un `limit` negativo, y `API_RATE_LIMIT_MAX_CALLS` —documentada en el runbook como palanca de operación— no existía en `Settings`, así que exportarla no hacía absolutamente nada.
 

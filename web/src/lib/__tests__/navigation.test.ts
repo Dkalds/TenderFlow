@@ -2,22 +2,10 @@
 import {
   SECTIONS,
   ALL_PAGES,
-  PRODUCT_SPACES,
   findPage,
-  findProductSpace,
-  findSection,
   pageGlobalFilterKeys,
   pathUsesGlobalFilters,
 } from "@/lib/navigation";
-
-describe("primary product spaces", () => {
-  it("organizes the product around Radar, Oportunidades and Mercado", () => {
-    expect(PRODUCT_SPACES.map((space) => space.label)).toEqual(["Radar", "Oportunidades", "Mercado"]);
-    expect(findProductSpace("radar")?.label).toBe("Radar");
-    expect(findProductSpace("oportunidades/p-1")?.label).toBe("Oportunidades");
-    expect(findProductSpace("competidores")?.label).toBe("Mercado");
-  });
-});
 
 describe("SECTIONS (NAV_SECTIONS)", () => {
   it("is a non-empty array", () => {
@@ -74,30 +62,6 @@ describe("findPage", () => {
       description: expect.any(String),
     });
     expect(page?.icon).toBeDefined();
-  });
-});
-
-describe("findSection", () => {
-  it("returns the section containing 'resumen'", () => {
-    const section = findSection("resumen");
-    expect(section).toBeDefined();
-    expect(section?.label).toBe("Inicio");
-  });
-
-  it("returns undefined for a nonexistent slug", () => {
-    expect(findSection("nonexistent")).toBeUndefined();
-    expect(findSection("/nonexistent")).toBeUndefined();
-  });
-
-  it("returns correct section for 'competidores'", () => {
-    const section = findSection("competidores");
-    expect(section?.label).toBe("Competencia");
-  });
-
-  it("returned section has label and pages", () => {
-    const section = findSection("resumen");
-    expect(typeof section?.label).toBe("string");
-    expect(Array.isArray(section?.pages)).toBe(true);
   });
 });
 

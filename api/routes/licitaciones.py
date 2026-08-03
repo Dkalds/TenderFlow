@@ -451,6 +451,32 @@ async def get_licitacion(
 # ── /licitaciones/{id_externo}/explain ───────────────────────────────────
 
 
+class ExplainFeature(BaseModel):
+    """Término y su contribución a la clasificación (modelo lineal)."""
+
+    term: str
+    weight: float
+    contribution: float
+
+
+class ExplainPayload(BaseModel):
+    """Salida de ``TenderClassifier.explain`` (SHAP-equivalente lineal)."""
+
+    prediction: bool
+    confidence: float
+    top_features: list[ExplainFeature]
+    warning: str | None = None
+
+
+class ExplainResult(BaseModel):
+    """Explicabilidad de la clasificación de una licitación."""
+
+    id_externo: str
+    tecnologia: str | None
+    explanation: ExplainPayload | None
+    warning: str | None = None
+
+
 @router.get(
     "/licitaciones/{id_externo:path}/explain",
     summary="Explicabilidad de la clasificación SAP/no-SAP",
@@ -464,7 +490,7 @@ async def explain_licitacion(
     id_externo: str,
     top_k: int = Query(5, ge=1, le=20),
     _ctx: AuthContext = Depends(require_api_key),
-) -> dict[str, Any]:
+) -> ExplainResult:
     """Devuelve los top-K términos que más influyen en la clasificación."""
     result = await run_db(_lic_repo.get_text_for_ml, id_externo)
     if result is None:
@@ -473,12 +499,12 @@ async def explain_licitacion(
     titulo, descripcion, tecnologia = result
     text = f"{titulo} {descripcion}".strip()
     if not text:
-        return {
-            "id_externo": id_externo,
-            "tecnologia": tecnologia,
-            "explanation": None,
-            "warning": "Texto vacío.",
-        }
+        return ExplainResult(
+            id_externo=id_externo,
+            tecnologia=tecnologia,
+            explanation=None,
+            warning="Texto vacío.",
+        )
 
     def _explain() -> Any:
         clf = _get_classifier()
@@ -498,14 +524,21 @@ async def explain_licitacion(
             detail="Error generando explicación.",
         ) from exc
 
-    return {
-        "id_externo": id_externo,
-        "tecnologia": tecnologia,
-        "explanation": explanation,
-    }
+    return ExplainResult(
+        id_externo=id_externo,
+        tecnologia=tecnologia,
+        explanation=ExplainPayload(**explanation),
+    )
 
 
 # ── /licitaciones/{id_externo}/documentos ─────────────────────────────────
+
+
+class DocumentosResult(BaseModel):
+    """Adjuntos (pliegos) de una licitación, sin el texto extraído."""
+
+    id_externo: str
+    items: list[DocumentoSummary]
 
 
 @router.get(
@@ -516,17 +549,17 @@ async def explain_licitacion(
 async def get_documentos(
     id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> DocumentosResult:
     """Metadatos de los adjuntos (pliegos) parseados del CODICE/UBL para esta
     licitación — sin el texto extraído, que solo usa internamente el pipeline
     RAG ("Preguntar al copilot"). Lista vacía si aún no se procesó ningún
     documento (no todas las fuentes/licitaciones tienen adjuntos parseados).
     """
     items = await run_db(_doc_repo.list_by_licitacion, id_externo)
-    return {
-        "id_externo": id_externo,
-        "items": [DocumentoSummary.model_validate(d) for d in items],
-    }
+    return DocumentosResult(
+        id_externo=id_externo,
+        items=[DocumentoSummary.model_validate(d) for d in items],
+    )
 
 
 @router.get(
@@ -591,6 +624,20 @@ async def extract_tender_fact_sheet(
         ) from exc
 
 
+class TechScore(BaseModel):
+    """Score de una tecnología para la licitación (clasificador multi-label)."""
+
+    tecnologia: str
+    probabilidad: float
+    threshold_aplicado: float | None
+    computed_at: str | None
+
+
+class TechScoresResult(BaseModel):
+    id_externo: str
+    scores: list[TechScore]
+
+
 @router.get(
     "/licitaciones/{id_externo:path}/tech-scores",
     summary="Scores multi-tecnología del clasificador (ML_TECH)",
@@ -602,7 +649,7 @@ async def extract_tender_fact_sheet(
 async def get_tech_scores(
     id_externo: str,
     _ctx: AuthContext = Depends(require_api_key),
-) -> dict[str, Any]:
+) -> TechScoresResult:
     """Devuelve los scores por tecnología desde ``licitacion_tecnologia_score``.
 
     Cada item incluye ``tecnologia``, ``probabilidad``, ``threshold_aplicado`` y
@@ -611,7 +658,7 @@ async def get_tech_scores(
     ``precompute_ml_tecnologias`` no se ha ejecutado todavía).
     """
     scores = await run_db(_lic_repo.tech_scores_for, id_externo)
-    return {"id_externo": id_externo, "scores": scores}
+    return TechScoresResult(id_externo=id_externo, scores=[TechScore(**score) for score in scores])
 
 
 # ── /adjudicaciones ───────────────────────────────────────────────────────
@@ -662,6 +709,14 @@ async def list_adjudicaciones(
 # ── POST /licitaciones/bulk-get ───────────────────────────────────────────
 
 
+class BulkGetResult(BaseModel):
+    """Licitaciones encontradas (los IDs no pedidos u omitidos no aparecen)."""
+
+    items: list[LicitacionSummary]
+    count: int
+    requested: int
+
+
 class BulkGetRequest(BaseModel):
     ids: list[str] = Field(
         ...,
@@ -678,7 +733,8 @@ class BulkGetRequest(BaseModel):
     response_model=None,
     responses={
         200: {
-            "description": "Lista de licitaciones encontradas (los IDs no encontrados se omiten)"
+            "model": BulkGetResult,
+            "description": "Lista de licitaciones encontradas (los IDs no encontrados se omiten)",
         },
         401: {"description": "API key inválida"},
         422: {"description": "Parámetros inválidos"},
@@ -689,7 +745,7 @@ async def bulk_get_licitaciones(
     response: Response,
     format: str = Query("json", description="Formato de respuesta: json | csv"),
     _ctx: AuthContext = Depends(require_api_key),
-) -> dict[str, Any] | StreamingResponse:
+) -> BulkGetResult | StreamingResponse:
     """Recupera hasta 100 licitaciones por ``id_externo`` en una sola request.
 
     Útil para clientes que necesitan hidratar listas de IDs sin hacer N requests
@@ -725,4 +781,8 @@ async def bulk_get_licitaciones(
             headers={"Content-Disposition": "attachment; filename=licitaciones_bulk.csv"},
         )
 
-    return {"items": items, "count": len(items), "requested": len(ids)}
+    return BulkGetResult(
+        items=[LicitacionSummary.model_validate(item) for item in items],
+        count=len(items),
+        requested=len(ids),
+    )

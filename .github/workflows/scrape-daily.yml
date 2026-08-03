@@ -1,22 +1,60 @@
-name: Scrape PLACSP daily (ATOM live feed)
+name: Scrape PLACSP (ingesta unificada)
+
+# Un único workflow de ingesta con dos carriles (ADR-012):
+#   - Carril diario (ATOM live feed): cada 4 horas.
+#   - Carril bulk (refresh de N meses): una vez al día a las 05:30 UTC.
+# Hasta 2026-08 el carril bulk vivía en scrape.yml con OTRO concurrency group,
+# así que ambos podían correr a la vez contra la misma BD de producción y
+# ejecutar dos veces la cadena de pasos post-ingesta. Un solo workflow y un
+# solo group los serializa por construcción.
 
 on:
   schedule:
-    # Cada 4 horas: 02, 06, 10, 14, 18, 22 UTC
+    # Carril diario: 00, 04, 08, 12, 16, 20 UTC
     - cron: "0 */4 * * *"
-  workflow_dispatch: {}
+    # Carril bulk: diario a las 05:30 UTC (huye de los ticks del carril diario)
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Carril a ejecutar (daily | bulk)"
+        default: "daily"
+        required: false
+      months:
+        description: "Cuántos meses refrescar (solo carril bulk)"
+        default: "3"
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: scrape-daily
+  group: scrape
   cancel-in-progress: false
 
 jobs:
-  scrape-daily:
+  scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Presupuesto del job >= suma de los presupuestos por step (los seis
+    # conectores con continue-on-error suman 45 min de peor caso; hasta
+    # 2026-08 el timeout era 30 y los steps de la cola — PSCP y TACRC —
+    # quedaban truncados cuando los anteriores se degradaban).
+    timeout-minutes: 55
+
+    env:
+      # ENV=prod: este job escribe en la BD de producción, así que los
+      # validators de datos (TLS de DATABASE_URL, alertas) deben estar activos
+      # EN TODOS los steps — hasta 2026-08 Galicia/Euskadi/watched-company
+      # corrían con ENV=dev y esos validators desactivados contra la misma BD.
+      # APP_PROFILE=scraper omite los secretos que solo necesita el proceso
+      # HTTP. La BD de producción es Supabase (ADR-016).
+      ENV: prod
+      APP_PROFILE: scraper
+      # ADR-012: este workflow ES el plano de orquestación activo.
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
 
     steps:
       - name: Checkout
@@ -33,24 +71,38 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run daily scraper
+      - name: Run bulk refresh
+        if: github.event.schedule == '30 5 * * *' || inputs.lane == 'bulk'
         env:
-          # ENV=prod: este job escribe en la BD de producción, así que los
-          # validators de datos (TLS de DATABASE_URL, alertas) deben estar
-          # activos. APP_PROFILE=scraper omite los secretos que solo necesita
-          # el proceso HTTP (SIGNING_KEY, API_HMAC_SECRET, REDIS_URL): "qué
-          # datos toco" y "qué componentes arranco" son ejes independientes.
-          # La BD de producción es Supabase (ADR-016).
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           GITHUB_TOKEN: ${{ github.token }}
-          LOG_FORMAT: json
+          SCRAPER_MONTHS: ${{ inputs.months || 3 }}
+        run: |
+          MAX_RETRIES=2
+          DELAY_SECS=90
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "=== Intento $attempt/$MAX_RETRIES ==="
+            python -m scheduler.run_update --months "$SCRAPER_MONTHS" && exit 0
+            echo "Intento $attempt fallido."
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "Reintentando en ${DELAY_SECS}s..."
+              sleep $DELAY_SECS
+            fi
+          done
+          echo "Todos los intentos fallaron."
+          exit 1
+
+      - name: Run daily scraper
+        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python -m scheduler.run_update --daily
 
       # Conector TED — Search API v3 (RFC 20260611-1 / ADR-009: fue el
@@ -58,90 +110,68 @@ jobs:
       # con 38/39 enlazados al maestro en la primera pasada). API pública sin
       # auth y sin dataset/índice por entorno que configurar, así que corre
       # sin gate de variable (a diferencia de PSCP/TACRC más abajo).
+      # Los conectores solo corren en el carril diario: el bulk del día ya
+      # dispara la cadena post-ingesta y el siguiente tick de 4h los cubre.
       - name: Run TED connector
+        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
-        # Mismo presupuesto propio que PSCP/TACRC: no debe consumir el
-        # timeout del job (30 min) si la API pública se degrada.
+        # Presupuesto propio: no debe consumir el timeout del job si la API
+        # pública se degrada.
         timeout-minutes: 10
-        env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          LOG_FORMAT: json
         run: python -m scraper.connectors.ted
 
       # RSS oficiales sin credenciales. Su alcance es de descubrimiento reciente
       # y cada fuente queda aislada para que una indisponibilidad regional no
       # impida la actualización nacional ni las demás fuentes.
       - name: Run Galicia RSS connector
+        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         timeout-minutes: 5
-        env:
-          ENV: dev
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          LOG_FORMAT: json
         run: python -m scraper.connectors.galicia
 
       - name: Run Euskadi RSS connector
+        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         timeout-minutes: 5
-        env:
-          ENV: dev
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          LOG_FORMAT: json
         run: python -m scraper.connectors.euskadi
 
       # Carril independiente del radar TI: solo conserva adjudicaciones cuya
       # empresa está vigilada por NIF canónico. Sin NIF vigilados termina sin
       # descargar el feed; el timeout aísla cualquier degradación de PLACE.
       - name: Run watched-company awards connector
+        if: github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         timeout-minutes: 5
-        env:
-          ENV: dev
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          LOG_FORMAT: json
         run: python -m scraper.connectors.watched_company_awards
 
       # Conectores Fase 5 (RFC 20260611-1). Se omiten hasta que sus
       # variables estén configuradas tras validar las fuentes vivas
       # (scripts/probe_pscp.py · python -m scraper.connectors.tacrc --check).
       - name: Run PSCP Catalunya connector
-        if: vars.PSCP_DATASET_ID != ''
+        if: vars.PSCP_DATASET_ID != '' && github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         # Presupuesto propio: si la API pública de Catalunya se cuelga o
-        # pagina muchísimo, no debe consumir todo el timeout del job (30 min)
-        # y dejar sin correr al step de TACRC que viene después.
+        # pagina muchísimo, no debe consumir todo el timeout del job y dejar
+        # sin correr al step de TACRC que viene después.
         timeout-minutes: 10
         env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
           PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
-          LOG_FORMAT: json
         run: python -m scraper.connectors.pscp
 
       - name: Run TACRC resoluciones connector
-        if: vars.TACRC_INDEX_URL != ''
+        if: vars.TACRC_INDEX_URL != '' && github.event.schedule != '30 5 * * *' && inputs.lane != 'bulk'
         continue-on-error: true
         timeout-minutes: 10
         env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           TACRC_INDEX_URL: ${{ vars.TACRC_INDEX_URL }}
-          LOG_FORMAT: json
         run: python -m scraper.connectors.tacrc
+
+      - name: Healthcheck post-run
+        if: always()
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+        run: python -m scheduler.healthcheck --alert

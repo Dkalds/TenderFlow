@@ -9,16 +9,37 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-# ── Auto-marking de tests por convención de nombre ──────────────────────────
-# Evita tener que anotar manualmente los ~70 tests existentes. Reglas:
-#   - test_*property* / test_parser_properties → property
-#   - test_*performance* / test_*load*         → load
+# ── Auto-marking de tests por convención de nombre + uso de fixtures ────────
+# Evita anotar manualmente los tests. Reglas, en orden:
+#   - módulo test_*property*/test_*performance*/test_*load*    → property/load
 #   - test_*e2e* / test_visual_regression / test_dashboard_smoke → e2e
 #   - test_integration_*, test_*_integration   → integration
-#   - todo lo demás                            → unit (default)
+#   - cierre de fixtures incluye tmp_db/api_db → integration (BD real)
+#   - todo lo demás                            → unit (sin I/O externo, ahora
+#                                                de verdad: un test que abre
+#                                                Postgres nunca queda `unit`)
 _E2E_TOKENS = ("_e2e", "visual_regression", "dashboard_smoke", "dashboard_pages")
+# `load`/`property` solo se miran en la RUTA del módulo, no en el nombre del
+# test: como substring del nombre dan falsos positivos masivos (`test_load_
+# dataframe`, `test_upsert_result_properties`, `test_ml_model_pin::test_load_
+# rejects_when_pin_mismatch`, ~100 tests que cargan datos o verifican
+# propiedades de un objeto, sin relación con load-testing ni Hypothesis).
+# Detectado 2026-08-03 auditando el merge con master: esos tests quedaban
+# marcados `load`/`property`, ninguno de los dos en el `-m "(unit or
+# integration) and not slow"` de `make check` -- fuera del gate sin que nadie
+# lo notara. Los módulos que sí son load/property-testing llevan el token en
+# su propio nombre de archivo (`test_performance.py`, `test_property_based.py`,
+# `test_load_scraper_placsp.py`, …), así que la ruta basta como señal.
 _LOAD_TOKENS = ("performance", "load")
 _PROPERTY_TOKENS = ("property", "properties", "property_based")
+
+# Fixtures raíz que abren el schema Postgres aislado (ambas piden
+# `_pg_schema` vía `getfixturevalue`, que es dinámico y NO aparece en el
+# cierre estático — por eso se detectan las raíces declaradas, no
+# `_pg_schema`). `item.fixturenames` sí contiene el cierre transitivo de lo
+# DECLARADO, así que esto cubre también lo construido encima de `api_db`
+# (`client`, `api_key`, `auth`, …) sin enumerarlo.
+_PG_FIXTURES = frozenset({"tmp_db", "api_db"})
 
 
 def _infer_marker(path: str, name: str) -> str:
@@ -29,10 +50,10 @@ def _infer_marker(path: str, name: str) -> str:
         if token in p or token in n:
             return "e2e"
     for token in _LOAD_TOKENS:
-        if token in p or token in n:
+        if token in p:
             return "load"
     for token in _PROPERTY_TOKENS:
-        if token in p or token in n:
+        if token in p:
             return "property"
     # integration: explicit /integration/ path segment or test_integration_* name prefix
     if "/integration/" in p or "integration_" in n:
@@ -46,6 +67,8 @@ def pytest_collection_modifyitems(config, items):
         if marks_existing & {"unit", "integration", "e2e", "property", "load"}:
             continue
         marker_name = _infer_marker(str(item.fspath), item.name)
+        if marker_name == "unit" and _PG_FIXTURES & set(getattr(item, "fixturenames", ())):
+            marker_name = "integration"
         item.add_marker(getattr(pytest.mark, marker_name))
 
 
@@ -102,23 +125,18 @@ def _disable_rate_limiter(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clear_service_data_caches():
-    """Limpia las cachés de full-table de la capa de servicios entre tests.
+    """Limpia las cachés en memoria de la capa de servicios entre tests.
 
-    ``load_stats_dataframe`` / ``load_raw_adjudicaciones`` cachean el snapshot
-    en memoria (TTL + señal de ingesta). En tests que mutan la BD y luego leen,
-    una caché caliente serviría datos obsoletos; limpiarla antes/después aísla
-    cada test.
+    Las señales de scoring cachean su snapshot agregado (TTL + señal de
+    ingesta). En tests que mutan la BD y luego leen, una caché caliente
+    serviría datos obsoletos; limpiarla antes/después aísla cada test. (Las
+    cachés full-table de licitaciones/adjudicaciones se retiraron con la
+    migración ADR-023 — la analítica agrega en SQL y no cachea en proceso.)
     """
-    from services.adjudicaciones import clear_raw_adj_cache
     from services.analytics.scoring_signals import clear_scoring_signals_cache
-    from services.licitaciones import clear_stats_cache
 
-    clear_stats_cache()
-    clear_raw_adj_cache()
     clear_scoring_signals_cache()
     yield
-    clear_stats_cache()
-    clear_raw_adj_cache()
     clear_scoring_signals_cache()
 
 
@@ -142,7 +160,7 @@ def _pg_test_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def _pg_schema_ddl():
+def _pg_schema_ddl(tmp_path_factory):
     """DDL completo del schema, materializado una vez por sesión.
 
     Aplicar ``alembic upgrade head`` por test (≈50 tablas + índices) sería
@@ -150,14 +168,17 @@ def _pg_schema_ddl():
     con ``pg_dump --schema-only``; cada test lo reproyecta sobre su propio
     schema, que es un par de órdenes de magnitud más barato.
 
+    Bajo pytest-xdist (opt-in: ``make test-parallel``) cada worker es un
+    proceso con su propia fixture de sesión — sin coordinación, N workers
+    correrían ``alembic upgrade head`` y el vaciado de ``public`` en paralelo
+    contra la misma base. Un lock de fichero en el tmp compartido del run
+    serializa la materialización: el primer worker la ejecuta y deja el DDL
+    cacheado; el resto lo lee. (Los nombres de schema por test ya llevan el
+    pid, así que no colisionan entre workers.)
+
     Returns:
-        Tupla ``(url_base, plantilla_ddl)``. La plantilla lleva
-        ``__TF_SCHEMA__`` donde va el nombre del schema destino.
+        Tupla ``(url_base, ddl)``.
     """
-    import subprocess
-
-    import psycopg
-
     url = _pg_test_url()
     if not url:
         raise pytest.UsageError(
@@ -166,6 +187,31 @@ def _pg_schema_ddl():
             "`docker compose up -d postgres` y exportá "
             "TEST_DATABASE_URL=postgresql://tenderflow:tenderflow@localhost:5432/tenderflow"  # pragma: allowlist secret -- contenedor local de dev
         )
+
+    if os.environ.get("PYTEST_XDIST_WORKER") is None:
+        return url, _materialize_schema_ddl(url)
+
+    import fcntl
+
+    shared_dir = tmp_path_factory.getbasetemp().parent
+    cache = shared_dir / "tf_pg_schema_ddl.sql"
+    with open(shared_dir / "tf_pg_schema_ddl.lock", "w") as lock_f:
+        fcntl.flock(lock_f, fcntl.LOCK_EX)
+        try:
+            if cache.exists():
+                return url, cache.read_text(encoding="utf-8")
+            ddl = _materialize_schema_ddl(url)
+            cache.write_text(ddl, encoding="utf-8")
+            return url, ddl
+        finally:
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
+
+
+def _materialize_schema_ddl(url: str) -> str:
+    """alembic → pg_dump → vaciado de ``public`` → DDL reproyectable."""
+    import subprocess
+
+    import psycopg
 
     env = {**os.environ, "DATABASE_URL": url, "ENV": "dev", "APP_PROFILE": "scraper"}
     subprocess.run(
@@ -245,8 +291,7 @@ def _pg_schema_ddl():
     # mientras que los que aporta una extensión y viven en `public`
     # (`vector` de pgvector, `gin_trgm_ops` de pg_trgm) siguen resolviéndose
     # por el search_path sin necesidad de enumerarlos uno a uno.
-    ddl = "\n".join(lines).replace("public.", "")
-    return url, ddl
+    return "\n".join(lines).replace("public.", "")
 
 
 @pytest.fixture()

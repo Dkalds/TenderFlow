@@ -520,6 +520,12 @@ try:
             gateway de la red interna, no 127.0.0.1. Por eso se requiere API
             key con scope ``metrics:read`` siempre que el ENV no sea ``dev``.
             En dev, el IP allowlist basta para acceso local sin key.
+
+            La credencial también se acepta como ``Authorization: Bearer`` —
+            Prometheus (prom/prometheus:v2.53) no puede enviar cabeceras
+            custom como ``X-API-Key``, solo el header estándar vía su bloque
+            ``authorization``. Hasta 2026-08 el scrape de Render recibía 401
+            en cada pasada y los SLOs de ADR-019 seguían sin medición.
             """
             _metrics_allowed_ips: set[str] = set(
                 ip.strip() for ip in settings.METRICS_ALLOWED_IPS.split(",") if ip.strip()
@@ -528,6 +534,10 @@ try:
             ip_allowed = client_ip in _metrics_allowed_ips
 
             api_key_raw = request.headers.get("X-API-Key")
+            if not api_key_raw:
+                auth_header = request.headers.get("Authorization", "")
+                if auth_header.startswith("Bearer "):
+                    api_key_raw = auth_header[len("Bearer ") :].strip() or None
             key_authenticated = False
             if api_key_raw:
                 from api.auth import hash_api_key

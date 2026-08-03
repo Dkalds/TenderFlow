@@ -74,8 +74,8 @@ class Settings(BaseSettings):
     # VESTIGIAL (ADR-021): ya no apunta a ninguna BD — SQLite se retiró y el
     # único motor es Postgres vía DATABASE_URL. Sobrevive porque lo leen los
     # caminos DuckDB/backup pendientes de migrar (`db/analytics.py`,
-    # `services/analytics_engine.py`, `scripts/restore_db.py`), documentados
-    # como ítems abiertos del backlog. **No usar en código nuevo.**
+    # `scripts/restore_db.py`), documentados como ítems abiertos del backlog.
+    # **No usar en código nuevo.**
     DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None
 
@@ -376,7 +376,9 @@ class Settings(BaseSettings):
     #   "paraphrase-multilingual-MiniLM-L12-v2"   (~400 MB, rápido)
     #   "paraphrase-multilingual-mpnet-base-v2"    (~1.1 GB, mejor calidad)
     EMBEDDING_MODEL: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    # Versión lógica del índice FAISS — si cambia, se regenera el índice
+    # Versión lógica de los embeddings persistidos (documento_chunks) — si
+    # cambia, se re-embebe. (El índice FAISS al que aludía originalmente se
+    # retiró en 2026-07.)
     EMBEDDING_VERSION: str = "v1"
 
     # ── Scoring de oportunidades ─────────────────────────────────────────
@@ -781,7 +783,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_oauth_domains(self) -> Settings:
-        """En producción, alertar (sin bloquear) si OAuth no restringe dominios/emails."""
+        """En producción, OAuth sin allowlist es fail-closed: el arranque se rechaza.
+
+        Hasta 2026-08 esto era solo un ``warnings.warn`` — con ambos allowlists
+        vacíos, cualquier cuenta de Google podía iniciar sesión en producción y
+        el único rastro era una línea de log que nadie mira en el arranque.
+        Un producto B2B con datos de clientes no debe poder desplegarse en ese
+        estado por accidente; quien de verdad quiera login abierto puede poner
+        ``OAUTH_ALLOWED_DOMAINS=*`` de forma explícita y auditable.
+        """
         if (
             self._is_prod_data
             and self._serves_http
@@ -789,11 +799,12 @@ class Settings(BaseSettings):
             and not self.OAUTH_ALLOWED_DOMAINS
             and not self.OAUTH_ALLOWED_EMAILS
         ):
-            warnings.warn(
-                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos: cualquier "
-                "cuenta de Google podrá iniciar sesión. Configura uno de los dos si "
-                "querés restringir el acceso.",
-                stacklevel=2,
+            raise ValueError(
+                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
+                "Google OAuth activo en producción: cualquier cuenta de Google "
+                "podría iniciar sesión. Configura al menos uno de los dos; para "
+                "permitir cualquier cuenta de forma deliberada, usa "
+                "OAUTH_ALLOWED_DOMAINS=*."
             )
         return self
 

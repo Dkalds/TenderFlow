@@ -1,15 +1,16 @@
-"""Búsqueda semántica híbrida — POST /api/v1/search/semantic.
+"""Búsqueda de texto — POST /api/v1/search/semantic.
 
-Expone el motor FAISS+FTS5+BM25 de :mod:`services.investigador.search_engine`
-como endpoint REST público (requiere API-key).
+Expone el motor FTS+BM25 de :mod:`services.investigador.search_engine` como
+endpoint REST público (requiere API-key).
 
 Diseño
 ------
-* FAISS (0.70) + FTS5/BM25 (0.30) reranking por defecto; degradación
-  automática a solo FTS5 o LIKE si FAISS no está disponible.
-* La carga del índice FAISS es costosa la primera vez (~100-400 ms);
-  ``run_ml`` aísla la latencia en el pool de ML (bulkhead 2 slots).
-* Responde en < 500 ms p95 con índice en memoria.
+* Full-text search de Postgres (``tsvector``/``ts_rank_cd``; los nombres
+  ``fts5_*`` sobreviven por compatibilidad de contrato) con fallback LIKE.
+* FAISS se retiró en la Fase 3 de reducción de superficie (2026-07-04); la
+  ruta conserva su path público y los campos ``alpha``/``embedding_model``
+  por compatibilidad de contrato, pero ya no hay reranking semántico.
+* ``run_ml`` aísla la latencia en el pool de ML (bulkhead 2 slots).
 
 Ejemplo::
 
@@ -58,12 +59,12 @@ class SemanticSearchRequest(BaseModel):
         default=0.70,
         ge=0.0,
         le=1.0,
-        description="Peso de FAISS vs FTS5 (1.0 = solo semántica, 0.0 = solo léxica)",
+        description="LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad",
     )
     embedding_model: str = Field(
         default="",
         max_length=200,
-        description="Nombre del modelo de embeddings (vacío = modelo por defecto de settings)",
+        description="LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad",
     )
     ccaa: list[str] = Field(
         default_factory=list, description="Filtra resultados por CCAA (multi-valor)"
@@ -99,7 +100,7 @@ class SemanticSearchResponse(BaseModel):
 
     q: str
     top_k: int
-    source: str = Field(description="Motor usado: FAISS+FTS5 | FAISS | FTS5 | LIKE")
+    source: str = Field(description="Motor usado: FTS5 | LIKE")
     hits: list[SemanticHit]
     elapsed_ms: int
 
@@ -110,11 +111,11 @@ class SemanticSearchResponse(BaseModel):
 @router.post(
     "/search/semantic",
     response_model=SemanticSearchResponse,
-    summary="Búsqueda semántica híbrida (FAISS + FTS5/BM25)",
+    summary="Búsqueda de texto completo (FTS/BM25)",
     description=(
-        "Ejecuta una búsqueda híbrida sobre el índice FAISS y el índice de texto "
-        "completo FTS5. Combina puntuaciones semánticas y léxicas con reranking "
-        "ponderado (alpha·FAISS + (1-alpha)·FTS5)."
+        "Ejecuta una búsqueda de texto completo (Postgres tsvector/ts_rank_cd) "
+        "con fallback LIKE. Los campos alpha/embedding_model son legacy sin "
+        "efecto desde la retirada de FAISS (2026-07)."
     ),
 )
 async def semantic_search(

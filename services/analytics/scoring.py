@@ -31,6 +31,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from config import settings
+from db.repositories.aggregates import AggregateRepository
 from observability.logging import get_logger
 from services.analytics.affinity import build_portfolio, score_affinity_batch
 from services.analytics.scoring_signals import (
@@ -39,9 +40,10 @@ from services.analytics.scoring_signals import (
     load_competencia_stats,
     load_margen_stats,
 )
-from services.licitaciones import load_stats_base_df
 
 log = get_logger(__name__)
+
+_repo = AggregateRepository()
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +172,18 @@ def _cpv4(cpv: Any) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _build_context(df: pd.DataFrame, profile: ScoringProfile | None = None) -> _ScoringContext:
+def _build_context(
+    df: pd.DataFrame,
+    profile: ScoringProfile | None = None,
+    *,
+    importe_percentiles: tuple[float, float] | None = None,
+) -> _ScoringContext:
     """Lee settings (o perfil de usuario) y carga señales para construir un contexto.
 
     Si se pasa un ``profile``, sus pesos y keywords tienen prioridad sobre settings.
+    ``importe_percentiles`` permite inyectar (P10, P90) ya calculados en SQL
+    sobre la tabla completa (ADR-023) en vez de derivarlos del ``df`` recibido
+    — que tras la migración es una proyección acotada, no el dataset entero.
     """
     if profile is not None and profile.weights:
         weights_raw = dict(profile.weights)
@@ -197,9 +207,14 @@ def _build_context(df: pd.DataFrame, profile: ScoringProfile | None = None) -> _
     comp_stats = load_competencia_stats()
     margen_stats = load_margen_stats()
 
-    valid_imp = df["importe"].dropna() if "importe" in df.columns else pd.Series([], dtype=float)
-    imp_p10 = float(valid_imp.quantile(0.10)) if len(valid_imp) > 0 else 0.0
-    imp_p90 = float(valid_imp.quantile(0.90)) if len(valid_imp) > 0 else 0.0
+    if importe_percentiles is not None:
+        imp_p10, imp_p90 = importe_percentiles
+    else:
+        valid_imp = (
+            df["importe"].dropna() if "importe" in df.columns else pd.Series([], dtype=float)
+        )
+        imp_p10 = float(valid_imp.quantile(0.10)) if len(valid_imp) > 0 else 0.0
+        imp_p90 = float(valid_imp.quantile(0.90)) if len(valid_imp) > 0 else 0.0
 
     return _ScoringContext(
         imp_p10=imp_p10,
@@ -344,10 +359,17 @@ def _score_row(
     return final, band, flags, desglose
 
 
-def score_dataframe(base_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFrame:
+def score_dataframe(
+    base_df: pd.DataFrame,
+    target_df: pd.DataFrame,
+    *,
+    importe_percentiles: tuple[float, float] | None = None,
+) -> pd.DataFrame:
     """Puntúa ``target_df`` con contexto (percentiles, señales) calculado sobre
-    ``base_df`` (el dataset completo, para que P10/P90 y medias no se sesguen
-    por un subconjunto ya filtrado).
+    ``base_df``. Con ``importe_percentiles`` (P10, P90 globales calculados en
+    SQL — ADR-023), ``base_df`` puede ser una proyección acotada: la afinidad
+    es por-fila, así que calcularla sobre el subconjunto equivale a calcularla
+    sobre la tabla completa y consultar esos ids.
 
     Sin perfil de usuario: pensado para endpoints compartidos/cacheados donde
     el score no puede personalizarse por usuario (ver ``get_scoring`` para la
@@ -360,7 +382,7 @@ def score_dataframe(base_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFr
     if target_df.empty:
         return pd.DataFrame(columns=["id_externo", "score", "band"])
 
-    ctx = _build_context(base_df)
+    ctx = _build_context(base_df, importe_percentiles=importe_percentiles)
 
     ids: list[str] = []
     scores: list[int] = []
@@ -393,20 +415,26 @@ def get_scoring(
         filters=filters.model_dump(exclude_none=True),
         personalized=user_key is not None,
     )
-    df = load_stats_base_df()
+    # ADR-023: proyección acotada desde SQL en vez de la tabla completa.
+    # Sin `ids`, el universo puntuable son los estados ACTIVOS (PUB/EV): una
+    # licitación cerrada/adjudicada no es una oportunidad — puntuarlas solo
+    # servía para materializar la tabla entera en el proceso API. En modo
+    # page-aligned (`ids`) se traen exactamente esas filas, cualquiera sea su
+    # estado, para no romper el alineado con el listado.
+    if filters.ids:
+        rows = _repo.licitaciones_by_ids([str(i) for i in filters.ids])
+    else:
+        rows = _repo.scoring_candidates()
 
-    if df.empty:
+    if not rows:
         log.info("analytics_scoring_done", total=0)
         return ScoringResult()
 
-    # Parse fecha_limite para la dimensión de plazo. Usa assign() en vez de
-    # asignación in-place: load_stats_base_df() devuelve el DataFrame
-    # cacheado compartido (sin .copy()), así que mutar una columna aquí
-    # contaminaría la caché entre requests concurrentes.
-    if "fecha_limite" in df.columns:
-        df = df.assign(
-            fecha_limite_dt=pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True)
-        )
+    df = pd.DataFrame(rows)
+    df = df.assign(
+        importe=pd.to_numeric(df["importe"], errors="coerce"),
+        fecha_limite_dt=pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True),
+    )
 
     # Cargar perfil del usuario si se proporciona
     profile: ScoringProfile | None = None
@@ -429,19 +457,15 @@ def get_scoring(
         except Exception as exc:
             log.warning("scoring_profile_load_error", error=str(exc))
 
-    # Construir contexto inmutable (P10/P90 globales + señales + settings/perfil)
-    ctx = _build_context(df, profile=profile)
+    # Construir contexto inmutable (P10/P90 globales vía SQL + señales +
+    # settings/perfil). Los percentiles se calculan sobre la tabla completa en
+    # Postgres para no sesgarse por la proyección acotada.
+    ctx = _build_context(df, profile=profile, importe_percentiles=_repo.importe_percentiles())
 
-    # Page-aligned mode: restringir a los ids pedidos antes de iterar.
+    # Page-aligned mode: la restricción por ids ya viene aplicada desde SQL.
     # min_score/band/limit no aplican en este modo.
     id_filter = {str(i) for i in filters.ids} if filters.ids else None
     work = df
-    if id_filter is not None:
-        work = (
-            df[df["id_externo"].astype(str).isin(id_filter)]
-            if "id_externo" in df.columns
-            else df.iloc[0:0]
-        )
 
     scored: list[ScoredOpportunity] = []
     for _, row in work.iterrows():

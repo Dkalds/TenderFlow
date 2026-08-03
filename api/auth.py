@@ -95,26 +95,29 @@ async def _current_request(request: Request) -> Request:
     return request
 
 
-async def require_api_key(
-    api_key_raw: str | None = Security(_API_KEY_HEADER),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
-    request: Any = Depends(_current_request),
+async def validate_api_key_credential(
+    api_key_raw: str,
+    *,
+    method: str | None = None,
+    path: str | None = None,
+    background_tasks: BackgroundTasks | None = None,
 ) -> AuthContext:
-    """Dependencia FastAPI que valida la API Key.
+    """Núcleo compartido de validación de API keys.
+
+    Único camino de validación para ``require_api_key`` y para la rama de API
+    key de ``api/routes/dual_auth.py::require_any_auth`` (hasta 2026-08 esa
+    rama reimplementaba la validación sin la re-comparación en tiempo
+    constante, sin la comparación dummy anti-timing y sin el 503 ante error de
+    BD — dos validadores con garantías distintas para la misma credencial).
 
     - Comparación de hash en tiempo constante (``hmac.compare_digest``).
-    - Loguea warning si la tabla no tiene columna ``expires_at`` (DB legacy).
-    - Actualiza ``last_used`` en background (no penaliza latencia).
-
-    Returns:
-        :class:`AuthContext` con key_hash, key_id y scopes.
+    - Rechaza keys sin usuario propietario en prod/staging.
+    - Con ``method``/``path``: aplica el scope requerido por la ruta.
+    - Con ``background_tasks``: actualiza ``last_used`` sin penalizar latencia.
 
     Raises:
-        HTTPException 401 si la key es inválida, inactiva o expirada.
+        HTTPException 401/403/503 según credencial, scope o error de BD.
     """
-    if not api_key_raw:
-        raise _UNAUTHORIZED
-
     key_hash = hash_api_key(api_key_raw)
 
     try:
@@ -169,11 +172,12 @@ async def require_api_key(
         raise _UNAUTHORIZED
 
     # Actualizar last_used en background
-    background_tasks.add_task(_update_last_used, key_id)
+    if background_tasks is not None:
+        background_tasks.add_task(_update_last_used, key_id)
 
     scopes = frozenset(s.strip() for s in scopes_str.split(",") if s.strip())
-    if isinstance(request, Request):
-        required_scope = required_scope_for_request(request.method, request.url.path)
+    if method is not None and path is not None:
+        required_scope = required_scope_for_request(method, path)
         if not has_scope(scopes, required_scope):
             log.warning(
                 "api_key_scope_denied",
@@ -187,6 +191,35 @@ async def require_api_key(
         key_id=key_id,
         scopes=scopes,
         user_id=record.user_id,
+    )
+
+
+async def require_api_key(
+    api_key_raw: str | None = Security(_API_KEY_HEADER),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    request: Any = Depends(_current_request),
+) -> AuthContext:
+    """Dependencia FastAPI que valida la API Key (ver ``validate_api_key_credential``).
+
+    Returns:
+        :class:`AuthContext` con key_hash, key_id y scopes.
+
+    Raises:
+        HTTPException 401 si la key es inválida, inactiva o expirada.
+    """
+    if not api_key_raw:
+        raise _UNAUTHORIZED
+
+    method: str | None = None
+    path: str | None = None
+    if isinstance(request, Request):
+        method = request.method
+        path = request.url.path
+    return await validate_api_key_credential(
+        api_key_raw,
+        method=method,
+        path=path,
+        background_tasks=background_tasks,
     )
 
 

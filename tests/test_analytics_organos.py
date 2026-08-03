@@ -1,12 +1,12 @@
 """Tests unitarios para services/analytics organos + organo_detail + overview.
 
-``organos``/``organo_detail`` parchean sus cargas de datos con DataFrames
-sintéticos (sin tocar la BD). ``overview`` ya agrega vía SQL
-(``db.repositories.aggregates``) — sus tests de este fichero siembran datos
-reales (``tmp_db``) en vez de mockear ``load_stats_base_df`` (que el módulo ya
-no importa); ``_adj_indicadores`` (hhi/pct_oferta_unica/lead_time_medio, hoy
+Los tres módulos agregan/proyectan vía SQL (ADR-023) — los tests siembran
+datos reales (``tmp_db``) en vez de mockear loaders: ``organos`` y
+``overview`` sobre ``db.repositories.aggregates``, ``organo_detail`` sobre
+las proyecciones acotadas por órgano (licitaciones + adjudicaciones). En
+``overview``, ``_adj_indicadores`` (hhi/pct_oferta_unica/lead_time_medio,
 también SQL vía ``overview_adjudicaciones_indicadores``) se mockea con su
-valor neutro para mantener estos smoke tests centrados en ``licitaciones``.
+valor neutro para mantener esos smoke tests centrados en ``licitaciones``.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from services.analytics.organo_detail import (
     OrganoDetailFilters,
@@ -141,22 +142,22 @@ def _adj_rows() -> list[dict]:
     ]
 
 
-def _typed(df: pd.DataFrame) -> pd.DataFrame:
-    """Simula la conversión canónica que ahora aplica ``load_stats_base_df()``
-    (ver ``services/licitaciones.py::_build``) para los mocks de organos.py y
-    organo_detail.py — sus fixtures usan fechas ISO en crudo, así que el mock
-    debe entregarlas ya convertidas para reflejar el contrato real. Los mocks
-    de overview.py (Frente B, fuera de mi alcance) no se tocan: ese módulo
-    sigue reconvirtiendo internamente, así que su fixture puede seguir cruda.
-    """
-    if df.empty:
-        return df
-    for col in ("fecha_publicacion", "fecha_limite", "fecha_inicio", "fecha_fin"):
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-    if "importe" in df.columns:
-        df["importe"] = pd.to_numeric(df["importe"], errors="coerce")
-    return df
+def _seed_adjudicaciones(rows: list[dict]) -> None:
+    """Siembra adjudicaciones reales (las licitaciones deben existir ya)."""
+    from db.upsert import Adjudicacion, replace_adjudicaciones_batch
+
+    grouped: dict[str, list[Adjudicacion]] = {}
+    for r in rows:
+        grouped.setdefault(r["licitacion_id"], []).append(
+            Adjudicacion(
+                licitacion_id=r["licitacion_id"],
+                nombre=r["nombre"],
+                importe_adjudicado=r.get("importe_adjudicado"),
+                fecha_adjudicacion=r.get("fecha_adjudicacion"),
+            )
+        )
+    _total, _dropped, failed = replace_adjudicaciones_batch(grouped)
+    assert failed == 0
 
 
 # ── _lead_time_median ───────────────────────────────────────────────────────
@@ -184,15 +185,13 @@ def test_lead_time_median_ignores_negative_diffs():
     assert _lead_time_median(pd.DataFrame(rows)) == 8.0
 
 
-# ── get_organos ─────────────────────────────────────────────────────────────
+# ── get_organos (caracterización pandas -> SQL, ADR-023: siembra tmp_db) ────
 
 
-def test_get_organos_ranking_and_pct():
-    with patch(
-        "services.analytics.organos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_lic_rows())),
-    ):
-        result = get_organos(OrganosFilters())
+def test_get_organos_ranking_and_pct(tmp_db):
+    _insert_licitaciones(_lic_rows())
+
+    result = get_organos(OrganosFilters())
 
     assert result.total_organos == 2
     # ORG A tiene 2 licitaciones, ORG B 1 → ORG A primero
@@ -204,16 +203,16 @@ def test_get_organos_ranking_and_pct():
     assert result.organos[0].importe == 1_500_000.0
     # importe_total sobre TODO el dataset (ORG A 1.5M + ORG B 0.2M)
     assert result.importe_total == 1_700_000.0
+    # CCAA modal de ORG A (ambas filas Madrid)
+    assert result.organos[0].ccaa == "Madrid"
 
 
-def test_get_organos_totales_sobre_dataset_completo_no_top_n():
+def test_get_organos_totales_sobre_dataset_completo_no_top_n(tmp_db):
     """importe_total y concentracion_top10 reflejan TODO el dataset, no el top-N
     que devuelve `organos` (regresión: antes el frontend los sumaba sobre el top-50)."""
-    with patch(
-        "services.analytics.organos.load_stats_base_df",
-        return_value=_typed(pd.DataFrame(_lic_rows())),
-    ):
-        result = get_organos(OrganosFilters(limit=1))
+    _insert_licitaciones(_lic_rows())
+
+    result = get_organos(OrganosFilters(limit=1))
 
     # Aunque solo se devuelve 1 órgano (top-1 = ORG A)…
     assert len(result.organos) == 1
@@ -224,35 +223,33 @@ def test_get_organos_totales_sobre_dataset_completo_no_top_n():
     assert result.concentracion_top10 == 100.0
 
 
-def test_get_organos_empty():
-    with patch("services.analytics.organos.load_stats_base_df", return_value=pd.DataFrame([])):
-        result = get_organos(OrganosFilters())
+def test_get_organos_empty(tmp_db):
+    result = get_organos(OrganosFilters())
     assert result.total_organos == 0
     assert result.organos == []
 
 
-def test_get_organos_q_accent_insensitive():
+def _organo_con_tildes() -> dict:
+    return {
+        "id_externo": "L4",
+        "titulo": "CPD",
+        "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
+        "importe": 50_000.0,
+        "estado": "PUB",
+        "fecha_publicacion": "2025-03-01",
+        "ccaa": "Madrid",
+        "tipo_contrato": "2",
+        "url": None,
+        "modulos_str": None,
+    }
+
+
+def test_get_organos_q_accent_insensitive(tmp_db):
     """q sin tildes encuentra órganos con tildes (y viceversa), case-insensitive."""
-    rows = _lic_rows()
-    rows.append(
-        {
-            "id_externo": "L4",
-            "titulo": "CPD",
-            "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
-            "importe": 50_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": "2025-03-01",
-            "ccaa": "Madrid",
-            "tipo_contrato": "2",
-            "url": None,
-            "modulos_str": None,
-        }
-    )
-    with patch(
-        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
-        con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
+    _insert_licitaciones([*_lic_rows(), _organo_con_tildes()])
+
+    sin_tildes = get_organos(OrganosFilters(q="gerencia de informatica"))
+    con_tildes = get_organos(OrganosFilters(q="INFORMÁTICA"))
 
     for result in (sin_tildes, con_tildes):
         assert [o.organo_contratacion for o in result.organos] == [
@@ -260,29 +257,13 @@ def test_get_organos_q_accent_insensitive():
         ]
 
 
-def test_get_organos_q_filters_before_limit():
+def test_get_organos_q_filters_before_limit(tmp_db):
     """Un órgano fuera del top-limit sigue siendo encontrable con q."""
-    rows = _lic_rows()  # ORG A: 2 lics, ORG B: 1 lic
-    rows.append(
-        {
-            "id_externo": "L4",
-            "titulo": "CPD",
-            "organo_contratacion": "Gerencia de Informática de la Seguridad Social",
-            "importe": 50_000.0,
-            "estado": "PUB",
-            "fecha_publicacion": "2025-03-01",
-            "ccaa": "Madrid",
-            "tipo_contrato": "2",
-            "url": None,
-            "modulos_str": None,
-        }
-    )
+    _insert_licitaciones([*_lic_rows(), _organo_con_tildes()])
+
     # limit=1: sin q solo saldría ORG A; con q el match aparece igual
-    with patch(
-        "services.analytics.organos.load_stats_base_df", return_value=_typed(pd.DataFrame(rows))
-    ):
-        sin_q = get_organos(OrganosFilters(limit=1))
-        con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
+    sin_q = get_organos(OrganosFilters(limit=1))
+    con_q = get_organos(OrganosFilters(q="seguridad social", limit=1))
 
     assert [o.organo_contratacion for o in sin_q.organos] == ["ORG A"]
     assert [o.organo_contratacion for o in con_q.organos] == [
@@ -293,18 +274,30 @@ def test_get_organos_q_filters_before_limit():
 # ── get_organo_detail ───────────────────────────────────────────────────────
 
 
-def test_get_organo_detail_lead_time_and_fields():
-    with (
-        patch(
-            "services.analytics.organo_detail.load_stats_base_df",
-            return_value=_typed(pd.DataFrame(_lic_rows())),
-        ),
-        patch(
-            "services.analytics.organo_detail.load_raw_adjudicaciones",
-            return_value=_adj_rows(),
-        ),
-    ):
-        result = get_organo_detail("ORG A", OrganoDetailFilters())
+def _seed_organo_detail() -> None:
+    """Licitaciones de ORG A/ORG B + adjudicaciones de ORG A (lead 10 y 20 días)."""
+    _insert_licitaciones(_lic_rows())
+    _seed_adjudicaciones(
+        [
+            {
+                "licitacion_id": "L1",
+                "nombre": "EMPRESA UNO",
+                "importe_adjudicado": 900_000.0,
+                "fecha_adjudicacion": "2025-01-11",
+            },
+            {
+                "licitacion_id": "L2",
+                "nombre": "EMPRESA DOS",
+                "importe_adjudicado": 450_000.0,
+                "fecha_adjudicacion": "2025-01-21",
+            },
+        ]
+    )
+
+
+def test_get_organo_detail_lead_time_and_fields(tmp_db):
+    _seed_organo_detail()
+    result = get_organo_detail("ORG A", OrganoDetailFilters())
 
     # KPIs
     assert result.kpis.total_licitaciones == 2
@@ -322,22 +315,29 @@ def test_get_organo_detail_lead_time_and_fields():
     assert scored["L1"].empresa == "EMPRESA UNO"
     assert scored["L1"].tipo_contrato_desc == "Servicios"
     assert scored["L1"].tipo_proyecto is not None
+    # baja_pct vive: (1 - 900k/1M) x 100 — antes llegaba siempre null porque
+    # el loader raw no traía la columna derivada. `approx` porque el cálculo es
+    # IEEE754 puro ((1 - 0.9) * 100 == 9.999999999999998), igual que en
+    # test_analytics_resumen.py::test_top_licitaciones_enriquece_con_adjudicatario.
+    assert scored["L1"].baja_pct == pytest.approx(10.0)
+    assert scored["L1"].fecha_adjudicacion == "11/01/2025"
 
 
-def test_get_organo_detail_unknown_organo():
-    with (
-        patch(
-            "services.analytics.organo_detail.load_stats_base_df",
-            return_value=_typed(pd.DataFrame(_lic_rows())),
-        ),
-        patch(
-            "services.analytics.organo_detail.load_raw_adjudicaciones",
-            return_value=_adj_rows(),
-        ),
-    ):
-        result = get_organo_detail("ORG INEXISTENTE", OrganoDetailFilters())
+def test_get_organo_detail_unknown_organo(tmp_db):
+    _seed_organo_detail()
+    result = get_organo_detail("ORG INEXISTENTE", OrganoDetailFilters())
     assert result.kpis.total_licitaciones == 0
     assert result.top_scored == []
+
+
+def test_get_organo_detail_filtros_en_sql(tmp_db):
+    """fecha_desde recorta las licitaciones del órgano en el WHERE."""
+    from datetime import date
+
+    _seed_organo_detail()
+    result = get_organo_detail("ORG A", OrganoDetailFilters(fecha_desde=date(2025, 1, 15)))
+    # L1/L2 se publicaron el 2025-01-01 → fuera del rango.
+    assert result.kpis.total_licitaciones == 0
 
 
 # ── get_overview (smoke) ────────────────────────────────────────────────────

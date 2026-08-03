@@ -24,6 +24,7 @@ from db.saved_filters import (
 )
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
+from shared.dto import StatusOk
 
 log = get_logger(__name__)
 
@@ -58,23 +59,31 @@ class SaveFilterRequest(BaseModel):
     visibility: str = Field(default="private", pattern="^(private|organization)$")
 
 
+class SavedFiltersResult(BaseModel):
+    items: list[SavedFilter]
+
+
+class SavedFilterSaved(BaseModel):
+    status: str
+    name: str
+
+
 @router.get("", summary="Listar vistas guardadas del usuario")
 async def get_saved_filters(
     organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_organization()),
-) -> dict[str, list[SavedFilter]]:
+) -> SavedFiltersResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
     rows = await run_db(list_saved_filters, _user_key(ctx), ctx["organization_id"])
-    items = [SavedFilter(**row) for row in rows]
-    return {"items": items}
+    return SavedFiltersResult(items=[SavedFilter(**row) for row in rows])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Guardar (o actualizar) una vista")
 async def post_saved_filter(
     body: SaveFilterRequest,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, str]:
+) -> SavedFilterSaved:
     # Validar que el payload sea JSON serializable (defensa frente a basura).
     try:
         json.loads(body.filters_json)
@@ -94,14 +103,14 @@ async def post_saved_filter(
         body.visibility,
     )
     log.info("saved_filter_upsert", name=body.name)
-    return {"status": "ok", "name": body.name.strip()}
+    return SavedFilterSaved(status="ok", name=body.name.strip())
 
 
 @router.delete("/{filter_id}", summary="Eliminar una vista guardada")
 async def delete_saved_filter_route(
     filter_id: int,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
-) -> dict[str, str]:
+) -> StatusOk:
     user_key = _user_key(ctx)
     # Comprobar propiedad antes de borrar (previene IDOR — OWASP A01).
     rows = await run_db(list_saved_filters, user_key, ctx["organization_id"])
@@ -116,4 +125,4 @@ async def delete_saved_filter_route(
         user_key=user_key,
         organization_id=ctx["organization_id"],
     )
-    return {"status": "ok"}
+    return StatusOk(status="ok")

@@ -190,12 +190,43 @@ def test_healthcheck_main_returns_1_for_degraded(tmp_db):
     assert code == 1
 
 
-def test_healthcheck_main_alert_mode_returns_0(tmp_db):
+def test_healthcheck_main_alert_mode_critical_exits_nonzero(tmp_db):
+    """Con --alert, un estado critical devuelve exit != 0 (el job de CI se pone rojo).
+
+    Hasta 2026-08 ``--alert`` devolvía 0 incondicionalmente: el workflow
+    healthcheck.yml era estructuralmente incapaz de fallar y un estado crítico
+    solo se veía si alguien leía el email.
+    """
     from unittest.mock import patch
 
     from scheduler.healthcheck import main
 
-    # No runs → critical, but --alert mode should still return 0
+    # Sin runs → critical
+    with patch("sys.argv", ["healthcheck", "--alert"]), patch("scheduler.healthcheck.notify"):
+        code = main()
+
+    assert code == 2
+
+
+def test_healthcheck_main_alert_mode_degraded_returns_0(tmp_db):
+    """Con --alert, degraded sigue devolviendo 0: el email avisa y CI queda verde."""
+    from datetime import datetime, timedelta
+    from unittest.mock import patch
+
+    from db.database import connect
+
+    old = (datetime.now(UTC) - timedelta(days=5)).isoformat()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO extraction_runs "
+            "(run_id, started_at, ended_at, duration_ms, status, "
+            " months_attempted, months_ok) "
+            "VALUES ('r-deg-alert', ?, ?, 1000, 'ok', 1, 1)",
+            (old, old),
+        )
+
+    from scheduler.healthcheck import main
+
     with patch("sys.argv", ["healthcheck", "--alert"]), patch("scheduler.healthcheck.notify"):
         code = main()
 

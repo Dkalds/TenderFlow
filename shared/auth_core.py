@@ -349,12 +349,20 @@ def csv_set(value: str) -> set[str]:
 
 
 def oauth_email_allowed(email: str) -> bool:
-    """Valida el email OAuth contra allowlists opcionales (settings)."""
+    """Valida el email OAuth contra allowlists opcionales (settings).
+
+    ``OAUTH_ALLOWED_DOMAINS=*`` permite cualquier cuenta de forma explícita y
+    auditable — es la vía deliberada de login abierto, ahora que en producción
+    los allowlists vacíos con OAuth activo rechazan el arranque
+    (``config/settings.py::_validate_prod_oauth_domains``).
+    """
     from config import settings
 
     normalized = email.strip().lower()
     allowed_emails = csv_set(settings.OAUTH_ALLOWED_EMAILS)
     allowed_domains = csv_set(settings.OAUTH_ALLOWED_DOMAINS)
+    if "*" in allowed_domains:
+        return True
     if not allowed_emails and not allowed_domains:
         return True
     domain = normalized.rsplit("@", 1)[-1] if "@" in normalized else ""
