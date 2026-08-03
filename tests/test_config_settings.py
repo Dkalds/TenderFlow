@@ -545,3 +545,76 @@ def test_ensure_data_dirs_creates_directories(tmp_path):
         assert (tmp_path / "data_new").exists()
     finally:
         mod.__dict__["_settings"] = original
+
+
+# ---------------------------------------------------------------------------
+# OAuth fail-closed en producción (allowlists vacíos con Google OAuth activo)
+# ---------------------------------------------------------------------------
+
+
+def test_prod_oauth_without_allowlists_refuses_startup():
+    """Con OAuth activo y ambos allowlists vacíos, prod no arranca (fail-closed).
+
+    Hasta 2026-08 esto era solo un ``warnings.warn``: cualquier cuenta de
+    Google podía iniciar sesión en producción sin dejar más rastro que una
+    línea de log en el arranque.
+    """
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="OAUTH_ALLOWED_DOMAINS"):
+        Settings(
+            ENV="prod",
+            APP_PROFILE="api",
+            DATABASE_URL="",
+            GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com",
+            OAUTH_ALLOWED_DOMAINS="",
+            OAUTH_ALLOWED_EMAILS="",
+            **_API_SECRETS,
+        )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"OAUTH_ALLOWED_DOMAINS": "example.com"},
+        {"OAUTH_ALLOWED_EMAILS": "ana@example.com"},
+        {"OAUTH_ALLOWED_DOMAINS": "*"},
+    ],
+)
+def test_prod_oauth_with_allowlist_boots(kwargs):
+    """Cualquiera de los dos allowlists (o el comodín explícito) desbloquea el arranque."""
+    from config.settings import Settings
+
+    s = Settings(
+        ENV="prod",
+        APP_PROFILE="api",
+        DATABASE_URL="",
+        GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com",
+        **kwargs,
+        **_API_SECRETS,
+    )
+    assert s.GOOGLE_CLIENT_ID
+
+
+def test_prod_oauth_scraper_profile_not_affected():
+    """El perfil scraper no expone login: el validator solo aplica al perfil api."""
+    from config.settings import Settings
+
+    s = Settings(
+        ENV="prod",
+        APP_PROFILE="scraper",
+        DATABASE_URL="",
+        GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com",
+        **_API_SECRETS,
+    )
+    assert s.APP_PROFILE == "scraper"
+
+
+def test_oauth_wildcard_domain_allows_any_email(monkeypatch):
+    """OAUTH_ALLOWED_DOMAINS=* permite cualquier cuenta de forma deliberada."""
+    from config import settings
+    from shared.auth_core import oauth_email_allowed
+
+    monkeypatch.setattr(settings, "OAUTH_ALLOWED_DOMAINS", "*", raising=False)
+    monkeypatch.setattr(settings, "OAUTH_ALLOWED_EMAILS", "", raising=False)
+    assert oauth_email_allowed("cualquiera@dominio-ajeno.example") is True

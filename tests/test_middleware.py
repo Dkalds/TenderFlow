@@ -139,6 +139,32 @@ class TestTrustedClientIp:
             result = _trusted_client_ip(req)
             assert result == "unknown"
 
+    def test_wildcard_takes_rightmost_xff_hop(self):
+        """FORWARDED_ALLOW_IPS='*' (PaaS) → último hop de XFF, no el primero.
+
+        El proxy de la plataforma appendea la IP real al final; los hops de la
+        izquierda los escribe el cliente. Hasta 2026-08 este caso devolvía
+        request.client.host, que uvicorn (honrando el mismo '*') ya había
+        reescrito con el primer hop — spoofeable (RFC-051).
+        """
+        settings_mock = MagicMock()
+        settings_mock.FORWARDED_ALLOW_IPS = "*"
+        with patch.dict("sys.modules", {"config": MagicMock(settings=settings_mock)}):
+            req = _fake_request(
+                client_host="10.220.3.7",
+                headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.50"},
+            )
+            result = _trusted_client_ip(req)
+            assert result == "203.0.113.50"
+
+    def test_wildcard_without_xff_falls_back_to_direct(self):
+        settings_mock = MagicMock()
+        settings_mock.FORWARDED_ALLOW_IPS = "*"
+        with patch.dict("sys.modules", {"config": MagicMock(settings=settings_mock)}):
+            req = _fake_request(client_host="10.220.3.7")
+            result = _trusted_client_ip(req)
+            assert result == "10.220.3.7"
+
 
 # ── _client_key ──────────────────────────────────────────────────────────────
 

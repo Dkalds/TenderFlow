@@ -11,10 +11,18 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import Cookie, Depends, Header, HTTPException, Request, Security, status
+from fastapi import (
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Security,
+    status,
+)
 from fastapi.security import APIKeyHeader
 
-from api.scopes import has_scope, required_scope_for_request
 from config import settings
 from observability.logging import get_logger
 from shared.identity import user_key_from_email
@@ -30,12 +38,18 @@ async def require_any_auth(
     api_key_raw: str | None = Security(_API_KEY_HEADER),
     session: str | None = Cookie(default=None, alias="session"),
     x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> dict[str, Any]:
     """Acepta sesión o API key, devolviendo un principal coherente.
 
     Las mutaciones autenticadas con cookie exigen CSRF. Las API keys sin un
     usuario propietario se rechazan en producción para impedir que una misma
     persona se fragmente en identidades por credencial.
+
+    La validación de la API key delega en
+    ``api.auth.validate_api_key_credential`` — el mismo núcleo (comparación en
+    tiempo constante, defensa anti-timing, 503 ante error de BD, expiración,
+    scopes y ``last_used``) que usa ``require_api_key``.
     """
     if session:
         from api.routes.auth import get_current_session_user
@@ -59,59 +73,42 @@ async def require_any_auth(
         return session_user
 
     if api_key_raw:
-        from api.auth import hash_api_key
-        from db.connection import now_utc_iso
+        from api.auth import validate_api_key_credential
         from db.users import get_user_by_id
-        from services import auth as auth_service
 
-        key_hash = hash_api_key(api_key_raw)
-        record = auth_service.lookup_active_key(key_hash)
-        if record is not None and record.expires_at and now_utc_iso() > record.expires_at:
-            record = None
-        if record is not None:
-            user_id = record.user_id
-            if user_id is None:
-                if settings.ENV in ("prod", "staging"):
-                    log.warning("unbound_api_key_rejected", key_id=record.key_id)
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED, detail="API key not bound"
-                    )
-                # Compatibilidad temporal exclusiva de desarrollo/tests.
-                user_id = record.key_id
-                owner: dict[str, Any] | None = None
-            else:
-                owner = get_user_by_id(user_id)
-                if owner is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner inactive"
-                    )
-
-            scopes = frozenset(s.strip() for s in record.scopes.split(",") if s.strip())
-            required_scope = required_scope_for_request(request.method, request.url.path)
-            if not has_scope(scopes, required_scope):
-                log.warning(
-                    "api_key_scope_denied",
-                    key_id=record.key_id,
-                    required=required_scope,
-                    available=sorted(scopes),
-                )
+        ctx = await validate_api_key_credential(
+            api_key_raw,
+            method=request.method,
+            path=request.url.path,
+            background_tasks=background_tasks,
+        )
+        user_id = ctx.user_id
+        if user_id is None:
+            # El núcleo ya rechazó keys sin propietario en prod/staging.
+            # Compatibilidad temporal exclusiva de desarrollo/tests.
+            user_id = ctx.key_id
+            owner: dict[str, Any] | None = None
+        else:
+            owner = get_user_by_id(user_id)
+            if owner is None:
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="API key scope insufficient.",
+                    status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner inactive"
                 )
-            email = owner.get("email") if owner is not None else None
-            return {
-                "user_id": user_id,
-                "api_key_id": record.key_id,
-                "email": email,
-                "display_name": owner.get("display_name") if owner is not None else None,
-                "is_admin": bool(owner and owner.get("is_admin"))
-                and ("*" in scopes or "admin" in scopes),
-                "auth_method": "api_key",
-                "key_hash": key_hash,
-                "scopes": scopes,
-                "user_key": user_key_from_email(email, user_id),
-            }
+
+        scopes = ctx.scopes
+        email = owner.get("email") if owner is not None else None
+        return {
+            "user_id": user_id,
+            "api_key_id": ctx.key_id,
+            "email": email,
+            "display_name": owner.get("display_name") if owner is not None else None,
+            "is_admin": bool(owner and owner.get("is_admin"))
+            and ("*" in scopes or "admin" in scopes),
+            "auth_method": "api_key",
+            "key_hash": ctx.key_hash,
+            "scopes": scopes,
+            "user_key": user_key_from_email(email, user_id),
+        }
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

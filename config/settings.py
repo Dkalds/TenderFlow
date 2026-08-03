@@ -706,7 +706,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_oauth_domains(self) -> Settings:
-        """En producción, alertar (sin bloquear) si OAuth no restringe dominios/emails."""
+        """En producción, OAuth sin allowlist es fail-closed: el arranque se rechaza.
+
+        Hasta 2026-08 esto era solo un ``warnings.warn`` — con ambos allowlists
+        vacíos, cualquier cuenta de Google podía iniciar sesión en producción y
+        el único rastro era una línea de log que nadie mira en el arranque.
+        Un producto B2B con datos de clientes no debe poder desplegarse en ese
+        estado por accidente; quien de verdad quiera login abierto puede poner
+        ``OAUTH_ALLOWED_DOMAINS=*`` de forma explícita y auditable.
+        """
         if (
             self._is_prod_data
             and self._serves_http
@@ -714,11 +722,12 @@ class Settings(BaseSettings):
             and not self.OAUTH_ALLOWED_DOMAINS
             and not self.OAUTH_ALLOWED_EMAILS
         ):
-            warnings.warn(
-                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos: cualquier "
-                "cuenta de Google podrá iniciar sesión. Configura uno de los dos si "
-                "querés restringir el acceso.",
-                stacklevel=2,
+            raise ValueError(
+                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
+                "Google OAuth activo en producción: cualquier cuenta de Google "
+                "podría iniciar sesión. Configura al menos uno de los dos; para "
+                "permitir cualquier cuenta de forma deliberada, usa "
+                "OAUTH_ALLOWED_DOMAINS=*."
             )
         return self
 

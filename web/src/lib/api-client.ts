@@ -82,15 +82,27 @@ export async function apiMutate<T>(
  * Lightweight fetch wrapper that uses the same auth pattern as the typed client.
  * Use this for dynamic URLs that can't use the typed openapi-fetch client.
  * 401 handling is done centrally here — no need to duplicate in callers.
+ *
+ * CSRF: si `options.method` es una mutación (POST/PUT/PATCH/DELETE), se
+ * adjunta `X-CSRF-Token` igual que `apiMutate` — hasta 2026-08 cualquier
+ * mutación enrutada por aquí viajaba sin token y el backend la rechazaba (o
+ * peor: pasaba solo por autenticarse con API key en vez de cookie).
  */
 export async function fetchWithAuth<T>(
   url: string,
   options?: RequestInit,
 ): Promise<T> {
+  const method = (options?.method ?? "GET").toUpperCase();
+  const isMutation = method !== "GET" && method !== "HEAD";
+  const csrf = isMutation ? getCsrfToken() : null;
   const res = await fetch(url, {
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      ...(options?.headers ?? {}),
+    },
   });
 
   if (!res.ok) {
