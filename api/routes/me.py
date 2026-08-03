@@ -25,11 +25,11 @@ import json
 import zipfile
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from api.auth import AuthContext, create_api_key, require_scope
+from api.auth import create_api_key
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.audit import log_event
@@ -239,14 +239,23 @@ def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[dict[s
     status_code=201,
     responses={
         201: {"description": "Nueva key generada. La key anterior sigue activa N días."},
-        401: {"description": "API key inválida"},
+        400: {"description": "Falta key_id — la sesión no identifica qué key rotar"},
+        403: {"description": "Requiere una sesión de navegador reciente"},
+        404: {"description": "La key no existe o no pertenece al usuario"},
     },
 )
 def rotate_my_key(
-    ctx: AuthContext = Depends(require_scope("api_keys:rotate")),
+    ctx: dict[str, Any] = Depends(require_recent_session()),
+    key_id: int | None = Query(None, description="ID de la API key a rotar."),
     grace_days: int = Query(7, ge=0, le=30),
 ) -> dict[str, Any]:
-    """Genera una nueva API key con los mismos scopes que la actual.
+    """Genera una nueva API key con los mismos scopes que la indicada.
+
+    Exige step-up (misma política que ``DELETE /me``): antes bastaba con el
+    scope ``api_keys:rotate``, así que una key filtrada podía acuñar otra y
+    revocar la original no mataba a la rotada. Con sesión de navegador no hay
+    key "actual" implícita, de modo que ``key_id`` es obligatorio y se
+    comprueba que pertenezca al usuario autenticado.
 
     La key anterior permanece activa durante ``grace_days`` (default 7 días)
     para permitir migración gradual. Después de ese período, se desactiva
@@ -256,33 +265,42 @@ def rotate_my_key(
     """
     from datetime import UTC, datetime, timedelta
 
-    # Obtener nombre y scopes de la key actual
-    key_info = get_key_name_and_scopes(ctx.key_id)
-    if not key_info:
-        from fastapi import HTTPException
+    if key_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Indicá key_id: la sesión no identifica qué API key rotar.",
+        )
 
+    user_id = int(ctx["user_id"])
+    # Sin esta comprobación, el step-up solo probaría *quién* pide la rotación,
+    # no que la key sea suya: cualquier usuario podría rotar la de otro.
+    if _get_user_id_from_key_id(key_id) != user_id:
+        raise HTTPException(status_code=404, detail="API key no encontrada.")
+
+    key_info = get_key_name_and_scopes(key_id)
+    if not key_info:
         raise HTTPException(status_code=404, detail="API key no encontrada.")
 
     name, scopes = key_info
 
     # Marcar la key actual con expires_at = now + grace_days
     grace_expires = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()
-    set_key_expiry(ctx.key_id, grace_expires)
+    set_key_expiry(key_id, grace_expires)
 
     # Crear la nueva key
     new_raw = create_api_key(
         name=f"{name} (rotated)",
         scopes=scopes,
-        user_id=ctx.user_id,
+        user_id=user_id,
     )
 
     log_event(
         event_type="api_key.rotated",
-        user_key=ctx.key_hash[:8],
-        resource=f"api_key:{ctx.key_id}",
+        user_key=_actor_key(ctx),
+        resource=f"api_key:{key_id}",
         detail={"grace_days": grace_days, "old_expires_at": grace_expires},
     )
-    log.info("api_key_rotated", key_id=ctx.key_id, grace_days=grace_days)
+    log.info("api_key_rotated", key_id=key_id, grace_days=grace_days)
 
     return {
         "new_token": new_raw,

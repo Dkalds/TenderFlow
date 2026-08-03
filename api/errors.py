@@ -183,7 +183,28 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
-        return problem_400(str(exc), str(request.url)).response()
+        """Convierte un ``ValueError`` no capturado en 400 **sin** su mensaje.
+
+        Antes se reflejaba ``str(exc)`` verbatim. Los ``ValueError`` de
+        ``shared.ssrf`` distinguen "DNS resolution failed", "no global" y "no
+        incluido en la allowlist", así que dar de alta webhooks se convertía en
+        un escáner de red interna con respuestas de oráculo. El mensaje real
+        solo va al log estructurado, igual que en ``generic_exception_handler``.
+
+        Quien necesite que el usuario lea un motivo concreto debe lanzar
+        ``HTTPException(status_code=400, detail=...)`` explícitamente: así el
+        detalle se publica por decisión deliberada y no por descarte.
+        """
+        from observability.logging import get_logger
+
+        log = get_logger(__name__)
+        log.warning(
+            "value_error_masked",
+            path=str(request.url.path),
+            exc_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return problem_400("La solicitud contiene un valor inválido.", str(request.url)).response()
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:

@@ -30,9 +30,11 @@ from db.users import (
     get_user_by_id,
     is_admin,
     log_access,
+    set_admin,
 )
 from observability.logging import get_logger
 from shared.auth_core import (
+    csv_set,
     generate_oauth_state,
     generate_pkce_pair,
     get_signing_key,
@@ -164,10 +166,8 @@ def _login_client_key(request: Request, email: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def get_current_session_user(
-    session: str | None = Cookie(default=None, alias=_SESSION_COOKIE),
-) -> dict[str, Any]:
-    """Dependency that reads the session cookie and returns user info.
+def _session_principal(session: str | None) -> dict[str, Any]:
+    """Resuelve el principal de la cookie de sesión, sin gate de MFA.
 
     Raises 401 if the session is missing, invalid, or expired.
     """
@@ -201,9 +201,58 @@ async def get_current_session_user(
     }
 
 
+def _reject_pending_mfa(user: dict[str, Any]) -> None:
+    """Corta una sesión cuyo segundo factor todavía no se verificó."""
+    if user.get("mfa_required") and not user.get("mfa_verified_at"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MFA verification required for this session.",
+        )
+
+
+async def get_current_session_user(
+    session: str | None = Cookie(default=None, alias=_SESSION_COOKIE),
+) -> dict[str, Any]:
+    """Dependency that reads the session cookie and returns user info.
+
+    El gate de MFA vive aquí y no en cada ruta: cuando solo lo aplicaba
+    ``dual_auth.require_any_auth``, los 35 endpoints de ``analytics`` y
+    ``GET /exports/download`` colgaban directamente de esta dependencia y una
+    contraseña robada bastaba para leer todo el BI. Al gatear la dependencia
+    base, una ruta nueva nace protegida; lo que debe funcionar *antes* de
+    completar MFA usa explícitamente :func:`get_session_user_pending_mfa`.
+    """
+    user = _session_principal(session)
+    _reject_pending_mfa(user)
+    return user
+
+
+async def get_session_user_pending_mfa(
+    session: str | None = Cookie(default=None, alias=_SESSION_COOKIE),
+) -> dict[str, Any]:
+    """Variante sin gate, solo para el propio flujo de segundo factor.
+
+    La usan ``POST /auth/totp/verify`` (donde se verifica el factor),
+    ``POST /auth/logout`` y ``GET /auth/me`` (el SPA lo consulta para saber que
+    debe pedir el TOTP). Sin estas excepciones, un usuario con MFA quedaría
+    encerrado fuera de su propia cuenta.
+
+    No se expone ``allow_pending_mfa`` como parámetro de la dependencia a
+    propósito: FastAPI lo interpretaría como query param y el bypass sería
+    invocable desde la URL.
+    """
+    return _session_principal(session)
+
+
 # ---------------------------------------------------------------------------
 # CSRF validation dependency for mutations
 # ---------------------------------------------------------------------------
+
+
+def _reject_bad_csrf(user: dict[str, Any], x_csrf_token: str | None) -> None:
+    """Valida el double-submit token contra el derivado de la sesión."""
+    if not x_csrf_token or not hmac.compare_digest(x_csrf_token, user.get("csrf", "")):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token mismatch")
 
 
 async def require_csrf(
@@ -211,8 +260,20 @@ async def require_csrf(
     x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
 ) -> dict[str, Any]:
     """Validates that X-CSRF-Token header matches the value stored in the session."""
-    if not x_csrf_token or not hmac.compare_digest(x_csrf_token, user.get("csrf", "")):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token mismatch")
+    _reject_bad_csrf(user, x_csrf_token)
+    return user
+
+
+async def require_csrf_pending_mfa(
+    user: dict[str, Any] = Depends(get_session_user_pending_mfa),
+    x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+) -> dict[str, Any]:
+    """Igual que :func:`require_csrf` pero admite sesiones pendientes de MFA.
+
+    ``/auth/logout`` y ``/auth/totp/verify`` son mutaciones y siguen exigiendo
+    CSRF; lo que no pueden exigir es un segundo factor que aún no se verificó.
+    """
+    _reject_bad_csrf(user, x_csrf_token)
     return user
 
 
@@ -370,8 +431,12 @@ if settings.ENV == "dev":
 
 
 @router.get("/me", response_model=UserInfo)
-async def me(user: dict[str, Any] = Depends(get_current_session_user)) -> UserInfo:
-    """Return info about the currently authenticated user."""
+async def me(user: dict[str, Any] = Depends(get_session_user_pending_mfa)) -> UserInfo:
+    """Return info about the currently authenticated user.
+
+    Accesible con MFA pendiente: es la respuesta que le dice al SPA que debe
+    pedir el TOTP. Solo devuelve identidad, nunca datos de negocio.
+    """
     return UserInfo(
         user_id=user["user_id"],
         email=user.get("email"),
@@ -384,9 +449,13 @@ async def me(user: dict[str, Any] = Depends(get_current_session_user)) -> UserIn
 @router.post("/logout")
 async def logout(
     response: Response,
-    user: dict[str, Any] = Depends(require_csrf),
+    user: dict[str, Any] = Depends(require_csrf_pending_mfa),
 ) -> dict[str, str]:
-    """Revoca la sesión server-side y borra sus cookies."""
+    """Revoca la sesión server-side y borra sus cookies.
+
+    Debe funcionar con MFA pendiente: abandonar un login a medias no puede
+    requerir completarlo.
+    """
     revoke_session(str(user["session_token"]))
     _clear_session_cookies(response)
     return {"detail": "Logged out"}
@@ -496,9 +565,13 @@ async def confirm_totp(
 @router.post("/totp/verify")
 async def verify_totp_login(
     body: TotpCodeRequest,
-    user: dict[str, Any] = Depends(require_csrf),
+    user: dict[str, Any] = Depends(require_csrf_pending_mfa),
 ) -> dict[str, str]:
-    """Eleva una sesión pendiente tras verificar TOTP o un recovery code."""
+    """Eleva una sesión pendiente tras verificar TOTP o un recovery code.
+
+    Es la única ruta que *tiene* que aceptar una sesión sin MFA verificado:
+    gatearla dejaría a todo usuario con TOTP sin forma de completar el login.
+    """
     from db.sessions import mark_session_mfa_verified
     from db.totp import get_totp_secret, use_recovery_code, verify_totp
 
@@ -592,6 +665,20 @@ async def google_authorize(response: Response) -> dict[str, str]:
     return {"authorization_url": authorization_url}
 
 
+def _sync_oauth_admin(user_id: int, email: str) -> None:
+    """Refleja ``OAUTH_ADMIN_EMAILS`` sobre ``is_admin`` en ambos sentidos.
+
+    Antes solo promovía: sacar a alguien de la lista no le quitaba admin nunca.
+    La sincronización se salta cuando la lista está vacía porque ese caso no
+    significa "nadie es admin" sino "OAuth no gobierna el flag": la otra fuente
+    legítima es el panel de administración (``admin_users.admin_set_admin``), y
+    degradar aquí desadministraría a todos sus promovidos en el próximo login.
+    """
+    if not csv_set(settings.OAUTH_ADMIN_EMAILS):
+        return
+    set_admin(user_id, oauth_email_is_admin(email))
+
+
 def _oauth_error_redirect(frontend_url: str, error: str) -> Response:
     """Redirige a /login con un slug de error en vez de servir JSON crudo.
 
@@ -677,11 +764,7 @@ async def google_callback(
         display_name=str(claims.get("name", "")),
     )
 
-    # Promote to admin if in admin list
-    if oauth_email_is_admin(email):
-        from db.users import set_admin
-
-        set_admin(user_id, True)
+    _sync_oauth_admin(user_id, email)
 
     log_access(auth_method="google_oauth", user_id=user_id)
     log.info("oauth_login_success", user_id=user_id)

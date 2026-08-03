@@ -10,6 +10,7 @@ from datetime import datetime
 
 import openpyxl
 import pandas as pd
+from fastapi import FastAPI
 
 from api.routes.exports import _generate_ics
 from services.exports import generate_csv, generate_excel, get_export_filename
@@ -266,3 +267,46 @@ def test_get_export_filename_excel_format():
 def test_get_export_filename_custom_prefix():
     name = get_export_filename("csv", prefix="custom")
     assert name.startswith("custom_")
+
+
+# ── Resolución de rutas ──────────────────────────────────────────────────────
+
+
+def _resuelve(path: str) -> str | None:
+    """Devuelve el nombre del handler que Starlette elegiría para *path*."""
+    from starlette.routing import Match
+
+    from api.routes.exports import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": path,
+        "headers": [],
+        "query_string": b"",
+        "root_path": "",
+    }
+    for route in app.routes:
+        match, _ = route.matches(scope)
+        if match == Match.FULL:
+            return str(route.name)
+    return None
+
+
+def test_rutas_estaticas_de_exports_no_las_ensombrece_el_comodin():
+    """``/{job_id}`` no puede tragarse las sub-rutas estáticas de ``/exports``.
+
+    Starlette resuelve por orden de registro, así que declarar ``/{job_id}``
+    antes que ``/download`` hacía que toda descarga cayera en ``get_export``
+    con job_id="download". Como ese handler exige X-API-Key, el endpoint que
+    usan todos los botones de exportación del dashboard respondía 401 a
+    cualquier sesión de navegador. El test existente no lo detectó porque
+    aceptaba 401 entre los códigos válidos; este comprueba el handler, no el
+    código de estado, que es lo único que no se puede satisfacer por accidente.
+    """
+    assert _resuelve("/api/v1/exports/download") == "download_export"
+    assert _resuelve("/api/v1/exports/calendario.ics") == "calendario_ics"
+    # El camino paramétrico sigue vivo para los jobs reales (uuid4).
+    assert _resuelve("/api/v1/exports/1c9f5f2e-0000-4000-8000-000000000000") == "get_export"

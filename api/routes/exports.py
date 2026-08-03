@@ -201,57 +201,6 @@ def create_export(
     return {"id": job_id, "status": "pending"}
 
 
-@router.get("/{job_id}", deprecated=True)
-def get_export(
-    job_id: str,
-    ctx: AuthContext = Depends(require_api_key),
-) -> Response:
-    """Sondea el estado del job. Devuelve el PDF cuando ``status=done``.
-
-    .. deprecated:: Ver ``POST /exports``.
-    """
-    job = _store.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job no encontrado o expirado.")
-    if job.get("owner") != ctx.key_hash:
-        raise HTTPException(status_code=403, detail="Forbidden.")
-    if job["status"] == "done" and job["pdf"]:
-        return Response(
-            content=job["pdf"],
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="licitaciones_{job_id[:8]}.pdf"',
-                "X-Export-Rows": str(job.get("n_rows", 0)),
-            },
-        )
-    if job["status"] == "error":
-        log.error("export_pdf.client_poll_error", job_id=job_id, error=job["error"])
-        raise HTTPException(
-            status_code=500, detail="Error generando PDF. Consulte los logs del servidor."
-        )
-    # pending o running
-    from fastapi.responses import JSONResponse
-
-    return JSONResponse({"id": job_id, "status": job["status"]}, status_code=202)
-
-
-@router.delete("/{job_id}", status_code=204, deprecated=True)
-def delete_export(
-    job_id: str,
-    ctx: AuthContext = Depends(require_api_key),
-) -> None:
-    """Elimina un job de exportación de la memoria.
-
-    .. deprecated:: Ver ``POST /exports``.
-    """
-    job = _store.get(job_id)
-    if job is None:
-        return
-    if job.get("owner") != ctx.key_hash:
-        raise HTTPException(status_code=403, detail="Forbidden.")
-    del _store[job_id]
-
-
 __all__ = ["router"]
 
 
@@ -411,7 +360,13 @@ async def calendario_ics(
     """Exporta un archivo .ics con los deadlines (fecha_limite) y fines de
     contrato (fecha_fin) de las licitaciones favoritas del usuario.
 
-    Autenticacion via API key (header X-API-Key o query param ?token=<key>).
+    Autenticacion via API key en la cabecera ``X-API-Key`` y solo ahi: la
+    dependencia usa ``APIKeyHeader``, que no mira la query string. Es
+    deliberado — un token en la URL acaba en los access logs, en el historial
+    del navegador y en la cabecera ``Referer`` de cualquier salto externo, y de
+    ahi no se puede revocar. Si un cliente de calendario no admite cabeceras
+    personalizadas, la solucion no es reabrir ``?token=``.
+
     Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
       ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
     """
@@ -467,3 +422,65 @@ async def calendario_ics(
         media_type="text/calendar; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="tenderflow.ics"'},
     )
+
+
+# ── Jobs asíncronos (deprecados) ─────────────────────────────────────────────
+# Van al final del módulo A PROPÓSITO: ``/{job_id}`` es un comodín de un solo
+# segmento y Starlette resuelve por orden de registro, así que declarado antes
+# se tragaba ``/exports/download`` y ``/exports/calendario.ics`` (las atendía
+# ``get_export`` con job_id="download", que exige X-API-Key y respondía 401 a
+# toda sesión de navegador: todos los botones de exportación del dashboard
+# estaban rotos). Es el mismo motivo por el que el catch-all de licitaciones se
+# registra el último en ``api/app.py``. Cualquier sub-ruta estática nueva de
+# ``/exports`` debe declararse por encima de este bloque.
+
+
+@router.get("/{job_id}", deprecated=True)
+def get_export(
+    job_id: str,
+    ctx: AuthContext = Depends(require_api_key),
+) -> Response:
+    """Sondea el estado del job. Devuelve el PDF cuando ``status=done``.
+
+    .. deprecated:: Ver ``POST /exports``.
+    """
+    job = _store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado o expirado.")
+    if job.get("owner") != ctx.key_hash:
+        raise HTTPException(status_code=403, detail="Forbidden.")
+    if job["status"] == "done" and job["pdf"]:
+        return Response(
+            content=job["pdf"],
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="licitaciones_{job_id[:8]}.pdf"',
+                "X-Export-Rows": str(job.get("n_rows", 0)),
+            },
+        )
+    if job["status"] == "error":
+        log.error("export_pdf.client_poll_error", job_id=job_id, error=job["error"])
+        raise HTTPException(
+            status_code=500, detail="Error generando PDF. Consulte los logs del servidor."
+        )
+    # pending o running
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse({"id": job_id, "status": job["status"]}, status_code=202)
+
+
+@router.delete("/{job_id}", status_code=204, deprecated=True)
+def delete_export(
+    job_id: str,
+    ctx: AuthContext = Depends(require_api_key),
+) -> None:
+    """Elimina un job de exportación de la memoria.
+
+    .. deprecated:: Ver ``POST /exports``.
+    """
+    job = _store.get(job_id)
+    if job is None:
+        return
+    if job.get("owner") != ctx.key_hash:
+        raise HTTPException(status_code=403, detail="Forbidden.")
+    del _store[job_id]

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from api.routes.dual_auth import require_admin
 from db.audit import log_event
+from db.sessions import revoke_all_sessions
 from db.users import (
     anonymize_user,
     deactivate_user,
@@ -21,6 +22,7 @@ from db.users import (
     set_admin,
 )
 from observability.logging import get_logger
+from services.gdpr import revoke_all_api_keys_for_user
 
 log = get_logger(__name__)
 
@@ -114,7 +116,15 @@ def admin_deactivate_user(
     body: DeactivateBody,
     admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, str]:
-    """Desactivar, reactivar o anonimizar un usuario."""
+    """Desactivar, reactivar o anonimizar un usuario.
+
+    Dar de baja o anonimizar revoca además sesiones y API keys ya emitidas: el
+    soft-delete de ``users`` solo impide autenticaciones nuevas, así que sin
+    esto una baja dejaba vivas todas las credenciales que el usuario ya tenía
+    en la mano. Es la misma limpieza que hace el borrado GDPR self-service
+    (``api.routes.me.delete_my_data``). ``reactivate`` no revoca nada porque no
+    hay credencial que invalidar.
+    """
     if user_id == admin.get("user_id"):
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself.")
     target = get_user_by_id(user_id, include_deactivated=True)
@@ -132,10 +142,22 @@ def admin_deactivate_user(
             status_code=400, detail="Invalid action. Use: deactivate|reactivate|anonymize."
         )
 
+    detail: dict[str, Any] = {"action": body.action}
+    if body.action in ("deactivate", "anonymize"):
+        detail["sessions_revoked"] = revoke_all_sessions(user_id)
+        detail["api_keys_revoked"] = revoke_all_api_keys_for_user(user_id)
+        log.info(
+            "admin_user_credentials_revoked",
+            user_id=user_id,
+            action=body.action,
+            sessions_revoked=detail["sessions_revoked"],
+            api_keys_revoked=detail["api_keys_revoked"],
+        )
+
     log_event(
         event_type=f"user.{body.action}",
         user_key=str(admin.get("user_id", "")),
         resource=f"user:{user_id}",
-        detail=body.action,
+        detail=detail,
     )
     return {"status": "ok", "action": body.action}

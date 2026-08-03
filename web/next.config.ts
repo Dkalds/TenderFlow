@@ -2,13 +2,28 @@ import type { NextConfig } from "next";
 import { legacyRedirects } from "./src/lib/space-views";
 
 /**
- * Content-Security-Policy en modo **Report-Only**: no bloquea nada, solo reporta
- * violaciones al endpoint del backend (`/api/v1/security/csp-report`) para poder
- * medir antes de pasar a enforce. Las directivas estructurales (frame-ancestors,
- * object-src, base-uri, form-action) ya son estrictas porque no rompen la app;
- * `script-src`/`style-src` se mantienen permisivas por ahora (Next inyecta scripts
- * de hidratación y recharts/Tailwind inyectan estilos inline) y se endurecerán en
- * una segunda fase guiada por los reportes recogidos.
+ * Aquí viven solo las cabeceras de seguridad **estáticas**, las que no dependen
+ * de la request: nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy,
+ * X-DNS-Prefetch-Control y HSTS.
+ *
+ * El Content-Security-Policy NO se emite en este fichero. Se construye por
+ * request en `src/middleware.ts` y va en enforcing (cabecera
+ * `Content-Security-Policy`, no Report-Only), porque `script-src` usa un nonce
+ * nuevo en cada respuesta junto a `'strict-dynamic'`: un array de headers
+ * estático no puede generar ese valor. El matcher del middleware excluye
+ * `/api`, `/_next/static`, `/_next/image` y `favicon.ico`. En `/_next/static`
+ * y `/_next/image` eso deja las de abajo como únicas cabeceras. `/api/*` no:
+ * `rewrites()` lo proxya al backend FastAPI, que ya emite las suyas desde
+ * `api/middleware.py::SecurityHeadersMiddleware` —incluido un CSP propio
+ * (`default-src 'none'`) pensado para respuestas JSON—, así que ahí conviven
+ * las dos fuentes.
+ *
+ * El relajamiento que importa del CSP de páginas es `style-src
+ * 'unsafe-inline'`: la app usa atributos `style` en decenas de componentes y
+ * recharts genera los suyos al pintar los SVG; no hay punto de enganche para
+ * ponerles el nonce. El riesgo residual es acotado porque `script-src` sí es
+ * estricto. (`'unsafe-eval'` aparece solo en desarrollo; `img-src` y `font-src`
+ * admiten además `data:`, y `img-src` el CDN de avatares de Google.)
  */
 const nextConfig: NextConfig = {
   /**
