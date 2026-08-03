@@ -96,6 +96,13 @@ export interface paths {
         /**
          * Admin Deactivate User
          * @description Desactivar, reactivar o anonimizar un usuario.
+         *
+         *     Dar de baja o anonimizar revoca además sesiones y API keys ya emitidas: el
+         *     soft-delete de ``users`` solo impide autenticaciones nuevas, así que sin
+         *     esto una baja dejaba vivas todas las credenciales que el usuario ya tenía
+         *     en la mano. Es la misma limpieza que hace el borrado GDPR self-service
+         *     (``api.routes.me.delete_my_data``). ``reactivate`` no revoca nada porque no
+         *     hay credencial que invalidar.
          */
         post: operations["admin_deactivate_user_api_v1_admin_users__user_id__deactivate_post"];
         delete?: never;
@@ -801,6 +808,9 @@ export interface paths {
         /**
          * Logout
          * @description Revoca la sesión server-side y borra sus cookies.
+         *
+         *     Debe funcionar con MFA pendiente: abandonar un login a medias no puede
+         *     requerir completarlo.
          */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
@@ -839,6 +849,9 @@ export interface paths {
         /**
          * Me
          * @description Return info about the currently authenticated user.
+         *
+         *     Accesible con MFA pendiente: es la respuesta que le dice al SPA que debe
+         *     pedir el TOTP. Solo devuelve identidad, nunca datos de negocio.
          */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
@@ -989,6 +1002,9 @@ export interface paths {
         /**
          * Verify Totp Login
          * @description Eleva una sesión pendiente tras verificar TOTP o un recovery code.
+         *
+         *     Es la única ruta que *tiene* que aceptar una sesión sin MFA verificado:
+         *     gatearla dejaría a todo usuario con TOTP sin forma de completar el login.
          */
         post: operations["verify_totp_login_api_v1_auth_totp_verify_post"];
         delete?: never;
@@ -1308,9 +1324,10 @@ export interface paths {
          *        propia respuesta.
          *
          *        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
-         *        Eso sólo funciona con una única instancia que además no se reinicie: en
-         *        el plan actual de Render la instancia se recicla por inactividad, así
-         *        que un job aceptado con 202 desaparece y el sondeo devuelve 404 sin que
+         *        Eso sólo funciona con una única instancia que además no se reinicie:
+         *        cualquier deploy o reinicio de la instancia (el plan de pago de Render
+         *        ya no hiberna por inactividad, pero sí recicla en cada release) hace
+         *        desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
          *        nada lo registre como fallo; y al escalar a dos instancias el poll cae
          *        en la equivocada y responde 404 o 403 de forma no determinista.
          *
@@ -1340,7 +1357,13 @@ export interface paths {
          * @description Exporta un archivo .ics con los deadlines (fecha_limite) y fines de
          *     contrato (fecha_fin) de las licitaciones favoritas del usuario.
          *
-         *     Autenticacion via API key (header X-API-Key o query param ?token=<key>).
+         *     Autenticacion via API key en la cabecera ``X-API-Key`` y solo ahi: la
+         *     dependencia usa ``APIKeyHeader``, que no mira la query string. Es
+         *     deliberado — un token en la URL acaba en los access logs, en el historial
+         *     del navegador y en la cabecera ``Referer`` de cualquier salto externo, y de
+         *     ahi no se puede revocar. Si un cliente de calendario no admite cabeceras
+         *     personalizadas, la solucion no es reabrir ``?token=``.
+         *
          *     Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
          *       ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
          */
@@ -2005,7 +2028,13 @@ export interface paths {
         put?: never;
         /**
          * Rotar API key — genera una nueva con grace period
-         * @description Genera una nueva API key con los mismos scopes que la actual.
+         * @description Genera una nueva API key con los mismos scopes que la indicada.
+         *
+         *     Exige step-up (misma política que ``DELETE /me``): antes bastaba con el
+         *     scope ``api_keys:rotate``, así que una key filtrada podía acuñar otra y
+         *     revocar la original no mataba a la rotada. Con sesión de navegador no hay
+         *     key "actual" implícita, de modo que ``key_id`` es obligatorio y se
+         *     comprueba que pertenezca al usuario autenticado.
          *
          *     La key anterior permanece activa durante ``grace_days`` (default 7 días)
          *     para permitir migración gradual. Después de ese período, se desactiva
@@ -11209,11 +11238,17 @@ export interface operations {
     rotate_my_key_api_v1_me_keys_rotate_post: {
         parameters: {
             query?: {
+                /** @description ID de la API key a rotar. */
+                key_id?: number | null;
                 grace_days?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -11226,8 +11261,22 @@ export interface operations {
                     "application/json": components["schemas"]["RotatedKey"];
                 };
             };
-            /** @description API key inválida */
-            401: {
+            /** @description Falta key_id — la sesión no identifica qué key rotar */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere una sesión de navegador reciente */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La key no existe o no pertenece al usuario */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

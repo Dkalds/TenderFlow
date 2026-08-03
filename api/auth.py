@@ -30,6 +30,7 @@ from fastapi.security import APIKeyHeader
 
 from api.scopes import has_scope, required_scope_for_request
 from db.database import now_utc_iso
+from db.users import get_user_by_id
 from observability.logging import get_logger
 from services import auth as auth_service
 
@@ -159,6 +160,15 @@ async def validate_api_key_credential(
     # Validar expiración
     if expires_at and now_utc_iso() > expires_at:
         log.info("api_key_expired", key_id=key_id)
+        raise _UNAUTHORIZED
+
+    # Dar de baja una cuenta tiene que cerrar también sus credenciales de
+    # máquina. Sin esta lectura, `deactivate_user` solo bloqueaba el login por
+    # sesión y las API keys del usuario seguían abriendo todas las rutas que no
+    # pasan por `dual_auth.require_any_auth` (que sí carga al propietario).
+    # Cuesta una consulta por request; la corrección pesa más que el ahorro.
+    if record.user_id is not None and get_user_by_id(record.user_id) is None:
+        log.warning("api_key_owner_inactive", key_id=key_id)
         raise _UNAUTHORIZED
 
     # Actualizar last_used en background

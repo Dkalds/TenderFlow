@@ -114,6 +114,7 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_anomaly_checks": _make_mock("anomaly_checks"),
             "scheduler.pipeline_runs._run_retention_cleanup": _make_mock("retention_cleanup"),
             "scheduler.pipeline_runs._run_ml_retrain": _make_mock("ml_retrain"),
+            "scheduler.pipeline_runs._run_sap_active_learning": _make_mock("sap_active_learning"),
             "scheduler.pipeline_runs._run_drift_checks": _make_mock("drift_checks"),
         }
 

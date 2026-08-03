@@ -15,6 +15,13 @@ RFC 2026-06-30 (llm-dependencia-gestionada): el RFC de tokens cerró la
 
 El estado por-ventana rota solo: las claves llevan la fecha (``YYYY-MM-DD`` /
 ``YYYY-MM``) y expiran por TTL, así que no hay que resetear contadores.
+
+Además del tope global hay un tope diario **por sujeto** (``scope_key``, la
+``user_key`` opaca de ``shared/identity.py``): sin él una sola cuenta agota la
+ventana de todos los demás, que es una denegación de servicio barata. Los
+acumuladores viven en claves distintas, así que el gasto de un usuario nunca
+enmascara el del resto. ``scope_key`` es opcional: sin sujeto el guard se
+comporta exactamente como antes (solo global).
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -35,17 +43,40 @@ _KEY_PREFIX = "llm:budget"
 _TTL_SECONDS = {"daily": 3 * 86400, "monthly": 40 * 86400}
 
 BudgetMode = Literal["monitor", "enforce"]
+BudgetScope = Literal["global", "user"]
+
+# Sujeto al que atribuir el gasto cuando el llamador no puede pasarlo explícito.
+# El coste real solo se conoce dentro de ``llm/client.py::_record_usage``, que no
+# recibe al usuario; el borde HTTP lo deja aquí antes de arrancar el stream.
+_current_subject: ContextVar[str | None] = ContextVar("llm_budget_subject", default=None)
+
+
+def bind_budget_subject(scope_key: str | None) -> None:
+    """Fija el sujeto del gasto para el contexto actual, sin token de reset.
+
+    Pensado para llamarse dentro de un contexto ya copiado (``asyncio.to_thread``
+    copia el contexto por llamada), donde la mutación muere con el thread y no
+    puede filtrarse a otra request. Fuera de ese caso usá ``scope_key`` explícito.
+    """
+    _current_subject.set(scope_key)
 
 
 class LLMBudgetExceeded(RuntimeError):
     """El presupuesto LLM de una ventana está agotado (solo en modo enforce)."""
 
-    def __init__(self, window: str, spent: float, limit: float) -> None:
+    def __init__(
+        self, window: str, spent: float, limit: float, scope: BudgetScope = "global"
+    ) -> None:
         self.window = window
         self.spent = spent
         self.limit = limit
+        self.scope = scope
+        # El mensaje llega al usuario en el 429: sin distinguir el ámbito, quien
+        # agota su propia cuota cree que el servicio entero está caído.
+        ambito = "de tu cuenta" if scope == "user" else "global"
         super().__init__(
-            f"Presupuesto LLM {window} agotado ({spent:.4f} USD >= {limit:.4f} USD). "
+            f"Presupuesto LLM {window} {ambito} agotado "
+            f"({spent:.4f} USD >= {limit:.4f} USD). "
             "Reintentá cuando la ventana rote o ampliá LLM_BUDGET_USD_*."
         )
 
@@ -62,12 +93,14 @@ class BudgetGuard:
         *,
         daily_limit_usd: float,
         monthly_limit_usd: float,
+        daily_limit_usd_per_user: float = 0.0,
         mode: BudgetMode = "monitor",
         clock: Callable[[], float] | None = None,
         redis_client: Any | None = None,
     ) -> None:
         self.daily_limit_usd = daily_limit_usd
         self.monthly_limit_usd = monthly_limit_usd
+        self.daily_limit_usd_per_user = daily_limit_usd_per_user
         self.mode: BudgetMode = mode
         self._clock = clock or time.time
         self._redis = redis_client
@@ -110,10 +143,16 @@ class BudgetGuard:
 
     # ── Claves por ventana ───────────────────────────────────────────────
 
-    def _key(self, window: str) -> str:
+    def _key(self, window: str, scope_key: str | None = None) -> str:
         now = datetime.fromtimestamp(self._clock(), tz=UTC)
         stamp = now.strftime("%Y-%m-%d") if window == "daily" else now.strftime("%Y-%m")
+        if scope_key:
+            return f"{_KEY_PREFIX}:u:{scope_key}:{window}:{stamp}"
         return f"{_KEY_PREFIX}:{window}:{stamp}"
+
+    def _subject(self, scope_key: str | None) -> str | None:
+        """Sujeto efectivo: el explícito gana sobre el del contexto."""
+        return scope_key or _current_subject.get()
 
     # ── In-memory fallback ───────────────────────────────────────────────
 
@@ -137,9 +176,9 @@ class BudgetGuard:
 
     # ── API pública ──────────────────────────────────────────────────────
 
-    def spent(self, window: str) -> float:
-        """Gasto acumulado (USD) de la ventana actual."""
-        key = self._key(window)
+    def spent(self, window: str, scope_key: str | None = None) -> float:
+        """Gasto acumulado (USD) de la ventana actual, global o del sujeto."""
+        key = self._key(window, scope_key)
         client = self._get_redis()
         if client is not None:
             try:
@@ -149,48 +188,71 @@ class BudgetGuard:
                 self._drop_redis()
         return self._mem_get(key)
 
-    def record(self, cost_usd: float) -> None:
-        """Suma ``cost_usd`` al acumulado de ambas ventanas (best-effort)."""
+    def _incr(self, key: str, cost_usd: float, ttl: int) -> None:
+        client = self._get_redis()
+        if client is not None:
+            try:
+                client.incrbyfloat(key, cost_usd)
+                # La clave rota por fecha: refrescar TTL es inofensivo.
+                client.expire(key, ttl)
+                return
+            except Exception:
+                self._drop_redis()
+        self._mem_incr(key, cost_usd, ttl)
+
+    def record(self, cost_usd: float, scope_key: str | None = None) -> None:
+        """Suma ``cost_usd`` al acumulado de ambas ventanas (best-effort).
+
+        Con sujeto (explícito o del contexto) alimenta además su acumulador
+        diario. Solo el diario: el tope por usuario es diario, un contador
+        mensual por sujeto sería estado que nadie lee.
+        """
         if cost_usd <= 0:
             return
         for window, ttl in _TTL_SECONDS.items():
-            key = self._key(window)
-            client = self._get_redis()
-            if client is not None:
-                try:
-                    client.incrbyfloat(key, cost_usd)
-                    # La clave rota por fecha: refrescar TTL es inofensivo.
-                    client.expire(key, ttl)
-                    continue
-                except Exception:
-                    self._drop_redis()
-            self._mem_incr(key, cost_usd, ttl)
+            self._incr(self._key(window), cost_usd, ttl)
+        subject = self._subject(scope_key)
+        if subject:
+            self._incr(self._key("daily", subject), cost_usd, _TTL_SECONDS["daily"])
 
-    def check(self) -> None:
+    def _check_window(
+        self, window: str, limit: float, scope: BudgetScope, subject: str | None
+    ) -> None:
+        if limit <= 0:
+            return
+        spent = self.spent(window, subject)
+        if spent < limit:
+            return
+        # La métrica no tiene label de ámbito (su definición es de otro módulo):
+        # el sufijo en `window` distingue las series sin tocar el contrato.
+        label = window if scope == "global" else f"{window}_user"
+        llm_budget_exceeded_total.labels(window=label, mode=self.mode).inc()
+        if self.mode == "enforce":
+            raise LLMBudgetExceeded(window, spent, limit, scope=scope)
+        log.warning(
+            "llm_budget_exceeded_monitor",
+            window=window,
+            scope=scope,
+            spent_usd=round(spent, 4),
+            limit_usd=limit,
+        )
+
+    def check(self, scope_key: str | None = None) -> None:
         """Verifica los presupuestos; lanza :class:`LLMBudgetExceeded` en enforce.
+
+        Con sujeto se verifica también su ventana diaria. El orden importa: los
+        topes globales se evalúan primero porque agotarlos corta a todo el
+        mundo, mientras que el del sujeto solo corta a ese usuario.
 
         En modo ``monitor`` no lanza: sube ``llm_budget_exceeded_total`` y
         loguea warning, para poder observar cuántas requests se habrían
         cortado antes de activar el enforcement.
         """
-        for window, limit in (
-            ("daily", self.daily_limit_usd),
-            ("monthly", self.monthly_limit_usd),
-        ):
-            if limit <= 0:
-                continue
-            spent = self.spent(window)
-            if spent < limit:
-                continue
-            llm_budget_exceeded_total.labels(window=window, mode=self.mode).inc()
-            if self.mode == "enforce":
-                raise LLMBudgetExceeded(window, spent, limit)
-            log.warning(
-                "llm_budget_exceeded_monitor",
-                window=window,
-                spent_usd=round(spent, 4),
-                limit_usd=limit,
-            )
+        self._check_window("daily", self.daily_limit_usd, "global", None)
+        self._check_window("monthly", self.monthly_limit_usd, "global", None)
+        subject = self._subject(scope_key)
+        if subject:
+            self._check_window("daily", self.daily_limit_usd_per_user, "user", subject)
 
 
 # ── Singleton por proceso ────────────────────────────────────────────────
@@ -210,6 +272,7 @@ def get_budget_guard() -> BudgetGuard:
                 _guard = BudgetGuard(
                     daily_limit_usd=settings.LLM_BUDGET_USD_DAILY,
                     monthly_limit_usd=settings.LLM_BUDGET_USD_MONTHLY,
+                    daily_limit_usd_per_user=settings.LLM_BUDGET_USD_DAILY_PER_USER,
                     mode=settings.LLM_BUDGET_MODE,
                 )
     return _guard

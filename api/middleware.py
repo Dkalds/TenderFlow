@@ -1,7 +1,8 @@
 """Middlewares ASGI personalizados para la API REST.
 
 * :class:`SecurityHeadersMiddleware` — Añade cabeceras de seguridad OWASP (ASGI puro).
-* :class:`RateLimitMiddleware`       — Rate limiting per-API-Key sobre SQLite.
+* :class:`RateLimitMiddleware`       — Rate limiting por IP; el almacén lo elige
+  ``services.rate_limiting.get_rate_limiter`` (Redis o tabla ``rate_limits``).
 * :class:`CostTrackingMiddleware`    — Estima coste por request (Prometheus).
 * :class:`AccessLogMiddleware`       — Access log estructurado con métricas RED.
 
@@ -11,6 +12,7 @@ Todos diseñados para ser idempotentes y "fail-open" ante errores de infra.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request
@@ -170,10 +172,11 @@ def _trusted_client_ip(request: Request) -> str:
 
 
 def _client_key(request: Request) -> str:
-    """Identifica al cliente por API-Key (preferido) o por IP verificada (fallback).
+    """Identifica al cliente **solo** por IP verificada, nunca por API-Key.
 
-    La API-Key se hashea para no almacenar el token en la tabla rate_limits.
-    La IP se obtiene a través de ``_trusted_client_ip`` que solo honra
+    Un bucket por API-Key permitiría eludir el límite rotando claves (crearlas
+    es barato), así que la cuota se ancla a la IP: el recurso caro de falsificar.
+    La IP se obtiene a través de ``_trusted_client_ip``, que solo honra
     ``X-Forwarded-For`` si la petición viene de un proxy de confianza.
     """
     ip = _trusted_client_ip(request)
@@ -182,27 +185,59 @@ def _client_key(request: Request) -> str:
 
 # Endpoints que consumen más CPU/IO reciben un rate limit más bajo.
 # Paths no listados usan el default del middleware.
+#
+# Esta tabla solo cubre rutas *sin* path params: se compara por igualdad exacta,
+# así que "/api/v1/exports" no arrastra a "/api/v1/exports/{job_id}".
 _HEAVY_ENDPOINT_LIMITS: dict[str, int] = {
     "/api/v1/exports": 20,
+    # Descarga síncrona: hasta 50.000 filas y, con format=pdf, render en el
+    # propio worker. Es el camino recomendado de export, no el job asíncrono.
+    "/api/v1/exports/download": 10,
     "/api/v1/feedback/queue": 30,
-    "/api/v1/licitaciones/explain": 30,
-    "/api/v1/models/activate": 10,
     "/api/v1/search/semantic": 30,
     "/api/v1/ask": 10,
     "/api/v1/ask/models": 30,
 }
 
+# Rutas pesadas **con** path params. ``BaseHTTPMiddleware`` corre antes del
+# routing, así que aquí solo se ve el path crudo y nunca el template: indexar
+# por literal exacto hacía que estas dos entradas no matchearan jamás y
+# corrieran al límite por defecto. Los patrones van anclados a ambos extremos
+# para no capturar rutas vecinas.
+_HEAVY_ENDPOINT_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
+    # /licitaciones/{id_externo:path}/explain — el id puede contener '/'
+    # (p.ej. "PA-S 2026/000058"), por eso el comodín admite barras.
+    (re.compile(r"^/api/v1/licitaciones/.+/explain$"), 30),
+    # /models/{name}/activate/{version}
+    (re.compile(r"^/api/v1/models/[^/]+/activate/[^/]+$"), 10),
+)
+
+
+def _effective_max_calls(path: str, default: int) -> int:
+    """Límite de requests por ventana aplicable a ``path``.
+
+    Si varias reglas matchean gana la **más restrictiva** (el mínimo):
+    pasarse de estricto cuesta un 429 recuperable, quedarse corto deja el
+    endpoint caro sin la protección que se le quiso poner.
+    """
+    limits = [limit for pattern, limit in _HEAVY_ENDPOINT_PATTERNS if pattern.match(path)]
+    exact = _HEAVY_ENDPOINT_LIMITS.get(path)
+    if exact is not None:
+        limits.append(exact)
+    return min(limits) if limits else default
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Rate limiting global por cliente sobre la API REST.
+    """Rate limiting global por IP sobre la API REST.
 
-    Usa :func:`services.rate_limiting.get_rate_limiter` como backend.
+    Usa :func:`services.rate_limiting.get_rate_limiter` como backend (Redis o
+    la tabla ``rate_limits``, según configuración).
     Devuelve ``429 Too Many Requests`` con cabeceras estándar cuando se excede.
 
     Excluye paths configurables (e.g. ``/api/v1/health``) para no bloquear LBs.
 
-    Los endpoints pesados (inferencia ML, exports) tienen un límite inferior
-    configurable en ``_HEAVY_ENDPOINT_LIMITS``.
+    Los endpoints pesados (inferencia ML, exports) tienen un límite inferior;
+    ver :func:`_effective_max_calls`.
 
     Args:
         app: Aplicación ASGI a envolver.
@@ -240,10 +275,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client = _client_key(request)
         # BaseHTTPMiddleware se ejecuta antes del routing: un bucket global
         # por cliente evita el bypass por path params variables.
-        rate_path = path
         rate_key = f"api:{client}"
         # Endpoints pesados (ML inference, exports) tienen límite inferior.
-        effective_max = _HEAVY_ENDPOINT_LIMITS.get(rate_path, self._max)
+        effective_max = _effective_max_calls(path, self._max)
         allowed = get_rate_limiter().check(
             rate_key,
             max_calls=effective_max,

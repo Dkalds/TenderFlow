@@ -11,8 +11,7 @@ from fastapi.testclient import TestClient
 
 # ── Auto-marking de tests por convención de nombre + uso de fixtures ────────
 # Evita anotar manualmente los tests. Reglas, en orden:
-#   - test_*property* / test_parser_properties → property
-#   - test_*performance* / test_*load*         → load
+#   - módulo test_*property*/test_*performance*/test_*load*    → property/load
 #   - test_*e2e* / test_visual_regression / test_dashboard_smoke → e2e
 #   - test_integration_*, test_*_integration   → integration
 #   - cierre de fixtures incluye tmp_db/api_db → integration (BD real)
@@ -20,6 +19,17 @@ from fastapi.testclient import TestClient
 #                                                de verdad: un test que abre
 #                                                Postgres nunca queda `unit`)
 _E2E_TOKENS = ("_e2e", "visual_regression", "dashboard_smoke", "dashboard_pages")
+# `load`/`property` solo se miran en la RUTA del módulo, no en el nombre del
+# test: como substring del nombre dan falsos positivos masivos (`test_load_
+# dataframe`, `test_upsert_result_properties`, `test_ml_model_pin::test_load_
+# rejects_when_pin_mismatch`, ~100 tests que cargan datos o verifican
+# propiedades de un objeto, sin relación con load-testing ni Hypothesis).
+# Detectado 2026-08-03 auditando el merge con master: esos tests quedaban
+# marcados `load`/`property`, ninguno de los dos en el `-m "(unit or
+# integration) and not slow"` de `make check` -- fuera del gate sin que nadie
+# lo notara. Los módulos que sí son load/property-testing llevan el token en
+# su propio nombre de archivo (`test_performance.py`, `test_property_based.py`,
+# `test_load_scraper_placsp.py`, …), así que la ruta basta como señal.
 _LOAD_TOKENS = ("performance", "load")
 _PROPERTY_TOKENS = ("property", "properties", "property_based")
 
@@ -40,10 +50,10 @@ def _infer_marker(path: str, name: str) -> str:
         if token in p or token in n:
             return "e2e"
     for token in _LOAD_TOKENS:
-        if token in p or token in n:
+        if token in p:
             return "load"
     for token in _PROPERTY_TOKENS:
-        if token in p or token in n:
+        if token in p:
             return "property"
     # integration: explicit /integration/ path segment or test_integration_* name prefix
     if "/integration/" in p or "integration_" in n:

@@ -65,6 +65,12 @@ class TestAdminDeactivateUser:
             with (
                 patch("api.routes.admin_users.get_user_by_id", return_value=target),
                 patch("api.routes.admin_users.deactivate_user") as mock_deact,
+                patch(
+                    "api.routes.admin_users.revoke_all_sessions", return_value=2
+                ) as mock_sessions,
+                patch(
+                    "api.routes.admin_users.revoke_all_api_keys_for_user", return_value=1
+                ) as mock_keys,
                 patch("api.routes.admin_users.log_event"),
             ):
                 resp = client.post(
@@ -75,6 +81,10 @@ class TestAdminDeactivateUser:
         assert resp.status_code == 200
         assert resp.json()["action"] == "deactivate"
         mock_deact.assert_called_once_with(5)
+        # Dar de baja sin revocar credenciales dejaba las API keys del usuario
+        # funcionando: `require_api_key` no miraba `deactivated_at`.
+        mock_sessions.assert_called_once_with(5)
+        mock_keys.assert_called_once_with(5)
 
     def test_cannot_deactivate_self(self, client):
         app.dependency_overrides[require_any_auth] = lambda: _admin_user()
@@ -94,6 +104,12 @@ class TestAdminDeactivateUser:
             with (
                 patch("api.routes.admin_users.get_user_by_id", return_value=target),
                 patch("api.routes.admin_users.anonymize_user") as mock_anon,
+                patch(
+                    "api.routes.admin_users.revoke_all_sessions", return_value=0
+                ) as mock_sessions,
+                patch(
+                    "api.routes.admin_users.revoke_all_api_keys_for_user", return_value=0
+                ) as mock_keys,
                 patch("api.routes.admin_users.log_event"),
             ):
                 resp = client.post("/api/v1/admin/users/7/deactivate", json={"action": "anonymize"})
@@ -101,6 +117,30 @@ class TestAdminDeactivateUser:
             app.dependency_overrides.clear()
         assert resp.status_code == 200
         mock_anon.assert_called_once_with(7)
+        mock_sessions.assert_called_once_with(7)
+        mock_keys.assert_called_once_with(7)
+
+    def test_reactivate_no_revoca_credenciales(self, client):
+        """Reactivar es lo contrario de dar de baja: no debe revocar nada."""
+        target = {"id": 9, "email": "back@x.com", "is_admin": 0}
+        app.dependency_overrides[require_any_auth] = lambda: _admin_user()
+        try:
+            with (
+                patch("api.routes.admin_users.get_user_by_id", return_value=target),
+                patch("api.routes.admin_users.reactivate_user") as mock_react,
+                patch("api.routes.admin_users.revoke_all_sessions") as mock_sessions,
+                patch("api.routes.admin_users.revoke_all_api_keys_for_user") as mock_keys,
+                patch("api.routes.admin_users.log_event"),
+            ):
+                resp = client.post(
+                    "/api/v1/admin/users/9/deactivate", json={"action": "reactivate"}
+                )
+        finally:
+            app.dependency_overrides.clear()
+        assert resp.status_code == 200
+        mock_react.assert_called_once_with(9)
+        mock_sessions.assert_not_called()
+        mock_keys.assert_not_called()
 
 
 class TestAdminSetAdmin:

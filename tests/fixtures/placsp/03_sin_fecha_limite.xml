@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-SINPLAZO-0003</id>
+  <title>Mantenimiento evolutivo SAP ERP</title>
+  <updated>2026-06-14T09:12:33+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-SINPLAZO-0003" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-SINPLAZO-0003; Órgano de Contratación: Ayuntamiento de Valencia; Importe: 95000.00 EUR; Estado: PUB</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-SINPLAZO-0003</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Ayuntamiento de Valencia</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <cacext:ValidNoticeInfo>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-06-01</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Mantenimiento evolutivo SAP ERP</cbc:Name>
+      <cbc:TypeCode>2</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">95000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Valencia</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES523</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+  </cacext:ContractFolderStatus>
+</entry>

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import pandas as pd
 
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
 # Conversión de unidades CODICE a meses
 UNIT_TO_MONTHS = {
     "ANN": 12.0,
@@ -233,6 +237,7 @@ def forecast_volume_from_monthly(hist: pd.DataFrame, *, months_ahead: int = 6) -
         forecast_vals = model.forecast(months_ahead)
         std_err = (hist["valor"].std() or 1.0) * 1.5  # banda ~1.5 sigma aproximada
     except Exception:
+        log.warning("forecast_holtwinters_fallback", exc_info=True)
         # Fallback: regresión lineal simple
         import numpy as np
 

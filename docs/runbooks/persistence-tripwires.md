@@ -1,13 +1,18 @@
 # Runbook: Tripwires de persistencia ([[ADR-004-sqlite-turso-vs-postgres|ADR-004]])
 
 **Propósito**: Qué hacer cuando dispara una alerta de los tripwires de
-persistencia SQLite/Turso. Estos tripwires señalan que el supuesto
-"single writer" de [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] ya no
-se sostiene y hay que decidir si migrar a PostgreSQL.
+persistencia. Estos tripwires nacieron señalando que el supuesto
+"single writer" de [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] ya no se
+sostenía y había que decidir si migrar a PostgreSQL — esa migración **ya
+ocurrió** ([[ADR-016|ADR-016]], cutover 2026-07-11, ver
+`docs/runbooks/migracion-persistencia.md`). El mismo invariante (¿cuántos
+escritores concurrentes tolera la arquitectura antes de necesitar revisión?)
+se sigue vigilando, ahora sobre el pool `psycopg_pool` de Postgres en vez de
+sobre el lock de fichero de SQLite.
 
 **Responsable**: Equipo de Operaciones
 **Origen de las alertas**: `observability/alert_rules.yml` (grupo
-`persistence_tripwires`).
+`postgres_pool_alerts`).
 
 ---
 
@@ -15,9 +20,13 @@ se sostiene y hay que decidir si migrar a PostgreSQL.
 
 | Alerta | Métrica | Umbral | Significado |
 |---|---|---|---|
-| `SQLiteBusyErrorsHigh` | `sqlite_busy_errors_total` | >10/h (15m) | Contención de escritura: un writer espera el lock de otro |
-| `DBWriteLatencyHigh` | `db_write_duration_seconds` p99 | >500ms (15m) | Escrituras lentas; posible lock contention o I/O |
-| `DBConcurrentWritersHigh` | `db_concurrent_writers` | >3 (15m) | Más escritores simultáneos de lo que SQLite tolera bien |
+| `PgWriteLatencyHigh` | `db_write_duration_seconds` p99 | >1s (10m) | Escrituras lentas en Postgres; posible query lenta o contención |
+| `PgConcurrentWritersHigh` | `db_concurrent_writers` | >3 (15m) | Más escritores simultáneos de lo que asumía el diseño de ADR-004 |
+
+`SQLiteBusyErrorsHigh` (`sqlite_busy_errors_total`, >10/h) se retiró en
+2026-08: ese contador ya no existe (ADR-021, Postgres-only). Su equivalente
+Postgres-nativo es `PgPoolAcquireTimeoutHigh` (mismo grupo): mide timeouts al
+adquirir una conexión del pool en vez de reintentos de lock de fichero.
 
 ## Diagnóstico
 
@@ -34,22 +43,25 @@ se sostiene y hay que decidir si migrar a PostgreSQL.
 ## Mitigaciones por orden de coste
 
 1. **Serializar writers (barato)**: mover jobs del scheduler que escriben fuera
-   de la ventana de scraping/ingesta para que no compitan por el lock. Es la
-   primera palanca: a escala personal suele bastar.
+   de la ventana de scraping/ingesta para que no compitan por conexiones del
+   pool. Es la primera palanca: a escala personal suele bastar.
 2. **Reducir transacciones largas (barato)**: revisar que las escrituras usen
    batch (`executemany`, `replace_adjudicaciones_batch`) y no N+1 — ya es el
    patrón, verificar que un cambio nuevo no lo rompió.
-3. **Confirmar WAL + busy_timeout (barato)**: `PRAGMA journal_mode=WAL` y un
-   `busy_timeout` razonable absorben contención breve sin error.
-4. **Evaluar migración a PostgreSQL (caro)**: solo si lo anterior no baja el
-   tripwire de forma sostenida. [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] documenta el camino: el SQL es
-   estándar; FTS5 → `pg_trgm` o motor de búsqueda dedicado. **Abrir un ADR de
-   superación de [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] antes de migrar** — no es una decisión de incidente.
+3. **Revisar el pool (barato)**: `DB_POOL_SIZE` y el timeout de adquisición
+   (ver también `PgPoolAcquireTimeoutHigh`, mismo grupo de alertas); un pool
+   subdimensionado para la concurrencia real produce exactamente este patrón.
+4. **Escalar Postgres o el diseño de acceso a datos (caro)**: si lo anterior no
+   baja el tripwire de forma sostenida, considerar más recursos en Supabase
+   (plan/tamaño de instancia) o revisar si alguna ruta de escritura necesita
+   rediseño (p.ej. mover una escritura síncrona a background job). Un cambio
+   de infraestructura o de arquitectura de acceso a datos se documenta en un
+   ADR — no es una decisión de incidente.
 
-## Criterio de decisión (cuándo migrar)
+## Cuándo escalar
 
-Migrar a Postgres **solo** si, tras aplicar las mitigaciones baratas (1–3), el
-tripwire `SQLiteBusyErrorsHigh` o `DBConcurrentWritersHigh` sigue disparando de
-forma sostenida durante **≥2 semanas**. A escala de pocos usuarios esto es
-improbable; el tripwire existe para que la decisión sea proactiva y con datos,
-no reactiva ante un incidente.
+Escalar a un ADR o a una revisión de arquitectura **solo** si, tras aplicar las
+mitigaciones baratas (1–3), el tripwire `PgWriteLatencyHigh` o
+`PgConcurrentWritersHigh` sigue disparando de forma sostenida durante **≥2
+semanas**. A escala de pocos usuarios esto es improbable; el tripwire existe
+para que la decisión sea proactiva y con datos, no reactiva ante un incidente.

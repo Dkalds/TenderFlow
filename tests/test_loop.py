@@ -324,6 +324,7 @@ class TestMain:
             return True  # simula señal de parada → salida limpia del bucle
 
         with (
+            patch.dict(os.environ, {"SCHEDULER_PLANE": "docker"}),
             patch("scheduler.loop.configure_logging"),
             patch("scheduler.loop._run_job"),
             patch("scheduler.loop.log"),
@@ -348,7 +349,10 @@ class TestMain:
 
         mock_stop.wait.return_value = True
 
-        with patch("scheduler.loop._run_job", return_value=True):
+        with (
+            patch.dict(os.environ, {"SCHEDULER_PLANE": "docker"}),
+            patch("scheduler.loop._run_job", return_value=True),
+        ):
             result = main()
 
         assert result == 0

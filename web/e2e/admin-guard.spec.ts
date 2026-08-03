@@ -1,43 +1,72 @@
 import { test, expect } from "@playwright/test";
+import { DEMO_USER, STORAGE_STATE_ADMIN } from "./fixtures";
 
-test.describe("Admin Guard", () => {
-  test("redirects unauthenticated users to login when accessing /administracion", async ({ page }) => {
-    await page.goto("/administracion");
-    // Should redirect to /login (middleware) or show login redirect
-    await page.waitForURL(/\/login/, { timeout: 5000 }).catch(() => {});
-    const url = page.url();
-    expect(url).toContain("/login");
+/**
+ * Protección de la administración, en sus tres estados.
+ *
+ * El cuarto test anterior ("shows access restricted for non-admin users")
+ * dependía del botón de dev-login, que solo se renderiza con
+ * `NODE_ENV=development`: contra un build de producción la condición era falsa
+ * y el cuerpo no llegaba a ejecutarse. Además terminaba en
+ * `expect(body).toBeVisible()`, que no comprueba nada. Los otros tres llevaban
+ * `.catch(() => {})` en el `waitForURL`, así que un fallo de redirección solo
+ * se detectaba de rebote.
+ *
+ * Las rutas heredadas (`/administracion`, `/feature-flags`,
+ * `/active-learning`) hoy redirigen al espacio Ops con su vista; ese redirect
+ * lo cubre navigation.spec.ts. Aquí se prueba quién puede ver el contenido.
+ */
+
+const VISTAS_ADMIN = [
+  { ruta: "/ops?vista=administracion", legacy: "/administracion" },
+  { ruta: "/ops?vista=flags", legacy: "/feature-flags" },
+  { ruta: "/ops?vista=etiquetado", legacy: "/active-learning" },
+];
+
+test.describe("Sin sesión", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  for (const { legacy } of VISTAS_ADMIN) {
+    test(`${legacy} redirige a /login`, async ({ page }) => {
+      await page.goto(legacy);
+      // Sin `.catch(() => {})`: si no redirige, el test debe fallar aquí.
+      await page.waitForURL(/\/login/, { timeout: 15000 });
+      expect(page.url()).toContain("/login");
+    });
+  }
+});
+
+test.describe("Sesión sin privilegios de administración", () => {
+  // Solo la vista de administración declara el aviso de privilegios; las de
+  // flags y etiquetado se limitan a no traer datos. Se prueba la que sí lo
+  // dice en vez de aflojar la aserción para que valga en las tres.
+  test("la vista de administración avisa de que hace falta ser administrador", async ({
+    page,
+  }) => {
+    await page.goto("/ops?vista=administracion");
+
+    await expect(page.getByText(/solo accesible para administradores/i).first()).toBeVisible({
+      timeout: 20000,
+    });
+  });
+});
+
+test.describe("Sesión de administración", () => {
+  test.use({ storageState: STORAGE_STATE_ADMIN });
+
+  test("la vista de administración lista los usuarios reales", async ({ page }) => {
+    await page.goto("/ops?vista=administracion");
+
+    await expect(page.getByText(/solo accesible para administradores/i)).toHaveCount(0);
+    // El usuario demo existe en la BD sembrada: si la tabla no carga desde la
+    // API, este texto no aparece.
+    await expect(page.getByText(DEMO_USER.email).first()).toBeVisible({ timeout: 20000 });
   });
 
-  test("redirects unauthenticated users to login when accessing /feature-flags", async ({ page }) => {
-    await page.goto("/feature-flags");
-    await page.waitForURL(/\/login/, { timeout: 5000 }).catch(() => {});
-    const url = page.url();
-    expect(url).toContain("/login");
-  });
+  test("la vista de feature flags carga su panel", async ({ page }) => {
+    await page.goto("/ops?vista=flags");
 
-  test("redirects unauthenticated users to login when accessing /active-learning", async ({ page }) => {
-    await page.goto("/active-learning");
-    await page.waitForURL(/\/login/, { timeout: 5000 }).catch(() => {});
-    const url = page.url();
-    expect(url).toContain("/login");
-  });
-
-  test("shows access restricted for non-admin users", async ({ page }) => {
-    // Login first via dev login
-    await page.goto("/login");
-    // Try dev login button if available
-    const devBtn = page.getByRole("button", { name: /dev login/i });
-    if (await devBtn.isVisible()) {
-      await devBtn.click();
-      // waitForURL may time out if backend is not running; that's acceptable
-      await page.waitForURL(/\/resumen/, { timeout: 5000 }).catch(() => {});
-
-      // Now try to access admin page
-      await page.goto("/administracion");
-      // Should show "Acceso restringido" since dev user is not admin
-      const body = page.locator("body");
-      await expect(body).toBeVisible();
-    }
+    await expect(page.getByText(/solo accesible para administradores/i)).toHaveCount(0);
+    await expect(page.locator("main").first()).not.toBeEmpty();
   });
 });

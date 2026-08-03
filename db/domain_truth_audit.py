@@ -75,12 +75,26 @@ def ute_candidate_stats(sample_size: int = 10) -> dict[str, Any]:
         HAVING COUNT(DISTINCT nif) > 1
         ORDER BY filas DESC
     """
+    # El total permite expresar el problema como proporción. Un conteo absoluto
+    # de grupos solo crece con el histórico, así que no sirve para un umbral
+    # que distinga "la ingesta empeoró" de "hay más datos que ayer".
+    total_sql = """
+        SELECT COUNT(*) AS total
+        FROM adjudicaciones
+        WHERE importe_adjudicado IS NOT NULL AND nif IS NOT NULL
+    """
     with connect_read() as c:
         grupos = rows_to_dicts(c.execute(group_sql))
+        total_filas = int(rows_to_dicts(c.execute(total_sql))[0]["total"])
 
+    filas_afectadas = sum(int(g["filas"]) for g in grupos)
     return {
         "grupos_candidatos": len(grupos),
-        "filas_afectadas": sum(int(g["filas"]) for g in grupos),
+        "filas_afectadas": filas_afectadas,
+        "total_filas": total_filas,
+        "pct_filas_afectadas": (
+            round(100.0 * filas_afectadas / total_filas, 2) if total_filas else 0.0
+        ),
         "muestra": grupos[:sample_size],
     }
 

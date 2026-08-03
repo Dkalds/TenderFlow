@@ -111,16 +111,52 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Acceptance criteria (lo que queda):** en un PR propio, cambiar el paso de CI a `pytest -n auto …`, suite verde, tiempo del job `test` medido antes/después; aislamiento intacto (ningún test ve datos de otro). Si el recorte no llega, evaluar `CREATE DATABASE … TEMPLATE` por worker como siguiente palanca.
 - **Riesgo:** bajo ya — la parte propensa a romperse (coordinación del fixture de sesión) está hecha y el fallback es no pasar `-n`.
 
-### [P1] `e2e/responsive.spec.ts` no prueba nada: la experiencia móvil no tiene cobertura
-- **Área:** web/e2e/responsive.spec.ts
-- **Problema:** los dos tests del fichero solo afirman `expect(page.locator("body")).toBeVisible()`. El primero construye un localizador `_hamburger` con tres estrategias encadenadas y **nunca lo usa** (el prefijo `_` existe para callar al linter de variables sin usar). Es decir: la única cobertura declarada de responsive pasa siempre, incluso con la navegación móvil rota. Relevante porque la sidebar es `hidden md:flex` y por debajo de `md` el conmutador de espacios de producto no existe en ninguna parte — un fallo real ahí no lo detecta nadie.
+### [P2] El origen de una concesión de `is_admin` no se registra, y OAuth pisa al panel
+- **Área:** api/routes/auth.py, api/routes/admin_users.py, db/users.py, db/alembic
+- **Problema:** `_sync_oauth_admin` refleja `OAUTH_ADMIN_EMAILS` sobre `is_admin` en ambos sentidos (antes solo promovía, así que sacar a alguien de la lista no le revocaba nada — cerrado en la revisión de seguridad). El efecto colateral es que, con la lista configurada, **OAuth manda sobre el panel**: a quien se promovió con `admin_users.admin_set_admin` y además entra con Google se le retira el flag en su siguiente login. Se eligió ese lado a propósito —dejar admin a un ex-administrador es peor que obligar a re-promover a uno legítimo— y la degradación se registra con `log.warning("oauth_admin_revoked")` para que sea diagnosticable, pero sigue siendo silenciosa desde el punto de vista del usuario.
+- **Causa de fondo:** `users.is_admin` es un booleano sin procedencia. Sin saber *quién* concedió el flag no se puede decidir correctamente quién puede retirarlo.
 - **Acceptance criteria:**
-  - A 375px: el botón hamburguesa es visible, abre el drawer, y desde él se alcanza una página de cada espacio de producto.
-  - A 1440px: la sidebar es visible y el hamburguesa no.
-  - El test falla si se elimina el drawer móvil (verificarlo borrándolo temporalmente).
-- **Files de partida:** [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx) (el top-nav citado originalmente se demolió en 2026-08; la navegación vive en el rail)
-- **Nota 2026-08-03 (revisión de arquitectura):** el bloqueo estructural es que el job e2e de CI corre SIN backend (por eso es `continue-on-error` y por eso el spec degeneró en asserts vacuos: sin login no se llega al shell). El AC de arriba solo es alcanzable aprovisionando un backend sembrado en el job e2e (Postgres service + seed + API) y volviéndolo bloqueante — hacer ambos en el mismo cambio.
-- **Riesgo:** bajo — solo test.
+  - Columna que registre el origen de la concesión (p.ej. `admin_granted_by` con valores `oauth` / `panel`), vía nueva revisión Alembic (append-only, §3.3).
+  - `_sync_oauth_admin` solo degrada concesiones de origen `oauth`; las del panel sobreviven al login de Google.
+  - Test que promueve desde el panel, hace login OAuth con la lista configurada sin ese email, y verifica que el flag **se conserva**.
+- **Files de partida:** [api/routes/auth.py](../api/routes/auth.py), [api/routes/admin_users.py](../api/routes/admin_users.py)
+- **Riesgo:** bajo en código, medio en proceso — requiere migración de schema, que necesita OK humano (§6).
+
+### [P2] Una entrada malformada devuelve 500 en tres endpoints (byte NUL y bytes no-UTF8)
+- **Área:** api/routes/*, api/middleware.py, shared/dto.py, db/
+- **Problema:** dos formas de la misma clase, encontradas por `scripts/fuzz_api_contract.py`. (a) Un `\x00` dentro de una cadena viaja hasta Postgres, que no lo admite en columnas de texto, y el `DataError` sale como 500: `POST /api/v1/licitaciones/bulk-get` y `PUT /api/v1/feature-flags`. (b) Bytes que no son UTF-8 válido en el path (`%ff`) rompen la decodificación antes de que la ruta llegue a ejecutarse: `DELETE /api/v1/watchlist/items/{id_externo}`. En ambos casos basta un carácter enviado por cualquier cliente.
+- **Acceptance criteria:**
+  - Se decide **dónde** se sanea cada forma: validador Pydantic compartido en los DTO para el cuerpo, y middleware en la frontera HTTP para el path — es una decisión de diseño, no un parche por endpoint.
+  - Ambas entradas devuelven 4xx (400/422), no 500.
+  - Las tres entradas salen de `KNOWN_5XX` en `scripts/fuzz_api_contract.py`. El propio gate lo exige: falla también si una entrada de la allowlist deja de fallar, así que no se puede arreglar y olvidar la limpieza.
+- **Nota sobre el gate:** el fuzzer bloquea por operaciones con 5xx **que no estén en `KNOWN_5XX`**, y solo avisa cuando una entrada de la lista no falla. La asimetría es deliberada: `derandomize=True` fija las entradas generadas, pero no el estado de la BD, que el propio fuzzer muta mientras corre — dos ejecuciones seguidas del mismo comando dieron 3 y 1 operaciones con 5xx. Exigir coincidencia exacta convertiría el gate en un generador de rojos espurios (bastaría añadir una licitación al seed). Para limpiar la lista tras arreglar algo, correr `--list` sobre una base recién migrada y sembrada.
+- **Files de partida:** [scripts/fuzz_api_contract.py](../scripts/fuzz_api_contract.py), [shared/dto.py](../shared/dto.py), [api/middleware.py](../api/middleware.py)
+- **Riesgo:** bajo-medio — toca validación de entrada compartida.
+
+### [P2] Calibrar los umbrales de la auditoría de verdad del dato
+- **Área:** scripts/audit_domain_truth.py
+- **Problema:** `MAX_PCT_SIN_FECHA_LIMITE = 60`, `MAX_PCT_FILAS_UTE = 8` y `MAX_DELTA_BAJA_PUNTOS = 5` se eligieron holgados para que el primer mes detecte empeoramientos bruscos sin ahogar en ruido. No son la calidad real medida.
+- **Acceptance criteria:**
+  - Tras una semana de ejecuciones de `.github/workflows/domain-truth.yml`, comparar los `domain-truth.json` archivados y bajar cada umbral al valor medido con margen, dejando el histórico en el docstring (patrón de `tests/eval/test_eval_rag.py`).
+- **Files de partida:** [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
+- **Riesgo:** bajo — solo umbrales.
+
+### [P2] Sustituir los fixtures sintéticos del corpus CODICE por expedientes reales
+- **Área:** tests/fixtures/placsp/
+- **Problema:** los once casos del corpus golden son estructuralmente fieles al CODICE pero escritos a mano: la sesión que los creó no tenía ZIP mensuales cacheados ni acceso al feed. El valor del corpus está en codificar variabilidad que nadie imaginó, y eso solo lo dan los datos reales.
+- **Acceptance criteria:**
+  - `ENV=dev python scripts/capture_placsp_fixtures.py --caso <caso>` sustituye cada fixture sintético por uno real, y `python -m tests.test_codice_parser_golden --update` regenera el golden con el diff revisado.
+- **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
+- **Riesgo:** bajo — solo tests.
+
+### [P2] Vaciar el grandfathering de excepciones tragadas (32 funciones)
+- **Área:** db/, services/
+- **Problema:** `tests/test_swallowed_exceptions_guard.py` congela 32 funciones cuyo `except Exception` devuelve un fallback sin dejar rastro. Entre ellas, el camino de autenticación (`api_keys`, `sessions`, `totp`), la cadena de auditoría y los fallbacks de búsqueda: un fallo de infraestructura se presenta como "clave inválida" o "sin resultados" y nadie puede distinguirlo.
+- **Acceptance criteria:**
+  - Cada arreglo añade `log.warning("<evento>", exc_info=True)` antes del fallback y borra su entrada de `_GRANDFATHERED_PENDING_FIX` (el ratchet falla si la entrada sobra).
+  - Prioridad sugerida: autenticación → auditoría → búsqueda → analítica.
+- **Files de partida:** [tests/test_swallowed_exceptions_guard.py](../tests/test_swallowed_exceptions_guard.py)
+- **Riesgo:** bajo — aditivo (solo añade logs).
 
 ### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select
 - **Área:** web/src/components/layout/scope-bar.tsx
@@ -325,6 +361,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   filtro, así que no le afecta. docs/testing.md + AGENTS.md §3.4 + Makefile actualizados juntos,
   como pedía el AC (de paso: la ayuda de `test-all` decía "todo excepto integration" y ejecuta
   todo — corregida).
+  **Corrección 2026-08-03 (auditando el merge con master):** los tokens `load`/`property` se
+  miraban también en el NOMBRE del test, no solo en la ruta del módulo, y como substring daban
+  ~100 falsos positivos (`test_load_dataframe`, `test_upsert_result_properties`,
+  `test_load_rejects_when_pin_mismatch`, todo `test_ml_*::test_load_*`…). Ninguno es
+  load-testing ni Hypothesis: eran tests normales marcados `load`/`property`, **fuera** del
+  `-m "(unit or integration) and not slow"` de `make check` — es decir, sin ejecutar en el gate
+  local y sin que nadie lo notara. Ahora esos dos tokens solo se evalúan contra la ruta
+  (`test_performance.py`, `test_property_based.py`, `test_load_scraper_placsp.py`… llevan el
+  token en el nombre del fichero, que es la señal real). Los ~100 tests vuelven a `unit`, y 17
+  que sí abren Postgres pasan correctamente a `integration` por el cierre de fixtures.
 
 - [2026-08-03] **P1: Dejar de materializar tablas completas en el proceso del API (memoria en Render) — ADR-023 COMPLETADO** —
   Los 27 endpoints analíticos agregan en Postgres o consumen proyecciones acotadas con
@@ -411,6 +457,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   los 6 endpoints de adjudicaciones), ML wiring (artefactos + active learning),
   contrato tipado (65 opacas), marker integration real + xdist, y el checklist
   manual F3d.
+
+- [2026-08-02] **Los cuatro puntos ciegos de la arquitectura de tests, cerrados con gates que sí se ejecutan** — El E2E de Playwright tenía `continue-on-error: true` y sus specs aceptaban "estoy en el dashboard O en el login" como éxito: sin backend todas las rutas redirigían a `/login`, así que el bucle de 26 páginas cargaba 26 veces la misma pantalla y pasaba con la aplicación entera rota. Ahora el job aprovisiona Postgres, migra, siembra datos deterministas, levanta la API y sirve el build de producción, y **bloquea el merge**; los seis specs exigen contenido concreto del seed (esto cierra el [P1] de `e2e/responsive.spec.ts`, cuyo drawer móvil ya se verifica sin `.or()` ni condicionales). Se añade `scripts/fuzz_api_contract.py` como gate bloqueante sobre las 137 operaciones de la API, `tests/test_codice_parser_golden.py` con un corpus de 11 expedientes que congela el árbol de parseo entero, `tests/test_swallowed_exceptions_guard.py` (ratchet sobre 39 `except Exception` mudos), un workflow nocturno que ejecuta la auditoría de verdad del dato con umbrales y alerta por email, y mutation testing semanal no bloqueante. Por el camino aparecieron seis bugs que CI no veía: el seed no corría contra Postgres (sintaxis SQLite, argumento ausente y campos inexistentes en la dataclass), `codegen-best-effort.mjs` **destruía** `web/src/generated/api.d.ts` al construir con la API viva (openapi-typescript v7 devuelve un AST y el script hacía `JSON.stringify`), `GET /admin/users` devolvía 500 con un `limit` negativo, y `API_RATE_LIMIT_MAX_CALLS` —documentada en el runbook como palanca de operación— no existía en `Settings`, así que exportarla no hacía absolutamente nada.
 
 - [2026-08-02] **La invalidación de caché ya cruza GitHub Actions→Render y los full-table snapshots dejan de reconstruirse cada minuto** — `shared/cache_signal.py` escribía un fichero local en el runner efímero mientras el API intentaba leer otro fichero dentro de su contenedor; en producción la señal era siempre `0.0` y el TTL de 60 s terminaba siendo el único refresco. La señal se transporta ahora por `domain_events`, el event log Postgres que ambos procesos ya comparten, y se sondea como máximo cada 5 s por proceso; el fichero queda como fallback local/fail-open. Se eligió Postgres en vez del Redis propuesto originalmente porque los workflows del scraper no reciben `REDIS_URL`: Redis habría dejado el problema incompleto o exigido editar CI (acción con confirmación humana según AGENTS.md §6). `SignalAwareCache` sube su TTL defensivo de 60 s a 600 s, por lo que la reconstrucción normal ocurre por ingesta real y el reloj queda sólo como cota de obsolescencia. El poll del SSE se mueve al threadpool porque la señal ya puede tocar BD. Tests: round-trip del evento por conexiones separadas, visibilidad sin filesystem compartido y guarda del TTL. Queda abierto el P1 estructural de retirar las materializaciones full-table del API; este cambio elimina el churn por minuto, no su baseline residente.
 
