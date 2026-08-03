@@ -1,0 +1,125 @@
+name: Apply DB migrations (alembic)
+
+# Único plano que aplica migraciones a la BD de producción (Supabase, ADR-016).
+# Hasta ahora `alembic upgrade head` solo corría en `ci.yml` (Postgres efímero)
+# y en el Makefile (local), así que el schema de producción quedaba por detrás
+# del head de master en cuanto se mergeaba una revisión nueva — y el scraper,
+# que hace checkout de master en cada corrida, empezaba a escribir columnas
+# que aún no existían (ver `column "lote_id" of relation "adjudicaciones"
+# does not exist` en los runs de scrape-daily del 31-jul/1-ago).
+#
+# Deliberadamente SOLO `workflow_dispatch`: migrar producción es una decisión
+# explícita, nunca un efecto colateral de un push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Revisión destino (head, o un id concreto como v66_lotes_index_concurrent)"
+        default: "head"
+        required: false
+      mode:
+        description: "plan = solo informa qué se aplicaría · apply = lo ejecuta"
+        type: choice
+        options:
+          - plan
+          - apply
+        default: plan
+        required: true
+
+permissions:
+  contents: read
+
+# Nunca dos migraciones a la vez sobre la misma BD.
+concurrency:
+  group: db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    # v68 reescribe `licitaciones` (~1,2 GB) al añadir la columna generada
+    # STORED: necesita bastante más que los 30 min de los jobs de scrape.
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # `db/alembic/env.py` lee DATABASE_URL del entorno y pasa
+      # DATABASE_SSL_ROOT_CERT como `sslrootcert`: los mismos secrets que ya
+      # usan scrape.yml y scrape-daily.yml, sin credencial nueva que rotar.
+      #
+      # Hoy `DATABASE_URL` es el rol dueño del schema, así que tiene DDL
+      # (docs/runbooks/migracion-persistencia.md). Cuando se complete el paso 3
+      # de ese checklist — `DATABASE_ADMIN_URL` separada y runtime degradado a
+      # `tenderflow_app` sin DDL — este workflow ya la prefiere sin tocar nada.
+      - name: Estado actual del schema
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+        run: |
+          echo "=== Revisión aplicada en producción ==="
+          alembic current --verbose
+          echo "=== Head del repositorio ==="
+          alembic heads --verbose
+
+      - name: Plan — revisiones pendientes
+        if: inputs.mode == 'plan'
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+          # Vía env y no interpolado en el `run`: un input de workflow_dispatch
+          # es entrada controlada por el usuario, y expandirlo dentro del script
+          # es el patrón de script injection que GitHub desaconseja.
+          TARGET: ${{ inputs.target }}
+        run: |
+          echo "=== Se aplicarían (actual -> ${TARGET}) ==="
+          alembic history --rev-range "current:${TARGET}" --verbose
+          echo
+          echo "Nada se ha modificado: este job corrió en modo 'plan'."
+
+      # statement_timeout=0: una reescritura de tabla no puede morir a mitad
+      # por el timeout por defecto del rol (el rollback sería limpio, pero
+      # tirar una hora de trabajo no lo es).
+      # lock_timeout=30s: si un scrape está escribiendo, preferimos fallar
+      # rápido y reintentar en ventana valle antes que bloquear la tabla en
+      # producción esperando el AccessExclusiveLock de v68.
+      - name: Apply — alembic upgrade
+        if: inputs.mode == 'apply'
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+          PGOPTIONS: "-c statement_timeout=0 -c lock_timeout=30s"
+          TARGET: ${{ inputs.target }}
+        run: alembic upgrade "${TARGET}"
+
+      - name: Estado final del schema
+        if: always()
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+        run: alembic current --verbose
