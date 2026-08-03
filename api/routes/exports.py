@@ -180,9 +180,10 @@ def create_export(
        propia respuesta.
 
        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
-       Eso sólo funciona con una única instancia que además no se reinicie: en
-       el plan actual de Render la instancia se recicla por inactividad, así
-       que un job aceptado con 202 desaparece y el sondeo devuelve 404 sin que
+       Eso sólo funciona con una única instancia que además no se reinicie:
+       cualquier deploy o reinicio de la instancia (el plan de pago de Render
+       ya no hiberna por inactividad, pero sí recicla en cada release) hace
+       desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
        nada lo registre como fallo; y al escalar a dos instancias el poll cae
        en la equivocada y responde 404 o 403 de forma no determinista.
 
