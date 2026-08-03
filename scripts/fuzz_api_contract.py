@@ -34,14 +34,20 @@ Determinismo
 ------------
 ``derandomize=True``: mismos ejemplos en cada ejecución. Sin eso, "esta entrada
 ya no falla" podría significar solo "esta vez tocó otra entrada", y la mitad
-del ratchet que detecta entradas obsoletas mentiría. El corpus cambia cuando
-cambia el schema, que es justo cuando querés volver a explorar.
+del ratchet que detecta entradas obsoletas mentiría.
+
+El corpus depende de ``--max-examples``, así que ``KNOWN_5XX`` está calibrada
+para ``MAX_EXAMPLES_GATE`` y solo con ese valor se puede concluir que una
+entrada sobra. Se comprobó en la práctica: ``POST /api/v1/search/semantic``
+falla con 10 ejemplos y no con 25. Con otro valor el script avisa y no tumba la
+ejecución por entradas obsoletas; las nuevas siempre fallan, con cualquier
+corpus.
 
 Uso::
 
     python scripts/fuzz_api_contract.py           # gate (exit 1 si hay nuevas)
     python scripts/fuzz_api_contract.py --list    # imprime lo que falla, exit 0
-    python scripts/fuzz_api_contract.py --max-examples 50
+    python scripts/fuzz_api_contract.py --max-examples 50   # exploración manual
 """
 
 from __future__ import annotations
@@ -79,18 +85,32 @@ EXCLUDED_OPERATIONS: frozenset[str] = frozenset(
     }
 )
 
+# Número de ejemplos del gate. **La allowlist de abajo está calibrada para este
+# valor exacto**: `derandomize=True` hace que el corpus dependa de él, así que
+# con otro número las entradas dejan de corresponder una a una (se comprobó:
+# `search/semantic` falla con 10 ejemplos y no con 25). Cambiarlo obliga a
+# recalibrar `KNOWN_5XX` con `--list`.
+MAX_EXAMPLES_GATE = 25
+
 # ── Ratchet: operaciones que YA devolvían 5xx (solo puede encoger) ───────────
-# Las tres comparten causa: un byte NUL (0x00) dentro de una cadena llega hasta
-# Postgres, que no lo admite en columnas de texto, y el DataError sube como 500.
+# Todas comparten forma: una entrada malformada atraviesa la validación y
+# revienta en una capa que no la esperaba.
+#
+#   - bulk-get / feature-flags: un byte NUL (0x00) dentro de una cadena llega
+#     hasta Postgres, que no lo admite en columnas de texto.
+#   - watchlist/items: bytes que no son UTF-8 válido en el path (`%ff`) rompen
+#     la decodificación antes de que la ruta llegue a ejecutarse.
+#
 # El arreglo correcto no es endpoint por endpoint sino decidir dónde se sanea
-# (validador compartido en los DTO, o en la frontera con la BD): es un cambio
-# transversal con su propia discusión, anotado en docs/IMPROVEMENT_BACKLOG.md.
-# Al resolverlo, estas tres líneas se borran — el test lo exige.
+# (validador compartido en los DTO, middleware en la frontera HTTP, o ambos):
+# es un cambio transversal con su propia discusión, anotado en
+# docs/IMPROVEMENT_BACKLOG.md. Al resolverlo, estas líneas se borran — el
+# propio gate lo exige.
 KNOWN_5XX: frozenset[str] = frozenset(
     {
         "POST /api/v1/licitaciones/bulk-get",
-        "POST /api/v1/search/semantic",
         "PUT /api/v1/feature-flags",
+        "DELETE /api/v1/watchlist/items/{id_externo}",
     }
 )
 
@@ -259,7 +279,14 @@ def _imprimir_resumen(informe: Informe) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--max-examples", type=int, default=25, help="Ejemplos generados por operación"
+        "--max-examples",
+        type=int,
+        default=MAX_EXAMPLES_GATE,
+        help=(
+            "Ejemplos por operación. Con un valor distinto del del gate "
+            f"({MAX_EXAMPLES_GATE}) el corpus cambia y la mitad del ratchet que "
+            "detecta entradas obsoletas deja de ser fiable."
+        ),
     )
     parser.add_argument(
         "--list",
@@ -294,13 +321,24 @@ def main() -> int:
             print(f"  {label}: {informe.por_operacion[label].repro}")
         print("\nUn 4xx es una respuesta válida; un 5xx es una excepción sin manejar.")
 
+    # Las entradas obsoletas solo son concluyentes con el corpus del gate: con
+    # otro `--max-examples`, "ya no falla" puede significar solo "esta vez tocó
+    # otra entrada". Se informa igual, pero no tumba la ejecución.
+    corpus_del_gate = args.max_examples == MAX_EXAMPLES_GATE
     if resueltas:
-        print("\n[ACCIÓN] Entrada(s) de KNOWN_5XX que ya no fallan — el ratchet solo")
-        print("puede encoger, borralas de la allowlist:")
+        if corpus_del_gate:
+            print("\n[ACCIÓN] Entrada(s) de KNOWN_5XX que ya no fallan — el ratchet solo")
+            print("puede encoger, borralas de la allowlist:")
+        else:
+            print(
+                f"\n[AVISO] Con --max-examples {args.max_examples} (el gate usa "
+                f"{MAX_EXAMPLES_GATE}) estas entradas no fallaron, pero el corpus es"
+            )
+            print("otro: no se puede concluir que sobren.")
         for label in resueltas:
             print(f"  {label}")
 
-    if nuevas or resueltas:
+    if nuevas or (resueltas and corpus_del_gate):
         return 1
 
     print("\nSin 5xx fuera de la allowlist.")

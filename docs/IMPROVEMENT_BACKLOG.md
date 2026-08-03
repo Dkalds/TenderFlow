@@ -125,14 +125,15 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### [P2] Sanear el byte NUL antes de que llegue a Postgres (3 endpoints devuelven 500)
-- **Área:** api/routes/*, shared/dto.py, db/
-- **Problema:** un `\x00` dentro de cualquier cadena viaja hasta Postgres, que no lo admite en columnas de texto, y el `DataError` sale como 500. Lo encontró `scripts/fuzz_api_contract.py` en su primera ejecución: `POST /api/v1/licitaciones/bulk-get`, `POST /api/v1/search/semantic` y `PUT /api/v1/feature-flags`. Cualquier cliente puede provocarlo con un carácter.
+### [P2] Una entrada malformada devuelve 500 en tres endpoints (byte NUL y bytes no-UTF8)
+- **Área:** api/routes/*, api/middleware.py, shared/dto.py, db/
+- **Problema:** dos formas de la misma clase, encontradas por `scripts/fuzz_api_contract.py`. (a) Un `\x00` dentro de una cadena viaja hasta Postgres, que no lo admite en columnas de texto, y el `DataError` sale como 500: `POST /api/v1/licitaciones/bulk-get` y `PUT /api/v1/feature-flags`. (b) Bytes que no son UTF-8 válido en el path (`%ff`) rompen la decodificación antes de que la ruta llegue a ejecutarse: `DELETE /api/v1/watchlist/items/{id_externo}`. En ambos casos basta un carácter enviado por cualquier cliente.
 - **Acceptance criteria:**
-  - Se decide **dónde** se sanea (validador Pydantic compartido en los DTO, o frontera con la BD) — es una decisión de diseño, no un parche por endpoint.
-  - La entrada con NUL devuelve 422, no 500.
-  - Las tres entradas salen de `KNOWN_5XX` en `scripts/fuzz_api_contract.py` (el propio gate lo exige: falla si una entrada de la allowlist deja de fallar).
-- **Files de partida:** [scripts/fuzz_api_contract.py](../scripts/fuzz_api_contract.py), [shared/dto.py](../shared/dto.py)
+  - Se decide **dónde** se sanea cada forma: validador Pydantic compartido en los DTO para el cuerpo, y middleware en la frontera HTTP para el path — es una decisión de diseño, no un parche por endpoint.
+  - Ambas entradas devuelven 4xx (400/422), no 500.
+  - Las tres entradas salen de `KNOWN_5XX` en `scripts/fuzz_api_contract.py`. El propio gate lo exige: falla también si una entrada de la allowlist deja de fallar, así que no se puede arreglar y olvidar la limpieza.
+- **Nota sobre el gate:** `KNOWN_5XX` está calibrada para `MAX_EXAMPLES_GATE = 25`. Con `derandomize=True` el corpus depende de ese número (se comprobó: `search/semantic` falla con 10 ejemplos y no con 25), así que cambiarlo obliga a recalibrar la allowlist con `--list`.
+- **Files de partida:** [scripts/fuzz_api_contract.py](../scripts/fuzz_api_contract.py), [shared/dto.py](../shared/dto.py), [api/middleware.py](../api/middleware.py)
 - **Riesgo:** bajo-medio — toca validación de entrada compartida.
 
 ### [P2] Calibrar los umbrales de la auditoría de verdad del dato
