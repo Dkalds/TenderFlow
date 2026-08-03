@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
@@ -29,6 +30,26 @@ router = APIRouter(tags=["predicciones"])
 _CALIBRACION_CACHE_TTL_S = 900
 
 
+class PrediccionBajaResult(BaseModel):
+    """Predicción materializada y/o baja real de una licitación.
+
+    Los bloques son condicionales por diseño (defaults legítimos): una
+    licitación abierta solo trae la estimación p10/p50/p90; una adjudicada
+    sin estimación previa solo trae la baja real; scoreada y adjudicada trae
+    ambos para comparar.
+    """
+
+    licitacion_id: str
+    p10: float | None = None
+    p50: float | None = None
+    p90: float | None = None
+    model_version: str | None = None
+    computed_at: str | None = None
+    serving: str | None = None
+    baja_real: float | None = None
+    importe_adjudicado: float | None = None
+
+
 @router.get(
     "/licitaciones/{licitacion_id:path}/prediccion-baja",
     summary="Intervalo de baja esperada (p10/p50/p90)",
@@ -37,14 +58,14 @@ _CALIBRACION_CACHE_TTL_S = 900
 async def get_prediccion_baja(
     licitacion_id: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> PrediccionBajaResult:
     data = await run_db(prediccion_baja, licitacion_id)
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Sin predicción ni adjudicación registrada para esa licitación.",
         )
-    return data
+    return PrediccionBajaResult(**data)
 
 
 @router.get(

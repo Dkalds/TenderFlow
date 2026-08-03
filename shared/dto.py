@@ -139,6 +139,26 @@ class TotalCount(BaseModel):
     total: int
 
 
+class DetailMessage(BaseModel):
+    """Mensaje informativo de una operación (misma clave que los errores HTTP)."""
+
+    detail: str
+
+
+class SessionsRevoked(BaseModel):
+    """Resultado de revocar sesiones (logout-all, borrado de cuenta)."""
+
+    status: str
+    sessions_revoked: int
+
+
+class StatusMessage(BaseModel):
+    """Mutación con mensaje legible además del status."""
+
+    status: str
+    message: str
+
+
 # ── Watchlist (F1) ──────────────────────────────────────────────────────────
 
 

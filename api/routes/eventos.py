@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
@@ -40,6 +41,23 @@ def _licitacion_existe(licitacion_id: str) -> bool:
         )
 
 
+class TimelineEvento(BaseModel):
+    """Hito de la línea de tiempo (evento materializado o implícito)."""
+
+    fecha: str | None
+    tipo: str
+    campo: str | None
+    valor_antes: str | None
+    valor_despues: str | None
+    importe_delta: float | None
+    detalle: str | None
+
+
+class TimelineResult(BaseModel):
+    licitacion_id: str
+    items: list[TimelineEvento]
+
+
 @router.get(
     "/licitaciones/{licitacion_id:path}/eventos",
     summary="Línea de tiempo de un contrato",
@@ -48,7 +66,7 @@ def _licitacion_existe(licitacion_id: str) -> bool:
 async def get_timeline(
     licitacion_id: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, Any]:
+) -> TimelineResult:
     """Hitos del ciclo de vida: publicación → adjudicación → formalización →
     modificaciones/prórrogas → anulación, ordenados cronológicamente."""
     if not await run_db(_licitacion_existe, licitacion_id):
@@ -56,7 +74,9 @@ async def get_timeline(
             status_code=status.HTTP_404_NOT_FOUND, detail="Licitación no encontrada."
         )
     items = await run_db(timeline, licitacion_id)
-    return {"licitacion_id": licitacion_id, "items": items}
+    return TimelineResult(
+        licitacion_id=licitacion_id, items=[TimelineEvento(**item) for item in items]
+    )
 
 
 @router.get(

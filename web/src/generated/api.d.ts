@@ -2839,6 +2839,18 @@ export interface components {
             ids: string[];
         };
         /**
+         * BulkGetResult
+         * @description Licitaciones encontradas (los IDs no pedidos u omitidos no aparecen).
+         */
+        BulkGetResult: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["LicitacionSummary"][];
+            /** Requested */
+            requested: number;
+        };
+        /**
          * CalibracionBajaDTO
          * @description Vista simplificada de 3 estados para la UI (calidad-datos).
          *
@@ -3586,6 +3598,43 @@ export interface components {
             confirmation: "DELETE";
         };
         /**
+         * DetailMessage
+         * @description Mensaje informativo de una operación (misma clave que los errores HTTP).
+         */
+        DetailMessage: {
+            /** Detail */
+            detail: string;
+        };
+        /** DocumentoSummary */
+        DocumentoSummary: {
+            /** Content Type */
+            content_type?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Id */
+            id: number;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Status */
+            status: string;
+            /** Tipo */
+            tipo: string;
+            /** Uri */
+            uri: string;
+        };
+        /**
+         * DocumentosResult
+         * @description Adjuntos (pliegos) de una licitación, sin el texto extraído.
+         */
+        DocumentosResult: {
+            /** Id Externo */
+            id_externo: string;
+            /** Items */
+            items: components["schemas"]["DocumentoSummary"][];
+        };
+        /**
          * EdgeDetailResult
          * @description Licitaciones que sustentan una arista órgano→empresa.
          */
@@ -3622,6 +3671,139 @@ export interface components {
             titulo?: string | null;
             /** Url */
             url?: string | null;
+        };
+        /** EmpresaAlias */
+        EmpresaAlias: {
+            /** Alias Normalizado */
+            alias_normalizado: string;
+            /** Confianza */
+            confianza: number | null;
+            /** Fuente */
+            fuente: string | null;
+            /** Nif Variante */
+            nif_variante: string | null;
+        };
+        /**
+         * EmpresaDetail
+         * @description Empresa canónica con aliases y relaciones UTE.
+         */
+        EmpresaDetail: {
+            /** Aliases */
+            aliases: components["schemas"]["EmpresaAlias"][];
+            /** Created At */
+            created_at: string | null;
+            /** Empresa Id */
+            empresa_id: number;
+            /** Es Pyme */
+            es_pyme: number | null;
+            /** Es Ute */
+            es_ute: number;
+            /** Grupo */
+            grupo: string | null;
+            /** Nif Canonico */
+            nif_canonico: string | null;
+            /** Nombre Canonico */
+            nombre_canonico: string;
+            /** Participa En Utes */
+            participa_en_utes: components["schemas"]["EmpresaRef"][];
+            /** Updated At */
+            updated_at: string | null;
+            /** Ute Miembros */
+            ute_miembros: components["schemas"]["EmpresaRef"][];
+        };
+        /**
+         * EmpresaListItem
+         * @description Fila del buscador del maestro (agregados de adjudicaciones incluidos).
+         */
+        EmpresaListItem: {
+            /** Empresa Id */
+            empresa_id: number;
+            /** Es Pyme */
+            es_pyme: number | null;
+            /** Es Ute */
+            es_ute: number;
+            /** Grupo */
+            grupo: string | null;
+            /** Importe Total */
+            importe_total: number;
+            /** N Adjudicaciones */
+            n_adjudicaciones: number;
+            /** Nif Canonico */
+            nif_canonico: string | null;
+            /** Nombre Canonico */
+            nombre_canonico: string;
+        };
+        /**
+         * EmpresaRef
+         * @description Referencia mínima a otra empresa canónica (miembro/UTE contenedora).
+         */
+        EmpresaRef: {
+            /** Empresa Id */
+            empresa_id: number;
+            /** Nif Canonico */
+            nif_canonico?: string | null;
+            /** Nombre Canonico */
+            nombre_canonico: string;
+        };
+        /**
+         * EmpresaReviewItem
+         * @description Entrada pendiente de la cola de revisión humana de matches fuzzy.
+         */
+        EmpresaReviewItem: {
+            /** Alias Normalizado */
+            alias_normalizado: string | null;
+            /** Candidato Empresa Id */
+            candidato_empresa_id: number | null;
+            /** Candidato Nif */
+            candidato_nif: string | null;
+            /** Candidato Nombre */
+            candidato_nombre: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Id */
+            id: number;
+            /** Nif */
+            nif: string | null;
+            /** Nombre Original */
+            nombre_original: string | null;
+            /** Score */
+            score: number | null;
+        };
+        /** EmpresaReviewsResult */
+        EmpresaReviewsResult: {
+            /** Items */
+            items: components["schemas"]["EmpresaReviewItem"][];
+        };
+        /** EmpresasListResult */
+        EmpresasListResult: {
+            /** Items */
+            items: components["schemas"]["EmpresaListItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * EmpresasStats
+         * @description Cobertura de la resolución de entidades sobre adjudicaciones.
+         */
+        EmpresasStats: {
+            /** Adjudicaciones Enlazadas */
+            adjudicaciones_enlazadas: number;
+            /** Adjudicaciones Total */
+            adjudicaciones_total: number;
+            /** Empresas */
+            empresas: number;
+            /** Importe Enlazado */
+            importe_enlazado: number;
+            /** Importe Total */
+            importe_total: number;
+            /** Pct Filas */
+            pct_filas: number;
+            /** Pct Importe */
+            pct_importe: number;
+            /** Revisiones Pendientes */
+            revisiones_pendientes: number;
         };
         /** Estacionalidad */
         Estacionalidad: {
@@ -3719,6 +3901,45 @@ export interface components {
             mes: string;
             /** Tecnologia */
             tecnologia: string;
+        };
+        /**
+         * ExplainFeature
+         * @description Término y su contribución a la clasificación (modelo lineal).
+         */
+        ExplainFeature: {
+            /** Contribution */
+            contribution: number;
+            /** Term */
+            term: string;
+            /** Weight */
+            weight: number;
+        };
+        /**
+         * ExplainPayload
+         * @description Salida de ``TenderClassifier.explain`` (SHAP-equivalente lineal).
+         */
+        ExplainPayload: {
+            /** Confidence */
+            confidence: number;
+            /** Prediction */
+            prediction: boolean;
+            /** Top Features */
+            top_features: components["schemas"]["ExplainFeature"][];
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
+         * ExplainResult
+         * @description Explicabilidad de la clasificación de una licitación.
+         */
+        ExplainResult: {
+            explanation: components["schemas"]["ExplainPayload"] | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Tecnologia */
+            tecnologia: string | null;
+            /** Warning */
+            warning?: string | null;
         };
         /**
          * FactItem
@@ -4231,6 +4452,14 @@ export interface components {
              * @default 0
              */
             unread_count: number;
+        };
+        /**
+         * OAuthAuthorizeResult
+         * @description URL de autorización de Google para que el SPA redirija.
+         */
+        OAuthAuthorizeResult: {
+            /** Authorization Url */
+            authorization_url: string;
         };
         /**
          * OrganCompanyGraphResult
@@ -4767,6 +4996,35 @@ export interface components {
              * @default 0
              */
             vencen_7d: number;
+        };
+        /**
+         * PrediccionBajaResult
+         * @description Predicción materializada y/o baja real de una licitación.
+         *
+         *     Los bloques son condicionales por diseño (defaults legítimos): una
+         *     licitación abierta solo trae la estimación p10/p50/p90; una adjudicada
+         *     sin estimación previa solo trae la baja real; scoreada y adjudicada trae
+         *     ambos para comparar.
+         */
+        PrediccionBajaResult: {
+            /** Baja Real */
+            baja_real?: number | null;
+            /** Computed At */
+            computed_at?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Model Version */
+            model_version?: string | null;
+            /** P10 */
+            p10?: number | null;
+            /** P50 */
+            p50?: number | null;
+            /** P90 */
+            p90?: number | null;
+            /** Serving */
+            serving?: string | null;
         };
         /** PriceScenario */
         PriceScenario: {
@@ -5368,6 +5626,30 @@ export interface components {
              */
             accept: boolean;
         };
+        /**
+         * ReviewResolved
+         * @description Resultado de resolver una revisión (empresa vinculada o creada).
+         */
+        ReviewResolved: {
+            /** Empresa Id */
+            empresa_id: number;
+            /** Review Id */
+            review_id: number;
+            /** Status */
+            status: string;
+        };
+        /**
+         * RotatedKey
+         * @description Rotación de API key: el token nuevo solo viaja en esta respuesta.
+         */
+        RotatedKey: {
+            /** Message */
+            message: string;
+            /** New Token */
+            new_token: string;
+            /** Old Key Expires At */
+            old_key_expires_at: string;
+        };
         /** SankeyLink */
         SankeyLink: {
             /** Source */
@@ -5608,6 +5890,16 @@ export interface components {
             /** Top K */
             top_k: number;
         };
+        /**
+         * SessionsRevoked
+         * @description Resultado de revocar sesiones (logout-all, borrado de cuenta).
+         */
+        SessionsRevoked: {
+            /** Sessions Revoked */
+            sessions_revoked: number;
+            /** Status */
+            status: string;
+        };
         /** SetAdminBody */
         SetAdminBody: {
             /** Is Admin */
@@ -5681,6 +5973,16 @@ export interface components {
             total_sources: number;
         };
         /**
+         * StatusMessage
+         * @description Mutación con mensaje legible además del status.
+         */
+        StatusMessage: {
+            /** Message */
+            message: string;
+            /** Status */
+            status: string;
+        };
+        /**
          * StatusOk
          * @description Respuesta mínima de una mutación sin payload propio.
          */
@@ -5705,6 +6007,27 @@ export interface components {
             quantity?: number | null;
             /** Role */
             role?: string | null;
+        };
+        /**
+         * TechScore
+         * @description Score de una tecnología para la licitación (clasificador multi-label).
+         */
+        TechScore: {
+            /** Computed At */
+            computed_at: string | null;
+            /** Probabilidad */
+            probabilidad: number;
+            /** Tecnologia */
+            tecnologia: string;
+            /** Threshold Aplicado */
+            threshold_aplicado: number | null;
+        };
+        /** TechScoresResult */
+        TechScoresResult: {
+            /** Id Externo */
+            id_externo: string;
+            /** Scores */
+            scores: components["schemas"]["TechScore"][];
         };
         /**
          * TecnologiaDetalleItem
@@ -5873,6 +6196,33 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /**
+         * TimelineEvento
+         * @description Hito de la línea de tiempo (evento materializado o implícito).
+         */
+        TimelineEvento: {
+            /** Campo */
+            campo: string | null;
+            /** Detalle */
+            detalle: string | null;
+            /** Fecha */
+            fecha: string | null;
+            /** Importe Delta */
+            importe_delta: number | null;
+            /** Tipo */
+            tipo: string;
+            /** Valor Antes */
+            valor_antes: string | null;
+            /** Valor Despues */
+            valor_despues: string | null;
+        };
+        /** TimelineResult */
+        TimelineResult: {
+            /** Items */
+            items: components["schemas"]["TimelineEvento"][];
+            /** Licitacion Id */
+            licitacion_id: string;
+        };
         /** TimelineScatterItem */
         TimelineScatterItem: {
             /** Ccaa */
@@ -5999,6 +6349,24 @@ export interface components {
         TotpCodeRequest: {
             /** Code */
             code: string;
+        };
+        /**
+         * TotpConfirmResult
+         * @description Confirmación de TOTP: los recovery codes se entregan una sola vez.
+         */
+        TotpConfirmResult: {
+            /** Recovery Codes */
+            recovery_codes: string[];
+            /** Status */
+            status: string;
+        };
+        /**
+         * TotpSetupResult
+         * @description Alta de TOTP: el secreto viaja solo aquí, como URI otpauth.
+         */
+        TotpSetupResult: {
+            /** Otpauth Uri */
+            otpauth_uri: string;
         };
         /**
          * TreemapItem
@@ -8123,9 +8491,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["DetailMessage"];
                 };
             };
             /** @description Validation Error */
@@ -8158,9 +8524,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SessionsRevoked"];
                 };
             };
             /** @description Validation Error */
@@ -8220,9 +8584,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["OAuthAuthorizeResult"];
                 };
             };
         };
@@ -8242,7 +8604,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8313,9 +8675,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -8352,9 +8712,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TotpConfirmResult"];
                 };
             };
             /** @description Validation Error */
@@ -8387,9 +8745,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["TotpSetupResult"];
                 };
             };
             /** @description Validation Error */
@@ -8426,9 +8782,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -8914,9 +9268,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresasListResult"];
                 };
             };
             /** @description Validation Error */
@@ -8951,9 +9303,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresaReviewsResult"];
                 };
             };
             /** @description Validation Error */
@@ -8992,9 +9342,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ReviewResolved"];
                 };
             };
             /** @description Revisión inexistente o ya resuelta */
@@ -9034,9 +9382,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresasStats"];
                 };
             };
             /** @description Validation Error */
@@ -9071,9 +9417,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EmpresaDetail"];
                 };
             };
             /** @description Empresa no encontrada */
@@ -9685,7 +10029,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BulkGetResult"];
                 };
             };
             /** @description API key inválida */
@@ -9905,9 +10249,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DocumentosResult"];
                 };
             };
             /** @description API key inválida */
@@ -9947,9 +10289,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ExplainResult"];
                 };
             };
             /** @description API key inválida */
@@ -10162,9 +10502,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TechScoresResult"];
                 };
             };
             /** @description API key inválida */
@@ -10257,9 +10595,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TimelineResult"];
                 };
             };
             /** @description Licitación no encontrada */
@@ -10301,9 +10637,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PrediccionBajaResult"];
                 };
             };
             /** @description Sin predicción para esa licitación */
@@ -10347,9 +10681,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StatusMessage"];
                 };
             };
             /** @description Validation Error */
@@ -10382,7 +10714,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
                     "application/zip": unknown;
                 };
             };
@@ -10456,9 +10787,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RotatedKey"];
                 };
             };
             /** @description API key inválida */
@@ -10538,9 +10867,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */
@@ -10573,9 +10900,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */

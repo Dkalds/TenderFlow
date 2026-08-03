@@ -52,6 +52,7 @@ from services.gdpr import (
     revoke_all_api_keys_for_user,
     set_key_expiry,
 )
+from shared.dto import SessionsRevoked, StatusMessage, StatusOk
 
 log = get_logger(__name__)
 
@@ -64,6 +65,14 @@ class DeleteMyDataRequest(BaseModel):
     """Explicit confirmation prevents a forged or accidental destructive call."""
 
     confirmation: Literal["DELETE"]
+
+
+class RotatedKey(BaseModel):
+    """Rotación de API key: el token nuevo solo viaja en esta respuesta."""
+
+    new_token: str
+    message: str
+    old_key_expires_at: str
 
 
 def _get_user_id_from_key_id(key_id: int) -> int | None:
@@ -89,9 +98,12 @@ def _actor_key(ctx: dict[str, Any]) -> str:
     return str(ctx.get("key_hash") or ctx.get("email") or "session")[:8]
 
 
+# response_class evita el content application/json {} por defecto: la
+# respuesta es un ZIP y su contrato lo declara `responses`.
 @router.get(
     "/me/data",
     summary="GDPR — exportar todos mis datos",
+    response_class=StreamingResponse,
     responses={200: {"content": {"application/zip": {}}}},
 )
 def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> StreamingResponse:
@@ -167,7 +179,7 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
 def delete_my_data(
     body: DeleteMyDataRequest,
     ctx: dict[str, Any] = Depends(require_recent_session()),
-) -> dict[str, Any]:
+) -> StatusMessage:
     """Anonimiza watchlist/reglas/perfil/notificaciones y revoca credenciales.
 
     Requiere una sesión de navegador autenticada recientemente; una API key
@@ -194,7 +206,7 @@ def delete_my_data(
         resource=resource,
     )
     log.info("gdpr_delete_executed", auth_method=ctx.get("auth_method"))
-    return {"status": "ok", "message": "Datos anonimizados y credenciales revocadas."}
+    return StatusMessage(status="ok", message="Datos anonimizados y credenciales revocadas.")
 
 
 @router.post(
@@ -202,7 +214,7 @@ def delete_my_data(
     summary="Revocar todas las sesiones activas",
     status_code=200,
 )
-def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> SessionsRevoked:
     """Revoca todas las sesiones server-side del usuario."""
     user_id = int(ctx["user_id"])
     if user_id:
@@ -214,8 +226,8 @@ def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any
             detail={"sessions_revoked": n},
         )
         log.info("logout_all", user_id=user_id, revoked=n)
-        return {"status": "ok", "sessions_revoked": n}
-    return {"status": "ok", "sessions_revoked": 0}
+        return SessionsRevoked(status="ok", sessions_revoked=n)
+    return SessionsRevoked(status="ok", sessions_revoked=0)
 
 
 @router.get(
@@ -245,7 +257,7 @@ def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[dict[s
 def rotate_my_key(
     ctx: AuthContext = Depends(require_scope("api_keys:rotate")),
     grace_days: int = Query(7, ge=0, le=30),
-) -> dict[str, Any]:
+) -> RotatedKey:
     """Genera una nueva API key con los mismos scopes que la actual.
 
     La key anterior permanece activa durante ``grace_days`` (default 7 días)
@@ -284,14 +296,14 @@ def rotate_my_key(
     )
     log.info("api_key_rotated", key_id=ctx.key_id, grace_days=grace_days)
 
-    return {
-        "new_token": new_raw,
-        "message": (
+    return RotatedKey(
+        new_token=new_raw,
+        message=(
             f"Guarda el token — no es recuperable. "
             f"La key anterior expira en {grace_days} días ({grace_expires[:10]})."
         ),
-        "old_key_expires_at": grace_expires,
-    }
+        old_key_expires_at=grace_expires,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +375,7 @@ async def get_profile(
 async def put_profile(
     body: UserProfileBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, str]:
+) -> StatusOk:
     """Crea o actualiza el perfil de scoring personalizado.
 
     Los pesos deben sumar 100 cuando se proporcionan.
@@ -385,16 +397,16 @@ async def put_profile(
         ctx["organization_id"],
         body.visibility,
     )
-    return {"status": "ok"}
+    return StatusOk(status="ok")
 
 
 @router.delete("/me/profile", summary="Eliminar el perfil de scoring")
 async def delete_profile(
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> dict[str, str]:
+) -> StatusOk:
     """Elimina el perfil de scoring. El scoring vuelve a los settings globales."""
     from db.repositories.user_profiles import delete_user_profile
 
     user_key = _user_key(ctx)
     delete_user_profile(user_key)
-    return {"status": "ok"}
+    return StatusOk(status="ok")
