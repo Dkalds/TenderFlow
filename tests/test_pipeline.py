@@ -11,14 +11,44 @@ import pytest
 from scraper.pipeline import _resolve_empresas_post_ingestion, _summarize, backfill, process_month
 
 
-def test_post_ingestion_drains_all_unlinked_companies():
+def test_post_ingestion_scopes_resolution_and_bounds_it():
+    """Acotado, reanudable y con presupuesto: los tres controles que faltaban.
+
+    Sin ellos, cada ingesta barría la tabla de adjudicaciones entera desde el
+    id 0 y se comía el timeout del step.
+    """
+    from services.entity_resolution import HOOK_TIME_BUDGET_S
+
     with (
         patch("services.entity_resolution.resolve_all_unlinked") as resolve_all,
         patch("services.contract_events.derive_new_events"),
     ):
-        _resolve_empresas_post_ingestion("place_live_atom")
+        _resolve_empresas_post_ingestion("place_live_atom", scope_fuente="placsp")
 
-    resolve_all.assert_called_once_with(fuente="place_live_atom")
+    resolve_all.assert_called_once_with(
+        fuente="place_live_atom",
+        scope_fuente="placsp",
+        resume=True,
+        time_budget_s=HOOK_TIME_BUDGET_S,
+    )
+
+
+def test_daily_fuente_matches_the_model_default():
+    """El ámbito del carril diario tiene que ser el `fuente` que ese carril graba.
+
+    `_DAILY_SOURCE` ('place_live_atom') es la etiqueta del carril, no un valor
+    de `licitaciones.fuente`: las filas del ATOM se quedan con el default del
+    modelo. Si ese default cambia y `_DAILY_FUENTE` no, el ámbito quedaría
+    vacío y el carril diario dejaría de resolver empresas en silencio.
+    """
+    from dataclasses import fields
+
+    from db.upsert import Licitacion
+    from scraper.pipeline import _DAILY_FUENTE, _DAILY_SOURCE
+
+    default = next(f for f in fields(Licitacion) if f.name == "fuente").default
+    assert default == _DAILY_FUENTE
+    assert _DAILY_FUENTE != _DAILY_SOURCE
 
 
 def test_backfill_resolves_companies_once_after_parallel_months():
@@ -38,7 +68,9 @@ def test_backfill_resolves_companies_once_after_parallel_months():
         run_id="run-test",
         resolve_empresas=False,
     )
-    resolve_empresas.assert_called_once_with("placsp_backfill")
+    # Ámbito global: se llama al completarse cada mes sin saber cuál, y
+    # "placsp_backfill" es una etiqueta de carril, no un `licitaciones.fuente`.
+    resolve_empresas.assert_called_once_with("placsp_backfill", scope_fuente=None)
     assert record_run.return_value.__enter__.called
 
 

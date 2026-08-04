@@ -19,10 +19,11 @@ histórico (scripts/backfill_empresas.py) y para el hook post-ingesta.
 from __future__ import annotations
 
 import difflib
+import time
 from dataclasses import dataclass
 from typing import Any
 
-from db.database import connect
+from db.database import connect, get_cursor, set_cursor
 from db.empresas import (
     EmpresaCaches,
     add_alias,
@@ -43,6 +44,14 @@ log = get_logger(__name__)
 # Umbral de similitud (ratio difflib 0-1) a partir del cual un casi-match va
 # a revisión humana. Por debajo se considera empresa distinta y se crea nueva.
 FUZZY_THRESHOLD = 0.92
+
+# Presupuesto de pared por defecto para la resolución colgada de un hook
+# post-ingesta. Los steps de conector del workflow diario tienen 5-10 min: la
+# resolución se lleva como mucho estos 2 min, deja el cursor persistido y le
+# cede el resto del step a dedupe, eventos de contrato y la señal de caché.
+# Drenar un backlog grande no es trabajo del carril de ingesta sino de
+# `.github/workflows/backfill-empresas.yml`.
+HOOK_TIME_BUDGET_S = 120.0
 
 
 @dataclass
@@ -221,17 +230,26 @@ def resolve_unlinked_adjudicaciones(
     fuente: str = "placsp",
     fuzzy: bool = True,
     after_id: int = 0,
+    scope_fuente: str | None = None,
 ) -> ResolutionStats:
     """Procesa un lote de adjudicaciones sin empresa_id. Devuelve estadísticas.
 
     Llamar en bucle (backfill) o una vez tras la ingesta (hook). Cada lote
     corre en una única transacción.
+
+    ``fuente`` y ``scope_fuente`` son ejes independientes y deliberadamente
+    distintos: el primero es la ETIQUETA de procedencia que se graba en
+    ``empresa_aliases.fuente``, el segundo ACOTA qué adjudicaciones entran en
+    el lote. Confundirlos fue el bug de 2026-08: el hook pasaba ``fuente`` con
+    la intención de acotar, pero ``fetch_unlinked`` lo ignoraba y barría la
+    tabla entera. Se mantienen separados para que un backfill pueda etiquetar
+    los aliases de una forma y recorrer otra cosa.
     """
     stats = ResolutionStats(last_id=after_id)
     with connect() as conn:
         caches = load_caches(conn)
         pending = pending_review_keys(conn)
-        rows = fetch_unlinked(conn, batch_size, after_id)
+        rows = fetch_unlinked(conn, batch_size, after_id, fuente=scope_fuente)
         stats.fetched = len(rows)
         for row in rows:
             stats.last_id = max(stats.last_id, int(row["id"]))
@@ -283,15 +301,81 @@ def resolve_unlinked_adjudicaciones(
     return stats
 
 
+def _cursor_source(scope_fuente: str | None) -> str:
+    """Nombre en ``ingestion_cursors`` del cursor de resolución de un ámbito.
+
+    Mismo patrón que ``dedupe_{fuente}`` (services/dedupe.py:121): un cursor
+    por ámbito, para que el avance de una fuente no arrastre el de otra.
+    """
+    return f"entity_resolution_{scope_fuente or 'all'}"
+
+
+def _resume_from(cursor_source: str) -> int:
+    """Último id resuelto y persistido, o 0. Degrada a 0 si el valor no es un id.
+
+    Un cursor corrupto no debe tumbar la resolución: peor que empezar de cero
+    es dejar de resolver en silencio.
+    """
+    raw = (get_cursor(cursor_source) or {}).get("last_entry_id")
+    if raw is None:
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        log.warning("entity_resolution_cursor_invalid", source=cursor_source, value=str(raw))
+        return 0
+
+
+def reset_resolution_cursor(scope_fuente: str | None = None) -> None:
+    """Devuelve el cursor de un ámbito al principio de la tabla.
+
+    Para volver a mirar las filas que quedaron por debajo del cursor: las que
+    salieron ``skipped`` (sin alias, o con revisión pendiente en su momento) no
+    se reintentan mientras el cursor esté por delante de ellas. Tras resolver
+    la cola de revisión, un backfill con el cursor reseteado las recupera.
+    """
+    set_cursor(_cursor_source(scope_fuente), last_entry_id=None)
+
+
 def resolve_all_unlinked(
-    batch_size: int = 5000, *, fuente: str = "placsp", fuzzy: bool = True
+    batch_size: int = 5000,
+    *,
+    fuente: str = "placsp",
+    fuzzy: bool = True,
+    scope_fuente: str | None = None,
+    resume: bool = False,
+    time_budget_s: float | None = None,
 ) -> ResolutionStats:
-    """Itera lotes hasta agotar las adjudicaciones resolubles (backfill)."""
+    """Itera lotes hasta agotar las adjudicaciones resolubles (backfill).
+
+    ``scope_fuente`` acota el recorrido a una fuente (ver ``fetch_unlinked``);
+    ``None`` recorre la tabla entera.
+
+    ``resume=True`` lee y persiste el cursor en ``ingestion_cursors``
+    (``last_entry_id`` = último id de adjudicación procesado), igual que
+    ``contract_events`` (services/contract_events.py:200). Sin él cada llamada
+    arranca en 0 y vuelve a recorrer el prefijo de filas irresolubles -- las
+    que salen como ``skipped`` por no tener alias o estar en cola de revisión,
+    ~59 % de cada lote en producción. Ese prefijo no se vacía nunca y crece,
+    así que el trabajo útil por ejecución tendía a cero.
+
+    ``time_budget_s`` acota el tiempo de pared: al agotarse corta tras el lote
+    en curso, dejando el cursor persistido. Es lo que permite colgar esto de un
+    step con timeout sin que lo mate a mitad -- se avanza lo que se pueda y la
+    siguiente ejecución sigue desde ahí. Siempre se ejecuta al menos un lote,
+    así que el progreso nunca es nulo (``time_budget_s=0`` = exactamente uno).
+    """
     total = ResolutionStats()
-    cursor = 0
+    cursor_source = _cursor_source(scope_fuente)
+    cursor = _resume_from(cursor_source) if resume else 0
+    started = time.monotonic()
     while True:
         batch = resolve_unlinked_adjudicaciones(
-            batch_size, fuente=fuente, fuzzy=fuzzy, after_id=cursor
+            batch_size,
+            fuente=fuente,
+            fuzzy=fuzzy,
+            after_id=cursor,
+            scope_fuente=scope_fuente,
         )
         total.linked_nif += batch.linked_nif
         total.linked_alias += batch.linked_alias
@@ -303,4 +387,15 @@ def resolve_all_unlinked(
         if batch.fetched == 0:
             break
         cursor = batch.last_id
+        total.last_id = cursor
+        if resume:
+            set_cursor(cursor_source, last_entry_id=str(cursor))
+        if time_budget_s is not None and time.monotonic() - started >= time_budget_s:
+            log.info(
+                "entity_resolution_budget_exhausted",
+                scope=scope_fuente or "all",
+                last_id=cursor,
+                fetched=total.fetched,
+            )
+            break
     return total

@@ -62,14 +62,34 @@ from scraper.codice_parser import (
 log = get_logger(__name__)
 
 _DAILY_SOURCE = "place_live_atom"
+# OJO: `_DAILY_SOURCE` es la etiqueta del CARRIL (nombre del cursor de ingesta,
+# scope de DLQ y de métricas), no el valor de `licitaciones.fuente`. Las filas
+# que escribe el carril diario se quedan con el default del modelo, `placsp`
+# (db/upsert.py:175) -- en producción no existe ni una licitación con
+# fuente='place_live_atom'. Acotar la resolución por la etiqueta en vez de por
+# la fuente real no resolvería nada.
+_DAILY_FUENTE = "placsp"
 
 
-def _resolve_empresas_post_ingestion(fuente: str) -> None:
-    """Enlaza todas las adjudicaciones pendientes con el maestro de empresas."""
+def _resolve_empresas_post_ingestion(fuente: str, *, scope_fuente: str | None) -> None:
+    """Enlaza las adjudicaciones pendientes con el maestro de empresas.
+
+    ``fuente`` es la etiqueta del carril (procedencia de los aliases, logs);
+    ``scope_fuente`` es el valor de ``licitaciones.fuente`` al que se acota el
+    recorrido, o ``None`` para recorrer la tabla entera. Van separados y
+    explícitos a propósito: no siempre coinciden (ver ``_DAILY_FUENTE``), y
+    confundirlos fue justamente el bug de 2026-08 que dejó la resolución
+    barriendo el millón de filas de PSCP en cada ingesta de cualquier fuente.
+    """
     try:
-        from services.entity_resolution import resolve_all_unlinked
+        from services.entity_resolution import HOOK_TIME_BUDGET_S, resolve_all_unlinked
 
-        resolve_all_unlinked(fuente=fuente)
+        resolve_all_unlinked(
+            fuente=fuente,
+            scope_fuente=scope_fuente,
+            resume=True,
+            time_budget_s=HOOK_TIME_BUDGET_S,
+        )
     except Exception as e:
         log.warning("entity_resolution_post_ingestion_failed", fuente=fuente, error=str(e))
     # Eventos de contrato (v38): deriva adjudicación/modificación/prórroga
@@ -391,7 +411,9 @@ def _process_month_impl(
 
     # El backfill paralelo difiere esta fase para evitar resolvedores concurrentes.
     if resolve_empresas:
-        _resolve_empresas_post_ingestion(fuente)
+        # Aquí etiqueta y ámbito SÍ coinciden: `fuente` es `bulk_YYYYMM` y es
+        # exactamente el valor que este mismo run grabó en `licitaciones.fuente`.
+        _resolve_empresas_post_ingestion(fuente, scope_fuente=fuente)
     _signal_post_ingestion(fuente)
 
     return {
@@ -484,7 +506,10 @@ def backfill(start_year: int, start_month: int) -> list[dict[str, Any]]:
                     log.exception("backfill_month_error", year=y, month=m)
                     results.append({"year": y, "month": m, "status": "error"})
                 # Nota: las conexiones DB de cada worker se cierran en process_month via finally.
-                _resolve_empresas_post_ingestion("placsp_backfill")
+                # Ámbito global: se llama al completarse cada mes sin saber
+                # cuál, y "placsp_backfill" es una etiqueta de carril, no un
+                # valor de `licitaciones.fuente` (los meses graban `bulk_YYYYMM`).
+                _resolve_empresas_post_ingestion("placsp_backfill", scope_fuente=None)
         _summarize(results, metrics)
     return results
 
@@ -629,8 +654,10 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
         entries_seen=meta["entries_seen"],
     )
 
-    # Enlace con el maestro de empresas + señal de invalidación de caché
-    _resolve_empresas_post_ingestion(fuente)
+    # Enlace con el maestro de empresas + señal de invalidación de caché.
+    # `fuente` es `place_live_atom` (etiqueta del carril); lo que este pipeline
+    # graba en `licitaciones.fuente` es `placsp`. Ver `_DAILY_FUENTE`.
+    _resolve_empresas_post_ingestion(fuente, scope_fuente=_DAILY_FUENTE)
     _signal_post_ingestion(fuente)
 
     return {

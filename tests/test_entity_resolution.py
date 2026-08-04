@@ -38,10 +38,10 @@ def insert_adj(db, nombre, nif=None, lic_id="LIC-001", importe=100000.0):
     return total
 
 
-def setup_lic(db, lic_id="LIC-001"):
+def setup_lic(db, lic_id="LIC-001", **kwargs):
     from db.upsert import upsert_licitaciones
 
-    upsert_licitaciones([make_licitacion(lic_id)])
+    upsert_licitaciones([make_licitacion(lic_id, **kwargs)])
 
 
 # ---------------------------------------------------------------------------
@@ -357,3 +357,160 @@ def test_resolution_stats_empty_db(db):
     stats = resolution_stats()
     assert stats["adjudicaciones_total"] == 0
     assert stats["pct_filas"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Ámbito por fuente + cursor persistido
+#
+# El hook post-ingesta de cada conector barría la tabla entera desde el id 0:
+# ingerir 112 avisos de TED arrancaba un recorrido del millón de filas
+# pendientes de PSCP y agotaba el timeout del step. Estos tests fijan las dos
+# mitades del arreglo — acotar por fuente y no reempezar desde cero.
+# ---------------------------------------------------------------------------
+
+
+def _setup_dos_fuentes(db):
+    """Una adjudicación de 'placsp' y otra de 'ted', cada una en su licitación."""
+    setup_lic(db, "LIC-PLACSP", fuente="placsp")
+    setup_lic(db, "LIC-TED", fuente="ted")
+    insert_adj(db, "Alfa Sistemas S.A.", nif="B11111111", lic_id="LIC-PLACSP")
+    insert_adj(db, "Beta Consulting S.L.", nif="B22222222", lic_id="LIC-TED")
+
+
+def _unlinked_nombres(db):
+    from db.database import connect
+
+    with connect() as c:
+        return {
+            r[0]
+            for r in c.execute(
+                "SELECT nombre FROM adjudicaciones WHERE empresa_id IS NULL"
+            ).fetchall()
+        }
+
+
+def test_fetch_unlinked_filters_by_fuente(db):
+    from db.database import connect
+    from db.empresas import fetch_unlinked
+
+    _setup_dos_fuentes(db)
+    with connect() as c:
+        solo_ted = fetch_unlinked(c, 10, fuente="ted")
+        todas = fetch_unlinked(c, 10)
+
+    assert [r["nombre"] for r in solo_ted] == ["Beta Consulting S.L."]
+    assert len(todas) == 2
+
+
+def test_fetch_unlinked_unknown_fuente_returns_nothing(db):
+    from db.database import connect
+    from db.empresas import fetch_unlinked
+
+    _setup_dos_fuentes(db)
+    with connect() as c:
+        assert fetch_unlinked(c, 10, fuente="no_existe") == []
+
+
+def test_resolve_scoped_leaves_other_sources_untouched(db):
+    """El hook de una fuente no debe tocar el backlog de las demás."""
+    from services.entity_resolution import resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    total = resolve_all_unlinked(scope_fuente="ted")
+
+    assert total.created == 1
+    assert _unlinked_nombres(db) == {"Alfa Sistemas S.A."}
+
+
+def test_resolve_unscoped_still_drains_everything(db):
+    """Sin `scope_fuente` sigue siendo un barrido global (lo que usa el backfill)."""
+    from services.entity_resolution import resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    total = resolve_all_unlinked()
+
+    assert total.created == 2
+    assert _unlinked_nombres(db) == set()
+
+
+def test_resume_persists_cursor_per_scope(db):
+    from db.database import get_cursor
+    from services.entity_resolution import resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    resolve_all_unlinked(scope_fuente="ted", resume=True)
+
+    cursor = get_cursor("entity_resolution_ted")
+    assert cursor is not None
+    assert int(cursor["last_entry_id"]) > 0
+    # El ámbito global es un cursor distinto y no se tocó.
+    assert get_cursor("entity_resolution_all") is None
+
+
+def test_without_resume_no_cursor_is_written(db):
+    """El backfill histórico y los tests siguen arrancando en 0 por defecto."""
+    from db.database import get_cursor
+    from services.entity_resolution import resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    resolve_all_unlinked()
+
+    assert get_cursor("entity_resolution_all") is None
+
+
+def test_resume_skips_rows_below_the_cursor(db):
+    from db.database import connect, set_cursor
+    from services.entity_resolution import resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    with connect() as c:
+        max_id = c.execute("SELECT MAX(id) FROM adjudicaciones").fetchone()[0]
+    set_cursor("entity_resolution_all", last_entry_id=str(max_id))
+
+    total = resolve_all_unlinked(resume=True)
+
+    assert total.fetched == 0
+    assert len(_unlinked_nombres(db)) == 2
+
+
+def test_reset_resolution_cursor_recovers_the_tail(db):
+    from db.database import connect, set_cursor
+    from services.entity_resolution import reset_resolution_cursor, resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    with connect() as c:
+        max_id = c.execute("SELECT MAX(id) FROM adjudicaciones").fetchone()[0]
+    set_cursor("entity_resolution_all", last_entry_id=str(max_id))
+
+    reset_resolution_cursor()
+    total = resolve_all_unlinked(resume=True)
+
+    assert total.created == 2
+    assert _unlinked_nombres(db) == set()
+
+
+def test_corrupt_cursor_falls_back_to_zero(db):
+    """Un cursor ilegible reinicia el recorrido; nunca deja de resolver."""
+    from db.database import set_cursor
+    from services.entity_resolution import resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    set_cursor("entity_resolution_all", last_entry_id="no-es-un-id")
+
+    total = resolve_all_unlinked(resume=True)
+
+    assert total.created == 2
+
+
+def test_time_budget_stops_after_the_current_batch(db):
+    """Presupuesto agotado corta entre lotes, pero siempre hace al menos uno."""
+    from db.database import get_cursor
+    from services.entity_resolution import resolve_all_unlinked
+
+    _setup_dos_fuentes(db)
+    total = resolve_all_unlinked(batch_size=1, resume=True, time_budget_s=0)
+
+    assert total.fetched == 1
+    assert len(_unlinked_nombres(db)) == 1
+    # El progreso del lote que sí corrió queda guardado para la próxima.
+    assert int(get_cursor("entity_resolution_all")["last_entry_id"]) > 0

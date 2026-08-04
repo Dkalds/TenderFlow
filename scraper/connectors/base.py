@@ -213,12 +213,24 @@ def _persist_documentos(
 def _post_ingestion(source_id: str) -> None:
     """Resolución de empresas + dedupe + eventos de contrato + caché. Fail-open."""
     try:
-        from services.entity_resolution import resolve_all_unlinked
+        from services.entity_resolution import HOOK_TIME_BUDGET_S, resolve_all_unlinked
 
-        # Un solo lote dejaba bloqueadas las filas posteriores cuando las
-        # primeras contienen revisiones pendientes. Recorremos con cursor
-        # hasta drenar el remanente; la operacion es idempotente.
-        resolve_all_unlinked(fuente=source_id)
+        # Acotado a la propia fuente (`scope_fuente`), reanudable (`resume`) y
+        # con presupuesto de tiempo. Hasta 2026-08 era `resolve_all_unlinked(
+        # fuente=source_id)` a secas, y las tres cosas faltaban: `fuente` solo
+        # etiquetaba los aliases, así que cada conector barría la tabla entera
+        # desde el id 0. Ingerir 112 avisos de TED arrancaba un recorrido del
+        # millón largo de filas pendientes de PSCP, se comía los 10 min del
+        # step y moría por SIGKILL antes de llegar al dedupe y a los eventos
+        # de contrato de más abajo -- que estuvieron una semana sin correr.
+        # `source_id` vale como ámbito porque los conectores respetan la
+        # invariante `Licitacion.fuente = source_id` (ver docstring del módulo).
+        resolve_all_unlinked(
+            fuente=source_id,
+            scope_fuente=source_id,
+            resume=True,
+            time_budget_s=HOOK_TIME_BUDGET_S,
+        )
     except Exception as e:
         log.warning("connector_entity_resolution_failed", source=source_id, error=str(e))
     try:
