@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
+import { getCsrfToken } from "@/lib/api-client";
 
 interface FeatureFlag {
   key: string;
@@ -90,10 +91,14 @@ export default function FeatureFlagsPage() {
         enabled: f.enabled ?? f.defaultEnabled,
         rollout_pct: f.rollout ?? (f.enabled ?? f.defaultEnabled ? 100 : 0),
       }));
+      const csrf = getCsrfToken();
       const res = await fetch("/api/v1/feature-flags", {
         method: "PUT",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
         body: JSON.stringify({ flags: payload }),
       });
       if (!res.ok) {

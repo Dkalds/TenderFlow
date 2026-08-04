@@ -7,6 +7,8 @@
  * `degraded` (fallback without LLM synthesis) and `resumen_meta`.
  */
 
+import { getCsrfToken } from "./api-client";
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -147,10 +149,14 @@ export async function streamAsk({
   signal,
   ...callbacks
 }: AskParams): Promise<AskStreamResult> {
+  const csrf = getCsrfToken();
   const res = await fetch("/api/v1/ask", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    },
     body: JSON.stringify({
       question,
       messages: messages && messages.length > 0 ? messages : undefined,
@@ -175,10 +181,14 @@ export async function streamResumen({
   signal,
   ...callbacks
 }: ResumenParams): Promise<AskStreamResult> {
+  const csrf = getCsrfToken();
   const res = await fetch(`/api/v1/licitaciones/${encodeURIComponent(idExterno)}/resumen`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    },
     body: JSON.stringify({ model: model || undefined }),
     signal,
   });

@@ -3,7 +3,7 @@
  * {text}, fuentes_documentos, degraded, resumen_meta and [DONE].
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { streamAsk, streamResumen } from "@/lib/ask-stream";
 
 /** Build a Response whose body streams the given SSE lines. */
@@ -27,6 +27,16 @@ function jsonResponse(payload: unknown): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+beforeEach(() => {
+  // jsdom starts with document.cookie = "" — reset via defineProperty trick
+  // so csrf_token set by one test doesn't leak into the next.
+  Object.defineProperty(document, "cookie", {
+    writable: true,
+    configurable: true,
+    value: "",
+  });
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -159,6 +169,21 @@ describe("streamAsk", () => {
 
     await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toThrow("Error 429");
   });
+
+  it("includes X-CSRF-Token header when csrf_token cookie is present", async () => {
+    Object.defineProperty(document, "cookie", {
+      writable: true,
+      configurable: true,
+      value: "csrf_token=mytoken",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamAsk({ question: "q", onToken: vi.fn() });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("mytoken");
+  });
 });
 
 describe("streamResumen", () => {
@@ -199,5 +224,20 @@ describe("streamResumen", () => {
     await streamResumen({ idExterno: "EXP/RARO 1", onToken: vi.fn() });
 
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/licitaciones/EXP%2FRARO%201/resumen");
+  });
+
+  it("includes X-CSRF-Token header when csrf_token cookie is present", async () => {
+    Object.defineProperty(document, "cookie", {
+      writable: true,
+      configurable: true,
+      value: "csrf_token=mytoken",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamResumen({ idExterno: "EXP-1", onToken: vi.fn() });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("mytoken");
   });
 });
