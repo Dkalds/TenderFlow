@@ -23,6 +23,7 @@ import {
 import { formatCurrency, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
+import { getCsrfToken } from "@/lib/api-client";
 import { useChat } from "@/hooks/use-ask";
 import { ChatThread } from "@/components/chat-thread";
 import { SpaceShell } from "@/components/layout/space-shell";
@@ -246,10 +247,14 @@ export default function InvestigadorPage() {
       setSearchResults(null);
 
       try {
+        const csrf = getCsrfToken();
         const res = await fetch("/api/v1/search/semantic", {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          },
           body: JSON.stringify({
             q,
             top_k: config.topK,
