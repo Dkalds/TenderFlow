@@ -14,6 +14,7 @@ import pytest
 
 from db.database import DocumentoReferencia
 from db.repositories.documentos import DocumentosRepository
+from scheduler.jobs import documentos_embeddings
 from scheduler.jobs.documentos_embeddings import _run_embed_phase, _run_fetch_phase, run
 
 
@@ -234,3 +235,29 @@ def test_run_combines_both_phases(repo):
 
     assert result["fetch"]["extracted"] == 1
     assert result["embed"]["documentos_procesados"] == 1
+
+
+def test_run_passes_batch_sizes_from_settings(repo):
+    """``run()`` delega el tamaño de lote de cada fase a config.settings en
+    vez de las constantes de módulo -- así el workflow_dispatch de
+    pliegos.yml puede sobreescribirlas sin tocar código."""
+    from config import settings
+
+    with (
+        patch.object(settings, "PLIEGO_FETCH_BATCH", 7),
+        patch.object(settings, "PLIEGO_EMBED_BATCH", 3),
+        patch.object(settings, "PLIEGO_FACTS_BATCH", 2),
+        patch.object(settings, "PLIEGO_TECH_SIGNAL_BATCH", 9),
+        patch.object(documentos_embeddings, "_run_fetch_phase", return_value={}) as fetch,
+        patch.object(documentos_embeddings, "_run_embed_phase", return_value={}) as embed,
+        patch.object(documentos_embeddings, "_run_facts_phase", return_value={}) as facts,
+        patch.object(
+            documentos_embeddings, "_run_tech_signal_phase", return_value={}
+        ) as tech_signal,
+    ):
+        run()
+
+    fetch.assert_called_once_with(limit=7)
+    embed.assert_called_once_with(limit=3)
+    facts.assert_called_once_with(limit=2)
+    tech_signal.assert_called_once_with(limit=9)

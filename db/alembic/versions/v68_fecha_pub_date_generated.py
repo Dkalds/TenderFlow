@@ -58,6 +58,12 @@ def upgrade() -> None:
     if not _is_postgres():
         return
     op.execute(_ISO_PREFIX_TO_DATE_FN)
+    # El statement_timeout por defecto del rol (2 min, vía pooler de Supabase)
+    # no alcanza para reescribir la tabla completa (~1.2 GB); el pooler no
+    # reenvía PGOPTIONS al backend, así que se fija dentro de la propia
+    # transacción de la migración. 30min medía corto contra el tamaño real de
+    # la tabla en prod (la reescritura tarda >30min); 60min da margen.
+    op.execute("SET statement_timeout = '60min'")
     op.execute(
         "ALTER TABLE licitaciones ADD COLUMN IF NOT EXISTS fecha_pub_d date "
         "GENERATED ALWAYS AS (iso_prefix_to_date(fecha_publicacion)) STORED"

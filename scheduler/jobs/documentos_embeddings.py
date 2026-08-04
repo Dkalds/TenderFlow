@@ -6,15 +6,19 @@ callable zero-argumento registrado en ambos planos de orquestación (ADR-012):
 ``.github/workflows/pliegos.yml`` (GitHub Actions, cron nocturno + dispatch)
 — nunca corren activos a la vez contra la misma BD.
 
-Dos fases independientes por corrida, ambas fail-open a nivel de documento
-(uno roto no aborta el resto del lote, mismo criterio que el resto del
-scraper):
+Fases independientes por corrida, todas fail-open a nivel de documento/
+licitación (uno roto no aborta el resto del lote, mismo criterio que el
+resto del scraper):
 
 1. **Fetch**: documentos ``pending`` → ``scraper.document_fetcher.fetch_and_extract``.
 2. **Embed**: documentos ``extracted`` sin chunks → ``services.rag.chunking.chunk_text``
    → ``services.embeddings.encode_texts`` → ``documento_chunks``.
 3. **Facts**: licitaciones con páginas y sin ficha → extracción Pydantic
    verificable (solo cuando ``PLIEGO_FACTS_ENABLED=True``).
+4. **Tech signal**: licitaciones con páginas y sin señal de tecnología
+   vigente → ``services.tech_signal.score_documents`` (keywords) → fusión
+   inmediata hacia ``ml_tecnologias`` para ese lote
+   (``services.tech_signal.merge_doc_signals``).
 
 Si el extra ``[ml-embeddings]`` no está instalado, la fase de embeddings se
 salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``).
@@ -31,6 +35,7 @@ log = get_logger(__name__)
 _FETCH_BATCH_SIZE = 50
 _EMBED_BATCH_SIZE = 50
 _FACTS_BATCH_SIZE = 10
+_TECH_SIGNAL_BATCH_SIZE = 500
 
 
 def _run_fetch_phase(limit: int = _FETCH_BATCH_SIZE) -> dict[str, int]:
@@ -107,10 +112,12 @@ def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, int]:
         return counts
 
     from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
-    from services.rag.fact_sheet import extract_fact_sheet
+    from services.rag.fact_sheet import EXTRACTION_VERSION, extract_fact_sheet
+    from services.tech_signal import ingest_llm_technologies
 
     repo = TenderFactSheetsRepository()
-    for licitacion_id in repo.list_pending_licitaciones(limit=limit):
+    pendientes = repo.list_pending_licitaciones(extraction_version=EXTRACTION_VERSION, limit=limit)
+    for licitacion_id in pendientes:
         try:
             record = extract_fact_sheet(
                 licitacion_id,
@@ -127,21 +134,90 @@ def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, int]:
         counts["procesadas"] += 1
         if record.status == "needs_review":
             counts["needs_review"] += 1
+        try:
+            ingest_llm_technologies(record)
+        except Exception as exc:
+            log.warning(
+                "documentos_facts_tech_ingest_failed",
+                licitacion_id=licitacion_id,
+                error=str(exc),
+            )
+    return counts
+
+
+def _run_tech_signal_phase(limit: int = _TECH_SIGNAL_BATCH_SIZE) -> dict[str, int]:
+    """Puntúa (keywords) licitaciones con páginas extraídas y sin señal
+    vigente, y funde de inmediato la señal de ese lote hacia
+    ``ml_tecnologias``. Fail-open por licitación -- una puntuación rota no
+    aborta el resto del lote (mismo patrón que ``_run_facts_phase``).
+    """
+    from db.repositories.documentos import DocumentosRepository
+    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+    from observability.runtime_metrics import pliego_tech_signal_total
+    from scraper.lineage import current_filter_version
+    from services.tech_signal import merge_doc_signals, score_documents
+
+    doc_repo = DocumentosRepository()
+    signal_repo = TecnologiaPliegoRepository()
+    signal_version = current_filter_version()
+    counts = {"scored": 0, "no_signal": 0, "error": 0}
+
+    pendientes = signal_repo.list_licitaciones_pending_signal(
+        signal_version=signal_version, limit=limit
+    )
+    for licitacion_id in pendientes:
+        try:
+            pages = doc_repo.list_pages_by_licitacion(licitacion_id)
+            scores = score_documents(pages)
+            signal_repo.upsert_signals(
+                licitacion_id,
+                method="keywords",
+                signal_version=signal_version,
+                scores=scores,
+            )
+        except Exception as e:
+            counts["error"] += 1
+            pliego_tech_signal_total.labels(method="keywords", status="error").inc()
+            log.warning("tech_signal_score_failed", licitacion_id=licitacion_id, error=str(e))
+            continue
+        status = "scored" if scores else "no_signal"
+        counts[status] += 1
+        pliego_tech_signal_total.labels(method="keywords", status=status).inc()
+
+    if pendientes:
+        merge_result = merge_doc_signals(licitacion_ids=pendientes)
+        counts["merged"] = merge_result["licitaciones_merged"]
     return counts
 
 
 def run() -> dict[str, Any]:
-    """Entry point del job."""
-    fetch_result = _run_fetch_phase()
-    embed_result = _run_embed_phase()
-    facts_result = _run_facts_phase()
+    """Entry point del job.
+
+    Los límites por fase vienen de ``config.settings`` (PLIEGO_FETCH_BATCH /
+    PLIEGO_EMBED_BATCH / PLIEGO_FACTS_BATCH / PLIEGO_TECH_SIGNAL_BATCH); las
+    constantes de módulo ``_FETCH_BATCH_SIZE`` etc. quedan como default de
+    cada función para quien las invoque directamente (tests, backfills
+    manuales) sin pasar por aquí.
+    """
+    from config import settings
+
+    fetch_result = _run_fetch_phase(limit=settings.PLIEGO_FETCH_BATCH)
+    embed_result = _run_embed_phase(limit=settings.PLIEGO_EMBED_BATCH)
+    facts_result = _run_facts_phase(limit=settings.PLIEGO_FACTS_BATCH)
+    tech_signal_result = _run_tech_signal_phase(limit=settings.PLIEGO_TECH_SIGNAL_BATCH)
     log.info(
         "documentos_embeddings_job_done",
         fetch=fetch_result,
         embed=embed_result,
         facts=facts_result,
+        tech_signal=tech_signal_result,
     )
-    return {"fetch": fetch_result, "embed": embed_result, "facts": facts_result}
+    return {
+        "fetch": fetch_result,
+        "embed": embed_result,
+        "facts": facts_result,
+        "tech_signal": tech_signal_result,
+    }
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { DocumentosBlock } from "@/components/documentos-block";
+import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
@@ -191,6 +192,8 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
           <Field label="Fecha inicio">{formatDate(l.fecha_inicio)}</Field>
           <Field label="Fecha fin">{formatDate(l.fecha_fin)}</Field>
         </dl>
+
+        <TecnologiasBlock licitacionId={l.id_externo} />
 
         {/* Description */}
         {l.descripcion && (

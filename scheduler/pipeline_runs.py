@@ -11,6 +11,13 @@ Secuencia canónica::
             → DLQ retry → anomaly checks → retention cleanup
             → ML retrain → drift checks
 
+``tech_signal_merge`` corre justo después de ``ml_tecnologias``: re-aplica la
+señal de tecnología detectada en los pliegos (``services/tech_signal.py``)
+sobre ``ml_tecnologias``/``licitacion_tecnologia_score``, sanando el clobber
+que ``precompute_ml_tecnologias`` acaba de hacer sobre esas mismas columnas
+(``db/upsert.py`` también las resetea en cada re-scrape -- ver docstring de
+``_run_tech_signal_merge``).
+
 ``digests``, ``retention_cleanup`` y ``drift_checks`` tienen **cadencia
 propia** (ver ``_run_periodic``): la pipeline corre cada 4h, pero un digest
 diario debe enviarse una vez al día y la retención purgar una vez al día,
@@ -35,6 +42,7 @@ log = get_logger(__name__)
 CANONICAL_STEPS: list[str] = [
     "ml_scoring",
     "ml_tecnologias",
+    "tech_signal_merge",
     "analytics_export",
     "kpi_precompute",
     "aggregates_precompute",
@@ -124,6 +132,23 @@ def _run_ml_tecnologias() -> None:
         from scraper.ml_training import precompute_ml_tecnologias
 
         precompute_ml_tecnologias(force=False)
+
+
+def _run_tech_signal_merge() -> None:
+    """Re-aplica la señal de pliego sobre TODAS las licitaciones con señal.
+
+    ``precompute_ml_tecnologias`` (paso anterior) sobreescribe
+    ``ml_tecnologias``/``ml_proba_max``/``ml_tech_principal`` para toda fila
+    con ``ml_proba_max IS NULL`` -- lo mismo que ``db/upsert.py`` hace en cada
+    re-scrape (ver docstring de ``_LIC_UPDATES``). Sin este paso, un merge ya
+    aplicado revertiría a la señal de solo-título en la primera re-ingesta o
+    el primer precompute posterior. Barato (≤ ~11k licitaciones con pliegos
+    procesados) y fail-open por licitación -- no hace falta ``try/except``
+    aquí porque ``merge_doc_signals`` ya captura y cuenta los fallos.
+    """
+    from services.tech_signal import merge_doc_signals
+
+    merge_doc_signals()
 
 
 def _run_analytics_export() -> None:

@@ -321,6 +321,44 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-08-04] **P1: la categorización de tecnología ahora también la alimentan los pliegos, no solo el título** —
+  Hasta ahora la clasificación de tecnología corría una sola vez en el ingest y solo veía
+  `titulo + descripcion` (`scraper/pipeline.py`); un título como "mantenimiento del sistema de
+  RRHH" no dice si es SAP HCM o Meta4, y la infraestructura de lectura de pliegos (descarga →
+  texto por página → chunks) ya existía pero estaba desconectada de la categorización. Cuatro
+  piezas, en orden de dependencia:
+  1. **PR-0**: `v68_fecha_pub_date_generated` subió su `statement_timeout` de sesión a 60min
+     (30min medía corto contra el tamaño real de `licitaciones` en prod) — desbloquea
+     `alembic upgrade head`, congelado en v67 desde que v68 quedó sin aplicar.
+  2. **Cola destaponada y priorizada** (`v71`/`v72`): `DocumentosRepository.list_pendientes`
+     prioriza licitaciones con `tecnologia`/`ml_tecnologias` no vacíos y, dentro de cada grupo,
+     las más recientes primero (los enlaces de PLACSP usan tokens rotativos que caducan — el
+     backlog viejo tiene tasa de error de descarga alta). Lote diario de fetch subido de 50 a
+     300 (`PLIEGO_FETCH_BATCH` + hermanos en `config/settings.py`), workflow con
+     `workflow_dispatch` de recuperación manual.
+  3. **Señal de pliego + merge** (`v71`: tabla `licitacion_tecnologia_pliego`,
+     `services/tech_signal.py`, `db/repositories/tecnologia_pliego.py`): puntúa el texto de los
+     pliegos por keywords ponderadas por tipo de documento (technical > additional > legal) y
+     funde el máximo hacia `ml_tecnologias`/`licitacion_tecnologia_score` sin machacar la señal
+     de título — re-aplicable tras el clobber que `db/upsert.py` y `precompute_ml_tecnologias`
+     hacen en cada re-scrape/precompute (nuevo paso `tech_signal_merge` en
+     `scheduler/pipeline_runs.py::CANONICAL_STEPS`, justo después de `ml_tecnologias`). Trazable
+     vía `domain_events` (`licitacion.tecnologia_pliego`, una vez por detección). Endpoint
+     `GET /licitaciones/{id}/tecnologias` consolida título+ML+pliego con evidencia; frontend
+     `TecnologiasBlock` la muestra con chips de origen y evidencia expandible.
+  4. **Extracción LLM** (`services/rag/fact_sheet.py` → `tender-facts-v2`): la ficha del pliego
+     también extrae `technologies`, normalizadas a `TECH_LABELS` e ingeridas como señal
+     `method='llm'` con la cita ya validada contra la página. Selector de pendientes de
+     `tender_fact_sheets` arreglado (antes solo miraba "sin fila", así que un bump de
+     `EXTRACTION_VERSION` no reprocesaba nada y `status='failed'` quedaba bloqueado para
+     siempre).
+  **No se toca**: `licitaciones.tecnologia` (semántica de keyword-sobre-título intacta), el
+  filtro exact-match `tecnologia == 'SAP'` preexistente (bug conocido, fuera de scope), OCR de
+  PDFs escaneados, Redis en `pliegos.yml` (el tope real del batch LLM es el tamaño de lote, no
+  un presupuesto acumulado — documentado, no un bug). **Paso manual pendiente del usuario**: en
+  ventana valle, `alembic upgrade head` contra prod; tras desplegar, `vars.PLIEGO_FACTS_ENABLED=true`
+  en GitHub para encender la fase LLM.
+
 - [2026-08-04] **P0: el hook de resolución de empresas barría el millón de filas de PSCP en cada ingesta de cualquier fuente** —
   Detectado auditando los dos timeouts del run #542 de `scrape-daily.yml`. El de PSCP es
   estructural y esperado (bloque de 1,84 M filas con el mismo `:updated_at`, avanza ~32 k
