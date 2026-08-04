@@ -141,9 +141,7 @@ def _payload_with_technology(documento_id: int, quote: str, *, name: str, confid
                     "name": name,
                     "description": f"Menciona {name}",
                     "confidence": confidence,
-                    "evidence": [
-                        {"documento_id": documento_id, "page_number": 1, "quote": quote}
-                    ],
+                    "evidence": [{"documento_id": documento_id, "page_number": 1, "quote": quote}],
                 }
             ],
         }
@@ -158,7 +156,9 @@ def test_extract_fact_sheet_includes_technologies_with_valid_evidence(tmp_db):
 
     with patch(
         "services.rag.fact_sheet.stream_llm_response",
-        return_value=iter([_payload_with_technology(doc_id, quote, name="SAP S/4HANA", confidence=0.9)]),
+        return_value=iter(
+            [_payload_with_technology(doc_id, quote, name="SAP S/4HANA", confidence=0.9)]
+        ),
     ):
         record = extract_fact_sheet("FACT-TECH-1", model="gpt-4o-mini")
 
@@ -358,9 +358,7 @@ class TestListPendingLicitacionesSelector:
         _seed_pages("SEL-NO-TECH")  # sin tecnologia/ml_tecnologias: tech_priority=2
         _seed_pages("SEL-TECH", texto="otro pliego")
         with connect() as c:
-            c.execute(
-                "UPDATE licitaciones SET tecnologia = 'SAP' WHERE id_externo = 'SEL-TECH'"
-            )
+            c.execute("UPDATE licitaciones SET tecnologia = 'SAP' WHERE id_externo = 'SEL-TECH'")
         repo = TenderFactSheetsRepository()
         # SEL-NO-TECH falla PRIMERO (updated_at más antiguo) pese a tener la
         # peor tech_priority; SEL-TECH falla después.
@@ -432,7 +430,9 @@ class TestIngestLlmTechnologies:
 
         with patch(
             "services.rag.fact_sheet.stream_llm_response",
-            return_value=iter([_payload_with_technology(doc_id, quote, name="Zzyzx", confidence=0.7)]),
+            return_value=iter(
+                [_payload_with_technology(doc_id, quote, name="Zzyzx", confidence=0.7)]
+            ),
         ):
             record = extract_fact_sheet("FACT-ING-2", model="gpt-4o-mini")
 

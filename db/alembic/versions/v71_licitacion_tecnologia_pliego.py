@@ -84,9 +84,7 @@ def upgrade() -> None:
             "licitacion_id", "tecnologia", "method", name="pk_licitacion_tecnologia_pliego"
         ),
         sa.CheckConstraint("method IN ('keywords','llm')", name="ck_lic_tec_pliego_method"),
-        sa.CheckConstraint(
-            "score >= 0 AND score <= 1", name="ck_lic_tec_pliego_score_range"
-        ),
+        sa.CheckConstraint("score >= 0 AND score <= 1", name="ck_lic_tec_pliego_score_range"),
     )
     # Sin índice adicional: la PK (licitacion_id, tecnologia, method) ya cubre
     # el lookup por licitación del endpoint de detalle (prefijo licitacion_id),

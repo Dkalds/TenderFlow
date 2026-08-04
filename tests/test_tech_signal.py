@@ -87,9 +87,13 @@ class TestScoreDocuments:
 
     def test_unknown_tipo_defaults_to_legal_weight(self):
         """Un tipo de documento inesperado no debe pesar como 'technical'."""
+        # * 6 (12 hits): a peso legal/desconocido (0.3) hacen falta >= 6.67
+        # hits ponderados para cruzar _MIN_WEIGHTED_HITS (2.0); menos
+        # repeticiones dejaban el resultado por debajo del mínimo y
+        # score_documents devolvía {} -- KeyError al indexar ["SAP"].
         with _patched_patterns():
-            unknown = score_documents([{"tipo": "unexpected", "texto": "SAP HANA " * 3}])
-            legal = score_documents([{"tipo": "legal", "texto": "SAP HANA " * 3}])
+            unknown = score_documents([{"tipo": "unexpected", "texto": "SAP HANA " * 6}])
+            legal = score_documents([{"tipo": "legal", "texto": "SAP HANA " * 6}])
         assert unknown["SAP"].score == legal["SAP"].score
 
 
