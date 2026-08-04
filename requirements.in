@@ -3,7 +3,7 @@ requests>=2.31.0,<3
 httpx>=0.27.0,<1
 lxml>=5.0.0,<7
 pandas>=2.1.0,<3
-plotly>=5.18.0,<7
+plotly>=6.9.0,<7
 python-dateutil>=2.8.2,<3
 tenacity>=8.2.0,<10
 openpyxl>=3.1.0,<4
@@ -56,7 +56,7 @@ starlette>=1.0.1,<2
 # perdido de este archivo en algún momento y sobrevivía solo porque requirements.txt
 # no se había vuelto a compilar desde entonces (mismo patrón que el incidente de
 # psycopg-pool — ver scripts/check_requirements_sync.py).
-uvicorn>=0.30.0,<1
+uvicorn>=0.51.0,<1
 # Backend de rate limiting distribuido (services/rate_limit_redis.py, RATE_LIMIT_BACKEND=redis).
 # Mismo motivo que uvicorn: presente en pyproject.toml pero faltaba aquí.
 redis>=5.0,<6
