@@ -321,6 +321,46 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## Cerrados
 
+- [2026-08-04] **P0: el hook de resolución de empresas barría el millón de filas de PSCP en cada ingesta de cualquier fuente** —
+  Detectado auditando los dos timeouts del run #542 de `scrape-daily.yml`. El de PSCP es
+  estructural y esperado (bloque de 1,84 M filas con el mismo `:updated_at`, avanza ~32 k
+  filas/run por `:id`); el de **TED no**: TED bajó sus 112 avisos en 7 s y persistió su cursor
+  a los 10 s del step — los 10 minutos se los comió `_post_ingestion`. Causa raíz:
+  `resolve_all_unlinked(fuente=source_id)` **no acotaba nada**. `fuente` sólo etiquetaba
+  `empresa_aliases.fuente`; `db/empresas.py::fetch_unlinked` ni siquiera recibía el parámetro y
+  filtraba únicamente por `empresa_id IS NULL`. Medido en producción: **1.052.587 adjudicaciones
+  sin enlazar de 1.223.310, y 1.052.168 de ellas (99,96 %) son de una sola fuente, PSCP** — o sea
+  que ingerir 112 avisos de TED arrancaba un recorrido de todo el backlog ajeno a ~10 filas/s
+  (≈29 h para drenarlo). Segundo agravante: `resolve_all_unlinked` arrancaba en `cursor = 0` en
+  **cada llamada**, y el lote observado devolvió `skipped=2967` de 5000 — el 59 % son filas
+  irresolubles (sin alias, o con revisión pendiente) que no salen nunca de la tabla y se
+  reescanean desde el principio en cada ejecución, con el prefijo muerto creciendo. **Daño real,
+  no teórico**: el step moría por SIGKILL dentro de la resolución, así que `detect_duplicates`,
+  `derive_new_events` y `signal_cache_invalidation` — las tres líneas siguientes de
+  `_post_ingestion` — llevaban una semana sin ejecutarse (cursores `dedupe_ted` y
+  `contract_events` clavados en 2026-07-28, `dedupe_placsp` en 2026-07-23). Los otros tres
+  conectores se salvaban por casualidad: terminaban con `parsed=0` y el guard de
+  `base.py` se saltaba el hook entero. Fix en tres piezas: (1) `fetch_unlinked` acepta `fuente` y
+  la aplica como semi-join `EXISTS` contra `licitaciones` — `EXISTS` y no `JOIN` para que el plan
+  siga dirigido por `adjudicaciones.id` y respete el `ORDER BY` sin sort; (2) `resolve_all_unlinked`
+  gana `scope_fuente`, `resume` (cursor `entity_resolution_{ámbito}` en `ingestion_cursors`,
+  mismo patrón que `contract_events`) y `time_budget_s`, con los hooks pasando 2 min —
+  siempre corre al menos un lote, así que el progreso nunca es nulo; (3) el backfill masivo sale
+  del carril de ingesta a `.github/workflows/backfill-empresas.yml`, manual, reanudable y con
+  presupuesto por run. **Trampa encontrada al cablearlo**: la etiqueta que recibía el hook no
+  siempre es un `licitaciones.fuente`. El carril diario pasa `place_live_atom` (nombre del cursor
+  de ingesta) pero graba `placsp`, y el backfill paralelo pasa `placsp_backfill`, que no existe
+  como fuente — acotar por la etiqueta habría dejado ambos carriles resolviendo cero en silencio.
+  Por eso `_resolve_empresas_post_ingestion` toma etiqueta y ámbito como parámetros separados y
+  explícitos, con `_DAILY_FUENTE` y un test que lo ata al default del modelo.
+  **Deriva de esquema destapada de paso**: `idx_lic_fuente` sobre `licitaciones(fuente)` está
+  declarado en `baseline002` y en `v37`, con producción en `v67`, pero **no existe en la BD** —
+  `pg_indexes` devuelve 11 índices sobre `licitaciones` y ninguno es ése, y el plan lo confirma
+  con un `Parallel Seq Scan ... Rows Removed by Filter: 625464` de 8,6 s por lote. Lo repara
+  `v70_pg_missing_lic_fuente_index` (`CONCURRENTLY IF NOT EXISTS`). **Pendiente de aplicar**: v68
+  está entre el estado de producción y v70, así que `alembic upgrade head` no es la vía.
+  13 tests nuevos entre `test_entity_resolution.py`, `test_pipeline.py` y `test_connectors.py`.
+
 - [2026-08-03] **P1: Contrato API↔web COMPLETO — `ALLOWED_OPAQUE` llegó a 0 (65 → 0)** —
   Las 128 rutas declaran DTO Pydantic; en `web/src/generated/api.d.ts` ya no queda ningún
   `{ [key: string]: unknown }` en un 2xx. Por olas: watchlist (9, incl. `feed.xml` con

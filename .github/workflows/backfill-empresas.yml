@@ -1,0 +1,116 @@
+name: Backfill maestro de empresas (manual)
+
+# Drena las adjudicaciones sin `empresa_id` contra el maestro de empresas.
+#
+# **No tiene `schedule` a propósito.** Esto vivía colgado del hook post-ingesta
+# de cada conector (`scraper/connectors/base.py::_post_ingestion`), que barría
+# la tabla entera desde el id 0 en cada ejecución: en agosto de 2026 eso eran
+# ~1,05 M de filas pendientes — el 99,96 % de una sola fuente, PSCP — a ~10
+# filas/s. No cabía en los 10 min del step, moría por SIGKILL, y se llevaba por
+# delante al dedupe y a los eventos de contrato que corrían después.
+#
+# Desde entonces el hook solo resuelve lo de SU fuente, con cursor persistido y
+# 2 min de presupuesto (`services.entity_resolution.HOOK_TIME_BUDGET_S`).
+# Drenar el histórico acumulado es trabajo de este workflow.
+#
+# Es reanudable: el cursor por ámbito vive en `ingestion_cursors`
+# (`entity_resolution_{ámbito}`), así que lanzarlo N veces continúa donde quedó
+# en vez de repetir el prefijo. Por eso el presupuesto por run es corto — es
+# preferible encadenar varias ejecuciones a monopolizar la BD durante horas.
+#
+# Comparte el `concurrency.group: scrape` con `scrape-daily.yml` y
+# `scrape-bulk.yml`: ADR-012 exige un solo plano activo contra la misma BD. El
+# presupuesto por defecto (1 h) queda por debajo de la cadencia de 4 h del
+# carril diario, así que un backfill retrasa como mucho un tick.
+#
+# Cuándo lanzarlo:
+#   - backlog de adjudicaciones sin enlazar (ver `--dry-run`, o la cobertura de
+#     `db.empresas.resolution_stats`);
+#   - tras vaciar la cola de revisión: las filas que quedaron `skipped` por
+#     tener una revisión pendiente están por debajo del cursor y no se
+#     reintentan solas — hace falta `restart: true`;
+#   - tras incorporar una fuente nueva con histórico.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope_fuente:
+        description: "Acotar a una fuente (placsp, pscp, ted, bulk_YYYYMM…). Vacío = todas"
+        default: ""
+        required: false
+      batch:
+        description: "Tamaño de lote"
+        default: "5000"
+        required: false
+      time_budget:
+        description: "Segundos de pared antes de cortar (el cursor queda guardado)"
+        default: "3600"
+        required: false
+      restart:
+        description: "Ignorar el cursor guardado y recorrer desde el principio"
+        type: boolean
+        default: false
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    # Holgura sobre el presupuesto por defecto (1 h) para checkout, instalación
+    # de dependencias y el lote en curso cuando salta el corte: el presupuesto
+    # se comprueba ENTRE lotes, así que el último puede desbordarlo.
+    timeout-minutes: 90
+
+    env:
+      # Mismo perfil que los carriles de ingesta: escribe en la BD de
+      # producción, así que los validators de datos (TLS de DATABASE_URL,
+      # alertas) tienen que estar activos. APP_PROFILE=scraper omite los
+      # secretos que sólo necesita el proceso HTTP.
+      ENV: prod
+      APP_PROFILE: scraper
+      # ADR-012: el plano de orquestación activo es GitHub Actions.
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Cobertura antes
+        run: python -m scripts.backfill_empresas --dry-run
+
+      - name: Run backfill
+        env:
+          SCOPE_FUENTE: ${{ inputs.scope_fuente }}
+          BATCH: ${{ inputs.batch || '5000' }}
+          TIME_BUDGET: ${{ inputs.time_budget || '3600' }}
+          RESTART: ${{ inputs.restart }}
+        run: |
+          ARGS=(--batch "$BATCH" --time-budget "$TIME_BUDGET")
+          if [ -n "$SCOPE_FUENTE" ]; then
+            ARGS+=(--scope-fuente "$SCOPE_FUENTE")
+          fi
+          if [ "$RESTART" = "true" ]; then
+            ARGS+=(--restart)
+          fi
+          echo "Args: ${ARGS[*]}"
+          python -m scripts.backfill_empresas "${ARGS[@]}"

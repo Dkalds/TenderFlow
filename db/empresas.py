@@ -127,18 +127,47 @@ def link_adjudicacion(conn: Any, adjudicacion_id: int, empresa_id: int) -> None:
     )
 
 
-def fetch_unlinked(conn: Any, limit: int, after_id: int = 0) -> list[dict[str, Any]]:
+def fetch_unlinked(
+    conn: Any, limit: int, after_id: int = 0, *, fuente: str | None = None
+) -> list[dict[str, Any]]:
     """Adjudicaciones sin empresa_id, paginadas por id ascendente.
 
     ``after_id`` permite avanzar el cursor aunque algunas filas queden sin
     resolver (p. ej. en cola de revisión) y eviten que el lote se vacíe.
+
+    ``fuente`` acota el barrido a las adjudicaciones cuya licitación viene de
+    esa fuente; ``None`` recorre la tabla entera. Hasta 2026-08 el parámetro
+    no existía y el hook post-ingesta de CADA conector barría la tabla
+    completa: ingerir 112 avisos de TED disparaba un recorrido del millón
+    largo de filas pendientes de PSCP y agotaba el timeout del step antes de
+    llegar a dedupe/eventos de contrato. El barrido global sigue siendo lo
+    correcto para el backfill (scripts/backfill_empresas.py), no para el hook.
+
+    El filtro es un semi-join contra ``licitaciones`` porque ``adjudicaciones``
+    no tiene columna ``fuente`` propia; la sonda la resuelve
+    ``licitaciones_pkey`` (id_externo). ``EXISTS`` y no ``JOIN`` para que el
+    plan pueda seguir dirigido por ``adjudicaciones.id`` y respetar el
+    ``ORDER BY`` sin sort. Necesita ``idx_lic_fuente`` sobre
+    ``licitaciones(fuente)``: sin él el planner elige recorrer ``licitaciones``
+    entera (~8,6 s por lote medidos en producción sobre 1,25 M de filas). Ese
+    índice está en el linaje desde ``baseline002``/``v37`` pero faltaba en la BD
+    de producción; lo repara ``v70_pg_missing_lic_fuente_index``.
     """
-    cur = conn.execute(
-        "SELECT a.id, a.nombre, a.nif, a.es_pyme FROM adjudicaciones a "
-        "WHERE a.empresa_id IS NULL AND a.nombre IS NOT NULL AND a.id > ? "
-        "ORDER BY a.id LIMIT ?",
-        (after_id, limit),
-    )
+    sql = [
+        "SELECT a.id, a.nombre, a.nif, a.es_pyme FROM adjudicaciones a ",
+        "WHERE a.empresa_id IS NULL AND a.nombre IS NOT NULL AND a.id > ? ",
+    ]
+    params: list[Any] = [after_id]
+    if fuente is not None:
+        sql.append(
+            "AND EXISTS (SELECT 1 FROM licitaciones l "
+            "WHERE l.id_externo = a.licitacion_id AND l.fuente = ?) "
+        )
+        params.append(fuente)
+    sql.append("ORDER BY a.id LIMIT ?")
+    params.append(limit)
+
+    cur = conn.execute("".join(sql), tuple(params))
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 

@@ -477,3 +477,43 @@ def test_ted_query_y_cursor():
     assert len(connector._since(None)) == 8  # lookback por defecto
 
     assert connector.new_cursor() is None  # sin fetch no avanza
+
+
+# ---------------------------------------------------------------------------
+# Hook post-ingesta
+# ---------------------------------------------------------------------------
+
+
+def test_post_ingestion_scopes_resolution_to_its_own_source():
+    """Cada conector resuelve lo SUYO, acotado y con presupuesto.
+
+    Hasta 2026-08 llamaba a `resolve_all_unlinked(fuente=source_id)` a secas:
+    `fuente` sólo etiquetaba los aliases, así que ingerir 112 avisos de TED
+    arrancaba un barrido del millón largo de filas pendientes de PSCP desde el
+    id 0, agotaba los 10 min del step y moría antes de llegar al dedupe y a
+    los eventos de contrato que corren después.
+    """
+    from unittest.mock import patch
+
+    from scraper.connectors.base import _post_ingestion
+    from services.entity_resolution import HOOK_TIME_BUDGET_S
+
+    with (
+        patch("services.entity_resolution.resolve_all_unlinked") as resolve_all,
+        patch("services.dedupe.detect_duplicates") as dedupe,
+        patch("services.contract_events.derive_new_events") as events,
+        patch("shared.cache_signal.signal_cache_invalidation") as cache,
+    ):
+        _post_ingestion("ted")
+
+    resolve_all.assert_called_once_with(
+        fuente="ted",
+        scope_fuente="ted",
+        resume=True,
+        time_budget_s=HOOK_TIME_BUDGET_S,
+    )
+    # Los pasos de detrás son justamente los que el timeout se llevaba por
+    # delante: si la resolución vuelve a desbordarse, esto deja de correr.
+    dedupe.assert_called_once_with(fuente="ted")
+    events.assert_called_once_with()
+    cache.assert_called_once_with()
