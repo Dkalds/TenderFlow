@@ -20,6 +20,7 @@ activación manual vía ``db.model_registry.activate_version`` o automática si
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -53,6 +54,13 @@ COBERTURA_OBJETIVO = (0.75, 0.85)
 
 _BASELINE_FALLBACK = ("baja_media_organo_cpv4", "baja_media_cpv4", "baja_media_organo")
 
+# Techo de cardinalidad de una categórica nativa: HistGradientBoosting rechaza
+# cualquier columna con más de ``max_bins`` (255) valores distintos.
+MAX_CATEGORIAS = 255
+# Bucket de cola larga cuando una columna supera el techo. El sentinel no puede
+# colisionar con un valor real (CPV, CCAA, tipo de contrato…).
+CATEGORIA_OTRAS = "__otras__"
+
 
 @dataclass
 class Prediccion:
@@ -62,25 +70,68 @@ class Prediccion:
     p90: float
 
 
+def _aprender_categorias(filas: list[FilaDataset], col: str) -> dict[str, int]:
+    """Mapa valor→ordinal de una columna categórica, acotado a ``MAX_CATEGORIAS``.
+
+    ``HistGradientBoostingRegressor`` rechaza una categórica nativa con más de
+    ``max_bins`` (255) valores distintos. En agosto de 2026 ``cpv4`` alcanzó
+    1061 códigos y ``entrenar()`` empezó a morir con ``ValueError`` en cada
+    pasada de la pipeline. El fallo era invisible desde CI —
+    ``_run_post_ingestion_steps`` se traga la excepción y el run sale verde,
+    con un email como único aviso — así que el modelo de baja se quedó
+    congelado en su última versión mientras el scoring seguía sirviéndola.
+
+    Se conservan los ``MAX_CATEGORIAS - 1`` valores más frecuentes y el resto
+    cae en ``CATEGORIA_OTRAS``: la cola larga de CPV son códigos con un puñado
+    de observaciones cada uno, sin señal propia para un árbol, y ``cpv2`` ya
+    aporta la división gruesa. El orden es determinista (frecuencia desc, valor
+    asc) para que dos entrenamientos sobre el mismo dataset den el mismo mapa.
+    """
+    frecuencias = Counter(str(f.features[col]) for f in filas)
+    if len(frecuencias) <= MAX_CATEGORIAS:
+        return {v: i for i, v in enumerate(sorted(frecuencias))}
+
+    conservados = sorted(
+        sorted(frecuencias, key=lambda v: (-frecuencias[v], v))[: MAX_CATEGORIAS - 1]
+    )
+    log.info(
+        "baja_model_categorias_agrupadas",
+        columna=col,
+        distintos=len(frecuencias),
+        conservados=len(conservados),
+    )
+    mapa = {v: i for i, v in enumerate(conservados)}
+    mapa[CATEGORIA_OTRAS] = len(conservados)
+    return mapa
+
+
 def _codificar(
     filas: list[FilaDataset], categorias: dict[str, dict[str, int]] | None = None
 ) -> tuple[npt.NDArray[np.float64], dict[str, dict[str, int]]]:
-    """Matriz numérica: categóricas por ordinal aprendido en train (-1 = unseen)."""
+    """Matriz numérica: categóricas por ordinal aprendido en train.
+
+    Un valor no visto en entrenamiento va al bucket de cola larga si la columna
+    se agrupó (``CATEGORIA_OTRAS``) y a ``-1`` si no. ``-1`` es una categoría
+    desconocida para el ``OrdinalEncoder`` interno de sklearn, que la mapea a
+    NaN → se trata como faltante. Los modelos serializados antes de que
+    existiera el bucket no lo tienen en su mapa y conservan el comportamiento
+    anterior sin reentrenar.
+    """
     import numpy as np
 
     aprender = categorias is None
     cats: dict[str, dict[str, int]] = categorias if categorias is not None else {}
     if aprender:
         for col in CATEGORICAL_COLUMNS:
-            valores = sorted({str(f.features[col]) for f in filas})
-            cats[col] = {v: i for i, v in enumerate(valores)}
+            cats[col] = _aprender_categorias(filas, col)
 
     X = np.full((len(filas), len(FEATURE_COLUMNS)), np.nan, dtype=np.float64)
     for i, fila in enumerate(filas):
         for j, col in enumerate(FEATURE_COLUMNS):
             valor = fila.features.get(col)
             if col in CATEGORICAL_COLUMNS:
-                X[i, j] = float(cats[col].get(str(valor), -1))
+                mapa = cats[col]
+                X[i, j] = float(mapa.get(str(valor), mapa.get(CATEGORIA_OTRAS, -1)))
             elif valor is not None:
                 X[i, j] = float(valor)
     return X, cats
@@ -246,6 +297,9 @@ def entrenar(
         "n_valid": len(valid),
         "valid_desde": valid[0].fecha,
         "valid_hasta": valid[-1].fecha,
+        # Cardinalidad efectiva por columna categórica: es la métrica que se
+        # acercó al techo de 255 sin que nadie la mirara hasta que reventó.
+        "categorias": {col: len(categorias[col]) for col in CATEGORICAL_COLUMNS},
     }
 
     cumple = (

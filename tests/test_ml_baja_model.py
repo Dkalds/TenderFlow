@@ -115,6 +115,119 @@ def test_load_no_pin_uses_colocated_checksum(tmp_path, monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Codificación de categóricas (techo de cardinalidad de HistGradientBoosting)
+# ---------------------------------------------------------------------------
+
+
+def _fila(cpv4: str, i: int) -> FilaDataset:
+    """Fila sintética con todas las FEATURE_COLUMNS pobladas."""
+    return FilaDataset(
+        licitacion_id=f"L{i}",
+        fecha="2026-01-15",
+        features={
+            "cpv2": cpv4[:2],
+            "cpv4": cpv4,
+            "tipo_contrato": "Servicios",
+            "ccaa": "Madrid",
+            "fuente": "placsp",
+            "banda_importe": "b2",
+            "log_importe": 11.5,
+            "n_ofertas": 3.0,
+            "baja_media_organo": 0.10,
+            "baja_media_cpv4": 0.10,
+            "baja_media_organo_cpv4": 0.10,
+            "hhi_segmento": 1000.0,
+            "mes": 1.0,
+            "trimestre": 1.0,
+        },
+        baja=0.10,
+    )
+
+
+def _filas_cpv4(n: int, frecuentes: int = 0) -> list[FilaDataset]:
+    """``n`` códigos CPV-4 distintos; los ``frecuentes`` primeros repiten 3 veces."""
+    filas: list[FilaDataset] = []
+    for k in range(n):
+        for _ in range(3 if k < frecuentes else 1):
+            filas.append(_fila(f"{7000 + k:04d}", len(filas)))
+    return filas
+
+
+def test_codificar_no_agrupa_por_debajo_del_techo():
+    from services.ml.baja_model import CATEGORIA_OTRAS, _codificar
+
+    _, cats = _codificar(_filas_cpv4(50))
+
+    assert len(cats["cpv4"]) == 50
+    assert CATEGORIA_OTRAS not in cats["cpv4"]
+    # Orden alfabético estable cuando no hay agrupación.
+    assert cats["cpv4"]["7000"] == 0 and cats["cpv4"]["7049"] == 49
+
+
+def test_codificar_agrupa_la_cola_larga_por_encima_del_techo():
+    """Regresión (2026-08): cpv4 llegó a 1061 códigos y el fit reventaba."""
+    from services.ml.baja_model import CATEGORIA_OTRAS, MAX_CATEGORIAS, _codificar
+
+    filas = _filas_cpv4(400, frecuentes=MAX_CATEGORIAS - 1)
+    _, cats = _codificar(filas)
+
+    assert len(cats["cpv4"]) == MAX_CATEGORIAS
+    assert CATEGORIA_OTRAS in cats["cpv4"]
+    assert max(cats["cpv4"].values()) == MAX_CATEGORIAS - 1
+    # Se conservan los más frecuentes; la cola larga cae en el bucket común.
+    assert "7000" in cats["cpv4"] and "7399" not in cats["cpv4"]
+    # Las columnas de baja cardinalidad no se tocan.
+    assert len(cats["ccaa"]) == 1 and CATEGORIA_OTRAS not in cats["ccaa"]
+
+
+def test_codificar_manda_valores_no_vistos_al_bucket_otras():
+    from services.ml.baja_model import CATEGORIA_OTRAS, MAX_CATEGORIAS, _codificar
+    from services.ml.features import FEATURE_COLUMNS
+
+    _, cats = _codificar(_filas_cpv4(400, frecuentes=MAX_CATEGORIAS - 1))
+    X, _ = _codificar([_fila("9999", 0)], cats)
+
+    assert X[0, FEATURE_COLUMNS.index("cpv4")] == cats["cpv4"][CATEGORIA_OTRAS]
+
+
+def test_codificar_modelo_antiguo_sin_bucket_sigue_usando_menos_uno():
+    """Un .pkl entrenado antes del bucket no lo tiene en su mapa: -1 (unseen)."""
+    from services.ml.baja_model import _codificar
+    from services.ml.features import FEATURE_COLUMNS
+
+    cats = {col: {"na": 0} for col in ("cpv2", "tipo_contrato", "ccaa", "fuente", "banda_importe")}
+    cats["cpv4"] = {"7000": 0, "7001": 1}
+
+    X, _ = _codificar([_fila("9999", 0)], cats)
+
+    assert X[0, FEATURE_COLUMNS.index("cpv4")] == -1
+
+
+def test_fit_con_cardinalidad_alta_ya_no_revienta():
+    """El fallo real de producción: ValueError('cardinality <= 255') en cada
+    pasada de ml_retrain. No ponía el run en rojo (el paso se traga la
+    excepción), sólo dejaba el modelo congelado en silencio."""
+    import numpy as np
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    from services.ml.baja_model import _codificar
+    from services.ml.features import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
+
+    filas = _filas_cpv4(400, frecuentes=254)
+    X, _ = _codificar(filas)
+    y = np.array([0.10 + (i % 7) * 0.01 for i in range(len(filas))])
+
+    est = HistGradientBoostingRegressor(
+        max_iter=5,
+        categorical_features=[col in CATEGORICAL_COLUMNS for col in FEATURE_COLUMNS],
+        random_state=42,
+    )
+    est.fit(X, y)
+
+    assert est.predict(X[:1]).shape == (1,)
+
+
+# ---------------------------------------------------------------------------
 # Entrenamiento
 # ---------------------------------------------------------------------------
 
