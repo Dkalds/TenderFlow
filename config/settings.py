@@ -454,6 +454,19 @@ class Settings(BaseSettings):
     # mero despliegue de la migración.
     PLIEGO_FACTS_ENABLED: bool = False
     PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-pro"
+    # Tamaños de lote por fase del job scheduler/jobs/documentos_embeddings.py.
+    # pliegos.yml no propaga REDIS_URL, así que el gate de presupuesto LLM
+    # arranca de 0 en cada corrida -- el tope real del batch de facts es este
+    # tamaño de lote, no un presupuesto acumulado (documentado, no un bug).
+    PLIEGO_FETCH_BATCH: int = 300
+    PLIEGO_EMBED_BATCH: int = 100
+    PLIEGO_FACTS_BATCH: int = 25
+    # Tamaño del lote de licitaciones puntuadas por corrida de la fase de
+    # señal de tecnología (keywords sobre el texto del pliego).
+    PLIEGO_TECH_SIGNAL_BATCH: int = 500
+    # Score mínimo (matched_terms ponderado por tipo de documento) para que
+    # una señal de pliego entre al merge hacia ml_tecnologias/licitacion_tecnologia_score.
+    PLIEGO_TECH_MIN_SCORE: float = 0.5
 
     # ── LLM: presupuesto de gasto + timeout (RFC llm-dependencia-gestionada) ──
     # Tope de gasto del proveedor LLM por ventana (USD). <= 0 desactiva el límite.

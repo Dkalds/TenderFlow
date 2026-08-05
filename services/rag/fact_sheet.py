@@ -14,7 +14,7 @@ from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRec
 
 log = get_logger(__name__)
 
-EXTRACTION_VERSION = "tender-facts-v1"
+EXTRACTION_VERSION = "tender-facts-v2"
 _MAX_CONTEXT_CHARS = 15_000
 _MAX_PAGES = 24
 _TOPIC_TERMS = (
@@ -32,6 +32,11 @@ _TOPIC_TERMS = (
     "prórroga",
     "plazo",
 )
+# v2 (plan "categorización alimentada por los pliegos"): la selección de
+# páginas también pondera menciones de tecnología, o el pliego técnico
+# (frecuentemente la página más rica en estos términos) puede quedar fuera
+# del presupuesto de contexto si solo se puntúa por términos administrativos.
+_TECH_TERMS = ("sap", "oracle", "salesforce", "microsoft", "hana", "erp", "crm", "software")
 
 _EXTRACTION_QUESTION = """
 Extrae la ficha del pliego con estas claves JSON exactas:
@@ -43,7 +48,12 @@ penalties: [{description, amount_eur, confidence, evidence}],
 subcontracting: [{description, confidence, evidence}],
 team_requirements: [{description, role, minimum_years, quantity, confidence, evidence}],
 extensions: [{description, confidence, evidence}],
-critical_deadlines: [{name, description, date_value, confidence, evidence}].
+critical_deadlines: [{name, description, date_value, confidence, evidence}],
+technologies: [{name, description, confidence, evidence}].
+Para technologies: solo plataformas o tecnologías mencionadas explícitamente
+como objeto del contrato (ej. "migración a SAP S/4HANA", "mantenimiento de
+Salesforce Service Cloud") -- no incluyas menciones incidentales o genéricas
+(ej. "se trabajará con herramientas ofimáticas estándar").
 Cada evidence es {documento_id, page_number, quote}; usa null cuando un valor
 tipado no aparezca y listas vacías cuando no haya evidencia.
 """.strip()
@@ -51,7 +61,9 @@ tipado no aparezca y listas vacías cuando no haya evidencia.
 
 def _page_score(page: dict[str, Any]) -> int:
     text = str(page.get("texto") or "").casefold()
-    return sum(text.count(term.casefold()) for term in _TOPIC_TERMS)
+    topic_hits = sum(text.count(term.casefold()) for term in _TOPIC_TERMS)
+    tech_hits = sum(text.count(term.casefold()) for term in _TECH_TERMS)
+    return topic_hits + tech_hits
 
 
 def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:

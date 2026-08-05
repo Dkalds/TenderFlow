@@ -51,12 +51,31 @@ class DocumentosRepository:
         return len(rows)
 
     def list_pendientes(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Documentos con ``status='pending'``, los más antiguos primero (FIFO)."""
+        """Documentos con ``status='pending'``, priorizados por relevancia.
+
+        El backlog (~44k documentos referenciados, ~1k licitaciones
+        tech-relevantes) se drena por lotes diarios pequeños frente al feed
+        PLACSP diario, así que el orden decide qué se procesa primero:
+        1. Licitaciones con ``tecnologia`` (keyword match en título) o
+           ``ml_tecnologias`` (clasificador) no vacíos van primero -- son las
+           que la categorización necesita antes de nada.
+        2. Dentro de cada grupo, más recientes primero: los enlaces de PLACSP
+           usan tokens rotativos que caducan (~82% de los antiguos), así que
+           el backlog viejo tiene tasa de error de descarga alta y queda al
+           final -- newest-first evita gastar el lote diario en URIs muertas.
+        """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, licitacion_id, tipo, uri, filename, content_type, size_bytes "
-                "FROM documentos WHERE status = 'pending' "
-                "ORDER BY created_at LIMIT ?",
+                "SELECT d.id, d.licitacion_id, d.tipo, d.uri, d.filename, "
+                "d.content_type, d.size_bytes "
+                "FROM documentos d "
+                "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
+                "WHERE d.status = 'pending' "
+                "ORDER BY "
+                "(l.tecnologia IS NOT NULL AND l.tecnologia != '') DESC, "
+                "(l.ml_tecnologias IS NOT NULL AND l.ml_tecnologias != '') DESC, "
+                "d.created_at DESC "
+                "LIMIT ?",
                 (max(1, min(int(limit), 1000)),),
             )
             return rows_to_dicts(cur)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 from collections.abc import Generator
 from typing import Any, Generic, TypeVar
@@ -28,7 +29,7 @@ from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from shared.export_safety import sanitize_spreadsheet_record
-from shared.tender_facts import TenderFactSheetRecord
+from shared.tender_facts import EvidenceRef, TenderFactSheetRecord
 
 log = get_logger(__name__)
 
@@ -604,9 +605,10 @@ async def extract_tender_fact_sheet(
     """Reextracción explícita; valida toda cita antes de persistirla."""
     from config import settings
     from services.rag.fact_sheet import extract_fact_sheet
+    from services.tech_signal import ingest_llm_technologies
 
     try:
-        return await run_db(
+        record = await run_db(
             extract_fact_sheet,
             id_externo,
             model=settings.PLIEGO_FACTS_MODEL,
@@ -622,6 +624,16 @@ async def extract_tender_fact_sheet(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="No se pudo extraer una ficha verificable del pliego.",
         ) from exc
+
+    try:
+        await run_db(ingest_llm_technologies, record)
+    except Exception as exc:
+        # La ficha ya se persistió y es lo que la ruta promete devolver; un
+        # fallo al ingerir la señal de tecnología no debe convertir una
+        # extracción exitosa en un 502.
+        log.warning("tender_fact_sheet_tech_ingest_failed", id_externo=id_externo, error=str(exc))
+
+    return record
 
 
 class TechScore(BaseModel):
@@ -659,6 +671,107 @@ async def get_tech_scores(
     """
     scores = await run_db(_lic_repo.tech_scores_for, id_externo)
     return TechScoresResult(id_externo=id_externo, scores=[TechScore(**score) for score in scores])
+
+
+# ── /licitaciones/{id_externo}/tecnologias ────────────────────────────────
+
+
+class TecnologiaDetalle(BaseModel):
+    """Consolida, por tecnología, las señales que la detectaron.
+
+    ``en_titulo`` es el keyword-match histórico sobre título/descripción
+    (``licitaciones.tecnologia`` -- semántica intacta, sin cambios). Las
+    demás son aditivas: el clasificador ML sobre título/descripción, y la
+    señal detectada en el texto de los pliegos (keywords y/o LLM, plan
+    "categorización alimentada por los pliegos"). Cualquier combinación de
+    campos puede estar poblada -- una tecnología puede venir solo del pliego
+    sin que el título la mencione, que es justamente el caso que este plan
+    resuelve (ej. "mantenimiento del sistema de RRHH" sin decir si es SAP
+    HCM o Meta4).
+    """
+
+    tecnologia: str
+    en_titulo: bool
+    ml_probabilidad: float | None = None
+    ml_threshold_aplicado: float | None = None
+    pliego_keywords_score: float | None = None
+    pliego_keywords_terms: list[str] | None = None
+    pliego_llm_score: float | None = None
+    pliego_llm_evidence: list[EvidenceRef] | None = None
+
+
+class TecnologiasSenalResult(BaseModel):
+    id_externo: str
+    items: list[TecnologiaDetalle]
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/tecnologias",
+    response_model=TecnologiasSenalResult,
+    summary="Tecnologías detectadas: título, ML y señal de pliego (keywords/LLM), con evidencia",
+    responses={
+        401: {"description": "Autenticación inválida"},
+        404: {"description": "No encontrado"},
+    },
+)
+async def get_tecnologias(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> TecnologiasSenalResult:
+    """Une por nombre de tecnología las tres fuentes de la categorización:
+    título/descripción (keywords), el clasificador ML, y la señal detectada
+    en el texto de los pliegos con su evidencia (términos o citas).
+    """
+    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+
+    data = await run_db(_lic_repo.get_by_id, id_externo)
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+
+    en_titulo = {t.strip() for t in str(data.get("tecnologia") or "").split(",") if t.strip()}
+    ml_scores = await run_db(_lic_repo.tech_scores_for, id_externo)
+    pliego_repo = TecnologiaPliegoRepository()
+    pliego_rows = await run_db(pliego_repo.list_for_licitacion, id_externo)
+
+    items: dict[str, TecnologiaDetalle] = {}
+
+    def _entry(tech: str) -> TecnologiaDetalle:
+        if tech not in items:
+            items[tech] = TecnologiaDetalle(tecnologia=tech, en_titulo=tech in en_titulo)
+        return items[tech]
+
+    for tech in en_titulo:
+        _entry(tech)
+
+    for score in ml_scores:
+        entry = _entry(str(score["tecnologia"]))
+        entry.ml_probabilidad = score.get("probabilidad")
+        entry.ml_threshold_aplicado = score.get("threshold_aplicado")
+
+    for row in pliego_rows:
+        entry = _entry(str(row["tecnologia"]))
+        if row["method"] == "keywords":
+            entry.pliego_keywords_score = row["score"]
+            terms = row.get("matched_terms")
+            entry.pliego_keywords_terms = json.loads(terms) if terms else None
+        elif row["method"] == "llm":
+            entry.pliego_llm_score = row["score"]
+            evidence = row.get("evidence_json")
+            entry.pliego_llm_evidence = (
+                [EvidenceRef.model_validate(e) for e in json.loads(evidence)] if evidence else None
+            )
+
+    def _sort_key(item: TecnologiaDetalle) -> tuple[float, str]:
+        best = max(
+            item.ml_probabilidad or 0.0,
+            item.pliego_keywords_score or 0.0,
+            item.pliego_llm_score or 0.0,
+        )
+        return (-best, item.tecnologia)
+
+    return TecnologiasSenalResult(
+        id_externo=id_externo, items=sorted(items.values(), key=_sort_key)
+    )
 
 
 # ── /adjudicaciones ───────────────────────────────────────────────────────

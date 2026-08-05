@@ -65,6 +65,16 @@ class DeadlineFact(FactItem):
     date_value: date | None = None
 
 
+class TechnologyMention(FactItem):
+    """Plataforma/tecnología mencionada explícitamente como objeto del
+    contrato (no una mención de pasada -- ver la pregunta de extracción en
+    ``services/rag/fact_sheet.py``). ``name`` es el nombre tal como aparece
+    en el pliego; la normalización a ``TECH_LABELS`` la hace
+    ``services.tech_signal.ingest_llm_technologies``, no el extractor."""
+
+    name: str = Field(min_length=1, max_length=100)
+
+
 class TenderFactSheet(BaseModel):
     """Ficha de decisión derivada de pliegos, validada y citable."""
 
@@ -79,6 +89,7 @@ class TenderFactSheet(BaseModel):
     team_requirements: list[TeamRequirement] = Field(default_factory=list, max_length=50)
     extensions: list[FactItem] = Field(default_factory=list, max_length=30)
     critical_deadlines: list[DeadlineFact] = Field(default_factory=list, max_length=30)
+    technologies: list[TechnologyMention] = Field(default_factory=list, max_length=30)
 
 
 FactSheetStatus = Literal["pending", "extracted", "needs_review", "failed"]

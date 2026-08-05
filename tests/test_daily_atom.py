@@ -34,6 +34,7 @@ def test_run_continues_when_analytics_export_raises():
         ),
         patch("scheduler.pipeline_runs._run_ml_scoring"),
         patch("scheduler.pipeline_runs._run_ml_tecnologias"),
+        patch("scheduler.pipeline_runs._run_tech_signal_merge"),
         patch("scheduler.pipeline_runs._run_kpi_precompute"),
         patch("scheduler.pipeline_runs._run_aggregates_precompute"),
         patch("scheduler.pipeline_runs._run_watchlist_notify"),

@@ -14,14 +14,29 @@ def repo(tmp_db):
     return DocumentosRepository()
 
 
-def _insert_licitacion(id_externo: str) -> None:
+def _insert_licitacion(
+    id_externo: str, *, tecnologia: str | None = None, ml_tecnologias: str | None = None
+) -> None:
     from db.database import connect
 
     with connect() as c:
         c.execute(
-            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
-            "VALUES (?, ?, 'placsp', CURRENT_TIMESTAMP)",
-            (id_externo, f"Contrato {id_externo}"),
+            "INSERT INTO licitaciones "
+            "(id_externo, titulo, fuente, fecha_extraccion, tecnologia, ml_tecnologias) "
+            "VALUES (?, ?, 'placsp', CURRENT_TIMESTAMP, ?, ?)",
+            (id_externo, f"Contrato {id_externo}", tecnologia, ml_tecnologias),
+        )
+
+
+def _set_created_at(documento_id: int, created_at: str) -> None:
+    """Fuerza ``created_at`` para tests deterministas de orden (evita depender
+    de la resolución del reloj entre dos INSERT sucesivos)."""
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "UPDATE documentos SET created_at = ? WHERE id = ?",
+            (created_at, documento_id),
         )
 
 
@@ -87,7 +102,7 @@ class TestUpsertMeta:
 
 
 class TestListPendientes:
-    def test_orders_by_created_at_fifo(self, repo):
+    def test_respects_limit(self, repo):
         _insert_licitacion("EXP-6")
         repo.upsert_meta(
             "EXP-6",
@@ -105,6 +120,51 @@ class TestListPendientes:
         doc = repo.list_pendientes()[0]
         repo.mark_error(doc["id"], error_detail="descarga fallida")
         assert repo.list_pendientes() == []
+
+    def test_tecnologia_keyword_match_goes_first(self, repo):
+        """Licitaciones con `tecnologia` (keyword match en título) priman
+        sobre las que no tienen ninguna señal de tecnología, sin importar
+        cuál se ingirió antes."""
+        _insert_licitacion("EXP-PRIO-1")
+        _insert_licitacion("EXP-PRIO-2", tecnologia="SAP")
+        repo.upsert_meta("EXP-PRIO-1", [DocumentoReferencia(tipo="legal", uri="https://x/p1.pdf")])
+        repo.upsert_meta("EXP-PRIO-2", [DocumentoReferencia(tipo="legal", uri="https://x/p2.pdf")])
+        doc1 = next(p for p in repo.list_pendientes() if p["licitacion_id"] == "EXP-PRIO-1")
+        _set_created_at(doc1["id"], "2026-08-04T00:00:00+00:00")  # más antigua
+
+        pendientes = repo.list_pendientes()
+
+        assert [p["licitacion_id"] for p in pendientes] == ["EXP-PRIO-2", "EXP-PRIO-1"]
+
+    def test_ml_tecnologias_also_counts_as_tech_relevant(self, repo):
+        """El clasificador (ml_tecnologias) es la segunda señal de prioridad,
+        incluso sin keyword match en título (tecnologia NULL)."""
+        _insert_licitacion("EXP-PRIO-3")
+        _insert_licitacion("EXP-PRIO-4", ml_tecnologias="ORACLE,SAP")
+        repo.upsert_meta("EXP-PRIO-3", [DocumentoReferencia(tipo="legal", uri="https://x/p3.pdf")])
+        repo.upsert_meta("EXP-PRIO-4", [DocumentoReferencia(tipo="legal", uri="https://x/p4.pdf")])
+        doc3 = next(p for p in repo.list_pendientes() if p["licitacion_id"] == "EXP-PRIO-3")
+        _set_created_at(doc3["id"], "2026-08-04T00:00:00+00:00")
+
+        pendientes = repo.list_pendientes()
+
+        assert [p["licitacion_id"] for p in pendientes] == ["EXP-PRIO-4", "EXP-PRIO-3"]
+
+    def test_newest_first_within_same_priority_tier(self, repo):
+        """Dentro del mismo nivel de prioridad, más reciente primero (mitiga
+        el backlog viejo con tokens PLACSP caducados)."""
+        _insert_licitacion("EXP-OLD")
+        _insert_licitacion("EXP-NEW")
+        repo.upsert_meta("EXP-OLD", [DocumentoReferencia(tipo="legal", uri="https://x/old.pdf")])
+        repo.upsert_meta("EXP-NEW", [DocumentoReferencia(tipo="legal", uri="https://x/new.pdf")])
+        old_doc = next(p for p in repo.list_pendientes() if p["licitacion_id"] == "EXP-OLD")
+        new_doc = next(p for p in repo.list_pendientes() if p["licitacion_id"] == "EXP-NEW")
+        _set_created_at(old_doc["id"], "2020-01-01T00:00:00+00:00")
+        _set_created_at(new_doc["id"], "2026-08-04T00:00:00+00:00")
+
+        pendientes = repo.list_pendientes()
+
+        assert [p["licitacion_id"] for p in pendientes] == ["EXP-NEW", "EXP-OLD"]
 
 
 class TestListByLicitacion:

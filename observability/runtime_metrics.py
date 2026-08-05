@@ -123,6 +123,19 @@ try:
         "Chunks con embedding insertados en documento_chunks",
     )
 
+    # ── Pliegos: señal de tecnología (plan categorización-pliegos) ─────────
+    pliego_tech_signal_total = Counter(
+        "pliego_tech_signal_total",
+        "Licitaciones puntuadas por señal de tecnología de pliego, por resultado",
+        ["method", "status"],  # method: keywords | llm · status: scored | no_signal | error
+    )
+
+    pliego_tech_merge_total = Counter(
+        "pliego_tech_merge_total",
+        "Fusiones de señal de pliego hacia ml_tecnologias/licitacion_tecnologia_score",
+        ["outcome"],  # ok | error
+    )
+
     # ── Dedupe cross-fuente (RFC validacion-dedupe-linaje) ────────────────
     dedupe_marked_total = Counter(
         "dedupe_marked_total",
@@ -165,6 +178,8 @@ except ImportError:  # pragma: no cover
     llm_budget_exceeded_total = _NoopMetric()  # type: ignore[assignment]
     documentos_fetched_total = _NoopMetric()  # type: ignore[assignment]
     documento_chunks_total = _NoopMetric()  # type: ignore[assignment]
+    pliego_tech_signal_total = _NoopMetric()  # type: ignore[assignment]
+    pliego_tech_merge_total = _NoopMetric()  # type: ignore[assignment]
     dedupe_marked_total = _NoopMetric()  # type: ignore[assignment]
     dedupe_match_rate = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False

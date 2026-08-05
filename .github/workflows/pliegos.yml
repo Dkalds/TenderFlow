@@ -1,4 +1,4 @@
-name: Pliegos (fetch + chunking + embeddings)
+name: Pliegos (fetch + chunking + embeddings + fichas)
 
 on:
   schedule:
@@ -6,6 +6,23 @@ on:
     # tiempo a que haya documentos `pending` nuevos del día antes de procesarlos.
     - cron: "0 9 * * *"
   workflow_dispatch:
+    inputs:
+      fetch_batch:
+        description: "Documentos a descargar+extraer en este lote (fetch)"
+        required: false
+        default: "300"
+      embed_batch:
+        description: "Documentos a chunkear+embeber en este lote (embed)"
+        required: false
+        default: "100"
+      facts_batch:
+        description: "Licitaciones a procesar en la fase de fichas LLM (facts)"
+        required: false
+        default: "25"
+      tech_signal_batch:
+        description: "Licitaciones a puntuar en la fase de señal de tecnología (tech_signal)"
+        required: false
+        default: "500"
 
 permissions:
   contents: read
@@ -17,7 +34,10 @@ concurrency:
 jobs:
   pliegos:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # El lote diario subió de 50 a 300 (PLIEGO_FETCH_BATCH) para drenar el
+    # backlog de ~44k documentos en semanas en vez de meses; 30min medía
+    # corto para el lote nuevo.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -43,10 +63,20 @@ jobs:
           # el proceso HTTP (SIGNING_KEY, REDIS_URL, CORS): son ejes distintos.
           ENV: prod
           APP_PROFILE: scraper
+          # ADR-012: este workflow ES el plano de orquestación activo para
+          # este job (paridad con scrape-daily.yml).
+          SCHEDULER_PLANE: actions
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           PLIEGO_FACTS_ENABLED: ${{ vars.PLIEGO_FACTS_ENABLED || 'false' }}
           PLIEGO_FACTS_MODEL: ${{ vars.PLIEGO_FACTS_MODEL || 'deepseek-ai/deepseek-v4-pro' }}
+          # Overrides opcionales vía workflow_dispatch para lotes de
+          # recuperación manual (backlog); en el cron nocturno los inputs
+          # llegan vacíos y caen a los mismos defaults de config/settings.py.
+          PLIEGO_FETCH_BATCH: ${{ github.event.inputs.fetch_batch || '300' }}
+          PLIEGO_EMBED_BATCH: ${{ github.event.inputs.embed_batch || '100' }}
+          PLIEGO_FACTS_BATCH: ${{ github.event.inputs.facts_batch || '25' }}
+          PLIEGO_TECH_SIGNAL_BATCH: ${{ github.event.inputs.tech_signal_batch || '500' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

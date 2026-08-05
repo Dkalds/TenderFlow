@@ -1889,6 +1889,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/tecnologias": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tecnologías detectadas: título, ML y señal de pliego (keywords/LLM), con evidencia
+         * @description Une por nombre de tecnología las tres fuentes de la categorización:
+         *     título/descripción (keywords), el clasificador ML, y la señal detectada
+         *     en el texto de los pliegos con su evidencia (términos o citas).
+         */
+        get: operations["get_tecnologias_api_v1_licitaciones__id_externo__tecnologias_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{licitacion_id}/escenarios-precio": {
         parameters: {
             query?: never;
@@ -6434,6 +6456,56 @@ export interface components {
             scores: components["schemas"]["TechScore"][];
         };
         /**
+         * TechnologyMention
+         * @description Plataforma/tecnología mencionada explícitamente como objeto del
+         *     contrato (no una mención de pasada -- ver la pregunta de extracción en
+         *     ``services/rag/fact_sheet.py``). ``name`` es el nombre tal como aparece
+         *     en el pliego; la normalización a ``TECH_LABELS`` la hace
+         *     ``services.tech_signal.ingest_llm_technologies``, no el extractor.
+         */
+        TechnologyMention: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Name */
+            name: string;
+        };
+        /**
+         * TecnologiaDetalle
+         * @description Consolida, por tecnología, las señales que la detectaron.
+         *
+         *     ``en_titulo`` es el keyword-match histórico sobre título/descripción
+         *     (``licitaciones.tecnologia`` -- semántica intacta, sin cambios). Las
+         *     demás son aditivas: el clasificador ML sobre título/descripción, y la
+         *     señal detectada en el texto de los pliegos (keywords y/o LLM, plan
+         *     "categorización alimentada por los pliegos"). Cualquier combinación de
+         *     campos puede estar poblada -- una tecnología puede venir solo del pliego
+         *     sin que el título la mencione, que es justamente el caso que este plan
+         *     resuelve (ej. "mantenimiento del sistema de RRHH" sin decir si es SAP
+         *     HCM o Meta4).
+         */
+        TecnologiaDetalle: {
+            /** En Titulo */
+            en_titulo: boolean;
+            /** Ml Probabilidad */
+            ml_probabilidad?: number | null;
+            /** Ml Threshold Aplicado */
+            ml_threshold_aplicado?: number | null;
+            /** Pliego Keywords Score */
+            pliego_keywords_score?: number | null;
+            /** Pliego Keywords Terms */
+            pliego_keywords_terms?: string[] | null;
+            /** Pliego Llm Evidence */
+            pliego_llm_evidence?: components["schemas"]["EvidenceRef"][] | null;
+            /** Pliego Llm Score */
+            pliego_llm_score?: number | null;
+            /** Tecnologia */
+            tecnologia: string;
+        };
+        /**
          * TecnologiaDetalleItem
          * @description Single tender row in the detail table.
          */
@@ -6542,6 +6614,13 @@ export interface components {
              */
             total: number;
         };
+        /** TecnologiasSenalResult */
+        TecnologiasSenalResult: {
+            /** Id Externo */
+            id_externo: string;
+            /** Items */
+            items: components["schemas"]["TecnologiaDetalle"][];
+        };
         /**
          * TenderFactSheet
          * @description Ficha de decisión derivada de pliegos, validada y citable.
@@ -6565,6 +6644,8 @@ export interface components {
             team_requirements?: components["schemas"]["TeamRequirement"][];
             /** Technical Solvency */
             technical_solvency?: components["schemas"]["FactItem"][];
+            /** Technologies */
+            technologies?: components["schemas"]["TechnologyMention"][];
         };
         /**
          * TenderFactSheetRecord
@@ -10978,6 +11059,55 @@ export interface operations {
                 content?: never;
             };
             /** @description No encontrado o sin scores */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tecnologias_api_v1_licitaciones__id_externo__tecnologias_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TecnologiasSenalResult"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontrado */
             404: {
                 headers: {
                     [name: string]: unknown;

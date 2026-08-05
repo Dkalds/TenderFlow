@@ -5,6 +5,7 @@ import { ExternalLink, Link2, MessageSquare, X } from "lucide-react";
 import { toast } from "sonner";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { DocumentosBlock } from "@/components/documentos-block";
+import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
@@ -284,6 +285,8 @@ export function DetailInspector({
               <Fact label="Inicio" value={formatDate(l.fecha_inicio)} />
               <Fact label="Fin" value={formatDate(l.fecha_fin)} />
             </div>
+
+            <TecnologiasBlock licitacionId={l.id_externo} />
 
             {l.descripcion && (
               <>
