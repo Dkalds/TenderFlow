@@ -45,7 +45,9 @@ nivel:
 - ``replace_adjudicaciones_batch()``  — batch version: reemplaza adjudicaciones
                                         de múltiples licitaciones en una sola
                                         transacción (menos contención de lock).
-- ``count_licitaciones()``            — total de filas en la tabla.
+- ``count_licitaciones()``            — total de filas en la tabla (exacto, o
+                                        estimado del planner con ``estimado=True``).
+- ``estimar_filas()``                 — estimación O(1) de filas de una tabla.
 - ``log_extraccion()``                — registra una ejecución de extracción.
 - ``get_cursor()`` / ``set_cursor()`` — lectura/escritura del cursor de
                                         ingesta por fuente.
@@ -90,6 +92,7 @@ from db.upsert import (
     Lote,
     UpsertResult,
     count_licitaciones,
+    estimar_filas,
     fts_available,
     get_cursor,
     get_history,
@@ -122,6 +125,7 @@ __all__ = [
     "Lote",
     "UpsertResult",
     "count_licitaciones",
+    "estimar_filas",
     "fts_available",
     "get_cursor",
     "get_history",

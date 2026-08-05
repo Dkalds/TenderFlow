@@ -207,7 +207,9 @@ def _write_via_client(run: RunInstrumentation) -> None:
     try:
         from db.database import count_licitaciones
 
-        db_total.set(count_licitaciones())
+        # estimado=True: si el COUNT(*) exacto cruza el statement_timeout, el
+        # except deja el gauge a 0 — indistinguible de "la BD se vació".
+        db_total.set(count_licitaciones(estimado=True))
     except Exception as e:
         log.debug("prometheus_db_count_failed", error=str(e))
         db_total.set(0)
@@ -240,7 +242,7 @@ def _write_text_file(run: RunInstrumentation) -> None:
     try:
         from db.database import count_licitaciones
 
-        db_total = count_licitaciones()
+        db_total = count_licitaciones(estimado=True)
     except Exception:
         log.debug("prometheus_db_count_failed")
 
