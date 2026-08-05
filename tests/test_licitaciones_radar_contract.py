@@ -1,9 +1,10 @@
 """Lo que el Radar necesita del listado de licitaciones.
 
 El Radar ("qué merece atención ahora") se apoya en ``/api/v1/licitaciones``.
-Dos cosas tienen que ser ciertas para que la página signifique algo, y ninguna
-lo era: que el orden por defecto devuelva lo más reciente primero, y que el
-resumen incluya la fecha límite — sin ella no hay urgencia que mostrar.
+Tres cosas tienen que ser ciertas para que la página signifique algo, y ninguna
+lo era: que el orden por defecto devuelva lo más reciente primero, que el
+resumen incluya la fecha límite —sin ella no hay urgencia que mostrar— y que
+los expedientes ya cerrados no ocupen sitio en la bandeja.
 """
 
 from __future__ import annotations
@@ -14,6 +15,18 @@ _ROWS = (
     ("RADAR-OLD", "2020-01-01", "2020-06-01T00:00:00+00:00"),
     ("RADAR-MID", "2023-01-01", "2023-06-01T00:00:00+00:00"),
     ("RADAR-NEW", "2026-07-01", "2026-12-01T00:00:00+00:00"),
+)
+
+# Una fila por estado terminal, más los abiertos que deben sobrevivir al filtro.
+# ``None`` está a propósito: sin estado no hay evidencia de cierre, y un
+# ``NOT IN`` sin COALESCE se la comería en silencio.
+_ESTADO_ROWS = (
+    ("EST-PUB", "PUB"),
+    ("EST-EV", "EV"),
+    ("EST-NULL", None),
+    ("EST-RES", "RES"),
+    ("EST-ADJ", "ADJ"),
+    ("EST-ANUL", "ANUL"),
 )
 
 
@@ -28,6 +41,23 @@ def _seed(db_mod) -> None:
                     f"Licitación {id_externo}",
                     publicacion,
                     limite,
+                    "2026-07-30T00:00:00+00:00",
+                    "SAP",
+                ),
+            )
+
+
+def _seed_estados(db_mod) -> None:
+    with db_mod.connect() as conn:
+        for id_externo, estado in _ESTADO_ROWS:
+            conn.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
+                "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    id_externo,
+                    f"Licitación {id_externo}",
+                    estado,
+                    "2026-07-01",
                     "2026-07-30T00:00:00+00:00",
                     "SAP",
                 ),
@@ -69,6 +99,89 @@ def test_the_summary_carries_the_deadline_the_radar_renders(tmp_db):
 
     assert items[0]["fecha_limite"] is not None
     assert str(items[0]["fecha_limite"]).startswith("2026-12-01")
+
+
+def test_only_open_tenders_leaves_out_the_terminal_states(tmp_db):
+    """Resuelta, adjudicada y anulada no son oportunidades.
+
+    El Radar propone sobre qué actuar hoy. Un expediente en estado terminal ya
+    no admite oferta: seguirlo o abrirle una oportunidad al equipo no lleva a
+    ninguna parte, así que ocupa un sitio de los 24 sin poder devolver nada.
+    """
+    db_mod, _ = tmp_db
+    _seed_estados(db_mod)
+
+    items, _ = LicitacionRepository().list_paginated(limit=10, solo_abiertas=True, with_total=False)
+
+    assert sorted(row["id_externo"] for row in items) == ["EST-EV", "EST-NULL", "EST-PUB"]
+
+
+def test_a_state_the_source_has_not_documented_yet_counts_as_open(tmp_db):
+    """Se enumera el cierre, nunca la apertura.
+
+    Si el filtro fuese una lista blanca (``estado IN ('PUB','EV')``), un código
+    nuevo de PLACSP desaparecería del Radar sin que nadie se entere. Al revés
+    —aparecer de más— se ve y se corrige.
+    """
+    db_mod, _ = tmp_db
+    _seed_estados(db_mod)
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
+            "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "EST-FUTURO",
+                "Licitación con estado nuevo",
+                "XYZ",
+                "2026-07-02",
+                "2026-07-30T00:00:00+00:00",
+                "SAP",
+            ),
+        )
+
+    items, _ = LicitacionRepository().list_paginated(limit=10, solo_abiertas=True, with_total=False)
+
+    assert "EST-FUTURO" in {row["id_externo"] for row in items}
+
+
+def test_without_the_flag_the_listing_still_returns_everything(tmp_db):
+    """El filtro es opt-in: el resto de páginas siguen viendo el corpus entero."""
+    db_mod, _ = tmp_db
+    _seed_estados(db_mod)
+
+    items, _ = LicitacionRepository().list_paginated(limit=10, with_total=False)
+
+    assert len(items) == len(_ESTADO_ROWS)
+
+
+def test_the_api_exposes_the_open_only_filter_to_the_radar(client, api_db, auth):
+    from db.database import connect
+
+    with connect() as conn:
+        for id_externo, estado in (("API-PUB", "PUB"), ("API-RES", "RES")):
+            conn.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
+                "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    id_externo,
+                    f"Licitación {id_externo}",
+                    estado,
+                    "2026-07-01",
+                    "2026-07-30T00:00:00+00:00",
+                    "SAP",
+                ),
+            )
+
+    listed = client.get(
+        "/api/v1/licitaciones",
+        params={"limit": 50, "solo_abiertas": "true"},
+        headers=auth,
+    )
+
+    assert listed.status_code == 200
+    ids = {item["id_externo"] for item in listed.json()["items"]}
+    assert "API-PUB" in ids
+    assert "API-RES" not in ids
 
 
 def test_the_api_serialises_the_deadline_in_the_listing(client, api_db, auth):

@@ -59,6 +59,22 @@ describe("useRadar", () => {
     expect(String(listingCall![0])).not.toContain("sort=-fecha_publicacion");
   });
 
+  it("asks the backend to leave out the tenders that are already closed", async () => {
+    // El Radar es una bandeja de decisión: una licitación resuelta, adjudicada
+    // o anulada no admite oferta, así que seguirla o abrir una oportunidad
+    // sobre ella no lleva a ninguna parte. El corte va en el backend — filtrar
+    // aquí encogería la lista por debajo de las 24 que la página promete.
+    const fetchMock = stubApi({ items: [tender("A", "2026-07-01")] });
+
+    const { result } = renderHook(() => useRadar(), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const listingCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/api/v1/licitaciones"),
+    );
+    expect(String(listingCall![0])).toContain("solo_abiertas=true");
+  });
+
   it("merges the backend score and band onto the listing rows", async () => {
     stubApi({
       items: [tender("A", "2026-07-01"), tender("B", "2026-06-01")],

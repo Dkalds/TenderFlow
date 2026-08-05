@@ -28,9 +28,11 @@ import { bandColor, daysLeft, shortEur, urgency } from "./_components/radar-shar
  * compararlas. Ahora caben catorce, se recorren con J/K, y seguir (S) o
  * descartar (X) no mueve nada más que la fila.
  *
- * Alcance real de la lista (`hooks/use-radar.ts`): son las 24 licitaciones más
- * recientes reordenadas por score, no el top-24 por score del corpus. El pie de
- * la consola lo dice, porque prometer priorización global sería mentir.
+ * Alcance real de la lista (`hooks/use-radar.ts`): son las 24 licitaciones
+ * abiertas más recientes reordenadas por score, no el top-24 por score del
+ * corpus. Los expedientes resueltos, adjudicados o anulados no entran: el
+ * Radar es una bandeja de decisión y sobre ellos no hay decisión que tomar. El
+ * pie de la consola lo dice, porque prometer priorización global sería mentir.
  */
 
 const GRID = "grid-cols-[46px_1fr_176px_132px_108px_96px_108px] gap-3 px-3.5";
@@ -528,7 +530,7 @@ export default function RadarPage() {
         <div className="flex h-[34px] flex-none items-center gap-3.5 border-t border-border/70 bg-card/60 px-3.5 text-[11px] text-muted-foreground">
           <span className="tf-tnum">{statusLine}</span>
           <span className="hidden text-muted-foreground/60 lg:inline">
-            · las 24 más recientes, reordenadas por afinidad
+            · las 24 abiertas más recientes, reordenadas por afinidad
           </span>
           <div className="flex-1" />
           {SHORTCUTS.map((shortcut) => (

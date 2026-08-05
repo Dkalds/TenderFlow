@@ -60,16 +60,19 @@ usuario triaba 24 señales, recargaba, y volvían las 24. Ni siquiera llegaba a
 `localStorage`, que el propio invariante 2 ya considera insuficiente.
 
 **Hecho:** orden por el score del backend (los no puntuados al final), badge en
-skeleton mientras el ranking está en vuelo, alcance declarado en la UI, y
-descarte con *undo* por ítem y copy que dice que es de sesión.
+skeleton mientras el ranking está en vuelo, alcance declarado en la UI,
+descarte con *undo* por ítem y copy que dice que es de sesión, y los
+expedientes en estado terminal (RES/ADJ/ANUL) fuera de la bandeja vía
+`solo_abiertas` en `GET /licitaciones` — el corte se aplica en backend para no
+encoger las 24 filas que la página promete.
 
 **Pendiente (P1, backlog):** el ranking correcto. `GET /analytics/scoring?limit=N`
 **ya devuelve** un ranking real ("ranked by commercial potential"), pero su DTO
 `ScoredOpportunity` no incluye `fecha_limite` ni `tecnologia` —que la tarjeta
 necesita— y el único endpoint de hidratación por ids
 (`POST /licitaciones/bulk-get`) exige API key en vez de sesión. Hoy la lista es
-"las 24 más recientes, ordenadas por afinidad", que es lo que la UI dice; el
-top-24 del mercado requiere tocar backend.
+"las 24 abiertas más recientes, ordenadas por afinidad", que es lo que la UI
+dice; el top-24 del mercado requiere tocar backend.
 
 ### 2 · Dos arquitecturas de información, tres componentes contando historias distintas — **P1** ◐ parcialmente resuelto
 

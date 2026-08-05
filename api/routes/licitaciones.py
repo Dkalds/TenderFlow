@@ -217,6 +217,14 @@ async def list_licitaciones(
         None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"
     ),
     estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
+    solo_abiertas: bool = Query(
+        False,
+        description=(
+            "Excluye los expedientes en estado terminal (RES, ADJ, ANUL). "
+            "Lo usan las superficies de oportunidad —el Radar— para no "
+            "proponer licitaciones que ya no se pueden licitar."
+        ),
+    ),
     ccaa: str | None = Query(None, description="Comunidad Autónoma"),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
     tecnologia_predicha: str | None = Query(
@@ -266,6 +274,7 @@ async def list_licitaciones(
         _lic_repo.list_paginated,
         q=q,
         estado=estado,
+        solo_abiertas=solo_abiertas,
         ccaa=ccaa,
         tecnologia=tecnologia,
         tecnologia_predicha=tecnologia_predicha,
