@@ -46,11 +46,19 @@ interface ScoringResponse {
  * emparejan ids y se ordena por el valor recibido, nunca se deriva una
  * puntuación en cliente.
  *
+ * `solo_abiertas` deja fuera los expedientes en estado terminal (resuelta,
+ * adjudicada, anulada). El Radar responde a "qué merece atención ahora", y una
+ * licitación ya resuelta no admite oferta: seguir(S) o abrir una oportunidad
+ * sobre ella no lleva a ninguna parte. El filtro se aplica **en el backend**
+ * —no descartando filas aquí— porque recortar en cliente encogería la lista
+ * por debajo de las 24 que la página promete.
+ *
  * **Alcance real de la lista** (la UI debe decirlo, ver `radar/page.tsx`): son
- * las 24 licitaciones *más recientes*, reordenadas por score. No es el top-24
- * por score de todo el corpus. Antes se renderizaban en orden cronológico
- * mientras la página prometía priorización, que es el anti-patrón 1 de
- * `docs/frontend-data-invariants.md` aplicado al orden en vez de al número.
+ * las 24 licitaciones *abiertas más recientes*, reordenadas por score. No es
+ * el top-24 por score de todo el corpus. Antes se renderizaban en orden
+ * cronológico mientras la página prometía priorización, que es el anti-patrón
+ * 1 de `docs/frontend-data-invariants.md` aplicado al orden en vez de al
+ * número.
  *
  * El ranking real ya existe en backend (`GET /analytics/scoring?limit=N`
  * devuelve "ranked by commercial potential"), pero su DTO `ScoredOpportunity`
@@ -64,6 +72,7 @@ export function useRadar(tecnologia: string | null = null) {
     limit: "24",
     with_total: "false",
     sort: "fecha_publicacion",
+    solo_abiertas: "true",
   });
   if (tecnologia) params.set("tecnologia", tecnologia);
 

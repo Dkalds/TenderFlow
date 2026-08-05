@@ -14,6 +14,7 @@ from sqlalchemy import Select, and_, func, or_, select, text
 from db.database import connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import rows_to_dicts
+from shared.estados import ESTADOS_CERRADOS
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -84,6 +85,7 @@ class LicitacionRepository:
         *,
         q: str | None = None,
         estado: str | None = None,
+        solo_abiertas: bool = False,
         ccaa: str | None = None,
         tecnologia: str | None = None,
         tecnologia_predicha: str | None = None,
@@ -113,6 +115,11 @@ class LicitacionRepository:
             )
         if estado:
             clauses.append(licitaciones.c.estado == estado)
+        if solo_abiertas:
+            # `COALESCE` y no `NOT IN` a secas: en SQL `NULL NOT IN (...)` es
+            # NULL, así que las filas sin estado —que son oportunidades hasta
+            # que se demuestre lo contrario— quedarían fuera del resultado.
+            clauses.append(func.coalesce(licitaciones.c.estado, "").notin_(ESTADOS_CERRADOS))
         if ccaa:
             clauses.append(licitaciones.c.ccaa == ccaa)
         if tecnologia:
@@ -192,6 +199,7 @@ class LicitacionRepository:
         *,
         q: str | None = None,
         estado: str | None = None,
+        solo_abiertas: bool = False,
         ccaa: str | None = None,
         tecnologia: str | None = None,
         tecnologia_predicha: str | None = None,
@@ -203,11 +211,18 @@ class LicitacionRepository:
         sort: str | None = None,
         with_total: bool = True,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Devuelve (items, total).  Si ``with_total=False`` total==-1."""
+        """Devuelve (items, total).  Si ``with_total=False`` total==-1.
+
+        ``solo_abiertas`` descarta los estados terminales de
+        :data:`shared.estados.ESTADOS_CERRADOS` (resuelta, adjudicada,
+        anulada). Es el filtro que necesita cualquier superficie de
+        oportunidad — el Radar — para no proponer expedientes cerrados.
+        """
         order = _SORT_MAP.get(sort or "", _DEFAULT_ORDER)
         clauses = self._base_filters(
             q=q,
             estado=estado,
+            solo_abiertas=solo_abiertas,
             ccaa=ccaa,
             tecnologia=tecnologia,
             tecnologia_predicha=tecnologia_predicha,
@@ -221,6 +236,7 @@ class LicitacionRepository:
             return self._list_fts(
                 q=q,
                 estado=estado,
+                solo_abiertas=solo_abiertas,
                 ccaa=ccaa,
                 tecnologia=tecnologia,
                 fecha_desde=fecha_desde,
@@ -256,6 +272,7 @@ class LicitacionRepository:
         *,
         q: str,
         estado: str | None,
+        solo_abiertas: bool,
         ccaa: str | None,
         tecnologia: str | None,
         fecha_desde: str | None,
@@ -271,6 +288,12 @@ class LicitacionRepository:
         if estado:
             extra_conditions.append("l.estado = ?")
             extra_params.append(estado)
+        if solo_abiertas:
+            # Mismo criterio que la rama SA Core: COALESCE para que un estado
+            # NULL no se caiga del NOT IN.
+            placeholders = ", ".join("?" * len(ESTADOS_CERRADOS))
+            extra_conditions.append(f"COALESCE(l.estado, '') NOT IN ({placeholders})")
+            extra_params.extend(ESTADOS_CERRADOS)
         if ccaa:
             extra_conditions.append("l.ccaa = ?")
             extra_params.append(ccaa)

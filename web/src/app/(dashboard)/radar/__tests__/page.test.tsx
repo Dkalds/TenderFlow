@@ -164,7 +164,9 @@ describe("RadarPage", () => {
   it("states the scope of the list instead of implying a market-wide ranking", () => {
     renderRadar();
 
-    expect(screen.getByText(/las 24 más recientes, reordenadas por afinidad/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/las 24 abiertas más recientes, reordenadas por afinidad/),
+    ).toBeInTheDocument();
   });
 
   it("renders the countdown to the deadline the API now returns", () => {

@@ -28,6 +28,7 @@ from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
 from services.sql_fragments import VALID_PAIR
+from shared.estados import ESTADOS_CERRADOS
 
 # Bandas de importe con cortes en los umbrales SARA habituales (€, sin IVA).
 _BANDAS_IMPORTE = (15_000.0, 60_000.0, 143_000.0, 221_000.0, 750_000.0, 5_538_000.0)
@@ -263,20 +264,23 @@ def features_licitaciones_abiertas(
     """
     _, acum = construir_dataset_baja(hasta=ahora)
     fecha_score = _fecha_dt(ahora) if ahora else datetime.now()
+    cerrados = ", ".join("?" * len(ESTADOS_CERRADOS))
     sql = f"""
         SELECT l.id_externo, l.organo_contratacion AS organo, l.cpv, l.ccaa,
                l.tipo_contrato, l.fuente, l.importe
         FROM licitaciones l
         WHERE l.importe > 0
           AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
-          AND COALESCE(l.estado, '') NOT IN ('RES', 'ADJ', 'ANUL')
+          AND COALESCE(l.estado, '') NOT IN ({cerrados})
           AND NOT EXISTS (SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo)
           AND {exclude_duplicados_sql()}
         ORDER BY l.fecha_publicacion DESC
         LIMIT ?
     """  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
     with connect_read() as c:
-        abiertas = rows_to_dicts(c.execute(sql, (max(1, min(int(limit), 50_000)),)))
+        abiertas = rows_to_dicts(
+            c.execute(sql, (*ESTADOS_CERRADOS, max(1, min(int(limit), 50_000))))
+        )
 
     filas: list[FilaDataset] = []
     for row in abiertas:

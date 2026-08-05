@@ -10499,6 +10499,8 @@ export interface operations {
                 q?: string | null;
                 /** @description Código de estado (PUB, EV, ADJ…) */
                 estado?: string | null;
+                /** @description Excluye los expedientes en estado terminal (RES, ADJ, ANUL). Lo usan las superficies de oportunidad —el Radar— para no proponer licitaciones que ya no se pueden licitar. */
+                solo_abiertas?: boolean;
                 /** @description Comunidad Autónoma */
                 ccaa?: string | null;
                 /** @description Tecnología (SAP, ORACLE…) */
