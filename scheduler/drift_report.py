@@ -27,6 +27,27 @@ _TRAIN_WINDOW_DAYS = 90
 _KS_ALPHA = 0.05
 
 
+def _json_default(obj: Any) -> Any:
+    """Fallback de ``json.dumps`` para escalares y arrays de NumPy.
+
+    Red de seguridad, no la corrección: los flags de drift se convierten a
+    ``bool`` en origen. Pero este JSON se serializa dentro de un paso de la
+    pipeline diaria, y ese paso falla **en silencio**:
+    ``_run_post_ingestion_steps`` se traga la excepción, el run sale verde y el
+    único aviso es un email. Hasta 2026-08 un único ``np.bool_`` colado bastaba
+    para que ``drift_checks`` no corriera durante semanas sin que nadie lo
+    notara — ni informe de drift, ni monitor de PSI/F1 (``run_once`` se ejecuta
+    justo después de esta función). Un tipo numérico inesperado no vale eso.
+    """
+    import numpy as np
+
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return str(obj)
+
+
 def _load_window(days: int, offset_days: int = 0) -> pd.DataFrame:
     """Carga licitaciones de los últimos N días (con offset)."""
     from services.licitaciones import load_drift_window
@@ -46,7 +67,11 @@ def _ks_test(ref: pd.Series, cur: pd.Series) -> dict[str, Any]:
     if len(ref_clean) < 10 or len(cur_clean) < 5:
         return {"statistic": None, "p_value": None, "drift": False, "reason": "insufficient_data"}
     stat, pval = sp_stats.ks_2samp(ref_clean.values, cur_clean.values)
-    return {"statistic": float(stat), "p_value": float(pval), "drift": pval < _KS_ALPHA}
+    # bool() explícito: ``pval`` es np.float64, así que la comparación devuelve
+    # np.bool_ y json.dumps() lo rechaza. Con NumPy 2 el TypeError resultante
+    # dice "Object of type bool is not JSON serializable" — np.bool_.__name__
+    # ES "bool" — y el mensaje despista. Ver run_drift_report().
+    return {"statistic": float(stat), "p_value": float(pval), "drift": bool(pval < _KS_ALPHA)}
 
 
 def _prediction_drift(
@@ -105,7 +130,8 @@ def _prediction_drift(
 
     stat, pval = sp_stats.ks_2samp(recent, previous)
     return {
-        "drift_detected": pval < _KS_ALPHA,
+        # bool() explícito: np.bool_ no es serializable a JSON (ver _ks_test).
+        "drift_detected": bool(pval < _KS_ALPHA),
         "ks_statistic": float(stat),
         "p_value": float(pval),
         "mean_recent": float(recent.mean()),
@@ -159,7 +185,11 @@ def run_drift_report() -> dict[str, Any]:
 
             table = [ref_v, cur_v]
             _, pval, _, _ = chi2_contingency(table)
-            results["columns"][col] = {"p_value": float(pval), "drift": pval < _KS_ALPHA}
+            results["columns"][col] = {
+                "p_value": float(pval),
+                # bool() explícito: np.bool_ no es serializable (ver _ks_test).
+                "drift": bool(pval < _KS_ALPHA),
+            }
         except Exception:
             log.debug("chi2_drift_test_failed", column=col, exc_info=True)
 
@@ -206,7 +236,7 @@ def run_drift_report() -> dict[str, Any]:
     # ── Save JSON summary ─────────────────────────────────────────────────
     date_str = datetime.now(UTC).strftime("%Y%m%d")
     json_path = _REPORTS_DIR / f"drift_{date_str}.json"
-    json_path.write_text(json.dumps(results, indent=2, ensure_ascii=False))
+    json_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=_json_default))
     results["json_path"] = str(json_path)
 
     # ── Persistir resumen en ops_events ──────────────────────────────────
@@ -232,6 +262,7 @@ def run_drift_report() -> dict[str, Any]:
                     ],
                 },
                 ensure_ascii=False,
+                default=_json_default,
             )[:500],
         )
     except Exception:
