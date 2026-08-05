@@ -48,6 +48,12 @@ def _seed(db_mod) -> None:
 
 
 def _seed_estados(db_mod) -> None:
+    """Siembra un expediente por estado.
+
+    El título lleva ``bandeja`` para que el test de la rama FTS tenga un
+    término que buscar: ``search_vector`` es columna generada, así que un
+    INSERT normal ya la rellena.
+    """
     with db_mod.connect() as conn:
         for id_externo, estado in _ESTADO_ROWS:
             conn.execute(
@@ -55,7 +61,7 @@ def _seed_estados(db_mod) -> None:
                 "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     id_externo,
-                    f"Licitación {id_externo}",
+                    f"Licitación bandeja {id_externo}",
                     estado,
                     "2026-07-01",
                     "2026-07-30T00:00:00+00:00",
@@ -142,6 +148,24 @@ def test_a_state_the_source_has_not_documented_yet_counts_as_open(tmp_db):
     items, _ = LicitacionRepository().list_paginated(limit=10, solo_abiertas=True, with_total=False)
 
     assert "EST-FUTURO" in {row["id_externo"] for row in items}
+
+
+def test_the_filter_survives_the_full_text_search_branch(tmp_db):
+    """Con ``q``, el listado cambia de motor — y el filtro tiene que ir con él.
+
+    ``list_paginated`` deriva a ``_list_fts`` cuando hay término de búsqueda,
+    porque ``MATCH`` no tiene equivalente en SQLAlchemy Core. Son dos caminos
+    que construyen el WHERE por separado: si el criterio sólo viaja en uno,
+    buscar dentro del Radar resucitaría los expedientes cerrados.
+    """
+    db_mod, _ = tmp_db
+    _seed_estados(db_mod)
+
+    items, _ = LicitacionRepository().list_paginated(
+        q="bandeja", limit=10, solo_abiertas=True, with_total=False
+    )
+
+    assert sorted(row["id_externo"] for row in items) == ["EST-EV", "EST-NULL", "EST-PUB"]
 
 
 def test_without_the_flag_the_listing_still_returns_everything(tmp_db):
