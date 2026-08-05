@@ -560,9 +560,43 @@ def log_extraccion(
         )
 
 
-def count_licitaciones() -> int:
-    """Devuelve el número total de licitaciones en la BD."""
+def estimar_filas(c: Any, tabla: str) -> int | None:
+    """Estimación de filas del planner (``pg_class.reltuples``), o None si no sirve.
+
+    Un ``COUNT(*)`` exacto sobre ``licitaciones`` es un seq scan: en agosto de
+    2026, con 1,3 M filas, tardaba 19,5 s y acabó cruzando el
+    ``statement_timeout`` de 30 s (``DB_STATEMENT_TIMEOUT_MS``), matando al
+    healthcheck post-run del scraper con ``QueryCanceled``. Para un número de
+    resumen o de vigilancia la estimación que mantiene autovacuum/ANALYZE
+    sobra, y es O(1).
+
+    Devuelve None cuando la estimación no es utilizable: ``-1`` (tabla nunca
+    analizada, PG>=14), ``0`` (recién creada o realmente vacía) o tabla
+    inexistente — ``to_regclass`` devuelve NULL y la consulta no da filas. El
+    caller decide si cuenta exacto, que en esos casos es barato.
+    """
+    fila = c.execute(
+        "SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(?)", (tabla,)
+    ).fetchone()
+    if not fila or fila[0] is None:
+        return None
+    estimado = int(fila[0])
+    return estimado if estimado > 0 else None
+
+
+def count_licitaciones(*, estimado: bool = False) -> int:
+    """Devuelve el número total de licitaciones en la BD.
+
+    Con ``estimado=True`` acepta la estimación del planner y sólo cuenta exacto
+    si no la hay — ver ``estimar_filas``. Úsalo en logs de resumen y métricas,
+    donde el orden de magnitud basta y un seq scan de 20 s puede tumbar el
+    proceso que lo pide.
+    """
     with connect() as c:
+        if estimado:
+            aproximado = estimar_filas(c, "licitaciones")
+            if aproximado is not None:
+                return aproximado
         row = c.execute("SELECT COUNT(*) FROM licitaciones").fetchone()
         return int(row[0])
 

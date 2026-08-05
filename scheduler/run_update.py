@@ -94,7 +94,12 @@ def _log_daily_summary(pipeline_result: dict[str, Any], log: Any) -> None:
         "daily_pipeline_summary",
         nuevas=total_nuevas,
         modificadas=total_modificadas,
-        total_bd=count_licitaciones(),
+        # estimado=True: este número es informativo, pero la llamada vive dentro
+        # del try de main(), así que un COUNT(*) que cruce el statement_timeout
+        # (19,5 s medidos en 2026-08 sobre 1,3 M filas) se convertiría en
+        # "pipeline_fatal_error" + alerta CRITICAL + exit 1 con la ingesta ya
+        # terminada bien. Una línea de log no puede tumbar el carril diario.
+        total_bd=count_licitaciones(estimado=True),
         steps=pipeline_result.get("steps"),
     )
 
@@ -114,7 +119,7 @@ def _log_bulk_summary(pipeline_result: dict[str, Any], log: Any) -> None:
     results = pipeline_result.get("ingestion_results", [])
     total_nuevas = sum(r.get("nuevas", 0) for r in results)
     total_act = sum(r.get("actualizadas", 0) for r in results)
-    total_db = count_licitaciones()
+    total_db = count_licitaciones(estimado=True)  # ver _log_daily_summary
 
     log.info(
         "pipeline_summary",

@@ -17,6 +17,7 @@ También imprime un JSON con el estado para consumirse vía dashboard o CI.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import shutil
 import sys
@@ -34,6 +35,25 @@ from db.database import connect, init_db  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 
 log = get_logger(__name__)
+
+
+def _contar_licitaciones(c: Any) -> tuple[int, bool]:
+    """Filas de ``licitaciones``: estimación del planner, exacta si no sirve.
+
+    Devuelve ``(total, estimado)``.
+
+    El ``COUNT(*)`` exacto es un seq scan de la tabla más grande de la BD y era
+    la PRIMERA consulta de este bloque: cuando cruzó el ``statement_timeout``
+    de 30 s (2026-08), el ``QueryCanceled`` reventó el healthcheck entero antes
+    de ejecutar ningún otro check y el post-run del scraper murió con traceback
+    en vez de reportar estado. El razonamiento completo, en ``estimar_filas``.
+    """
+    from db.database import estimar_filas
+
+    aproximado = estimar_filas(c, "licitaciones")
+    if aproximado is not None:
+        return aproximado, True
+    return int(c.execute("SELECT COUNT(*) FROM licitaciones").fetchone()[0]), False
 
 
 def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, Any]:
@@ -64,9 +84,10 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
             info["db_size_bytes"] = 0
 
         t0 = time.monotonic()
-        total = c.execute("SELECT COUNT(*) FROM licitaciones").fetchone()[0]
+        total, total_estimado = _contar_licitaciones(c)
         info["last_query_ms"] = round((time.monotonic() - t0) * 1000, 2)
-        info["licitaciones_total"] = int(total)
+        info["licitaciones_total"] = total
+        info["licitaciones_total_estimado"] = total_estimado
         checks.append({"name": "db_readable", "ok": True})
 
         last_run = c.execute(
@@ -110,42 +131,65 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
             warnings.append(f"dlq_above_threshold:{dlq_count}")
         checks.append({"name": "dlq_below_threshold", "ok": dlq_ok})
 
-        empresa_total, empresa_linked = c.execute(
-            "SELECT COUNT(*), "
-            "SUM(CASE WHEN empresa_id IS NOT NULL THEN 1 ELSE 0 END) "
-            "FROM adjudicaciones"
-        ).fetchone()
-        empresa_total = int(empresa_total or 0)
-        empresa_linked = int(empresa_linked or 0)
-        from services.normalization import normalize_company, normalize_nif
+        # Cobertura de resolución de empresas. Va en su propio try/except (mismo
+        # patrón que ops_events y job_locks más abajo) porque es la parte más
+        # cara del healthcheck: dos recorridos completos de `adjudicaciones` —
+        # uno de ellos trae al proceso TODAS las filas sin resolver y las
+        # normaliza en Python. Si cruza el statement_timeout, un check
+        # secundario no puede llevarse por delante el informe entero: eso es lo
+        # que pasó con el COUNT(*) de licitaciones (ver _contar_licitaciones).
+        try:
+            empresa_total, empresa_linked = c.execute(
+                "SELECT COUNT(*), "
+                "SUM(CASE WHEN empresa_id IS NOT NULL THEN 1 ELSE 0 END) "
+                "FROM adjudicaciones"
+            ).fetchone()
+            empresa_total = int(empresa_total or 0)
+            empresa_linked = int(empresa_linked or 0)
+            from services.normalization import normalize_company, normalize_nif
 
-        review_keys = {
-            (row[0], row[1])
-            for row in c.execute(
-                "SELECT alias_normalizado, COALESCE(nif, '') "
-                "FROM empresa_review_queue WHERE status = 'pending'"
+            review_keys = {
+                (row[0], row[1])
+                for row in c.execute(
+                    "SELECT alias_normalizado, COALESCE(nif, '') "
+                    "FROM empresa_review_queue WHERE status = 'pending'"
+                ).fetchall()
+            }
+            unresolved_identities = c.execute(
+                "SELECT nombre, nif FROM adjudicaciones WHERE empresa_id IS NULL"
             ).fetchall()
-        }
-        unresolved_identities = c.execute(
-            "SELECT nombre, nif FROM adjudicaciones WHERE empresa_id IS NULL"
-        ).fetchall()
-        empresa_review = sum(
-            (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
-            for nombre, nif in unresolved_identities
-        )
-        empresa_covered = empresa_linked + empresa_review
-        empresa_coverage = empresa_covered / empresa_total * 100 if empresa_total else 100.0
-        empresa_coverage_ok = empresa_coverage >= 99.0
-        info["empresa_resolution"] = {
-            "total": empresa_total,
-            "enlazadas": empresa_linked,
-            "en_revision": empresa_review,
-            "pendientes": empresa_total - empresa_covered,
-            "pct_filas": round(empresa_coverage, 2),
-        }
-        if not empresa_coverage_ok:
-            warnings.append(f"empresa_resolution_below_threshold:{empresa_coverage:.2f}%")
-        checks.append({"name": "empresa_resolution_coverage", "ok": empresa_coverage_ok})
+            empresa_review = sum(
+                (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
+                for nombre, nif in unresolved_identities
+            )
+            empresa_covered = empresa_linked + empresa_review
+            empresa_coverage = empresa_covered / empresa_total * 100 if empresa_total else 100.0
+            empresa_coverage_ok = empresa_coverage >= 99.0
+            info["empresa_resolution"] = {
+                "total": empresa_total,
+                "enlazadas": empresa_linked,
+                "en_revision": empresa_review,
+                "pendientes": empresa_total - empresa_covered,
+                "pct_filas": round(empresa_coverage, 2),
+            }
+            if not empresa_coverage_ok:
+                warnings.append(f"empresa_resolution_below_threshold:{empresa_coverage:.2f}%")
+            checks.append({"name": "empresa_resolution_coverage", "ok": empresa_coverage_ok})
+        except Exception as exc:
+            # ROLLBACK obligatorio antes de seguir: `connect()` abre una
+            # transacción (no es autocommit), así que una consulta fallida deja
+            # la sesión en estado abortado y TODO lo que viene después —
+            # kpi_snapshots, job_locks, ops_events — moriría con
+            # InFailedSqlTransaction. Sin esto, tragarse el error empeora el
+            # síntoma en vez de arreglarlo.
+            with contextlib.suppress(Exception):
+                c.rollback()
+            # Degrada a warning explícito: "no lo pude medir" es un estado
+            # distinto de "está por debajo del umbral", y ninguno de los dos
+            # justifica perder el resto del informe.
+            info["empresa_resolution_error"] = str(exc)[:200]
+            warnings.append("empresa_resolution_no_medida")
+            checks.append({"name": "empresa_resolution_coverage", "ok": True})
 
         # ── Plano de orquestación activo (ADR-012) ────────────────────
         import os
