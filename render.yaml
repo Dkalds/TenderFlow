@@ -5,6 +5,13 @@ services:
     dockerfilePath: ./docker/Dockerfile.api
     plan: free
     region: frankfurt
+    # Deploy NO automático en cada push: sin esto Render desplegaba código en
+    # cada commit a la rama conectada, incluso con CI en rojo, dejando todo el
+    # aparato de gates (16 jobs, ratchets, fuzzing, E2E) como puramente
+    # advisory para producción. Con autoDeploy:false el deploy se dispara
+    # manualmente o vía deploy hook gateado por el job `test` de CI (ver
+    # docs/runbooks). Un despliegue solo debe ocurrir sobre un commit verde.
+    autoDeploy: false
     healthCheckPath: /api/v1/health
     envVars:
       - key: ENV
