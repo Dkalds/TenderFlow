@@ -30,7 +30,12 @@ export function useFilteredQuery<T>(
   const fullUrl = queryString ? `${url}?${queryString}` : url;
 
   return useQuery<T>({
-    queryKey: [...baseKey, filterParams],
+    // La URL y los params fusionados forman parte de la key: dos endpoints (o el
+    // mismo con distintos `extraParams`) comparten `baseKey` y colisionarían en
+    // caché de otro modo. `baseKey` sigue siendo el prefijo, así que las
+    // invalidaciones por prefijo (`invalidateQueries({ queryKey: baseKey })`)
+    // siguen alcanzando todas las variantes.
+    queryKey: [...baseKey, url, merged],
     queryFn: () => fetchWithAuth<T>(fullUrl),
     ...(isRealtime ? {} : { placeholderData: keepPreviousData }),
     ...options,

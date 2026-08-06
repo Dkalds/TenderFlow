@@ -54,7 +54,20 @@ def _serialize_audit_chain_write(connection: Any) -> None:
 
 
 def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
-    """Return a verified ``(head_hash, count, state_exists)`` tuple."""
+    """Return a verified ``(head_hash, count, state_exists)`` tuple.
+
+    Camino caliente (estado ya presente): **no** recuenta ``audit_log``. La
+    cardinalidad vive firmada con HMAC en ``audit_chain_state.entry_count``, así
+    que se confía en ella tras verificar la firma; el ancla de integridad del
+    append es que el ``head_hash`` firmado coincida con el ``this_hash`` de la
+    cola (``ORDER BY id DESC LIMIT 1``, índice por PK → O(log n)). El
+    ``COUNT(*)`` que se hacía por evento era un seq-scan O(n) de una tabla
+    append-only que crece sin límite, ejecutado además bajo el advisory lock
+    global que serializa toda la auditoría: cada login/export lo pagaba, y el
+    día que cruzara ``statement_timeout`` la auditoría entera empezaría a
+    cancelarse. La verificación completa de la cadena (recorrido total) sigue
+    disponible en :func:`verify_hash_chain`.
+    """
     state_row = connection.execute(
         "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state WHERE chain_name = ?",
         (_CHAIN_NAME,),
@@ -62,10 +75,13 @@ def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
     tail_row = connection.execute(
         "SELECT this_hash FROM audit_log ORDER BY id DESC LIMIT 1"
     ).fetchone()
-    count_row = connection.execute("SELECT COUNT(*) FROM audit_log").fetchone()
     current_head = str(tail_row[0]) if tail_row and tail_row[0] else "genesis"
-    current_count = int(count_row[0]) if count_row else 0
+
     if state_row is None:
+        # Bootstrap único (aún no hay fila de estado): aquí sí recontamos, una
+        # sola vez, para sembrar el ``entry_count`` firmado inicial.
+        count_row = connection.execute("SELECT COUNT(*) FROM audit_log").fetchone()
+        current_count = int(count_row[0]) if count_row else 0
         return current_head, current_count, False
 
     stored_head, stored_count, stored_signature = (
@@ -75,7 +91,7 @@ def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
     )
     if not hmac.compare_digest(stored_signature, _state_hmac(stored_head, stored_count)):
         raise RuntimeError("audit chain state signature mismatch")
-    if stored_head != current_head or stored_count != current_count:
+    if stored_head != current_head:
         raise RuntimeError("audit chain head/state does not match audit_log")
     return stored_head, stored_count, True
 

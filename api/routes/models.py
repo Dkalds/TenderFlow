@@ -7,7 +7,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from api.auth import require_api_key, require_scope
+from api.auth import require_scope
+from api.routes.dual_auth import require_any_auth
 from db.model_registry import activate_version, get_active, list_versions
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -38,7 +39,7 @@ class ModelActivated(BaseModel):
 @router.get("/{name}", summary="Versión activa de un modelo")
 def get_active_model(
     name: str,
-    _ctx: Any = Depends(require_api_key),
+    _ctx: Any = Depends(require_any_auth),
 ) -> ModelVersionOut:
     """Devuelve los metadatos de la versión activa del modelo ``name``."""
     active = get_active(name)
@@ -51,7 +52,7 @@ def get_active_model(
 def list_model_versions(
     name: str,
     limit: int = Query(50, ge=1, le=500),
-    _ctx: Any = Depends(require_api_key),
+    _ctx: Any = Depends(require_any_auth),
 ) -> list[dict[str, Any]]:
     """Histórico de versiones para auditoría y A/B testing."""
     return list_versions(name, limit=limit)

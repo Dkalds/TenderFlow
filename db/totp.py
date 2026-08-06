@@ -190,11 +190,18 @@ def use_recovery_code(user_id: int, code: str) -> bool:
         for row_id, code_hash in rows:
             try:
                 if _ph.verify(code_hash, code):
-                    c.execute(
-                        "UPDATE totp_recovery_codes SET used = 1, used_at = ? WHERE id = ?",
+                    # Consumo atómico: el ``AND used = 0`` + ``rowcount`` cierra la
+                    # carrera de dos requests concurrentes con el mismo código. Ambas
+                    # pasan el SELECT y verifican argon2, pero el lock de fila de
+                    # Postgres serializa los UPDATE: solo el primero marca la fila
+                    # (rowcount == 1); el segundo re-evalúa el WHERE sobre la fila ya
+                    # commiteada (used = 1) y matchea 0 filas → no es un consumo válido.
+                    consumed: int = c.execute(
+                        "UPDATE totp_recovery_codes SET used = 1, used_at = ? "
+                        "WHERE id = ? AND used = 0",
                         (now_utc_iso(), row_id),
-                    )
-                    return True
+                    ).rowcount
+                    return consumed == 1
             except Exception:  # noqa: S112
                 continue
     return False

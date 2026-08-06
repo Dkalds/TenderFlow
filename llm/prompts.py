@@ -20,6 +20,7 @@ Modos:
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal, TypedDict
 
 Role = Literal["user", "assistant"]
@@ -164,6 +165,23 @@ _OPTIONAL_DOC_FIELDS = (
     ("url", "URL"),
 )
 
+# Tags estructurales que separan lo no confiable de lo confiable en
+# ``build_messages`` (``<fuentes_no_confiables>`` y ``<pregunta_usuario>``). Se
+# neutralizan en el texto scrapeado porque un pliego que contenga el literal de
+# cierre podría cerrar el sandbox e inyectar instrucciones fuera de él (prompt
+# injection por delimitador falsificable). Case-insensitive: el modelo no
+# distingue mayúsculas en los tags.
+_SANDBOX_DELIMITER_RE = re.compile(r"</?(?:fuentes_no_confiables|pregunta_usuario)>", re.IGNORECASE)
+
+
+def _neutralize_sandbox_delimiters(text: str) -> str:
+    """Borra del texto los literales de los tags que delimitan el sandbox.
+
+    Mínima intervención robusta: quitar el literal basta para que el chunk no
+    pueda cerrar ``<fuentes_no_confiables>`` ni simular ``<pregunta_usuario>``.
+    """
+    return _SANDBOX_DELIMITER_RE.sub("", text)
+
 
 def _doc_block(doc: dict[str, Any], keywords: list[str]) -> str:
     lines = [
@@ -185,7 +203,8 @@ def _doc_block(doc: dict[str, Any], keywords: list[str]) -> str:
             f"--- Fragmento de pliego ({etiqueta or 'documento'}"
             f"{'; documento/página ' + location if location else ''}) ---"
         )
-        lines.append(str(chunk.get("texto", "")))
+        # Neutraliza el delimitador del sandbox por si el chunk scrapeado lo trae.
+        lines.append(_neutralize_sandbox_delimiters(str(chunk.get("texto", ""))))
     return "\n".join(lines)
 
 

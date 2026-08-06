@@ -25,7 +25,9 @@ export function currencyFormatter(v: RechartValue): string {
 
 /** Format as percentage (e.g., "45,2%") */
 export function percentFormatter(v: RechartValue): string {
-  return `${toNumber(v).toFixed(1)}%`;
+  // Coma decimal (es-ES) para cumplir el ejemplo del docstring; `toFixed`
+  // siempre emite punto, así que lo sustituimos.
+  return `${toNumber(v).toFixed(1).replace(".", ",")}%`;
 }
 
 /**

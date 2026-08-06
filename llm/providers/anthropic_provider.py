@@ -84,6 +84,10 @@ def stream(
 
     max_attempts = 3
     last_exc: Exception | None = None
+    # Una vez emitido el primer token, un retry re-arranca el stream desde cero y
+    # el consumidor recibiría la respuesta parcial y la completa concatenadas: el
+    # reintento solo es seguro ANTES del primer chunk emitido.
+    yielded = False
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -99,6 +103,7 @@ def stream(
             ) as stream_obj:
                 for text in stream_obj.text_stream:
                     if text:
+                        yielded = True  # a partir de aquí el retry ya no es seguro
                         yield text
                 # Capturar usage real del SDK
                 if usage_sink is not None:
@@ -115,6 +120,10 @@ def stream(
             return  # éxito
         except Exception as exc:
             last_exc = exc
+            # Si ya emitimos tokens no reintentamos (duplicaría la respuesta):
+            # re-lanzamos para que el consumidor perciba el corte del stream.
+            if yielded:
+                raise
             if attempt < max_attempts and _is_retryable(exc):
                 import time
 

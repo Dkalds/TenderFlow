@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  formatCompactCurrency,
   formatCurrency,
   formatNumber,
   formatDate,
@@ -53,7 +54,7 @@ import {
   Search,
   ArrowRight,
 } from "lucide-react";
-import { fetchWithAuth } from "@/lib/api-client";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { PipelineResult, NotificationsResult } from "@/lib/api-types";
 
 /* ------------------------------------------------------------------ */
@@ -110,15 +111,6 @@ const BAND_BADGE: Record<string, string> = {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-/** Importe abreviado para subtítulos de KPI (1,2 M € / 340 k €). */
-function compactEur(v: number | null | undefined): string {
-  if (v == null || Number.isNaN(v)) return "—";
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} M €`;
-  if (abs >= 1_000) return `${Math.round(v / 1_000)} k €`;
-  return formatCurrency(v);
-}
-
 function getDiasBadgeVariant(
   dias: number | undefined,
 ): "destructive" | "secondary" | "outline" {
@@ -133,17 +125,6 @@ function getDiasColor(dias: number | undefined): string {
   if (dias < 7) return "text-red-600 dark:text-red-400";
   if (dias < 30) return "text-yellow-600 dark:text-yellow-400";
   return "text-green-600 dark:text-green-400";
-}
-
-async function apiSend(method: string, url: string, body?: unknown): Promise<unknown> {
-  const res = await fetch(url, {
-    method,
-    credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  return res.json().catch(() => null);
 }
 
 /* ================================================================== */
@@ -182,9 +163,9 @@ export default function PipelineAlertasPage() {
   const { data: rules, isLoading: loadingRules } = useQuery<WatchRule[]>({
     queryKey: ["watchlist-rules"],
     queryFn: async () => {
-      const data = (await apiSend("GET", "/api/v1/watchlist/rules")) as {
-        items?: WatchRule[];
-      };
+      const data = await fetchWithAuth<{ items?: WatchRule[] }>(
+        "/api/v1/watchlist/rules",
+      );
       return data.items ?? [];
     },
     staleTime: 60 * 1000,
@@ -203,11 +184,11 @@ export default function PipelineAlertasPage() {
 
   const createRule = useMutation({
     mutationFn: (body: Partial<WatchRule>) =>
-      apiSend("POST", "/api/v1/watchlist/rules", body),
+      apiMutate("POST", "/api/v1/watchlist/rules", body),
     onSuccess: invalidateRules,
   });
   const deleteRule = useMutation({
-    mutationFn: (id: number) => apiSend("DELETE", `/api/v1/watchlist/rules/${id}`),
+    mutationFn: (id: number) => apiMutate("DELETE", `/api/v1/watchlist/rules/${id}`),
     onSuccess: invalidateRules,
   });
 
@@ -245,7 +226,7 @@ export default function PipelineAlertasPage() {
     const min = alertImporte ? parseFloat(alertImporte) : null;
     if (!kw && min == null) return;
     createRule.mutate({
-      nombre: kw || (min ? `Importe ≥ ${compactEur(min)}` : "Alerta de pipeline"),
+      nombre: kw || (min ? `Importe ≥ ${formatCompactCurrency(min)}` : "Alerta de pipeline"),
       keyword: kw || null,
       min_importe: min,
       frequency: alertFreq,
@@ -279,7 +260,7 @@ export default function PipelineAlertasPage() {
         <p className="text-xs text-muted-foreground">
           {loadingPipeline
             ? "Oportunidades activas que están cerrando y alertas suscribibles."
-            : `${formatNumber(pipelineData?.total_en_plazo)} oportunidades en plazo · ${compactEur(pipelineData?.valor_total)} en juego (próximos 12 meses).`}
+            : `${formatNumber(pipelineData?.total_en_plazo)} oportunidades en plazo · ${formatCompactCurrency(pipelineData?.valor_total)} en juego (próximos 12 meses).`}
         </p>
         <div className="flex-1" />
         <ExportPopover
@@ -298,7 +279,7 @@ export default function PipelineAlertasPage() {
         <KpiCard
           title="Vencen ≤ 7 días"
           value={loadingPipeline ? undefined : formatNumber(pipelineData?.vencen_7d)}
-          subtitle={`${compactEur(pipelineData?.valor_7d)} urgente`}
+          subtitle={`${formatCompactCurrency(pipelineData?.valor_7d)} urgente`}
           icon={AlertTriangle}
           accent="hot"
           loading={loadingPipeline}
@@ -310,7 +291,7 @@ export default function PipelineAlertasPage() {
         <KpiCard
           title="Vencen ≤ 30 días"
           value={loadingPipeline ? undefined : formatNumber(pipelineData?.vencen_30d)}
-          subtitle={`${compactEur(pipelineData?.valor_30d)} en ventana`}
+          subtitle={`${formatCompactCurrency(pipelineData?.valor_30d)} en ventana`}
           icon={Calendar}
           accent="warm"
           loading={loadingPipeline}
@@ -322,7 +303,7 @@ export default function PipelineAlertasPage() {
         <KpiCard
           title="Calientes"
           value={loadingPipeline ? undefined : formatNumber(pipelineData?.calientes)}
-          subtitle={`${compactEur(pipelineData?.valor_calientes)} · score ≥ 75`}
+          subtitle={`${formatCompactCurrency(pipelineData?.valor_calientes)} · score ≥ 75`}
           icon={Flame}
           accent="primary"
           loading={loadingPipeline}
@@ -530,7 +511,7 @@ export default function PipelineAlertasPage() {
               </div>
               <div className="flex w-44 items-center gap-2">
                 <span className="whitespace-nowrap text-xs text-muted-foreground">
-                  ≥ {compactEur(colaImporteMin)}
+                  ≥ {formatCompactCurrency(colaImporteMin)}
                 </span>
                 <Slider
                   value={[colaImporteMin]}

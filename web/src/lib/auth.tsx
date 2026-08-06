@@ -7,7 +7,7 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface AuthUser {
   user_id: string;
@@ -32,10 +32,10 @@ const SessionContext = React.createContext<SessionContextValue | null>(null);
  * available to all children via useSession().
  */
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [manualRefetch, setManualRefetch] = React.useState(0);
+  const queryClient = useQueryClient();
 
-  const { data, isLoading, refetch } = useQuery<AuthUser | null>({
-    queryKey: ["auth", "me", manualRefetch],
+  const { data, isLoading } = useQuery<AuthUser | null>({
+    queryKey: ["auth", "me"],
     queryFn: async () => {
       try {
         const res = await fetch("/api/v1/auth/me", { credentials: "include" });
@@ -56,11 +56,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: data !== null && data !== undefined,
       isAdmin: data?.is_admin === true || data?.role === "admin",
       refresh: async () => {
-        setManualRefetch((n) => n + 1);
-        await refetch();
+        // Invalidar la key fija reejecuta la query montada; ya no hace falta un
+        // contador en la queryKey (que dejaba entradas de caché muertas).
+        await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       },
     }),
-    [data, isLoading, refetch],
+    [data, isLoading, queryClient],
   );
 
   return (

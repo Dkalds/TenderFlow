@@ -27,7 +27,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import VALID_PAIR
+from services.sql_fragments import EFFECTIVE_BUDGET_SQL, VALID_PAIR_LOTE
 from shared.estados import ESTADOS_CERRADOS
 
 # Bandas de importe con cortes en los umbrales SARA habituales (€, sin IVA).
@@ -197,13 +197,15 @@ def _cargar_pares(hasta: str | None = None) -> list[dict[str, Any]]:
     sql = f"""
         SELECT l.id_externo, a.fecha_adjudicacion AS fecha, l.organo_contratacion AS organo,
                l.cpv, l.ccaa, l.tipo_contrato, l.fuente, l.importe,
+               {EFFECTIVE_BUDGET_SQL} AS presupuesto_efectivo,
                a.importe_adjudicado, a.n_ofertas_recibidas, a.empresa_id, a.nombre
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {VALID_PAIR} AND a.fecha_adjudicacion IS NOT NULL
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
+        WHERE {VALID_PAIR_LOTE} AND a.fecha_adjudicacion IS NOT NULL
           AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
           AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — fragmentos constantes (VALID_PAIR, dedupe); valores con ?
+    """  # noqa: S608 — fragmentos constantes (VALID_PAIR_LOTE, EFFECTIVE_BUDGET_SQL, dedupe); valores con ?
     params: list[Any] = []
     if hasta:
         sql += " AND a.fecha_adjudicacion <= ?"
@@ -228,7 +230,14 @@ def construir_dataset_baja(
         organo = row.get("organo")
         cpv4 = _cpv4(row.get("cpv"))
         ccaa = row.get("ccaa")
-        baja = (float(row["importe"]) - float(row["importe_adjudicado"])) / float(row["importe"])
+        # Baja contra el presupuesto REAL de la fila (el del lote si lo tiene,
+        # v65_lotes), no contra ``l.importe`` del expediente completo: un lote al
+        # 25% del expediente daba target 0.75 en vez de ~0.05 en cualquier
+        # licitación multi-lote, corrompiendo el objetivo del modelo justo donde
+        # más importa. Coherente con VALID_PAIR_LOTE del WHERE (comparación por
+        # fila, no agregada por licitación).
+        presupuesto = float(row["presupuesto_efectivo"])
+        baja = (presupuesto - float(row["importe_adjudicado"])) / presupuesto
 
         features = _features_estaticas(row, fecha)
         features.update(acum.features_historicas(organo=organo, cpv4=cpv4, ccaa=ccaa, fecha=fecha))

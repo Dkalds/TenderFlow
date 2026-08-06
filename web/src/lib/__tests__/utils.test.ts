@@ -173,24 +173,24 @@ describe("formatPercent", () => {
     expect(formatPercent(undefined)).toBe(EMPTY);
   });
 
-  it("formats 0 as '0.0%'", () => {
-    expect(formatPercent(0)).toBe("0.0%");
+  it("formats 0 as '0,0%'", () => {
+    expect(formatPercent(0)).toBe("0,0%");
   });
 
   it("formats a positive value with 1 decimal by default", () => {
-    expect(formatPercent(12.345)).toBe("12.3%");
+    expect(formatPercent(12.345)).toBe("12,3%");
   });
 
   it("formats negative values", () => {
-    expect(formatPercent(-5.5)).toBe("-5.5%");
+    expect(formatPercent(-5.5)).toBe("-5,5%");
   });
 
   it("supports custom decimal places", () => {
-    expect(formatPercent(33.333, 2)).toBe("33.33%");
+    expect(formatPercent(33.333, 2)).toBe("33,33%");
   });
 
-  it("formats 100 as '100.0%'", () => {
-    expect(formatPercent(100)).toBe("100.0%");
+  it("formats 100 as '100,0%'", () => {
+    expect(formatPercent(100)).toBe("100,0%");
   });
 
   it("formats with 0 decimals", () => {

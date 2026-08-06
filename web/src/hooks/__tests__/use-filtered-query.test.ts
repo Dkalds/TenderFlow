@@ -241,11 +241,12 @@ describe("useFilteredQuery", () => {
     );
 
     // window.location.href is read-only in jsdom; replace the whole object.
+    // pathname/search feed the ?redirect= deep-link the 401 handler now builds.
     const originalLocation = window.location;
     // @ts-expect-error – intentional override for test purposes
     delete window.location;
     // @ts-expect-error – intentional override for test purposes
-    window.location = { href: "" } as Location;
+    window.location = { href: "", pathname: "/protected", search: "" } as Location;
 
     const wrapper = createWrapper();
     const { result } = renderHook(
@@ -255,7 +256,9 @@ describe("useFilteredQuery", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(window.location.href).toBe("/login");
+    expect(window.location.href).toBe(
+      `/login?redirect=${encodeURIComponent("/protected")}`,
+    );
 
     // Restore
     // @ts-expect-error – restoring original

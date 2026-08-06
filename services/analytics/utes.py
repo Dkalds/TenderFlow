@@ -89,9 +89,14 @@ class UTEResult(BaseModel):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-# Aplicado con `~*` (case-insensitive) sobre el nombre raw del adjudicatario;
-# misma semántica de substring que el `str.contains` del camino pandas previo.
-_UTE_PATTERN = r"UTE|UNION TEMPORAL|UNIÓN TEMPORAL"
+# Aplicado con `~*` (regex POSIX case-insensitive de Postgres) sobre el nombre
+# raw del adjudicatario. Los `\y` son límites de palabra: sin ellos el token
+# `UTE` matcheaba como substring dentro de cualquier palabra ("COMPUTER",
+# "COMPLUTENSE", "SALUTEM"…), inflando total_ute/importe_ute sobre un corpus que
+# es puro IT. (El camino robusto sería `empresas.es_ute` del maestro v35, como
+# hace services/competitive/mercado.py; esto acota el falso positivo sin
+# depender de la resolución de identidad.)
+_UTE_PATTERN = r"\yUTE\y|\yUNI[OÓ]N TEMPORAL\y"
 
 
 # ---------------------------------------------------------------------------

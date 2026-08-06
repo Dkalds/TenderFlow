@@ -44,6 +44,7 @@ import {
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
 import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
 import { getJSON, setJSON } from "@/lib/storage";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { SpaceShell } from "@/components/layout/space-shell";
 import {
   useRemoveWatchlistItem,
@@ -106,21 +107,6 @@ type MatchItem = WatchlistRuleMatch;
 /* ------------------------------------------------------------------ */
 
 const RULES_KEY = "/api/v1/watchlist/rules";
-
-async function apiSend(
-  method: string,
-  url: string,
-  body?: unknown,
-): Promise<unknown> {
-  const res = await fetch(url, {
-    method,
-    credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  return res.json().catch(() => null);
-}
 
 function ruleToBody(rule: ApiRule, overrides: Partial<RuleBody> = {}): RuleBody {
   return {
@@ -328,7 +314,7 @@ function EditRuleSheet({
   );
   const previewMut = useMutation({
     mutationFn: (body: RuleBody) =>
-      apiSend("POST", `${RULES_KEY}/preview`, body) as Promise<{ total: number }>,
+      apiMutate<{ total: number }>("POST", `${RULES_KEY}/preview`, body),
   });
 
   return (
@@ -527,7 +513,7 @@ export default function MiWatchlistPage() {
   } = useQuery<ApiRule[]>({
     queryKey: ["watchlist-rules"],
     queryFn: async () => {
-      const data = (await apiSend("GET", RULES_KEY)) as { items?: ApiRule[] };
+      const data = await fetchWithAuth<{ items?: ApiRule[] }>(RULES_KEY);
       return data.items ?? [];
     },
   });
@@ -544,15 +530,22 @@ export default function MiWatchlistPage() {
       return;
     }
     void (async () => {
+      let todasOk = true;
       for (const r of legacy) {
         try {
-          await apiSend("POST", RULES_KEY, legacyToBody(r));
+          await apiMutate("POST", RULES_KEY, legacyToBody(r));
         } catch {
-          // best-effort: si una regla falla, seguimos con las demás
+          // best-effort: seguimos con las demás, pero si alguna regla falla NO
+          // marcamos la migración como completa ni vaciamos el legacy. Así no se
+          // pierden reglas (antes se borraban aunque el POST fallara con 403) y
+          // el próximo arranque reintenta la migración pendiente.
+          todasOk = false;
         }
       }
-      setJSON(MIGRATED_FLAG, true);
-      setJSON(LEGACY_KEY, []);
+      if (todasOk) {
+        setJSON(MIGRATED_FLAG, true);
+        setJSON(LEGACY_KEY, []);
+      }
       qc.invalidateQueries({ queryKey: ["watchlist-rules"] });
     })();
   }, [qc]);
@@ -578,12 +571,12 @@ export default function MiWatchlistPage() {
     qc.invalidateQueries({ queryKey: ["watchlist-rules"] });
 
   const createMut = useMutation({
-    mutationFn: (body: RuleBody) => apiSend("POST", RULES_KEY, body),
+    mutationFn: (body: RuleBody) => apiMutate("POST", RULES_KEY, body),
     onSuccess: invalidate,
   });
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: RuleBody }) =>
-      apiSend("PUT", `${RULES_KEY}/${id}`, body),
+      apiMutate("PUT", `${RULES_KEY}/${id}`, body),
     onSuccess: invalidate,
   });
   const saveEdit = (id: number, body: RuleBody) => {
@@ -593,7 +586,7 @@ export default function MiWatchlistPage() {
     );
   };
   const deleteMut = useMutation({
-    mutationFn: (id: number) => apiSend("DELETE", `${RULES_KEY}/${id}`),
+    mutationFn: (id: number) => apiMutate("DELETE", `${RULES_KEY}/${id}`),
     onSuccess: invalidate,
   });
 
@@ -628,10 +621,9 @@ export default function MiWatchlistPage() {
       const perRule = await Promise.all(
         activeRules.map(async (rule) => {
           try {
-            const data = (await apiSend(
-              "GET",
+            const data = await fetchWithAuth<{ items?: MatchItem[] }>(
               `${RULES_KEY}/${rule.id}/matches?limit=20`,
-            )) as { items?: MatchItem[] };
+            );
             return data.items ?? [];
           } catch {
             return [];

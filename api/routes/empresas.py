@@ -213,7 +213,7 @@ async def empresas_stats(_ctx: dict[str, Any] = Depends(require_any_auth)) -> Em
 @router.get("/reviews", summary="Cola de revisión de matches fuzzy")
 async def pending_reviews(
     limit: int = Query(100, ge=1, le=500),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: dict[str, Any] = Depends(_require_review_admin),
 ) -> EmpresaReviewsResult:
     items = await run_db(list_pending_reviews, limit)
     return EmpresaReviewsResult(items=[EmpresaReviewItem(**item) for item in items])

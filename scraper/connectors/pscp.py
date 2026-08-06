@@ -165,6 +165,11 @@ class PscpConnector:
     """Implementación del contrato Connector para la API Socrata de la PSCP."""
 
     source_id = SOURCE_ID
+    # PSCP pagina por ``(:updated_at, :id)`` ASCENDENTE, así que ``new_cursor()``
+    # refleja el progreso parcial ya persistido: el avance por lote es seguro y
+    # necesario (el dataset con republicación completa ~1.86M filas no cabe en el
+    # timeout de un solo run). Los feeds newest-first (ATOM/TED) no lo declaran.
+    cursor_advances_incrementally = True
 
     def __init__(
         self,
