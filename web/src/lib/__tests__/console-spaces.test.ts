@@ -14,14 +14,12 @@ import {
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 
 describe("CONSOLE_SPACES", () => {
-  it("consolida las 25 rutas del dashboard en 14 espacios", () => {
-    expect(CONSOLE_SPACES).toHaveLength(14);
+  it("consolida las 25 rutas del dashboard en 13 espacios", () => {
+    expect(CONSOLE_SPACES).toHaveLength(13);
     const absorbed = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
       (view) => view.from,
     );
-    // 14 rutas propias + 19 absorbidas − 8 espacios sin vistas contadas dos
-    // veces = las 25 del inventario; lo que importa es que ninguna se pierda.
-    expect(absorbed).toHaveLength(19);
+    expect(absorbed).toHaveLength(17);
   });
 
   it("da a cada espacio clave y slug únicos, y una etiqueta corta de 2-3 letras", () => {
@@ -98,7 +96,7 @@ describe("findConsoleSpace", () => {
 });
 
 describe("CONSOLE_ROUTES", () => {
-  it("cubre los 14 espacios construidos", () => {
+  it("cubre los 13 espacios construidos", () => {
     expect(CONSOLE_ROUTES.size).toBe(BUILT_SPACE_ROUTES.length);
     for (const slug of BUILT_SPACE_ROUTES) {
       expect(CONSOLE_ROUTES.has(slug)).toBe(true);
@@ -114,7 +112,7 @@ describe("isSpaceImplemented / landingHref", () => {
     expect(landingHref(resumen)).toBe("/resumen");
   });
 
-  it("hoy tiene los 14 espacios implementados, así que el rail apunta a la ruta propia", () => {
+  it("hoy tiene los 13 espacios implementados, así que el rail apunta a la ruta propia", () => {
     for (const space of CONSOLE_SPACES) {
       expect(isSpaceImplemented(space)).toBe(true);
       expect(landingHref(space)).toBe(`/${space.slug}`);
@@ -144,7 +142,7 @@ describe("isSpaceImplemented / landingHref", () => {
 
 describe("LEGACY_REDIRECTS", () => {
   it("manda cada ruta absorbida a la vista que la sustituye", () => {
-    expect(LEGACY_REDIRECTS).toHaveLength(19);
+    expect(LEGACY_REDIRECTS).toHaveLength(17);
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/competidores",
       to: "/competencia?vista=competidores",
@@ -182,7 +180,7 @@ describe("spaceAbsorbing", () => {
     expect(spaceAbsorbing("no-existe")).toBeUndefined();
   });
 
-  it("resuelve las 19 rutas absorbidas hacia una vista real de su espacio", () => {
+  it("resuelve las 17 rutas absorbidas hacia una vista real de su espacio", () => {
     for (const { from } of LEGACY_REDIRECTS) {
       const slug = from.replace(/^\//, "");
       const hit = spaceAbsorbing(slug);

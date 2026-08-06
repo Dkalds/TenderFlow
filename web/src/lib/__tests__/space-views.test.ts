@@ -12,30 +12,28 @@ const allViews = (): [string, SpaceView][] =>
   );
 
 describe("SPACE_VIEWS", () => {
-  it("cubre los cinco espacios multivista con su recuento del rediseño", () => {
-    // Los recuentos son el contrato de `docs/redesign/README.md`: 19 rutas
-    // heredadas repartidas en cinco espacios. Si uno cambia sin actualizar el
+  it("cubre los cuatro espacios multivista con su recuento del rediseño", () => {
+    // Los recuentos son el contrato de `docs/redesign/README.md`: 17 rutas
+    // heredadas repartidas en cuatro espacios. Si uno cambia sin actualizar el
     // doc, la tabla del README miente.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
       "competencia",
       "mercado",
       "mi-pipeline",
       "ops",
-      "relaciones",
     ]);
     expect(SPACE_VIEWS.mercado).toHaveLength(8);
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
-    expect(SPACE_VIEWS.relaciones).toHaveLength(2);
     expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(2);
     expect(SPACE_VIEWS.ops).toHaveLength(5);
   });
 
-  it("absorbe 19 rutas heredadas, todas distintas", () => {
+  it("absorbe 17 rutas heredadas, todas distintas", () => {
     const origenes = allViews()
       .map(([, view]) => view.from)
       .filter(Boolean);
-    expect(origenes).toHaveLength(19);
-    expect(new Set(origenes).size).toBe(19);
+    expect(origenes).toHaveLength(17);
+    expect(new Set(origenes).size).toBe(17);
   });
 
   it("da a cada vista una clave única dentro de su espacio y una etiqueta", () => {
@@ -51,9 +49,9 @@ describe("SPACE_VIEWS", () => {
 });
 
 describe("BUILT_SPACE_ROUTES", () => {
-  it("declara los 14 espacios, sin repetir y sin barra inicial", () => {
-    expect(BUILT_SPACE_ROUTES).toHaveLength(14);
-    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(14);
+  it("declara los 13 espacios, sin repetir y sin barra inicial", () => {
+    expect(BUILT_SPACE_ROUTES).toHaveLength(13);
+    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(13);
     for (const slug of BUILT_SPACE_ROUTES) {
       expect(slug.startsWith("/")).toBe(false);
     }
@@ -69,7 +67,7 @@ describe("BUILT_SPACE_ROUTES", () => {
 describe("legacyRedirects", () => {
   it("emite un redirect por ruta absorbida hacia su `?vista=`", () => {
     const redirects = legacyRedirects();
-    expect(redirects).toHaveLength(19);
+    expect(redirects).toHaveLength(17);
     expect(redirects).toContainEqual({
       source: "/tendencias",
       destination: "/mercado?vista=tiempo",
