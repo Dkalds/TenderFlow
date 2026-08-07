@@ -97,6 +97,7 @@ class AdjudicacionRepository:
         "a.licitacion_id, a.nombre, a.nif, a.empresa_id, a.es_pyme, "
         "a.importe_adjudicado, a.fecha_adjudicacion, a.ccaa, a.n_ofertas_recibidas, "
         "l.organo_contratacion, l.tecnologia, l.estado, l.importe AS importe_licitacion, "
+        "COALESCE(lo.importe, l.importe) AS presupuesto_efectivo, "
         "e.nombre_canonico AS empresa_nombre_master, "
         "e.nif_canonico AS empresa_nif_master, "
         "e.grupo_id AS empresa_grupo_id, "
@@ -127,6 +128,7 @@ class AdjudicacionRepository:
             "SELECT " + self._COMPETITOR_COLS + " "
             "FROM adjudicaciones a "
             "LEFT JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+            "LEFT JOIN lotes lo ON lo.id = a.lote_id "
             "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
             "LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
         )

@@ -276,7 +276,13 @@ def get_top_licitaciones(filters: TopLicitacionesFilters) -> TopLicitacionesResu
         n_adj = int(r.get("n_adj") or 0)
         importe = r.get("importe")
         if n_adj > 0 and importe:
-            imp_lic = n_adj * float(importe)
+            # Baja agregada del expediente: todo lo adjudicado (suma de sus lotes)
+            # contra el presupuesto ÚNICO del expediente. El denominador era
+            # ``n_adj * importe`` — replicaba el bug del pandas original que sumaba
+            # ``importe_licitacion`` del join (una copia de ``l.importe`` por fila),
+            # inflando el divisor n veces: con 4 lotes adjudicados al completo daba
+            # ~75% de baja en vez de ~0%. Para n_adj=1 el valor no cambia.
+            imp_lic = float(importe)
             sum_adj = float(r.get("sum_adj") or 0.0)
             if imp_lic > 0:
                 baja = float((1 - sum_adj / imp_lic) * 100)

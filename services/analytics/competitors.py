@@ -454,11 +454,15 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
                 .items()
             }
 
-    # baja_media per empresa
+    # baja_media per empresa. Denominador = presupuesto REAL de cada fila (el del
+    # lote si lo tiene, v65_lotes) vía ``presupuesto_efectivo``, no ``l.importe``
+    # del expediente completo: la baja es por fila de adjudicación, así que usar
+    # el presupuesto total sobreestimaría la baja media de cualquier empresa con
+    # adjudicaciones en expedientes multi-lote.
     baja_by_empresa: dict[str, float] = {}
-    if "importe_adjudicado" in df.columns and "importe_licitacion" in df.columns:
+    if "importe_adjudicado" in df.columns and "presupuesto_efectivo" in df.columns:
         adj_col = df.get("importe_adjudicado")
-        lic_col = df.get("importe_licitacion")
+        lic_col = df.get("presupuesto_efectivo")
         if adj_col is not None and lic_col is not None:
             imp_adj = pd.to_numeric(adj_col, errors="coerce")
             imp_lic = pd.to_numeric(lic_col, errors="coerce")

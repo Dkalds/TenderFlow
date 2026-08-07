@@ -861,9 +861,12 @@ class AggregateRepository:
         """Top-N por importe con adjudicatario y agregados de adjudicación.
 
         ``adjudicatario`` es el primer nombre no nulo del grupo (determinista
-        por id de fila); ``sum_adj``/``n_adj`` permiten al servicio replicar el
-        cálculo de baja del pandas original (que sumaba la columna
-        ``importe_licitacion`` del join — es decir, ``n_adj * importe``).
+        por id de fila); ``sum_adj`` (total adjudicado del expediente) y ``n_adj``
+        (nº de adjudicaciones/lotes) permiten al servicio calcular la baja
+        agregada como ``1 - sum_adj / l.importe`` — todo lo adjudicado contra el
+        presupuesto ÚNICO del expediente. NO multiplicar el presupuesto por
+        ``n_adj``: eso replicaba el bug del pandas original, que sumaba
+        ``importe_licitacion`` una vez por fila del join (n_adj * importe).
         """
         where, params = _build_where(filters)
         sql = (
