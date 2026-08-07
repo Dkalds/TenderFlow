@@ -241,86 +241,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/analytics/organ-company-edge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Organ Company Edge
-         * @description Licitaciones reales que sustentan la relación órgano→empresa (drill-down).
-         */
-        get: operations["organ_company_edge_api_v1_analytics_organ_company_edge_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/analytics/organ-company-graph": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Organ Company Graph
-         * @description Grafo bipartito órgano↔empresa de adjudicaciones reales (no co-ocurrencia CCAA).
-         */
-        get: operations["organ_company_graph_api_v1_analytics_organ_company_graph_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/analytics/organ-company-graph/ego": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Organ Company Ego
-         * @description Vecindario inmediato (ego-network) de un órgano o empresa.
-         */
-        get: operations["organ_company_ego_api_v1_analytics_organ_company_graph_ego_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/analytics/organ-concentration": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Organ Concentration
-         * @description Ranking de órganos por concentración de proveedores (HHI, cuota top-1/CR3).
-         */
-        get: operations["organ_concentration_api_v1_analytics_organ_concentration_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/analytics/organos": {
         parameters: {
             query?: never;
@@ -373,26 +293,6 @@ export interface paths {
          * @description Return aggregated KPIs, breakdowns, and funnel data.
          */
         get: operations["overview_api_v1_analytics_overview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/analytics/partnership-graph": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Partnership Graph
-         * @description Grafo de co-licitación real (UTE/co-adjudicación), no co-ocurrencia por CCAA.
-         */
-        get: operations["partnership_graph_api_v1_analytics_partnership_graph_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3164,22 +3064,6 @@ export interface components {
             /** Pct */
             pct: number;
         };
-        /**
-         * CommunitySummary
-         * @description Resumen de un clúster de co-licitación (comunidad Louvain).
-         */
-        CommunitySummary: {
-            /** Community */
-            community: number;
-            /** Importe Total */
-            importe_total: number;
-            /** Leader */
-            leader: string;
-            /** Size */
-            size: number;
-            /** Top Members */
-            top_members?: string[];
-        };
         /** CompareResult */
         CompareResult: {
             deltas?: components["schemas"]["PeriodDeltas"];
@@ -3636,19 +3520,6 @@ export interface components {
             total_empresas: number;
         };
         /**
-         * ConcentracionResult
-         * @description Ranking de órganos por concentración de proveedores.
-         */
-        ConcentracionResult: {
-            /** Organos */
-            organos?: components["schemas"]["OrganoConcentracion"][];
-            /**
-             * Total Organos
-             * @default 0
-             */
-            total_organos: number;
-        };
-        /**
          * CpvEntry
          * @description Top CPV code aggregate.
          */
@@ -3838,44 +3709,6 @@ export interface components {
             id_externo: string;
             /** Items */
             items: components["schemas"]["DocumentoSummary"][];
-        };
-        /**
-         * EdgeDetailResult
-         * @description Licitaciones que sustentan una arista órgano→empresa.
-         */
-        EdgeDetailResult: {
-            /** Empresa */
-            empresa: string;
-            /**
-             * Importe Total
-             * @default 0
-             */
-            importe_total: number;
-            /** Licitaciones */
-            licitaciones?: components["schemas"]["EdgeLicitacion"][];
-            /**
-             * N Licitaciones
-             * @default 0
-             */
-            n_licitaciones: number;
-            /** Organo */
-            organo: string;
-        };
-        /**
-         * EdgeLicitacion
-         * @description Licitación real detrás de una relación órgano→empresa.
-         */
-        EdgeLicitacion: {
-            /** Fecha Adjudicacion */
-            fecha_adjudicacion?: string | null;
-            /** Importe Adjudicado */
-            importe_adjudicado?: number | null;
-            /** Licitacion Id */
-            licitacion_id?: string | null;
-            /** Titulo */
-            titulo?: string | null;
-            /** Url */
-            url?: string | null;
         };
         /** EmpresaAlias */
         EmpresaAlias: {
@@ -4381,38 +4214,6 @@ export interface components {
              */
             concentracion_top3: number;
         };
-        /**
-         * GraphEdge
-         * @description Arista = adjudicación real órgano → empresa (peso = nº/importe reales).
-         */
-        GraphEdge: {
-            /** Contratos */
-            contratos: number;
-            /** Empresa */
-            empresa: string;
-            /** Frecuencia Anual */
-            frecuencia_anual: number;
-            /** Importe Total */
-            importe_total: number;
-            /** Organo */
-            organo: string;
-        };
-        /**
-         * GraphNode
-         * @description Nodo del grafo (órgano o empresa).
-         */
-        GraphNode: {
-            /** Degree */
-            degree: number;
-            /** Importe Total */
-            importe_total: number;
-            /** Key */
-            key?: string | null;
-            /** Name */
-            name: string;
-            /** Type */
-            type: string;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -4876,26 +4677,6 @@ export interface components {
             authorization_url: string;
         };
         /**
-         * OrganCompanyGraphResult
-         * @description Grafo bipartito órgano-empresa + totales del dataset completo.
-         */
-        OrganCompanyGraphResult: {
-            /** Edges */
-            edges?: components["schemas"]["GraphEdge"][];
-            /** Nodes */
-            nodes?: components["schemas"]["GraphNode"][];
-            /**
-             * Total Empresas
-             * @default 0
-             */
-            total_empresas: number;
-            /**
-             * Total Organos
-             * @default 0
-             */
-            total_organos: number;
-        };
-        /**
          * OrganizationCreate
          * @description Alta de un espacio compartido.
          */
@@ -5007,30 +4788,6 @@ export interface components {
             n: number;
             /** Organo Contratacion */
             organo_contratacion: string;
-        };
-        /**
-         * OrganoConcentracion
-         * @description Estructura de la base de proveedores de un órgano.
-         */
-        OrganoConcentracion: {
-            /** Apertura */
-            apertura: string;
-            /** Cuota Top1 */
-            cuota_top1: number;
-            /** Cuota Top3 */
-            cuota_top3: number;
-            /** Hhi */
-            hhi: number;
-            /** Importe Total */
-            importe_total: number;
-            /** N Contratos */
-            n_contratos: number;
-            /** N Empresas */
-            n_empresas: number;
-            /** Organo */
-            organo: string;
-            /** Top Empresa */
-            top_empresa: string;
         };
         /** OrganoDetailResult */
         OrganoDetailResult: {
@@ -5241,51 +4998,6 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
-        };
-        /**
-         * PartnerEdge
-         * @description Arista = co-licitación real (UTE conjunta); peso = nº contratos + importe.
-         */
-        PartnerEdge: {
-            /** Contratos */
-            contratos: number;
-            /** Importe */
-            importe: number;
-            /** Source */
-            source: string;
-            /** Target */
-            target: string;
-        };
-        /**
-         * PartnerNode
-         * @description Nodo del grafo = empresa que ha co-licitado en UTE.
-         */
-        PartnerNode: {
-            /** Community */
-            community?: number | null;
-            /** Contratos */
-            contratos: number;
-            /** Importe */
-            importe: number;
-            /** Name */
-            name: string;
-        };
-        /**
-         * PartnershipGraphResult
-         * @description Grafo de co-licitación + nº de adjudicaciones UTE del dataset.
-         */
-        PartnershipGraphResult: {
-            /** Communities */
-            communities?: components["schemas"]["CommunitySummary"][];
-            /** Edges */
-            edges?: components["schemas"]["PartnerEdge"][];
-            /** Nodes */
-            nodes?: components["schemas"]["PartnerNode"][];
-            /**
-             * Total Utes
-             * @default 0
-             */
-            total_utes: number;
         };
         /** PeriodDeltas */
         PeriodDeltas: {
@@ -8098,166 +7810,6 @@ export interface operations {
             };
         };
     };
-    organ_company_edge_api_v1_analytics_organ_company_edge_get: {
-        parameters: {
-            query: {
-                /** @description Nombre del órgano contratante */
-                organo: string;
-                /** @description Nombre canónico de la empresa */
-                empresa: string;
-                /** @description Filter by CCAA (comma-separated) */
-                ccaa?: string | null;
-                /** @description Max licitaciones */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EdgeDetailResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    organ_company_graph_api_v1_analytics_organ_company_graph_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by CCAA (comma-separated) */
-                ccaa?: string | null;
-                /** @description Min contratos per edge */
-                min_contratos?: number;
-                /** @description Top N organos by importe */
-                top_organos?: number;
-                /** @description Top N empresas by importe */
-                top_empresas?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganCompanyGraphResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    organ_company_ego_api_v1_analytics_organ_company_graph_ego_get: {
-        parameters: {
-            query: {
-                /** @description Tipo de entidad central */
-                entity_type: "organo" | "empresa";
-                /** @description Nombre del órgano o empresa (nombre_canonico) */
-                entity_key: string;
-                /** @description Filter by CCAA (comma-separated) */
-                ccaa?: string | null;
-                /** @description Max vecinos */
-                top_neighbors?: number;
-                /** @description Min contratos per edge */
-                min_contratos?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganCompanyGraphResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    organ_concentration_api_v1_analytics_organ_concentration_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by CCAA (comma-separated) */
-                ccaa?: string | null;
-                /** @description Min adjudicaciones per órgano */
-                min_contratos?: number;
-                /** @description Top N órganos by HHI */
-                top_n?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConcentracionResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     organos_api_v1_analytics_organos_get: {
         parameters: {
             query?: {
@@ -8377,44 +7929,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    partnership_graph_api_v1_analytics_partnership_graph_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by CCAA (comma-separated) */
-                ccaa?: string | null;
-                /** @description Min UTEs compartidas per edge */
-                min_contratos?: number;
-                /** @description Top N empresas by importe */
-                top_nodes?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PartnershipGraphResult"];
                 };
             };
             /** @description Validation Error */

@@ -37,7 +37,6 @@ const VIEWS: Record<string, React.ComponentType> = {
   organos: dynamic(() => import("../organos/page"), { loading }),
   clusters: dynamic(() => import("../clusters/page"), { loading }),
   proyectos: dynamic(() => import("../proyectos-modulos/page"), { loading }),
-  red: dynamic(() => import("../red-organo-empresa/page"), { loading }),
 };
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "mercado")!;

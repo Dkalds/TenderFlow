@@ -19,7 +19,7 @@ describe("CONSOLE_SPACES", () => {
     const absorbed = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
       (view) => view.from,
     );
-    expect(absorbed).toHaveLength(20);
+    expect(absorbed).toHaveLength(18);
   });
 
   it("da a cada espacio clave y slug únicos, y una etiqueta corta de 2-3 letras", () => {
@@ -142,7 +142,7 @@ describe("isSpaceImplemented / landingHref", () => {
 
 describe("LEGACY_REDIRECTS", () => {
   it("manda cada ruta absorbida a la vista que la sustituye", () => {
-    expect(LEGACY_REDIRECTS).toHaveLength(20);
+    expect(LEGACY_REDIRECTS).toHaveLength(18);
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/competidores",
       to: "/competencia?vista=competidores",

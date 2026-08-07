@@ -44,25 +44,10 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
       from: "proyectos-modulos",
       visibility: "experimental",
     },
-    // Estaba construida y sin ningún acceso desde la navegación: alcanzable
-    // solo escribiendo la URL. Se rescata declarada como lo que es.
-    {
-      key: "red",
-      label: "Red órgano-empresa",
-      from: "red-organo-empresa",
-      visibility: "experimental",
-    },
   ],
   competencia: [
     { key: "competidores", label: "Competidores", from: "competidores" },
     { key: "utes", label: "UTEs", from: "utes" },
-    // Mismo caso que `red-organo-empresa`: existía sin acceso.
-    {
-      key: "partners",
-      label: "Ecosistema de partners",
-      from: "ecosistema-partners",
-      visibility: "experimental",
-    },
   ],
   "mi-pipeline": [
     { key: "pipeline", label: "Pipeline y alertas", from: "pipeline-alertas" },

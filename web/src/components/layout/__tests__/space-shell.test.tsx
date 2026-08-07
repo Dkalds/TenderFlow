@@ -91,7 +91,7 @@ describe("SpaceShell", () => {
       </SpaceShell>,
     );
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(9);
+    expect(tabs).toHaveLength(8);
     expect(screen.getByRole("tab", { name: "Órganos" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Calendario" })).toHaveAttribute(
       "aria-selected",
