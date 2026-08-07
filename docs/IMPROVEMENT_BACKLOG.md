@@ -98,16 +98,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
-### [P2] UI de webhooks y GDPR self-service
-- **Área:** web/, api/
-- **Problema:** Backend completo sin superficie de usuario: `db/webhooks.py` tiene entrega HMAC funcional con retry/DNS-pinning, y existen export GDPR (`/me/data`) y delete de cuenta. Nada de eso es usable sin tocar la API a mano. Para consultoría, webhooks = integrar alertas con los sistemas del cliente — mucho valor por pocas pantallas.
-- **Acceptance criteria:**
-  - Página de gestión de webhooks: CRUD, ping de prueba, visualización de secret una sola vez, estado de entregas.
-  - Página de cuenta con export de datos (descarga `/me/data`) y delete de cuenta con confirmación.
-  - Consume exclusivamente la API tipada (invariante §3.8); tests vitest de los flujos.
-- **Files de partida:** [db/webhooks.py](../db/webhooks.py), [api/routes/webhooks.py](../api/routes/webhooks.py), [api/routes/me.py](../api/routes/me.py), [web/src/app/(dashboard)/](../web/src/app/(dashboard)/)
-- **Riesgo:** bajo — el backend ya existe; solo se añade frontend.
-
 ### [P2] Cobertura de tests del frontend en flujos críticos
 - **Área:** web/ (tests vitest)
 - **Problema:** El frontend tiene thresholds reales 68/63/68/70 (vitest.config.ts) con 82 test files. Los flujos críticos de valor (filtros nuqs URL↔estado, watchlist, streaming `/ask`) no tienen cobertura. Una regresión en esos flujos pasa CI en verde.

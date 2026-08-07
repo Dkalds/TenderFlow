@@ -2725,6 +2725,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/event-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tipos de evento a los que suscribirse
+         * @description Lista los eventos válidos, derivada de la misma constante que valida el alta.
+         */
+        get: operations["event_types_api_v1_webhooks_event_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/{webhook_id}": {
         parameters: {
             query?: never;
@@ -7490,12 +7510,48 @@ export interface components {
             url: string;
         };
         /**
+         * WebhookDelivery
+         * @description Una entrega registrada de un webhook.
+         *
+         *     Antes esta ruta devolvía ``list[dict[str, Any]]`` y el cliente generado la
+         *     veía como `{ [key: string]: unknown }[]`, obligando al frontend a
+         *     redeclarar la forma a mano — el anti-patrón que ya hizo que el Radar
+         *     pintase campos inexistentes.
+         */
+        WebhookDelivery: {
+            /** Created At */
+            created_at: string;
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: number;
+            /** Payload Size */
+            payload_size?: number | null;
+            /** Status Code */
+            status_code?: number | null;
+            /** Success */
+            success: boolean;
+            /** Webhook Id */
+            webhook_id: number;
+        };
+        /**
+         * WebhookEventTypes
+         * @description Tipos de evento a los que un webhook puede suscribirse.
+         *
+         *     Los sirve el backend en vez de que la UI los duplique: la lista es la misma
+         *     que valida `WebhookCreate.event_types`, así que no pueden divergir.
+         */
+        WebhookEventTypes: {
+            /** Event Types */
+            event_types: string[];
+        };
+        /**
          * WebhookOut
          * @description Webhook sin secret (el secret solo viaja al crearlo).
          */
         WebhookOut: {
             /** Active */
-            active: number | null;
+            active: boolean | null;
             /** Created At */
             created_at: string | null;
             /** Event Types */
@@ -13135,6 +13191,46 @@ export interface operations {
             };
         };
     };
+    event_types_api_v1_webhooks_event_types_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEventTypes"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_one_api_v1_webhooks__webhook_id__get: {
         parameters: {
             query?: never;
@@ -13321,9 +13417,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["WebhookDelivery"][];
                 };
             };
             /** @description API key inválida */

@@ -824,3 +824,14 @@ Resueltos por los streams de [docs/plans/2026-08-plan-saneamiento.md](../plans/2
 - **Files de partida:** [tests/test_swallowed_exceptions_guard.py](../tests/test_swallowed_exceptions_guard.py)
 - **Riesgo:** bajo — aditivo (solo añade logs).
 - **Cerrado:** 2026-08-07 (Ola 2). El ratchet quedó en **0** de 32: las 12 de auth/auditoría en `ad2574e` y las 15 de búsqueda, webhooks e ingesta en la Ola 2.
+
+### [P2] UI de webhooks y GDPR self-service
+- **Área:** web/, api/
+- **Problema:** Backend completo sin superficie de usuario: `db/webhooks.py` tiene entrega HMAC funcional con retry/DNS-pinning, y existen export GDPR (`/me/data`) y delete de cuenta. Nada de eso es usable sin tocar la API a mano. Para consultoría, webhooks = integrar alertas con los sistemas del cliente — mucho valor por pocas pantallas.
+- **Acceptance criteria:**
+  - Página de gestión de webhooks: CRUD, ping de prueba, visualización de secret una sola vez, estado de entregas.
+  - Página de cuenta con export de datos (descarga `/me/data`) y delete de cuenta con confirmación.
+  - Consume exclusivamente la API tipada (invariante §3.8); tests vitest de los flujos.
+- **Files de partida:** [db/webhooks.py](../db/webhooks.py), [api/routes/webhooks.py](../api/routes/webhooks.py), [api/routes/me.py](../api/routes/me.py), [web/src/app/(dashboard)/](../web/src/app/(dashboard)/)
+- **Riesgo:** bajo — el backend ya existe; solo se añade frontend.
+- **Cerrado:** 2026-08-07 (Ola 2). Vista `webhooks` dentro del espacio `ops` (admin-only, como sus rutas) y espacio propio `mi-cuenta` para los derechos GDPR.

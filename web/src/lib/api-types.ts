@@ -79,6 +79,11 @@ export type TenderFactSheetRecord = Schemas["TenderFactSheetRecord"];
 export type EvidenceRef = Schemas["EvidenceRef"];
 /** Lo que devuelve `POST /watchlist/items`: sin los campos enriquecidos del GET. */
 export type WatchlistFavoriteCreated = Schemas["WatchlistFavoriteCreated"];
+/** Solo la creación devuelve `secret`, y una única vez. */
+export type WebhookCreateResponse = Schemas["WebhookCreateResponse"];
+export type WebhookDelivery = Schemas["WebhookDelivery"];
+export type WebhookPingResult = Schemas["WebhookPingResult"];
+export type WebhookEventTypes = Schemas["WebhookEventTypes"];
 export type WebhookOut = Schemas["WebhookOut"];
 export type ResolucionOut = Schemas["ResolucionOut"];
 export type TimelineResult = Schemas["TimelineResult"];

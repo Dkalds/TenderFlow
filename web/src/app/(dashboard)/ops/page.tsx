@@ -30,6 +30,7 @@ const VIEWS: Record<string, React.ComponentType> = {
   administracion: dynamic(() => import("../administracion/page"), { loading }),
   flags: dynamic(() => import("../feature-flags/page"), { loading }),
   etiquetado: dynamic(() => import("../active-learning/page"), { loading }),
+  webhooks: dynamic(() => import("../webhooks/page"), { loading }),
 };
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "ops")!;

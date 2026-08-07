@@ -74,6 +74,7 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "administracion", label: "Administración", from: "administracion" },
     { key: "flags", label: "Feature flags", from: "feature-flags" },
     { key: "etiquetado", label: "Active learning", from: "active-learning" },
+    { key: "webhooks", label: "Webhooks", from: "webhooks" },
   ],
 };
 
@@ -94,6 +95,7 @@ export const BUILT_SPACE_ROUTES: readonly string[] = [
   "mi-pipeline",
   "mi-watchlist",
   "mi-perfil",
+  "mi-cuenta",
   "empresas",
   "equipo",
   "ops",
