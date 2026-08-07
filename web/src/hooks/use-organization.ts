@@ -4,39 +4,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import type {
+  OrganizationMemberInvite,
+  OrganizationMembershipOut,
+  OrganizationMembershipUpsert,
+  OrganizationSummary,
+} from "@/lib/api-types";
 
-export type OrganizationRole = "owner" | "admin" | "member" | "viewer";
-export type OrganizationMembershipStatus = "active" | "invited" | "suspended" | "revoked";
-
-export interface Organization {
-  id: number;
-  name: string;
-  is_personal: boolean;
-  role: OrganizationRole;
-  created_at: string;
-}
-
-export interface OrganizationMember {
-  organization_id: number;
-  user_id: number;
-  role: OrganizationRole;
-  status: OrganizationMembershipStatus;
-  created_at: string;
-  updated_at: string;
-  display_name: string | null;
-  email: string | null;
-}
-
-export interface AddOrganizationMemberInput {
-  email: string;
-  role: "admin" | "member" | "viewer";
-}
-
-export interface UpdateOrganizationMemberInput {
-  user_id: number;
-  role: OrganizationRole;
-  status: OrganizationMembershipStatus;
-}
+/** Nombres locales estables sobre los schemas generados (ver lib/api-types.ts). */
+export type Organization = OrganizationSummary;
+export type OrganizationMember = OrganizationMembershipOut;
+export type AddOrganizationMemberInput = OrganizationMemberInvite;
+export type UpdateOrganizationMemberInput = OrganizationMembershipUpsert;
+export type OrganizationRole = OrganizationSummary["role"];
+export type OrganizationMembershipStatus = OrganizationMembershipOut["status"];
 
 interface OrganizationState {
   activeOrganizationId: number | null;

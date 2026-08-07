@@ -69,7 +69,7 @@ export function PriceScenariosPanel({ licitacionId }: { licitacionId: string }) 
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {data.scenarios.length ? (
+        {data.scenarios?.length ? (
           <div className="grid gap-3 md:grid-cols-3">
             {data.scenarios.map((scenario) => (
               <div key={scenario.name} className="rounded-lg border bg-muted/20 p-4">
@@ -93,13 +93,13 @@ export function PriceScenariosPanel({ licitacionId }: { licitacionId: string }) 
         )}
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
           <span>n = {data.distribution?.n ?? 0}</span>
-          <span>Cohorte: {data.cohort.join(" · ") || "sin cohorte comparable"}</span>
+          <span>Cohorte: {data.cohort?.join(" · ") || "sin cohorte comparable"}</span>
         </div>
         <div className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs leading-relaxed text-warning">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p>{data.disclaimer}</p>
-            {!data.win_probability_gate.available && (
+            {!data.win_probability_gate?.available && (
               <p className="mt-1 font-medium">
                 P(ganar) permanece bloqueada hasta disponer de outcomes, validación temporal y
                 calibración suficientes.

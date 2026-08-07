@@ -58,6 +58,27 @@ export type ModelInfoResult = Schemas["ModelInfoResult"];
 export type CuotaResult = Schemas["CuotaResult"];
 export type HhiResult = Schemas["HhiResult"];
 export type BajasResult = Schemas["BajasResult"];
+
+// Superficies que los hooks declaraban a mano con su propia `interface`. Un
+// tipo escrito a mano compila aunque la API nunca envíe ese campo, y el valor
+// llega a pantalla como `undefined` — ya pasó dos veces (ver el ítem de
+// backlog). Derivarlos del esquema hace que `npm run typecheck` delate la
+// divergencia en vez de la UI.
+export type SourceFreshness = Schemas["SourceFreshness"];
+export type SourceFreshnessResult = Schemas["SourceFreshnessResult"];
+export type PriceScenariosResult = Schemas["PriceScenariosResult"];
+export type PriceScenario = Schemas["PriceScenario"];
+export type HistoricalDistribution = Schemas["HistoricalDistribution"];
+export type OrganizationSummary = Schemas["OrganizationSummary"];
+export type OrganizationMembershipOut = Schemas["OrganizationMembershipOut"];
+export type OrganizationMemberInvite = Schemas["OrganizationMemberInvite"];
+export type OrganizationMembershipUpsert = Schemas["OrganizationMembershipUpsert"];
+export type AskModelInfo = Schemas["AskModelInfo"];
+export type TenderFactSheet = Schemas["TenderFactSheet"];
+export type TenderFactSheetRecord = Schemas["TenderFactSheetRecord"];
+export type EvidenceRef = Schemas["EvidenceRef"];
+/** Lo que devuelve `POST /watchlist/items`: sin los campos enriquecidos del GET. */
+export type WatchlistFavoriteCreated = Schemas["WatchlistFavoriteCreated"];
 export type WebhookOut = Schemas["WebhookOut"];
 export type ResolucionOut = Schemas["ResolucionOut"];
 export type TimelineResult = Schemas["TimelineResult"];

@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
@@ -185,7 +184,7 @@ export default function CalendarioPage() {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
         <p className="text-destructive">
-          {t("common.error")}: {(error as Error).message}
+          {"Error"}: {(error as Error).message}
         </p>
       </div>
     );
