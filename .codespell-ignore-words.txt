@@ -134,3 +134,4 @@ visuales
 controlable
 contiguos
 aplicable
+delate

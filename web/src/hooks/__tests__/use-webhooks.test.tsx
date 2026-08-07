@@ -2,12 +2,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import {
-  useCreateWebhook,
-  usePingWebhook,
-  useWebhookEventTypes,
-  useWebhooks,
-} from "@/hooks/use-webhooks";
+import { useCreateWebhook, usePingWebhook, useWebhookEventTypes, useWebhooks } from "@/hooks/use-webhooks";
 
 const toastCalls: Array<[string, string]> = [];
 vi.mock("sonner", () => ({
@@ -24,9 +19,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 function stub(body: unknown) {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -58,7 +51,13 @@ describe("useWebhooks", () => {
   });
 
   it("el alta devuelve el secret, que solo viaja esta vez", async () => {
-    stub({ id: 7, name: "n", url: "https://x.test", event_types: ["*"], secret: "shhh" });
+    stub({
+      id: 7,
+      name: "n",
+      url: "https://x.test",
+      event_types: ["*"],
+      secret: "shhh", // pragma: allowlist secret (literal de stub)
+    });
 
     const { result } = renderHook(() => useCreateWebhook(), { wrapper });
     let created: { secret?: string } | undefined;
