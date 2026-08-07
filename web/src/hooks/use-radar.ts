@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { components } from "@/generated/api";
 
 /**
@@ -10,121 +11,124 @@ import type { components } from "@/generated/api";
  * Se deriva del esquema generado, no se escribe a mano: un campo que la API no
  * envía deja de compilar aquí en vez de aparecer como `undefined` en pantalla.
  */
-type LicitacionSummary = components["schemas"]["LicitacionSummary"];
 type ScoredOpportunity = components["schemas"]["ScoredOpportunity"];
 
-export type RadarTender = LicitacionSummary & {
-  score?: number | null;
-  band?: string | null;
-  /**
-   * Desglose por dimensión que devuelve el scoring del backend. El inspector
-   * del Radar lo pinta tal cual: la puntuación se calcula en servidor
-   * (ADR-014) y aquí no se deriva ninguna dimensión.
-   */
-  desglose?: Record<string, number>;
-  risk_flags?: string[];
-};
-
-/** Lo que devuelve el listado: sin `score` ni `band`, que llegan del scoring. */
-interface ListingResponse {
-  items: LicitacionSummary[];
-}
+export type RadarTender = ScoredOpportunity;
 
 interface ScoringResponse {
   opportunities: ScoredOpportunity[];
 }
 
+interface DismissalsResponse {
+  ids: string[];
+}
+
+const DISMISSALS_KEY = ["radar", "dismissals"] as const;
+
 /**
- * `sort` sin prefijo es descendente para fechas (lo más reciente primero); el
- * prefijo `-` invierte a ascendente. Es al revés que en `importe`, así que
- * pedir `-fecha_publicacion` devolvía las licitaciones más viejas de la base
- * — justo lo contrario de un radar.
+ * Fuente del Radar: el ranking de mercado, no el listado reordenado.
  *
- * `tecnologia` es un filtro único (o `null` para "Todas"). Radar se apoya en
- * el listado existente y le alinea el score por id, igual que la página de
- * detalle. El scoring lo calcula el backend (ADR-014): aquí sólo se
- * emparejan ids y se ordena por el valor recibido, nunca se deriva una
- * puntuación en cliente.
+ * `GET /analytics/scoring?limit=N` devuelve el top-N por potencial comercial
+ * sobre todo el corpus abierto. Antes esta lista salía de
+ * `GET /licitaciones?limit=24&sort=fecha_publicacion` y se le alineaba el score
+ * por id, así que eran "las 24 abiertas más recientes reordenadas" — la UI
+ * prometía priorización de mercado y entregaba una ventana cronológica. El
+ * cambio fue posible al añadir `fecha_limite` y `tecnologia` a
+ * `ScoredOpportunity`, los dos campos que la tarjeta pinta y que obligaban a
+ * rehidratar contra el listado.
  *
- * `solo_abiertas` deja fuera los expedientes en estado terminal (resuelta,
- * adjudicada, anulada). El Radar responde a "qué merece atención ahora", y una
- * licitación ya resuelta no admite oferta: seguir(S) o abrir una oportunidad
- * sobre ella no lleva a ninguna parte. El filtro se aplica **en el backend**
- * —no descartando filas aquí— porque recortar en cliente encogería la lista
- * por debajo de las 24 que la página promete.
- *
- * **Alcance real de la lista** (la UI debe decirlo, ver `radar/page.tsx`): son
- * las 24 licitaciones *abiertas más recientes*, reordenadas por score. No es
- * el top-24 por score de todo el corpus. Antes se renderizaban en orden
- * cronológico mientras la página prometía priorización, que es el anti-patrón
- * 1 de `docs/frontend-data-invariants.md` aplicado al orden en vez de al
- * número.
- *
- * El ranking real ya existe en backend (`GET /analytics/scoring?limit=N`
- * devuelve "ranked by commercial potential"), pero su DTO `ScoredOpportunity`
- * no incluye `fecha_limite` ni `tecnologia`, que la tarjeta necesita, y el
- * único endpoint de hidratación por ids (`POST /licitaciones/bulk-get`) exige
- * API key en vez de sesión. Cambiar a esa fuente es P1 en
- * `docs/IMPROVEMENT_BACKLOG.md`.
+ * La puntuación y el orden los calcula el backend (ADR-014): aquí no se deriva
+ * ninguna dimensión ni se reordena nada.
  */
 export function useRadar(tecnologia: string | null = null) {
-  const params = new URLSearchParams({
-    limit: "24",
-    with_total: "false",
-    sort: "fecha_publicacion",
-    solo_abiertas: "true",
-  });
-  if (tecnologia) params.set("tecnologia", tecnologia);
-
-  const listing = useQuery({
-    queryKey: ["radar", "tenders", tecnologia],
-    queryFn: () => fetchWithAuth<ListingResponse>(`/api/v1/licitaciones?${params.toString()}`),
-    staleTime: 30_000,
-  });
-
-  const ids = (listing.data?.items ?? []).map((item) => item.id_externo).filter(Boolean);
+  const params = new URLSearchParams({ limit: "24" });
 
   const scoring = useQuery({
-    queryKey: ["radar", "scoring", ids],
+    queryKey: ["radar", "scoring", tecnologia],
     queryFn: () =>
-      fetchWithAuth<ScoringResponse>(
-        `/api/v1/analytics/scoring?ids=${encodeURIComponent(ids.join(","))}`,
-      ),
-    enabled: ids.length > 0,
+      fetchWithAuth<ScoringResponse>(`/api/v1/analytics/scoring?${params.toString()}`),
     staleTime: 5 * 60_000,
-    placeholderData: (previous) => previous,
   });
 
-  const scores = new Map(
-    (scoring.data?.opportunities ?? []).map((row) => [row.id_externo, row] as const),
-  );
-
-  const items: RadarTender[] = (listing.data?.items ?? [])
-    .map<RadarTender>((item) => {
-      const scored = scores.get(item.id_externo);
-      return scored
-        ? {
-            ...item,
-            score: scored.score,
-            band: scored.band,
-            desglose: scored.desglose,
-            risk_flags: scored.risk_flags,
-          }
-        : item;
-    })
-    // Orden por el score que devolvió el backend, descendente; los que no tienen
-    // score van al final conservando su orden de publicación. Sin `score` aún en
-    // vuelo el orden es el del listado, y la UI lo señala como "ordenando…" en
-    // vez de fingir que ya está priorizado.
-    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  // El filtro por tecnología se aplica sobre el ranking recibido, no encogiendo
+  // una lista ya cortada: `scoring` no acepta ese filtro, así que sin él la
+  // página mostraría el top-24 global etiquetado como filtrado.
+  const all = scoring.data?.opportunities ?? [];
+  const items: RadarTender[] = tecnologia
+    ? all.filter((item) => item.tecnologia === tecnologia)
+    : all;
 
   return {
-    data: listing.data ? { items } : undefined,
-    isLoading: listing.isLoading,
-    /** El score aún no ha llegado: el orden mostrado todavía no es el final. */
-    isRanking: scoring.isPending && ids.length > 0,
-    error: listing.error,
-    /** Reintento manual desde el estado de error de la consola. */
-    refetch: listing.refetch,
+    data: scoring.data ? { items } : undefined,
+    isLoading: scoring.isPending,
+    error: scoring.error,
+    refetch: scoring.refetch,
   };
+}
+
+/** Señales que el usuario descartó, persistidas server-side. */
+export function useRadarDismissals() {
+  return useQuery({
+    queryKey: DISMISSALS_KEY,
+    queryFn: () =>
+      fetchWithAuth<DismissalsResponse>("/api/v1/radar/dismissals").then(
+        (response) => response.ids,
+      ),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Descartar / deshacer, con actualización optimista.
+ *
+ * El descarte vivía en `React.useState`: el usuario triaba 24 señales,
+ * recargaba, y volvían las 24 (invariante 2 de `frontend-data-invariants.md`).
+ */
+export function useDismissRadarTender() {
+  const qc = useQueryClient();
+  return useMutation<string[], unknown, string, { previous: string[] | undefined }>({
+    mutationFn: (idExterno: string) =>
+      apiMutate<DismissalsResponse>("POST", "/api/v1/radar/dismissals", {
+        id_externo: idExterno,
+      }).then((response) => response.ids),
+    onMutate: async (idExterno: string) => {
+      await qc.cancelQueries({ queryKey: DISMISSALS_KEY });
+      const previous = qc.getQueryData<string[]>(DISMISSALS_KEY);
+      qc.setQueryData<string[]>(DISMISSALS_KEY, (old) => [idExterno, ...(old ?? [])]);
+      return { previous };
+    },
+    onError: (_err, _idExterno, ctx) => {
+      qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
+      toast.error("No se pudo descartar la señal");
+    },
+    onSuccess: (ids: string[]) => {
+      qc.setQueryData<string[]>(DISMISSALS_KEY, ids);
+    },
+  });
+}
+
+export function useRestoreRadarTender() {
+  const qc = useQueryClient();
+  return useMutation<void, unknown, string, { previous: string[] | undefined }>({
+    mutationFn: (idExterno: string) =>
+      apiMutate<void>(
+        "DELETE",
+        `/api/v1/radar/dismissals/${encodeURIComponent(idExterno)}`,
+      ),
+    onMutate: async (idExterno: string) => {
+      await qc.cancelQueries({ queryKey: DISMISSALS_KEY });
+      const previous = qc.getQueryData<string[]>(DISMISSALS_KEY);
+      qc.setQueryData<string[]>(DISMISSALS_KEY, (old) =>
+        (old ?? []).filter((id) => id !== idExterno),
+      );
+      return { previous };
+    },
+    onError: (_err, _idExterno, ctx) => {
+      qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
+      toast.error("No se pudo recuperar la señal");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: DISMISSALS_KEY });
+    },
+  });
 }

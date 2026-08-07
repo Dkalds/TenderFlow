@@ -273,18 +273,31 @@ class AggregateRepository:
             "     FROM adjudicaciones a "
             "     JOIN licitaciones l ON l.id_externo = a.licitacion_id "
             f"    WHERE {adj_guard} AND {pub_guard} "
-            "  ) t WHERE lead > 0) AS lead_time_medio"
+            "  ) t WHERE lead > 0) AS lead_time_medio, "
+            # Denominador `COUNT(*)` (no solo las filas con es_pyme no nulo)
+            # para dar el mismo resultado que services/analytics/competitors.py,
+            # que trata el NULL como "no PYME". Dos KPIs con el mismo nombre y
+            # distinta base serían peor que un solo número conservador.
+            "  (SELECT 100.0 * COUNT(*) FILTER (WHERE es_pyme = 1) "
+            "          / NULLIF(COUNT(*), 0) "
+            "   FROM adjudicaciones) AS pct_pyme"
         )
         with connect_read() as c:
             row = c.execute(sql).fetchone()
         if row is None:
-            return {"hhi": 0.0, "pct_oferta_unica": 0.0, "lead_time_medio": None}
-        hhi, pct_oferta_unica, lead_time = row
+            return {
+                "hhi": 0.0,
+                "pct_oferta_unica": 0.0,
+                "lead_time_medio": None,
+                "pct_pyme": 0.0,
+            }
+        hhi, pct_oferta_unica, lead_time, pct_pyme = row
         lead_val = float(lead_time) if lead_time is not None and float(lead_time) > 0 else None
         return {
             "hhi": float(hhi or 0.0),
             "pct_oferta_unica": float(pct_oferta_unica or 0.0),
             "lead_time_medio": lead_val,
+            "pct_pyme": float(pct_pyme or 0.0),
         }
 
     def overview_yoy_and_recent(
@@ -1196,7 +1209,7 @@ class AggregateRepository:
     # Columnas que _score_row (services/analytics/scoring.py) necesita leer.
     _SCORING_COLS = (
         "id_externo, titulo, organo_contratacion, importe, cpv, "
-        "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion"
+        "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion, ml_tech_principal, url"
     )
 
     def importe_percentiles(self) -> tuple[float, float]:

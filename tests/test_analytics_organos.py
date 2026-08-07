@@ -4,7 +4,7 @@ Los tres módulos agregan/proyectan vía SQL (ADR-023) — los tests siembran
 datos reales (``tmp_db``) en vez de mockear loaders: ``organos`` y
 ``overview`` sobre ``db.repositories.aggregates``, ``organo_detail`` sobre
 las proyecciones acotadas por órgano (licitaciones + adjudicaciones). En
-``overview``, ``_adj_indicadores`` (hhi/pct_oferta_unica/lead_time_medio,
+``overview``, ``_adj_indicadores`` (hhi/pct_oferta_unica/lead_time_medio/pct_pyme,
 también SQL vía ``overview_adjudicaciones_indicadores``) se mockea con su
 valor neutro para mantener esos smoke tests centrados en ``licitaciones``.
 """
@@ -29,6 +29,7 @@ _ADJ_IND_NEUTRAL: dict[str, float | None] = {
     "hhi": 0.0,
     "pct_oferta_unica": 0.0,
     "lead_time_medio": None,
+    "pct_pyme": 0.0,
 }
 
 _LICITACION_FIELDS = {

@@ -2436,6 +2436,41 @@ export interface paths {
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
         trace?: never;
     };
+    "/api/v1/radar/dismissals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar las señales descartadas por el usuario */
+        get: operations["get_dismissals_api_v1_radar_dismissals_get"];
+        put?: never;
+        /** Descartar una señal del Radar */
+        post: operations["post_dismissal_api_v1_radar_dismissals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/radar/dismissals/{id_externo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Deshacer el descarte de una señal */
+        delete: operations["delete_dismissal_api_v1_radar_dismissals__id_externo__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resoluciones": {
         parameters: {
             query?: never;
@@ -5812,6 +5847,22 @@ export interface components {
             };
         };
         /**
+         * RadarDismissalBody
+         * @description Cuerpo del descarte de una señal.
+         */
+        RadarDismissalBody: {
+            /** Id Externo */
+            id_externo: string;
+        };
+        /**
+         * RadarDismissalsResult
+         * @description ``id_externo`` que el usuario tiene descartados, recientes primero.
+         */
+        RadarDismissalsResult: {
+            /** Ids */
+            ids: string[];
+        };
+        /**
          * RegisterRequest
          * @description Datos para el alta self-service con email + password.
          */
@@ -6153,22 +6204,38 @@ export interface components {
         ScoredOpportunity: {
             /** Band */
             band: string;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
             /** Desglose */
             desglose?: {
                 [key: string]: number;
             };
+            /** Estado */
+            estado?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
             /** Id Externo */
             id_externo: string;
             /** Importe */
             importe?: number | null;
+            /** Ml Tech Principal */
+            ml_tech_principal?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
             /** Risk Flags */
             risk_flags?: string[];
             /** Score */
             score: number;
+            /** Tecnologia */
+            tecnologia?: string | null;
             /** Titulo */
             titulo?: string | null;
+            /** Url */
+            url?: string | null;
         };
         /**
          * ScoringResult
@@ -12260,6 +12327,109 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PursuitDetail"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dismissals_api_v1_radar_dismissals_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarDismissalsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_dismissal_api_v1_radar_dismissals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RadarDismissalBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarDismissalsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dismissal_api_v1_radar_dismissals__id_externo__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

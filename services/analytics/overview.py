@@ -124,12 +124,17 @@ def _to_repo_filters(filters: OverviewFilters) -> LicitacionesFilters:
 
 
 def _adj_indicadores() -> dict[str, float | None]:
-    """HHI, % oferta única y lead time medio — agregados en Postgres, sin filtros."""
+    """HHI, % oferta única, lead time medio y % PYME — en Postgres, sin filtros."""
     try:
         return _repo.overview_adjudicaciones_indicadores()
     except Exception:
         log.warning("overview_adj_indicadores_failed", exc_info=True)
-        return {"hhi": 0.0, "pct_oferta_unica": 0.0, "lead_time_medio": None}
+        return {
+            "hhi": 0.0,
+            "pct_oferta_unica": 0.0,
+            "lead_time_medio": None,
+            "pct_pyme": 0.0,
+        }
 
 
 def get_overview(filters: OverviewFilters) -> OverviewResult:
@@ -220,7 +225,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         funnel_estados=funnel_estados,
         hhi=adj_ind["hhi"] or 0.0,
         pct_oferta_unica=adj_ind["pct_oferta_unica"] or 0.0,
-        pct_pyme=0.0,  # Placeholder — requires pyme flag in adjudicaciones
+        pct_pyme=adj_ind["pct_pyme"] or 0.0,
         concentracion_top10=concentracion_top10,
         lead_time_medio=adj_ind["lead_time_medio"],
         tasa_anulacion=tasa_anulacion,

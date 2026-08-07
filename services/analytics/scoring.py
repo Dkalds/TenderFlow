@@ -70,6 +70,20 @@ class ScoredOpportunity(BaseModel):
     titulo: str | None = None
     organo_contratacion: str | None = None
     importe: float | None = None
+    # Campos que pinta la tarjeta del Radar. Sin ellos, consumir este ranking
+    # obligaba a rehidratar cada id contra el listado —y el único endpoint de
+    # hidratación por ids exige API key, no sesión—, así que el Radar acababa
+    # ordenando "las 24 abiertas más recientes" en vez del top-N del mercado.
+    # Todos salen de `_SCORING_COLS`, que ya los seleccionaba salvo
+    # `ml_tech_principal` (añadido a la proyección con este cambio).
+    fecha_limite: str | None = None
+    tecnologia: str | None = None
+    fecha_publicacion: str | None = None
+    cpv: str | None = None
+    ccaa: str | None = None
+    ml_tech_principal: str | None = None
+    url: str | None = None
+    estado: str | None = None
     score: int
     band: str
     risk_flags: list[str] = Field(default_factory=list)
@@ -483,6 +497,22 @@ def get_scoring(
                 if pd.notna(row.get("organo_contratacion"))
                 else None,
                 importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
+                # `pd.notna` es obligatorio: los NULL de Postgres llegan como
+                # NaN de pandas, que Pydantic rechazaría contra `str | None`.
+                fecha_limite=str(row["fecha_limite"])
+                if pd.notna(row.get("fecha_limite"))
+                else None,
+                tecnologia=str(row["tecnologia"]) if pd.notna(row.get("tecnologia")) else None,
+                fecha_publicacion=str(row["fecha_publicacion"])
+                if pd.notna(row.get("fecha_publicacion"))
+                else None,
+                cpv=str(row["cpv"]) if pd.notna(row.get("cpv")) else None,
+                ccaa=str(row["ccaa"]) if pd.notna(row.get("ccaa")) else None,
+                ml_tech_principal=str(row["ml_tech_principal"])
+                if pd.notna(row.get("ml_tech_principal"))
+                else None,
+                url=str(row["url"]) if pd.notna(row.get("url")) else None,
+                estado=str(row["estado"]) if pd.notna(row.get("estado")) else None,
                 score=s,
                 band=band,
                 risk_flags=flags,
