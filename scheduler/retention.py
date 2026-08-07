@@ -70,13 +70,13 @@ def _cutoff_iso(days: int) -> str:
 def _count_and_delete(conn: object, table: str, date_col: str, cutoff: str, *, apply: bool) -> int:
 
     c = conn.execute(  # type: ignore[attr-defined]
-        "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < ?",  # noqa: S608 — table/date_col are internal constants
+        "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < %s",  # noqa: S608 — table/date_col are internal constants
         (cutoff,),
     )
     count = c.fetchone()[0]
     if apply and count > 0:
         conn.execute(  # type: ignore[attr-defined]
-            "DELETE FROM " + table + " WHERE " + date_col + " < ?",  # noqa: S608 — table/date_col are internal constants
+            "DELETE FROM " + table + " WHERE " + date_col + " < %s",  # noqa: S608 — table/date_col are internal constants
             (cutoff,),
         )
     return int(count)
@@ -141,14 +141,14 @@ def run_retention(
         with _aislado(conn, "failed_extractions"):
             cur = conn.execute(
                 "SELECT COUNT(*) FROM failed_extractions "
-                "WHERE resolved_at IS NOT NULL AND resolved_at < ?",
+                "WHERE resolved_at IS NOT NULL AND resolved_at < %s",
                 (cutoff_dlq,),
             )
             n_dlq = cur.fetchone()[0]
             if apply and n_dlq > 0:
                 conn.execute(
                     "DELETE FROM failed_extractions "
-                    "WHERE resolved_at IS NOT NULL AND resolved_at < ?",
+                    "WHERE resolved_at IS NOT NULL AND resolved_at < %s",
                     (cutoff_dlq,),
                 )
             results["failed_extractions"] = int(n_dlq)
@@ -172,7 +172,7 @@ def run_retention(
 
                 now_ts = _time.time()
                 cur_rl = conn.execute(
-                    "SELECT COUNT(*) FROM rate_limits WHERE reset_at < ?", (now_ts,)
+                    "SELECT COUNT(*) FROM rate_limits WHERE reset_at < %s", (now_ts,)
                 )
                 n_rl = cur_rl.fetchone()[0]
             results["rate_limits"] = int(n_rl)

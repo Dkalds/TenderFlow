@@ -23,7 +23,7 @@ def add(user_key: str, id_externo: str) -> None:
     """
     with connect() as c:
         c.execute(
-            "INSERT INTO radar_dismissals (user_key, id_externo) VALUES (?, ?) "
+            "INSERT INTO radar_dismissals (user_key, id_externo) VALUES (%s, %s) "
             "ON CONFLICT (user_key, id_externo) DO NOTHING",
             (user_key, id_externo),
         )
@@ -33,7 +33,7 @@ def remove(user_key: str, id_externo: str) -> bool:
     """Deshace un descarte. ``True`` si había algo que deshacer."""
     with connect() as c:
         cur = c.execute(
-            "DELETE FROM radar_dismissals WHERE user_key = ? AND id_externo = ?",
+            "DELETE FROM radar_dismissals WHERE user_key = %s AND id_externo = %s",
             (user_key, id_externo),
         )
         return bool(cur.rowcount > 0)
@@ -43,7 +43,7 @@ def list_ids(user_key: str) -> list[str]:
     """Devuelve los ``id_externo`` descartados por el usuario, recientes primero."""
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo FROM radar_dismissals WHERE user_key = ? ORDER BY created_at DESC",
+            "SELECT id_externo FROM radar_dismissals WHERE user_key = %s ORDER BY created_at DESC",
             (user_key,),
         )
         return [str(row[0]) for row in cur.fetchall()]

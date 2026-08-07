@@ -289,25 +289,25 @@ class LicitacionRepository:
         extra_conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
         extra_params: list[Any] = []
         if estado:
-            extra_conditions.append("l.estado = ?")
+            extra_conditions.append("l.estado = %s")
             extra_params.append(estado)
         if solo_abiertas:
             # Mismo criterio que la rama SA Core: COALESCE para que un estado
             # NULL no se caiga del NOT IN.
-            placeholders = ", ".join("?" * len(ESTADOS_CERRADOS))
+            placeholders = ", ".join(["%s"] * len(ESTADOS_CERRADOS))
             extra_conditions.append(f"COALESCE(l.estado, '') NOT IN ({placeholders})")
             extra_params.extend(ESTADOS_CERRADOS)
         if ccaa:
-            extra_conditions.append("l.ccaa = ?")
+            extra_conditions.append("l.ccaa = %s")
             extra_params.append(ccaa)
         if tecnologia:
-            extra_conditions.append("l.tecnologia = ?")
+            extra_conditions.append("l.tecnologia = %s")
             extra_params.append(tecnologia)
         if fecha_desde and _DATE_RE.match(fecha_desde):
-            extra_conditions.append("l.fecha_publicacion >= ?")
+            extra_conditions.append("l.fecha_publicacion >= %s")
             extra_params.append(fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            extra_conditions.append("l.fecha_publicacion <= ?")
+            extra_conditions.append("l.fecha_publicacion <= %s")
             extra_params.append(fecha_hasta)
 
         # Compilar order clause a string para insertar en FTS SQL
@@ -317,7 +317,7 @@ class LicitacionRepository:
 
         extra_where = " AND ".join(extra_conditions)
         col_list = ", ".join(f"l.{c.key}" for c in _SUMMARY_COLS)
-        match_clause = "l.search_vector @@ websearch_to_tsquery('spanish', ?)"
+        match_clause = "l.search_vector @@ websearch_to_tsquery('spanish', %s)"
         base_sql = f"SELECT {col_list} FROM licitaciones l WHERE {match_clause} AND {extra_where}"
         count_sql = f"SELECT COUNT(*) FROM licitaciones l WHERE {match_clause} AND {extra_where}"
 
@@ -328,7 +328,7 @@ class LicitacionRepository:
                 total = int(count_row[0]) if count_row else 0
             items = rows_to_dicts(
                 c.execute(
-                    base_sql + f" ORDER BY {compiled_order} LIMIT ? OFFSET ?",
+                    base_sql + f" ORDER BY {compiled_order} LIMIT %s OFFSET %s",
                     [q, *extra_params, limit, offset],
                 )
             )
@@ -380,7 +380,7 @@ class LicitacionRepository:
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
         """Devuelve el registro completo o None."""
         with connect_read() as c:
-            cur = c.execute("SELECT * FROM licitaciones WHERE id_externo = ?", (id_externo,))
+            cur = c.execute("SELECT * FROM licitaciones WHERE id_externo = %s", (id_externo,))
             row = cur.fetchone()
             if row is None:
                 return None
@@ -391,7 +391,7 @@ class LicitacionRepository:
         """Devuelve (titulo, descripcion, tecnologia) o None."""
         with connect_read() as c:
             row = c.execute(
-                "SELECT titulo, descripcion, tecnologia FROM licitaciones WHERE id_externo = ?",
+                "SELECT titulo, descripcion, tecnologia FROM licitaciones WHERE id_externo = %s",
                 (id_externo,),
             ).fetchone()
         return (str(row[0] or ""), str(row[1] or ""), row[2]) if row else None
@@ -406,7 +406,7 @@ class LicitacionRepository:
                 "FROM licitaciones l "
                 "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
                 "WHERE f.expediente IS NULL "
-                "ORDER BY l.fecha_publicacion DESC LIMIT ?",
+                "ORDER BY l.fecha_publicacion DESC LIMIT %s",
                 (limit,),
             )
             return rows_to_dicts(cur)
@@ -420,7 +420,7 @@ class LicitacionRepository:
                 "FROM licitaciones l "
                 "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
                 "WHERE f.expediente IS NULL "
-                "ORDER BY RANDOM() LIMIT ?",
+                "ORDER BY RANDOM() LIMIT %s",
                 (limit,),
             )
             return rows_to_dicts(cur)
@@ -462,7 +462,7 @@ class LicitacionRepository:
         """
         if not ids:
             return []
-        placeholders = ",".join("?" * len(ids))
+        placeholders = ",".join(["%s"] * len(ids))
         col_names = ", ".join(col.key for col in _SUMMARY_COLS)
         with connect_read() as conn:
             cur = conn.execute(
@@ -568,8 +568,8 @@ class LicitacionRepository:
             cur = c.execute(
                 "SELECT id_externo, titulo, descripcion, organo_contratacion, importe, "
                 "fecha_publicacion, cpv, ml_proba FROM licitaciones "
-                "WHERE ml_proba IS NOT NULL AND ml_proba BETWEEN ? AND ? "
-                "ORDER BY (importe IS NULL), importe DESC, ml_proba LIMIT ?",
+                "WHERE ml_proba IS NOT NULL AND ml_proba BETWEEN %s AND %s "
+                "ORDER BY (importe IS NULL), importe DESC, ml_proba LIMIT %s",
                 (lo, hi, limit),
             )
             return rows_to_dicts(cur)
@@ -585,9 +585,9 @@ class LicitacionRepository:
             with connect_read() as c:
                 cur = c.execute(
                     "SELECT id_externo FROM licitaciones "
-                    "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
-                    "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) DESC "
-                    "LIMIT ?",
+                    "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
+                    "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) DESC "
+                    "LIMIT %s",
                     [query, query, limit],
                 )
                 return [row[0] for row in cur.fetchall()]
@@ -601,7 +601,7 @@ class LicitacionRepository:
             cur = c.execute(
                 "SELECT importe, cpv, ccaa, tecnologia, estado "
                 "FROM licitaciones "
-                "WHERE fecha_publicacion >= ? AND fecha_publicacion <= ?",
+                "WHERE fecha_publicacion >= %s AND fecha_publicacion <= %s",
                 (start, end),
             )
             return rows_to_dicts(cur)
@@ -620,9 +620,9 @@ class LicitacionRepository:
                 "url, fecha_publicacion, ccaa, tecnologia, fecha_extraccion, "
                 "fecha_actualizacion_fuente "
                 "FROM licitaciones "
-                "WHERE fecha_extraccion >= ? OR fecha_actualizacion_fuente >= ? "
+                "WHERE fecha_extraccion >= %s OR fecha_actualizacion_fuente >= %s "
                 "ORDER BY COALESCE(fecha_actualizacion_fuente, fecha_extraccion) DESC "
-                "LIMIT ?",
+                "LIMIT %s",
                 (since_extraccion, since_actualizacion, limit),
             )
             return rows_to_dicts(cur)
@@ -639,15 +639,15 @@ class LicitacionRepository:
         conditions: list[str] = []
         params: list[Any] = []
         if ccaa:
-            conditions.append("ccaa = ?")
+            conditions.append("ccaa = %s")
             params.append(ccaa)
         if estado:
-            conditions.append("estado = ?")
+            conditions.append("estado = %s")
             params.append(estado)
         if q:
             like_op = "ILIKE"
             conditions.append(
-                f"(titulo {like_op} ? ESCAPE '\\' OR descripcion {like_op} ? ESCAPE '\\')"
+                f"(titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\')"
             )
             eq = _escape_like(q)
             params.extend([f"%{eq}%", f"%{eq}%"])
@@ -656,7 +656,7 @@ class LicitacionRepository:
             cur = c.execute(
                 "SELECT id_externo, titulo, organo_contratacion, importe, estado, "
                 "fecha_publicacion, ccaa, cpv, url, tecnologia "
-                "FROM licitaciones" + where + " ORDER BY fecha_publicacion DESC LIMIT ?",
+                "FROM licitaciones" + where + " ORDER BY fecha_publicacion DESC LIMIT %s",
                 [*params, limit],
             )
             return rows_to_dicts(cur)
@@ -670,13 +670,13 @@ class LicitacionRepository:
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         """Búsqueda por ``search_vector`` con metadatos completos (para RAG endpoint)."""
-        conditions: list[str] = ["l.search_vector @@ websearch_to_tsquery('spanish', ?)"]
+        conditions: list[str] = ["l.search_vector @@ websearch_to_tsquery('spanish', %s)"]
         params: list[Any] = [query]
         if ccaa:
-            conditions.append("l.ccaa = ?")
+            conditions.append("l.ccaa = %s")
             params.append(ccaa)
         if tecnologia:
-            conditions.append("l.tecnologia = ?")
+            conditions.append("l.tecnologia = %s")
             params.append(tecnologia)
         where = " AND ".join(conditions)
         cols = (
@@ -687,8 +687,8 @@ class LicitacionRepository:
             cur = c.execute(
                 f"SELECT {cols} FROM licitaciones l "
                 f"WHERE {where} "
-                "ORDER BY ts_rank_cd(l.search_vector, websearch_to_tsquery('spanish', ?)) DESC "
-                "LIMIT ?",
+                "ORDER BY ts_rank_cd(l.search_vector, websearch_to_tsquery('spanish', %s)) DESC "
+                "LIMIT %s",
                 [*params, query, limit],
             )
             return rows_to_dicts(cur)
@@ -704,9 +704,9 @@ class LicitacionRepository:
             with connect_read() as c:
                 cur = c.execute(
                     "SELECT id_externo, "
-                    "ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) AS score "
+                    "ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) AS score "
                     "FROM licitaciones "
-                    "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
+                    "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
                     f"ORDER BY score DESC LIMIT {top_k * 2}",
                     [query, query],
                 )
@@ -735,8 +735,8 @@ class LicitacionRepository:
             with connect_read() as c:
                 cur = c.execute(
                     f"SELECT id_externo FROM licitaciones "
-                    f"WHERE titulo {like_op} ? ESCAPE '\\' OR descripcion {like_op} ? ESCAPE '\\' "
-                    "LIMIT ?",
+                    f"WHERE titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\' "
+                    "LIMIT %s",
                     [f"%{_escape_like(token)}%", f"%{_escape_like(token)}%", top_k],
                 )
                 return [(r[0], 0.20) for r in cur.fetchall()]
@@ -754,7 +754,7 @@ class LicitacionRepository:
             ids = [i for i in ids if i in allowed_ids]
         if not ids:
             return {}
-        placeholders = ",".join("?" for _ in ids)
+        placeholders = ",".join("%s" for _ in ids)
         try:
             with connect_read() as c:
                 cur = c.execute(
@@ -776,8 +776,8 @@ class LicitacionRepository:
             cur = c.execute(
                 "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
                 "FROM licitaciones_history "
-                "WHERE id_externo = ? "
-                "ORDER BY captured_at DESC LIMIT ?",
+                "WHERE id_externo = %s "
+                "ORDER BY captured_at DESC LIMIT %s",
                 [id_externo, limit],
             )
             return rows_to_dicts(cur)
@@ -802,7 +802,8 @@ class LicitacionRepository:
             return []
         like_op = "ILIKE"
         like_clauses = " OR ".join(
-            f"titulo {like_op} ? ESCAPE '\\' OR descripcion {like_op} ? ESCAPE '\\'" for _ in words
+            f"titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\'"
+            for _ in words
         )
         params: list[Any] = []
         for w in words:
@@ -810,7 +811,7 @@ class LicitacionRepository:
             params.extend([escaped, escaped])
         conditions = [f"({like_clauses})"]
         if ccaa:
-            conditions.append("ccaa = ?")
+            conditions.append("ccaa = %s")
             params.append(ccaa)
         where = " AND ".join(conditions)
         try:
@@ -818,7 +819,7 @@ class LicitacionRepository:
                 cur = c.execute(
                     "SELECT id_externo, titulo, organo_contratacion, importe, "
                     "estado, descripcion, ccaa, tecnologia, fecha_publicacion "
-                    f"FROM licitaciones WHERE {where} LIMIT ?",
+                    f"FROM licitaciones WHERE {where} LIMIT %s",
                     [*params, limit],
                 )
                 return rows_to_dicts(cur)

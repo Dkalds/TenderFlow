@@ -80,7 +80,7 @@ def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
                 MAX(a.n_ofertas_recibidas) AS max_ofertas
             FROM adjudicaciones a
             WHERE a.n_ofertas_recibidas IS NOT NULL
-              AND a.fecha_adjudicacion >= ?
+              AND a.fecha_adjudicacion >= %s
             GROUP BY a.licitacion_id
         ) sub
         JOIN licitaciones l ON l.id_externo = sub.licitacion_id
@@ -99,7 +99,7 @@ def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             WHERE a.n_ofertas_recibidas IS NOT NULL
-              AND a.fecha_adjudicacion >= ?
+              AND a.fecha_adjudicacion >= %s
               AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
             GROUP BY a.licitacion_id
         ) sub
@@ -149,7 +149,7 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN lotes lo ON lo.id = a.lote_id
-        WHERE a.fecha_adjudicacion >= ?
+        WHERE a.fecha_adjudicacion >= %s
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND l.cpv IS NOT NULL
           AND length(l.cpv) >= 4
@@ -162,7 +162,7 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN lotes lo ON lo.id = a.lote_id
-        WHERE a.fecha_adjudicacion >= ?
+        WHERE a.fecha_adjudicacion >= %s
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {VALID_PAIR_LOTE}
     """  # noqa: S608 — fragmentos constantes; el valor va con ?

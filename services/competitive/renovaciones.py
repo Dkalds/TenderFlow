@@ -114,7 +114,7 @@ def _rango_vencimiento_sql() -> str:
     """
     return (
         "BETWEEN to_char(CURRENT_DATE, 'YYYY-MM-DD') "
-        "AND to_char(CURRENT_DATE + (? * INTERVAL '1 month'), 'YYYY-MM-DD')"
+        "AND to_char(CURRENT_DATE + (%s * INTERVAL '1 month'), 'YYYY-MM-DD')"
     )
 
 
@@ -168,20 +168,20 @@ def proximas_renovaciones(
     """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
     params: list[Any] = [months_ahead]
     if empresa_id is not None:
-        sql += " AND a.empresa_id = ?"
+        sql += " AND a.empresa_id = %s"
         params.append(empresa_id)
     if ccaa:
-        sql += " AND l.ccaa = ?"
+        sql += " AND l.ccaa = %s"
         params.append(ccaa)
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
-        placeholders = ",".join("?" for _ in tecnologias)
+        placeholders = ",".join("%s" for _ in tecnologias)
         sql += f" AND l.tecnologia IN ({placeholders})"
         params.extend(tecnologias)
     if min_importe is not None:
-        sql += " AND a.importe_adjudicado >= ?"
+        sql += " AND a.importe_adjudicado >= %s"
         params.append(min_importe)
-    sql += " ORDER BY fecha_fin_efectiva ASC LIMIT ? OFFSET ?"
+    sql += " ORDER BY fecha_fin_efectiva ASC LIMIT %s OFFSET %s"
     params.extend([max(1, min(int(limit), 1000)), max(0, int(offset))])
 
     with connect_read() as c:
@@ -216,7 +216,7 @@ def resumen_renovaciones(
     params: list[Any] = [months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
-        placeholders = ",".join("?" for _ in tecnologias)
+        placeholders = ",".join("%s" for _ in tecnologias)
         sql += f" AND l.tecnologia IN ({placeholders})"
         params.extend(tecnologias)
     sql += """
@@ -252,10 +252,10 @@ def totales_renovaciones(
         SELECT COUNT(*) AS contratos_venciendo,
                COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
                COALESCE(
-                   SUM(a.importe_adjudicado) FILTER (WHERE pr.riesgo_cambio >= ?), 0
+                   SUM(a.importe_adjudicado) FILTER (WHERE pr.riesgo_cambio >= %s), 0
                ) AS importe_alto_riesgo,
                COUNT(*) FILTER (
-                   WHERE pr.riesgo_cambio >= ? AND {dias_restantes} <= ?
+                   WHERE pr.riesgo_cambio >= %s AND {dias_restantes} <= %s
                ) AS calientes
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
@@ -267,7 +267,7 @@ def totales_renovaciones(
     params: list[Any] = [RIESGO_ALTO, RIESGO_ALTO, DIAS_CALIENTE, months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
-        placeholders = ",".join("?" for _ in tecnologias)
+        placeholders = ",".join("%s" for _ in tecnologias)
         sql += f" AND l.tecnologia IN ({placeholders})"
         params.extend(tecnologias)
     with connect_read() as c:

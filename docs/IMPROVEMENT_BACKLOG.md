@@ -28,17 +28,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [db/search_backend.py](../db/search_backend.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
 - **Riesgo:** bajo — el eval con golden set actúa de red; cualquier cambio se mide antes de mergear.
 
-### [P2] Retirar el shim de paramstyle `?`→`%s` (codemod de 1123 ocurrencias)
-- **Área:** db/connection.py, y todo el SQL del proyecto
-- **Problema:** `_translate_qmarks` (`db/connection.py`) reescribe cada sentencia en runtime porque el SQL del proyecto se escribe en dialecto qmark y psycopg3 usa `%s`. Con SQLite retirado (ADR-021) **ya no es un hack de compatibilidad entre motores sino una convención de estilo**: se puede eliminar escribiendo el SQL directamente en `%s`. Sigue siendo deuda real — traduce en cada `execute` y ya causó un bug de producción (el escape de `%` literal, ver ADR-018) — pero acotada y cubierta por tests.
-- **Por qué no se hizo dentro de ADR-021:** son **1123 ocurrencias de `?` en 57 archivos**, y `?` aparece también dentro de regex, docstrings y texto en español (`¿…?`), así que no admite un reemplazo textual. Bundlearlo con la retirada del motor habría producido un diff irrevisable y un `git bisect` inútil.
-- **Acceptance criteria:**
-  - `_translate_qmarks` y `_PgConnAdapter` eliminados; las conexiones son cursores psycopg3 desnudos.
-  - Sin ocurrencias de placeholders `?` en SQL fuera de `db/alembic/versions/*`.
-  - Suite verde entre cada archivo migrado (hacerlo por olas, no de una vez).
-- **Files de partida:** [db/connection.py](../db/connection.py), [db/search_backend.py](../db/search_backend.py)
-- **Riesgo:** medio — mecánico pero masivo; mitigado haciéndolo archivo a archivo con la suite como red.
-
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
 - **Área:** scraper/connectors/pscp.py, observability
 - **Problema:** El fix del cursor PSCP (ver Cerrados) es correcto y verificado con tests, pero corre contra un cursor YA atascado en producción desde hace semanas (`last_seen_updated='2026-06-19'`, sin `last_entry_id`). El primer run post-deploy re-consultará desde ese mismo punto (comportamiento esperado y correcto), pero hay que confirmar en los logs de Actions que el cursor **avanza** en el run siguiente (antes se quedaba pegado indefinidamente). Además, dado el volumen de filas que comparten el `:updated_at` de la republicación masiva (~1.86M filas), el conector tardará muchos ciclos en ponerse al día — el throughput por-registro (~240ms, probablemente dominado por round-trips US↔EU a Supabase) es una preocupación separada, no resuelta por este fix. **Actualización 2026-07-27:** el throughput sí está resuelto — la ruta de escritura pasó de un round trip por fila a `executemany` (ver _Cerrados_: 2201 → 6 viajes por lote de 800 filas). Queda solo la verificación en logs de que el cursor avanza.

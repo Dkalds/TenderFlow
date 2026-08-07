@@ -22,7 +22,7 @@ def _insert_licitacion(
         c.execute(
             "INSERT INTO licitaciones "
             "(id_externo, titulo, fuente, fecha_extraccion, tecnologia, ml_tecnologias) "
-            "VALUES (?, ?, 'placsp', CURRENT_TIMESTAMP, ?, ?)",
+            "VALUES (%s, %s, 'placsp', CURRENT_TIMESTAMP, %s, %s)",
             (id_externo, f"Contrato {id_externo}", tecnologia, ml_tecnologias),
         )
 
@@ -166,7 +166,7 @@ class TestMergeWithLockScope:
             c.execute(
                 "INSERT INTO licitacion_tecnologia_score "
                 "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s)",
                 ("SCOPE-1", "SAP", 0.95, 0.5, "2026-08-01T00:00:00+00:00"),
             )
         repo.upsert_signals(
@@ -181,7 +181,7 @@ class TestMergeWithLockScope:
         with connect() as c:
             row = c.execute(
                 "SELECT probabilidad, threshold_aplicado, computed_at "
-                "FROM licitacion_tecnologia_score WHERE licitacion_id = ? AND tecnologia = ?",
+                "FROM licitacion_tecnologia_score WHERE licitacion_id = %s AND tecnologia = %s",
                 ("SCOPE-1", "SAP"),
             ).fetchone()
         assert row[0] == 0.95
@@ -198,7 +198,7 @@ class TestMergeWithLockScope:
             c.execute(
                 "INSERT INTO licitacion_tecnologia_score "
                 "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s)",
                 ("SCOPE-2", "SAP", 0.45, 0.5, "2026-08-01T00:00:00+00:00"),
             )
         repo.upsert_signals(
@@ -212,7 +212,7 @@ class TestMergeWithLockScope:
 
         with connect() as c:
             row = c.execute(
-                "SELECT ml_tecnologias, ml_tech_principal FROM licitaciones WHERE id_externo = ?",
+                "SELECT ml_tecnologias, ml_tech_principal FROM licitaciones WHERE id_externo = %s",
                 ("SCOPE-2",),
             ).fetchone()
         assert row[0] == "DOCKER"
@@ -292,7 +292,7 @@ class TestMergeReapplicableAfterClobber:
 
         with connect() as c:
             row = c.execute(
-                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = ?", ("HEAL-1",)
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s", ("HEAL-1",)
             ).fetchone()
         assert row[0] == "META4"
 
@@ -300,7 +300,7 @@ class TestMergeReapplicableAfterClobber:
         with connect() as c:
             c.execute(
                 "UPDATE licitaciones SET ml_tecnologias = NULL, ml_proba_max = NULL, "
-                "ml_tech_principal = NULL WHERE id_externo = ?",
+                "ml_tech_principal = NULL WHERE id_externo = %s",
                 ("HEAL-1",),
             )
 
@@ -309,7 +309,7 @@ class TestMergeReapplicableAfterClobber:
 
         with connect() as c:
             row = c.execute(
-                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = ?", ("HEAL-1",)
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s", ("HEAL-1",)
             ).fetchone()
         assert row[0] == "META4"  # curado
 
@@ -330,7 +330,7 @@ class TestTechSignalJobPhase:
         assert counts.get("merged") == 1
         with connect() as c:
             row = c.execute(
-                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = ?", ("PHASE-1",)
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s", ("PHASE-1",)
             ).fetchone()
         assert row[0] is not None and "SAP" in row[0]
 
@@ -370,7 +370,7 @@ class TestTecnologiasEndpoint:
             c.execute(
                 "INSERT INTO licitacion_tecnologia_score "
                 "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s)",
                 ("EP-1", "SAP", 0.92, 0.5, "2026-08-01T00:00:00+00:00"),
             )
         TecnologiaPliegoRepository().upsert_signals(

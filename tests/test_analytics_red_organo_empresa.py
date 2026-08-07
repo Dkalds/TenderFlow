@@ -172,7 +172,7 @@ def test_graph_identity_prefers_master_canonico(tmp_db):
         ids = [
             int(row[0])
             for row in conn.execute(
-                "SELECT id FROM adjudicaciones WHERE licitacion_id IN (?, ?)",
+                "SELECT id FROM adjudicaciones WHERE licitacion_id IN (%s, %s)",
                 ("LIC-M1", "LIC-M2"),
             ).fetchall()
         ]

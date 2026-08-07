@@ -55,7 +55,7 @@ def fix_adjudicaciones(dry_run: bool = True) -> int:
                 )
                 if not dry_run:
                     c.execute(
-                        "UPDATE adjudicaciones SET fecha_adjudicacion = ? WHERE id = ?",
+                        "UPDATE adjudicaciones SET fecha_adjudicacion = %s WHERE id = %s",
                         (normalized, row_id),
                     )
 
@@ -86,7 +86,7 @@ def fix_adjudicaciones(dry_run: bool = True) -> int:
                     )
                     if not dry_run:
                         c.execute(
-                            f"UPDATE licitaciones SET {col} = ? WHERE id_externo = ?",  # noqa: S608
+                            f"UPDATE licitaciones SET {col} = %s WHERE id_externo = %s",  # noqa: S608
                             (normalized, id_ext),
                         )
 

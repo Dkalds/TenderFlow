@@ -19,6 +19,10 @@ from scripts.restore_db import latest_backup, restore_backup, verify_backup
 
 
 def _make_db(path: Path, n_rows: int = 3) -> None:
+    # SQLite a propósito y con placeholders qmark: esto no es SQL del proyecto
+    # sino un fichero de prueba para `scripts/restore_db.py`, que sigue
+    # operando sobre backups en formato SQLite. No pasa por la conexión de la
+    # aplicación, así que la migración a `%s` no le aplica.
     con = sqlite3.connect(str(path))
     try:
         con.execute("CREATE TABLE licitaciones (id_externo TEXT PRIMARY KEY, titulo TEXT)")

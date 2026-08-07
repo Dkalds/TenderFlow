@@ -19,7 +19,7 @@ class AuditRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT * FROM audit_log WHERE user_key = ? "
+                    "SELECT * FROM audit_log WHERE user_key = %s "
                     "ORDER BY created_at DESC LIMIT 1000",
                     (user_key,),
                 )

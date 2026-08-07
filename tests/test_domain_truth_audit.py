@@ -33,7 +33,7 @@ def _insertar_licitacion(
     conn.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, importe, estado, "
         "fuente, analysis_universe, fecha_limite, fecha_extraccion) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (
             id_externo,
             f"Licitación {id_externo}",
@@ -51,7 +51,7 @@ def _insertar_licitacion(
 def _insertar_adjudicacion(conn: Any, licitacion_id: str, nif: str, importe: float) -> None:
     conn.execute(
         "INSERT INTO adjudicaciones (licitacion_id, nombre, nif, importe_adjudicado, "
-        "fecha_adjudicacion, fecha_extraccion) VALUES (?, ?, ?, ?, ?, ?)",
+        "fecha_adjudicacion, fecha_extraccion) VALUES (%s, %s, %s, %s, %s, %s)",
         (licitacion_id, f"Empresa {nif}", nif, importe, "2026-05-01", "2026-06-01T00:00:00+00:00"),
     )
 

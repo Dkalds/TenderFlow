@@ -69,7 +69,7 @@ def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
     disponible en :func:`verify_hash_chain`.
     """
     state_row = connection.execute(
-        "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state WHERE chain_name = ?",
+        "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state WHERE chain_name = %s",
         (_CHAIN_NAME,),
     ).fetchone()
     tail_row = connection.execute(
@@ -153,14 +153,14 @@ def log_action(
                     c.execute(
                         "INSERT INTO audit_log "
                         "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash, hash_version) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, 'hmac-sha256-v1')",
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, 'hmac-sha256-v1')",
                         (user_key, session_hash, action, detail, now, prev_hash, this_hash),
                     )
                 else:
                     c.execute(
                         "INSERT INTO audit_log "
                         "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                         (user_key, session_hash, action, detail, now, prev_hash, this_hash),
                     )
                 if has_chain_state:
@@ -168,21 +168,21 @@ def log_action(
                     next_signature = _state_hmac(this_hash, next_count)
                     if state_exists:
                         c.execute(
-                            "UPDATE audit_chain_state SET head_hash = ?, entry_count = ?, "
-                            "state_hmac = ?, updated_at = ? WHERE chain_name = ?",
+                            "UPDATE audit_chain_state SET head_hash = %s, entry_count = %s, "
+                            "state_hmac = %s, updated_at = %s WHERE chain_name = %s",
                             (this_hash, next_count, next_signature, now, _CHAIN_NAME),
                         )
                     else:
                         c.execute(
                             "INSERT INTO audit_chain_state "
                             "(chain_name, head_hash, entry_count, state_hmac, updated_at) "
-                            "VALUES (?, ?, ?, ?, ?)",
+                            "VALUES (%s, %s, %s, %s, %s)",
                             (_CHAIN_NAME, this_hash, next_count, next_signature, now),
                         )
             else:
                 c.execute(
                     "INSERT INTO audit_log (user_key, session_hash, action, detail, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "VALUES (%s, %s, %s, %s, %s)",
                     (user_key, session_hash, action, detail, now),
                 )
     except Exception as exc:
@@ -273,17 +273,17 @@ def list_recent(
     clauses: list[str] = []
     params: list[Any] = []
     if user_key:
-        clauses.append("user_key = ?")
+        clauses.append("user_key = %s")
         params.append(user_key)
     if action:
-        clauses.append("action = ?")
+        clauses.append("action = %s")
         params.append(action)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(limit)
     with connect() as c:
         cur = c.execute(
             "SELECT id, user_key, session_hash, action, detail, created_at "
-            "FROM audit_log " + where + " ORDER BY created_at DESC, id DESC LIMIT ?",
+            "FROM audit_log " + where + " ORDER BY created_at DESC, id DESC LIMIT %s",
             params,
         )
         cols = [d[0] for d in cur.description]
@@ -325,7 +325,7 @@ def verify_hash_chain() -> dict[str, object]:
             if has_chain_state:
                 state_row = c.execute(
                     "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state "
-                    "WHERE chain_name = ?",
+                    "WHERE chain_name = %s",
                     (_CHAIN_NAME,),
                 ).fetchone()
 

@@ -27,7 +27,7 @@ def _get_watchlist_items(user_key: str) -> list[str]:
     """Devuelve los id_externo de los favoritos del usuario."""
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo FROM watchlist_items WHERE user_key = ?",
+            "SELECT id_externo FROM watchlist_items WHERE user_key = %s",
             (user_key,),
         )
         return [str(row[0]) for row in cur.fetchall()]
@@ -39,7 +39,7 @@ def _get_licitaciones_for_deadlines(
     """Carga titulo, fecha_limite y fecha_fin de las licitaciones favoritas."""
     if not ids:
         return []
-    placeholders = ",".join("?" * len(ids))
+    placeholders = ",".join(["%s"] * len(ids))
     with connect_read() as c:
         cur = c.execute(
             f"SELECT id_externo, titulo, fecha_limite, fecha_fin "  # noqa: S608
@@ -105,7 +105,7 @@ def check_deadlines_and_notify(user_key: str) -> int:
                     cur = c.execute(
                         "INSERT INTO user_notifications "
                         "(user_key, created_at, type, title, body, licitacion_id) "
-                        "VALUES (?, ?, ?, ?, ?, ?) "
+                        "VALUES (%s, %s, %s, %s, %s, %s) "
                         "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
                         (user_key, now_ts, notif_type, title, body, lic_id),
                     )

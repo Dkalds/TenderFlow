@@ -20,13 +20,13 @@ def _insert_lic(c, lic_id, *, titulo="Lic", cpv=None, importe=None, ccaa=None, f
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, cpv, importe, ccaa, fuente, "
         "fecha_publicacion, fecha_extraccion) "
-        "VALUES (?, ?, ?, ?, ?, 'placsp', ?, CURRENT_TIMESTAMP)",
+        "VALUES (%s, %s, %s, %s, %s, 'placsp', %s, CURRENT_TIMESTAMP)",
         (lic_id, titulo, cpv, importe, ccaa, fecha or _recent(5)),
     )
 
 
 def _set_last_notified(c, rule_id, iso_ts):
-    c.execute("UPDATE watchlist_rules SET last_notified_at = ? WHERE id = ?", (iso_ts, rule_id))
+    c.execute("UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s", (iso_ts, rule_id))
 
 
 def test_sin_reglas_devuelve_cero(tmp_db):
@@ -48,7 +48,7 @@ def test_regla_due_con_matches_nuevos_notifica(tmp_db):
     # Verifica que se actualizo last_notified_at
     with connect() as c:
         last = c.execute(
-            "SELECT last_notified_at FROM watchlist_rules WHERE id = ?", (rid,)
+            "SELECT last_notified_at FROM watchlist_rules WHERE id = %s", (rid,)
         ).fetchone()[0]
     assert last is not None
 
@@ -66,7 +66,7 @@ def test_regla_inactiva_se_ignora(tmp_db):
     _, _ = tmp_db
     rid = create_rule("user-a", WatchlistRule(keyword="SAP"))
     with connect() as c:
-        c.execute("UPDATE watchlist_rules SET active = 0 WHERE id = ?", (rid,))
+        c.execute("UPDATE watchlist_rules SET active = 0 WHERE id = %s", (rid,))
         _insert_lic(c, "L1", titulo="SAP", fecha=_recent(3))
 
     assert watchlist_rules_alerts.check_rules_and_notify() == 0
@@ -92,7 +92,7 @@ def test_sin_matches_no_notifica_pero_mueve_ventana(tmp_db):
     assert watchlist_rules_alerts.check_rules_and_notify() == 0
     with connect() as c:
         last = c.execute(
-            "SELECT last_notified_at FROM watchlist_rules WHERE id = ?", (rid,)
+            "SELECT last_notified_at FROM watchlist_rules WHERE id = %s", (rid,)
         ).fetchone()[0]
     assert last is not None  # la ventana se movio aunque no haya matches
 

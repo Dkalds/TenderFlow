@@ -49,7 +49,7 @@ class PursuitRepository:
         with connect_read() as conn:
             return (
                 conn.execute(
-                    "SELECT 1 FROM licitaciones WHERE id_externo = ?",
+                    "SELECT 1 FROM licitaciones WHERE id_externo = %s",
                     (licitacion_id,),
                 ).fetchone()
                 is not None
@@ -76,7 +76,7 @@ class PursuitRepository:
                 "(organization_id, licitacion_id, responsible_user_id, "
                 " identified_at, created_by_user_id, updated_by_user_id, "
                 " created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(organization_id, licitacion_id) DO NOTHING RETURNING id",
                 (
                     organization_id,
@@ -124,13 +124,13 @@ class PursuitRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        clauses = ["p.organization_id = ?"]
+        clauses = ["p.organization_id = %s"]
         params: list[Any] = [organization_id]
         if status is not None:
-            clauses.append("p.status = ?")
+            clauses.append("p.status = %s")
             params.append(status)
         if responsible_user_id is not None:
-            clauses.append("p.responsible_user_id = ?")
+            clauses.append("p.responsible_user_id = %s")
             params.append(responsible_user_id)
         where = " AND ".join(clauses)
         with connect_read() as conn:
@@ -142,7 +142,7 @@ class PursuitRepository:
                 _PURSUIT_SELECT
                 + " WHERE "
                 + where
-                + " ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?",
+                + " ORDER BY p.updated_at DESC, p.id DESC LIMIT %s OFFSET %s",
                 tuple([*params, limit, offset]),
             )
             items = rows_to_dicts(cur)
@@ -175,16 +175,16 @@ class PursuitRepository:
             if not changes:
                 return current
 
-            assignments = [f"{column} = ?" for column in changes]
+            assignments = [f"{column} = %s" for column in changes]
             values = list(changes.values())
             assignments.extend(
-                ["updated_by_user_id = ?", "updated_at = ?", "version = version + 1"]
+                ["updated_by_user_id = %s", "updated_at = %s", "version = version + 1"]
             )
             values.extend([actor_user_id, now, organization_id, pursuit_id, expected_version])
             sql = (
                 "UPDATE pursuits SET "
                 + ", ".join(assignments)
-                + " WHERE organization_id = ? AND id = ? AND version = ?"
+                + " WHERE organization_id = %s AND id = %s AND version = %s"
             )
             updated = conn.execute(sql + " RETURNING id", tuple(values)).fetchone()
             did_update = updated is not None
@@ -206,7 +206,7 @@ class PursuitRepository:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT id, pursuit_id, event_type, actor_user_id, payload_json, created_at "
-                "FROM pursuit_events WHERE organization_id = ? AND pursuit_id = ? "
+                "FROM pursuit_events WHERE organization_id = %s AND pursuit_id = %s "
                 "ORDER BY id",
                 (organization_id, pursuit_id),
             )
@@ -225,13 +225,13 @@ class PursuitRepository:
         period_from: str | None = None,
         period_to: str | None = None,
     ) -> list[dict[str, Any]]:
-        clauses = ["organization_id = ?"]
+        clauses = ["organization_id = %s"]
         params: list[Any] = [organization_id]
         if period_from is not None:
-            clauses.append("identified_at >= ?")
+            clauses.append("identified_at >= %s")
             params.append(period_from)
         if period_to is not None:
-            clauses.append("identified_at < ?")
+            clauses.append("identified_at < %s")
             params.append(period_to)
         with connect_read() as conn:
             cur = conn.execute(
@@ -251,8 +251,8 @@ class PursuitRepository:
         with connect_read() as conn:
             pursuits = rows_to_dicts(
                 conn.execute(
-                    "SELECT * FROM pursuits WHERE responsible_user_id = ? "
-                    "OR created_by_user_id = ? OR updated_by_user_id = ? "
+                    "SELECT * FROM pursuits WHERE responsible_user_id = %s "
+                    "OR created_by_user_id = %s OR updated_by_user_id = %s "
                     "ORDER BY id LIMIT 5000",
                     (user_id, user_id, user_id),
                 )
@@ -261,7 +261,7 @@ class PursuitRepository:
                 conn.execute(
                     "SELECT id, pursuit_id, organization_id, event_type, actor_user_id, "
                     "payload_json, idempotency_key, created_at "
-                    "FROM pursuit_events WHERE actor_user_id = ? ORDER BY id LIMIT 5000",
+                    "FROM pursuit_events WHERE actor_user_id = %s ORDER BY id LIMIT 5000",
                     (user_id,),
                 )
             )
@@ -272,13 +272,13 @@ class PursuitRepository:
         with connect() as conn:
             conn.execute(
                 "UPDATE pursuits SET "
-                "responsible_user_id = CASE WHEN responsible_user_id = ? THEN NULL "
+                "responsible_user_id = CASE WHEN responsible_user_id = %s THEN NULL "
                 "ELSE responsible_user_id END, "
-                "created_by_user_id = CASE WHEN created_by_user_id = ? THEN NULL "
+                "created_by_user_id = CASE WHEN created_by_user_id = %s THEN NULL "
                 "ELSE created_by_user_id END, "
-                "updated_by_user_id = CASE WHEN updated_by_user_id = ? THEN NULL "
+                "updated_by_user_id = CASE WHEN updated_by_user_id = %s THEN NULL "
                 "ELSE updated_by_user_id END "
-                "WHERE responsible_user_id = ? OR created_by_user_id = ? OR updated_by_user_id = ?",
+                "WHERE responsible_user_id = %s OR created_by_user_id = %s OR updated_by_user_id = %s",
                 (user_id, user_id, user_id, user_id, user_id, user_id),
             )
 
@@ -291,10 +291,10 @@ class PursuitRepository:
         licitacion_id: str | None = None,
     ) -> dict[str, Any] | None:
         if pursuit_id is not None:
-            suffix = " WHERE p.organization_id = ? AND p.id = ?"
+            suffix = " WHERE p.organization_id = %s AND p.id = %s"
             params: tuple[Any, ...] = (organization_id, pursuit_id)
         elif licitacion_id is not None:
-            suffix = " WHERE p.organization_id = ? AND p.licitacion_id = ?"
+            suffix = " WHERE p.organization_id = %s AND p.licitacion_id = %s"
             params = (organization_id, licitacion_id)
         else:
             raise ValueError("Se requiere pursuit_id o licitacion_id.")
@@ -306,7 +306,7 @@ class PursuitRepository:
     def _event_key_exists(conn: Any, pursuit_id: int, idempotency_key: str) -> bool:
         return (
             conn.execute(
-                "SELECT 1 FROM pursuit_events WHERE pursuit_id = ? AND idempotency_key = ?",
+                "SELECT 1 FROM pursuit_events WHERE pursuit_id = %s AND idempotency_key = %s",
                 (pursuit_id, idempotency_key),
             ).fetchone()
             is not None
@@ -328,7 +328,7 @@ class PursuitRepository:
             "INSERT INTO pursuit_events "
             "(pursuit_id, organization_id, event_type, actor_user_id, "
             " payload_json, idempotency_key, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
             "ON CONFLICT DO NOTHING",
             (
                 pursuit_id,

@@ -56,7 +56,7 @@ def append_event(
         cur = c.execute(
             "INSERT INTO domain_events "
             "(event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             (
                 event_type,
                 str(aggregate_id),
@@ -82,15 +82,15 @@ def get_events(
     params: list[Any] = [aggregate_type, str(aggregate_id)]
     extra = ""
     if event_type:
-        extra = " AND event_type=?"
+        extra = " AND event_type=%s"
         params.append(event_type)
     params.append(limit)
     with connect() as c:
         cur = c.execute(
             f"SELECT id, event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at "
             f"FROM domain_events "
-            f"WHERE aggregate_type=? AND aggregate_id=?{extra} "
-            f"ORDER BY created_at, id LIMIT ?",
+            f"WHERE aggregate_type=%s AND aggregate_id=%s{extra} "
+            f"ORDER BY created_at, id LIMIT %s",
             params,
         )
         cols = [d[0] for d in cur.description]
@@ -113,15 +113,15 @@ def get_events_by_type(
     params: list[Any] = [event_type]
     extra = ""
     if since:
-        extra = " AND created_at >= ?"
+        extra = " AND created_at >= %s"
         params.append(since)
     params.append(limit)
     with connect() as c:
         cur = c.execute(
             f"SELECT id, event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at "
             f"FROM domain_events "
-            f"WHERE event_type=?{extra} "
-            f"ORDER BY created_at, id LIMIT ?",
+            f"WHERE event_type=%s{extra} "
+            f"ORDER BY created_at, id LIMIT %s",
             params,
         )
         cols = [d[0] for d in cur.description]
@@ -154,7 +154,7 @@ def get_latest_cache_invalidation_timestamp() -> float:
     with connect_read() as c:
         row = c.execute(
             "SELECT created_at FROM domain_events "
-            "WHERE event_type = ? AND aggregate_type = ? AND aggregate_id = ? "
+            "WHERE event_type = %s AND aggregate_type = %s AND aggregate_id = %s "
             "ORDER BY id DESC LIMIT 1",
             (
                 _CACHE_INVALIDATION_EVENT,

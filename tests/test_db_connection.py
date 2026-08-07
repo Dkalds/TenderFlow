@@ -71,13 +71,15 @@ def test_connect_read_after_write(tmp_db):
     with db_mod.connect() as conn:
         conn.execute(
             "INSERT INTO api_keys(name, key_hash, created_at, is_active) "
-            "VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
             ("test-read", "hash-abc", now_utc_iso(), 1),
         )
 
     # Leer con connect_read
     with connect_read() as conn:
-        row = conn.execute("SELECT name FROM api_keys WHERE key_hash = ?", ("hash-abc",)).fetchone()
+        row = conn.execute(
+            "SELECT name FROM api_keys WHERE key_hash = %s", ("hash-abc",)
+        ).fetchone()
         assert row is not None
         assert row[0] == "test-read"
 
@@ -107,80 +109,53 @@ def test_unit_close_pool_closes_pg_pool(tmp_db):
         assert c.execute("SELECT 1").fetchone()[0] == 1
 
 
-# ── _translate_qmarks (shim qmark -> %s, ADR-016) ────────────────────────────
+# ── Convención de paramstyle (el shim qmark se retiró en 2026-08) ────────────
 #
-# Riesgo identificado en la auditoria de migracion F3b (2026-07-05): ADR-016
-# declaraba "unit tests exhaustivos del shim" como mitigacion, pero no existia
-# ninguno. Un bug real de este shim (regex de string literal con semantica de
-# escape \\ estilo C/Python en vez de SQL estandar) corrompio en silencio el
-# conteo de placeholders en queries con ESCAPE '\' seguido de mas '?' (patron
-# usado en los fallbacks LIKE de db/repositories/licitaciones.py), detectado
-# recien al ejecutar contra Postgres real.
+# Los tests de `_translate_qmarks` desaparecen con la función: el SQL del
+# proyecto se escribe ya en el paramstyle de psycopg3 y no hay traducción en
+# runtime que verificar. Lo que sigue habiendo que garantizar es la propiedad
+# que aquel shim aseguraba de rebote y que causó un bug de producción
+# (ADR-018): un `%` literal dentro de una sentencia CON parámetros tiene que ir
+# doblado, o psycopg lo lee como inicio de placeholder.
 
 
-def test_translate_qmarks_basic_replacement():
-    from db import connection as conn_mod
+def test_like_con_porcentaje_literal_y_parametros(tmp_db):
+    """`LIKE 'daily|%%'` + `LIMIT %s` en la misma sentencia, contra Postgres real.
 
-    sql = "SELECT * FROM t WHERE a = ? AND b = ?"
-    assert conn_mod._translate_qmarks(sql) == "SELECT * FROM t WHERE a = %s AND b = %s"
-
-
-def test_translate_qmarks_ignores_placeholder_inside_single_quoted_string():
-    from db import connection as conn_mod
-
-    sql = "SELECT * FROM t WHERE a = ? AND b = 'literal ? not a placeholder'"
-    result = conn_mod._translate_qmarks(sql)
-    assert result == "SELECT * FROM t WHERE a = %s AND b = 'literal ? not a placeholder'"
-
-
-def test_translate_qmarks_handles_doubled_quote_escape():
-    """SQL estándar escapa una comilla dentro de un string doblándola (''), no con \\'."""
-    from db import connection as conn_mod
-
-    sql = "SELECT * FROM t WHERE name = 'it''s a ? test' AND id = ?"
-    result = conn_mod._translate_qmarks(sql)
-    assert result == "SELECT * FROM t WHERE name = 'it''s a ? test' AND id = %s"
-
-
-def test_translate_qmarks_escape_backslash_clause_does_not_swallow_later_placeholders(
-    monkeypatch,
-):
-    """Regresión: ESCAPE '\\' no es un string sin cerrar en SQL estándar.
-
-    Bug real encontrado en F3b: el regex previo trataba \\' dentro de comillas
-    simples como una comilla escapada (semántica C/Python), tragándose el resto
-    de la query -- incluidos placeholders reales -- hasta la siguiente comilla.
-    Esto rompía silenciosamente like_fallback_search/fetch_for_pdf/
-    search_like_for_ask (todos usan ``LIKE ? ESCAPE '\\'``).
+    Es el caso exacto que rompía en producción: la query capturaba la excepción
+    y devolvía `[]`, así que la alerta de fallos consecutivos del feed diario
+    nunca se disparaba, y la suite no lo veía porque corría sobre SQLite.
     """
-    from db import connection as conn_mod
+    from db.database import connect, now_utc_iso
 
-    sql = (
-        "SELECT id_externo FROM licitaciones "
-        "WHERE titulo ILIKE ? ESCAPE '\\' OR descripcion ILIKE ? ESCAPE '\\' "
-        "LIMIT ?"
-    )
-    result = conn_mod._translate_qmarks(sql)
-    assert result.count("%s") == 3
-    assert "?" not in result
+    with connect() as c:
+        for i, notas in enumerate(("daily|ok", "otro|ok")):
+            c.execute(
+                "INSERT INTO extraction_runs (run_id, started_at, status, notas) "
+                "VALUES (%s, %s, %s, %s)",
+                (f"run-{i}", now_utc_iso(), "ok", notas),
+            )
+        filas = c.execute(
+            "SELECT notas FROM extraction_runs WHERE notas LIKE 'daily|%%' LIMIT %s",
+            (10,),
+        ).fetchall()
 
-
-def test_translate_qmarks_ignores_line_comment():
-    from db import connection as conn_mod
-
-    sql = "SELECT * FROM t WHERE a = ? -- this is a ? in a comment\n"
-    result = conn_mod._translate_qmarks(sql)
-    # El placeholder real se traduce; el "?" dentro del comentario queda intacto.
-    assert result == "SELECT * FROM t WHERE a = %s -- this is a ? in a comment\n"
+    assert [f[0] for f in filas] == ["daily|ok"]
 
 
-def test_translate_qmarks_ignores_block_comment():
-    from db import connection as conn_mod
+def test_porcentaje_literal_sin_parametros_no_se_dobla(tmp_db):
+    """Sin parámetros, psycopg no interpreta `%`: el literal va tal cual."""
+    from db.database import connect, now_utc_iso
 
-    sql = "SELECT * FROM t /* a ? in a block comment */ WHERE a = ?"
-    result = conn_mod._translate_qmarks(sql)
-    assert result.count("%s") == 1
-    assert "/* a ? in a block comment */" in result
+    with connect() as c:
+        c.execute(
+            "INSERT INTO extraction_runs (run_id, started_at, status, notas) "
+            "VALUES (%s, %s, %s, %s)",
+            ("run-seed", now_utc_iso(), "ok", "seed|x"),
+        )
+        filas = c.execute("SELECT notas FROM extraction_runs WHERE notas LIKE 'seed|%'").fetchall()
+
+    assert [f[0] for f in filas] == ["seed|x"]
 
 
 # ── _pg_connect_kwargs (timeouts + sslrootcert, hardening seguridad) ─────────
@@ -294,41 +269,3 @@ def test_get_pg_pool_wraps_connection_error_without_leaking_dsn(monkeypatch):
 # ---------------------------------------------------------------------------
 # Shim de paramstyle: escape de `%` literal (ADR-018)
 # ---------------------------------------------------------------------------
-
-
-def test_translate_qmarks_escapes_literal_percent_with_params():
-    """Un `%` dentro de un literal es dato, no placeholder.
-
-    psycopg interpreta `%` como inicio de placeholder cuando la sentencia lleva
-    parámetros, así que `LIKE 'daily|%'` reventaba con "only '%s', '%b', '%t'
-    are allowed as placeholders". Era el caso de
-    ExtractionRunRepository.load_recent_daily_statuses, que además captura la
-    excepción y devuelve [] — la alerta de fallos consecutivos del feed diario
-    nunca se disparaba en producción.
-    """
-    import db.connection as conn_mod
-
-    sql = "SELECT status FROM extraction_runs WHERE notas LIKE 'daily|%' LIMIT ?"
-    out = conn_mod._translate_qmarks(sql, has_params=True)
-
-    assert "'daily|%%'" in out
-    assert out.endswith("LIMIT %s")
-
-
-def test_translate_qmarks_leaves_percent_alone_without_params():
-    """Sin parámetros psycopg no interpreta `%`: doblarlo corrompería el dato."""
-    import db.connection as conn_mod
-
-    sql = "SELECT * FROM t WHERE c LIKE 'x%'"
-    assert conn_mod._translate_qmarks(sql, has_params=False) == sql
-
-
-def test_translate_qmarks_does_not_touch_comments():
-    """El `%` de un comentario no llega al motor: no debe doblarse."""
-    import db.connection as conn_mod
-
-    sql = "SELECT 1 -- 100% seguro\nWHERE a = ?"
-    out = conn_mod._translate_qmarks(sql, has_params=True)
-
-    assert "-- 100% seguro" in out
-    assert "a = %s" in out

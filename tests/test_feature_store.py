@@ -47,7 +47,7 @@ def test_purge_stale(tmp_db):
         c.execute(
             "INSERT INTO feature_store "
             "(entity_type, entity_id, feature_name, value_json, version, computed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ("licitacion", "OLD", "emb", json.dumps([0.0]), "v1", "2020-01-01T00:00:00"),
         )
     # Insert a recent one normally

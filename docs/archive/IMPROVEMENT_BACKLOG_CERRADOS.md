@@ -835,3 +835,15 @@ Resueltos por los streams de [docs/plans/2026-08-plan-saneamiento.md](../plans/2
 - **Files de partida:** [db/webhooks.py](../db/webhooks.py), [api/routes/webhooks.py](../api/routes/webhooks.py), [api/routes/me.py](../api/routes/me.py), [web/src/app/(dashboard)/](../web/src/app/(dashboard)/)
 - **Riesgo:** bajo — el backend ya existe; solo se añade frontend.
 - **Cerrado:** 2026-08-07 (Ola 2). Vista `webhooks` dentro del espacio `ops` (admin-only, como sus rutas) y espacio propio `mi-cuenta` para los derechos GDPR.
+
+### [P2] Retirar el shim de paramstyle `?`→`%s` (codemod de 1123 ocurrencias)
+- **Área:** db/connection.py, y todo el SQL del proyecto
+- **Problema:** `_translate_qmarks` (`db/connection.py`) reescribe cada sentencia en runtime porque el SQL del proyecto se escribe en dialecto qmark y psycopg3 usa `%s`. Con SQLite retirado (ADR-021) **ya no es un hack de compatibilidad entre motores sino una convención de estilo**: se puede eliminar escribiendo el SQL directamente en `%s`. Sigue siendo deuda real — traduce en cada `execute` y ya causó un bug de producción (el escape de `%` literal, ver ADR-018) — pero acotada y cubierta por tests.
+- **Por qué no se hizo dentro de ADR-021:** son **1123 ocurrencias de `?` en 57 archivos**, y `?` aparece también dentro de regex, docstrings y texto en español (`¿…?`), así que no admite un reemplazo textual. Bundlearlo con la retirada del motor habría producido un diff irrevisable y un `git bisect` inútil.
+- **Acceptance criteria:**
+  - `_translate_qmarks` y `_PgConnAdapter` eliminados; las conexiones son cursores psycopg3 desnudos.
+  - Sin ocurrencias de placeholders `?` en SQL fuera de `db/alembic/versions/*`.
+  - Suite verde entre cada archivo migrado (hacerlo por olas, no de una vez).
+- **Files de partida:** [db/connection.py](../db/connection.py), [db/search_backend.py](../db/search_backend.py)
+- **Riesgo:** medio — mecánico pero masivo; mitigado haciéndolo archivo a archivo con la suite como red.
+- **Cerrado:** 2026-08-07 (Ola 2). El alcance real resultó mayor que el estimado (1679 placeholders migrados, no 1123) y destapó tres cosas que el shim tapaba: tests sobre SQLite, el dialecto SQLAlchemy equivocado y el idiom `join("?" * n)`.

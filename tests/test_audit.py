@@ -272,7 +272,7 @@ def test_verify_hash_chain_detects_deleted_intermediate_entry(tmp_db):
     log_action("u", "s", "second")
     log_action("u", "s", "third")
     with connect() as connection:
-        connection.execute("DELETE FROM audit_log WHERE action = ?", ("second",))
+        connection.execute("DELETE FROM audit_log WHERE action = %s", ("second",))
 
     result = verify_hash_chain()
     assert result["valid"] is False
@@ -287,7 +287,7 @@ def test_verify_hash_chain_detects_deleted_tail_via_signed_head(tmp_db):
     log_action("u", "s", "first")
     log_action("u", "s", "second")
     with connect() as connection:
-        connection.execute("DELETE FROM audit_log WHERE action = ?", ("second",))
+        connection.execute("DELETE FROM audit_log WHERE action = %s", ("second",))
 
     result = verify_hash_chain()
     assert result["valid"] is False

@@ -55,7 +55,7 @@ def find_duplicates(
         df = pd.read_sql_query(
             "SELECT id_externo, fecha_publicacion, titulo, descripcion "
             "FROM licitaciones "
-            "WHERE fecha_publicacion >= ? "
+            "WHERE fecha_publicacion >= %s "
             "ORDER BY fecha_publicacion ASC",
             c,
             params=(cutoff,),
@@ -99,8 +99,8 @@ def apply_duplicates(pairs: list[tuple[str, str, float]]) -> int:
         updated = 0
         for dup_id, original_id, _sim in pairs:
             cur = c.execute(
-                "UPDATE licitaciones SET duplicate_of = ? "
-                "WHERE id_externo = ? AND (duplicate_of IS NULL OR duplicate_of = '')",
+                "UPDATE licitaciones SET duplicate_of = %s "
+                "WHERE id_externo = %s AND (duplicate_of IS NULL OR duplicate_of = '')",
                 (original_id, dup_id),
             )
             updated += cur.rowcount

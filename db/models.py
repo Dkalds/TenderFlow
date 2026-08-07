@@ -38,7 +38,7 @@ from sqlalchemy import (
     Table,
     Text,
 )
-from sqlalchemy.dialects import sqlite as _sqlite_dialect
+from sqlalchemy.dialects import postgresql as _pg_dialect
 
 metadata = MetaData()
 
@@ -147,14 +147,20 @@ lotes = Table(
 # Compiler helper
 # ---------------------------------------------------------------------------
 
-_DIALECT = _sqlite_dialect.dialect()
+# Dialecto Postgres con paramstyle posicional (`%s`), el de psycopg3. Antes
+# compilaba con el dialecto **SQLite**: emitía `?` —que el shim retirado
+# traducía en runtime— y, más grave, generaba SQL con la gramática del motor
+# equivocado contra una base Postgres.
+# `type: ignore`: los stubs de SQLAlchemy no anotan el constructor del dialecto,
+# así que mypy lo ve como llamada sin tipar. El valor sí es un `Dialect`.
+_DIALECT = _pg_dialect.dialect(paramstyle="format")  # type: ignore[no-untyped-call]
 
 
 def compile_query(stmt: Any) -> tuple[str, list[Any]]:
-    """Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.
+    """Compila una expresión SQLAlchemy a ``(sql, params)`` para psycopg3.
 
-    Usa el dialecto SQLite con parámetros posicionales (``?``) compatibles con
-    la API ``libsql`` / ``sqlite3``.
+    Usa el dialecto Postgres con parámetros posicionales (``%s``), que es lo
+    que consume ``db.connection``.
 
     Args:
         stmt: Expresión SQLAlchemy Core (``Select``, ``Insert``, ``Update``, …).
@@ -169,7 +175,7 @@ def compile_query(stmt: Any) -> tuple[str, list[Any]]:
     sql: str = str(compiled)
     raw_params: dict[str, Any] = compiled.params
 
-    # SA SQLite dialect ya emite ? posicionales; el orden está en positiontup.
+    # El dialecto emite `%s` posicionales; el orden está en positiontup.
     position_tup = getattr(compiled, "positiontup", None)
     if position_tup is not None:
         params = [raw_params[k] for k in position_tup]

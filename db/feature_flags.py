@@ -75,7 +75,7 @@ def set_flag(
     with connect() as c:
         c.execute(
             "INSERT INTO feature_flags (name, enabled, rollout_pct, user_emails, description, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
             "ON CONFLICT(name) DO UPDATE SET "
             "enabled=excluded.enabled, rollout_pct=excluded.rollout_pct, "
             "user_emails=excluded.user_emails, description=excluded.description, "
@@ -88,7 +88,7 @@ def set_flag(
 def delete_flag(name: str) -> bool:
     """Elimina un flag. Devuelve True si existía."""
     with connect() as c:
-        cur = c.execute("DELETE FROM feature_flags WHERE name=?", (name,))
+        cur = c.execute("DELETE FROM feature_flags WHERE name=%s", (name,))
         return (cur.rowcount or 0) > 0
 
 
@@ -110,7 +110,7 @@ def _get_flag_row(name: str) -> dict[str, Any] | None:
     with connect() as c:
         cur = c.execute(
             "SELECT id, name, enabled, rollout_pct, user_emails, description, updated_at "
-            "FROM feature_flags WHERE name=?",
+            "FROM feature_flags WHERE name=%s",
             (name,),
         )
         row = cur.fetchone()

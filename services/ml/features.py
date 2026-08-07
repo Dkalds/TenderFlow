@@ -208,7 +208,7 @@ def _cargar_pares(hasta: str | None = None) -> list[dict[str, Any]]:
     """  # noqa: S608 — fragmentos constantes (VALID_PAIR_LOTE, EFFECTIVE_BUDGET_SQL, dedupe); valores con ?
     params: list[Any] = []
     if hasta:
-        sql += " AND a.fecha_adjudicacion <= ?"
+        sql += " AND a.fecha_adjudicacion <= %s"
         params.append(hasta)
     sql += " ORDER BY a.fecha_adjudicacion ASC, l.id_externo ASC"
     with connect_read() as c:
@@ -273,7 +273,7 @@ def features_licitaciones_abiertas(
     """
     _, acum = construir_dataset_baja(hasta=ahora)
     fecha_score = _fecha_dt(ahora) if ahora else datetime.now()
-    cerrados = ", ".join("?" * len(ESTADOS_CERRADOS))
+    cerrados = ", ".join(["%s"] * len(ESTADOS_CERRADOS))
     sql = f"""
         SELECT l.id_externo, l.organo_contratacion AS organo, l.cpv, l.ccaa,
                l.tipo_contrato, l.fuente, l.importe
@@ -284,7 +284,7 @@ def features_licitaciones_abiertas(
           AND NOT EXISTS (SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo)
           AND {exclude_duplicados_sql()}
         ORDER BY l.fecha_publicacion DESC
-        LIMIT ?
+        LIMIT %s
     """  # noqa: S608 — fragmento constante de services.dedupe; valores con ?
     with connect_read() as c:
         abiertas = rows_to_dicts(

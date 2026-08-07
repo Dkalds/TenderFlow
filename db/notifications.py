@@ -19,7 +19,7 @@ def mark_read(user_key: str, notification_id: str) -> None:
         c.execute(
             """
             INSERT INTO notification_reads (user_key, notification_id, read_at)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             ON CONFLICT(user_key, notification_id) DO NOTHING
             """,
             (user_key, notification_id, now_utc_iso()),
@@ -34,7 +34,7 @@ def mark_all_read(user_key: str, notification_ids: list[str]) -> None:
     with connect() as c:
         c.executemany(
             "INSERT INTO notification_reads (user_key, notification_id, read_at) "
-            "VALUES (?, ?, ?) ON CONFLICT(user_key, notification_id) DO NOTHING",
+            "VALUES (%s, %s, %s) ON CONFLICT(user_key, notification_id) DO NOTHING",
             [(user_key, nid, ts) for nid in notification_ids],
         )
 
@@ -44,10 +44,10 @@ def get_unread_ids(user_key: str, candidate_ids: list[str]) -> list[str]:
     if not candidate_ids:
         return []
     with connect() as c:
-        placeholders = ",".join("?" * len(candidate_ids))
+        placeholders = ",".join(["%s"] * len(candidate_ids))
         cur = c.execute(
             "SELECT notification_id FROM notification_reads "
-            "WHERE user_key = ? AND notification_id IN (" + placeholders + ")",
+            "WHERE user_key = %s AND notification_id IN (" + placeholders + ")",
             [user_key, *candidate_ids],
         )
         read_ids = {row[0] for row in cur.fetchall()}
@@ -63,7 +63,7 @@ def get_last_seen_ts(user_key: str) -> str | None:
     """Devuelve la fecha de la notificación más reciente leída, o None."""
     with connect() as c:
         row = c.execute(
-            "SELECT MAX(read_at) FROM notification_reads WHERE user_key = ?",
+            "SELECT MAX(read_at) FROM notification_reads WHERE user_key = %s",
             (user_key,),
         ).fetchone()
     return row[0] if row else None

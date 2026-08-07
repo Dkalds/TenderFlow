@@ -112,7 +112,7 @@ def test_webhook_idempotency_never_persists_secret_or_replays_different_body(
 
     with connect_read() as connection:
         row = connection.execute(
-            "SELECT response_json FROM idempotency_keys WHERE idem_key = ?",
+            "SELECT response_json FROM idempotency_keys WHERE idem_key = %s",
             (headers["Idempotency-Key"],),
         ).fetchone()
     assert row is not None
@@ -298,7 +298,7 @@ def test_retention_cleanup_purges_idempotency_keys(tmp_db, monkeypatch):
     with db_mod.connect() as c:
         c.execute(
             "INSERT INTO idempotency_keys (idem_key, endpoint, response_json, created_at) "
-            "VALUES ('old-key', 'feedback', '{}', ?)",
+            "VALUES ('old-key', 'feedback', '{}', %s)",
             (old_ts,),
         )
 

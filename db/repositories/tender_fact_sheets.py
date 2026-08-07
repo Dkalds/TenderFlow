@@ -36,7 +36,7 @@ class TenderFactSheetsRepository:
                 "  SELECT c.licitacion_id, "
                 "  CASE "
                 "    WHEN tf.licitacion_id IS NULL THEN 0 "
-                "    WHEN tf.status != 'failed' AND tf.extraction_version != ? THEN 1 "
+                "    WHEN tf.status != 'failed' AND tf.extraction_version != %s THEN 1 "
                 "    WHEN tf.status = 'failed' THEN 2 "
                 "    ELSE 99 "
                 "  END AS tier, "
@@ -51,7 +51,7 @@ class TenderFactSheetsRepository:
                 "  LEFT JOIN tender_fact_sheets tf ON tf.licitacion_id = c.licitacion_id "
                 "  WHERE tf.licitacion_id IS NULL "
                 "     OR tf.status = 'failed' "
-                "     OR tf.extraction_version != ?"
+                "     OR tf.extraction_version != %s"
                 ") "
                 "SELECT licitacion_id FROM clasificados "
                 # tech_priority solo desempata dentro del tier 0 (nunca-intentadas):
@@ -61,7 +61,7 @@ class TenderFactSheetsRepository:
                 # de tecnología todavía -- las que este selector existe para descubrir.
                 "ORDER BY tier, CASE WHEN tier = 0 THEN tech_priority ELSE 0 END, "
                 "updated_at ASC, licitacion_id "
-                "LIMIT ?",
+                "LIMIT %s",
                 (extraction_version, extraction_version, max(1, min(int(limit), 200))),
             ).fetchall()
             return [str(row[0]) for row in rows]
@@ -72,7 +72,7 @@ class TenderFactSheetsRepository:
             cur = c.execute(
                 "SELECT licitacion_id, status, extraction_version, model, data_json, "
                 "field_count, evidence_count, error_detail, extracted_at, updated_at "
-                "FROM tender_fact_sheets WHERE licitacion_id = ?",
+                "FROM tender_fact_sheets WHERE licitacion_id = %s",
                 (licitacion_id,),
             )
             rows = rows_to_dicts(cur)
@@ -108,7 +108,7 @@ class TenderFactSheetsRepository:
                 "INSERT INTO tender_fact_sheets "
                 "(licitacion_id, status, extraction_version, model, data_json, "
                 "field_count, evidence_count, error_detail, extracted_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(licitacion_id) DO UPDATE SET "
                 "status=excluded.status, extraction_version=excluded.extraction_version, "
                 "model=excluded.model, data_json=excluded.data_json, "

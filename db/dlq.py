@@ -45,9 +45,9 @@ def record_failure(
         with connect() as c:
             row = c.execute(
                 "SELECT id FROM failed_extractions "
-                "WHERE fuente = ? "
-                "  AND COALESCE(scope, '') = COALESCE(?, '') "
-                "  AND COALESCE(payload_ref, '') = COALESCE(?, '') "
+                "WHERE fuente = %s "
+                "  AND COALESCE(scope, '') = COALESCE(%s, '') "
+                "  AND COALESCE(payload_ref, '') = COALESCE(%s, '') "
                 "  AND resolved_at IS NULL "
                 "  AND exhausted_at IS NULL "
                 "LIMIT 1",
@@ -57,11 +57,11 @@ def record_failure(
                 c.execute(
                     "UPDATE failed_extractions SET "
                     "  retry_count = retry_count + 1, "
-                    "  error_type = ?, "
-                    "  error_message = ?, "
-                    "  run_id = ?, "
-                    "  last_attempt_at = ? "
-                    "WHERE id = ?",
+                    "  error_type = %s, "
+                    "  error_message = %s, "
+                    "  run_id = %s, "
+                    "  last_attempt_at = %s "
+                    "WHERE id = %s",
                     (error_type, error_message, run_id, now, row[0]),
                 )
             else:
@@ -69,7 +69,7 @@ def record_failure(
                     "INSERT INTO failed_extractions "
                     "(run_id, fuente, scope, error_type, error_message, "
                     " payload_ref, retry_count, created_at, last_attempt_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                    "VALUES (%s, %s, %s, %s, %s, %s, 0, %s, %s)",
                     (run_id, fuente, scope, error_type, error_message, payload_ref, now, now),
                 )
     except Exception as e:
@@ -93,7 +93,9 @@ def list_unresolved(
     where = "WHERE resolved_at IS NULL AND exhausted_at IS NULL"
     params: list[Any] = []
     if exclude_fuente_prefix:
-        where += " AND fuente NOT LIKE ? || '%'"
+        # `%%`: psycopg interpreta `%` dentro del literal como placeholder
+        # cuando la sentencia lleva parámetros.
+        where += " AND fuente NOT LIKE %s || '%%'"
         params.append(exclude_fuente_prefix)
     params.append(limit)
 
@@ -102,7 +104,7 @@ def list_unresolved(
             "SELECT id, run_id, fuente, scope, error_type, error_message, "
             "retry_count, created_at, last_attempt_at "
             f"FROM failed_extractions {where} "
-            "ORDER BY created_at DESC LIMIT ?",
+            "ORDER BY created_at DESC LIMIT %s",
             tuple(params),
         )
         cols = [d[0] for d in cur.description]
@@ -131,7 +133,7 @@ def list_exhausted(limit: int = 100) -> list[dict[str, Any]]:
             "retry_count, created_at, last_attempt_at, exhausted_at "
             "FROM failed_extractions "
             "WHERE exhausted_at IS NOT NULL AND resolved_at IS NULL "
-            "ORDER BY exhausted_at DESC LIMIT ?",
+            "ORDER BY exhausted_at DESC LIMIT %s",
             (limit,),
         )
         cols = [d[0] for d in cur.description]
@@ -145,7 +147,7 @@ def get_failure(failure_id: int) -> dict[str, Any] | None:
             "SELECT id, run_id, fuente, scope, error_type, error_message, "
             "payload_ref, retry_count, resolved_at, exhausted_at, "
             "created_at, last_attempt_at "
-            "FROM failed_extractions WHERE id = ?",
+            "FROM failed_extractions WHERE id = %s",
             (failure_id,),
         )
         row = cur.fetchone()
@@ -174,7 +176,7 @@ def unresolved_summary() -> list[dict[str, Any]]:
 def mark_resolved(failure_id: int) -> None:
     with connect() as c:
         c.execute(
-            "UPDATE failed_extractions SET resolved_at = ? WHERE id = ?",
+            "UPDATE failed_extractions SET resolved_at = %s WHERE id = %s",
             (now_utc_iso(), failure_id),
         )
 
@@ -183,7 +185,7 @@ def mark_exhausted(failure_id: int) -> None:
     """Marca una entrada como agotada (no se reintentará más)."""
     with connect() as c:
         c.execute(
-            "UPDATE failed_extractions SET exhausted_at = ? WHERE id = ?",
+            "UPDATE failed_extractions SET exhausted_at = %s WHERE id = %s",
             (now_utc_iso(), failure_id),
         )
 
@@ -192,8 +194,8 @@ def mark_matching_resolved(fuente: str, scope: str | None = None) -> int:
     """Marca como resueltos todos los fallos abiertos de una fuente/scope."""
     with connect() as c:
         cur = c.execute(
-            "UPDATE failed_extractions SET resolved_at = ? "
-            "WHERE fuente = ? AND COALESCE(scope, '') = COALESCE(?, '') "
+            "UPDATE failed_extractions SET resolved_at = %s "
+            "WHERE fuente = %s AND COALESCE(scope, '') = COALESCE(%s, '') "
             "AND resolved_at IS NULL",
             (now_utc_iso(), fuente, scope),
         )
@@ -205,8 +207,8 @@ def increment_retry(failure_id: int) -> None:
     with connect() as c:
         c.execute(
             "UPDATE failed_extractions "
-            "SET retry_count = retry_count + 1, last_attempt_at = ? "
-            "WHERE id = ?",
+            "SET retry_count = retry_count + 1, last_attempt_at = %s "
+            "WHERE id = %s",
             (now_utc_iso(), failure_id),
         )
 
@@ -222,7 +224,7 @@ def sweep_exhausted(max_retries: int) -> list[dict[str, Any]]:
             "SELECT id, fuente, scope, retry_count, error_message "
             "FROM failed_extractions "
             "WHERE resolved_at IS NULL AND exhausted_at IS NULL "
-            "  AND retry_count >= ?",
+            "  AND retry_count >= %s",
             (max_retries,),
         )
         cols = [d[0] for d in cur.description]
@@ -233,10 +235,10 @@ def sweep_exhausted(max_retries: int) -> list[dict[str, Any]]:
 
     now = now_utc_iso()
     ids = [r["id"] for r in newly_exhausted]
-    placeholders = ",".join("?" * len(ids))
+    placeholders = ",".join(["%s"] * len(ids))
     with connect() as c:
         c.execute(
-            "UPDATE failed_extractions SET exhausted_at = ? WHERE id IN (" + placeholders + ")",
+            "UPDATE failed_extractions SET exhausted_at = %s WHERE id IN (" + placeholders + ")",
             [now, *ids],
         )
 

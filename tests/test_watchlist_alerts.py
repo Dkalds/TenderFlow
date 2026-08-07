@@ -352,7 +352,7 @@ def test_send_pending_digests_sends_and_marks_sent(tmp_db):
         c.execute(
             "INSERT INTO pending_digests "
             "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
-            "VALUES ('uk1', 'dest@example.com', ?, 'LIC-DIGEST-01', 'daily', '2024-01-01')",
+            "VALUES ('uk1', 'dest@example.com', %s, 'LIC-DIGEST-01', 'daily', '2024-01-01')",
             (entry_id,),
         )
 
@@ -380,14 +380,14 @@ def test_send_pending_digests_multiple_recipients(tmp_db):
             c.execute(
                 "INSERT INTO watchlist_cpv "
                 "(user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
-                "VALUES (?, '48', NULL, NULL, NULL, ?, 'daily', '2024-01-01')",
+                "VALUES (%s, '48', NULL, NULL, NULL, %s, 'daily', '2024-01-01')",
                 (f"uk{i}", email),
             )
             entry_id = c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0]
             c.execute(
                 "INSERT INTO pending_digests "
                 "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
-                "VALUES (?, ?, ?, ?, 'daily', '2024-01-01')",
+                "VALUES (%s, %s, %s, %s, 'daily', '2024-01-01')",
                 (f"uk{i}", email, entry_id, f"LIC-MULTI-{i:02d}"),
             )
 

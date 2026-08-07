@@ -49,9 +49,9 @@ def check_rate_limit_db(
 
     try:
         with _connect() as conn:
-            conn.execute("DELETE FROM rate_limits WHERE key = ? AND ts < ?", [key, cutoff])
+            conn.execute("DELETE FROM rate_limits WHERE key = %s AND ts < %s", [key, cutoff])
             row = conn.execute(
-                "SELECT COUNT(*) FROM rate_limits WHERE key = ? AND ts >= ?",
+                "SELECT COUNT(*) FROM rate_limits WHERE key = %s AND ts >= %s",
                 [key, cutoff],
             ).fetchone()
             count = int(row[0])
@@ -59,7 +59,7 @@ def check_rate_limit_db(
             if count >= max_calls:
                 return False
 
-            conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", [key, now])
+            conn.execute("INSERT INTO rate_limits (key, ts) VALUES (%s, %s)", [key, now])
             return True
     except Exception:
         # Si la tabla no existe o hay error de BD, denegar la operación (fail closed)
@@ -88,10 +88,10 @@ def record_failed_login(
 
     try:
         with _connect() as conn:
-            conn.execute("DELETE FROM rate_limits WHERE key = ? AND ts < ?", [key, cutoff])
-            conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", [key, now])
+            conn.execute("DELETE FROM rate_limits WHERE key = %s AND ts < %s", [key, cutoff])
+            conn.execute("INSERT INTO rate_limits (key, ts) VALUES (%s, %s)", [key, now])
             row = conn.execute(
-                "SELECT COUNT(*) FROM rate_limits WHERE key = ? AND ts >= ?",
+                "SELECT COUNT(*) FROM rate_limits WHERE key = %s AND ts >= %s",
                 [key, cutoff],
             ).fetchone()
             return int(row[0])
@@ -124,7 +124,7 @@ def is_login_locked_out(
     try:
         with _connect() as conn:
             rows = conn.execute(
-                "SELECT ts FROM rate_limits WHERE key = ? AND ts >= ? ORDER BY ts DESC",
+                "SELECT ts FROM rate_limits WHERE key = %s AND ts >= %s ORDER BY ts DESC",
                 [key, cutoff],
             ).fetchall()
             count = len(rows)
@@ -149,7 +149,7 @@ def clear_login_attempts(client_key: str, *, bucket: str = "login_fail") -> None
     key = f"{bucket}:{client_key}"
     try:
         with _connect() as conn:
-            conn.execute("DELETE FROM rate_limits WHERE key = ?", [key])
+            conn.execute("DELETE FROM rate_limits WHERE key = %s", [key])
     except Exception:
         log.warning("clear_login_attempts_db_error", client_key=client_key)
 
@@ -193,7 +193,7 @@ def cleanup_expired(window_seconds: float = 86_400.0) -> int:
     cutoff = time.time() - window_seconds
     try:
         with _connect() as conn:
-            conn.execute("DELETE FROM rate_limits WHERE ts < ?", [cutoff])
+            conn.execute("DELETE FROM rate_limits WHERE ts < %s", [cutoff])
             # SQLite no tiene rowcount fiable vía libsql, así que devolvemos 0
             return 0
     except Exception:

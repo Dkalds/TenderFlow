@@ -199,7 +199,7 @@ class DocumentoReferencia:
 
 _LIC_KEYS = tuple(f.name for f in fields(Licitacion))
 _LIC_COLS = ", ".join(_LIC_KEYS)
-_LIC_PLACEHOLDERS = ", ".join("?" for _ in _LIC_KEYS)
+_LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 
 # Campos donde una re-ingesta que no trae el dato NO debe borrar un valor ya
 # conocido. Hoy solo fecha_limite: el nodo CODICE que la publica
@@ -219,11 +219,11 @@ _LIC_UPDATES = ", ".join(
 # columna de `adjudicaciones`, así que se excluye de las columnas del INSERT.
 _ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion) if f.name != "lote_numero_raw")
 _ADJ_COLS = ", ".join(_ADJ_KEYS)
-_ADJ_PLACEHOLDERS = ", ".join("?" for _ in _ADJ_KEYS)
+_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in _ADJ_KEYS)
 
 _LOTE_KEYS = tuple(f.name for f in fields(Lote))
 _LOTE_COLS = ", ".join(_LOTE_KEYS)
-_LOTE_PLACEHOLDERS = ", ".join("?" for _ in _LOTE_KEYS)
+_LOTE_PLACEHOLDERS = ", ".join("%s" for _ in _LOTE_KEYS)
 
 _HISTORY_SELECT_COLS = (
     "id_externo, titulo, descripcion, organo_contratacion, importe, "
@@ -249,7 +249,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
         _CHUNK = 500
         for i in range(0, len(batch), _CHUNK):
             chunk = batch[i : i + _CHUNK]
-            placeholders = ", ".join("?" for _ in chunk)
+            placeholders = ", ".join("%s" for _ in chunk)
             chunk_ids = [lic.id_externo for lic in chunk]
             rows = c.execute(
                 f"SELECT id_externo, fecha_publicacion FROM licitaciones "
@@ -425,7 +425,7 @@ def replace_adjudicaciones(
     """
     failures: list[tuple[BaseException, str]] = []
     with connect() as c:
-        c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = ?", [licitacion_id])
+        c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = %s", [licitacion_id])
         rows = _dedup_adj_rows(licitacion_id, items)
         if _try_insert_adj_batch(c, [vals for _, vals in rows]):
             persisted, dropped = len(rows), 0
@@ -474,7 +474,7 @@ def replace_adjudicaciones_batch(
         _CHUNK = 500
         for i in range(0, len(lic_ids), _CHUNK):
             id_chunk = lic_ids[i : i + _CHUNK]
-            placeholders = ", ".join("?" for _ in id_chunk)
+            placeholders = ", ".join("%s" for _ in id_chunk)
             c.execute(
                 f"DELETE FROM adjudicaciones WHERE licitacion_id IN ({placeholders})",
                 id_chunk,
@@ -524,7 +524,7 @@ def replace_lotes(licitacion_id: str, items: Iterable[Lote]) -> dict[str, int]:
     """
     rows = list(items)
     with connect() as c:
-        c.execute("DELETE FROM lotes WHERE licitacion_id = ?", [licitacion_id])
+        c.execute("DELETE FROM lotes WHERE licitacion_id = %s", [licitacion_id])
         mapping: dict[str, int] = {}
         for lote in rows:
             data = asdict(lote)
@@ -561,7 +561,7 @@ def log_extraccion(
         c.execute(
             "INSERT INTO extracciones "
             "(fecha, fuente, nuevas, actualizadas, total_revisadas, notas) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             (now_utc_iso(), fuente, nuevas, actualizadas, total, notas),
         )
 
@@ -582,7 +582,7 @@ def estimar_filas(c: Any, tabla: str) -> int | None:
     caller decide si cuenta exacto, que en esos casos es barato.
     """
     fila = c.execute(
-        "SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(?)", (tabla,)
+        "SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(%s)", (tabla,)
     ).fetchone()
     if not fila or fila[0] is None:
         return None
@@ -618,7 +618,7 @@ def get_cursor(source: str) -> dict[str, Any] | None:
         row = c.execute(
             "SELECT source, last_seen_updated, last_entry_id, etag, "
             "last_modified, updated_at "
-            "FROM ingestion_cursors WHERE source = ?",
+            "FROM ingestion_cursors WHERE source = %s",
             [source],
         ).fetchone()
     if row is None:
@@ -647,7 +647,7 @@ def set_cursor(
         c.execute(
             "INSERT INTO ingestion_cursors "
             "(source, last_seen_updated, last_entry_id, etag, last_modified, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
             "ON CONFLICT(source) DO UPDATE SET "
             "last_seen_updated = excluded.last_seen_updated, "
             "last_entry_id = excluded.last_entry_id, "
@@ -693,7 +693,7 @@ def _upsert_chunk(
 
     col_names = [c.strip() for c in _HISTORY_SELECT_COLS.split(",")]
     with connect() as c:
-        placeholders = ", ".join("?" for _ in chunk)
+        placeholders = ", ".join("%s" for _ in chunk)
         ids = [lic.id_externo for lic in chunk]
         # fecha_publicacion se pide como columna extra al final (fuera de
         # col_names) para conservar el primer anuncio sin alterar el snapshot
@@ -756,7 +756,7 @@ def _upsert_chunk(
             c.executemany(
                 "INSERT INTO licitaciones_history "
                 "(id_externo, captured_at, source, snapshot_json, changed_fields) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s)",
                 history_rows,
             )
         if lic_rows:
@@ -805,8 +805,8 @@ def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
         cur = c.execute(
             "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
             "FROM licitaciones_history "
-            "WHERE id_externo = ? "
-            "ORDER BY captured_at DESC LIMIT ?",
+            "WHERE id_externo = %s "
+            "ORDER BY captured_at DESC LIMIT %s",
             [id_externo, limit],
         )
         cols = [d[0] for d in cur.description]
@@ -838,15 +838,15 @@ def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[
     with connect() as c:
         count_row = c.execute(
             "SELECT COUNT(*) FROM licitaciones "
-            "WHERE search_vector @@ websearch_to_tsquery('spanish', ?)",
+            "WHERE search_vector @@ websearch_to_tsquery('spanish', %s)",
             [query],
         ).fetchone()
         total = int(count_row[0])
         cur = c.execute(
             "SELECT * FROM licitaciones "
-            "WHERE search_vector @@ websearch_to_tsquery('spanish', ?) "
-            "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', ?)) DESC "
-            "LIMIT ? OFFSET ?",
+            "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
+            "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) DESC "
+            "LIMIT %s OFFSET %s",
             [query, query, limit, offset],
         )
         cols = [d[0] for d in cur.description]

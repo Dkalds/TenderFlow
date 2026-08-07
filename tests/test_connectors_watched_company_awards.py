@@ -115,11 +115,12 @@ def test_repository_lists_unique_nonempty_canonical_nifs(tmp_db: Any) -> None:
 
     with db_mod.connect() as c:
         c.execute(
-            "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (?, ?)",
+            "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (%s, %s)",
             ("B12345678", "Uno"),  # pragma: allowlist secret
         )
         c.execute(
-            "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (?, ?)", (None, "Sin NIF")
+            "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (%s, %s)",
+            (None, "Sin NIF"),
         )
         first_id = c.execute(
             "SELECT empresa_id FROM empresas WHERE nombre_canonico = 'Uno'"
@@ -128,13 +129,16 @@ def test_repository_lists_unique_nonempty_canonical_nifs(tmp_db: Any) -> None:
             "SELECT empresa_id FROM empresas WHERE nombre_canonico = 'Sin NIF'"
         ).fetchone()[0]
         c.execute(
-            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u1", first_id)
+            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (%s, %s)",
+            ("u1", first_id),
         )
         c.execute(
-            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u2", first_id)
+            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (%s, %s)",
+            ("u2", first_id),
         )
         c.execute(
-            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (?, ?)", ("u3", empty_id)
+            "INSERT INTO watchlist_empresas (user_key, empresa_id) VALUES (%s, %s)",
+            ("u3", empty_id),
         )
 
     assert WatchedCompanyRepository().list_canonical_nifs() == {

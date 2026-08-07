@@ -38,7 +38,7 @@ class TestUpsertLicitaciones:
         db_mod.upsert_licitaciones([_make_lic("ID-1", "Título actualizado")])
         with db_mod.connect() as c:
             row = c.execute(
-                "SELECT titulo FROM licitaciones WHERE id_externo = ?", ["ID-1"]
+                "SELECT titulo FROM licitaciones WHERE id_externo = %s", ["ID-1"]
             ).fetchone()
         assert row[0] == "Título actualizado"
 
@@ -73,7 +73,7 @@ class TestReplaceAdjudicaciones:
         assert n == 2
         with db_mod.connect() as c:
             count = c.execute(
-                "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = ?",
+                "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = %s",
                 ["TEST-001"],
             ).fetchone()[0]
         assert count == 2
@@ -86,7 +86,7 @@ class TestReplaceAdjudicaciones:
         db_mod.replace_adjudicaciones("TEST-001", adjs)
         with db_mod.connect() as c:
             count = c.execute(
-                "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = ?",
+                "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = %s",
                 ["TEST-001"],
             ).fetchone()[0]
         assert count == 1
@@ -98,7 +98,7 @@ class TestReplaceAdjudicaciones:
         db_mod.replace_adjudicaciones("TEST-001", [])
         with db_mod.connect() as c:
             count = c.execute(
-                "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = ?",
+                "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = %s",
                 ["TEST-001"],
             ).fetchone()[0]
         assert count == 0

@@ -124,7 +124,7 @@ def derive_new_events(batch_size: int = 1000) -> int:
         rows = rows_to_dicts(
             c.execute(
                 "SELECT id, id_externo, captured_at, snapshot_json, changed_fields "
-                "FROM licitaciones_history WHERE id > ? ORDER BY id LIMIT ?",
+                "FROM licitaciones_history WHERE id > %s ORDER BY id LIMIT %s",
                 (last_id, batch_size),
             )
         )
@@ -153,7 +153,7 @@ def derive_new_events(batch_size: int = 1000) -> int:
             if despues_state is None:
                 cur_row = c.execute(
                     "SELECT estado, importe, fecha_fin, duracion_valor, duracion_unidad "
-                    "FROM licitaciones WHERE id_externo = ?",
+                    "FROM licitaciones WHERE id_externo = %s",
                     (row["id_externo"],),
                 ).fetchone()
                 if cur_row is None:
@@ -178,7 +178,7 @@ def derive_new_events(batch_size: int = 1000) -> int:
                     "INSERT INTO contrato_eventos "
                     "(licitacion_id, tipo, fecha, campo, valor_antes, valor_despues, "
                     " importe_delta, detalle, history_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (history_id, tipo, COALESCE(campo, '')) "
                     "WHERE history_id IS NOT NULL DO NOTHING",
                     (
@@ -232,12 +232,12 @@ def timeline(licitacion_id: str) -> list[dict[str, Any]]:
                 """
                 SELECT fecha, tipo, campo, valor_antes, valor_despues,
                        importe_delta, detalle
-                FROM contrato_eventos WHERE licitacion_id = ?
+                FROM contrato_eventos WHERE licitacion_id = %s
                 UNION ALL
                 SELECT substr(l.fecha_publicacion, 1, 10), 'publicacion',
                        NULL, NULL, NULL, NULL, l.titulo
                 FROM licitaciones l
-                WHERE l.id_externo = ? AND l.fecha_publicacion IS NOT NULL
+                WHERE l.id_externo = %s AND l.fecha_publicacion IS NOT NULL
                 UNION ALL
                 SELECT substr(a.fecha_adjudicacion, 1, 10), 'adjudicacion',
                        'adjudicatario', NULL, COALESCE(e.nombre_canonico, a.nombre),
@@ -245,7 +245,7 @@ def timeline(licitacion_id: str) -> list[dict[str, Any]]:
                        'adjudicado a ' || COALESCE(e.nombre_canonico, a.nombre)
                 FROM adjudicaciones a
                 LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-                WHERE a.licitacion_id = ? AND a.fecha_adjudicacion IS NOT NULL
+                WHERE a.licitacion_id = %s AND a.fecha_adjudicacion IS NOT NULL
                 ORDER BY 1
                 """,
                 (licitacion_id, licitacion_id, licitacion_id),
@@ -258,7 +258,7 @@ def eventos_recientes(
     *, tipos: tuple[str, ...] | None = None, dias: int = 30, limit: int = 100
 ) -> list[dict[str, Any]]:
     """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard."""
-    cutoff_expr = "to_char(CURRENT_DATE - (? * INTERVAL '1 day'), 'YYYY-MM-DD')"
+    cutoff_expr = "to_char(CURRENT_DATE - (%s * INTERVAL '1 day'), 'YYYY-MM-DD')"
     sql = (
         "SELECT ev.licitacion_id, ev.tipo, ev.fecha, ev.detalle, ev.importe_delta, "  # noqa: S608
         "       l.titulo, l.organo_contratacion, l.fuente "
@@ -268,10 +268,10 @@ def eventos_recientes(
     )
     params: list[Any] = [max(1, int(dias))]
     if tipos:
-        placeholders = ",".join("?" for _ in tipos)
+        placeholders = ",".join("%s" for _ in tipos)
         sql += f" AND ev.tipo IN ({placeholders})"
         params.extend(tipos)
-    sql += " ORDER BY ev.fecha DESC LIMIT ?"
+    sql += " ORDER BY ev.fecha DESC LIMIT %s"
     params.append(max(1, min(int(limit), 500)))
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))

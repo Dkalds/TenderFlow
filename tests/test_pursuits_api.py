@@ -19,7 +19,7 @@ def _seed(api_db) -> tuple[int, int]:
     with connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones "
-            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (?, ?, ?, ?)",
+            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (%s, %s, %s, %s)",
             (
                 "LIC-API-PURSUIT",
                 "Migración SAP",

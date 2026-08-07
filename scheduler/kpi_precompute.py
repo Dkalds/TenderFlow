@@ -190,7 +190,7 @@ def _persist_snapshots(conn: Any, snapshots: list[dict[str, Any]]) -> int:
     # executemany: una sola sentencia en vez de N round-trips a SQLite.
     conn.executemany(
         "INSERT INTO kpi_snapshots (computed_at, metrica, dimension, valor, valor_text) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s, %s)",
         rows,
     )
     return len(rows)
@@ -349,7 +349,7 @@ def get_latest_snapshot(metrica: str, dimension: str = "global") -> dict[str, An
     with connect() as c:
         row = c.execute(
             "SELECT valor, valor_text, computed_at FROM kpi_snapshots "
-            "WHERE metrica = ? AND dimension = ? "
+            "WHERE metrica = %s AND dimension = %s "
             "ORDER BY computed_at DESC LIMIT 1",
             [metrica, dimension],
         ).fetchone()
@@ -379,7 +379,7 @@ def get_all_latest() -> dict[str, Any]:
         latest_ts = row[0]
 
         rows = c.execute(
-            "SELECT metrica, dimension, valor, valor_text FROM kpi_snapshots WHERE computed_at = ?",
+            "SELECT metrica, dimension, valor, valor_text FROM kpi_snapshots WHERE computed_at = %s",
             [latest_ts],
         ).fetchall()
 

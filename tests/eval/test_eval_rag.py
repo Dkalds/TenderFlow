@@ -104,7 +104,7 @@ def _seed(entries: list[dict[str, Any]]) -> None:
                 "INSERT INTO licitaciones "
                 "(id_externo, titulo, descripcion, organo_contratacion, cpv, "
                 " fuente, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?, 'placsp', CURRENT_TIMESTAMP)",
+                "VALUES (%s, %s, %s, %s, %s, 'placsp', CURRENT_TIMESTAMP)",
                 (
                     lic["id_externo"],
                     lic["titulo"],

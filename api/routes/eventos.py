@@ -35,7 +35,7 @@ def _licitacion_existe(licitacion_id: str) -> bool:
     with connect_read() as c:
         return (
             c.execute(
-                "SELECT 1 FROM licitaciones WHERE id_externo = ?", (licitacion_id,)
+                "SELECT 1 FROM licitaciones WHERE id_externo = %s", (licitacion_id,)
             ).fetchone()
             is not None
         )

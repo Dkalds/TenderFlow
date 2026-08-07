@@ -35,7 +35,7 @@ def _seed(db_mod) -> None:
         for id_externo, publicacion, limite in _ROWS:
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, fecha_publicacion, "
-                "fecha_limite, fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación {id_externo}",
@@ -58,7 +58,7 @@ def _seed_estados(db_mod) -> None:
         for id_externo, estado in _ESTADO_ROWS:
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-                "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación bandeja {id_externo}",
@@ -134,7 +134,7 @@ def test_a_state_the_source_has_not_documented_yet_counts_as_open(tmp_db):
     with db_mod.connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-            "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+            "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
             (
                 "EST-FUTURO",
                 "Licitación con estado nuevo",
@@ -185,7 +185,7 @@ def test_the_api_exposes_the_open_only_filter_to_the_radar(client, api_db, auth)
         for id_externo, estado in (("API-PUB", "PUB"), ("API-RES", "RES")):
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-                "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación {id_externo}",
@@ -214,7 +214,7 @@ def test_the_api_serialises_the_deadline_in_the_listing(client, api_db, auth):
     with connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_publicacion, "
-            "fecha_limite, fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+            "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
             (
                 "RADAR-API",
                 "Licitación radar",

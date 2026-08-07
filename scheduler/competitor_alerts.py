@@ -44,18 +44,18 @@ def _nuevas_adjudicaciones(empresa_id: int, since: str) -> list[dict[str, Any]]:
                    JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
                    WHERE a2.empresa_id = a.empresa_id
                      AND l2.ccaa = l.ccaa
-                     AND a2.fecha_extraccion < ?
+                     AND a2.fecha_extraccion < %s
                )) AS ccaa_nueva,
                (l.cpv IS NOT NULL AND NOT EXISTS (
                    SELECT 1 FROM adjudicaciones a3
                    JOIN licitaciones l3 ON l3.id_externo = a3.licitacion_id
                    WHERE a3.empresa_id = a.empresa_id
                      AND substr(l3.cpv, 1, 2) = substr(l.cpv, 1, 2)
-                     AND a3.fecha_extraccion < ?
+                     AND a3.fecha_extraccion < %s
                )) AS cpv_nuevo
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE a.empresa_id = ? AND a.fecha_extraccion >= ?
+        WHERE a.empresa_id = %s AND a.fecha_extraccion >= %s
         ORDER BY a.fecha_adjudicacion DESC
         LIMIT 50
     """

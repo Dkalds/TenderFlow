@@ -36,7 +36,7 @@ class TestJobLockAcquire:
         past = datetime.now(UTC) - timedelta(seconds=10)
         with connect() as conn:
             conn.execute(
-                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (?, ?, ?, ?)",
+                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (%s, %s, %s, %s)",
                 ("test_job", past.isoformat(), past.isoformat(), "old"),
             )
 
@@ -49,7 +49,7 @@ class TestJobLockAcquire:
         acquire("test_job", ttl_seconds=60, holder="scheduler:loop")
         with connect() as conn:
             row = conn.execute(
-                "SELECT holder FROM job_locks WHERE name = ?", ("test_job",)
+                "SELECT holder FROM job_locks WHERE name = %s", ("test_job",)
             ).fetchone()
         assert row[0] == "scheduler:loop"
 
@@ -92,7 +92,7 @@ class TestGetAllLocks:
         past = datetime.now(UTC) - timedelta(seconds=10)
         with connect() as conn:
             conn.execute(
-                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (?, ?, ?, ?)",
+                "INSERT INTO job_locks (name, acquired_at, expires_at, holder) VALUES (%s, %s, %s, %s)",
                 ("expired_job", past.isoformat(), past.isoformat(), "old"),
             )
 

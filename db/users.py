@@ -21,7 +21,7 @@ def get_or_create_oauth_user(
     """
     with connect() as c:
         row = c.execute(
-            "SELECT id FROM users WHERE oauth_provider = ? AND oauth_sub = ?",
+            "SELECT id FROM users WHERE oauth_provider = %s AND oauth_sub = %s",
             (oauth_provider, oauth_sub),
         ).fetchone()
         if row:
@@ -30,20 +30,20 @@ def get_or_create_oauth_user(
         # Si el email ya existe (usuario previo sin OAuth), vincular
         if email:
             row = c.execute(
-                "SELECT id FROM users WHERE email = ?",
+                "SELECT id FROM users WHERE email = %s",
                 (email,),
             ).fetchone()
             if row:
                 c.execute(
-                    "UPDATE users SET oauth_provider = ?, oauth_sub = ?, "
-                    "display_name = COALESCE(?, display_name) WHERE id = ?",
+                    "UPDATE users SET oauth_provider = %s, oauth_sub = %s, "
+                    "display_name = COALESCE(%s, display_name) WHERE id = %s",
                     (oauth_provider, oauth_sub, display_name, row[0]),
                 )
                 return int(row[0])
 
         cur = c.execute(
             "INSERT INTO users (email, oauth_provider, oauth_sub, display_name, created_at) "
-            "VALUES (?, ?, ?, ?, ?) RETURNING id",
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
             (email or None, oauth_provider, oauth_sub, display_name, now_utc_iso()),
         )
         return int(cur.fetchone()[0])
@@ -65,7 +65,7 @@ def create_user(
     with connect() as c:
         cur = c.execute(
             "INSERT INTO users (email, password_hash, display_name, created_at) "
-            "VALUES (?, ?, ?, ?) RETURNING id",
+            "VALUES (%s, %s, %s, %s) RETURNING id",
             (email, password_hash, display_name, now_utc_iso()),
         )
         return int(cur.fetchone()[0])
@@ -74,7 +74,7 @@ def create_user(
 def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[str, Any] | None:
     """Devuelve un dict con los datos del usuario o None."""
     with connect() as c:
-        sql = "SELECT * FROM users WHERE id = ?"
+        sql = "SELECT * FROM users WHERE id = %s"
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"
         cur = c.execute(sql, (user_id,))
@@ -88,7 +88,7 @@ def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[s
 def get_user_by_email(email: str, *, include_deactivated: bool = False) -> dict[str, Any] | None:
     """Busca usuario por email."""
     with connect() as c:
-        sql = "SELECT * FROM users WHERE email = ?"
+        sql = "SELECT * FROM users WHERE email = %s"
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"
         cur = c.execute(sql, (email,))
@@ -109,7 +109,7 @@ def get_active_user_by_email_ci(email: str) -> dict[str, Any] | None:
     """
     with connect() as c:
         cur = c.execute(
-            "SELECT * FROM users WHERE lower(email) = lower(?) AND deactivated_at IS NULL",
+            "SELECT * FROM users WHERE lower(email) = lower(%s) AND deactivated_at IS NULL",
             (email,),
         )
         row = cur.fetchone()
@@ -122,7 +122,7 @@ def get_active_user_by_email_ci(email: str) -> dict[str, Any] | None:
 def is_admin(user_id: int) -> bool:
     """Devuelve True si el usuario tiene el flag is_admin activo."""
     with connect() as c:
-        row = c.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = c.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,)).fetchone()
         return bool(row and row[0])
 
 
@@ -134,7 +134,7 @@ def admin_granted_by(user_id: int) -> str | None:
     no se puede saber quién las hizo.
     """
     with connect() as c:
-        row = c.execute("SELECT admin_granted_by FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = c.execute("SELECT admin_granted_by FROM users WHERE id = %s", (user_id,)).fetchone()
         return str(row[0]) if row and row[0] else None
 
 
@@ -149,7 +149,7 @@ def set_admin(user_id: int, is_admin_value: bool, granted_by: str | None = None)
     """
     with connect() as c:
         c.execute(
-            "UPDATE users SET is_admin = ?, admin_granted_by = ? WHERE id = ?",
+            "UPDATE users SET is_admin = %s, admin_granted_by = %s WHERE id = %s",
             (1 if is_admin_value else 0, granted_by if is_admin_value else None, user_id),
         )
 
@@ -158,7 +158,7 @@ def set_admin_by_email(email: str, *, is_admin: bool) -> None:
     """Promueve o degrada un usuario por email."""
     with connect() as c:
         c.execute(
-            "UPDATE users SET is_admin = ? WHERE email = ?",
+            "UPDATE users SET is_admin = %s WHERE email = %s",
             (1 if is_admin else 0, email),
         )
 
@@ -176,7 +176,7 @@ def list_users(limit: int = 200, *, include_deactivated: bool = False) -> list[d
             f"{where}"
             "GROUP BY u.id "
             "ORDER BY last_access DESC NULLS LAST "
-            "LIMIT ?",
+            "LIMIT %s",
             (limit,),
         )
         cols = [d[0] for d in cur.description]
@@ -187,7 +187,7 @@ def deactivate_user(user_id: int) -> None:
     """Soft-delete: marca deactivated_at sin borrar datos ni audit trail."""
     with connect() as c:
         c.execute(
-            "UPDATE users SET deactivated_at = ? WHERE id = ? AND deactivated_at IS NULL",
+            "UPDATE users SET deactivated_at = %s WHERE id = %s AND deactivated_at IS NULL",
             (now_utc_iso(), user_id),
         )
 
@@ -196,7 +196,7 @@ def reactivate_user(user_id: int) -> None:
     """Revierte un soft-delete (operación administrativa)."""
     with connect() as c:
         c.execute(
-            "UPDATE users SET deactivated_at = NULL WHERE id = ?",
+            "UPDATE users SET deactivated_at = NULL WHERE id = %s",
             (user_id,),
         )
 
@@ -212,11 +212,11 @@ def anonymize_user(user_id: int) -> None:
     with connect() as c:
         c.execute(
             "UPDATE users SET email = NULL, display_name = NULL, oauth_sub = NULL, "
-            "deactivated_at = COALESCE(deactivated_at, ?) WHERE id = ?",
+            "deactivated_at = COALESCE(deactivated_at, %s) WHERE id = %s",
             (now_utc_iso(), user_id),
         )
         c.execute(
-            "UPDATE access_log SET email = NULL WHERE user_id = ?",
+            "UPDATE access_log SET email = NULL WHERE user_id = %s",
             (user_id,),
         )
 
@@ -231,7 +231,7 @@ def log_access(
     with connect() as c:
         c.execute(
             "INSERT INTO access_log (user_id, email, auth_method, logged_in_at) "
-            "VALUES (?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s)",
             # Keep the API-compatible ``email`` argument out of new audit data:
             # the users table already owns that PII and ``user_id`` is enough to
             # reconstruct an authorized user's access history.

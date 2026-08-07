@@ -376,7 +376,7 @@ def test_get_overview_q_filters_titulo_organo_id(tmp_db):
 
 
 def test_get_overview_importe_min_excludes_below_and_nan(tmp_db):
-    """importe_min filtra como ``importe >= ?`` en SQL (NaN excluido)."""
+    """importe_min filtra como ``importe >= %s`` en SQL (NaN excluido)."""
     rows = _lic_rows()
     rows.append(
         {

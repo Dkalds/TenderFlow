@@ -17,7 +17,7 @@ class SourceHealthRepository:
             c.execute(
                 "INSERT INTO source_ingestion_health "
                 "(source, status, last_started_at, updated_at) "
-                "VALUES (?, 'running', ?, ?) "
+                "VALUES (%s, 'running', %s, %s) "
                 "ON CONFLICT(source) DO UPDATE SET "
                 "status='running', last_started_at=excluded.last_started_at, "
                 "updated_at=excluded.updated_at",
@@ -42,7 +42,7 @@ class SourceHealthRepository:
                 "INSERT INTO source_ingestion_health "
                 "(source, status, last_completed_at, last_success_at, fetched, "
                 "parsed, discarded, errors, cursor_value, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(source) DO UPDATE SET "
                 "status=excluded.status, "
                 "last_completed_at=excluded.last_completed_at, "
@@ -86,7 +86,7 @@ class SourceHealthRepository:
                 "FROM licitaciones "
                 "WHERE fecha_actualizacion_fuente IS NOT NULL "
                 "AND fecha_extraccion IS NOT NULL "
-                "ORDER BY fecha_extraccion DESC LIMIT ?",
+                "ORDER BY fecha_extraccion DESC LIMIT %s",
                 (max(1, min(int(limit), 100_000)),),
             )
             return rows_to_dicts(cur)

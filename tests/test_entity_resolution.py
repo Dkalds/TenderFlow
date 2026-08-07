@@ -289,7 +289,7 @@ def test_apply_review_accept_links_to_candidate(db):
             "SELECT COUNT(*) FROM adjudicaciones WHERE empresa_id IS NULL"
         ).fetchone()[0]
         status_ = c.execute(
-            "SELECT status FROM empresa_review_queue WHERE id = ?", (review_id,)
+            "SELECT status FROM empresa_review_queue WHERE id = %s", (review_id,)
         ).fetchone()[0]
     assert unlinked == 0
     assert status_ == "accepted"

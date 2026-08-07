@@ -28,7 +28,7 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
     """Añade una empresa a la watchlist del usuario. Devuelve el id o None si ya existía."""
     with connect() as c:
         existing = c.execute(
-            "SELECT id FROM watchlist_empresas WHERE user_key = ? AND empresa_id = ?",
+            "SELECT id FROM watchlist_empresas WHERE user_key = %s AND empresa_id = %s",
             (entry.user_key, entry.empresa_id),
         ).fetchone()
         if existing is not None:
@@ -36,7 +36,7 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
         cur = c.execute(
             "INSERT INTO watchlist_empresas "
             "(user_key, empresa_id, email, frequency, created_at, organization_id, visibility) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (
                 entry.user_key,
                 entry.empresa_id,
@@ -54,13 +54,13 @@ def remove_entry(user_key: str, empresa_id: int, organization_id: int | None = N
     with connect() as c:
         if organization_id is None:
             cur = c.execute(
-                "DELETE FROM watchlist_empresas WHERE user_key = ? AND empresa_id = ?",
+                "DELETE FROM watchlist_empresas WHERE user_key = %s AND empresa_id = %s",
                 (user_key, empresa_id),
             )
         else:
             cur = c.execute(
-                "DELETE FROM watchlist_empresas WHERE organization_id = ? "
-                "AND empresa_id = ? AND (visibility = 'organization' OR user_key = ?)",
+                "DELETE FROM watchlist_empresas WHERE organization_id = %s "
+                "AND empresa_id = %s AND (visibility = 'organization' OR user_key = %s)",
                 (organization_id, empresa_id, user_key),
             )
         return bool(cur.rowcount)
@@ -70,10 +70,10 @@ def list_entries(user_key: str, organization_id: int | None = None) -> list[dict
     """Empresas vigiladas por un usuario, con nombre canónico."""
     with connect() as c:
         if organization_id is None:
-            where = "w.user_key = ?"
+            where = "w.user_key = %s"
             params: tuple[Any, ...] = (user_key,)
         else:
-            where = "w.organization_id = ? AND (w.visibility = 'organization' OR w.user_key = ?)"
+            where = "w.organization_id = %s AND (w.visibility = 'organization' OR w.user_key = %s)"
             params = (organization_id, user_key)
         return rows_to_dicts(
             c.execute(
@@ -105,6 +105,6 @@ def list_all() -> list[dict[str, Any]]:
 def update_last_notified(entry_id: int, ts: str | None = None) -> None:
     with connect() as c:
         c.execute(
-            "UPDATE watchlist_empresas SET last_notified_at = ? WHERE id = ?",
+            "UPDATE watchlist_empresas SET last_notified_at = %s WHERE id = %s",
             (ts or now_utc_iso(), entry_id),
         )

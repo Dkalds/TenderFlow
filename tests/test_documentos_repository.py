@@ -23,7 +23,7 @@ def _insert_licitacion(
         c.execute(
             "INSERT INTO licitaciones "
             "(id_externo, titulo, fuente, fecha_extraccion, tecnologia, ml_tecnologias) "
-            "VALUES (?, ?, 'placsp', CURRENT_TIMESTAMP, ?, ?)",
+            "VALUES (%s, %s, 'placsp', CURRENT_TIMESTAMP, %s, %s)",
             (id_externo, f"Contrato {id_externo}", tecnologia, ml_tecnologias),
         )
 
@@ -35,7 +35,7 @@ def _set_created_at(documento_id: int, created_at: str) -> None:
 
     with connect() as c:
         c.execute(
-            "UPDATE documentos SET created_at = ? WHERE id = ?",
+            "UPDATE documentos SET created_at = %s WHERE id = %s",
             (created_at, documento_id),
         )
 
@@ -292,7 +292,7 @@ class TestReplaceChunks:
 
         with connect() as c:
             texto = c.execute(
-                "SELECT texto FROM documento_chunks WHERE documento_id = ?", (doc["id"],)
+                "SELECT texto FROM documento_chunks WHERE documento_id = %s", (doc["id"],)
             ).fetchone()[0]
         assert texto == "v2 chunk unico"
 
@@ -316,7 +316,7 @@ class TestReplaceChunks:
         with connect() as c:
             rows = c.execute(
                 "SELECT chunk_index, texto FROM documento_chunks "
-                "WHERE documento_id = ? ORDER BY chunk_index",
+                "WHERE documento_id = %s ORDER BY chunk_index",
                 (doc["id"],),
             ).fetchall()
         assert [r[1] for r in rows] == ["primero", "segundo", "tercero"]

@@ -207,7 +207,7 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
         try:
             now_iso = datetime.now(UTC).isoformat()
             active_locks = c.execute(
-                "SELECT name, holder, expires_at FROM job_locks WHERE expires_at > ?",
+                "SELECT name, holder, expires_at FROM job_locks WHERE expires_at > %s",
                 (now_iso,),
             ).fetchall()
             info["active_locks"] = [
@@ -224,7 +224,7 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
         try:
             cutoff = (datetime.now(UTC) - timedelta(hours=6)).isoformat()
             rows = c.execute(
-                "SELECT event_type, COUNT(*) FROM ops_events WHERE ts > ? GROUP BY event_type",
+                "SELECT event_type, COUNT(*) FROM ops_events WHERE ts > %s GROUP BY event_type",
                 (cutoff,),
             ).fetchall()
             ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows}
@@ -253,7 +253,7 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
             # Retención best-effort: eliminar eventos > 30 días
             try:
                 retention_cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
-                c.execute("DELETE FROM ops_events WHERE ts < ?", (retention_cutoff,))
+                c.execute("DELETE FROM ops_events WHERE ts < %s", (retention_cutoff,))
             except Exception:
                 pass
 

@@ -30,7 +30,7 @@ def _insert_licitacion(id_externo: str) -> None:
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
-            "VALUES (?, ?, 'placsp', CURRENT_TIMESTAMP)",
+            "VALUES (%s, %s, 'placsp', CURRENT_TIMESTAMP)",
             (id_externo, f"Contrato {id_externo}"),
         )
 

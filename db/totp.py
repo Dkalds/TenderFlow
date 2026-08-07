@@ -104,7 +104,7 @@ def save_totp_secret(user_id: int, secret: str, *, confirmed: bool = False) -> N
     with connect() as c:
         c.execute(
             "INSERT INTO totp_secrets (user_id, secret, confirmed, created_at) "
-            "VALUES (?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s) "
             "ON CONFLICT(user_id) DO UPDATE SET secret=excluded.secret, "
             "confirmed=excluded.confirmed",
             (user_id, encrypted, 1 if confirmed else 0, now_utc_iso()),
@@ -114,7 +114,7 @@ def save_totp_secret(user_id: int, secret: str, *, confirmed: bool = False) -> N
 def confirm_totp(user_id: int) -> None:
     """Marca el TOTP como confirmado (tras primer uso exitoso)."""
     with connect() as c:
-        c.execute("UPDATE totp_secrets SET confirmed = 1 WHERE user_id = ?", (user_id,))
+        c.execute("UPDATE totp_secrets SET confirmed = 1 WHERE user_id = %s", (user_id,))
 
 
 def get_totp_secret(user_id: int) -> dict[str, Any] | None:
@@ -125,7 +125,7 @@ def get_totp_secret(user_id: int) -> dict[str, Any] | None:
     """
     with connect() as c:
         row = c.execute(
-            "SELECT secret, confirmed FROM totp_secrets WHERE user_id = ?", (user_id,)
+            "SELECT secret, confirmed FROM totp_secrets WHERE user_id = %s", (user_id,)
         ).fetchone()
     if row is None:
         return None
@@ -150,8 +150,8 @@ def get_totp_secret(user_id: int) -> dict[str, Any] | None:
 def delete_totp(user_id: int) -> None:
     """Elimina el TOTP del usuario (reset)."""
     with connect() as c:
-        c.execute("DELETE FROM totp_secrets WHERE user_id = ?", (user_id,))
-        c.execute("DELETE FROM totp_recovery_codes WHERE user_id = ?", (user_id,))
+        c.execute("DELETE FROM totp_secrets WHERE user_id = %s", (user_id,))
+        c.execute("DELETE FROM totp_recovery_codes WHERE user_id = %s", (user_id,))
 
 
 def is_totp_required(user_id: int) -> bool:
@@ -174,12 +174,12 @@ def generate_recovery_codes(user_id: int) -> list[str]:
     """
     codes_plain = [secrets.token_hex(8) for _ in range(_N_RECOVERY)]
     with connect() as c:
-        c.execute("DELETE FROM totp_recovery_codes WHERE user_id = ?", (user_id,))
+        c.execute("DELETE FROM totp_recovery_codes WHERE user_id = %s", (user_id,))
         for code in codes_plain:
             hashed = _ph.hash(code)
             c.execute(
                 "INSERT INTO totp_recovery_codes (user_id, code_hash, used, created_at) "
-                "VALUES (?, ?, 0, ?)",
+                "VALUES (%s, %s, 0, %s)",
                 (user_id, hashed, now_utc_iso()),
             )
     return codes_plain
@@ -189,7 +189,7 @@ def use_recovery_code(user_id: int, code: str) -> bool:
     """Verifica y consume un recovery code. Devuelve True si válido."""
     with connect() as c:
         rows = c.execute(
-            "SELECT id, code_hash FROM totp_recovery_codes WHERE user_id = ? AND used = 0",
+            "SELECT id, code_hash FROM totp_recovery_codes WHERE user_id = %s AND used = 0",
             (user_id,),
         ).fetchall()
         for row_id, code_hash in rows:
@@ -202,8 +202,8 @@ def use_recovery_code(user_id: int, code: str) -> bool:
                     # (rowcount == 1); el segundo re-evalúa el WHERE sobre la fila ya
                     # commiteada (used = 1) y matchea 0 filas → no es un consumo válido.
                     consumed: int = c.execute(
-                        "UPDATE totp_recovery_codes SET used = 1, used_at = ? "
-                        "WHERE id = ? AND used = 0",
+                        "UPDATE totp_recovery_codes SET used = 1, used_at = %s "
+                        "WHERE id = %s AND used = 0",
                         (now_utc_iso(), row_id),
                     ).rowcount
                     return consumed == 1

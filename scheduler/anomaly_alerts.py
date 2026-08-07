@@ -29,8 +29,8 @@ def _query_historico_organo(organo: str, months: int = 12) -> tuple[float, float
     with connect() as c:
         cur = c.execute(
             "SELECT importe FROM licitaciones "
-            "WHERE organo_contratacion = ? "
-            "  AND fecha_publicacion >= to_char(CURRENT_DATE - (? * INTERVAL '1 month'), 'YYYY-MM-DD') "
+            "WHERE organo_contratacion = %s "
+            "  AND fecha_publicacion >= to_char(CURRENT_DATE - (%s * INTERVAL '1 month'), 'YYYY-MM-DD') "
             "  AND importe IS NOT NULL",
             (organo, months),
         )

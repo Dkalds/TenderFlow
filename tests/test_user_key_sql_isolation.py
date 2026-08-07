@@ -2,7 +2,7 @@
 
 Contexto (auditoría de multi-tenencia, AGENTS.md invariante §3.4/§3.10): el
 aislamiento entre usuarios de esta app depende ENTERAMENTE de que cada query
-que toca una tabla de usuario incluya ``WHERE user_key = ?`` (o un predicado
+que toca una tabla de usuario incluya ``WHERE user_key = %s`` (o un predicado
 equivalente). RLS en Postgres (``db/alembic/versions/v52_rls_lockdown.py``)
 cierra el acceso público vía PostgREST/Data API de Supabase, pero el rol de
 runtime tiene la política ``tenderflow_app_full_access`` -- ``USING (true)
@@ -63,7 +63,7 @@ de código fuente, NO un parser SQL completo):
   3. Si esos MISMOS literales no contienen un predicado ``user_key = ...`` en
      ningún punto (cubre también WHERE dinámicos construidos con listas de
      cláusulas, p. ej. ``db/audit.py::list_recent``, cuyo fragmento
-     ``"user_key = ?"`` vive en un ``clauses.append(...)`` separado del
+     ``"user_key = %s"`` vive en un ``clauses.append(...)`` separado del
      SELECT), se marca como violación.
   4. INSERTs no se verifican (el encargo original solo pide SELECT/UPDATE/
      DELETE) -- un INSERT que grabe mal su ``user_key`` es un bug distinto
@@ -118,7 +118,7 @@ def _table_patterns(table: str) -> list[re.Pattern[str]]:
     return [
         re.compile(rf'\b(?:FROM|JOIN)\s+"?{escaped}"?\b', re.IGNORECASE),
         re.compile(rf'\bUPDATE\s+"?{escaped}"?\b', re.IGNORECASE),
-        re.compile(rf'\bDELETE\s+FROM\s+"?{escaped}"?\b', re.IGNORECASE),
+        re.compile(rf'\bDELETE\s+FROM\s+"?{escaped}"%s\b', re.IGNORECASE),
     ]
 
 

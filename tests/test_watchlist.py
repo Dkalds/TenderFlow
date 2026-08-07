@@ -137,7 +137,7 @@ def test_watchlist_matching_with_categorical_columns():
 def test_remove_entry_no_borra_la_entrada_de_otro_usuario(tmp_db):
     """IDOR cerrado: un id adivinado no alcanza para borrar lo ajeno.
 
-    Antes ``remove_entry`` hacía ``DELETE ... WHERE id = ?`` sin predicado de
+    Antes ``remove_entry`` hacía ``DELETE ... WHERE id = %s`` sin predicado de
     dueño; estaba allowlisted en ``tests/test_user_key_sql_isolation.py`` como
     hueco pendiente porque ninguna ruta lo llamaba todavía.
     """

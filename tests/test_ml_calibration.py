@@ -23,19 +23,19 @@ def _sembrar_par(c, lic_id, importe, baja_realizada, p10, p50, p90):
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
         " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
-        "VALUES (?, 'Lic', 'Organo A', '72000000', 'Madrid', ?, 'Servicios', "
+        "VALUES (%s, 'Lic', 'Organo A', '72000000', 'Madrid', %s, 'Servicios', "
         " 'placsp', '2026-01-01', CURRENT_TIMESTAMP)",
         (lic_id, importe),
     )
     c.execute(
         "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
         " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
-        "VALUES (?, 'Empresa X', ?, '2026-03-01', 3, CURRENT_TIMESTAMP)",
+        "VALUES (%s, 'Empresa X', %s, '2026-03-01', 3, CURRENT_TIMESTAMP)",
         (lic_id, importe * (1 - baja_realizada)),
     )
     c.execute(
         "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
-        " computed_at) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)",
+        " computed_at) VALUES (%s, %s, %s, %s, 1, CURRENT_TIMESTAMP)",
         (lic_id, p10, p50, p90),
     )
 
@@ -96,7 +96,7 @@ def test_multilote_no_infla_la_cobertura(db):
             c.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
                 " ccaa, importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
-                "VALUES (?, 'Lic', 'Organo A', '72000000', 'Madrid', 100000.0, 'Servicios', "
+                "VALUES (%s, 'Lic', 'Organo A', '72000000', 'Madrid', 100000.0, 'Servicios', "
                 " 'placsp', '2026-01-01', CURRENT_TIMESTAMP)",
                 (lic_id,),
             )
@@ -104,12 +104,12 @@ def test_multilote_no_infla_la_cobertura(db):
                 c.execute(
                     "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
                     " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
-                    "VALUES (?, ?, 40000.0, '2026-03-01', 3, CURRENT_TIMESTAMP)",
+                    "VALUES (%s, %s, 40000.0, '2026-03-01', 3, CURRENT_TIMESTAMP)",
                     (lic_id, f"Empresa {lote}"),
                 )
             c.execute(
                 "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
-                " computed_at) VALUES (?, 0.10, 0.20, 0.30, 1, CURRENT_TIMESTAMP)",
+                " computed_at) VALUES (%s, 0.10, 0.20, 0.30, 1, CURRENT_TIMESTAMP)",
                 (lic_id,),
             )
     res = comprobar_calibracion_baja()
@@ -127,7 +127,7 @@ def test_excluye_duplicados_confirmados(db):
         for i in range(10):
             c.execute(
                 "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, "
-                " confianza, status, clave_match) VALUES (?, 'D39', 1.0, 'confirmed', 'test')",
+                " confianza, status, clave_match) VALUES (%s, 'D39', 1.0, 'confirmed', 'test')",
                 (f"D{i}",),
             )
     res = comprobar_calibracion_baja()

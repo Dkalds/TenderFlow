@@ -543,6 +543,4 @@ async def deliveries(
     """Devuelve las últimas entregas realizadas para este webhook."""
     if _repo.get_by_id(webhook_id) is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
-    return [
-        WebhookDelivery(**row) for row in _repo.list_deliveries(webhook_id, limit=limit)
-    ]
+    return [WebhookDelivery(**row) for row in _repo.list_deliveries(webhook_id, limit=limit)]

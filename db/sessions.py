@@ -48,7 +48,7 @@ def create_session(
         c.execute(
             "INSERT INTO sessions "
             "(token_hash, user_id, created_at, expires_at, ip, user_agent, last_seen_at, revoked) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, 0)",
             (
                 token_hash,
                 user_id,
@@ -68,7 +68,7 @@ def validate_session(token: str) -> dict[str, Any] | None:
     with connect() as c:
         row = c.execute(
             "SELECT user_id, created_at, expires_at, revoked, ip, last_seen_at, mfa_verified_at "
-            "FROM sessions WHERE token_hash = ?",
+            "FROM sessions WHERE token_hash = %s",
             (token_hash,),
         ).fetchone()
     if row is None:
@@ -98,7 +98,7 @@ def validate_session(token: str) -> dict[str, Any] | None:
         return None
     with connect() as c:
         c.execute(
-            "UPDATE sessions SET last_seen_at = ? WHERE token_hash = ? AND revoked = 0",
+            "UPDATE sessions SET last_seen_at = %s WHERE token_hash = %s AND revoked = 0",
             (now.isoformat(), token_hash),
         )
     return {
@@ -115,7 +115,7 @@ def mark_session_mfa_verified(token: str) -> None:
     token_hash = _hash_token(token)
     with connect() as c:
         c.execute(
-            "UPDATE sessions SET mfa_verified_at = ? WHERE token_hash = ? AND revoked = 0",
+            "UPDATE sessions SET mfa_verified_at = %s WHERE token_hash = %s AND revoked = 0",
             (now_utc_iso(), token_hash),
         )
 
@@ -125,7 +125,7 @@ def revoke_session(token: str) -> None:
     token_hash = _hash_token(token)
     with connect() as c:
         c.execute(
-            "UPDATE sessions SET revoked = 1, revoked_at = ? WHERE token_hash = ?",
+            "UPDATE sessions SET revoked = 1, revoked_at = %s WHERE token_hash = %s",
             (now_utc_iso(), token_hash),
         )
 
@@ -134,7 +134,7 @@ def revoke_all_sessions(user_id: int) -> int:
     """Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N."""
     with connect() as c:
         cur = c.execute(
-            "UPDATE sessions SET revoked = 1, revoked_at = ? WHERE user_id = ? AND revoked = 0",
+            "UPDATE sessions SET revoked = 1, revoked_at = %s WHERE user_id = %s AND revoked = 0",
             (now_utc_iso(), user_id),
         )
         return cur.rowcount if hasattr(cur, "rowcount") else 0
@@ -145,7 +145,7 @@ def purge_expired_sessions() -> int:
     cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
     with connect() as c:
         cur = c.execute(
-            "DELETE FROM sessions WHERE expires_at < ? OR revoked = 1",
+            "DELETE FROM sessions WHERE expires_at < %s OR revoked = 1",
             (cutoff,),
         )
         return cur.rowcount if hasattr(cur, "rowcount") else 0
@@ -158,7 +158,7 @@ def list_active_sessions(user_id: int) -> list[dict[str, Any]]:
         cur = c.execute(
             "SELECT token_hash, created_at, expires_at, ip, user_agent "
             "FROM sessions "
-            "WHERE user_id = ? AND revoked = 0 AND expires_at > ? "
+            "WHERE user_id = %s AND revoked = 0 AND expires_at > %s "
             "ORDER BY created_at DESC",
             (user_id, now),
         )
