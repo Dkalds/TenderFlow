@@ -40,7 +40,13 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 #: Motores de generación soportados para el snapshot Parquet.
-ManifestEngine = Literal["duckdb-parquet", "sqlite-direct"]
+#:
+#: ``sqlite-direct`` es **legado de solo lectura**: SQLite se retiró en ADR-021 y
+#: ningún export nuevo lo emite, pero el literal sobrevive para que
+#: :func:`read_manifest` no descarte manifests escritos antes de la migración
+#: (validar el engine devolvería ``None`` y el snapshot viejo se vería como
+#: "no disponible" en vez de "antiguo"). Su sustituto es ``postgres-direct``.
+ManifestEngine = Literal["duckdb-parquet", "postgres-direct", "sqlite-direct"]
 
 _VALID_ENGINES: frozenset[str] = frozenset(get_args(ManifestEngine))
 

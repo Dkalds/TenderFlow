@@ -154,12 +154,12 @@ def _run_tech_signal_merge() -> None:
 def _run_analytics_export() -> None:
     """Snapshot Parquet + manifest de linaje (RFC-086). Best-effort.
 
-    ``db.analytics`` sigue adjuntando un fichero SQLite con el
-    ``sqlite_scanner`` de DuckDB, que tras ADR-021 ya no existe: este paso
-    falla de forma esperada hasta que se migre a ``postgres_scanner`` (ítem
-    P2 del backlog). Se registra a **warning**, no a debug: un paso que no
-    hace nada tiene que verse en los logs, que es exactamente el modo de
-    fallo silencioso que ADR-021 vino a eliminar.
+    ``db.analytics`` adjunta la BD Postgres con el ``postgres_scanner`` de
+    DuckDB. El paso sigue siendo best-effort —DuckDB es dependencia opcional y
+    la extensión puede no estar disponible— pero un fallo se registra a
+    **warning**, no a debug: un paso que no hace nada tiene que verse en los
+    logs, que es exactamente el modo de fallo silencioso que ADR-021 vino a
+    eliminar.
     """
     try:
         from db.analytics import run_analytics_export

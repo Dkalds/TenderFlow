@@ -41,11 +41,10 @@ _PATRON = re.compile(r"getattr\(\s*_?settings\s*,\s*[\"']([A-Za-z_][A-Za-z0-9_]*
 # TID251 y que scripts/check_openapi_contract.py). No añadir entradas: si un
 # campo nuevo hace falta, se declara en Settings.
 #
-# Ambos son de db/analytics.py, que quedó roto al retirar SQLite (ADR-021) y
-# está anotado en docs/IMPROVEMENT_BACKLOG.md pendiente de migrar a
-# postgres_scanner. Su camino ya falla de forma ruidosa, así que estos dos
-# getattr no ocultan ninguna palanca viva.
-_VESTIGIOS_PERMITIDOS = frozenset({"DATABASE_PATH", "SQLITE_PATH"})
+# Vaciado al migrar db/analytics.py a postgres_scanner: sus dos entradas
+# (``DATABASE_PATH`` y ``SQLITE_PATH``) sostenían el resolutor de fichero
+# SQLite, que desapareció con el camino que quedó muerto en ADR-021.
+_VESTIGIOS_PERMITIDOS: frozenset[str] = frozenset()
 
 
 def _campos_declarados() -> frozenset[str]:
