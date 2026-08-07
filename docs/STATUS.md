@@ -96,14 +96,9 @@ Generado: 2026-08-04
 | GET | `/api/v1/analytics/forecast/retendering` |
 | GET | `/api/v1/analytics/forecast/volume` |
 | GET | `/api/v1/analytics/geography` |
-| GET | `/api/v1/analytics/organ-company-edge` |
-| GET | `/api/v1/analytics/organ-company-graph` |
-| GET | `/api/v1/analytics/organ-company-graph/ego` |
-| GET | `/api/v1/analytics/organ-concentration` |
 | GET | `/api/v1/analytics/organos` |
 | GET | `/api/v1/analytics/organos/{organo}` |
 | GET | `/api/v1/analytics/overview` |
-| GET | `/api/v1/analytics/partnership-graph` |
 | GET | `/api/v1/analytics/pipeline` |
 | GET | `/api/v1/analytics/proyectos-modulos` |
 | GET | `/api/v1/analytics/quality` |
