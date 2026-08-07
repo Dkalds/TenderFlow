@@ -93,6 +93,10 @@ def stream(
 
     max_attempts = 3
     last_exc: Exception | None = None
+    # Una vez emitido el primer token, un retry re-arranca el stream desde cero y
+    # el consumidor recibiría la respuesta parcial y la completa concatenadas: el
+    # reintento solo es seguro ANTES del primer chunk emitido.
+    yielded = False
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -113,6 +117,7 @@ def stream(
                     delta = chunk.choices[0].delta.content
                     if delta:
                         output_chars += len(delta)
+                        yielded = True  # a partir de aquí el retry ya no es seguro
                         yield delta
                 elif usage_sink is not None and hasattr(chunk, "usage") and chunk.usage:
                     usage_sink["input_tokens"] = chunk.usage.prompt_tokens
@@ -126,6 +131,10 @@ def stream(
             return  # éxito — salir del retry loop
         except Exception as exc:
             last_exc = exc
+            # Si ya emitimos tokens no reintentamos (duplicaría la respuesta):
+            # re-lanzamos para que el consumidor perciba el corte del stream.
+            if yielded:
+                raise
             if attempt < max_attempts and _is_retryable(exc):
                 import time
 

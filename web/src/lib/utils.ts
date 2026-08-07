@@ -78,7 +78,10 @@ export function formatPercent(
   decimals = 1,
 ): string {
   if (value == null) return EMPTY;
-  return `${value.toFixed(decimals)}%`;
+  // El valor entra ya como porcentaje (12.5 → "12,5%"), no como fracción.
+  // `toFixed` siempre emite el punto como separador decimal; lo pasamos a coma
+  // (convención es-ES) conservando los mismos decimales y el sufijo %.
+  return `${value.toFixed(decimals).replace(".", ",")}%`;
 }
 
 /**

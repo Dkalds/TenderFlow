@@ -15,11 +15,14 @@ señal de invalidación de caché.
 Invariantes que el conector debe respetar:
 - ``id_externo`` namespaceado: ``f"{source_id}:{id_natural}"``.
 - ``Licitacion.fuente = source_id``.
-- ``fetch`` debe ser incremental respecto al cursor que recibe; ``new_cursor()``
-  debe reflejar el progreso visto hasta el momento en que se lo llama (el
-  runner lo consulta después de cada lote persistido, no solo al final) --
-  para que una ejecución cortada a mitad de camino (timeout externo del job)
-  no pierda todo el avance y la próxima corrida pueda retomar desde ahí.
+- ``fetch`` debe ser incremental respecto al cursor que recibe. ``new_cursor()``
+  se consulta al final del fetch exitoso; además, para los conectores que
+  declaran ``cursor_advances_incrementally = True``, tras cada lote persistido.
+  Ese opt-in solo es correcto si el conector procesa de más viejo a más nuevo y
+  ``new_cursor()`` refleja el progreso PARCIAL (p.ej. PSCP, para no reiniciar un
+  fetch enorme si el job se corta). Un feed newest-first NO debe declararlo: su
+  ``new_cursor()`` es el máximo global ya en el primer lote, y avanzarlo por lote
+  perdería para siempre las entries viejas aún sin procesar si el run se corta.
 """
 
 from __future__ import annotations
@@ -270,13 +273,25 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     _record_source_started(source_id)
     log.info("connector_run_start", source=source_id, cursor=cursor)
 
-    lics: list[Licitacion] = []
+    # Colección del lote pendiente keyed por id_externo (no una lista): colapsa
+    # el mismo expediente publicado varias veces dentro del run quedándose con la
+    # versión más reciente. Sin esto, un feed newest-first trae el mismo aviso
+    # varias veces y el `executemany ... ON CONFLICT DO UPDATE` procesa la lista
+    # en orden → gana la ÚLTIMA = la más VIEJA (estado/importe/fecha_limite
+    # regresados + filas de historial fantasma con diff nuevo→viejo).
+    lic_por_id: dict[str, Licitacion] = {}
     adj_por_lic: dict[str, list[Adjudicacion]] = {}
     docs_por_lic: dict[str, list[DocumentoReferencia]] = {}
     lotes_por_lic: dict[str, list[Lote]] = {}
+    # Mejor recencia (fecha_actualizacion_fuente) vista por id_externo en TODO el
+    # run: persiste entre lotes para descartar reapariciones más viejas de un
+    # expediente ya escrito en un flush anterior.
+    mejor_recencia: dict[str, str] = {}
 
     def _flush_once() -> tuple[Any, int, int]:
-        upsert_result = upsert_licitaciones_with_history(lics, source=source_id)
+        upsert_result = upsert_licitaciones_with_history(
+            list(lic_por_id.values()), source=source_id
+        )
         n_adj = n_failed = 0
         if lotes_por_lic:
             # Antes de persistir adjudicaciones: lote_id es un FK real a
@@ -301,7 +316,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         return upsert_result, n_adj, n_failed
 
     def _flush() -> None:
-        if not lics:
+        if not lic_por_id:
             return
         # Reintenta el lote completo (no solo el paso que falló): tanto el
         # upsert de licitaciones como el replace de adjudicaciones son
@@ -333,20 +348,35 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         result.modified_ids.extend(upsert_result.modified)
         result.adjudicaciones += n_adj
         result.errores += n_failed
-        lics.clear()
+        lic_por_id.clear()
+        if advances_incrementally:
+            # Feeds ASC (PSCP): un id no reaparece más viejo en un lote posterior
+            # (el stream avanza monótono por updated_at), así que no hace falta
+            # recordar la recencia entre lotes; limpiarla acota la memoria en
+            # runs enormes (catch-up de ~1.86M filas). Los feeds newest-first la
+            # conservan para deduplicar entre lotes.
+            mejor_recencia.clear()
         adj_por_lic.clear()
         docs_por_lic.clear()
         lotes_por_lic.clear()
-        # Avanzar el cursor por cada lote persistido, no solo al final del
-        # fetch completo. Si la ejecución se corta a mitad de camino (timeout
-        # externo del job, no una excepción Python), el progreso hasta el
-        # último lote queda guardado y la próxima corrida retoma desde ahí en
-        # vez de reiniciar siempre desde el mismo punto (ver PSCP: dataset con
-        # republicación completa, ~1.86M filas, imposible de recorrer entero
-        # dentro del timeout de un solo run).
-        new_cursor = connector.new_cursor()
-        if new_cursor:
-            set_cursor(source_id, **new_cursor)
+        # Avance de cursor por lote SOLO para conectores que lo declaran seguro
+        # (``cursor_advances_incrementally``). Es correcto cuando ``new_cursor()``
+        # refleja el progreso PARCIAL persistido (feeds procesados de más viejo a
+        # más nuevo, p.ej. PSCP: dataset con republicación completa, ~1.86M filas,
+        # imposible de recorrer entero dentro del timeout de un run). Para un feed
+        # newest-first (ATOM/TED), ``new_cursor()`` es el máximo GLOBAL ya en el
+        # primer lote: avanzarlo aquí saltaría al tope y una ejecución cortada a
+        # mitad perdería para siempre las entries viejas aún sin procesar. Esos
+        # conectores avanzan el cursor solo al final, tras persistir todo el fetch.
+        if advances_incrementally:
+            new_cursor = connector.new_cursor()
+            if new_cursor:
+                set_cursor(source_id, **new_cursor)
+
+    # ¿El conector puede avanzar el cursor por lote (progreso parcial) o solo al
+    # final del fetch? Opt-in por atributo; el default seguro es "solo al final"
+    # (getattr evita forzar a todos los conectores a declararlo en el Protocol).
+    advances_incrementally = bool(getattr(connector, "cursor_advances_incrementally", False))
 
     try:
         for raw in connector.fetch(cursor):
@@ -361,14 +391,34 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
                 result.descartadas += 1
                 continue
             result.parsed += 1
-            lics.append(parsed.licitacion)
+            lic_id = parsed.licitacion.id_externo
+            recencia = parsed.licitacion.fecha_actualizacion_fuente or ""
+            mejor = mejor_recencia.get(lic_id)
+            if mejor is not None and recencia <= mejor:
+                # Ya vimos una versión igual o más reciente de este expediente en
+                # el run (pendiente en el lote o ya persistida en un flush previo):
+                # no la pisamos con una más vieja. Con esto, tanto en feeds
+                # newest-first como ASC, gana siempre la versión más reciente.
+                continue
+            mejor_recencia[lic_id] = recencia
+            lic_por_id[lic_id] = parsed.licitacion
+            # Companion data sincronizada con la versión conservada: se reemplaza
+            # (no se acumula) y se limpia con pop si viene vacía, para no mezclar
+            # adjudicaciones/lotes/docs de dos versiones ni borrar en BD las
+            # existentes con un replace vacío (los ids sin adj no entran al dict).
             if parsed.adjudicaciones:
-                adj_por_lic[parsed.licitacion.id_externo] = parsed.adjudicaciones
+                adj_por_lic[lic_id] = parsed.adjudicaciones
+            else:
+                adj_por_lic.pop(lic_id, None)
             if parsed.documentos:
-                docs_por_lic[parsed.licitacion.id_externo] = parsed.documentos
+                docs_por_lic[lic_id] = parsed.documentos
+            else:
+                docs_por_lic.pop(lic_id, None)
             if parsed.lotes:
-                lotes_por_lic[parsed.licitacion.id_externo] = parsed.lotes
-            if len(lics) >= batch_size:
+                lotes_por_lic[lic_id] = parsed.lotes
+            else:
+                lotes_por_lic.pop(lic_id, None)
+            if len(lic_por_id) >= batch_size:
                 _flush()
         _flush()
     except Exception as e:
@@ -381,6 +431,16 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         log.error("connector_run_failed", source=source_id, error=str(e))
         _record_source_completed(result)
         return result
+
+    # Avance de cursor final, SOLO en éxito: el ``except`` de fetch retorna antes
+    # de llegar aquí, así que una ejecución cortada a mitad NO avanza el cursor y
+    # la próxima corrida re-procesa desde el punto anterior (idempotente). Para
+    # los conectores no incrementales (feeds newest-first) este es el único
+    # avance; para los incrementales es idempotente (mismo valor que el último
+    # lote ya persistido).
+    final_cursor = connector.new_cursor()
+    if final_cursor:
+        set_cursor(source_id, **final_cursor)
 
     if result.parsed or result.adjudicaciones:
         _post_ingestion(source_id)

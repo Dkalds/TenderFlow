@@ -80,13 +80,15 @@ jobs:
       # licitacionesPerfilesContratanteCompleto3.atom), o sea que una caída de
       # PLACSP nos dejaba además sin TED, Galicia, Euskadi, PSCP y TACRC.
       #
-      # OJO al leer el exit code: `main()` en el carril diario mira SOLO
-      # `ingestion_result["status"]` (scheduler/run_update.py). Los pasos
-      # post-ingesta se tragan sus excepciones en `_run_post_ingestion_steps` y
-      # sólo dejan `{step: "error"}` en el resumen + un email de
-      # `_notify_step_failure`: un paso roto NO pone el job en rojo. Los runs
+      # Exit code (scheduler/run_update.py): el carril diario compone el código
+      # con `_apply_step_failures`. Devuelve 1 si falla la INGESTA O si
+      # `_run_post_ingestion_steps` deja algún `{step: "error"}` en el resumen
+      # (ml_retrain/drift_checks/digests…), emitiendo además una anotación
+      # `::error` por paso. Antes miraba SOLO `ingestion_result["status"]`, así
+      # que un paso post-ingesta roto NO ponía el job en rojo: los runs
       # 30916761519 y 30935191157 salieron verdes con `ml_retrain: error` y
-      # `drift_checks: error`.
+      # `drift_checks: error`. Eso ya no pasa. Cada paso sigue enviando su email
+      # de `_notify_step_failure` como antes.
       #
       # Se usa `!cancelled()` y no `always()` para que una cancelación
       # (concurrency, timeout del job) sí los detenga.

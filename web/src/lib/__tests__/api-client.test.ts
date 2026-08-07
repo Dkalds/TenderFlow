@@ -281,9 +281,10 @@ describe("apiMutate", () => {
     });
   });
 
-  it("redirects to /login and throws ApiError on 401", async () => {
-    // Mock window.location so we can assert the redirect
-    const locationMock = { href: "" };
+  it("redirects to /login (preserving the deep-link) and throws ApiError on 401", async () => {
+    // Mock window.location so we can assert the redirect. pathname/search feed
+    // the ?redirect= deep-link that mirrors the Next middleware.
+    const locationMock = { href: "", pathname: "/mi-watchlist", search: "" };
     vi.stubGlobal("window", { ...globalThis.window, location: locationMock });
 
     mockFetch(401, {}, false);
@@ -295,6 +296,8 @@ describe("apiMutate", () => {
       },
     );
 
-    expect(locationMock.href).toBe("/login");
+    expect(locationMock.href).toBe(
+      `/login?redirect=${encodeURIComponent("/mi-watchlist")}`,
+    );
   });
 });

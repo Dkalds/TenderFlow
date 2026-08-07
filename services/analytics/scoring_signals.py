@@ -22,6 +22,7 @@ from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
 from services._data_cache import SignalAwareCache
+from services.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_PAIR_LOTE
 
 log = get_logger(__name__)
 
@@ -79,7 +80,7 @@ def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
                 MAX(a.n_ofertas_recibidas) AS max_ofertas
             FROM adjudicaciones a
             WHERE a.n_ofertas_recibidas IS NOT NULL
-              AND a.fecha_adjudicacion >= :cutoff
+              AND a.fecha_adjudicacion >= ?
             GROUP BY a.licitacion_id
         ) sub
         JOIN licitaciones l ON l.id_externo = sub.licitacion_id
@@ -98,20 +99,20 @@ def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             WHERE a.n_ofertas_recibidas IS NOT NULL
-              AND a.fecha_adjudicacion >= :cutoff
+              AND a.fecha_adjudicacion >= ?
               AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
             GROUP BY a.licitacion_id
         ) sub
     """
     try:
         with connect_read() as c:
-            rows: list[dict[str, Any]] = rows_to_dicts(c.execute(sql, {"cutoff": cutoff}))
+            rows: list[dict[str, Any]] = rows_to_dicts(c.execute(sql, (cutoff,)))
             media_por_cpv4 = {
                 str(r["cpv4"]): float(r["media_ofertas"])
                 for r in rows
                 if r["cpv4"] is not None and r["media_ofertas"] is not None
             }
-            row_global = c.execute(sql_global, {"cutoff": cutoff}).fetchone()
+            row_global = c.execute(sql_global, (cutoff,)).fetchone()
             media_global: float | None = None
             if row_global is not None:
                 val = (
@@ -132,45 +133,39 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
         SELECT licitacion_id, p50
         FROM predicciones_baja
     """
-    # Baja media histórica por CPV-4 (de adjudicaciones 24 meses)
-    # baja_pct = (1 - importe_adjudicado / importe_licitacion) * 100
-    # Queremos fracción 0-1 para comparar con la fórmula del scoring
-    sql_baja_cpv4 = """
+    # Baja media histórica por CPV-4 (de adjudicaciones 24 meses), como
+    # fracción 0-1 para comparar con la fórmula del scoring. El denominador es
+    # el presupuesto real de cada fila de adjudicación (el de su lote si lo
+    # tiene, v65_lotes) vía EFFECTIVE_BUDGET_SQL dentro de BAJA_PCT_SQL: la
+    # comparación es por fila, no agregada por licitación, así que usar
+    # ``l.importe`` sobreestimaría la baja de cualquier expediente multi-lote
+    # (mismo patrón que services/ml/scoring.py). La columna ``a.importe_licitacion``
+    # que se usaba antes no existe en el esquema: la query fallaba entera y el
+    # ``except`` devolvía stats vacías, dejando la señal de margen muerta.
+    sql_baja_cpv4 = f"""
         SELECT
             substr(l.cpv, 1, 4) AS cpv4,
-            AVG(
-                CASE
-                    WHEN a.importe_licitacion > 0 AND a.importe_adjudicado IS NOT NULL
-                    THEN (1.0 - a.importe_adjudicado / a.importe_licitacion)
-                    ELSE NULL
-                END
-            ) AS baja_media
+            AVG({BAJA_PCT_SQL} / 100) AS baja_media
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE a.fecha_adjudicacion >= :cutoff
-          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
+        WHERE a.fecha_adjudicacion >= ?
+          AND {TECHNOLOGY_OBSERVED_SQL}
           AND l.cpv IS NOT NULL
           AND length(l.cpv) >= 4
-          AND a.importe_licitacion > 0
-          AND a.importe_adjudicado IS NOT NULL
+          AND {VALID_PAIR_LOTE}
         GROUP BY cpv4
         HAVING COUNT(*) >= 3
-    """
-    sql_baja_global = """
-        SELECT AVG(
-            CASE
-                WHEN a.importe_licitacion > 0 AND a.importe_adjudicado IS NOT NULL
-                THEN (1.0 - a.importe_adjudicado / a.importe_licitacion)
-                ELSE NULL
-            END
-        ) AS baja_media_global
+    """  # noqa: S608 — BAJA_PCT_SQL/VALID_PAIR_LOTE/TECHNOLOGY_OBSERVED_SQL son fragmentos constantes; el valor va con ?
+    sql_baja_global = f"""
+        SELECT AVG({BAJA_PCT_SQL} / 100) AS baja_media_global
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE a.fecha_adjudicacion >= :cutoff
-          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
-          AND a.importe_licitacion > 0
-          AND a.importe_adjudicado IS NOT NULL
-    """
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
+        WHERE a.fecha_adjudicacion >= ?
+          AND {TECHNOLOGY_OBSERVED_SQL}
+          AND {VALID_PAIR_LOTE}
+    """  # noqa: S608 — fragmentos constantes; el valor va con ?
     try:
         with connect_read() as c:
             rows_pred: list[dict[str, Any]] = rows_to_dicts(c.execute(sql_pred))
@@ -179,15 +174,13 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
                 for r in rows_pred
                 if r["licitacion_id"] is not None and r["p50"] is not None
             }
-            rows_cpv4: list[dict[str, Any]] = rows_to_dicts(
-                c.execute(sql_baja_cpv4, {"cutoff": cutoff})
-            )
+            rows_cpv4: list[dict[str, Any]] = rows_to_dicts(c.execute(sql_baja_cpv4, (cutoff,)))
             baja_media_por_cpv4 = {
                 str(r["cpv4"]): float(r["baja_media"])
                 for r in rows_cpv4
                 if r["cpv4"] is not None and r["baja_media"] is not None
             }
-            row_global = c.execute(sql_baja_global, {"cutoff": cutoff}).fetchone()
+            row_global = c.execute(sql_baja_global, (cutoff,)).fetchone()
             baja_media_global: float | None = None
             if row_global is not None:
                 val = (

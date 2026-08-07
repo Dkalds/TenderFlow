@@ -25,13 +25,25 @@ export const api = createClient<paths>({
 });
 
 /**
+ * Redirige a /login preservando el deep-link actual como `?redirect=`, igual
+ * que el middleware de Next (`web/src/middleware.ts`). No hace nada en SSR ni
+ * si ya estamos en /login (evita un bucle de redirecciones y perder el destino).
+ */
+function redirectToLogin(): void {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname === "/login") return;
+  const destino = window.location.pathname + window.location.search;
+  window.location.href = `/login?redirect=${encodeURIComponent(destino)}`;
+}
+
+/**
  * Global middleware: redirect to login on 401 responses.
  * Centralizes auth expiry handling for all API calls via the typed client.
  */
 api.use({
   onResponse({ response }) {
     if (response.status === 401 && typeof window !== "undefined") {
-      window.location.href = "/login";
+      redirectToLogin();
     }
     return undefined;
   },
@@ -84,7 +96,7 @@ export async function apiMutate<T>(
 
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined" && !esRespuestaEsperada401(url)) {
-      window.location.href = "/login";
+      redirectToLogin();
       throw new ApiError(401, "Session expired");
     }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
@@ -123,7 +135,7 @@ export async function fetchWithAuth<T>(
 
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined") {
-      window.location.href = "/login";
+      redirectToLogin();
     }
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, body.detail ?? `API error: ${res.status}`);

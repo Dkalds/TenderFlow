@@ -52,19 +52,19 @@ describe("currencyFormatter", () => {
 
 describe("percentFormatter", () => {
   it("returns value with one decimal and % sign", () => {
-    expect(percentFormatter(45.23)).toBe("45.2%");
+    expect(percentFormatter(45.23)).toBe("45,2%");
   });
 
   it("rounds to 1 decimal place", () => {
-    expect(percentFormatter(33.333)).toBe("33.3%");
+    expect(percentFormatter(33.333)).toBe("33,3%");
   });
 
   it("works with 0", () => {
-    expect(percentFormatter(0)).toBe("0.0%");
+    expect(percentFormatter(0)).toBe("0,0%");
   });
 
   it("works with 100", () => {
-    expect(percentFormatter(100)).toBe("100.0%");
+    expect(percentFormatter(100)).toBe("100,0%");
   });
 });
 

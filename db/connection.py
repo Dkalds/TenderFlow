@@ -537,11 +537,27 @@ def connect() -> Iterator[Any]:
 def connect_read() -> Iterator[Any]:
     """Context manager de SOLO LECTURA.
 
-    Mismo pool que ``connect()`` + ``SET LOCAL default_transaction_read_only``.
+    Marca la transacción en curso como ``READ ONLY``: cualquier
+    INSERT/UPDATE/DELETE/DDL mal dirigido por esta vía lanza
+    ``ReadOnlySqlTransaction`` en vez de ejecutarse y ser revertido en silencio
+    por el ``putconn`` del pool. El guard anterior
+    (``SET LOCAL default_transaction_read_only = on``) era inerte: solo afecta a
+    transacciones que empiecen *después*, pero el primer ``execute`` ya había
+    abierto la actual, así que una escritura pasaba sin error y se perdía sin
+    rastro. ``SET TRANSACTION READ ONLY`` tiene que ser la primera sentencia de
+    la transacción, y lo es: ``_get_conn`` entrega una conexión limpia del pool.
     """
     conn = _get_conn()
     try:
-        conn.execute("SET LOCAL default_transaction_read_only = on")
+        conn.execute("SET TRANSACTION READ ONLY")
         yield conn
     finally:
+        # Las lecturas no necesitan commit; cerramos la transacción con un
+        # rollback explícito antes de devolver la conexión al pool. Si el
+        # rollback falla, la conexión está en mal estado: lo registramos (no es
+        # indistinguible de "sin datos") y dejamos que el pool la descarte.
+        try:
+            conn.rollback()
+        except Exception:
+            log.warning("connect_read_rollback_failed", exc_info=True)
         _return_conn(conn)

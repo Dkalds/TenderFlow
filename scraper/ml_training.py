@@ -317,24 +317,65 @@ def seed_negatives(
 
 
 def train_from_db() -> dict[str, Any]:
-    """Entrena el clasificador usando datos de la BD activa y lo guarda."""
+    """Entrena el clasificador usando datos de la BD activa y lo guarda.
+
+    Usa las MISMAS etiquetas que el reentrenamiento semanal
+    (``scheduler.concept_drift._fetch_training_dataframe``): etiqueta base por
+    keyword/tecnología, SOBRESCRITA por el feedback humano de ``ml_feedback``.
+    Antes este camino —el que produce el asset de la Release que descargan todos
+    los runners— seleccionaba solo ``titulo/descripcion/...`` sin ``es_relevante``,
+    así que ``SAPClassifier.train`` caía a etiquetas 100% del filtro de keywords,
+    ignorando el feedback y divergiendo del camino semanal para el mismo modelo.
+    La lógica se replica inline (no se importa desde ``scheduler`` para no invertir
+    capas: ``scraper`` es capa inferior).
+
+    Pendiente (requiere infra de baseline + verificación con BD, ver backlog): el
+    gate de promoción que sí tiene ``maybe_retrain_classifier``. Hoy sigue
+    guardando si el entrenamiento no lanza ``error``.
+    """
     import pandas as pd
 
     from db.database import connect, init_db
     from scraper.ml_classifier import SAPClassifier
 
     init_db()
+    # Dos SELECT planos vía el protocolo DBAPI (execute/fetchall), no
+    # ``pd.read_sql_query``: mismas etiquetas que el camino semanal pero sin
+    # depender de que la conexión sea un connectable de pandas.
     with connect() as c:
-        cursor = c.execute(
-            "SELECT titulo, descripcion, raw_keywords, cpv, importe, fecha_publicacion "
-            "FROM licitaciones"
+        lic_cur = c.execute(
+            "SELECT id_externo, titulo, descripcion, raw_keywords, cpv, "
+            "importe, fecha_publicacion, tecnologia FROM licitaciones"
         )
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
+        lic_rows = lic_cur.fetchall()
+        lic_cols = [d[0] for d in lic_cur.description]
+        fb_cur = c.execute("SELECT expediente, relevante FROM ml_feedback")
+        fb_rows = fb_cur.fetchall()
+        fb_cols = [d[0] for d in fb_cur.description]
 
-    df = pd.DataFrame(rows, columns=cols)
+    lic = pd.DataFrame(lic_rows, columns=lic_cols)
+    fb = pd.DataFrame(fb_rows, columns=fb_cols)
+
+    if not lic.empty:
+        # Etiqueta base: raw_keywords no vacío OR tecnología detectada.
+        lic["es_relevante"] = (
+            (lic["raw_keywords"].notna() & (lic["raw_keywords"] != ""))
+            | (lic["tecnologia"].notna() & (lic["tecnologia"] != ""))
+        ).astype(int)
+        # Sobrescribir con feedback humano explícito (mayor prioridad).
+        if not fb.empty:
+            fb_map = dict(zip(fb["expediente"], fb["relevante"], strict=False))
+            lic["es_relevante"] = lic.apply(
+                lambda r: (
+                    int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"]
+                ),
+                axis=1,
+            )
+
+    # Con ``lic`` vacío el clasificador devuelve ``{"error": ...}`` y no se
+    # guarda (mismo comportamiento que antes: train decide, no un early-return).
     clf = SAPClassifier()
-    metrics = clf.train(df)
+    metrics = clf.train(lic)
     if "error" not in metrics:
         clf.save()
     return metrics

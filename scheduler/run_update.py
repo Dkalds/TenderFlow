@@ -65,7 +65,8 @@ def main() -> int:
             _log_daily_summary(pipeline_result, log)
             # Retorna 1 si la ingesta falló (alerta ya enviada en pipeline).
             ingestion_status = pipeline_result.get("ingestion_result", {}).get("status", "ok")
-            return 0 if ingestion_status == "ok" else 1
+            code = 0 if ingestion_status == "ok" else 1
+            return _apply_step_failures(pipeline_result, code, log)
         elif args.backfill:
             pipeline_result = run_backfill_pipeline(args.backfill[0], args.backfill[1])
         else:
@@ -79,7 +80,29 @@ def main() -> int:
     # status="degraded" → algunos meses fallaron pero la pipeline completó los
     # pasos post-ingesta (alerta WARN ya emitida). Exit 1 para que CI/monitoring
     # lo detecte, sin la semántica de "error fatal".
-    return 0 if pipeline_result.get("status") == "ok" else 1
+    code = 0 if pipeline_result.get("status") == "ok" else 1
+    return _apply_step_failures(pipeline_result, code, log)
+
+
+def _apply_step_failures(pipeline_result: dict[str, Any], code: int, log: Any) -> int:
+    """Eleva el exit code a 1 si algún paso post-ingesta falló.
+
+    ``_run_post_ingestion_steps`` traga la excepción de cada paso
+    (ml_retrain/drift/digests…) y devuelve ``{step: "ok"|"error"}``. Antes el
+    exit code solo miraba la ingesta, así que el run de GitHub Actions salía
+    VERDE con pasos rotos y nadie los veía (ya pasó: pasos caídos una semana).
+    Ahora un paso en error hace fallar el run y emite una anotación ``::error``
+    que Actions renderiza en el resumen del run, sin la semántica de "error
+    fatal" de la ingesta. Solo eleva el código; nunca lo baja.
+    """
+    steps = pipeline_result.get("steps") or {}
+    failed = [name for name, status in steps.items() if status != "ok"]
+    if not failed:
+        return code
+    for name in failed:
+        print(f"::error title=post-ingestion step failed::{name}", file=sys.stderr)
+    log.error("pipeline_post_ingestion_steps_failed", failed=failed)
+    return 1
 
 
 def _log_daily_summary(pipeline_result: dict[str, Any], log: Any) -> None:
