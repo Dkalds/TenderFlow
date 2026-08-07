@@ -290,9 +290,7 @@ class ApiKeyRepository:
             except Exception:
                 # Camino GDPR de borrado de cuenta: devolver 0 en silencio deja
                 # keys vivas de una cuenta que el usuario cree eliminada.
-                log.warning(
-                    "api_keys_deactivate_all_failed", user_id=user_id, exc_info=True
-                )
+                log.warning("api_keys_deactivate_all_failed", user_id=user_id, exc_info=True)
                 return 0
 
     def set_expiry(self, key_id: int, expires_at: str) -> None:

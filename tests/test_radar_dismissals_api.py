@@ -113,7 +113,5 @@ def test_los_descartes_de_distintos_usuarios_no_se_mezclan(client, api_db):
     assert client.get("/api/v1/radar/dismissals", headers=_auth(dos)).json()["ids"] == []
 
     # Y el segundo usuario tampoco puede deshacer el descarte del primero.
-    assert (
-        client.delete("/api/v1/radar/dismissals/SOLO-UNO", headers=_auth(dos)).status_code == 404
-    )
+    assert client.delete("/api/v1/radar/dismissals/SOLO-UNO", headers=_auth(dos)).status_code == 404
     assert client.get("/api/v1/radar/dismissals", headers=_auth(uno)).json()["ids"] == ["SOLO-UNO"]

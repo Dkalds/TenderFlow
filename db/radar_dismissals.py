@@ -43,8 +43,7 @@ def list_ids(user_key: str) -> list[str]:
     """Devuelve los ``id_externo`` descartados por el usuario, recientes primero."""
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo FROM radar_dismissals WHERE user_key = ? "
-            "ORDER BY created_at DESC",
+            "SELECT id_externo FROM radar_dismissals WHERE user_key = ? ORDER BY created_at DESC",
             (user_key,),
         )
         return [str(row[0]) for row in cur.fetchall()]
