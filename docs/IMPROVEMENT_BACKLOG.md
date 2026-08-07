@@ -13,6 +13,39 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
+### [P1] Erradicar el trabajo bloqueante en handlers `async def` (event loop parado por DB síncrona, argon2, reportlab y auditoría O(n))
+- **Área:** api/routes, api/concurrency.py, db/audit.py
+- **Problema:** existe el helper correcto (`api/concurrency.py::run_db`/`run_ml`, ~90 usos) pero la adopción es inconsistente, y todo handler `async def` que llama a la BD o hace CPU sin pasar por él **para el event loop entero**: mientras corre, ninguno de los 149 endpoints responde — tampoco `/health`, así que el probe de la plataforma reinicia el servicio en vez de verlo "degraded". Con el threadpool global capado a 4 hilos (`api/app.py:129`) la interferencia es doble: lo que usa `run_db` compite por 4 slots, lo que no, bloquea el loop. Casos encontrados por auditoría AST (2026-08-07):
+  - `api/routes/exports.py:235` `download_export`: `fetch_for_pdf` (hasta 50k filas) + `generate_excel`/`_build_pdf` (reportlab, CPU, segundos) inline; además filtra `tecnologia`/fechas en Python post-fetch en vez de en SQL.
+  - `api/routes/auth.py:335` `login` (y `register`): `verify_password` (argon2, caro por diseño) + 5-6 round-trips DB síncronos; logins concurrentes serializan toda la API, y el propio chequeo de lockout consulta la BD en el loop antes de decidir.
+  - `api/routes/security.py:218` → `db/audit.py:288` `verify_hash_chain`: `SELECT … FROM audit_log ORDER BY id` + `fetchall()` + HMAC por fila — O(n) en loop y en memoria sobre una tabla que solo crece.
+  - `api/routes/health.py:141`: `_check_db()`/`_check_redis()` síncronos en handler async — si la BD se cuelga, `/health` se cuelga con ella.
+  - Menores del mismo patrón: `api/routes/exports.py:384` (`calendario_ics`, `connect_read` directo), `api/routes/watchlist_rules.py:174/208` (`connect` directo), `api/routes/webhooks.py:323-500` (list/get/update/delete/deliveries vía `_repo` síncrono), `api/routes/me.py:360/414`.
+- **Acceptance criteria:**
+  - Ningún handler `async def` de `api/routes/` llama a `db.*`/`services.*` bloqueante ni a CPU pesada (argon2, reportlab) sin `run_db`/`run_ml`; los listados arriba migran a `await run_db(...)` o se declaran `def` (threadpool).
+  - Test de arquitectura AST (patrón de `tests/test_user_key_sql_isolation.py` / `tests/test_swallowed_exceptions_guard.py`) que detecta llamadas bloqueantes dentro de `async def` sin threadpool, con grandfathering ratchet que solo encoge.
+  - `/health` responde dentro del timeout del probe incluso con la BD colgada (check en threadpool con timeout propio).
+- **Files de partida:** [api/concurrency.py](../api/concurrency.py), [api/routes/exports.py](../api/routes/exports.py), [api/routes/auth.py](../api/routes/auth.py), [db/audit.py](../db/audit.py), [api/routes/health.py](../api/routes/health.py)
+- **Riesgo:** medio — toca muchos handlers de producción, pero cada migración a `run_db` es mecánica, la suite funcional existente cubre el comportamiento y el ratchet AST evita regresiones.
+
+### [P1] Hacer alcanzable `POST /licitaciones/{id_externo}/resumen` para ids con `/` (conversor `:path`)
+- **Área:** api/routes/ask.py
+- **Problema:** la ruta usa el conversor por defecto (`[^/]+`) mientras todas las sub-rutas hermanas (`/explain`, `/documentos`, `/ficha-pliego`, `/tech-scores`, `/tecnologias`, `/eventos`, `/prediccion-baja`, `/escenarios-precio`) usan `{...:path}`, y el detalle tiene un fallback `:path` explícito en `api/app.py:497` **solo para GET**, precisamente porque hay `id_externo` de PLACSP con barras (ej. `PA-S 2026/000058`). Para esos expedientes el resumen ejecutivo devuelve 404 siempre, en silencio.
+- **Acceptance criteria:**
+  - La ruta pasa a `{id_externo:path}/resumen` y un test cubre un id con `/`.
+  - Barrido de que no queda ninguna otra sub-ruta de licitaciones con el conversor por defecto (`grep '"/licitaciones/{' api/`).
+- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [api/app.py](../api/app.py)
+- **Riesgo:** bajo — cambio de un decorator; el contrato OpenAPI solo cambia en el patrón del path param.
+
+### [P1] Sustituir el `lastrowid` emulado (`SELECT lastval()`) por `INSERT … RETURNING id`
+- **Área:** db/connection.py y 5 call-sites
+- **Problema:** `_PgConnAdapter.lastrowid` (`db/connection.py:225-249`) ejecuta `SELECT lastval()` en una sentencia separada: devuelve el último valor de **cualquier** secuencia de la sesión, así que no es atómico respecto a triggers — v61 ya introduce triggers en el schema; basta que uno inserte en otra tabla con identity para que el caller reciba un id ajeno **sin error**. Dependen de esto 5 call-sites de producción: `db/webhooks.py:101`, `db/repositories/webhooks.py:45`, `db/watchlist_empresas.py:50`, `db/events.py:69`, `services/watchlist_rules.py:72`.
+- **Acceptance criteria:**
+  - Los 5 call-sites usan `INSERT … RETURNING id` (idiomático y atómico en Postgres) y la propiedad `lastrowid` del adaptador se elimina.
+  - Los tests existentes de webhooks/watchlist/events siguen verdes; se añade uno que verifique el id devuelto contra la fila real.
+- **Files de partida:** [db/connection.py](../db/connection.py), [db/webhooks.py](../db/webhooks.py), [db/events.py](../db/events.py)
+- **Riesgo:** bajo — 5 sitios mecánicos; el riesgo latente de dejarlo (ids cruzados silenciosos) supera al del cambio.
+
 ### [P1] El Radar no puede ordenar por el ranking real: falta dismiss server-side y faltan campos en `ScoredOpportunity`
 - **Área:** api/routes/analytics.py, services/analytics/scoring.py, api/routes/licitaciones.py, web/src/hooks/use-radar.ts, web/src/app/(dashboard)/radar/page.tsx
 - **Problema:** dos huecos de backend que dejan la página insignia a medias (ver [UX_AUDIT.md](UX_AUDIT.md) §1).
@@ -60,6 +93,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Test de regresión que mockee `is_postgres_backend() = True` y verifique que no se llama a `_sqlite_path()`.
 - **Files de partida:** [db/analytics.py](../db/analytics.py)
 - **Riesgo:** medio — toca el único camino de exports OLAP a Parquet; sin test contra Postgres real (`postgres_scanner` no se ejercita en la suite hoy) el cambio va a ciegas hasta que exista cobertura.
+- **Nota (auditoría 2026-08-07):** repriorización sugerida — mantener un módulo que falla siempre con warning periódico del scheduler es peor que cualquiera de las dos salidas: o se migra a `postgres_scanner` ya, o se retira del árbol y del scheduler hasta que haga falta.
 
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
 - **Área:** scraper/connectors/pscp.py, observability
@@ -103,6 +137,42 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P2 — Media
+
+### [P2] Compartir el poll del SSE de licitaciones entre clientes (hoy una consulta cada 5s por cliente)
+- **Área:** api/routes/stream.py
+- **Problema:** `_POLL_INTERVAL = 5.0` (`api/routes/stream.py:55`): cada cliente SSE conectado consulta el centinela vía `run_db` cada 5s, compitiendo por el threadpool global de 4 hilos con el resto de la API. N clientes = N consultas/5s, casi todas sin novedades.
+- **Acceptance criteria:**
+  - Un único poller compartido por proceso (o LISTEN/NOTIFY de Postgres) alimenta a todos los clientes conectados; con N clientes la carga a BD es O(1), no O(N).
+  - Test que conecta ≥2 clientes y verifica una sola consulta por intervalo; el contrato SSE (eventos, `Last-Event-ID`) no cambia.
+- **Files de partida:** [api/routes/stream.py](../api/routes/stream.py)
+- **Riesgo:** medio — toca un endpoint streaming de producción; mitigado manteniendo el contrato intacto.
+
+### [P2] Separar los requirements de la API de los del pipeline/ML
+- **Área:** requirements.in, docker/
+- **Problema:** las 33 deps runtime (pandas, scikit-learn, statsmodels, networkx, reportlab, boto3, lxml, openai…) viven en un único deployable: la imagen de la API que corre en 0.1 vCPU/2GiB paga memoria, cold start y superficie de ataque de librerías que solo usa el plano de ingesta/ML. El OOM del 2026-08-02 (comentario en `api/app.py:115-120`) es el síntoma de fondo: OLAP y ML dentro del proceso HTTP.
+- **Acceptance criteria:**
+  - `requirements-api.in` y `requirements-pipeline.in` compilados por separado (mismo flujo pip-tools con hashes).
+  - La imagen de la API no instala scikit-learn/statsmodels/networkx salvo que una ruta los importe de verdad (los imports lazy existentes delimitan el corte).
+  - CI construye ambas variantes y el smoke de la API pasa con la imagen reducida.
+- **Files de partida:** [requirements.in](../requirements.in), [docker/](../docker/)
+- **Riesgo:** medio — toca dependencias (gate humano §6) y puede destapar imports implícitos; mitigado con smoke de import por entrypoint.
+
+### [P2] Parametrizar el límite del threadpool de anyio (hoy 4, hardcodeado)
+- **Área:** api/app.py, config/settings.py
+- **Problema:** `api/app.py:129` fija `total_tokens = 4` sin leer settings — correcto para Render Free (0.1 vCPU), estrangulador en cualquier instancia mayor: todo endpoint `def` y todo `run_db` compiten por 4 slots por proceso, se despliegue donde se despliegue.
+- **Acceptance criteria:**
+  - Setting `API_THREADPOOL_TOKENS` (default 4) con validación y coherencia con `DB_POOL_SIZE` (warning si tokens > pool).
+  - Test de settings cubriendo default y override.
+- **Files de partida:** [api/app.py](../api/app.py), [config/settings.py](../config/settings.py)
+- **Riesgo:** bajo — cambio acotado con default idéntico al comportamiento actual.
+
+### [P2] Dar primer test a los 3 módulos que ningún test menciona
+- **Área:** services, db/repositories, tests
+- **Problema:** ningún archivo de `tests/` menciona `services/deadline_reminders.py` (que además ejecuta SQL propio bajo `# noqa: S608`), `services/rate_limiting.py` ni `db/repositories/csp_violations.py` (auditoría 2026-08-07). Cualquier regresión ahí pasa CI en verde.
+- **Acceptance criteria:**
+  - Cada módulo tiene al menos un test de comportamiento (no de import) cubriendo su camino principal y un caso borde.
+- **Files de partida:** [services/deadline_reminders.py](../services/deadline_reminders.py), [services/rate_limiting.py](../services/rate_limiting.py), [db/repositories/csp_violations.py](../db/repositories/csp_violations.py)
+- **Riesgo:** bajo — solo añade tests.
 
 ### [P2] Paralelizar la suite: activar `-n auto` en CI y medir
 - **Área:** ci.yml
@@ -157,6 +227,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Prioridad sugerida: autenticación → auditoría → búsqueda → analítica.
 - **Files de partida:** [tests/test_swallowed_exceptions_guard.py](../tests/test_swallowed_exceptions_guard.py)
 - **Riesgo:** bajo — aditivo (solo añade logs).
+- **Nota (auditoría 2026-08-07):** repriorización sugerida — el subconjunto de autenticación (`api_keys`, `sessions`, `totp`) merece P1: un fallo de infra presentado como "clave inválida" es un incidente indiagnosticable de cara a un cliente.
 
 ### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select
 - **Área:** web/src/components/layout/scope-bar.tsx
@@ -225,6 +296,22 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P3 — Nice to have
+
+### [P3] Decidir el destino del peso de `graphify-out/` (17MB, ~52% del repo)
+- **Área:** graphify-out, .claude/hooks
+- **Problema:** los artefactos commiteados del knowledge graph pesan 17MB de un repo de 33MB sin `.git`: cada clone y cada sesión remota los paga, y el hook de stale-flag deja el working tree dirty en sesiones sin el CLI (que no pueden limpiarlo). El valor para agentes sin CLI es real (AGENTS.md §1), así que es un trade-off consciente a revisar, no un error.
+- **Acceptance criteria:**
+  - Decisión registrada: mantener como está, excluir `wiki/` (la parte más pesada y más regenerable), o mover a artefacto de CI/LFS con fallback textual documentado en AGENTS.md §1.
+- **Files de partida:** [AGENTS.md](../AGENTS.md), [.claude/hooks/](../.claude/hooks/)
+- **Riesgo:** bajo — decisión de mantenedor; sin impacto en runtime.
+
+### [P3] Dejar de engordar los god modules: `aggregates.py` (1298 LOC) y `settings.py` (946 LOC)
+- **Área:** db/repositories/aggregates.py, config/settings.py
+- **Problema:** los dos archivos más grandes del repo concentran demasiadas responsabilidades (todas las agregaciones analíticas; toda la configuración). No urge un big-bang; la regla es no seguir haciéndolos crecer.
+- **Acceptance criteria:**
+  - Una agregación o setting nuevo va a un módulo hermano (`aggregates_<área>.py` / settings por dominio) en vez de sumar al monolito; al tocar un bloque cohesivo existente, se evalúa extraerlo en el mismo cambio.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
+- **Riesgo:** bajo — refactor local oportunista.
 
 ### [P3] Migrar los `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
