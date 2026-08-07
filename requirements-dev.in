@@ -1,6 +1,7 @@
 -r requirements.in
 
-pytest>=8.0.0,<9
+# >=9.0.3: PYSEC-2026-1845 (escalada local vía /tmp/pytest-of-{user} en UNIX).
+pytest>=9.0.3,<10
 pytest-cov>=5.0.0,<6
 pytest-xdist>=3.5.0,<4
 pytest-benchmark>=4.0.0,<5
