@@ -231,3 +231,35 @@ def test_the_api_serialises_the_deadline_in_the_listing(client, api_db, auth):
     item = listed.json()["items"][0]
     assert item["id_externo"] == "RADAR-API"
     assert item["fecha_limite"].startswith("2026-12-01")
+
+
+def test_el_universo_puntuable_enumera_el_cierre_y_no_la_apertura(tmp_db):
+    """El ranking del Radar hereda el mismo criterio que su listado.
+
+    ``scoring_candidates`` filtraba con una lista blanca (``estado IN
+    ('PUB','EV')``), justo lo que ``shared.estados`` existe para evitar. El
+    efecto no se veía mientras el Radar ordenaba por su cuenta; al pasar a
+    puntuar de verdad, todo expediente en ``ADM`` —el estado más común del
+    seed, 12 de 15— desapareció del ranking sin dejar rastro.
+    """
+    from db.repositories.aggregates import AggregateRepository
+
+    db_mod, _ = tmp_db
+    _seed_estados(db_mod)
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
+            "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                "EST-ADM",
+                "Licitación en admisión",
+                "ADM",
+                "2026-07-02",
+                "2026-07-30T00:00:00+00:00",
+                "SAP",
+            ),
+        )
+
+    ids = {row["id_externo"] for row in AggregateRepository().scoring_candidates()}
+
+    assert ids == {"EST-PUB", "EST-EV", "EST-NULL", "EST-ADM"}

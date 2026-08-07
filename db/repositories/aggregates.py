@@ -41,6 +41,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.estados import ESTADOS_CERRADOS
 
 log = get_logger(__name__)
 
@@ -1233,18 +1234,29 @@ class AggregateRepository:
         return float(row[0]), float(row[1] or 0.0)
 
     def scoring_candidates(
-        self, *, estados: tuple[str, ...] = ("PUB", "EV")
+        self, *, cerrados: tuple[str, ...] = ESTADOS_CERRADOS
     ) -> list[dict[str, Any]]:
-        """Proyección acotada de candidatas a oportunidad (estados activos).
+        """Proyección acotada de candidatas a oportunidad (estados no cerrados).
 
         ADR-023: el scoring puntuaba la tabla entera vía pandas; una
         licitación cerrada/adjudicada nunca es una "oportunidad", así que el
-        universo puntuable son los estados activos — una fracción del total.
+        universo puntuable excluye los estados terminales — una fracción del
+        total.
+
+        Se enumeran los estados **cerrados**, no los abiertos, que es la regla
+        de ``shared.estados``: con la allowlist anterior (``PUB``/``EV``) todo
+        expediente en un estado abierto que no fuera esos dos —``ADM``, el más
+        común— quedaba fuera del Radar sin dejar rastro. Se vio al mandar el
+        Radar a puntuar de verdad: con los 15 expedientes del seed (12 ``ADM``,
+        3 ``ADJ``) el ranking salía vacío.
         """
-        placeholders = ",".join("%s" for _ in estados)
-        sql = f"SELECT {self._SCORING_COLS} FROM licitaciones WHERE estado IN ({placeholders})"
+        placeholders = ",".join("%s" for _ in cerrados)
+        sql = (
+            f"SELECT {self._SCORING_COLS} FROM licitaciones "
+            f"WHERE estado IS NULL OR estado NOT IN ({placeholders})"
+        )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, list(estados)))
+            return rows_to_dicts(c.execute(sql, list(cerrados)))
 
     def licitaciones_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
         """Proyección de scoring para una lista exacta de ids (modo page-aligned)."""

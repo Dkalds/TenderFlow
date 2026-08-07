@@ -430,11 +430,12 @@ def get_scoring(
         personalized=user_key is not None,
     )
     # ADR-023: proyección acotada desde SQL en vez de la tabla completa.
-    # Sin `ids`, el universo puntuable son los estados ACTIVOS (PUB/EV): una
-    # licitación cerrada/adjudicada no es una oportunidad — puntuarlas solo
-    # servía para materializar la tabla entera en el proceso API. En modo
-    # page-aligned (`ids`) se traen exactamente esas filas, cualquiera sea su
-    # estado, para no romper el alineado con el listado.
+    # Sin `ids`, el universo puntuable es todo lo que NO esté en un estado
+    # terminal (`shared.estados.ESTADOS_CERRADOS`): una licitación
+    # cerrada/adjudicada no es una oportunidad — puntuarlas solo servía para
+    # materializar la tabla entera en el proceso API. En modo page-aligned
+    # (`ids`) se traen exactamente esas filas, cualquiera sea su estado, para
+    # no romper el alineado con el listado.
     if filters.ids:
         rows = _repo.licitaciones_by_ids([str(i) for i in filters.ids])
     else:
