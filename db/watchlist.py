@@ -68,9 +68,21 @@ def add_entry(entry: WatchlistEntry) -> None:
         )
 
 
-def remove_entry(entry_id: int) -> None:
+def remove_entry(entry_id: int, user_key: str) -> bool:
+    """Elimina una entrada propia. ``True`` si borró algo.
+
+    ``user_key`` no es opcional a propósito: sin él, un ``id`` adivinado
+    borraría la entrada de cualquier otro usuario. La ruta que llame puede
+    validar propiedad por su cuenta, pero el repositorio no delega esa
+    comprobación — es la clase de IDOR latente que
+    ``tests/test_user_key_sql_isolation.py`` audita.
+    """
     with connect() as c:
-        c.execute("DELETE FROM watchlist_cpv WHERE id = ?", (entry_id,))
+        cur = c.execute(
+            "DELETE FROM watchlist_cpv WHERE id = ? AND user_key = ?",
+            (entry_id, user_key),
+        )
+        return bool(cur.rowcount > 0)
 
 
 def list_entries(
@@ -120,20 +132,26 @@ def update_last_notified(entry_id: int, ts: str) -> None:
         )
 
 
-def update_frequency(entry_id: int, frequency: str) -> None:
-    """Actualiza la frecuencia de notificación de una entrada de watchlist.
+def update_frequency(entry_id: int, frequency: str, user_key: str) -> bool:
+    """Actualiza la frecuencia de notificación de una entrada propia.
 
     Args:
         entry_id: ID de la entrada.
         frequency: 'immediate' | 'daily' | 'weekly'
+        user_key: Dueño de la entrada. Obligatorio por el mismo motivo que en
+            :func:`remove_entry`.
+
+    Returns:
+        ``True`` si actualizó alguna fila.
     """
     if frequency not in ("immediate", "daily", "weekly"):
         raise ValueError(f"frequency debe ser 'immediate', 'daily' o 'weekly', no {frequency!r}")
     with connect() as c:
-        c.execute(
-            "UPDATE watchlist_cpv SET frequency = ? WHERE id = ?",
-            (frequency, entry_id),
+        cur = c.execute(
+            "UPDATE watchlist_cpv SET frequency = ? WHERE id = ? AND user_key = ?",
+            (frequency, entry_id, user_key),
         )
+        return bool(cur.rowcount > 0)
 
 
 def matches_licitacion(entry: dict[str, Any], licitacion: dict[str, Any]) -> bool:

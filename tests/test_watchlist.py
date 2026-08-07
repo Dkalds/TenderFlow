@@ -23,7 +23,7 @@ def test_crud_lifecycle(tmp_db):
     assert items[0]["keyword"] == "sap"
     assert items[0]["ccaa"] == "Madrid"
 
-    remove_entry(int(items[0]["id"]))
+    assert remove_entry(int(items[0]["id"]), "alice") is True
     assert list_entries("alice") == []
 
 
@@ -132,3 +132,36 @@ def test_watchlist_matching_with_categorical_columns():
     matches = df[combined_mask]
     assert len(matches) == 1
     assert matches.iloc[0]["cpv"] == "72000000"
+
+
+def test_remove_entry_no_borra_la_entrada_de_otro_usuario(tmp_db):
+    """IDOR cerrado: un id adivinado no alcanza para borrar lo ajeno.
+
+    Antes ``remove_entry`` hacía ``DELETE ... WHERE id = ?`` sin predicado de
+    dueño; estaba allowlisted en ``tests/test_user_key_sql_isolation.py`` como
+    hueco pendiente porque ninguna ruta lo llamaba todavía.
+    """
+    from db.watchlist import WatchlistEntry, add_entry, list_entries, remove_entry
+
+    add_entry(WatchlistEntry(user_key="alice", cpv_prefix="72", keyword="sap"))
+    entry_id = int(list_entries("alice")[0]["id"])
+
+    assert remove_entry(entry_id, "mallory") is False
+    assert len(list_entries("alice")) == 1
+
+    assert remove_entry(entry_id, "alice") is True
+    assert list_entries("alice") == []
+
+
+def test_update_frequency_no_toca_la_entrada_de_otro_usuario(tmp_db):
+    """Mismo hueco que remove_entry, misma tabla y mismo patrón."""
+    from db.watchlist import WatchlistEntry, add_entry, list_entries, update_frequency
+
+    add_entry(WatchlistEntry(user_key="alice", cpv_prefix="72", keyword="sap"))
+    entry_id = int(list_entries("alice")[0]["id"])
+
+    assert update_frequency(entry_id, "weekly", "mallory") is False
+    assert list_entries("alice")[0]["frequency"] != "weekly"
+
+    assert update_frequency(entry_id, "weekly", "alice") is True
+    assert list_entries("alice")[0]["frequency"] == "weekly"

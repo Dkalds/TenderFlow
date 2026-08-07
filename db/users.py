@@ -126,12 +126,31 @@ def is_admin(user_id: int) -> bool:
         return bool(row and row[0])
 
 
-def set_admin(user_id: int, is_admin_value: bool) -> None:
-    """Actualiza el flag ``is_admin`` de un usuario."""
+def admin_granted_by(user_id: int) -> str | None:
+    """Origen de la concesión de admin: ``'panel'``, ``'oauth'`` o ``None``.
+
+    ``None`` significa "procedencia desconocida": son las concesiones
+    anteriores a la migración v75, que no se degradan automáticamente porque
+    no se puede saber quién las hizo.
+    """
+    with connect() as c:
+        row = c.execute("SELECT admin_granted_by FROM users WHERE id = ?", (user_id,)).fetchone()
+        return str(row[0]) if row and row[0] else None
+
+
+def set_admin(user_id: int, is_admin_value: bool, granted_by: str | None = None) -> None:
+    """Actualiza el flag ``is_admin`` y registra de dónde vino la concesión.
+
+    ``granted_by`` responde a la pregunta que ``users.is_admin`` no podía
+    contestar por ser un booleano sin procedencia: sin saber *quién* concedió
+    el flag no se puede decidir quién puede retirarlo. Al degradar se limpia,
+    para que un ``is_admin = 0`` no arrastre el origen de una concesión que ya
+    no existe.
+    """
     with connect() as c:
         c.execute(
-            "UPDATE users SET is_admin = ? WHERE id = ?",
-            (1 if is_admin_value else 0, user_id),
+            "UPDATE users SET is_admin = ?, admin_granted_by = ? WHERE id = ?",
+            (1 if is_admin_value else 0, granted_by if is_admin_value else None, user_id),
         )
 
 

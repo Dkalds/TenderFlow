@@ -19,6 +19,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from db.database import connect, now_utc_iso
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 _SESSION_TTL_HOURS = 24
 _SESSION_IDLE_MINUTES = 30
@@ -88,6 +91,10 @@ def validate_session(token: str) -> dict[str, Any] | None:
                 revoke_session(token)
                 return None
     except Exception:
+        # Camino de autenticación: sin log, un fallo de BD se presenta al
+        # usuario como "sesión inválida" y nadie puede distinguirlo de un
+        # token realmente caducado.
+        log.warning("session_validation_failed", exc_info=True)
         return None
     with connect() as c:
         c.execute(

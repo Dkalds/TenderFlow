@@ -16,7 +16,7 @@ from api.routes.dual_auth import require_admin, require_any_auth
 from db.audit import log_event
 from observability.logging import get_logger
 from services.feature_flags import list_flags, set_flag
-from shared.dto import StatusOk
+from shared.dto import SafeStr, StatusOk
 
 log = get_logger(__name__)
 
@@ -34,7 +34,8 @@ class FlagOut(BaseModel):
 
 
 class FlagIn(BaseModel):
-    flag: str
+    # Ver BulkGetRequest: el NUL se rechaza en el contrato, no por endpoint.
+    flag: SafeStr
     enabled: bool
     rollout_pct: int = 100
 

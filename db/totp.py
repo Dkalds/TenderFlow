@@ -9,6 +9,7 @@ from typing import Any
 from argon2 import PasswordHasher
 
 from db.database import connect, now_utc_iso
+from observability.logging import get_logger
 from shared.crypto import (
     TOTPDecryptionError,
     decrypt_totp_secret,
@@ -76,6 +77,10 @@ def verify_totp(secret: str, code: str) -> bool:
         try:
             key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8), casefold=True)
         except Exception:
+            # Un secreto TOTP corrupto en BD se presenta como "código
+            # incorrecto": el usuario reintenta para siempre sin que nadie vea
+            # que su segundo factor está roto, no mal escrito.
+            get_logger(__name__).warning("totp_secret_undecodable", exc_info=True)
             return False
         counter = int(time.time() // 30)
         for candidate in (counter - 1, counter, counter + 1):
@@ -202,6 +207,13 @@ def use_recovery_code(user_id: int, code: str) -> bool:
                         (now_utc_iso(), row_id),
                     ).rowcount
                     return consumed == 1
-            except Exception:  # noqa: S112
+            except Exception:
+                # Un hash corrupto o un fallo de argon2 no debe cortar la
+                # comprobación de los demás códigos, pero sí dejar rastro: sin
+                # él, un recovery code legítimo rechazado es indistinguible de
+                # uno inválido.
+                get_logger(__name__).warning(
+                    "recovery_code_verify_failed", user_id=user_id, exc_info=True
+                )
                 continue
     return False

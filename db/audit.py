@@ -223,6 +223,9 @@ def log_event(
         try:
             detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:2000]
         except Exception:
+            # El detalle degradado a repr() sigue siendo mejor que perder el
+            # evento, pero un detalle no serializable es un bug del llamante.
+            log.warning("audit_detail_not_serializable", event_type=event_type, exc_info=True)
             detail_str = str(detail)[:2000]
     else:
         detail_str = str(detail)[:2000]
@@ -249,7 +252,9 @@ def log_event(
 
         audit_events_total.labels(event_type=event_type, outcome=outcome).inc()
     except Exception:
-        pass
+        # La métrica es accesoria (el evento ya está persistido), pero perderla
+        # en silencio deja los paneles de auditoría mintiendo por omisión.
+        log.debug("audit_metric_unavailable", event_type=event_type, exc_info=True)
 
 
 def list_recent(
@@ -415,4 +420,8 @@ def verify_hash_chain() -> dict[str, object]:
         return {"valid": True, "checked": checked, "first_tampered_id": None, "error": None}
 
     except Exception as exc:
+        # `valid: None` viaja hasta /security/audit/verify como "no se pudo
+        # comprobar". Sin log no se distingue una cadena rota de un fallo al
+        # leerla, que es justo la diferencia que importa en una auditoría.
+        log.warning("audit_hash_chain_verify_failed", exc_info=True)
         return {"valid": None, "checked": 0, "first_tampered_id": None, "error": str(exc)}

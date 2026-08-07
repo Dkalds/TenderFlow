@@ -111,7 +111,10 @@ def admin_set_admin(
     target = get_user_by_id(user_id, include_deactivated=True)
     if target is None:
         raise HTTPException(status_code=404, detail="User not found.")
-    set_admin(user_id, body.is_admin)
+    # `granted_by="panel"`: la procedencia decide quién puede retirar el
+    # flag. `_sync_oauth_admin` solo degrada lo que concedió OAuth, así que
+    # una promoción desde aquí sobrevive al siguiente login con Google.
+    set_admin(user_id, body.is_admin, granted_by="panel")
     log_event(
         event_type="user.admin_changed",
         user_key=str(admin.get("user_id", "")),

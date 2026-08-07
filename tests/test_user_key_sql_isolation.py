@@ -250,21 +250,11 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
     }
 )
 
-_KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset(
-    {
-        # DELETE FROM watchlist_cpv WHERE id = ? sin predicado user_key. Hoy
-        # no tiene ningún caller en api/routes/*.py (services.watchlist.
-        # remove_entry no está enganchado a ninguna ruta) -- pero si se
-        # expone un DELETE para este recurso llamando a este repo sin antes
-        # validar propiedad (como sí hace api/routes/saved_filters.py::
-        # delete_saved_filter_route), sería un IDOR. Arreglo pendiente:
-        # añadir `user_key` como parámetro y `AND user_key = ?` a la query.
-        "db/watchlist.py::remove_entry",
-        # Mismo hueco que remove_entry de arriba: misma tabla, mismo patrón
-        # (UPDATE ... WHERE id = ? sin user_key), también sin caller HTTP hoy.
-        "db/watchlist.py::update_frequency",
-    }
-)
+# Vaciado: ``remove_entry`` y ``update_frequency`` de ``db/watchlist.py`` ya
+# exigen ``user_key`` y lo llevan en su predicado. Eran IDOR latentes —sin
+# caller HTTP, pero a un endpoint de distancia— y el grupo no admite entradas
+# nuevas: un hueco de aislamiento se corrige, no se documenta.
+_KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset()
 
 _ALLOWLIST: frozenset[str] = _LEGITIMATE_SWEEPS | _KNOWN_GAPS_PENDING_FIX
 

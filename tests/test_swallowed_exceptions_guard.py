@@ -210,29 +210,11 @@ _LEGITIMATE_SILENT: frozenset[str] = frozenset(
     }
 )
 
+# 2026-08-07: vaciadas las 12 entradas de autenticación, auditoría y export
+# GDPR (api_keys, sessions, totp, audit). Quedan las de búsqueda, webhooks e
+# ingesta, que son la siguiente ola.
 _GRANDFATHERED_PENDING_FIX: frozenset[str] = frozenset(
     {
-        # ── Export/anonimización GDPR: el caso que originó este test ────────
-        # Devuelven [] ante cualquier fallo, indistinguible de "sin datos".
-        # Ver el P0 de watchlist/GDPR en docs/IMPROVEMENT_BACKLOG.md: al
-        # arreglarlo, estas entradas se borran de aquí.
-        # (`export_by_user_key` ya se arregló: sin `except` que trague el fallo.)
-        "db/repositories/watchlist.py::WatchlistRepository.export_items_by_user_key",
-        "db/repositories/audit.py::AuditRepository.export_by_user_key",
-        # ── Camino de autenticación ─────────────────────────────────────────
-        # Un fallo de BD aquí se presenta como "clave inválida"; sin log no hay
-        # forma de distinguir un ataque de una incidencia de infraestructura.
-        "db/repositories/api_keys.py::ApiKeyRepository.get_active_scopes",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_user_id",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_by_key_id",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_all_for_user",
-        "db/repositories/api_keys.py::ApiKeyRepository.deactivate_all_for_user",
-        "db/sessions.py::validate_session",
-        "db/totp.py::verify_totp",
-        "db/totp.py::use_recovery_code",
-        # ── Auditoría: la cadena de hashes pierde eventos en silencio ───────
-        "db/audit.py::log_event",
-        "db/audit.py::verify_hash_chain",
         # ── Búsqueda: los fallbacks encadenados degradan sin dejar rastro,
         # así que una búsqueda rota se ve como "sin resultados".
         "db/repositories/licitaciones.py::LicitacionRepository.fts5_bm25_search",

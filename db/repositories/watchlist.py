@@ -256,6 +256,9 @@ class WatchlistRepository:
                 )
                 return rows_to_dicts(cur)
             except Exception:
+                # Export GDPR: un [] por fallo de BD entrega un export
+                # incompleto que el usuario lee como completo.
+                log.warning("watchlist_export_items_failed", exc_info=True)
                 return []
 
     def anonymize_items_by_user_key(self, user_key: str) -> None:
