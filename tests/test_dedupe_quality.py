@@ -49,7 +49,7 @@ def _load_pairs() -> list[dict]:
 def _insert_lic(c, side: dict) -> None:
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
-        " fecha_publicacion, fuente, fecha_extraccion) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        " fecha_publicacion, fuente, fecha_extraccion) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (
             side["id"],
             f"Contrato {side['id']}",
@@ -118,7 +118,7 @@ def test_dedupe_golden_precision_gate(tmp_db):
                 fp_cases.append(pair.get("case", "?"))
 
     assert tp_confirmed >= MIN_CONFIRMED_EXPECTED, (
-        f"solo {tp_confirmed} confirmados — ¿harness roto o golden set recortado?"
+        f"solo {tp_confirmed} confirmados — ¿harness roto o golden set recortado%s"
     )
 
     precision = tp_confirmed / (tp_confirmed + fp_confirmed)

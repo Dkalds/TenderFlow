@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
-import { t } from "@/lib/i18n";
 import { apiMutate, ApiError } from "@/lib/api-client";
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
@@ -15,10 +14,14 @@ import { safeRedirectPath } from "@/lib/safe-redirect";
 
 type Mode = "login" | "register";
 
-const OAUTH_ERROR_KEYS: Record<string, string> = {
-  invalid_state: "auth.oauthInvalidState",
-  oauth_failed: "auth.oauthFailed",
-  email_not_allowed: "auth.oauthEmailNotAllowed",
+const OAUTH_FALLBACK_ERROR =
+  "No se pudo completar el inicio de sesión con Google. Inténtalo de nuevo.";
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  invalid_state:
+    "La sesión de inicio con Google caducó o ya se usó. Inténtalo de nuevo.",
+  oauth_failed: OAUTH_FALLBACK_ERROR,
+  email_not_allowed: "Tu cuenta de Google no tiene acceso a TenderFlow.",
 };
 
 export default function LoginPage() {
@@ -39,7 +42,9 @@ function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(() => {
     const oauthError = searchParams.get("error");
-    return oauthError ? t(OAUTH_ERROR_KEYS[oauthError] ?? "auth.oauthFailed") : null;
+    return oauthError
+      ? (OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_FALLBACK_ERROR)
+      : null;
   });
   const [loading, setLoading] = useState(false);
   // El callback de Google vuelve con `?mfa=required` cuando la cuenta tiene
@@ -115,7 +120,7 @@ function LoginPageContent() {
     setError(null);
 
     if (password !== confirmPassword) {
-      setError(t("auth.passwordMismatch"));
+      setError("Las contraseñas no coinciden");
       return;
     }
 
@@ -131,7 +136,7 @@ function LoginPageContent() {
     } catch (err) {
       if (err instanceof ApiError) {
         // 409: email ya registrado · 400: contrasena no cumple la politica
-        setError(err.status === 409 ? t("auth.emailExists") : err.message);
+        setError(err.status === 409 ? "Este correo ya está registrado" : err.message);
       } else {
         setError("Error de conexion. Intenta de nuevo.");
       }
@@ -213,7 +218,7 @@ function LoginPageContent() {
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {t(m === "login" ? "auth.login" : "auth.register")}
+                  {m === "login" ? "Iniciar sesión" : "Crear cuenta"}
                 </button>
               ))}
             </div>
@@ -262,7 +267,7 @@ function LoginPageContent() {
 
                 <Button type="submit" className="w-full" disabled={loading || !mfaCode.trim()}>
                   <ShieldCheck className="mr-2 h-4 w-4" />
-                  {loading ? t("common.loading") : "Verificar"}
+                  {loading ? "Cargando…" : "Verificar"}
                 </Button>
 
                 <Button
@@ -306,7 +311,7 @@ function LoginPageContent() {
                 {isRegister && (
                   <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
                     <label htmlFor="name" className="text-sm font-medium text-foreground">
-                      {t("auth.name")}
+                      {"Nombre"}
                     </label>
                     <Input
                       id="name"
@@ -322,7 +327,7 @@ function LoginPageContent() {
 
                 <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
                   <label htmlFor="email" className="text-sm font-medium text-foreground">
-                    {t("auth.email")}
+                    {"Correo electrónico"}
                     <span className="text-destructive ml-1" aria-hidden="true">
                       *
                     </span>
@@ -341,7 +346,7 @@ function LoginPageContent() {
 
                 <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
                   <label htmlFor="password" className="text-sm font-medium text-foreground">
-                    {t("auth.password")}
+                    {"Contraseña"}
                     <span className="text-destructive ml-1" aria-hidden="true">
                       *
                     </span>
@@ -369,7 +374,7 @@ function LoginPageContent() {
                   </div>
                   {isRegister && (
                     <p id="password-hint" className="text-xs text-muted-foreground">
-                      {t("auth.passwordHint")}
+                      {"Mínimo 10 caracteres, con mayúsculas, minúsculas y un número"}
                     </p>
                   )}
                 </div>
@@ -380,7 +385,7 @@ function LoginPageContent() {
                       htmlFor="confirm-password"
                       className="text-sm font-medium text-foreground"
                     >
-                      {t("auth.confirmPassword")}
+                      {"Confirmar contraseña"}
                       <span className="text-destructive ml-1" aria-hidden="true">
                         *
                       </span>
@@ -404,10 +409,10 @@ function LoginPageContent() {
                     <LogIn className="mr-2 h-4 w-4" />
                   )}
                   {loading
-                    ? t("common.loading")
+                    ? "Cargando…"
                     : isRegister
-                      ? t("auth.register")
-                      : t("auth.login")}
+                      ? "Crear cuenta"
+                      : "Iniciar sesión"}
                 </Button>
               </form>
             </div>

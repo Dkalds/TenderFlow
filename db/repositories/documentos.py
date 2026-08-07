@@ -45,7 +45,7 @@ class DocumentosRepository:
         with connect() as c:
             c.executemany(
                 "INSERT INTO documentos (licitacion_id, tipo, uri, filename) "
-                "VALUES (?, ?, ?, ?) ON CONFLICT(licitacion_id, uri) DO NOTHING",
+                "VALUES (%s, %s, %s, %s) ON CONFLICT(licitacion_id, uri) DO NOTHING",
                 rows,
             )
         return len(rows)
@@ -75,7 +75,7 @@ class DocumentosRepository:
                 "(l.tecnologia IS NOT NULL AND l.tecnologia != '') DESC, "
                 "(l.ml_tecnologias IS NOT NULL AND l.ml_tecnologias != '') DESC, "
                 "d.created_at DESC "
-                "LIMIT ?",
+                "LIMIT %s",
                 (max(1, min(int(limit), 1000)),),
             )
             return rows_to_dicts(cur)
@@ -87,7 +87,7 @@ class DocumentosRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id, tipo, uri, filename, content_type, size_bytes, "
-                "status, created_at FROM documentos WHERE licitacion_id = ? "
+                "status, created_at FROM documentos WHERE licitacion_id = %s "
                 "ORDER BY created_at",
                 (licitacion_id,),
             )
@@ -105,9 +105,9 @@ class DocumentosRepository:
         """Descarga completada — metadatos del binario, texto aún pendiente."""
         with connect() as c:
             c.execute(
-                "UPDATE documentos SET status = 'downloaded', filename = ?, "
-                "content_type = ?, size_bytes = ?, sha256 = ?, fetched_at = ?, "
-                "updated_at = ? WHERE id = ?",
+                "UPDATE documentos SET status = 'downloaded', filename = %s, "
+                "content_type = %s, size_bytes = %s, sha256 = %s, fetched_at = %s, "
+                "updated_at = %s WHERE id = %s",
                 (
                     filename,
                     content_type,
@@ -137,13 +137,13 @@ class DocumentosRepository:
         """
         with connect() as c:
             c.execute(
-                "UPDATE documentos SET status = 'extracted', texto = ?, sha256 = ?, "
-                "fetched_at = ?, updated_at = ? WHERE id = ?",
+                "UPDATE documentos SET status = 'extracted', texto = %s, sha256 = %s, "
+                "fetched_at = %s, updated_at = %s WHERE id = %s",
                 (texto, sha256, now_utc_iso(), now_utc_iso(), documento_id),
             )
             if pages is not None:
                 c.execute(
-                    "DELETE FROM documento_pages WHERE documento_id = ?",
+                    "DELETE FROM documento_pages WHERE documento_id = %s",
                     (documento_id,),
                 )
                 page_rows: list[tuple[int, int, str, int, int]] = []
@@ -165,7 +165,7 @@ class DocumentosRepository:
                     c.executemany(
                         "INSERT INTO documento_pages "
                         "(documento_id, page_number, texto, start_offset, end_offset) "
-                        "VALUES (?, ?, ?, ?, ?)",
+                        "VALUES (%s, %s, %s, %s, %s)",
                         page_rows,
                     )
 
@@ -174,7 +174,7 @@ class DocumentosRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT documento_id, page_number, texto, start_offset, end_offset "
-                "FROM documento_pages WHERE documento_id = ? ORDER BY page_number",
+                "FROM documento_pages WHERE documento_id = %s ORDER BY page_number",
                 (documento_id,),
             )
             return rows_to_dicts(cur)
@@ -187,7 +187,7 @@ class DocumentosRepository:
                 "dp.start_offset, dp.end_offset, d.tipo, d.filename, d.uri "
                 "FROM documento_pages dp "
                 "JOIN documentos d ON d.id = dp.documento_id "
-                "WHERE d.licitacion_id = ? "
+                "WHERE d.licitacion_id = %s "
                 "ORDER BY d.id, dp.page_number",
                 (licitacion_id,),
             )
@@ -197,8 +197,8 @@ class DocumentosRepository:
         """Descarga o extracción fallida — no rompe el resto del batch."""
         with connect() as c:
             c.execute(
-                "UPDATE documentos SET status = 'error', error_detail = ?, "
-                "updated_at = ? WHERE id = ?",
+                "UPDATE documentos SET status = 'error', error_detail = %s, "
+                "updated_at = %s WHERE id = %s",
                 (error_detail[:_MAX_ERROR_DETAIL_LEN], now_utc_iso(), documento_id),
             )
 
@@ -208,7 +208,7 @@ class DocumentosRepository:
             cur = c.execute(
                 "SELECT id, licitacion_id, tipo, uri, filename, content_type, "
                 "size_bytes, sha256, texto, status, error_detail, storage_key, "
-                "fetched_at, created_at, updated_at FROM documentos WHERE id = ?",
+                "fetched_at, created_at, updated_at FROM documentos WHERE id = %s",
                 (documento_id,),
             )
             rows = rows_to_dicts(cur)
@@ -231,7 +231,7 @@ class DocumentosRepository:
                 "SELECT id, licitacion_id, texto FROM documentos "
                 "WHERE status = 'extracted' "
                 "AND id NOT IN (SELECT DISTINCT documento_id FROM documento_chunks) "
-                "ORDER BY updated_at LIMIT ?",
+                "ORDER BY updated_at LIMIT %s",
                 (max(1, min(int(limit), 1000)),),
             )
             return rows_to_dicts(cur)
@@ -257,7 +257,7 @@ class DocumentosRepository:
             )
 
         with connect() as c:
-            c.execute("DELETE FROM documento_chunks WHERE documento_id = ?", (documento_id,))
+            c.execute("DELETE FROM documento_chunks WHERE documento_id = %s", (documento_id,))
             if not chunks:
                 return 0
             rows = [
@@ -266,7 +266,7 @@ class DocumentosRepository:
             ]
             c.executemany(
                 "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
-                "VALUES (?, ?, ?, ?::vector)",
+                "VALUES (%s, %s, %s, %s::vector)",
                 rows,
             )
         return len(chunks)
@@ -289,9 +289,9 @@ class DocumentosRepository:
             cur = c.execute(
                 "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto "
                 "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
-                "WHERE d.licitacion_id = ? "
+                "WHERE d.licitacion_id = %s "
                 "ORDER BY CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
-                "dc.documento_id, dc.chunk_index LIMIT ?",
+                "dc.documento_id, dc.chunk_index LIMIT %s",
                 (licitacion_id, max(1, min(int(limit), 1000))),
             )
             return rows_to_dicts(cur)
@@ -307,9 +307,9 @@ class DocumentosRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id, tipo, filename, texto FROM documentos "
-                "WHERE licitacion_id = ? AND status = 'extracted' AND texto IS NOT NULL "
+                "WHERE licitacion_id = %s AND status = 'extracted' AND texto IS NOT NULL "
                 "ORDER BY CASE tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, id "
-                "LIMIT ?",
+                "LIMIT %s",
                 (licitacion_id, max(1, min(int(limit), 100))),
             )
             return rows_to_dicts(cur)
@@ -317,7 +317,7 @@ class DocumentosRepository:
     def count_chunks(self, documento_id: int) -> int:
         with connect_read() as c:
             row = c.execute(
-                "SELECT COUNT(*) FROM documento_chunks WHERE documento_id = ?",
+                "SELECT COUNT(*) FROM documento_chunks WHERE documento_id = %s",
                 (documento_id,),
             ).fetchone()
             return int(row[0] if row else 0)

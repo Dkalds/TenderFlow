@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/i18n";
 import { Inbox, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -14,8 +13,8 @@ export interface EmptyStateProps {
 
 export function EmptyState({
   icon: Icon = Inbox,
-  title = t("common.no_data"),
-  hint = t("common.no_data_hint"),
+  title = "Sin datos",
+  hint = "Ajusta los filtros o el rango de fechas para ver resultados.",
   actionLabel,
   onAction,
   className,

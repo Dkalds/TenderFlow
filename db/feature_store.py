@@ -33,7 +33,7 @@ def set_feature(
         c.execute(
             "INSERT INTO feature_store "
             "(entity_type, entity_id, feature_name, value_json, version, computed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
             "ON CONFLICT(entity_type, entity_id, feature_name, version) "
             "DO UPDATE SET value_json=excluded.value_json, computed_at=excluded.computed_at",
             (entity_type, entity_id, feature_name, value_json, version, now_utc_iso()),
@@ -51,7 +51,7 @@ def get_feature(
     with connect() as c:
         row = c.execute(
             "SELECT value_json FROM feature_store "
-            "WHERE entity_type=? AND entity_id=? AND feature_name=? AND version=?",
+            "WHERE entity_type=%s AND entity_id=%s AND feature_name=%s AND version=%s",
             (entity_type, entity_id, feature_name, version),
         ).fetchone()
     return json.loads(row[0]) if row else None
@@ -67,11 +67,11 @@ def get_features_bulk(
     """Recupera un dict {entity_id: value} para múltiples entidades."""
     if not entity_ids:
         return {}
-    placeholders = ",".join("?" for _ in entity_ids)
+    placeholders = ",".join("%s" for _ in entity_ids)
     with connect() as c:
         rows = c.execute(
             f"SELECT entity_id, value_json FROM feature_store "
-            f"WHERE entity_type=? AND feature_name=? AND version=? "
+            f"WHERE entity_type=%s AND feature_name=%s AND version=%s "
             f"AND entity_id IN ({placeholders})",
             [entity_type, feature_name, version, *entity_ids],
         ).fetchall()
@@ -89,18 +89,18 @@ def delete_feature(
     with connect() as c:
         if feature_name is None:
             cur = c.execute(
-                "DELETE FROM feature_store WHERE entity_type=? AND entity_id=?",
+                "DELETE FROM feature_store WHERE entity_type=%s AND entity_id=%s",
                 (entity_type, entity_id),
             )
         elif version is None:
             cur = c.execute(
-                "DELETE FROM feature_store WHERE entity_type=? AND entity_id=? AND feature_name=?",
+                "DELETE FROM feature_store WHERE entity_type=%s AND entity_id=%s AND feature_name=%s",
                 (entity_type, entity_id, feature_name),
             )
         else:
             cur = c.execute(
                 "DELETE FROM feature_store "
-                "WHERE entity_type=? AND entity_id=? AND feature_name=? AND version=?",
+                "WHERE entity_type=%s AND entity_id=%s AND feature_name=%s AND version=%s",
                 (entity_type, entity_id, feature_name, version),
             )
         return cur.rowcount if hasattr(cur, "rowcount") else 0
@@ -112,7 +112,7 @@ def purge_stale_features(*, older_than_days: int = 30) -> int:
 
     cutoff = (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat()
     with connect() as c:
-        cur = c.execute("DELETE FROM feature_store WHERE computed_at < ?", (cutoff,))
+        cur = c.execute("DELETE FROM feature_store WHERE computed_at < %s", (cutoff,))
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 

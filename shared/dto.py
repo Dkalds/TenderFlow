@@ -37,6 +37,27 @@ def _normalize_pg_datetime(value: Any) -> Any:
 PgDateTime = Annotated[datetime, BeforeValidator(_normalize_pg_datetime)]
 
 
+def _reject_nul_bytes(value: Any) -> Any:
+    """Rechaza el byte NUL en cadenas antes de que llegue a Postgres.
+
+    Postgres no admite ``\\x00`` en columnas de texto: el ``DataError`` que
+    lanza escapaba como 500 desde cualquier ruta que persistiera la cadena
+    (``POST /licitaciones/bulk-get`` y ``PUT /feature-flags``, congelados en
+    ``KNOWN_5XX`` de ``scripts/fuzz_api_contract.py``). Basta un carácter
+    enviado por cualquier cliente, así que el saneo va en el contrato, no en
+    cada endpoint: como validador de Pydantic, el fallo sale como 422 con la
+    ruta del campo, que es lo que un cliente puede corregir.
+    """
+    if isinstance(value, str) and "\x00" in value:
+        raise ValueError("El texto no puede contener el byte NUL (\\x00).")
+    return value
+
+
+#: ``str`` que no admite el byte NUL. Úsalo en todo campo de texto que acabe
+#: persistido o comparado contra Postgres.
+SafeStr = Annotated[str, BeforeValidator(_reject_nul_bytes)]
+
+
 class LicitacionSummary(BaseModel):
     """Resumen de una licitación (listados, búsquedas)."""
 

@@ -25,7 +25,7 @@ class WatchlistRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT " + _WATCHLIST_LIC_COLS + " FROM licitaciones "
-                "WHERE fecha_publicacion >= ? AND cpv LIKE ? "
+                "WHERE fecha_publicacion >= %s AND cpv LIKE %s "
                 "ORDER BY fecha_publicacion DESC",
                 (since_date, pattern),
             )
@@ -47,11 +47,11 @@ class WatchlistRepository:
         with connect_read() as c:
             for since_date, grp_entries in by_since.items():
                 cpv_prefixes = [e["cpv_prefix"] for e in grp_entries]
-                placeholders = " OR ".join("cpv LIKE ?" for _ in cpv_prefixes)
+                placeholders = " OR ".join("cpv LIKE %s" for _ in cpv_prefixes)
                 params: list[Any] = [since_date] + [p + "%" for p in cpv_prefixes]
                 cur = c.execute(
                     "SELECT " + _WATCHLIST_LIC_COLS + " FROM licitaciones "
-                    "WHERE fecha_publicacion >= ? AND (" + placeholders + ") "
+                    "WHERE fecha_publicacion >= %s AND (" + placeholders + ") "
                     "ORDER BY fecha_publicacion DESC",
                     params,
                 )
@@ -78,7 +78,7 @@ class WatchlistRepository:
                 c.execute(
                     "INSERT INTO pending_digests "
                     "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT(entry_id, licitacion_id) DO NOTHING",
                     (user_key, recipient, entry_id, licitacion_id, frequency, matched_at),
                 )
@@ -103,7 +103,7 @@ class WatchlistRepository:
                 "FROM pending_digests pd "
                 "LEFT JOIN licitaciones l ON l.id_externo = pd.licitacion_id "
                 "LEFT JOIN watchlist_cpv w ON w.id = pd.entry_id "
-                "WHERE pd.sent = 0 AND pd.frequency = ? "
+                "WHERE pd.sent = 0 AND pd.frequency = %s "
                 "ORDER BY pd.recipient_email, pd.entry_id",
                 (frequency,),
             )
@@ -114,7 +114,7 @@ class WatchlistRepository:
         if not digest_ids:
             return
         with connect() as c:
-            placeholders = ",".join("?" for _ in digest_ids)
+            placeholders = ",".join("%s" for _ in digest_ids)
             c.execute(
                 "UPDATE pending_digests SET sent = 1 WHERE id IN (" + placeholders + ")",
                 digest_ids,
@@ -130,7 +130,7 @@ class WatchlistRepository:
         """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT * FROM watchlist_cpv WHERE user_key = ? LIMIT 5000",
+                "SELECT * FROM watchlist_cpv WHERE user_key = %s LIMIT 5000",
                 (user_key,),
             )
             return rows_to_dicts(cur)
@@ -146,7 +146,7 @@ class WatchlistRepository:
         with connect() as c:
             c.execute(
                 "UPDATE watchlist_cpv SET user_key = 'DELETED', email = NULL, "
-                "user_id = NULL WHERE user_key = ?",
+                "user_id = NULL WHERE user_key = %s",
                 (user_key,),
             )
 
@@ -174,12 +174,12 @@ class WatchlistRepository:
                 "LEFT JOIN licitaciones l ON l.id_externo = wi.id_externo "
             )
             if organization_id is None:
-                sql += "WHERE wi.user_key = ? "
+                sql += "WHERE wi.user_key = %s "
                 params: tuple[Any, ...] = (user_key,)
             else:
                 sql += (
-                    "WHERE wi.organization_id = ? AND "
-                    "(wi.visibility = 'organization' OR wi.user_id = ? OR wi.user_key = ?) "
+                    "WHERE wi.organization_id = %s AND "
+                    "(wi.visibility = 'organization' OR wi.user_id = %s OR wi.user_key = %s) "
                 )
                 params = (organization_id, user_id, user_key)
             cur = c.execute(
@@ -205,21 +205,21 @@ class WatchlistRepository:
             if organization_id is None:
                 c.execute(
                     "INSERT INTO watchlist_items (user_key, user_id, id_externo) "
-                    "VALUES (?, ?, ?) ON CONFLICT(user_key, id_externo) DO NOTHING",
+                    "VALUES (%s, %s, %s) ON CONFLICT(user_key, id_externo) DO NOTHING",
                     (user_key, user_id, id_externo),
                 )
             else:
                 c.execute(
                     "INSERT INTO watchlist_items "
                     "(user_key, user_id, id_externo, organization_id, visibility) "
-                    "VALUES (?, ?, ?, ?, ?) "
+                    "VALUES (%s, %s, %s, %s, %s) "
                     "ON CONFLICT(user_key, id_externo) DO NOTHING",
                     (user_key, user_id, id_externo, organization_id, visibility),
                 )
             cur = c.execute(
                 "SELECT id, user_key, user_id, id_externo, organization_id, "
                 "visibility, created_at "
-                "FROM watchlist_items WHERE user_key = ? AND id_externo = ?",
+                "FROM watchlist_items WHERE user_key = %s AND id_externo = %s",
                 (user_key, id_externo),
             )
             rows = rows_to_dicts(cur)
@@ -235,13 +235,13 @@ class WatchlistRepository:
         with connect() as c:
             if organization_id is None:
                 cur = c.execute(
-                    "DELETE FROM watchlist_items WHERE user_key = ? AND id_externo = ?",
+                    "DELETE FROM watchlist_items WHERE user_key = %s AND id_externo = %s",
                     (user_key, id_externo),
                 )
             else:
                 cur = c.execute(
-                    "DELETE FROM watchlist_items WHERE organization_id = ? "
-                    "AND id_externo = ? AND (visibility = 'organization' OR user_key = ?)",
+                    "DELETE FROM watchlist_items WHERE organization_id = %s "
+                    "AND id_externo = %s AND (visibility = 'organization' OR user_key = %s)",
                     (organization_id, id_externo, user_key),
                 )
             return bool(cur.rowcount > 0)
@@ -251,11 +251,14 @@ class WatchlistRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT * FROM watchlist_items WHERE user_key = ? LIMIT 5000",
+                    "SELECT * FROM watchlist_items WHERE user_key = %s LIMIT 5000",
                     (user_key,),
                 )
                 return rows_to_dicts(cur)
             except Exception:
+                # Export GDPR: un [] por fallo de BD entrega un export
+                # incompleto que el usuario lee como completo.
+                log.warning("watchlist_export_items_failed", exc_info=True)
                 return []
 
     def anonymize_items_by_user_key(self, user_key: str) -> None:
@@ -269,7 +272,7 @@ class WatchlistRepository:
         with connect() as c:
             try:
                 c.execute(
-                    "DELETE FROM watchlist_items WHERE user_key = ?",
+                    "DELETE FROM watchlist_items WHERE user_key = %s",
                     (user_key,),
                 )
             except Exception:

@@ -53,7 +53,7 @@ class TestCreateWebhook:
         from db.database import connect
 
         with connect() as c:
-            row = c.execute("SELECT secret FROM webhooks WHERE id = ?", (wid,)).fetchone()
+            row = c.execute("SELECT secret FROM webhooks WHERE id = %s", (wid,)).fetchone()
         assert row[0] == "derived:v1"
         assert secret != "derived:v1"
 

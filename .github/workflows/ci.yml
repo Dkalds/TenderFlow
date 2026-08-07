@@ -134,11 +134,18 @@ jobs:
           # de PDF (pypdf), no solo el fallback de "extra ausente".
           pip install -e ".[pliegos]"
 
+      # `-n auto`: el fixture de sesión materializa el DDL una sola vez entre
+      # workers (lock de fichero en el tmp compartido del run) y los schemas
+      # por test llevan el pid, así que no colisionan. Medido en un contenedor
+      # de 4 CPUs: 3094 tests en 359 s con -n auto, frente a >600 s en serie,
+      # sin fallos de aislamiento. El techo del job son 25 min.
+      # Si el paralelo diera falsos rojos, quitar `-n auto` restaura la
+      # ejecución en serie sin ningún otro cambio.
       - name: Run tests with coverage
         env:
           ENV: dev
           TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret
-        run: pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=78
+        run: pytest -n auto --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=78
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

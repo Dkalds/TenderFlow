@@ -32,10 +32,10 @@ def add_entry(entry: WatchlistEntry) -> None:
     with connect() as c:
         cur = c.execute(
             "SELECT id FROM watchlist_cpv WHERE "
-            "user_key = ? AND cpv_prefix = ? "
-            "AND COALESCE(keyword,'') = COALESCE(?, '') "
-            "AND COALESCE(ccaa,'') = COALESCE(?, '') "
-            "AND COALESCE(min_importe, -1) = COALESCE(?, -1) "
+            "user_key = %s AND cpv_prefix = %s "
+            "AND COALESCE(keyword,'') = COALESCE(%s, '') "
+            "AND COALESCE(ccaa,'') = COALESCE(%s, '') "
+            "AND COALESCE(min_importe, -1) = COALESCE(%s, -1) "
             "LIMIT 1",
             (
                 entry.user_key,
@@ -51,7 +51,7 @@ def add_entry(entry: WatchlistEntry) -> None:
             "INSERT INTO watchlist_cpv "
             "(user_key, cpv_prefix, keyword, min_importe, ccaa, email, user_id, "
             " frequency, created_at, organization_id, visibility) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 entry.user_key,
                 entry.cpv_prefix,
@@ -68,9 +68,21 @@ def add_entry(entry: WatchlistEntry) -> None:
         )
 
 
-def remove_entry(entry_id: int) -> None:
+def remove_entry(entry_id: int, user_key: str) -> bool:
+    """Elimina una entrada propia. ``True`` si borró algo.
+
+    ``user_key`` no es opcional a propósito: sin él, un ``id`` adivinado
+    borraría la entrada de cualquier otro usuario. La ruta que llame puede
+    validar propiedad por su cuenta, pero el repositorio no delega esa
+    comprobación — es la clase de IDOR latente que
+    ``tests/test_user_key_sql_isolation.py`` audita.
+    """
     with connect() as c:
-        c.execute("DELETE FROM watchlist_cpv WHERE id = ?", (entry_id,))
+        cur = c.execute(
+            "DELETE FROM watchlist_cpv WHERE id = %s AND user_key = %s",
+            (entry_id, user_key),
+        )
+        return bool(cur.rowcount > 0)
 
 
 def list_entries(
@@ -85,8 +97,8 @@ def list_entries(
                 "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
                 "created_at, last_notified_at, user_id, "
                 "COALESCE(frequency, 'daily') AS frequency, organization_id, visibility "
-                "FROM watchlist_cpv WHERE organization_id = ? "
-                "AND (visibility = 'organization' OR user_id = ? OR user_key = ?) "
+                "FROM watchlist_cpv WHERE organization_id = %s "
+                "AND (visibility = 'organization' OR user_id = %s OR user_key = %s) "
                 "ORDER BY created_at DESC",
                 (organization_id, user_id, user_key),
             )
@@ -95,7 +107,7 @@ def list_entries(
                 "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
                 "created_at, last_notified_at, user_id, "
                 "COALESCE(frequency, 'daily') AS frequency "
-                "FROM watchlist_cpv WHERE user_id = ? OR user_key = ? "
+                "FROM watchlist_cpv WHERE user_id = %s OR user_key = %s "
                 "ORDER BY created_at DESC",
                 (user_id, user_key),
             )
@@ -104,7 +116,7 @@ def list_entries(
                 "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
                 "created_at, last_notified_at, user_id, "
                 "COALESCE(frequency, 'daily') AS frequency "
-                "FROM watchlist_cpv WHERE user_key = ? ORDER BY created_at DESC",
+                "FROM watchlist_cpv WHERE user_key = %s ORDER BY created_at DESC",
                 (user_key,),
             )
         cols = [d[0] for d in cur.description]
@@ -115,25 +127,31 @@ def update_last_notified(entry_id: int, ts: str) -> None:
     """Actualiza la marca de tiempo de última notificación para una entrada."""
     with connect() as c:
         c.execute(
-            "UPDATE watchlist_cpv SET last_notified_at = ? WHERE id = ?",
+            "UPDATE watchlist_cpv SET last_notified_at = %s WHERE id = %s",
             (ts, entry_id),
         )
 
 
-def update_frequency(entry_id: int, frequency: str) -> None:
-    """Actualiza la frecuencia de notificación de una entrada de watchlist.
+def update_frequency(entry_id: int, frequency: str, user_key: str) -> bool:
+    """Actualiza la frecuencia de notificación de una entrada propia.
 
     Args:
         entry_id: ID de la entrada.
         frequency: 'immediate' | 'daily' | 'weekly'
+        user_key: Dueño de la entrada. Obligatorio por el mismo motivo que en
+            :func:`remove_entry`.
+
+    Returns:
+        ``True`` si actualizó alguna fila.
     """
     if frequency not in ("immediate", "daily", "weekly"):
         raise ValueError(f"frequency debe ser 'immediate', 'daily' o 'weekly', no {frequency!r}")
     with connect() as c:
-        c.execute(
-            "UPDATE watchlist_cpv SET frequency = ? WHERE id = ?",
-            (frequency, entry_id),
+        cur = c.execute(
+            "UPDATE watchlist_cpv SET frequency = %s WHERE id = %s AND user_key = %s",
+            (frequency, entry_id, user_key),
         )
+        return bool(cur.rowcount > 0)
 
 
 def matches_licitacion(entry: dict[str, Any], licitacion: dict[str, Any]) -> bool:

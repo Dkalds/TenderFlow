@@ -414,7 +414,7 @@ async def calendario_ics(
             "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
             "FROM watchlist_items wi "
             "JOIN licitaciones l ON l.id_externo = wi.id_externo "
-            "WHERE wi.user_key = ? AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
+            "WHERE wi.user_key = %s AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
             (user_key,),
         )
         rows = [

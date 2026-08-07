@@ -50,12 +50,12 @@ def acquire(name: str, ttl_seconds: int = 600, holder: str = "") -> bool:
     with connect() as conn:
         cursor = conn.execute(
             "INSERT INTO job_locks (name, acquired_at, expires_at, holder) "
-            "VALUES (?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s) "
             "ON CONFLICT (name) DO UPDATE SET "
             "acquired_at = excluded.acquired_at, "
             "expires_at = excluded.expires_at, "
             "holder = excluded.holder "
-            "WHERE job_locks.expires_at <= ?",
+            "WHERE job_locks.expires_at <= %s",
             (name, now_iso, expires_iso, holder, now_iso),
         )
         acquired = cursor.rowcount > 0
@@ -71,7 +71,7 @@ def acquire(name: str, ttl_seconds: int = 600, holder: str = "") -> bool:
 def release(name: str) -> bool:
     """Release a named lock. Returns True if the lock existed and was deleted."""
     with connect() as conn:
-        cursor = conn.execute("DELETE FROM job_locks WHERE name = ?", (name,))
+        cursor = conn.execute("DELETE FROM job_locks WHERE name = %s", (name,))
         deleted: bool = cursor.rowcount > 0
 
     if deleted:
@@ -84,7 +84,7 @@ def is_held(name: str) -> bool:
     now_iso = datetime.now(UTC).isoformat()
     with connect() as conn:
         row = conn.execute(
-            "SELECT 1 FROM job_locks WHERE name = ? AND expires_at > ?",
+            "SELECT 1 FROM job_locks WHERE name = %s AND expires_at > %s",
             (name, now_iso),
         ).fetchone()
     return row is not None
@@ -96,7 +96,7 @@ def get_all_locks() -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute(
             "SELECT name, acquired_at, expires_at, holder "
-            "FROM job_locks WHERE expires_at > ? ORDER BY acquired_at",
+            "FROM job_locks WHERE expires_at > %s ORDER BY acquired_at",
             (now_iso,),
         ).fetchall()
     return [

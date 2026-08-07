@@ -30,7 +30,7 @@ def _seed_licitacion(lic_id: str = "L1", *, titulo="Implantación SAP", importe=
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, importe, estado, fuente, "
             " fecha_publicacion, fecha_extraccion) "
-            "VALUES (?, ?, ?, 'ABIERTO', 'placsp', '2026-01-01', CURRENT_TIMESTAMP)",
+            "VALUES (%s, %s, %s, 'ABIERTO', 'placsp', '2026-01-01', CURRENT_TIMESTAMP)",
             (lic_id, titulo, importe),
         )
 

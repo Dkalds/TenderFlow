@@ -157,7 +157,7 @@ class TestAdminSetAdmin:
         finally:
             app.dependency_overrides.clear()
         assert resp.status_code == 200
-        mock_set.assert_called_once_with(3, True)
+        mock_set.assert_called_once_with(3, True, granted_by="panel")
 
     def test_cannot_change_own_admin(self, client):
         app.dependency_overrides[require_any_auth] = lambda: _admin_user()

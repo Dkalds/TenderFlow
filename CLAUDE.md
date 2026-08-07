@@ -14,4 +14,16 @@
 - `Bash` → `pretooluse_bash_grep_hint.py`: recuerda usar `graphify query` antes de grep.
 - `Edit|Write|MultiEdit` → `pretooluse_edit_stale.py`: al tocar un `.py` deja el flag `graphify-out/.graph_stale`; `/graph-refresh` lo borra tras un update exitoso.
 
-**Sesiones remotas (Claude Code web / CI)**: no hay Postgres ni `TEST_DATABASE_URL`, así que `make test-unit` aborta al arrancar y el CLI `graphify` no está instalado. Ver AGENTS.md §4 y la matriz de prerrequisitos de `docs/AGENT_PLAYBOOK.md` antes de declarar un cambio verde: lint y typecheck sí corren, los tests no, y eso se reporta explícitamente en vez de omitirse.
+**Sesiones remotas (Claude Code web / CI)**: el hook `SessionStart`
+(`.claude/hooks/session_start_pg.py`) provisiona Postgres al arrancar la sesión
+—cluster local, rol, base, `pg_trgm`/`vector`— y deja `TEST_DATABASE_URL` en
+`.env`, de donde `tests/conftest.py` la lee. Con eso **la suite sí se ejecuta**:
+`make test-unit` y `make check` son válidos en remoto. Las dependencias Python
+del proyecto no vienen preinstaladas: `pip install -r requirements.txt -r
+requirements-dev.txt` y `pip install -e ".[pliegos]"` (este último lo exigen los
+tests de extracción de PDF).
+
+El hook es best-effort: si no consigue Postgres lo dice en su mensaje de
+arranque, y entonces vuelve a aplicar la regla de AGENTS.md §4 — se reportan
+explícitamente los controles no ejecutados en vez de darlos por verdes. El CLI
+`graphify` sigue sin estar disponible en remoto.

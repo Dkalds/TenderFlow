@@ -63,6 +63,7 @@ from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
 from api.routes.predicciones import router as predicciones_router
 from api.routes.pursuits import router as pursuits_router
+from api.routes.radar import router as radar_router
 from api.routes.resoluciones import router as resoluciones_router
 from api.routes.saved_filters import router as saved_filters_router
 from api.routes.search import router as search_router
@@ -457,6 +458,7 @@ app.include_router(watchlist_feed_router, prefix="/api/v1")
 app.include_router(watchlist_rules_router, prefix="/api/v1")
 app.include_router(watchlist_items_router, prefix="/api/v1")
 app.include_router(exports_router, prefix="/api/v1")
+app.include_router(radar_router, prefix="/api/v1")
 app.include_router(saved_filters_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(admin_users_router, prefix="/api/v1")

@@ -2336,6 +2336,41 @@ export interface paths {
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
         trace?: never;
     };
+    "/api/v1/radar/dismissals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar las señales descartadas por el usuario */
+        get: operations["get_dismissals_api_v1_radar_dismissals_get"];
+        put?: never;
+        /** Descartar una señal del Radar */
+        post: operations["post_dismissal_api_v1_radar_dismissals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/radar/dismissals/{id_externo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Deshacer el descarte de una señal */
+        delete: operations["delete_dismissal_api_v1_radar_dismissals__id_externo__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resoluciones": {
         parameters: {
             query?: never;
@@ -2584,6 +2619,26 @@ export interface paths {
          *     clave devuelve la respuesta original sin crear un duplicado.
          */
         post: operations["create_api_v1_webhooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/event-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tipos de evento a los que suscribirse
+         * @description Lista los eventos válidos, derivada de la misma constante que valida el alta.
+         */
+        get: operations["event_types_api_v1_webhooks_event_types_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5524,6 +5579,22 @@ export interface components {
             };
         };
         /**
+         * RadarDismissalBody
+         * @description Cuerpo del descarte de una señal.
+         */
+        RadarDismissalBody: {
+            /** Id Externo */
+            id_externo: string;
+        };
+        /**
+         * RadarDismissalsResult
+         * @description ``id_externo`` que el usuario tiene descartados, recientes primero.
+         */
+        RadarDismissalsResult: {
+            /** Ids */
+            ids: string[];
+        };
+        /**
          * RegisterRequest
          * @description Datos para el alta self-service con email + password.
          */
@@ -5865,22 +5936,38 @@ export interface components {
         ScoredOpportunity: {
             /** Band */
             band: string;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
             /** Desglose */
             desglose?: {
                 [key: string]: number;
             };
+            /** Estado */
+            estado?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
             /** Id Externo */
             id_externo: string;
             /** Importe */
             importe?: number | null;
+            /** Ml Tech Principal */
+            ml_tech_principal?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
             /** Risk Flags */
             risk_flags?: string[];
             /** Score */
             score: number;
+            /** Tecnologia */
+            tecnologia?: string | null;
             /** Titulo */
             titulo?: string | null;
+            /** Url */
+            url?: string | null;
         };
         /**
          * ScoringResult
@@ -7135,12 +7222,48 @@ export interface components {
             url: string;
         };
         /**
+         * WebhookDelivery
+         * @description Una entrega registrada de un webhook.
+         *
+         *     Antes esta ruta devolvía ``list[dict[str, Any]]`` y el cliente generado la
+         *     veía como `{ [key: string]: unknown }[]`, obligando al frontend a
+         *     redeclarar la forma a mano — el anti-patrón que ya hizo que el Radar
+         *     pintase campos inexistentes.
+         */
+        WebhookDelivery: {
+            /** Created At */
+            created_at: string;
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: number;
+            /** Payload Size */
+            payload_size?: number | null;
+            /** Status Code */
+            status_code?: number | null;
+            /** Success */
+            success: boolean;
+            /** Webhook Id */
+            webhook_id: number;
+        };
+        /**
+         * WebhookEventTypes
+         * @description Tipos de evento a los que un webhook puede suscribirse.
+         *
+         *     Los sirve el backend en vez de que la UI los duplique: la lista es la misma
+         *     que valida `WebhookCreate.event_types`, así que no pueden divergir.
+         */
+        WebhookEventTypes: {
+            /** Event Types */
+            event_types: string[];
+        };
+        /**
          * WebhookOut
          * @description Webhook sin secret (el secret solo viaja al crearlo).
          */
         WebhookOut: {
             /** Active */
-            active: number | null;
+            active: boolean | null;
             /** Created At */
             created_at: string | null;
             /** Event Types */
@@ -11786,6 +11909,109 @@ export interface operations {
             };
         };
     };
+    get_dismissals_api_v1_radar_dismissals_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarDismissalsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_dismissal_api_v1_radar_dismissals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RadarDismissalBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarDismissalsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dismissal_api_v1_radar_dismissals__id_externo__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_resoluciones_api_v1_resoluciones_get: {
         parameters: {
             query?: {
@@ -12479,6 +12705,46 @@ export interface operations {
             };
         };
     };
+    event_types_api_v1_webhooks_event_types_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEventTypes"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_one_api_v1_webhooks__webhook_id__get: {
         parameters: {
             query?: never;
@@ -12665,9 +12931,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["WebhookDelivery"][];
                 };
             };
             /** @description API key inválida */

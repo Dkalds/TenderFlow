@@ -15,6 +15,9 @@ data/metrics/
 data/.cache_invalidation
 .env
 .coverage
+# Datos parciales de coverage en modo paralelo: `pytest -n auto --cov` deja un
+# `.coverage.<host>.<pid>.<aleatorio>` por worker hasta que los combina.
+.coverage.*
 coverage.json
 # OpenAPI spec dump (generated artifact; regen with the API or `npm run codegen:file`)
 api/openapi.json

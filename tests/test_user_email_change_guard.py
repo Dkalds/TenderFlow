@@ -8,7 +8,7 @@ contra el riesgo "user_key se huerfana si cambia el email".
 ``user_key`` es una clave DERIVADA del email, usada como clave de
 particionado (manual) en las 10 tablas user-scoped auditadas en
 ``test_user_key_sql_isolation.py``. Si algún día se añade un flujo de
-"cambiar mi email" que haga ``UPDATE users SET email = ?`` con un valor
+"cambiar mi email" que haga ``UPDATE users SET email = %s`` con un valor
 NUEVO (no NULL) sin recalcular y migrar ``user_key`` en todas esas tablas, el
 usuario queda huérfano: sus datos históricos (watchlist, notificaciones,
 perfil de scoring...) seguirían indexados bajo el ``user_key`` VIEJO,
@@ -20,7 +20,7 @@ Hoy la ÚNICA sentencia en ``db/users.py`` que toca la columna ``email`` de
 erasure), que la pone a NULL -- nunca a un valor nuevo:
 
     UPDATE users SET email = NULL, display_name = NULL, oauth_sub = NULL,
-        deactivated_at = COALESCE(deactivated_at, ?) WHERE id = ?
+        deactivated_at = COALESCE(deactivated_at, %s) WHERE id = %s
 
 Este test falla ruidosamente en dos escenarios:
   1. Aparece OTRA función en ``db/users.py`` que también hace

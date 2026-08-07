@@ -35,7 +35,7 @@ def _seed(db_mod) -> None:
         for id_externo, publicacion, limite in _ROWS:
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, fecha_publicacion, "
-                "fecha_limite, fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación {id_externo}",
@@ -58,7 +58,7 @@ def _seed_estados(db_mod) -> None:
         for id_externo, estado in _ESTADO_ROWS:
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-                "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación bandeja {id_externo}",
@@ -134,7 +134,7 @@ def test_a_state_the_source_has_not_documented_yet_counts_as_open(tmp_db):
     with db_mod.connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-            "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+            "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
             (
                 "EST-FUTURO",
                 "Licitación con estado nuevo",
@@ -185,7 +185,7 @@ def test_the_api_exposes_the_open_only_filter_to_the_radar(client, api_db, auth)
         for id_externo, estado in (("API-PUB", "PUB"), ("API-RES", "RES")):
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-                "fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+                "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación {id_externo}",
@@ -214,7 +214,7 @@ def test_the_api_serialises_the_deadline_in_the_listing(client, api_db, auth):
     with connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_publicacion, "
-            "fecha_limite, fecha_extraccion, tecnologia) VALUES (?, ?, ?, ?, ?, ?)",
+            "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
             (
                 "RADAR-API",
                 "Licitación radar",
@@ -231,3 +231,35 @@ def test_the_api_serialises_the_deadline_in_the_listing(client, api_db, auth):
     item = listed.json()["items"][0]
     assert item["id_externo"] == "RADAR-API"
     assert item["fecha_limite"].startswith("2026-12-01")
+
+
+def test_el_universo_puntuable_enumera_el_cierre_y_no_la_apertura(tmp_db):
+    """El ranking del Radar hereda el mismo criterio que su listado.
+
+    ``scoring_candidates`` filtraba con una lista blanca (``estado IN
+    ('PUB','EV')``), justo lo que ``shared.estados`` existe para evitar. El
+    efecto no se veía mientras el Radar ordenaba por su cuenta; al pasar a
+    puntuar de verdad, todo expediente en ``ADM`` —el estado más común del
+    seed, 12 de 15— desapareció del ranking sin dejar rastro.
+    """
+    from db.repositories.aggregates import AggregateRepository
+
+    db_mod, _ = tmp_db
+    _seed_estados(db_mod)
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
+            "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                "EST-ADM",
+                "Licitación en admisión",
+                "ADM",
+                "2026-07-02",
+                "2026-07-30T00:00:00+00:00",
+                "SAP",
+            ),
+        )
+
+    ids = {row["id_externo"] for row in AggregateRepository().scoring_candidates()}
+
+    assert ids == {"EST-PUB", "EST-EV", "EST-NULL", "EST-ADM"}

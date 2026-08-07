@@ -20,10 +20,10 @@ class ProductMetricsRepository:
         clauses: list[str] = []
         params: list[object] = []
         if period_from is not None:
-            clauses.append("p.identified_at >= ?")
+            clauses.append("p.identified_at >= %s")
             params.append(period_from)
         if period_to is not None:
-            clauses.append("p.identified_at < ?")
+            clauses.append("p.identified_at < %s")
             params.append(period_to)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with connect_read() as conn:

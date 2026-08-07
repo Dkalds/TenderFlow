@@ -9,7 +9,7 @@ def _seed_user_and_key(db_mod, *, user_id: int = 1, key_id: int = 1, key_hash: s
     """Inserta un usuario y una API key vinculada."""
     with connect() as c:
         c.execute(
-            "INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)",
+            "INSERT INTO users (id, email, created_at) VALUES (%s, %s, %s)",
             (user_id, f"u{user_id}@test.com", now_utc_iso()),
         )
         # api_keys: check if user_id/scopes/prefix cols exist
@@ -28,7 +28,7 @@ def _seed_user_and_key(db_mod, *, user_id: int = 1, key_id: int = 1, key_hash: s
         if "expires_at" in cols:
             base += ", expires_at"
             vals.append(None)
-        base += ") VALUES (" + ",".join("?" for _ in vals) + ")"
+        base += ") VALUES (" + ",".join("%s" for _ in vals) + ")"
         c.execute(base, vals)
 
 
@@ -90,7 +90,7 @@ def test_export_feedback(tmp_db):
     _seed_user_and_key(db_mod, user_id=7, key_id=70, key_hash="feedback-key")
     with connect() as c:
         c.execute(
-            "INSERT INTO ml_feedback (expediente, relevante, nota, user_id, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO ml_feedback (expediente, relevante, nota, user_id, created_at) VALUES (%s, %s, %s, %s, %s)",
             ("EXP-001", 1, "good", 7, now_utc_iso()),
         )
     from services.gdpr import export_feedback
@@ -122,7 +122,7 @@ def test_export_audit_log(tmp_db):
     _db_mod, _ = tmp_db
     with connect() as c:
         c.execute(
-            "INSERT INTO audit_log (user_key, action, detail, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO audit_log (user_key, action, detail, created_at) VALUES (%s, %s, %s, %s)",
             ("hash1", "login", "ok", now_utc_iso()),
         )
     from services.gdpr import export_audit_log
@@ -201,7 +201,7 @@ def test_export_user_notifications(tmp_db):
     with connect() as c:
         c.execute(
             "INSERT INTO user_notifications (user_key, created_at, type, title) "
-            "VALUES (?, ?, 'rule_match', ?)",
+            "VALUES (%s, %s, 'rule_match', %s)",
             ("uk1", now_utc_iso(), "titulo"),
         )
     from services.gdpr import export_user_notifications
@@ -224,7 +224,7 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
     with connect() as c:
         c.execute(
             "INSERT INTO user_notifications (user_key, created_at, type, title) "
-            "VALUES (?, ?, 'rule_match', ?)",
+            "VALUES (%s, %s, 'rule_match', %s)",
             ("uk1", now_utc_iso(), "titulo"),
         )
 
@@ -232,13 +232,13 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
 
     with connect() as c:
         n_rules = c.execute(
-            "SELECT COUNT(*) FROM watchlist_rules WHERE user_key = ?", ("uk1",)
+            "SELECT COUNT(*) FROM watchlist_rules WHERE user_key = %s", ("uk1",)
         ).fetchone()[0]
         n_profile = c.execute(
-            "SELECT COUNT(*) FROM user_profiles WHERE user_key = ?", ("uk1",)
+            "SELECT COUNT(*) FROM user_profiles WHERE user_key = %s", ("uk1",)
         ).fetchone()[0]
         n_notif = c.execute(
-            "SELECT COUNT(*) FROM user_notifications WHERE user_key = ?", ("uk1",)
+            "SELECT COUNT(*) FROM user_notifications WHERE user_key = %s", ("uk1",)
         ).fetchone()[0]
     assert n_rules == 0
     assert n_profile == 0
@@ -255,7 +255,7 @@ def test_revoke_all_api_keys_for_user(tmp_db):
         if "user_id" in cols:
             base += ", user_id"
             vals.append(20)
-        base += ") VALUES (" + ",".join("?" for _ in vals) + ")"
+        base += ") VALUES (" + ",".join("%s" for _ in vals) + ")"
         c.execute(base, vals)
 
     from services.gdpr import revoke_all_api_keys_for_user
@@ -325,7 +325,7 @@ def test_get_user_id_from_key_id_null_user_id_returns_none(tmp_db):
     # Seed a user so there IS a user in the DB (the old bug would return this)
     with connect() as c:
         c.execute(
-            "INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)",
+            "INSERT INTO users (id, email, created_at) VALUES (%s, %s, %s)",
             (99, "victim@test.com", now_utc_iso()),
         )
         cols = db_mod.get_table_columns(c, "api_keys")
@@ -343,7 +343,7 @@ def test_get_user_id_from_key_id_null_user_id_returns_none(tmp_db):
                 base += ", expires_at"
                 vals.append(None)
             # user_id deliberately omitted → NULL
-            base += ") VALUES (" + ",".join("?" for _ in vals) + ")"
+            base += ") VALUES (" + ",".join("%s" for _ in vals) + ")"
             c.execute(base, vals)
 
     from services.gdpr import get_user_id_from_key_id
@@ -362,7 +362,7 @@ def test_get_user_id_from_key_id_never_returns_other_user(tmp_db):
     # Add another user (potential victim of the old bug)
     with connect() as c:
         c.execute(
-            "INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)",
+            "INSERT INTO users (id, email, created_at) VALUES (%s, %s, %s)",
             (1, "other@test.com", now_utc_iso()),
         )
 

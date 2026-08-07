@@ -17,7 +17,7 @@ def seeded_db(api_db):
             "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
             "fecha_publicacion, ccaa, cpv, url, tecnologia, ml_tecnologias, "
             "ml_proba_max, ml_tech_principal, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
             [
                 "Q-001",
                 "Sistema SAP ERP para AEAT",
@@ -41,7 +41,7 @@ def seeded_db(api_db):
             "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
             "fecha_publicacion, ccaa, cpv, url, tecnologia, ml_tecnologias, "
             "ml_proba_max, ml_tech_principal, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
             [
                 "Q-002",
                 "CRM Salesforce para Comunidad de Madrid",

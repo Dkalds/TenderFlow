@@ -79,7 +79,7 @@ def _seed_licitacion(id_externo: str, *, importe: float | None = None) -> None:
         c.execute(
             "INSERT INTO licitaciones "
             "(id_externo, titulo, estado, importe, fecha_publicacion, fecha_extraccion) "
-            "VALUES (?,?,?,?,?,?)",
+            "VALUES (%s,%s,%s,%s,%s,%s)",
             (id_externo, "Test prediccion", "PUB", importe, "2026-01-01", "2026-01-01"),
         )
 
@@ -91,7 +91,7 @@ def _seed_adjudicacion(licitacion_id: str, importe_adjudicado: float) -> None:
         c.execute(
             "INSERT INTO adjudicaciones "
             "(licitacion_id, nombre, importe_adjudicado, fecha_adjudicacion, fecha_extraccion) "
-            "VALUES (?, 'Empresa X', ?, '2026-02-01', '2026-02-01')",
+            "VALUES (%s, 'Empresa X', %s, '2026-02-01', '2026-02-01')",
             (licitacion_id, importe_adjudicado),
         )
 
@@ -133,7 +133,7 @@ def test_predicciones_con_batch_seed(client, auth):
         c.execute(
             "INSERT INTO predicciones_baja "
             "(licitacion_id, p10, p50, p90, computed_at) "
-            "VALUES (?,?,?,?,?)",
+            "VALUES (%s,%s,%s,%s,%s)",
             ("PRED002", 0.05, 0.12, 0.20, "2026-01-01T00:00:00"),
         )
 
@@ -153,7 +153,7 @@ def test_predicciones_adjudicada_con_estimacion_previa(client, auth):
         c.execute(
             "INSERT INTO predicciones_baja "
             "(licitacion_id, p10, p50, p90, computed_at) "
-            "VALUES (?,?,?,?,?)",
+            "VALUES (%s,%s,%s,%s,%s)",
             ("PRED003", 0.05, 0.12, 0.20, "2026-01-15T00:00:00"),
         )
     _seed_adjudicacion("PRED003", 88_000)  # baja real = 12%
@@ -191,19 +191,19 @@ def _sembrar_par_calibracion(lic_id, importe, baja_realizada, p10, p50, p90):
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
             " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
-            "VALUES (?, 'Lic', 'Organo A', '72000000', 'Madrid', ?, 'Servicios', "
+            "VALUES (%s, 'Lic', 'Organo A', '72000000', 'Madrid', %s, 'Servicios', "
             " 'placsp', '2026-01-01', CURRENT_TIMESTAMP)",
             (lic_id, importe),
         )
         c.execute(
             "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
             " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
-            "VALUES (?, 'Empresa X', ?, '2026-03-01', 3, CURRENT_TIMESTAMP)",
+            "VALUES (%s, 'Empresa X', %s, '2026-03-01', 3, CURRENT_TIMESTAMP)",
             (lic_id, importe * (1 - baja_realizada)),
         )
         c.execute(
             "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
-            " computed_at) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)",
+            " computed_at) VALUES (%s, %s, %s, %s, 1, CURRENT_TIMESTAMP)",
             (lic_id, p10, p50, p90),
         )
 

@@ -60,16 +60,16 @@ def upsert_resoluciones(items: list[Resolucion]) -> tuple[int, int]:
     with connect() as c:
         for res in items:
             existing = c.execute(
-                "SELECT id FROM resoluciones_recurso WHERE tribunal = ? AND numero_resolucion = ?",
+                "SELECT id FROM resoluciones_recurso WHERE tribunal = %s AND numero_resolucion = %s",
                 (res.tribunal, res.numero_resolucion),
             ).fetchone()
             values = asdict(res)
             if existing:
                 c.execute(
-                    "UPDATE resoluciones_recurso SET numero_recurso = ?, fecha = ?, "
-                    "expediente = ?, organo = ?, sentido = ?, url_pdf = ?, resumen = ?, "
-                    "licitacion_id = COALESCE(licitacion_id, ?), fecha_extraccion = ? "
-                    "WHERE id = ?",
+                    "UPDATE resoluciones_recurso SET numero_recurso = %s, fecha = %s, "
+                    "expediente = %s, organo = %s, sentido = %s, url_pdf = %s, resumen = %s, "
+                    "licitacion_id = COALESCE(licitacion_id, %s), fecha_extraccion = %s "
+                    "WHERE id = %s",
                     (
                         values["numero_recurso"],
                         values["fecha"],
@@ -86,11 +86,11 @@ def upsert_resoluciones(items: list[Resolucion]) -> tuple[int, int]:
                 actualizadas += 1
             else:
                 cols = ", ".join(_RES_KEYS)
-                placeholders = ", ".join("?" for _ in _RES_KEYS)
+                placeholders = ", ".join("%s" for _ in _RES_KEYS)
                 c.execute(
                     # S608: cols/placeholders derivan del dataclass fijo Resolucion
                     f"INSERT INTO resoluciones_recurso ({cols}, fecha_extraccion) "  # noqa: S608
-                    f"VALUES ({placeholders}, ?)",
+                    f"VALUES ({placeholders}, %s)",
                     [values[k] for k in _RES_KEYS] + [now_utc_iso()],
                 )
                 nuevas += 1
@@ -102,14 +102,14 @@ def _registrar_evento_recurso(c: Any, licitacion_id: str, res: dict[str, Any]) -
     detalle = f"Resolución {res['tribunal'].upper()} {res['numero_resolucion']} ({res['sentido']})"
     ya_existe = c.execute(
         "SELECT 1 FROM contrato_eventos "
-        "WHERE licitacion_id = ? AND tipo = 'recurso' AND detalle = ?",
+        "WHERE licitacion_id = %s AND tipo = 'recurso' AND detalle = %s",
         (licitacion_id, detalle),
     ).fetchone()
     if ya_existe:
         return False
     c.execute(
         "INSERT INTO contrato_eventos (licitacion_id, tipo, fecha, campo, detalle) "
-        "VALUES (?, 'recurso', ?, 'resolucion', ?)",
+        "VALUES (%s, 'recurso', %s, 'resolucion', %s)",
         (licitacion_id, str(res.get("fecha") or now_utc_iso())[:10], detalle),
     )
     return True
@@ -156,7 +156,7 @@ def link_unlinked() -> dict[str, int]:
                 continue
             licitacion_id = matches[0]["id_externo"]
             c.execute(
-                "UPDATE resoluciones_recurso SET licitacion_id = ? WHERE id = ?",
+                "UPDATE resoluciones_recurso SET licitacion_id = %s WHERE id = %s",
                 (licitacion_id, res["id"]),
             )
             stats["vinculadas"] += 1
@@ -188,18 +188,18 @@ def resoluciones(
     )
     params: list[Any] = []
     if organo:
-        sql += " AND r.organo LIKE ?"
+        sql += " AND r.organo LIKE %s"
         params.append(f"%{organo}%")
     if sentido:
-        sql += " AND r.sentido = ?"
+        sql += " AND r.sentido = %s"
         params.append(sentido)
     if desde:
-        sql += " AND r.fecha >= ?"
+        sql += " AND r.fecha >= %s"
         params.append(desde)
     if licitacion_id:
-        sql += " AND r.licitacion_id = ?"
+        sql += " AND r.licitacion_id = %s"
         params.append(licitacion_id)
-    sql += " ORDER BY r.fecha DESC, r.numero_resolucion DESC LIMIT ?"
+    sql += " ORDER BY r.fecha DESC, r.numero_resolucion DESC LIMIT %s"
     params.append(max(1, min(int(limit), 500)))
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))

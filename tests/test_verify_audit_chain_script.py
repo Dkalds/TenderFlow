@@ -30,7 +30,7 @@ def test_runbook_verifier_uses_signed_chain_validation(tmp_db, capsys) -> None:
     log_action("u", "s", "first")
     log_action("u", "s", "second")
     with db_mod.connect() as connection:
-        connection.execute("DELETE FROM audit_log WHERE action = ?", ("second",))
+        connection.execute("DELETE FROM audit_log WHERE action = %s", ("second",))
 
     verify_chain = _verify_chain_from_script()
     assert verify_chain() == 1

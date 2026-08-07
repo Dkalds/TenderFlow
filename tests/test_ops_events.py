@@ -148,7 +148,7 @@ def test_healthcheck_ops_events_check_warn(tmp_db):
         cutoff = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         for _ in range(15):
             c.execute(
-                "INSERT INTO ops_events (ts, event_type, detail) VALUES (?,?,?)",
+                "INSERT INTO ops_events (ts, event_type, detail) VALUES (%s,%s,%s)",
                 (cutoff, "sqlite_busy", "test"),
             )
 

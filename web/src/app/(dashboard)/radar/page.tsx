@@ -15,7 +15,13 @@ import { useFilters } from "@/lib/filters";
 import { useDensity } from "@/lib/density";
 import { getJSON, setJSON } from "@/lib/storage";
 import { cn, formatNumber } from "@/lib/utils";
-import { type RadarTender, useRadar } from "@/hooks/use-radar";
+import {
+  type RadarTender,
+  useDismissRadarTender,
+  useRadar,
+  useRadarDismissals,
+  useRestoreRadarTender,
+} from "@/hooks/use-radar";
 import { RadarInspector } from "./_components/radar-inspector";
 import { bandColor, daysLeft, shortEur, urgency } from "./_components/radar-shared";
 
@@ -28,11 +34,16 @@ import { bandColor, daysLeft, shortEur, urgency } from "./_components/radar-shar
  * compararlas. Ahora caben catorce, se recorren con J/K, y seguir (S) o
  * descartar (X) no mueve nada más que la fila.
  *
- * Alcance real de la lista (`hooks/use-radar.ts`): son las 24 licitaciones
- * abiertas más recientes reordenadas por score, no el top-24 por score del
- * corpus. Los expedientes resueltos, adjudicados o anulados no entran: el
- * Radar es una bandeja de decisión y sobre ellos no hay decisión que tomar. El
- * pie de la consola lo dice, porque prometer priorización global sería mentir.
+ * Alcance real de la lista (`hooks/use-radar.ts`): es el **top-24 por potencial
+ * comercial de todo el corpus abierto**, calculado en backend
+ * (`GET /analytics/scoring?limit=24`). Hasta que `ScoredOpportunity` incluyó
+ * `fecha_limite` y `tecnologia` esto no se podía consumir, y la lista eran las
+ * 24 abiertas más recientes reordenadas por score — una ventana cronológica
+ * presentada como priorización de mercado. Los expedientes resueltos,
+ * adjudicados o anulados no entran: el Radar es una bandeja de decisión y
+ * sobre ellos no hay decisión que tomar.
+ *
+ * El triaje (descartar / deshacer) es server-side: recargar lo conserva.
  */
 
 const GRID = "grid-cols-[46px_1fr_176px_132px_108px_96px_108px] gap-3 px-3.5";
@@ -65,7 +76,10 @@ export default function RadarPage() {
   const filters = useFilters();
   const compact = useDensity((s) => s.compact);
   const tecnologia = filters.tecnologias[0] ?? null;
-  const { data, isLoading, isRanking, error, refetch } = useRadar(tecnologia);
+  const { data, isLoading, error, refetch } = useRadar(tecnologia);
+  const { data: dismissedIds = [] } = useRadarDismissals();
+  const dismissTender = useDismissRadarTender();
+  const restoreTender = useRestoreRadarTender();
 
   const { data: watched = [] } = useWatchlistItems();
   const addWatchlist = useAddWatchlistItem();
@@ -76,7 +90,9 @@ export default function RadarPage() {
   const [segment, setSegment] = React.useState<SegmentKey>("bandeja");
   const [sort, setSort] = React.useState<SortKey>("score");
   const [selected, setSelected] = React.useState(0);
-  const [dismissed, setDismissed] = React.useState<Set<string>>(() => new Set());
+  // El descarte es server-side (`/api/v1/radar/dismissals`): recargar
+  // conserva el triaje. Antes vivía en `useState` y se perdía al recargar.
+  const dismissed = React.useMemo(() => new Set(dismissedIds), [dismissedIds]);
 
   // «Nueva» = publicada después de la última vez que se abrió el Radar. El
   // sello se lee una vez al montar y se reescribe al salir, así que la marca
@@ -124,26 +140,22 @@ export default function RadarPage() {
   const activeIndex = Math.min(selected, Math.max(0, rows.length - 1));
   const active: RadarTender | undefined = rows[activeIndex];
 
-  const restore = React.useCallback((id: string) => {
-    setDismissed((current) => {
-      const next = new Set(current);
-      next.delete(id);
-      return next;
-    });
-  }, []);
+  const restore = React.useCallback(
+    (id: string) => {
+      restoreTender.mutate(id);
+    },
+    [restoreTender],
+  );
 
-  // El descarte vive sólo en memoria: no hay endpoint de dismiss en el backend
-  // (P1 en `docs/IMPROVEMENT_BACKLOG.md`). Mientras sea así, la acción se
-  // acompaña de un deshacer inmediato y el copy lo dice.
   const dismiss = React.useCallback(
     (tender: RadarTender) => {
-      setDismissed((current) => new Set(current).add(tender.id_externo));
-      toast("Señal descartada en esta sesión", {
-        description: tender.titulo,
+      dismissTender.mutate(tender.id_externo);
+      toast("Señal descartada", {
+        description: tender.titulo ?? undefined,
         action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
       });
     },
-    [restore],
+    [dismissTender, restore],
   );
 
   const toggleFollow = React.useCallback(
@@ -225,9 +237,7 @@ export default function RadarPage() {
     ? "Cargando ámbito…"
     : error
       ? "Sin conexión con la API"
-      : `${formatNumber(rows.length)} filas · ${counts.bandeja} por revisar · ${counts.siguiendo} en seguimiento${
-          isRanking ? " · ordenando por afinidad…" : ""
-        }`;
+      : `${formatNumber(rows.length)} filas · ${counts.bandeja} por revisar · ${counts.siguiendo} en seguimiento`;
 
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0">
@@ -268,7 +278,7 @@ export default function RadarPage() {
           {dismissed.size > 0 && (
             <button
               type="button"
-              onClick={() => setDismissed(new Set())}
+              onClick={() => dismissed.forEach((id) => restore(id))}
               className="tf-pressable mr-1.5 h-6 rounded-md border border-border/70 px-2 text-[11px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:text-foreground"
             >
               Restaurar {dismissed.size} descartada{dismissed.size === 1 ? "" : "s"}
@@ -409,7 +419,7 @@ export default function RadarPage() {
                       {tender.score != null ? Math.round(tender.score) : "—"}
                     </span>
                     <span className="font-mono text-[8px] font-medium uppercase leading-none tracking-[0.04em] text-muted-foreground">
-                      {tender.band ?? (isRanking ? "…" : "s/p")}
+                      {tender.band ?? "s/p"}
                     </span>
                   </div>
 
@@ -530,7 +540,7 @@ export default function RadarPage() {
         <div className="flex h-[34px] flex-none items-center gap-3.5 border-t border-border/70 bg-card/60 px-3.5 text-[11px] text-muted-foreground">
           <span className="tf-tnum">{statusLine}</span>
           <span className="hidden text-muted-foreground/60 lg:inline">
-            · las 24 abiertas más recientes, reordenadas por afinidad
+            · top 24 del mercado abierto por potencial comercial
           </span>
           <div className="flex-1" />
           {SHORTCUTS.map((shortcut) => (

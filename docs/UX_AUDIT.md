@@ -66,13 +66,13 @@ expedientes en estado terminal (RES/ADJ/ANUL) fuera de la bandeja vía
 `solo_abiertas` en `GET /licitaciones` — el corte se aplica en backend para no
 encoger las 24 filas que la página promete.
 
-**Pendiente (P1, backlog):** el ranking correcto. `GET /analytics/scoring?limit=N`
-**ya devuelve** un ranking real ("ranked by commercial potential"), pero su DTO
-`ScoredOpportunity` no incluye `fecha_limite` ni `tecnologia` —que la tarjeta
-necesita— y el único endpoint de hidratación por ids
-(`POST /licitaciones/bulk-get`) exige API key en vez de sesión. Hoy la lista es
-"las 24 abiertas más recientes, ordenadas por afinidad", que es lo que la UI
-dice; el top-24 del mercado requiere tocar backend.
+**Cerrado del todo (2026-08-07, commits `8eb7450` y `ad2574e`).** El ranking
+real ya se consume: `ScoredOpportunity` incluye los campos que la tarjeta pinta
+(`fecha_limite`, `tecnologia`, `cpv`, `ccaa`, `estado`, `url`…), así que
+`hooks/use-radar.ts` usa `GET /analytics/scoring?limit=24` como fuente única —
+el top-24 del corpus abierto, no una ventana cronológica reordenada. Y el
+descarte es server-side (`/api/v1/radar/dismissals`, migración v76): recargar
+conserva el triaje.
 
 ### 2 · Dos arquitecturas de información, tres componentes contando historias distintas — **P1** ◐ parcialmente resuelto
 
@@ -106,8 +106,12 @@ espacio y una sección dentro de sí mismo, y el breadcrumb tiene que colapsar e
 nivel para no decir "Mercado › Mercado › Órganos". Toca las 28 rutas; merece su
 propia rama.
 
-Sigue abierto que **17 de 28 páginas solo son alcanzables** por tabs, command
-palette o URL.
+**Corregido el 2026-08-07:** este recuento quedó obsoleto con la migración a
+espacios de consola. Hoy son **13 espacios que absorben 19 vistas**, y solo tres
+rutas quedaban fuera de la navegación: `/licitadores` (redirect deliberado) y
+`ecosistema-partners` / `red-organo-empresa`, dos páginas completas a las que no
+se llegaba desde ninguna parte — rescatadas como vistas experimentales en el
+commit `0f55f2c`.
 
 ### 3 · Cinco formateadores de moneda, y el más visible estaba mal — **P1** ✅ resuelto en Ola 1
 
@@ -186,7 +190,7 @@ pesaban más de lo que parece:
 | Páginas gigantes sin descomponer: `mi-watchlist` 1072 LOC, `competidores` 988, `active-learning` 865. El patrón `_components/` solo se aplicó en `resumen` y `pipeline-alertas` | — | P2 |
 | `radar/page.tsx` y `oportunidades/page.tsx` están escritas en estilo comprimido (líneas de 900 caracteres con ternarios anidados). Son los dos ficheros más difíciles de modificar con seguridad, y los más nuevos | — | P2 |
 | El selector de organización de la sidebar es un `<select>` nativo estilado, mientras el resto de controles son Radix: comportamiento de teclado y lector distinto | `layout/sidebar.tsx` | P2 |
-| Los filtros de CCAA / tecnología / estado son `<select>` nativos con `value=""` que actúan como "añadir": no muestran lo seleccionado, no permiten buscar entre 17 CCAA, y `components/ui/select.tsx` existe sin usarse ahí | `layout/global-filter-bar.tsx` | P2 |
+| ~~Los filtros de CCAA / tecnología / estado son `<select>` nativos~~ ✅ resuelto 2026-08-07 (`352db1b`): `ui/multi-select.tsx` con Popover, búsqueda que ignora tildes (`foldText`) y quitar desde el propio control | `layout/scope-bar.tsx` | — |
 | La sidebar es `hidden md:flex`: por debajo de `md` el conmutador de espacios de producto no existe, solo el drawer del TopNav | `layout/sidebar.tsx` | P2 |
 | `next.config.ts` describe la CSP como Report-Only, pero `middleware.ts` la aplica: comentario obsoleto respecto al código | `web/next.config.ts` | P3 |
 | `/licitadores` conserva `layout.tsx` (con `metadata.title`) y `loading.tsx` para una ruta que solo hace `redirect("/competidores")` | `app/(dashboard)/licitadores/` | P3 |

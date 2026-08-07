@@ -103,7 +103,7 @@ def _row_to_rule(row: dict[str, Any]) -> WatchlistRule:
 def _update_last_notified(rule_id: int, ts: str) -> None:
     with connect() as c:
         c.execute(
-            "UPDATE watchlist_rules SET last_notified_at = ? WHERE id = ?",
+            "UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s",
             (ts, rule_id),
         )
 
@@ -164,7 +164,7 @@ def _write_user_notifications(
                     "INSERT INTO user_notifications "
                     "(user_key, created_at, type, title, body, licitacion_id, rule_id, "
                     " organization_id) "
-                    "VALUES (?, ?, 'rule_match', ?, ?, ?, ?, ?) "
+                    "VALUES (%s, %s, 'rule_match', %s, %s, %s, %s, %s) "
                     "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
                     (
                         user_key,

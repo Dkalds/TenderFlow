@@ -14,7 +14,7 @@ def _seed_pages(licitacion_id: str = "FACT-1", *, texto: str | None = None) -> t
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
-            "VALUES (?, 'Contrato con pliego', 'placsp', CURRENT_TIMESTAMP)",
+            "VALUES (%s, 'Contrato con pliego', 'placsp', CURRENT_TIMESTAMP)",
             (licitacion_id,),
         )
     repo = DocumentosRepository()
@@ -205,7 +205,7 @@ def test_pre_v2_persisted_row_without_technologies_key_still_validates(tmp_db):
             "INSERT INTO tender_fact_sheets "
             "(licitacion_id, status, extraction_version, model, data_json, "
             "field_count, evidence_count, extracted_at, updated_at) "
-            "VALUES (?, 'extracted', 'tender-facts-v1', 'gpt-4o-mini', ?, 0, 0, "
+            "VALUES (%s, 'extracted', 'tender-facts-v1', 'gpt-4o-mini', %s, 0, 0, "
             "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             ("OLD-SHAPE-1", old_shape_data_json),
         )
@@ -416,7 +416,7 @@ class TestIngestLlmTechnologies:
 
         with connect() as c:
             row = c.execute(
-                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = ?", ("FACT-ING-1",)
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s", ("FACT-ING-1",)
             ).fetchone()
         assert row[0] == "SAP"
 

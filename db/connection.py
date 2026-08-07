@@ -9,12 +9,14 @@ desarrollo local, via ``DATABASE_URL`` (postgresql://...). Turso/libSQL se
 retiró en ADR-020 y SQLite en ADR-021; el schema lo gestiona exclusivamente
 Alembic.
 
-Shim de paramstyle:
-  El SQL del proyecto se escribe en dialecto ``?`` (qmark) y ``_translate_qmarks``
-  lo reescribe a ``%s`` para psycopg3, respetando literales y comentarios.
-  Desde ADR-021 esto ya **no** es un hack de compatibilidad entre motores sino
-  una convención de estilo: queda como deuda acotada y su retirada (1123
-  ocurrencias en 57 archivos) es un ítem de backlog separado.
+Paramstyle:
+  El SQL del proyecto se escribe directamente en el paramstyle de psycopg3
+  (``%s``). Hasta 2026-08 se escribía en dialecto ``?`` (qmark) y un shim
+  (``_translate_qmarks``) lo reescribía en cada ``execute``; era herencia de
+  cuando convivían dos motores, retirado con ADR-021. Consecuencia práctica al
+  escribir SQL nuevo: un ``%`` **literal** dentro de una sentencia con
+  parámetros debe doblarse (``%%``), porque psycopg lo interpreta como inicio
+  de placeholder también dentro de los literales.
 """
 
 from __future__ import annotations
@@ -92,71 +94,6 @@ def _database_url() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Shim qmark → %s (activo solo con Postgres, F3a → F5)
-# ---------------------------------------------------------------------------
-
-# Patrón para tokenizar SQL y detectar ? fuera de literales/comentarios.
-# Captura: strings simples, strings dobles, comentarios de línea, bloque, y ?
-#
-# IMPORTANTE: los literales SQL estándar (Postgres con standard_conforming_strings=on,
-# el default) NO usan backslash como escape -- una comilla literal dentro de un string
-# se escribe doblada (''), no con \'. Un patrón tipo (?:[^'\\]|\\.)* trata \' como
-# "comilla escapada" y NO cierra el string ahi, tragándose el resto de la query
-# (incluyendo placeholders ? reales) como si siguiera dentro del literal. Esto rompe
-# de forma silenciosa cualquier SQL con ESCAPE '\' seguido de más '?' (patrón usado en
-# los fallbacks LIKE de db/repositories/licitaciones.py). Por eso aquí NO se trata
-# el backslash como escape: solo '' (comilla doblada) cierra/reabre un string.
-_SQL_TOKEN_RE = re.compile(
-    r"('(?:[^']|'')*')"  # string comillas simples (SQL estándar: '' escapa, no \')
-    r'|("(?:[^"]|"")*")'  # identificador comillas dobles (mismo criterio)
-    r"|(--[^\n]*)"  # comentario de línea
-    r"|(/\*.*?\*/)"  # comentario de bloque (non-greedy)
-    r"|(\?)",  # placeholder qmark
-    re.DOTALL,
-)
-
-
-def _translate_qmarks(sql: str, *, has_params: bool = True) -> str:
-    """Reescribe ``?`` → ``%s`` en SQL respetando literales y comentarios.
-
-    Se invoca siempre desde ``_PgConnAdapter``, que es el único camino a la BD
-    desde ADR-021 (Postgres es el único motor).
-
-    Cuando la sentencia lleva parámetros, psycopg interpreta ``%`` como inicio
-    de placeholder **también dentro de los literales**, así que un patrón como
-    ``LIKE 'daily|%'`` revienta con ``only '%s', '%b', '%t' are allowed as
-    placeholders``. Hay que doblarlo a ``%%``.
-
-    Sin este escape, cualquier query que combine un ``LIKE`` con comodín y
-    parámetros fallaba en Postgres. El caso real:
-    ``ExtractionRunRepository.load_recent_daily_statuses`` —
-    ``WHERE notas LIKE 'daily|%' ... LIMIT ?`` — que además captura la
-    excepción y devuelve ``[]``, de modo que la alerta de fallos consecutivos
-    del feed diario nunca se disparaba en producción. La suite no lo veía
-    porque corría sobre SQLite (ADR-018).
-
-    Args:
-        sql: Sentencia en dialecto qmark.
-        has_params: Si la sentencia se ejecuta con parámetros. Si es False,
-            psycopg no interpreta ``%`` y doblarlo corrompería el literal.
-    """
-
-    def _replace(m: re.Match[str]) -> str:
-        # Grupo 5: el placeholder qmark.
-        if m.group(5) is not None:
-            return "%s"
-        # Grupos 1-2: literales de string/identificador. El `%` que contengan
-        # es dato, no placeholder: se dobla para que psycopg no lo tome como tal.
-        token = m.group(0)
-        if has_params and (m.group(1) is not None or m.group(2) is not None):
-            return token.replace("%", "%%")
-        # Grupos 3-4: comentarios — preservar tal cual.
-        return token
-
-    return _SQL_TOKEN_RE.sub(_replace, sql)
-
-
-# ---------------------------------------------------------------------------
 # Adaptador psycopg3 que aplica el shim automáticamente
 # ---------------------------------------------------------------------------
 
@@ -180,18 +117,16 @@ class _PgConnAdapter:
         self._cur: Any = None
 
     def execute(self, sql: str, params: Any = None) -> _PgConnAdapter:
-        translated = _translate_qmarks(sql, has_params=params is not None)
         self._cur = self._conn.cursor()
         if params is None:
-            self._cur.execute(translated)
+            self._cur.execute(sql)
         else:
-            self._cur.execute(translated, params)
+            self._cur.execute(sql, params)
         return self
 
     def executemany(self, sql: str, seq: Any) -> None:
-        translated = _translate_qmarks(sql, has_params=True)
         with self._conn.cursor() as cur:
-            cur.executemany(translated, seq)
+            cur.executemany(sql, seq)
 
     def fetchone(self) -> Any:
         if self._cur is None:

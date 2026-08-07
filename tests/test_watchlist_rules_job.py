@@ -21,7 +21,7 @@ def _recent(days_ago: int) -> str:
 def _insert_lic(c, lic_id, *, titulo="Lic", fecha=None):
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_publicacion, "
-        "fecha_extraccion) VALUES (?, ?, 'placsp', ?, CURRENT_TIMESTAMP)",
+        "fecha_extraccion) VALUES (%s, %s, 'placsp', %s, CURRENT_TIMESTAMP)",
         (lic_id, titulo, fecha or _recent(3)),
     )
 

@@ -108,7 +108,7 @@ class TestDeactivateUser:
 
         # access_log se conserva tras soft-delete
         with db_mod.connect() as c:
-            cur = c.execute("SELECT COUNT(*) FROM access_log WHERE user_id = ?", (uid,))
+            cur = c.execute("SELECT COUNT(*) FROM access_log WHERE user_id = %s", (uid,))
             assert cur.fetchone()[0] == 1
 
     def test_idempotente_usuario_inexistente(self, tmp_db):
@@ -147,7 +147,7 @@ class TestAnonymizeUser:
         # access_log email anonimizado pero registro conservado
         with db_mod.connect() as c:
             row = c.execute(
-                "SELECT email, auth_method FROM access_log WHERE user_id = ?", (uid,)
+                "SELECT email, auth_method FROM access_log WHERE user_id = %s", (uid,)
             ).fetchone()
             assert row[0] is None  # email anonimizado
             assert row[1] == "google"  # auth_method conservado
@@ -166,7 +166,7 @@ class TestAnonymizeUser:
 
         with db_mod.connect() as c:
             row = c.execute(
-                "SELECT user_id, logged_in_at FROM access_log WHERE user_id = ?", (uid,)
+                "SELECT user_id, logged_in_at FROM access_log WHERE user_id = %s", (uid,)
             ).fetchone()
             assert row[0] == uid
             assert row[1] is not None
@@ -267,11 +267,11 @@ def test_existing_email_links_oauth(tmp_db):
     # Crear usuario sin OAuth directamente
     with connect() as c:
         c.execute(
-            "INSERT INTO users (email, created_at) VALUES (?, ?)",
+            "INSERT INTO users (email, created_at) VALUES (%s, %s)",
             ("preexisting@example.com", now_utc_iso()),
         )
         pre_id = c.execute(
-            "SELECT id FROM users WHERE email = ?", ("preexisting@example.com",)
+            "SELECT id FROM users WHERE email = %s", ("preexisting@example.com",)
         ).fetchone()[0]
 
     # Ahora vincular OAuth
@@ -337,7 +337,7 @@ def test_log_access_oauth(tmp_db):
     from db.database import connect
 
     with connect() as c:
-        rows = c.execute("SELECT * FROM access_log WHERE user_id = ?", (uid,)).fetchall()
+        rows = c.execute("SELECT * FROM access_log WHERE user_id = %s", (uid,)).fetchall()
     assert len(rows) == 1
     cols = [d[0] for d in c.execute("SELECT * FROM access_log LIMIT 0").description]
     row = dict(zip(cols, rows[0], strict=False))

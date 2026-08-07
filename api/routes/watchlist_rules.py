@@ -108,9 +108,9 @@ def _rules_with_counts(user_key: str, organization_id: int | None = None) -> lis
     try:
         with connect_read() as c:
             where = (
-                "user_key = ?"
+                "user_key = %s"
                 if organization_id is None
-                else "organization_id = ? AND (visibility = 'organization' OR user_key = ?)"
+                else "organization_id = %s AND (visibility = 'organization' OR user_key = %s)"
             )
             params = (user_key,) if organization_id is None else (organization_id, user_key)
             cur = c.execute(
@@ -127,7 +127,7 @@ def _rules_with_counts(user_key: str, organization_id: int | None = None) -> lis
             cur = c.execute(
                 "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
                 "frequency, active, last_notified_at "
-                "FROM watchlist_rules WHERE user_key = ? ORDER BY id",
+                "FROM watchlist_rules WHERE user_key = %s ORDER BY id",
                 (user_key,),
             )
             cols = [d[0] for d in cur.description]
@@ -194,7 +194,7 @@ async def post_rule(
         if email is not None:
             with connect() as c:
                 c.execute(
-                    "UPDATE watchlist_rules SET email = ? WHERE id = ? AND user_key = ?",
+                    "UPDATE watchlist_rules SET email = %s WHERE id = %s AND user_key = %s",
                     (email, rule_id, user_key),
                 )
         return rule_id
@@ -222,7 +222,7 @@ async def put_rule(
         if ok and email is not None:
             with connect() as c:
                 c.execute(
-                    "UPDATE watchlist_rules SET email = ? WHERE id = ? AND user_key = ?",
+                    "UPDATE watchlist_rules SET email = %s WHERE id = %s AND user_key = %s",
                     (email, rule_id, user_key),
                 )
         return ok

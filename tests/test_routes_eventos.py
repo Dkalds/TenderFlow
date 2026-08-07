@@ -14,7 +14,7 @@ def _seed_licitacion(id_externo: str) -> None:
         c.execute(
             "INSERT INTO licitaciones "
             "(id_externo, titulo, estado, fecha_publicacion, fecha_extraccion) "
-            "VALUES (?,?,?,?,?)",
+            "VALUES (%s,%s,%s,%s,%s)",
             (id_externo, "Test licitacion", "PUB", "2026-01-01", "2026-01-01"),
         )
 

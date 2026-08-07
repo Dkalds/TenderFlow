@@ -90,12 +90,12 @@ def _prediction_drift(
     try:
         recent_rows = conn.execute(
             "SELECT ml_proba FROM licitaciones "
-            "WHERE fecha_publicacion >= ? AND ml_proba IS NOT NULL",
+            "WHERE fecha_publicacion >= %s AND ml_proba IS NOT NULL",
             (recent_since,),
         ).fetchall()
         previous_rows = conn.execute(
             "SELECT ml_proba FROM licitaciones "
-            "WHERE fecha_publicacion >= ? AND fecha_publicacion < ? AND ml_proba IS NOT NULL",
+            "WHERE fecha_publicacion >= %s AND fecha_publicacion < %s AND ml_proba IS NOT NULL",
             (previous_since, recent_since),
         ).fetchall()
     except Exception as exc:
@@ -334,7 +334,7 @@ def compute_f1_drop(
                 "l.cpv, l.importe "
                 "FROM ml_feedback f "
                 "JOIN licitaciones l ON l.id_externo = f.expediente "
-                "WHERE f.created_at >= ?",
+                "WHERE f.created_at >= %s",
                 (since,),
             ).fetchall()
     except Exception as exc:

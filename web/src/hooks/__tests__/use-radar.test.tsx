@@ -1,21 +1,36 @@
 import * as React from "react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
-import { useRadar } from "@/hooks/use-radar";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  useDismissRadarTender,
+  useRadar,
+  useRadarDismissals,
+  useRestoreRadarTender,
+} from "@/hooks/use-radar";
 
-const tender = (id: string, fecha_publicacion: string, tecnologia = "SAP") => ({
+/**
+ * El Radar consume `GET /analytics/scoring?limit=24` como fuente única: es el
+ * top-24 por potencial comercial de todo el corpus abierto. Antes pedía el
+ * listado por fecha y le alineaba el score por id, así que mostraba "las 24
+ * abiertas más recientes reordenadas" mientras la UI prometía priorización de
+ * mercado — el orden era lo fabricado, no el número.
+ */
+const scored = (id: string, score: number, tecnologia = "SAP") => ({
   id_externo: id,
   titulo: `Licitación ${id}`,
   organo_contratacion: "Ayuntamiento",
   importe: 120000,
-  estado: "PUB",
-  fecha_publicacion,
   fecha_limite: "2026-12-01T00:00:00Z",
+  fecha_publicacion: "2026-07-01T00:00:00Z",
   ccaa: "MAD",
   cpv: "72000000",
-  url: null,
   tecnologia,
+  ml_tech_principal: null,
+  score,
+  band: score >= 75 ? "Caliente" : "Tibia",
+  risk_flags: [],
+  desglose: {},
 });
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -23,15 +38,15 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-/** Responde al listado y al scoring según la URL pedida. */
 function stubApi(options: {
-  items: ReturnType<typeof tender>[];
-  opportunities?: Array<{ id_externo: string; score: number; band: string }>;
+  opportunities?: ReturnType<typeof scored>[];
+  dismissals?: string[];
 }) {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const body = String(url).includes("/analytics/scoring")
-      ? { opportunities: options.opportunities ?? [] }
-      : { items: options.items };
+    const target = String(url);
+    const body = target.includes("/radar/dismissals")
+      ? { ids: options.dismissals ?? [] }
+      : { opportunities: options.opportunities ?? [] };
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -43,172 +58,109 @@ afterEach(() => {
 });
 
 describe("useRadar", () => {
-  it("asks for the newest tenders, not the oldest", async () => {
-    // Regresión: `-fecha_publicacion` es ASCENDENTE en el backend, así que el
-    // radar listaba las licitaciones más antiguas de la base.
-    const fetchMock = stubApi({ items: [tender("NEW", "2026-07-01")] });
+  it("consume el ranking de mercado, no el listado por fecha", async () => {
+    const fetchMock = stubApi({ opportunities: [scored("A", 87)] });
 
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    const listingCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/api/v1/licitaciones"),
-    );
-    expect(listingCall).toBeDefined();
-    expect(String(listingCall![0])).toContain("sort=fecha_publicacion");
-    expect(String(listingCall![0])).not.toContain("sort=-fecha_publicacion");
+    const calls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(calls.some((url) => url.includes("/api/v1/analytics/scoring"))).toBe(true);
+    expect(calls.some((url) => url.includes("/api/v1/licitaciones"))).toBe(false);
   });
 
-  it("asks the backend to leave out the tenders that are already closed", async () => {
-    // El Radar es una bandeja de decisión: una licitación resuelta, adjudicada
-    // o anulada no admite oferta, así que seguirla o abrir una oportunidad
-    // sobre ella no lleva a ninguna parte. El corte va en el backend — filtrar
-    // aquí encogería la lista por debajo de las 24 que la página promete.
-    const fetchMock = stubApi({ items: [tender("A", "2026-07-01")] });
+  it("pide exactamente las 24 filas que la página promete", async () => {
+    const fetchMock = stubApi({ opportunities: [scored("A", 50)] });
 
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    const listingCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/api/v1/licitaciones"),
-    );
-    expect(String(listingCall![0])).toContain("solo_abiertas=true");
+    const scoringCall = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .find((url) => url.includes("/analytics/scoring"));
+    expect(scoringCall).toContain("limit=24");
   });
 
-  it("merges the backend score and band onto the listing rows", async () => {
-    stubApi({
-      items: [tender("A", "2026-07-01"), tender("B", "2026-06-01")],
-      opportunities: [{ id_externo: "A", score: 87, band: "Caliente" }],
-    });
+  it("respeta el orden que devuelve el backend sin reordenar en cliente", async () => {
+    // La puntuación y el orden se calculan en servidor (ADR-014): aquí no se
+    // deriva ninguna dimensión.
+    stubApi({ opportunities: [scored("PRIMERA", 91), scored("SEGUNDA", 20)] });
 
     const { result } = renderHook(() => useRadar(), { wrapper });
-    await waitFor(() => expect(result.current.data?.items[0].band).toBe("Caliente"));
-
-    const [first, second] = result.current.data!.items;
-    expect(first.score).toBe(87);
-    // Una licitación sin score no inventa uno: la página cae a su copy neutra.
-    expect(second.score).toBeUndefined();
-    expect(second.band).toBeUndefined();
-  });
-
-  it("orders by the backend score, not by publication date", async () => {
-    // Regresión: la página prometía "señales priorizadas" y renderizaba en
-    // orden cronológico — el score sólo decoraba la fila. La jerarquía visual
-    // afirmaba un ranking que el dato no respaldaba (anti-patrón 1 de
-    // docs/frontend-data-invariants.md, aplicado al orden en vez de al número).
-    stubApi({
-      items: [tender("RECIENTE", "2026-07-10"), tender("ANTIGUA", "2026-06-01")],
-      opportunities: [
-        { id_externo: "RECIENTE", score: 20, band: "Tibia" },
-        { id_externo: "ANTIGUA", score: 91, band: "Caliente" },
-      ],
-    });
-
-    const { result } = renderHook(() => useRadar(), { wrapper });
-    await waitFor(() => expect(result.current.data?.items[0].score).toBe(91));
+    await waitFor(() => expect(result.current.data).toBeDefined());
 
     expect(result.current.data!.items.map((item) => item.id_externo)).toEqual([
-      "ANTIGUA",
-      "RECIENTE",
+      "PRIMERA",
+      "SEGUNDA",
     ]);
   });
 
-  it("pushes unscored tenders to the end instead of ranking them first", async () => {
-    stubApi({
-      items: [tender("SIN_SCORE", "2026-07-10"), tender("CON_SCORE", "2026-06-01")],
-      opportunities: [{ id_externo: "CON_SCORE", score: 40, band: "Tibia" }],
-    });
-
-    const { result } = renderHook(() => useRadar(), { wrapper });
-    await waitFor(() => expect(result.current.data?.items[0].score).toBe(40));
-
-    expect(result.current.data!.items.at(-1)!.id_externo).toBe("SIN_SCORE");
-  });
-
-  it("flags that the order is not final while scoring is in flight", async () => {
-    stubApi({
-      items: [tender("A", "2026-07-01")],
-      opportunities: [{ id_externo: "A", score: 50, band: "Tibia" }],
-    });
-
-    const { result } = renderHook(() => useRadar(), { wrapper });
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    await waitFor(() => expect(result.current.isRanking).toBe(false));
-  });
-
-  it("carries the deadline the card renders", async () => {
-    stubApi({ items: [tender("A", "2026-07-01")] });
+  it("trae el plazo y la tecnología que la tarjeta pinta", async () => {
+    // Sin estos dos campos en `ScoredOpportunity` el Radar no podía usar este
+    // endpoint como fuente: era el bloqueo que dejaba la lista a medias.
+    stubApi({ opportunities: [scored("A", 60, "Salesforce")] });
 
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
     expect(result.current.data!.items[0].fecha_limite).toBe("2026-12-01T00:00:00Z");
+    expect(result.current.data!.items[0].tecnologia).toBe("Salesforce");
   });
 
-  it("does not ask for scoring when the listing is empty", async () => {
-    const fetchMock = stubApi({ items: [] });
+  it("filtra por tecnología sobre el ranking recibido", async () => {
+    stubApi({ opportunities: [scored("SAP", 80, "SAP"), scored("SF", 70, "Salesforce")] });
 
-    const { result } = renderHook(() => useRadar(), { wrapper });
+    const { result } = renderHook(() => useRadar("Salesforce"), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    expect(result.current.data!.items).toEqual([]);
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/analytics/scoring"))).toBe(
-      false,
-    );
+    expect(result.current.data!.items.map((item) => item.id_externo)).toEqual(["SF"]);
+  });
+});
+
+describe("descarte server-side", () => {
+  it("lee los descartes persistidos del usuario", async () => {
+    // Antes vivían en `React.useState`: el usuario triaba 24 señales,
+    // recargaba y volvían las 24.
+    stubApi({ dismissals: ["YA-DESCARTADA"] });
+
+    const { result } = renderHook(() => useRadarDismissals(), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual(["YA-DESCARTADA"]));
   });
 
-  it("surfaces a listing failure as an error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ detail: "boom" }), { status: 500 }),
-      ),
+  it("descartar hace POST y refleja la señal al momento", async () => {
+    const fetchMock = stubApi({ dismissals: [] });
+
+    const { result } = renderHook(
+      () => ({ list: useRadarDismissals(), dismiss: useDismissRadarTender() }),
+      { wrapper },
     );
+    await waitFor(() => expect(result.current.list.data).toEqual([]));
 
-    const { result } = renderHook(() => useRadar(), { wrapper });
-    await waitFor(() => expect(result.current.error).toBeTruthy());
+    await act(async () => {
+      await result.current.dismiss.mutateAsync("NUEVA");
+    });
 
-    expect(result.current.data).toBeUndefined();
+    const posted = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).includes("/radar/dismissals") &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(posted).toBeDefined();
   });
 
-  it("omits the tecnologia param when null (no filter applied)", async () => {
-    const fetchMock = stubApi({ items: [] });
+  it("deshacer hace DELETE sobre el id descartado", async () => {
+    const fetchMock = stubApi({ dismissals: ["DESCARTADA"] });
 
-    const { result } = renderHook(() => useRadar(null), { wrapper });
-    await waitFor(() => expect(result.current.data).toBeDefined());
+    const { result } = renderHook(() => useRestoreRadarTender(), { wrapper });
 
-    const listingCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/api/v1/licitaciones"),
+    await act(async () => {
+      await result.current.mutateAsync("DESCARTADA");
+    });
+
+    const deleted = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit | undefined)?.method === "DELETE",
     );
-    expect(String(listingCall![0])).not.toContain("tecnologia=");
-  });
-
-  it("includes the tecnologia param when a single value is selected", async () => {
-    const fetchMock = stubApi({ items: [] });
-
-    const { result } = renderHook(() => useRadar("IA"), { wrapper });
-    await waitFor(() => expect(result.current.data).toBeDefined());
-
-    const listingCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/api/v1/licitaciones"),
-    );
-    expect(String(listingCall![0])).toContain("tecnologia=IA");
-  });
-
-  it("uses a distinct query key per tecnologia so switching the filter refetches", async () => {
-    const fetchMock = stubApi({ items: [] });
-
-    const { rerender } = renderHook(
-      ({ tecnologia }: { tecnologia: string | null }) => useRadar(tecnologia),
-      { wrapper, initialProps: { tecnologia: null as string | null } },
-    );
-    rerender({ tecnologia: "Cloud" });
-
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.filter(([url]) => String(url).includes("/api/v1/licitaciones"))
-          .length,
-      ).toBeGreaterThanOrEqual(2),
-    );
+    expect(deleted).toBeDefined();
+    expect(String(deleted![0])).toContain("DESCARTADA");
   });
 });

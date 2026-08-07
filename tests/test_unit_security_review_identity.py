@@ -436,28 +436,59 @@ def test_rotate_rota_la_key_propia(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_oauth_admin_promueve_si_esta_en_la_lista(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Email en OAUTH_ADMIN_EMAILS → is_admin True."""
-    llamadas: list[tuple[int, bool]] = []
+    """Email en OAUTH_ADMIN_EMAILS → is_admin True, marcado como concesión de OAuth."""
+    llamadas: list[tuple[int, bool, str | None]] = []
     monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "jefe@example.com")
-    monkeypatch.setattr(auth_routes, "set_admin", lambda uid, value: llamadas.append((uid, value)))
+    monkeypatch.setattr(
+        auth_routes,
+        "set_admin",
+        lambda uid, value, granted_by=None: llamadas.append((uid, value, granted_by)),
+    )
 
     auth_routes._sync_oauth_admin(3, "jefe@example.com")
 
-    assert llamadas == [(3, True)]
+    assert llamadas == [(3, True, "oauth")]
 
 
 def test_oauth_admin_degrada_si_salio_de_la_lista(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sacar a alguien de la lista sí le quita admin en su próximo login."""
-    llamadas: list[tuple[int, bool]] = []
+    """Sacar a alguien de la lista sí le quita admin en su próximo login.
+
+    Solo si la concesión era suya: ``admin_granted_by`` devuelve ``'oauth'``.
+    """
+    llamadas: list[tuple[int, bool, str | None]] = []
     monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "jefe@example.com")
-    monkeypatch.setattr(auth_routes, "set_admin", lambda uid, value: llamadas.append((uid, value)))
+    monkeypatch.setattr(
+        auth_routes,
+        "set_admin",
+        lambda uid, value, granted_by=None: llamadas.append((uid, value, granted_by)),
+    )
     # La degradación se registra en el log, y para saber si hay algo que
     # registrar hace falta el estado previo.
     monkeypatch.setattr(auth_routes, "is_admin", lambda uid: True)
+    monkeypatch.setattr(auth_routes, "admin_granted_by", lambda uid: "oauth")
 
     auth_routes._sync_oauth_admin(3, "exjefe@example.com")
 
-    assert llamadas == [(3, False)]
+    assert llamadas == [(3, False, None)]
+
+
+def test_oauth_admin_no_degrada_una_concesion_del_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OAuth solo retira lo que OAuth concedió (``users.admin_granted_by``, v75)."""
+    llamadas: list[tuple[int, bool, str | None]] = []
+    monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "jefe@example.com")
+    monkeypatch.setattr(
+        auth_routes,
+        "set_admin",
+        lambda uid, value, granted_by=None: llamadas.append((uid, value, granted_by)),
+    )
+    monkeypatch.setattr(auth_routes, "is_admin", lambda uid: True)
+    monkeypatch.setattr(auth_routes, "admin_granted_by", lambda uid: "panel")
+
+    auth_routes._sync_oauth_admin(3, "exjefe@example.com")
+
+    assert llamadas == []
 
 
 def test_oauth_admin_no_toca_nada_si_la_lista_esta_vacia(monkeypatch: pytest.MonkeyPatch) -> None:

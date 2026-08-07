@@ -97,6 +97,17 @@ export function SpaceShell({
                   )}
                 >
                   {item.label}
+                  {item.visibility === "experimental" && (
+                    // Marca la vista en vez de esconderla: ocultarla la
+                    // convertiría en código muerto, y presentarla como una
+                    // vista más prometería una madurez que no tiene.
+                    <span
+                      className="ml-1.5 rounded-sm border border-warning/40 bg-warning/10 px-1 py-px font-mono text-[8.5px] font-semibold uppercase leading-none tracking-[0.04em] text-warning"
+                      title="Vista experimental: en validación, puede cambiar o desaparecer"
+                    >
+                      Exp
+                    </span>
+                  )}
                 </button>
               );
             })}

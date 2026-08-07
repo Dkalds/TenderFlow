@@ -25,7 +25,7 @@ def db(tmp_db):
 def _insert_lic(c, id_externo, *, fuente, organo, cpv, fecha_pub, extraccion):
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
-        " fecha_publicacion, fuente, fecha_extraccion) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        " fecha_publicacion, fuente, fecha_extraccion) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (id_externo, f"Contrato {id_externo}", organo, cpv, fecha_pub, fuente, extraccion),
     )
 
@@ -33,7 +33,7 @@ def _insert_lic(c, id_externo, *, fuente, organo, cpv, fecha_pub, extraccion):
 def _insert_adj(c, lic_id, nombre, importe):
     c.execute(
         "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
-        " fecha_adjudicacion, fecha_extraccion) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        " fecha_adjudicacion, fecha_extraccion) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
         (lic_id, nombre, importe, "2026-05-01"),
     )
 

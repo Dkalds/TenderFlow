@@ -69,16 +69,16 @@ def bajas_agregadas(
     """  # noqa: S608
     params: list[Any] = []
     if cpv_prefix:
-        sql += " AND l.cpv LIKE ?"
+        sql += " AND l.cpv LIKE %s"
         params.append(f"{cpv_prefix}%")
     if ccaa:
-        sql += " AND l.ccaa = ?"
+        sql += " AND l.ccaa = %s"
         params.append(ccaa)
     sql += f"""
         GROUP BY {group_cols}
-        HAVING COUNT(*) >= ? AND {label_col} IS NOT NULL
+        HAVING COUNT(*) >= %s AND {label_col} IS NOT NULL
         ORDER BY contratos DESC
-        LIMIT ?
+        LIMIT %s
     """
     params.extend([max(1, int(min_contratos)), max(1, min(int(limit), 500))])
 
@@ -108,10 +108,10 @@ def baja_de_referencia(
     """  # noqa: S608 — VALID_PAIR_LOTE es un fragmento constante; valores con ?
     params: list[Any] = []
     if organo:
-        sql += " AND l.organo_contratacion = ?"
+        sql += " AND l.organo_contratacion = %s"
         params.append(organo)
     if cpv_prefix:
-        sql += " AND l.cpv LIKE ?"
+        sql += " AND l.cpv LIKE %s"
         params.append(f"{cpv_prefix}%")
 
     with connect_read() as c:

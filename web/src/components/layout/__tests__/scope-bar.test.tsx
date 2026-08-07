@@ -281,11 +281,26 @@ describe("ScopeBar — editor del ámbito", () => {
     filtersRef.current = { ...filtersRef.current, ccaas: ["Cataluña"] };
     renderBar();
     fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
-    fireEvent.change(
+    // El control es un multi-select real (Popover + opciones), no un `<select>`
+    // que "añade" al cambiar: se abre y se marca la opción.
+    fireEvent.click(
       within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"),
-      { target: { value: "Madrid" } },
     );
+    fireEvent.click(screen.getByRole("option", { name: "Madrid" }));
     expect(filtersRef.current.setCcaas).toHaveBeenCalledWith(["Cataluña", "Madrid"]);
+  });
+
+  it("desmarcar una CCAA ya seleccionada la quita desde el propio control", () => {
+    filtersRef.current = { ...filtersRef.current, ccaas: ["Madrid"] };
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"),
+    );
+    const option = screen.getByRole("option", { name: "Madrid" });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(option);
+    expect(filtersRef.current.setCcaas).toHaveBeenCalledWith([]);
   });
 
   it("el editor ofrece limpiar el ámbito solo si hay algo que limpiar", () => {

@@ -39,7 +39,7 @@ def _licitacion(db_mod, id_externo: str = "LIC-RULES-1") -> None:
     with db_mod.connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones "
-            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (?, ?, ?, ?)",
+            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (%s, %s, %s, %s)",
             (id_externo, "Servicio SAP", "2026-12-01T12:00:00+00:00", "2026-07-30T10:00:00+00:00"),
         )
 
@@ -365,7 +365,7 @@ def test_closing_requires_a_submitted_offer(tmp_db):
     _reach_submitted(owner, organization_id, pursuit_id)
 
     with db_mod.connect() as conn:
-        conn.execute("UPDATE pursuits SET submitted_at = NULL WHERE id = ?", (pursuit_id,))
+        conn.execute("UPDATE pursuits SET submitted_at = NULL WHERE id = %s", (pursuit_id,))
 
     with pytest.raises(PursuitValidationError, match="oferta presentada"):
         update_pursuit(
@@ -436,7 +436,7 @@ def test_metrics_window_excludes_pursuits_outside_the_period(tmp_db):
 
     with db_mod.connect() as conn:
         conn.execute(
-            "UPDATE pursuits SET identified_at = ? WHERE id = ?",
+            "UPDATE pursuits SET identified_at = %s WHERE id = %s",
             ("2020-01-01T00:00:00+00:00", pursuit_id),
         )
 
@@ -475,7 +475,7 @@ def test_median_decision_time_is_reported_in_hours(tmp_db):
 
     with db_mod.connect() as conn:
         conn.execute(
-            "UPDATE pursuits SET identified_at = ?, decision_at = ? WHERE id = ?",
+            "UPDATE pursuits SET identified_at = %s, decision_at = %s WHERE id = %s",
             ("2026-07-01T00:00:00+00:00", "2026-07-02T12:00:00+00:00", pursuit_id),
         )
 
@@ -491,7 +491,7 @@ def test_unparseable_timestamps_do_not_break_the_metrics(tmp_db):
 
     with db_mod.connect() as conn:
         conn.execute(
-            "UPDATE pursuits SET identified_at = ?, decision_at = ? WHERE id = ?",
+            "UPDATE pursuits SET identified_at = %s, decision_at = %s WHERE id = %s",
             ("no-es-una-fecha", "tampoco", pursuit_id),
         )
 
@@ -583,7 +583,7 @@ def test_a_corrupt_event_payload_degrades_to_an_empty_dict(tmp_db):
         conn.execute(
             "INSERT INTO pursuit_events "
             "(pursuit_id, organization_id, event_type, actor_user_id, payload_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             (
                 pursuit_id,
                 organization_id,

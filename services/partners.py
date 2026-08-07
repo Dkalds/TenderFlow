@@ -13,7 +13,10 @@ from typing import Any
 
 import pandas as pd
 
+from observability.logging import get_logger
 from services.normalization import parse_ute_members
+
+log = get_logger(__name__)
 
 
 def build_partnership_graph(
@@ -114,6 +117,7 @@ def _detect_communities(node_names: set[str], edges: list[dict[str, Any]]) -> di
             graph.add_edge(e["source"], e["target"], weight=max(1, int(e["contratos"])))
         communities = nx.community.louvain_communities(graph, weight="weight", seed=42)
     except Exception:
+        log.warning("partner_community_detection_failed", exc_info=True)
         return {}
     # Grafo trivial: una sola comunidad → sin clustering útil.
     if len(communities) <= 1:

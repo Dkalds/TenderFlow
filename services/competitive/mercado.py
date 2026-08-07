@@ -48,15 +48,15 @@ def metric_scope(
     params: list[Any] = []
     filters: dict[str, str] = {}
     if cpv_prefix:
-        clauses.append("l.cpv LIKE ?")
+        clauses.append("l.cpv LIKE %s")
         params.append(f"{cpv_prefix}%")
         filters["cpv_prefix"] = cpv_prefix
     if ccaa:
-        clauses.append("l.ccaa = ?")
+        clauses.append("l.ccaa = %s")
         params.append(ccaa)
         filters["ccaa"] = ccaa
     if desde:
-        clauses.append("a.fecha_adjudicacion >= ?")
+        clauses.append("a.fecha_adjudicacion >= %s")
         params.append(desde)
         filters["desde"] = desde
     where = " AND ".join(clauses)
@@ -123,13 +123,13 @@ def cuota_mercado(
     filters = ""
     params: list[Any] = []
     if cpv_prefix:
-        filters += " AND l.cpv LIKE ?"
+        filters += " AND l.cpv LIKE %s"
         params.append(f"{cpv_prefix}%")
     if ccaa:
-        filters += " AND l.ccaa = ?"
+        filters += " AND l.ccaa = %s"
         params.append(ccaa)
     if desde:
-        filters += " AND a.fecha_adjudicacion >= ?"
+        filters += " AND a.fecha_adjudicacion >= %s"
         params.append(desde)
 
     sql = f"""
@@ -152,7 +152,7 @@ def cuota_mercado(
                    AS cuota_pct
         FROM segmento
         ORDER BY importe DESC
-        LIMIT ?
+        LIMIT %s
     """  # noqa: S608 — filters se construye solo con fragmentos constantes; valores con ?
     params.append(max(1, min(int(limit), 500)))
     with connect_read() as c:
@@ -207,7 +207,7 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
             JOIN totales t ON t.segmento = p.segmento
             GROUP BY p.segmento, t.empresas, t.total
         ) seg
-        WHERE contratos >= ?
+        WHERE contratos >= %s
         ORDER BY hhi DESC
     """  # noqa: S608 — seg_col sale de _SEGMENT_COLUMNS (whitelist); valores con ?
     with connect_read() as c:
@@ -235,31 +235,31 @@ def _scope_sql(
     clauses = [_ANALYSIS_UNIVERSE_SQL[analysis_universe], exclude_duplicados_sql()]
     params: list[Any] = []
     if empresa_ids:
-        placeholders = ", ".join("?" for _ in empresa_ids)
+        placeholders = ", ".join("%s" for _ in empresa_ids)
         clauses.append(f"a.empresa_id IN ({placeholders})")
         params.extend(empresa_ids)
     elif empresa_id is not None:
-        clauses.append("a.empresa_id = ?")
+        clauses.append("a.empresa_id = %s")
         params.append(empresa_id)
     if fecha_desde is not None:
-        clauses.append("a.fecha_adjudicacion >= ?")
+        clauses.append("a.fecha_adjudicacion >= %s")
         params.append(fecha_desde.isoformat())
     if fecha_hasta is not None:
-        clauses.append("a.fecha_adjudicacion <= ?")
+        clauses.append("a.fecha_adjudicacion <= %s")
         params.append(fecha_hasta.isoformat())
     if cpv_prefix:
-        clauses.append("l.cpv LIKE ?")
+        clauses.append("l.cpv LIKE %s")
         params.append(f"{cpv_prefix}%")
     if ccaas:
-        placeholders = ", ".join("?" for _ in ccaas)
+        placeholders = ", ".join("%s" for _ in ccaas)
         clauses.append(f"l.ccaa IN ({placeholders})")
         params.extend(ccaas)
     if tecnologias:
-        placeholders = ", ".join("?" for _ in tecnologias)
+        placeholders = ", ".join("%s" for _ in tecnologias)
         clauses.append(f"l.tecnologia IN ({placeholders})")
         params.extend(tecnologias)
     if importe_min is not None:
-        clauses.append("l.importe >= ?")
+        clauses.append("l.importe >= %s")
         params.append(max(0.0, float(importe_min)))
     return " AND ".join(clauses), params
 
@@ -535,7 +535,7 @@ def perfil_empresa(
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
     """
     with connect_read() as c:
-        id_placeholders = ", ".join("?" for _ in group_ids)
+        id_placeholders = ", ".join("%s" for _ in group_ids)
         identity_rows = rows_to_dicts(
             c.execute(
                 "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, "  # noqa: S608
@@ -630,7 +630,7 @@ def perfil_empresa(
         ute_activity_rows: list[dict[str, Any]] = []
         ute_miembros_rows: list[dict[str, Any]] = []
         if ute_ids:
-            ute_placeholders = ", ".join("?" for _ in ute_ids)
+            ute_placeholders = ", ".join("%s" for _ in ute_ids)
             ute_activity_rows = rows_to_dicts(
                 c.execute(
                     f"""
@@ -905,13 +905,13 @@ def listar_adjudicaciones_empresa(
     if q and q.strip():
         needle = f"%{q.strip().lower()}%"
         clauses.append(
-            "(LOWER(COALESCE(l.titulo, '')) LIKE ? "
-            "OR LOWER(COALESCE(l.organo_contratacion, '')) LIKE ? "
-            "OR LOWER(COALESCE(a.licitacion_id, '')) LIKE ?)"
+            "(LOWER(COALESCE(l.titulo, '')) LIKE %s "
+            "OR LOWER(COALESCE(l.organo_contratacion, '')) LIKE %s "
+            "OR LOWER(COALESCE(a.licitacion_id, '')) LIKE %s)"
         )
         params.extend([needle, needle, needle])
     if organo and organo.strip():
-        clauses.append("LOWER(COALESCE(l.organo_contratacion, '')) LIKE ?")
+        clauses.append("LOWER(COALESCE(l.organo_contratacion, '')) LIKE %s")
         params.append(f"%{organo.strip().lower()}%")
     full_where = " AND ".join(clauses)
     safe_limit = max(1, min(int(limit), 500))
@@ -952,7 +952,7 @@ def listar_adjudicaciones_empresa(
                 JOIN licitaciones l ON l.id_externo = a.licitacion_id
                 WHERE {full_where}
                 ORDER BY {order_sql}
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
                 """,  # noqa: S608 -- fragments come from whitelists/constants
                 [*params, safe_limit, safe_offset],
             )

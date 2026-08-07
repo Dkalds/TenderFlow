@@ -36,13 +36,13 @@ def _insert_par(
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
         " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'Servicios', 'placsp', ?, CURRENT_TIMESTAMP)",
+        "VALUES (%s, %s, %s, %s, %s, %s, 'Servicios', 'placsp', %s, CURRENT_TIMESTAMP)",
         (lic_id, f"Contrato {lic_id}", organo, cpv, ccaa, importe, fecha),
     )
     c.execute(
         "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
         " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
-        "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        "VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
         (lic_id, empresa or f"Empresa {lic_id}", adjudicado, fecha, n_ofertas),
     )
 

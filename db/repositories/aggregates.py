@@ -41,6 +41,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.estados import ESTADOS_CERRADOS
 
 log = get_logger(__name__)
 
@@ -101,32 +102,32 @@ def _build_where(filters: LicitacionesFilters) -> tuple[str, list[Any]]:
     params: list[Any] = []
 
     if filters.fecha_desde:
-        clauses.append("fecha_publicacion >= ?")
+        clauses.append("fecha_publicacion >= %s")
         params.append(filters.fecha_desde)
     if filters.fecha_hasta:
-        clauses.append("fecha_publicacion <= ?")
+        clauses.append("fecha_publicacion <= %s")
         params.append(filters.fecha_hasta)
     if filters.ccaa:
-        clauses.append("ccaa = ?")
+        clauses.append("ccaa = %s")
         params.append(filters.ccaa)
     if filters.tecnologia:
-        clauses.append("tecnologia = ?")
+        clauses.append("tecnologia = %s")
         params.append(filters.tecnologia)
     if filters.estado:
-        clauses.append("estado = ?")
+        clauses.append("estado = %s")
         params.append(filters.estado)
     if filters.importe_min is not None:
-        clauses.append("importe >= ?")
+        clauses.append("importe >= %s")
         params.append(filters.importe_min)
     if filters.q and filters.q.strip():
         needle = f"%{_escape_like(filters.q.strip())}%"
         clauses.append(
-            "(titulo ILIKE ? ESCAPE '\\' OR organo_contratacion ILIKE ? ESCAPE '\\' "
-            "OR id_externo ILIKE ? ESCAPE '\\')"
+            "(titulo ILIKE %s ESCAPE '\\' OR organo_contratacion ILIKE %s ESCAPE '\\' "
+            "OR id_externo ILIKE %s ESCAPE '\\')"
         )
         params.extend([needle, needle, needle])
     if filters.cpv:
-        clauses.append("cpv = ?")
+        clauses.append("cpv = %s")
         params.append(filters.cpv)
 
     return " AND ".join(clauses), params
@@ -201,7 +202,7 @@ class AggregateRepository:
             "SELECT organo_contratacion, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe "
             "FROM licitaciones "
             "WHERE " + where + " AND organo_contratacion IS NOT NULL "
-            "GROUP BY organo_contratacion ORDER BY n DESC LIMIT ?"
+            "GROUP BY organo_contratacion ORDER BY n DESC LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, n]))
@@ -273,18 +274,31 @@ class AggregateRepository:
             "     FROM adjudicaciones a "
             "     JOIN licitaciones l ON l.id_externo = a.licitacion_id "
             f"    WHERE {adj_guard} AND {pub_guard} "
-            "  ) t WHERE lead > 0) AS lead_time_medio"
+            "  ) t WHERE lead > 0) AS lead_time_medio, "
+            # Denominador `COUNT(*)` (no solo las filas con es_pyme no nulo)
+            # para dar el mismo resultado que services/analytics/competitors.py,
+            # que trata el NULL como "no PYME". Dos KPIs con el mismo nombre y
+            # distinta base serían peor que un solo número conservador.
+            "  (SELECT 100.0 * COUNT(*) FILTER (WHERE es_pyme = 1) "
+            "          / NULLIF(COUNT(*), 0) "
+            "   FROM adjudicaciones) AS pct_pyme"
         )
         with connect_read() as c:
             row = c.execute(sql).fetchone()
         if row is None:
-            return {"hhi": 0.0, "pct_oferta_unica": 0.0, "lead_time_medio": None}
-        hhi, pct_oferta_unica, lead_time = row
+            return {
+                "hhi": 0.0,
+                "pct_oferta_unica": 0.0,
+                "lead_time_medio": None,
+                "pct_pyme": 0.0,
+            }
+        hhi, pct_oferta_unica, lead_time, pct_pyme = row
         lead_val = float(lead_time) if lead_time is not None and float(lead_time) > 0 else None
         return {
             "hhi": float(hhi or 0.0),
             "pct_oferta_unica": float(pct_oferta_unica or 0.0),
             "lead_time_medio": lead_val,
+            "pct_pyme": float(pct_pyme or 0.0),
         }
 
     def overview_yoy_and_recent(
@@ -305,9 +319,9 @@ class AggregateRepository:
         guard = _iso_guard(col)
         sql = (
             "SELECT "
-            f"  COUNT(*) FILTER (WHERE {guard} AND {col} >= ?) AS lics_30d, "
-            f"  COUNT(*) FILTER (WHERE {guard} AND {col} < ? AND {col} >= ?) AS lics_prev30d, "
-            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} >= ?), 0)"
+            f"  COUNT(*) FILTER (WHERE {guard} AND {col} >= %s) AS lics_30d, "
+            f"  COUNT(*) FILTER (WHERE {guard} AND {col} < %s AND {col} >= %s) AS lics_prev30d, "
+            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} >= %s), 0)"
             "     AS importe_30d "
             "FROM licitaciones WHERE " + where
         )
@@ -379,7 +393,7 @@ class AggregateRepository:
             "  COUNT(*) FILTER (WHERE estado = 'ANUL') AS anul, "
             "  COUNT(*) AS total "
             "FROM licitaciones "
-            f"WHERE {where} AND {guard} AND fecha_publicacion >= ?"
+            f"WHERE {where} AND {guard} AND fecha_publicacion >= %s"
         )
         with connect_read() as c:
             row = c.execute(sql, [*params, hace_365d_iso]).fetchone()
@@ -413,12 +427,12 @@ class AggregateRepository:
             "SELECT "
             "  COUNT(*) FILTER ("
             "    WHERE estado IN ('PUB', 'EV') "
-            f"     AND {lim_guard} AND fecha_limite > ? "
+            f"     AND {lim_guard} AND fecha_limite > %s "
             "      AND importe >= (SELECT v FROM p75)"
             "  ) AS calientes_hoy, "
-            f"  COUNT(*) FILTER (WHERE {lim_guard} AND fecha_limite >= ? AND fecha_limite <= ?)"
+            f"  COUNT(*) FILTER (WHERE {lim_guard} AND fecha_limite >= %s AND fecha_limite <= %s)"
             "     AS vencen_48h, "
-            f"  COUNT(*) FILTER (WHERE {pub_guard} AND fecha_publicacion >= ?) AS nuevas_24h, "
+            f"  COUNT(*) FILTER (WHERE {pub_guard} AND fecha_publicacion >= %s) AS nuevas_24h, "
             "  COUNT(*) FILTER (WHERE estado IN ('PUB', 'EV')) AS total_activas "
             "FROM filtered"
         )
@@ -456,7 +470,7 @@ class AggregateRepository:
         sql = (
             f"SELECT {self._RESUMEN_ITEM_COLS} FROM licitaciones "
             f"WHERE {where} AND {guard} "
-            "ORDER BY fecha_publicacion DESC LIMIT ?"
+            "ORDER BY fecha_publicacion DESC LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, limit]))
@@ -472,7 +486,7 @@ class AggregateRepository:
         recientes son además las que el banner quiere enseñar.
         """
         guard = _iso_guard("fecha_publicacion")
-        where = f"{guard} AND fecha_publicacion > ?"
+        where = f"{guard} AND fecha_publicacion > %s"
         with connect_read() as c:
             row = c.execute(
                 f"SELECT COUNT(*) FROM licitaciones WHERE {where}", [desde_iso]
@@ -484,7 +498,7 @@ class AggregateRepository:
                 c.execute(
                     "SELECT id_externo, titulo, importe, organo_contratacion "
                     f"FROM licitaciones WHERE {where} "
-                    "ORDER BY fecha_publicacion DESC LIMIT ?",
+                    "ORDER BY fecha_publicacion DESC LIMIT %s",
                     [desde_iso, sample_limit],
                 )
             )
@@ -538,9 +552,9 @@ class AggregateRepository:
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
             "  WHERE " + where + " AND trim(code) != '' AND organo_contratacion IS NOT NULL"
             "), top_organos AS ("
-            "  SELECT organo FROM exploded GROUP BY organo ORDER BY COUNT(*) DESC LIMIT ?"
+            "  SELECT organo FROM exploded GROUP BY organo ORDER BY COUNT(*) DESC LIMIT %s"
             "), top_techs AS ("
-            "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT ?"
+            "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT %s"
             ") "
             "SELECT e.organo, e.code, COUNT(*) AS count "
             "FROM exploded e "
@@ -561,9 +575,9 @@ class AggregateRepository:
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
             "  WHERE " + where + " AND trim(code) != '' AND ccaa IS NOT NULL"
             "), top_ccaa AS ("
-            "  SELECT ccaa FROM exploded GROUP BY ccaa ORDER BY COUNT(*) DESC LIMIT ?"
+            "  SELECT ccaa FROM exploded GROUP BY ccaa ORDER BY COUNT(*) DESC LIMIT %s"
             "), top_techs AS ("
-            "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT ?"
+            "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT %s"
             ") "
             "SELECT e.ccaa, e.code, COUNT(*) AS count "
             "FROM exploded e "
@@ -585,7 +599,7 @@ class AggregateRepository:
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
             "  WHERE " + where + f" AND trim(code) != '' AND {guard}"
             "), top_techs AS ("
-            "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT ?"
+            "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT %s"
             ") "
             "SELECT mes, "
             "       CASE WHEN code IN (SELECT code FROM top_techs) THEN code ELSE '__OTRAS__' END"
@@ -610,7 +624,7 @@ class AggregateRepository:
         if not tech_codes:
             return []
         where, params = _build_where(filters)
-        placeholders = ",".join("?" for _ in tech_codes)
+        placeholders = ",".join("%s" for _ in tech_codes)
         sql = (
             "SELECT DISTINCT ON (l.id_externo) "
             "       l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
@@ -699,10 +713,10 @@ class AggregateRepository:
         guard = _iso_guard(col)
         sql = (
             "SELECT "
-            f"  COUNT(*) FILTER (WHERE {guard} AND {col} >= ?) AS cnt_cur, "
-            f"  COUNT(*) FILTER (WHERE {guard} AND {col} < ? AND {col} >= ?) AS cnt_prev, "
-            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} >= ?), 0) AS imp_cur, "
-            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} < ? AND {col} >= ?), 0)"
+            f"  COUNT(*) FILTER (WHERE {guard} AND {col} >= %s) AS cnt_cur, "
+            f"  COUNT(*) FILTER (WHERE {guard} AND {col} < %s AND {col} >= %s) AS cnt_prev, "
+            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} >= %s), 0) AS imp_cur, "
+            f"  COALESCE(SUM(importe) FILTER (WHERE {guard} AND {col} < %s AND {col} >= %s), 0)"
             "     AS imp_prev "
             "FROM licitaciones WHERE " + where
         )
@@ -780,7 +794,7 @@ class AggregateRepository:
         """
         where, params = _build_where(filters)
         if q:
-            where += f" AND {_fold_expr('organo_contratacion')} LIKE ? ESCAPE '\\'"
+            where += f" AND {_fold_expr('organo_contratacion')} LIKE %s ESCAPE '\\'"
             params.append(f"%{_escape_like(q)}%")
         return where, params
 
@@ -814,7 +828,7 @@ class AggregateRepository:
             "       mode() WITHIN GROUP (ORDER BY ccaa) AS ccaa_mode "
             "FROM licitaciones "
             "WHERE " + where + " AND organo_contratacion IS NOT NULL "
-            "GROUP BY organo_contratacion ORDER BY count DESC, organo_contratacion LIMIT ?"
+            "GROUP BY organo_contratacion ORDER BY count DESC, organo_contratacion LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, limit]))
@@ -828,7 +842,7 @@ class AggregateRepository:
             "WITH top_org AS ("
             "  SELECT organo_contratacion FROM licitaciones "
             "  WHERE " + where + " AND organo_contratacion IS NOT NULL "
-            "  GROUP BY organo_contratacion ORDER BY COUNT(*) DESC LIMIT ?"
+            "  GROUP BY organo_contratacion ORDER BY COUNT(*) DESC LIMIT %s"
             ") "
             "SELECT l.organo_contratacion AS organo, l.tipo_contrato, "
             "       SUM(l.importe) AS importe "
@@ -881,7 +895,7 @@ class AggregateRepository:
             "  FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo "
             ") adj ON TRUE "
             "WHERE " + where + " AND l.importe IS NOT NULL "
-            "ORDER BY l.importe DESC LIMIT ?"
+            "ORDER BY l.importe DESC LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, n]))
@@ -910,7 +924,7 @@ class AggregateRepository:
                     "SELECT cpv, COALESCE(SUM(importe), 0) AS importe_total, "
                     "       COUNT(*) AS count "
                     f"FROM licitaciones WHERE {base_where} "
-                    "GROUP BY cpv ORDER BY importe_total DESC, cpv LIMIT ?",
+                    "GROUP BY cpv ORDER BY importe_total DESC, cpv LIMIT %s",
                     [*params, top_n],
                 )
             )
@@ -924,7 +938,7 @@ class AggregateRepository:
             return []
         where, params = _build_where(filters)
         guard = _iso_guard("fecha_publicacion")
-        placeholders = ",".join("?" for _ in cpvs)
+        placeholders = ",".join("%s" for _ in cpvs)
         sql = (
             "SELECT cpv, substr(fecha_publicacion, 1, 7) AS mes, "
             "       COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
@@ -947,7 +961,7 @@ class AggregateRepository:
         """Conteo/importe por módulo + (clasificadas, importe distinct).
 
         Los patrones llegan como regex POSIX (mismas alternancias escapadas que
-        compilaba el servicio con ``re.IGNORECASE``); ``~* ?`` los evalúa en el
+        compilaba el servicio con ``re.IGNORECASE``); ``~* %s`` los evalúa en el
         motor sobre ``titulo`` — la columna de texto disponible en la
         proyección de stats (la detección pandas usaba titulo+descripcion solo
         si descripcion existía, y en stats no existe).
@@ -956,11 +970,11 @@ class AggregateRepository:
         selects: list[str] = []
         run_params: list[Any] = []
         for pattern in module_patterns.values():
-            selects.append("COUNT(*) FILTER (WHERE titulo ~* ?)")
-            selects.append("COALESCE(SUM(importe) FILTER (WHERE titulo ~* ?), 0)")
+            selects.append("COUNT(*) FILTER (WHERE titulo ~* %s)")
+            selects.append("COALESCE(SUM(importe) FILTER (WHERE titulo ~* %s), 0)")
             run_params.extend([pattern, pattern])
-        selects.append("COUNT(*) FILTER (WHERE titulo ~* ?)")
-        selects.append("COALESCE(SUM(importe) FILTER (WHERE titulo ~* ?), 0)")
+        selects.append("COUNT(*) FILTER (WHERE titulo ~* %s)")
+        selects.append("COALESCE(SUM(importe) FILTER (WHERE titulo ~* %s), 0)")
         run_params.extend([all_pattern, all_pattern])
         sql = "SELECT " + ", ".join(selects) + " FROM licitaciones WHERE " + where
         with connect_read() as c:
@@ -991,9 +1005,9 @@ class AggregateRepository:
         selects: list[str] = []
         run_params: list[Any] = []
         for pattern in module_patterns.values():
-            selects.append(f"COUNT(*) FILTER (WHERE titulo ~* ? AND {guard} AND {col} >= ?)")
+            selects.append(f"COUNT(*) FILTER (WHERE titulo ~* %s AND {guard} AND {col} >= %s)")
             selects.append(
-                f"COUNT(*) FILTER (WHERE titulo ~* ? AND {guard} AND {col} < ? AND {col} >= ?)"
+                f"COUNT(*) FILTER (WHERE titulo ~* %s AND {guard} AND {col} < %s AND {col} >= %s)"
             )
             run_params.extend([pattern, hace_365d_iso, pattern, hace_365d_iso, hace_730d_iso])
         sql = "SELECT " + ", ".join(selects) + " FROM licitaciones WHERE " + where
@@ -1041,7 +1055,7 @@ class AggregateRepository:
             "SELECT cpv, COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
             "FROM licitaciones "
             "WHERE " + where + " AND cpv IS NOT NULL AND trim(cpv) != '' "
-            "GROUP BY cpv ORDER BY count DESC, cpv LIMIT ?"
+            "GROUP BY cpv ORDER BY count DESC, cpv LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, n]))
@@ -1135,7 +1149,7 @@ class AggregateRepository:
         sql = (
             "SELECT licitacion_id, fecha_adjudicacion, importe_adjudicado, "
             "       n_ofertas_recibidas, nombre "
-            "FROM adjudicaciones WHERE licitacion_id = ANY(?)"
+            "FROM adjudicaciones WHERE licitacion_id = ANY(%s)"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [ids]))
@@ -1165,7 +1179,7 @@ class AggregateRepository:
                 c.execute(
                     "SELECT id_externo, titulo, organo_contratacion, importe, "
                     "       ccaa, estado, cpv "
-                    f"{base} ORDER BY fecha_publicacion DESC NULLS LAST LIMIT ?",
+                    f"{base} ORDER BY fecha_publicacion DESC NULLS LAST LIMIT %s",
                     [*params, max_rows],
                 )
             )
@@ -1186,7 +1200,7 @@ class AggregateRepository:
             "SELECT id_externo, titulo, organo_contratacion, importe, cpv, "
             "       tipo_contrato, estado, fecha_publicacion, ccaa, tecnologia, url "
             "FROM licitaciones "
-            f"WHERE {where} AND organo_contratacion = ?"
+            f"WHERE {where} AND organo_contratacion = %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, organo]))
@@ -1196,7 +1210,7 @@ class AggregateRepository:
     # Columnas que _score_row (services/analytics/scoring.py) necesita leer.
     _SCORING_COLS = (
         "id_externo, titulo, organo_contratacion, importe, cpv, "
-        "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion"
+        "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion, ml_tech_principal, url"
     )
 
     def importe_percentiles(self) -> tuple[float, float]:
@@ -1220,24 +1234,35 @@ class AggregateRepository:
         return float(row[0]), float(row[1] or 0.0)
 
     def scoring_candidates(
-        self, *, estados: tuple[str, ...] = ("PUB", "EV")
+        self, *, cerrados: tuple[str, ...] = ESTADOS_CERRADOS
     ) -> list[dict[str, Any]]:
-        """Proyección acotada de candidatas a oportunidad (estados activos).
+        """Proyección acotada de candidatas a oportunidad (estados no cerrados).
 
         ADR-023: el scoring puntuaba la tabla entera vía pandas; una
         licitación cerrada/adjudicada nunca es una "oportunidad", así que el
-        universo puntuable son los estados activos — una fracción del total.
+        universo puntuable excluye los estados terminales — una fracción del
+        total.
+
+        Se enumeran los estados **cerrados**, no los abiertos, que es la regla
+        de ``shared.estados``: con la allowlist anterior (``PUB``/``EV``) todo
+        expediente en un estado abierto que no fuera esos dos —``ADM``, el más
+        común— quedaba fuera del Radar sin dejar rastro. Se vio al mandar el
+        Radar a puntuar de verdad: con los 15 expedientes del seed (12 ``ADM``,
+        3 ``ADJ``) el ranking salía vacío.
         """
-        placeholders = ",".join("?" for _ in estados)
-        sql = f"SELECT {self._SCORING_COLS} FROM licitaciones WHERE estado IN ({placeholders})"
+        placeholders = ",".join("%s" for _ in cerrados)
+        sql = (
+            f"SELECT {self._SCORING_COLS} FROM licitaciones "
+            f"WHERE estado IS NULL OR estado NOT IN ({placeholders})"
+        )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, list(estados)))
+            return rows_to_dicts(c.execute(sql, list(cerrados)))
 
     def licitaciones_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
         """Proyección de scoring para una lista exacta de ids (modo page-aligned)."""
         if not ids:
             return []
-        placeholders = ",".join("?" for _ in ids)
+        placeholders = ",".join("%s" for _ in ids)
         sql = f"SELECT {self._SCORING_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, ids))
@@ -1259,7 +1284,7 @@ class AggregateRepository:
         guard = _iso_guard("fecha_limite")
         sql = (
             f"SELECT {self._SCORING_COLS} FROM licitaciones "
-            f"WHERE {where} AND {guard} AND fecha_limite > ? AND fecha_limite < ? "
+            f"WHERE {where} AND {guard} AND fecha_limite > %s AND fecha_limite < %s "
             "ORDER BY fecha_limite"
         )
         with connect_read() as c:
@@ -1277,7 +1302,7 @@ class AggregateRepository:
         if not tech_codes:
             return 0, 0.0, 0.0
         where, params = _build_where(filters)
-        placeholders = ",".join("?" for _ in tech_codes)
+        placeholders = ",".join("%s" for _ in tech_codes)
         sql = (
             "SELECT COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe_total, "
             "       AVG(importe) AS importe_medio FROM ("

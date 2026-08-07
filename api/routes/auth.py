@@ -24,6 +24,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from config import settings
 from db.sessions import create_session, revoke_session, validate_session
 from db.users import (
+    admin_granted_by,
     create_user,
     get_or_create_oauth_user,
     get_user_by_email,
@@ -696,30 +697,48 @@ def _sync_oauth_admin(user_id: int, email: str) -> None:
     legítima es el panel (``admin_users.admin_set_admin``), y degradar ahí
     desadministraría a todos sus promovidos en el próximo login.
 
-    **Precedencia, con la lista configurada:** ``OAUTH_ADMIN_EMAILS`` manda
-    sobre el panel para las cuentas que entran por Google. A alguien promovido
-    desde el panel que además use Google SSO se le retira el flag en su
-    siguiente login. Es deliberado —entre dejar admin a un ex-administrador y
-    obligar a re-promover a uno legítimo, el riesgo asimétrico está claro— pero
-    es una degradación silenciosa, así que se registra en el log con nivel
-    warning para que sea diagnosticable. La solución completa (una columna que
-    registre el origen de la concesión, y que el panel gane sobre la lista)
-    necesita migración y está anotada en el backlog.
+    **Precedencia, con la lista configurada:** OAuth solo gobierna *sus
+    propias* concesiones. Antes mandaba sobre el panel —a quien se promovía con
+    ``admin_users.admin_set_admin`` y además entraba con Google se le retiraba
+    el flag en su siguiente login—, porque ``users.is_admin`` era un booleano
+    sin procedencia y no se podía distinguir el origen. Con
+    ``users.admin_granted_by`` (v75) sí se puede: esta función degrada
+    únicamente lo que concedió ella (``'oauth'``), y deja intactas tanto las
+    concesiones del panel como las de procedencia desconocida (``NULL``:
+    anteriores a la migración, nadie puede afirmar quién las hizo).
     """
     if not csv_set(settings.OAUTH_ADMIN_EMAILS):
         return
     should_be_admin = oauth_email_is_admin(email)
-    if not should_be_admin and is_admin(user_id):
-        log.warning(
-            "oauth_admin_revoked",
+    if should_be_admin:
+        set_admin(user_id, True, granted_by="oauth")
+        return
+    if not is_admin(user_id):
+        return
+    origen = admin_granted_by(user_id)
+    if origen != "oauth":
+        # Concesión del panel (o previa a v75): OAuth no la otorgó, así que no
+        # la retira. Se deja constancia porque es un desacuerdo entre las dos
+        # fuentes y conviene poder verlo.
+        log.info(
+            "oauth_admin_preserved",
             user_id=user_id,
+            granted_by=origen or "desconocido",
             hint=(
-                "La cuenta tenía is_admin pero su email no está en OAUTH_ADMIN_EMAILS. "
-                "Si la promoción venía del panel de administración, volvé a aplicarla "
-                "tras añadir el email a la lista."
+                "El email no está en OAUTH_ADMIN_EMAILS pero la concesión no vino "
+                "de OAuth: se conserva. Para revocarla, usá el panel de administración."
             ),
         )
-    set_admin(user_id, should_be_admin)
+        return
+    log.warning(
+        "oauth_admin_revoked",
+        user_id=user_id,
+        hint=(
+            "La cuenta tenía is_admin concedido por OAuth y su email ya no está "
+            "en OAUTH_ADMIN_EMAILS."
+        ),
+    )
+    set_admin(user_id, False)
 
 
 def _oauth_error_redirect(frontend_url: str, error: str) -> Response:

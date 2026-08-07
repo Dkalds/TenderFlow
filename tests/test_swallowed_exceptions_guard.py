@@ -210,52 +210,13 @@ _LEGITIMATE_SILENT: frozenset[str] = frozenset(
     }
 )
 
-_GRANDFATHERED_PENDING_FIX: frozenset[str] = frozenset(
-    {
-        # ── Export/anonimización GDPR: el caso que originó este test ────────
-        # Devuelven [] ante cualquier fallo, indistinguible de "sin datos".
-        # Ver el P0 de watchlist/GDPR en docs/IMPROVEMENT_BACKLOG.md: al
-        # arreglarlo, estas entradas se borran de aquí.
-        # (`export_by_user_key` ya se arregló: sin `except` que trague el fallo.)
-        "db/repositories/watchlist.py::WatchlistRepository.export_items_by_user_key",
-        "db/repositories/audit.py::AuditRepository.export_by_user_key",
-        # ── Camino de autenticación ─────────────────────────────────────────
-        # Un fallo de BD aquí se presenta como "clave inválida"; sin log no hay
-        # forma de distinguir un ataque de una incidencia de infraestructura.
-        "db/repositories/api_keys.py::ApiKeyRepository.get_active_scopes",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_user_id",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_by_key_id",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_all_for_user",
-        "db/repositories/api_keys.py::ApiKeyRepository.deactivate_all_for_user",
-        "db/sessions.py::validate_session",
-        "db/totp.py::verify_totp",
-        "db/totp.py::use_recovery_code",
-        # ── Auditoría: la cadena de hashes pierde eventos en silencio ───────
-        "db/audit.py::log_event",
-        "db/audit.py::verify_hash_chain",
-        # ── Búsqueda: los fallbacks encadenados degradan sin dejar rastro,
-        # así que una búsqueda rota se ve como "sin resultados".
-        "db/repositories/licitaciones.py::LicitacionRepository.fts5_bm25_search",
-        "db/repositories/licitaciones.py::LicitacionRepository.like_fallback_search",
-        "db/repositories/licitaciones.py::LicitacionRepository.search_fts_ids",
-        "db/repositories/licitaciones.py::LicitacionRepository.search_like_for_ask",
-        "db/repositories/licitaciones.py::LicitacionRepository.fetch_metadata_by_ids",
-        "db/search_backend.py::PgTsBackend._ts_search",
-        "db/search_backend.py::PgTsBackend.hybrid_search_docs",
-        # ── Idempotencia de webhooks: un fallo silencioso aquí puede
-        # traducirse en entregas duplicadas o perdidas.
-        "db/repositories/webhooks.py::WebhookRepository.idempotency_reserve",
-        "db/repositories/webhooks.py::WebhookRepository.idempotency_finalize",
-        "db/repositories/webhooks.py::WebhookRepository.idempotency_release",
-        "db/repositories/webhooks.py::WebhookRepository.list_deliveries",
-        "db/repositories/feedback.py::FeedbackRepository.exists_idempotency",
-        # ── Ingesta y analítica: columnas derivadas que caen a defaults
-        # (listas vacías, "Otro") sin señalar que el cálculo falló.
-        "db/upsert.py::replace_adjudicaciones_batch",
-        "db/repositories/extraction_runs.py::ExtractionRunRepository.load_recent_daily_statuses",
-        "services/partners.py::_detect_communities",
-    }
-)
+# **Vaciado del todo el 2026-08-07.** Las 32 funciones que este ratchet
+# congelaba ya dejan constancia antes de su fallback: autenticación,
+# auditoría y export GDPR primero (commit `ad2574e`), y después búsqueda,
+# webhooks e ingesta. El frozenset se conserva vacío a propósito: si aparece
+# un handler silencioso nuevo, el test falla y hay que instrumentarlo, no
+# añadirlo aquí.
+_GRANDFATHERED_PENDING_FIX: frozenset[str] = frozenset()
 
 _ALLOWLIST: frozenset[str] = _LEGITIMATE_SILENT | _GRANDFATHERED_PENDING_FIX
 

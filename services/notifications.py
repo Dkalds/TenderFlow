@@ -43,18 +43,18 @@ def get_user_alerts(
             cur = c.execute(
                 "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
                 "FROM user_notifications "
-                "WHERE user_key = ? "
+                "WHERE user_key = %s "
                 "ORDER BY read_at IS NOT NULL, created_at DESC "
-                "LIMIT ?",
+                "LIMIT %s",
                 (user_key, limit),
             )
         else:
             cur = c.execute(
                 "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
                 "FROM user_notifications "
-                "WHERE user_key = ? AND organization_id = ? "
+                "WHERE user_key = %s AND organization_id = %s "
                 "ORDER BY read_at IS NOT NULL, created_at DESC "
-                "LIMIT ?",
+                "LIMIT %s",
                 (user_key, organization_id, limit),
             )
         cols = [d[0] for d in cur.description]
@@ -66,13 +66,13 @@ def get_alerts_unread_count(user_key: str, organization_id: int | None = None) -
     with connect_read() as c:
         if organization_id is None:
             row = c.execute(
-                "SELECT COUNT(*) FROM user_notifications WHERE user_key = ? AND read_at IS NULL",
+                "SELECT COUNT(*) FROM user_notifications WHERE user_key = %s AND read_at IS NULL",
                 (user_key,),
             ).fetchone()
         else:
             row = c.execute(
-                "SELECT COUNT(*) FROM user_notifications WHERE user_key = ? "
-                "AND organization_id = ? AND read_at IS NULL",
+                "SELECT COUNT(*) FROM user_notifications WHERE user_key = %s "
+                "AND organization_id = %s AND read_at IS NULL",
                 (user_key, organization_id),
             ).fetchone()
     return int(row[0]) if row else 0
@@ -85,19 +85,19 @@ def mark_alerts_read(
     if not alert_ids:
         return
     now_ts = datetime.now(UTC).isoformat()
-    placeholders = ",".join("?" * len(alert_ids))
+    placeholders = ",".join(["%s"] * len(alert_ids))
     with connect() as c:
         if organization_id is None:
             c.execute(
-                f"UPDATE user_notifications SET read_at = ? "  # noqa: S608
-                f"WHERE user_key = ? "
+                f"UPDATE user_notifications SET read_at = %s "  # noqa: S608
+                f"WHERE user_key = %s "
                 f"AND id IN ({placeholders}) AND read_at IS NULL",
                 [now_ts, user_key, *alert_ids],
             )
         else:
             c.execute(
-                f"UPDATE user_notifications SET read_at = ? "  # noqa: S608
-                f"WHERE user_key = ? AND organization_id = ? "
+                f"UPDATE user_notifications SET read_at = %s "  # noqa: S608
+                f"WHERE user_key = %s AND organization_id = %s "
                 f"AND id IN ({placeholders}) AND read_at IS NULL",
                 [now_ts, user_key, organization_id, *alert_ids],
             )
@@ -109,13 +109,13 @@ def mark_all_alerts_read(user_key: str, organization_id: int | None = None) -> N
     with connect() as c:
         if organization_id is None:
             c.execute(
-                "UPDATE user_notifications SET read_at = ? WHERE user_key = ? AND read_at IS NULL",
+                "UPDATE user_notifications SET read_at = %s WHERE user_key = %s AND read_at IS NULL",
                 (now_ts, user_key),
             )
         else:
             c.execute(
-                "UPDATE user_notifications SET read_at = ? WHERE user_key = ? "
-                "AND organization_id = ? AND read_at IS NULL",
+                "UPDATE user_notifications SET read_at = %s WHERE user_key = %s "
+                "AND organization_id = %s AND read_at IS NULL",
                 (now_ts, user_key, organization_id),
             )
 
@@ -123,5 +123,5 @@ def mark_all_alerts_read(user_key: str, organization_id: int | None = None) -> N
 def delete_all_alerts(user_key: str) -> int:
     """Borra todas las alertas in-app del usuario (GDPR). Devuelve filas borradas."""
     with connect() as c:
-        cur = c.execute("DELETE FROM user_notifications WHERE user_key = ?", (user_key,))
+        cur = c.execute("DELETE FROM user_notifications WHERE user_key = %s", (user_key,))
         return int(cur.rowcount)

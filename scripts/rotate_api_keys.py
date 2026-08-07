@@ -49,15 +49,15 @@ def rotate(name: str, user_id: int, grace_days: int, scopes: str = "*") -> int:
             )
             return 2
         existing = c.execute(
-            "SELECT scopes FROM api_keys WHERE name = ? AND user_id = ? AND is_active = 1 "
-            "AND (expires_at IS NULL OR expires_at > ?) ORDER BY id DESC LIMIT 1",
+            "SELECT scopes FROM api_keys WHERE name = %s AND user_id = %s AND is_active = 1 "
+            "AND (expires_at IS NULL OR expires_at > %s) ORDER BY id DESC LIMIT 1",
             (name, user_id, expires_at),
         ).fetchone()
         effective_scopes = str(existing[0] or "*") if existing else scopes
         cur = c.execute(
-            "UPDATE api_keys SET expires_at = ? "
-            "WHERE name = ? AND user_id = ? AND is_active = 1 "
-            "AND (expires_at IS NULL OR expires_at > ?)",
+            "UPDATE api_keys SET expires_at = %s "
+            "WHERE name = %s AND user_id = %s AND is_active = 1 "
+            "AND (expires_at IS NULL OR expires_at > %s)",
             (expires_at, name, user_id, expires_at),
         )
         rotated = cur.rowcount

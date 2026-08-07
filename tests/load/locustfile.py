@@ -39,7 +39,7 @@ class APIUser(HttpUser):
         self.client.get(
             "/api/v1/licitaciones",
             params={"limit": 50, "offset": random.randint(0, 1000)},
-            name="/licitaciones?limit&offset",
+            name="/licitaciones%slimit&offset",
         )
 
     @task(5)

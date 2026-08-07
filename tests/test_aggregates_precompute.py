@@ -25,7 +25,7 @@ def _insert_licitaciones(db_mod: Any, rows: list[tuple[str, str, str]]) -> None:
         for id_ext, titulo, desc in rows:
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, descripcion, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s)",
                 (id_ext, titulo, desc, "2026-01-01"),
             )
 
@@ -143,7 +143,7 @@ def test_persist_clusters_batches_across_chunk_boundary(tmp_db):
             "SELECT cluster_label FROM mat_clusters WHERE id_externo = 'EXP-0000'"
         ).fetchone()[0]
         last = conn.execute(
-            "SELECT cluster_label FROM mat_clusters WHERE id_externo = ?", [f"EXP-{n - 1:04d}"]
+            "SELECT cluster_label FROM mat_clusters WHERE id_externo = %s", [f"EXP-{n - 1:04d}"]
         ).fetchone()[0]
 
     assert count == n

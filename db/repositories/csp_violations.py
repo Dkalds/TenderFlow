@@ -27,7 +27,7 @@ class CspViolationRepository:
                     c.execute(
                         "INSERT INTO csp_violations "
                         "(blocked_uri, violated_directive, document_uri, source_file, created_at) "
-                        "VALUES (?, ?, ?, ?, ?)",
+                        "VALUES (%s, %s, %s, %s, %s)",
                         (blocked_uri, violated_directive, document_uri, source_file, now),
                     )
         except Exception as exc:

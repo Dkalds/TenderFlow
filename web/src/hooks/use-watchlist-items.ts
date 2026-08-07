@@ -13,7 +13,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import type { WatchlistFavoriteItem } from "@/lib/api-types";
+import type { WatchlistFavoriteCreated, WatchlistFavoriteItem } from "@/lib/api-types";
 
 // Del contrato OpenAPI (la ruta ya declara su DTO) — antes duplicado a mano.
 export type WatchlistItem = WatchlistFavoriteItem;
@@ -57,9 +57,11 @@ export function useWatchlistItems() {
 
 export function useAddWatchlistItem() {
   const qc = useQueryClient();
-  return useMutation<WatchlistItem, unknown, string, MutationContext>({
+  return useMutation<WatchlistFavoriteCreated, unknown, string, MutationContext>({
     mutationFn: (idExterno: string) =>
-      apiMutate<WatchlistItem>("POST", "/api/v1/watchlist/items", { id_externo: idExterno }),
+      apiMutate<WatchlistFavoriteCreated>("POST", "/api/v1/watchlist/items", {
+        id_externo: idExterno,
+      }),
     onMutate: async (idExterno: string) => {
       const previous = await cancelAndSnapshot(qc);
       qc.setQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY, (old) => [
@@ -72,10 +74,15 @@ export function useAddWatchlistItem() {
       qc.setQueryData(WATCHLIST_ITEMS_KEY, ctx?.previous);
       toast.error("No se pudo añadir a favoritos");
     },
-    onSuccess: (created: WatchlistItem, idExterno: string) => {
+    // `POST /watchlist/items` devuelve `WatchlistFavoriteCreated`: trae el `id`
+    // real pero NO los campos enriquecidos (titulo/importe/estado/fecha) que sí
+    // devuelve el GET. Sustituir el item optimista entero los borraba de la
+    // lista hasta que el invalidate de `onSettled` completaba — un frame con la
+    // fila a medias. Por eso se fusiona en vez de reemplazar.
+    onSuccess: (created: WatchlistFavoriteCreated, idExterno: string) => {
       qc.setQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY, (old) =>
         (old ?? []).map((item) =>
-          item.id_externo === idExterno && item.id < 0 ? created : item,
+          item.id_externo === idExterno && item.id < 0 ? { ...item, ...created } : item,
         ),
       );
     },

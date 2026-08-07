@@ -26,7 +26,11 @@ export const SEED_LICITACION = {
   id: "SEED-2026-001",
   titulo: "Suministro de equipos informáticos para administración pública",
   organo: "Ministerio de Hacienda",
-  /** La que el Radar prioriza primero con los datos sembrados. */
+  /**
+   * Una de las que el Radar puntúa alto con los datos sembrados (2ª de 12).
+   * El seed trae 15 expedientes: 12 en `ADM` —puntuables— y 3 en `ADJ`, que
+   * el ranking descarta por cerrados.
+   */
   tituloRadar: "Implantación de sistema ERP para gestión municipal",
 } as const;
 

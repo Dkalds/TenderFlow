@@ -14,12 +14,12 @@ import {
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 
 describe("CONSOLE_SPACES", () => {
-  it("consolida las 25 rutas del dashboard en 13 espacios", () => {
-    expect(CONSOLE_SPACES).toHaveLength(13);
+  it("consolida las rutas del dashboard en 14 espacios", () => {
+    expect(CONSOLE_SPACES).toHaveLength(14);
     const absorbed = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
       (view) => view.from,
     );
-    expect(absorbed).toHaveLength(17);
+    expect(absorbed).toHaveLength(18);
   });
 
   it("da a cada espacio clave y slug únicos, y una etiqueta corta de 2-3 letras", () => {
@@ -142,7 +142,7 @@ describe("isSpaceImplemented / landingHref", () => {
 
 describe("LEGACY_REDIRECTS", () => {
   it("manda cada ruta absorbida a la vista que la sustituye", () => {
-    expect(LEGACY_REDIRECTS).toHaveLength(17);
+    expect(LEGACY_REDIRECTS).toHaveLength(18);
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/competidores",
       to: "/competencia?vista=competidores",

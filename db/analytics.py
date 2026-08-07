@@ -1,28 +1,22 @@
 """Motor analítico opcional basado en DuckDB.
 
-.. warning::
-   **Este módulo está roto desde ADR-021 y sus funciones fallan de forma
-   esperada.** ``get_connection()`` hace ``ATTACH ... (TYPE SQLITE, READ_ONLY)``
-   sobre un fichero SQLite operacional que ya no existe: ``_sqlite_path()``
-   lanza ``FileNotFoundError``.
+DuckDB se ATTACHa sobre la BD operacional Postgres en modo lectura (extensión
+``postgres_scanner``) para ejecutar queries OLAP pesadas (group-by sobre
+millones de filas, window functions, joins múltiples) órdenes de magnitud más
+rápido que el motor transaccional.
 
-   Se conserva —fallando ruidosamente, no en silencio— en vez de borrarse
-   porque el camino de exports OLAP a Parquet (``run_analytics_export``,
-   consumido por ``scheduler/pipeline_runs.py``) sigue siendo deseable; lo que
-   falta es reescribirlo sobre el ``postgres_scanner`` de DuckDB
-   (``ATTACH ... (TYPE POSTGRES, READ_ONLY)`` contra ``DATABASE_URL``). Es un
-   ítem P2 del backlog y requiere verificación contra un Postgres real con la
-   extensión instalada, así que no se hizo a ciegas dentro de ADR-021.
-
-DuckDB se ATTACHa sobre la BD operacional en modo lectura para ejecutar
-queries OLAP pesadas (group-by sobre millones de filas, window functions,
-joins múltiples) órdenes de magnitud más rápido que el motor transaccional.
+Hasta ADR-021 este módulo adjuntaba un fichero SQLite con ``sqlite_scanner``.
+Retirado SQLite, ese camino quedó muerto —``_sqlite_path()`` lanzaba
+``FileNotFoundError`` en cada llamada— y con él los exports OLAP a Parquet que
+consume ``scheduler/pipeline_runs.py``. Ahora el ATTACH es
+``(TYPE POSTGRES, READ_ONLY)`` contra ``DATABASE_URL``.
 
 Diseño (F2):
     * La conexión DuckDB es **opcional** — si DuckDB no está instalado, las
-      funciones devuelven ``None`` y los callers caen al backend SQLite.
-    * Modo lectura siempre: ``read_only=True`` para garantizar que las
-      analíticas no pueden corromper la BD operacional.
+      funciones devuelven ``None`` y el export cae al camino directo por
+      Postgres (solo row counts, sin ficheros Parquet).
+    * Modo lectura siempre: ``READ_ONLY`` garantiza que las analíticas no
+      pueden escribir sobre la BD operacional.
     * Persistencia opcional a Parquet para snapshots históricos
       (KPI precompute, materializaciones por mes/CCAA).
 
@@ -34,14 +28,13 @@ Uso típico::
 
     if has_duckdb():
         df = duckdb_query(
-            "SELECT ccaa, COUNT(*) AS n FROM sqlite_db.licitaciones "
+            "SELECT ccaa, COUNT(*) AS n FROM pg_db.licitaciones "
             "WHERE fecha_publicacion >= '2024-01-01' GROUP BY ccaa"
         )
 """
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import time
 from collections.abc import Iterable
@@ -65,7 +58,9 @@ except ImportError:  # pragma: no cover
     _DUCKDB_AVAILABLE = False
 
 
-_SQLITE_ALIAS = "sqlite_db"
+#: Alias del catálogo Postgres dentro de DuckDB. Las queries lo referencian como
+#: ``pg_db.<tabla>``.
+_PG_ALIAS = "pg_db"
 _lock = threading.Lock()
 _conn: Any = None
 
@@ -75,44 +70,38 @@ def has_duckdb() -> bool:
     return _DUCKDB_AVAILABLE
 
 
-def _sqlite_path() -> Path:
-    """Resuelve la ruta del fichero SQLite de producción."""
-    candidates: list[Path | str | None] = [
-        getattr(settings, "DATABASE_PATH", None),
-        getattr(settings, "SQLITE_PATH", None),
-        getattr(settings, "DATA_DIR", None),
-    ]
-    for c in candidates:
-        if not c:
-            continue
-        p = Path(str(c))
-        if p.is_file():
-            return p
-        guess = p / "licitaciones.db"
-        if guess.is_file():
-            return guess
-    raise FileNotFoundError("No se encontró el fichero SQLite operacional.")
+def _database_url() -> str:
+    """DSN de la BD operacional, o lanza si no está configurada."""
+    raw = settings.DATABASE_URL.get_secret_value() if settings.DATABASE_URL else ""
+    if not raw:
+        raise RuntimeError(
+            "DATABASE_URL no está configurada: el motor analítico DuckDB "
+            "adjunta la BD Postgres operacional y no tiene otra fuente."
+        )
+    return raw
 
 
 def get_connection() -> Any:
-    """Devuelve una conexión DuckDB singleton con el SQLite operacional adjunto.
+    """Devuelve una conexión DuckDB singleton con la BD Postgres adjunta.
 
-    Lanza ``RuntimeError`` si DuckDB no está instalado. La conexión es
-    thread-safe gracias al lock interno; las consultas son lecturas.
+    Lanza ``RuntimeError`` si DuckDB no está instalado o si ``DATABASE_URL`` no
+    está configurada. La conexión es thread-safe gracias al lock interno; las
+    consultas son lecturas.
     """
     if not _DUCKDB_AVAILABLE:
         raise RuntimeError("DuckDB no está instalado. Instalar con: pip install duckdb")
     global _conn
     with _lock:
         if _conn is None:
-            sqlite_file = _sqlite_path()
+            dsn = _database_url()
             con = duckdb.connect(database=":memory:")
-            con.execute("INSTALL sqlite_scanner;")
-            con.execute("LOAD sqlite_scanner;")
-            # El parámetro read_only previene escrituras hacia el fichero SQLite.
-            con.execute(f"ATTACH '{sqlite_file}' AS {_SQLITE_ALIAS} (TYPE SQLITE, READ_ONLY);")
+            con.execute("INSTALL postgres;")
+            con.execute("LOAD postgres;")
+            # READ_ONLY previene escrituras hacia la BD operacional. El DSN se
+            # interpola pero nunca se loguea: lleva la contraseña.
+            con.execute(f"ATTACH '{dsn}' AS {_PG_ALIAS} (TYPE POSTGRES, READ_ONLY);")
             _conn = con
-            log.info("duckdb_attached", sqlite=str(sqlite_file))
+            log.info("duckdb_attached", backend="postgres")
         return _conn
 
 
@@ -152,18 +141,46 @@ def export_parquet(sql: str, out_path: Path | str, *, compression: str = "zstd")
 _ANALYTICS_TABLES: tuple[str, ...] = ("licitaciones", "adjudicaciones")
 
 
-def _sqlite_row_counts(tables: Iterable[str]) -> dict[str, int]:
-    """Lee ``SELECT COUNT(*)`` de cada tabla directamente desde SQLite."""
-    counts: dict[str, int] = {}
-    sqlite_file = _sqlite_path()
-    con = sqlite3.connect(f"file:{sqlite_file.as_posix()}?mode=ro", uri=True)
+def _source_db_mtime() -> float:
+    """Marca de frescura de la BD origen, en epoch.
+
+    Con SQLite era el ``mtime`` del fichero. Postgres no expone nada
+    equivalente por tabla, así que se usa ``MAX(fecha_extraccion)`` de
+    ``licitaciones`` — la misma señal que sirve el header ``Last-Modified`` de
+    la API (``api/routes/meta.py``), y la que de verdad responde a la pregunta
+    del manifest: *¿el snapshot quedó desactualizado respecto al dato?*
+
+    Devuelve ``0.0`` si la tabla está vacía o la fecha no es parseable: el
+    manifest se escribe igual y el lector interpreta 0 como "sin señal".
+    """
+    from datetime import datetime
+
+    from db.repositories.licitaciones import LicitacionRepository
+
+    raw = LicitacionRepository().get_last_extraction_date()
+    if not raw:
+        return 0.0
     try:
+        return datetime.fromisoformat(str(raw)).timestamp()
+    except ValueError:
+        log.warning("analytics_source_mtime_unparseable", value=str(raw))
+        return 0.0
+
+
+def _postgres_row_counts(tables: Iterable[str]) -> dict[str, int]:
+    """Lee ``SELECT COUNT(*)`` de cada tabla directamente desde Postgres.
+
+    Camino de respaldo cuando DuckDB no está instalado: el manifest sigue
+    registrando frescura y volumen aunque no se generen ficheros Parquet.
+    """
+    from db.database import connect_read
+
+    counts: dict[str, int] = {}
+    with connect_read() as c:
         for table in tables:
-            cur = con.execute(f"SELECT COUNT(*) FROM {table}")
-            row = cur.fetchone()
+            # `table` sale de la constante _ANALYTICS_TABLES, no de entrada externa.
+            row = c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
             counts[table] = int(row[0]) if row else 0
-    finally:
-        con.close()
     return counts
 
 
@@ -174,8 +191,8 @@ def run_analytics_export(output_dir: Path | str | None = None) -> dict[str, Any]
     ``adjudicaciones`` completas a ``<output_dir>/licitaciones.parquet`` y
     ``<output_dir>/adjudicaciones.parquet`` (compresión zstd, re-export full).
     En caso contrario, no falla: escribe igualmente el manifest con
-    ``engine="sqlite-direct"`` y ``row_counts`` leídos directamente de SQLite,
-    sin generar ficheros ``.parquet``.
+    ``engine="postgres-direct"`` y ``row_counts`` leídos directamente de
+    Postgres, sin generar ficheros ``.parquet``.
 
     En ambos casos termina escribiendo ``<output_dir>/_manifest.json`` vía
     :func:`shared.parquet_manifest.write_manifest`.
@@ -190,8 +207,7 @@ def run_analytics_export(output_dir: Path | str | None = None) -> dict[str, Any]
     out_dir = Path(output_dir) if output_dir is not None else Path(settings.DATA_DIR) / "parquet"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    sqlite_file = _sqlite_path()
-    source_db_mtime = sqlite_file.stat().st_mtime
+    source_db_mtime = _source_db_mtime()
 
     engine: ManifestEngine
     row_counts: dict[str, int]
@@ -201,17 +217,17 @@ def run_analytics_export(output_dir: Path | str | None = None) -> dict[str, Any]
         for table in _ANALYTICS_TABLES:
             dest = out_dir / f"{table}.parquet"
             export_parquet(
-                f"SELECT * FROM {_SQLITE_ALIAS}.{table}",
+                f"SELECT * FROM {_PG_ALIAS}.{table}",
                 dest,
                 compression="zstd",
             )
-            df_count = duckdb_query(f"SELECT COUNT(*) AS n FROM {_SQLITE_ALIAS}.{table}")
+            df_count = duckdb_query(f"SELECT COUNT(*) AS n FROM {_PG_ALIAS}.{table}")
             row_counts[table] = (
                 int(df_count["n"].iloc[0]) if df_count is not None and not df_count.empty else 0
             )
     else:
-        engine = "sqlite-direct"
-        row_counts = _sqlite_row_counts(_ANALYTICS_TABLES)
+        engine = "postgres-direct"
+        row_counts = _postgres_row_counts(_ANALYTICS_TABLES)
 
     manifest_path = out_dir / "_manifest.json"
     write_manifest(

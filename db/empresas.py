@@ -68,7 +68,7 @@ def create_empresa(
     now = now_utc_iso()
     cur = conn.execute(
         "INSERT INTO empresas (nif_canonico, nombre_canonico, es_ute, es_pyme, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?) RETURNING empresa_id",
+        "VALUES (%s, %s, %s, %s, %s, %s) RETURNING empresa_id",
         (nif_canonico, nombre_canonico, int(es_ute), es_pyme, now, now),
     )
     row = cur.fetchone()
@@ -90,7 +90,7 @@ def add_alias(
     conn.execute(
         "INSERT INTO empresa_aliases "
         "(empresa_id, alias_normalizado, nif_variante, fuente, confianza, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
+        "VALUES (%s, %s, %s, %s, %s, %s) "
         "ON CONFLICT (empresa_id, alias_normalizado, COALESCE(nif_variante, '')) DO NOTHING",
         (empresa_id, alias_normalizado, nif_variante, fuente, confianza, now_utc_iso()),
     )
@@ -103,9 +103,9 @@ def set_nif_canonico_if_null(conn: Any, empresa_id: int, nif: str) -> bool:
     NIF nuevo vs NIF canónico va a la cola de revisión, no aquí.
     """
     cur = conn.execute(
-        "UPDATE empresas SET nif_canonico = ?, updated_at = ? "
-        "WHERE empresa_id = ? AND nif_canonico IS NULL "
-        "AND NOT EXISTS (SELECT 1 FROM empresas WHERE nif_canonico = ?) "
+        "UPDATE empresas SET nif_canonico = %s, updated_at = %s "
+        "WHERE empresa_id = %s AND nif_canonico IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM empresas WHERE nif_canonico = %s) "
         "RETURNING empresa_id",
         (nif, now_utc_iso(), empresa_id, nif),
     )
@@ -114,7 +114,7 @@ def set_nif_canonico_if_null(conn: Any, empresa_id: int, nif: str) -> bool:
 
 def add_ute_member(conn: Any, ute_empresa_id: int, miembro_empresa_id: int) -> None:
     conn.execute(
-        "INSERT INTO ute_miembros (ute_empresa_id, miembro_empresa_id) VALUES (?, ?) "
+        "INSERT INTO ute_miembros (ute_empresa_id, miembro_empresa_id) VALUES (%s, %s) "
         "ON CONFLICT(ute_empresa_id, miembro_empresa_id) DO NOTHING",
         (ute_empresa_id, miembro_empresa_id),
     )
@@ -122,7 +122,7 @@ def add_ute_member(conn: Any, ute_empresa_id: int, miembro_empresa_id: int) -> N
 
 def link_adjudicacion(conn: Any, adjudicacion_id: int, empresa_id: int) -> None:
     conn.execute(
-        "UPDATE adjudicaciones SET empresa_id = ? WHERE id = ?",
+        "UPDATE adjudicaciones SET empresa_id = %s WHERE id = %s",
         (empresa_id, adjudicacion_id),
     )
 
@@ -155,16 +155,16 @@ def fetch_unlinked(
     """
     sql = [
         "SELECT a.id, a.nombre, a.nif, a.es_pyme FROM adjudicaciones a ",
-        "WHERE a.empresa_id IS NULL AND a.nombre IS NOT NULL AND a.id > ? ",
+        "WHERE a.empresa_id IS NULL AND a.nombre IS NOT NULL AND a.id > %s ",
     ]
     params: list[Any] = [after_id]
     if fuente is not None:
         sql.append(
             "AND EXISTS (SELECT 1 FROM licitaciones l "
-            "WHERE l.id_externo = a.licitacion_id AND l.fuente = ?) "
+            "WHERE l.id_externo = a.licitacion_id AND l.fuente = %s) "
         )
         params.append(fuente)
-    sql.append("ORDER BY a.id LIMIT ?")
+    sql.append("ORDER BY a.id LIMIT %s")
     params.append(limit)
 
     cur = conn.execute("".join(sql), tuple(params))
@@ -185,7 +185,7 @@ def enqueue_review(
     conn.execute(
         "INSERT INTO empresa_review_queue "
         "(nombre_original, alias_normalizado, nif, candidato_empresa_id, score, status, created_at) "
-        "VALUES (?, ?, ?, ?, ?, 'pending', ?) "
+        "VALUES (%s, %s, %s, %s, %s, 'pending', %s) "
         "ON CONFLICT (alias_normalizado, COALESCE(nif, ''), candidato_empresa_id) "
         "WHERE status = 'pending' DO NOTHING",
         (nombre_original, alias_normalizado, nif, candidato_empresa_id, score, now_utc_iso()),
@@ -209,7 +209,7 @@ def list_pending_reviews(limit: int = 100) -> list[dict[str, Any]]:
             "       e.nif_canonico AS candidato_nif, q.created_at "
             "FROM empresa_review_queue q "
             "LEFT JOIN empresas e ON e.empresa_id = q.candidato_empresa_id "
-            "WHERE q.status = 'pending' ORDER BY q.score DESC LIMIT ?",
+            "WHERE q.status = 'pending' ORDER BY q.score DESC LIMIT %s",
             (limit,),
         )
         cols = [d[0] for d in cur.description]
@@ -228,7 +228,7 @@ def apply_review(review_id: int, *, accept: bool, resolved_by: str = "") -> int 
     with connect() as c:
         row = c.execute(
             "SELECT nombre_original, alias_normalizado, nif, candidato_empresa_id "
-            "FROM empresa_review_queue WHERE id = ? AND status = 'pending'",
+            "FROM empresa_review_queue WHERE id = %s AND status = 'pending'",
             (review_id,),
         ).fetchone()
         if row is None:
@@ -247,13 +247,13 @@ def apply_review(review_id: int, *, accept: bool, resolved_by: str = "") -> int 
 
         # Vincular las adjudicaciones que estaban esperando esta decisión
         c.execute(
-            "UPDATE adjudicaciones SET empresa_id = ? "
-            "WHERE empresa_id IS NULL AND nombre = ? AND COALESCE(nif, '') = COALESCE(?, '')",
+            "UPDATE adjudicaciones SET empresa_id = %s "
+            "WHERE empresa_id IS NULL AND nombre = %s AND COALESCE(nif, '') = COALESCE(%s, '')",
             (empresa_id, nombre_original, nif),
         )
         c.execute(
-            "UPDATE empresa_review_queue SET status = ?, resolved_at = ?, resolved_by = ? "
-            "WHERE id = ?",
+            "UPDATE empresa_review_queue SET status = %s, resolved_at = %s, resolved_by = %s "
+            "WHERE id = %s",
             ("accepted" if accept else "rejected", now_utc_iso(), resolved_by, review_id),
         )
         return empresa_id

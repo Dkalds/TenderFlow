@@ -6,6 +6,9 @@ from typing import Any, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class FeedbackRepository:
@@ -33,7 +36,7 @@ class FeedbackRepository:
             c.execute(
                 "INSERT INTO ml_feedback "
                 "(expediente, relevante, nota, tecnologia, tecnologias_secundarias, model_version, user_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     expediente,
                     1 if relevante else 0,
@@ -65,7 +68,8 @@ class FeedbackRepository:
         """Devuelve expedientes ya etiquetados (por prefijo de nota)."""
         with connect_read() as c:
             rows = c.execute(
-                "SELECT DISTINCT expediente FROM ml_feedback WHERE nota LIKE ? || '%'",
+                # `%%`: ver db/dlq.py — el literal viaja con parámetros.
+                "SELECT DISTINCT expediente FROM ml_feedback WHERE nota LIKE %s || '%%'",
                 (prefix,),
             ).fetchall()
         return {str(r[0]) for r in rows}
@@ -75,7 +79,7 @@ class FeedbackRepository:
         with connect_read() as c:
             row = c.execute(
                 "SELECT response_json, created_at FROM idempotency_keys "
-                "WHERE idem_key = ? AND endpoint = 'feedback'",
+                "WHERE idem_key = %s AND endpoint = 'feedback'",
                 (key,),
             ).fetchone()
         if not row:
@@ -85,6 +89,10 @@ class FeedbackRepository:
         try:
             return cast(dict[str, Any], json.loads(row[0]))
         except Exception:
+            # Un JSON corrupto en la caché de idempotencia se presenta como
+            # "esta key no existe", así que la petición se reprocesa como nueva
+            # — justo lo que la idempotencia venía a evitar.
+            log.warning("feedback_idempotency_payload_corrupto", exc_info=True)
             return None
 
     def store_idempotency(self, key: str, response: dict[str, Any]) -> None:
@@ -94,7 +102,7 @@ class FeedbackRepository:
             c.execute(
                 "INSERT INTO idempotency_keys "
                 "(idem_key, endpoint, response_json, created_at) "
-                "VALUES (?, 'feedback', ?, ?) "
+                "VALUES (%s, 'feedback', %s, %s) "
                 "ON CONFLICT(idem_key, endpoint) DO NOTHING",
                 (key, json.dumps(response, ensure_ascii=False), now_utc_iso()),
             )
@@ -102,17 +110,19 @@ class FeedbackRepository:
     def export_all(self, limit: int = 10_000) -> list[dict[str, Any]]:
         """Exporta todo el ML feedback (anónimo, sin FK a usuario). Para GDPR."""
         with connect_read() as c:
-            cur = c.execute("SELECT * FROM ml_feedback LIMIT ?", (limit,))
+            cur = c.execute("SELECT * FROM ml_feedback LIMIT %s", (limit,))
             return rows_to_dicts(cur)
 
     def export_for_user(self, user_id: int, limit: int = 10_000) -> list[dict[str, Any]]:
         """Exporta exclusivamente el feedback atribuible a un usuario."""
         with connect_read() as c:
-            cur = c.execute("SELECT * FROM ml_feedback WHERE user_id = ? LIMIT ?", (user_id, limit))
+            cur = c.execute(
+                "SELECT * FROM ml_feedback WHERE user_id = %s LIMIT %s", (user_id, limit)
+            )
             return rows_to_dicts(cur)
 
     def delete_for_user(self, user_id: int) -> int:
         """Elimina el feedback personal como parte del derecho de supresión."""
         with connect() as c:
-            cur = c.execute("DELETE FROM ml_feedback WHERE user_id = ?", (user_id,))
+            cur = c.execute("DELETE FROM ml_feedback WHERE user_id = %s", (user_id,))
             return int(cur.rowcount or 0)

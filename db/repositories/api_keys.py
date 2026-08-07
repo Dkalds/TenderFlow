@@ -39,7 +39,7 @@ class ApiKeyRepository:
                 select_parts.append("'*' AS scopes")
             row = c.execute(
                 "SELECT " + ", ".join(select_parts) + " FROM api_keys "
-                "WHERE key_hash = ? AND is_active = 1",
+                "WHERE key_hash = %s AND is_active = 1",
                 (key_hash,),
             ).fetchone()
         if row is None:
@@ -54,7 +54,7 @@ class ApiKeyRepository:
     def get_stored_hash(self, key_id: int) -> str | None:
         """Devuelve el ``key_hash`` almacenado para validación en tiempo constante."""
         with connect_read() as c:
-            row = c.execute("SELECT key_hash FROM api_keys WHERE id = ?", (key_id,)).fetchone()
+            row = c.execute("SELECT key_hash FROM api_keys WHERE id = %s", (key_id,)).fetchone()
         return str(row[0]) if row else None
 
     def get_active_scopes(self, key_hash: str) -> str | None:
@@ -62,10 +62,13 @@ class ApiKeyRepository:
         try:
             with connect_read() as c:
                 row = c.execute(
-                    "SELECT scopes FROM api_keys WHERE key_hash = ? AND is_active = 1",
+                    "SELECT scopes FROM api_keys WHERE key_hash = %s AND is_active = 1",
                     (key_hash,),
                 ).fetchone()
         except Exception:
+            # Un fallo de BD aquí se presenta como "clave inválida": sin log no
+            # hay forma de distinguir un ataque de una caída de infraestructura.
+            log.warning("api_key_scopes_lookup_failed", exc_info=True)
             return None
         if not row:
             return None
@@ -79,18 +82,19 @@ class ApiKeyRepository:
                 if "user_id" not in cols:
                     return None
                 row = c.execute(
-                    "SELECT user_id FROM api_keys WHERE id = ? LIMIT 1", (key_id,)
+                    "SELECT user_id FROM api_keys WHERE id = %s LIMIT 1", (key_id,)
                 ).fetchone()
                 if row and row[0]:
                     return int(row[0])
                 return None
             except Exception:
+                log.warning("api_key_user_id_lookup_failed", key_id=key_id, exc_info=True)
                 return None
 
     def get_name_and_scopes(self, key_id: int) -> tuple[str, str] | None:
         """Obtiene nombre y scopes de una API key por ID."""
         with connect_read() as c:
-            row = c.execute("SELECT name, scopes FROM api_keys WHERE id = ?", (key_id,)).fetchone()
+            row = c.execute("SELECT name, scopes FROM api_keys WHERE id = %s", (key_id,)).fetchone()
         if not row:
             return None
         return row[0], str(row[1] or "*")
@@ -110,8 +114,8 @@ class ApiKeyRepository:
         with connect_read() as c:
             row = c.execute(
                 "SELECT user_id, name, scopes FROM api_keys "
-                "WHERE id = ? AND is_active = 1 "
-                "AND (expires_at IS NULL OR expires_at > ?)",
+                "WHERE id = %s AND is_active = 1 "
+                "AND (expires_at IS NULL OR expires_at > %s)",
                 (key_id, now_utc_iso()),
             ).fetchone()
         if not row:
@@ -125,7 +129,7 @@ class ApiKeyRepository:
     def get_name(self, key_hash: str) -> str | None:
         with connect_read() as c:
             row = c.execute(
-                "SELECT name FROM api_keys WHERE key_hash = ? LIMIT 1", (key_hash,)
+                "SELECT name FROM api_keys WHERE key_hash = %s LIMIT 1", (key_hash,)
             ).fetchone()
         return str(row[0]) if row else None
 
@@ -141,12 +145,15 @@ class ApiKeyRepository:
             try:
                 cur = c.execute(
                     "SELECT id, name, created_at, expires_at, is_active "
-                    "FROM api_keys WHERE user_id = ?",
+                    "FROM api_keys WHERE user_id = %s",
                     (user_id,),
                 )
                 cols = [d[0] for d in cur.description]
                 return [dict(zip(cols, r, strict=False)) for r in cur.fetchall()]
             except Exception:
+                # Una lista vacía por fallo de BD es indistinguible de "este
+                # usuario no tiene keys", y el dueño no puede rotar lo que no ve.
+                log.warning("api_keys_list_for_user_failed", user_id=user_id, exc_info=True)
                 return []
 
     # ── Listings ─────────────────────────────────────────────
@@ -164,7 +171,7 @@ class ApiKeyRepository:
         """Exporta las API keys vinculadas al ``key_hash`` (GDPR)."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT name, created_at, expires_at FROM api_keys WHERE key_hash = ?",
+                "SELECT name, created_at, expires_at FROM api_keys WHERE key_hash = %s",
                 (key_hash,),
             )
             return rows_to_dicts(cur)
@@ -180,11 +187,12 @@ class ApiKeyRepository:
                 if "expires_at" in cols_info:
                     select_cols += ", expires_at"
                 cur = c.execute(
-                    "SELECT " + select_cols + " FROM api_keys WHERE id = ?",
+                    "SELECT " + select_cols + " FROM api_keys WHERE id = %s",
                     (key_id,),
                 )
                 return rows_to_dicts(cur)
             except Exception:
+                log.warning("api_key_lookup_by_id_failed", key_id=key_id, exc_info=True)
                 return []
 
     # ── Mutations ────────────────────────────────────────────
@@ -193,7 +201,7 @@ class ApiKeyRepository:
         try:
             with connect() as c:
                 c.execute(
-                    "UPDATE api_keys SET last_used = ? WHERE id = ?",
+                    "UPDATE api_keys SET last_used = %s WHERE id = %s",
                     (now_utc_iso(), key_id),
                 )
         except Exception:
@@ -206,12 +214,12 @@ class ApiKeyRepository:
             cols_info = get_table_columns(c, "api_keys")
             if "scopes" in cols_info:
                 c.execute(
-                    "INSERT INTO api_keys (key_hash, name, created_at, is_active, scopes) VALUES (?, ?, ?, 1, ?)",
+                    "INSERT INTO api_keys (key_hash, name, created_at, is_active, scopes) VALUES (%s, %s, %s, 1, %s)",
                     (key_hash, name, now_utc_iso(), scopes),
                 )
             else:
                 c.execute(
-                    "INSERT INTO api_keys (key_hash, name, created_at, is_active) VALUES (?, ?, ?, 1)",
+                    "INSERT INTO api_keys (key_hash, name, created_at, is_active) VALUES (%s, %s, %s, 1)",
                     (key_hash, name, now_utc_iso()),
                 )
         return raw
@@ -246,7 +254,7 @@ class ApiKeyRepository:
                 fields.append("expires_at")
                 values.append(expires_at)
 
-            placeholders = ",".join("?" * len(fields))
+            placeholders = ",".join(["%s"] * len(fields))
             c.execute(
                 "INSERT INTO api_keys (" + ", ".join(fields) + ") VALUES (" + placeholders + ")",
                 values,
@@ -254,19 +262,19 @@ class ApiKeyRepository:
 
     def revoke(self, key_hash: str) -> bool:
         with connect() as c:
-            cur = c.execute("UPDATE api_keys SET is_active = 0 WHERE key_hash = ?", (key_hash,))
+            cur = c.execute("UPDATE api_keys SET is_active = 0 WHERE key_hash = %s", (key_hash,))
             return bool(cur.rowcount)
 
     def revoke_by_id(self, key_id: int) -> None:
         """Revoca una API key por su ID interno."""
         with connect() as c:
-            c.execute("UPDATE api_keys SET is_active = 0 WHERE id = ?", (key_id,))
+            c.execute("UPDATE api_keys SET is_active = 0 WHERE id = %s", (key_id,))
 
     def deactivate_by_id(self, key_id: int) -> None:
         """Desactiva una key por ID y actualiza ``last_used`` (GDPR)."""
         with connect() as c:
             c.execute(
-                "UPDATE api_keys SET is_active = 0, last_used = ? WHERE id = ?",
+                "UPDATE api_keys SET is_active = 0, last_used = %s WHERE id = %s",
                 (now_utc_iso(), key_id),
             )
 
@@ -275,11 +283,14 @@ class ApiKeyRepository:
         with connect() as c:
             try:
                 cur = c.execute(
-                    "UPDATE api_keys SET is_active = 0, last_used = ? WHERE user_id = ?",
+                    "UPDATE api_keys SET is_active = 0, last_used = %s WHERE user_id = %s",
                     (now_utc_iso(), user_id),
                 )
                 return int(cur.rowcount)
             except Exception:
+                # Camino GDPR de borrado de cuenta: devolver 0 en silencio deja
+                # keys vivas de una cuenta que el usuario cree eliminada.
+                log.warning("api_keys_deactivate_all_failed", user_id=user_id, exc_info=True)
                 return 0
 
     def set_expiry(self, key_id: int, expires_at: str) -> None:
@@ -288,6 +299,6 @@ class ApiKeyRepository:
             cols_info = get_table_columns(c, "api_keys")
             if "expires_at" in cols_info:
                 c.execute(
-                    "UPDATE api_keys SET expires_at = ? WHERE id = ?",
+                    "UPDATE api_keys SET expires_at = %s WHERE id = %s",
                     (expires_at, key_id),
                 )

@@ -40,14 +40,14 @@ def _adj_filter_conditions(
     conditions: list[str] = []
     params: list[Any] = []
     if ccaa_filter:
-        placeholders = ",".join("?" for _ in ccaa_filter)
+        placeholders = ",".join("%s" for _ in ccaa_filter)
         conditions.append(f"a.ccaa IN ({placeholders})")
         params.extend(ccaa_filter)
     if fecha_desde and _DATE_RE.match(fecha_desde):
-        conditions.append("a.fecha_adjudicacion >= ?")
+        conditions.append("a.fecha_adjudicacion >= %s")
         params.append(fecha_desde)
     if fecha_hasta and _DATE_RE.match(fecha_hasta):
-        conditions.append("a.fecha_adjudicacion <= ?")
+        conditions.append("a.fecha_adjudicacion <= %s")
         params.append(fecha_hasta)
     return conditions, params
 
@@ -68,16 +68,16 @@ class AdjudicacionRepository:
         params: list[Any] = []
 
         if licitacion_id:
-            conditions.append("licitacion_id = ?")
+            conditions.append("licitacion_id = %s")
             params.append(licitacion_id)
         if ccaa:
-            conditions.append("ccaa = ?")
+            conditions.append("ccaa = %s")
             params.append(ccaa)
         if fecha_desde and _DATE_RE.match(fecha_desde):
-            conditions.append("fecha_adjudicacion >= ?")
+            conditions.append("fecha_adjudicacion >= %s")
             params.append(fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            conditions.append("fecha_adjudicacion <= ?")
+            conditions.append("fecha_adjudicacion <= %s")
             params.append(fecha_hasta)
 
         where = " AND ".join(conditions)
@@ -86,7 +86,7 @@ class AdjudicacionRepository:
             sql = "SELECT " + _SUMMARY_COLS + " FROM adjudicaciones"
             if where:
                 sql += " WHERE " + where
-            sql += " ORDER BY fecha_adjudicacion DESC LIMIT ? OFFSET ?"
+            sql += " ORDER BY fecha_adjudicacion DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
             items = rows_to_dicts(c.execute(sql, tuple(params)))
 
@@ -135,22 +135,22 @@ class AdjudicacionRepository:
         conditions: list[str] = []
         params: list[Any] = []
         if ccaa:
-            conditions.append("a.ccaa = ?")
+            conditions.append("a.ccaa = %s")
             params.append(ccaa)
         if tecnologia:
-            conditions.append("l.tecnologia = ?")
+            conditions.append("l.tecnologia = %s")
             params.append(tecnologia)
         if estado:
-            conditions.append("l.estado = ?")
+            conditions.append("l.estado = %s")
             params.append(estado)
         if fecha_desde and _DATE_RE.match(fecha_desde):
-            conditions.append("a.fecha_adjudicacion >= ?")
+            conditions.append("a.fecha_adjudicacion >= %s")
             params.append(fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            conditions.append("a.fecha_adjudicacion <= ?")
+            conditions.append("a.fecha_adjudicacion <= %s")
             params.append(fecha_hasta)
         if importe_min is not None:
-            conditions.append("l.importe >= ?")
+            conditions.append("l.importe >= %s")
             params.append(importe_min)
         if conditions:
             sql += "WHERE " + " AND ".join(conditions) + " "
@@ -175,7 +175,7 @@ class AdjudicacionRepository:
         )
         params: list[Any] = []
         if ccaa_filter:
-            placeholders = ",".join("?" for _ in ccaa_filter)
+            placeholders = ",".join("%s" for _ in ccaa_filter)
             sql += f"WHERE a.ccaa IN ({placeholders}) "
             params.extend(ccaa_filter)
         sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
@@ -240,7 +240,7 @@ class AdjudicacionRepository:
             "           AS importe_individual, "
             "       COUNT(DISTINCT nombre) FILTER (WHERE es_ute) AS empresas_distintas "
             "FROM (SELECT a.nombre, a.importe_adjudicado, "
-            "             COALESCE(a.nombre ~* ?, FALSE) AS es_ute "
+            "             COALESCE(a.nombre ~* %s, FALSE) AS es_ute "
             f"      FROM adjudicaciones a{where}) t"
         )
         with connect_read() as c:
@@ -274,12 +274,12 @@ class AdjudicacionRepository:
         conditions, params = _adj_filter_conditions(
             ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
         )
-        where = " AND ".join(["COALESCE(a.nombre ~* ?, FALSE)", *conditions])
+        where = " AND ".join(["COALESCE(a.nombre ~* %s, FALSE)", *conditions])
         sql = (
             "SELECT a.nombre AS nombre, COUNT(*) AS count, "
             "       COALESCE(SUM(a.importe_adjudicado), 0) AS importe "
             f"FROM adjudicaciones a WHERE {where} "
-            "GROUP BY a.nombre ORDER BY count DESC, importe DESC, nombre LIMIT ?"
+            "GROUP BY a.nombre ORDER BY count DESC, importe DESC, nombre LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [pattern, *params, limit]))
@@ -302,7 +302,7 @@ class AdjudicacionRepository:
         )
         where = " AND ".join(
             [
-                "COALESCE(a.nombre ~* ?, FALSE)",
+                "COALESCE(a.nombre ~* %s, FALSE)",
                 "a.fecha_adjudicacion >= '1900'",
                 "a.fecha_adjudicacion < '3000'",
                 *conditions,
@@ -336,7 +336,7 @@ class AdjudicacionRepository:
         conditions, params = _adj_filter_conditions(
             ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
         )
-        where = " AND ".join(["COALESCE(a.nombre ~* ?, FALSE)", *conditions])
+        where = " AND ".join(["COALESCE(a.nombre ~* %s, FALSE)", *conditions])
         sql = f"SELECT a.nombre, a.importe_adjudicado FROM adjudicaciones a WHERE {where}"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [pattern, *params]))
@@ -358,7 +358,7 @@ class AdjudicacionRepository:
             "       a.importe_adjudicado, a.fecha_adjudicacion, "
             "       l.fecha_publicacion, l.importe AS importe_licitacion "
             f"{_GRAPH_FROM}"
-            "WHERE l.organo_contratacion = ?"
+            "WHERE l.organo_contratacion = %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [organo]))
