@@ -2,7 +2,7 @@
  * Mapa de espacios de la consola.
  *
  * El rediseño (ver `docs/redesign/README.md`) consolida las 25 rutas del
- * dashboard en 14 espacios navegables. Este módulo es la única fuente de
+ * dashboard en 13 espacios navegables. Este módulo es la única fuente de
  * verdad de esa consolidación y gobierna tres cosas a la vez:
  *
  * 1. El rail de 56px (`components/layout/console-rail.tsx`).
@@ -23,7 +23,6 @@ import {
   type LucideIcon,
   LayoutDashboard,
   ListChecks,
-  Network,
   RadioTower,
   Settings2,
   ShieldCheck,
@@ -115,16 +114,6 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     views: SPACE_VIEWS.competencia,
   },
   {
-    key: "relaciones",
-    label: "Relaciones",
-    short: "REL",
-    slug: "relaciones",
-    description: "Estructura de mercado: concentración, grafos y partners.",
-    icon: Network,
-    group: "analisis",
-    views: SPACE_VIEWS.relaciones,
-  },
-  {
     key: "investigador",
     label: "Investigador",
     short: "IA",
@@ -213,7 +202,7 @@ export function findConsoleSpace(pathname: string): ConsoleSpace | undefined {
 
 /**
  * Rutas de espacio ya construidas, como Set para lookups. La migración está
- * completa (14/14): toda ruta del dashboard es superficie de consola y el
+ * completa (13/13): toda ruta del dashboard es superficie de consola y el
  * cromo heredado (breadcrumb, pestañas, KPI bar) se retiró en 2026-08 —
  * `console-frame.tsx` monta una única superficie sin mirar la ruta.
  */

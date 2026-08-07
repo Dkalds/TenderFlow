@@ -217,7 +217,7 @@ const ROLES = ["owner", "admin", "member", "viewer"] as const;
 type Role = (typeof ROLES)[number];
 
 const PERMISSIONS: { capability: string; detail: string; roles: Role[] }[] = [
-  { capability: "Ver los espacios de análisis", detail: "Radar, Mercado, Competencia, Relaciones", roles: ["owner", "admin", "member", "viewer"] },
+  { capability: "Ver los espacios de análisis", detail: "Radar, Mercado, Competencia", roles: ["owner", "admin", "member", "viewer"] },
   { capability: "Guardar vistas y watchlists propias", detail: "Mi Watchlist, Mi perfil de scoring", roles: ["owner", "admin", "member"] },
   { capability: "Abrir y editar oportunidades", detail: "decisión, responsable, precio", roles: ["owner", "admin", "member"] },
   { capability: "Invitar y quitar miembros", detail: "Equipo", roles: ["owner", "admin"] },

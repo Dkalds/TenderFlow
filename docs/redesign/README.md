@@ -23,7 +23,7 @@ antiguo deja de compilar, la pregunta es *dónde ha ido esa capacidad*, no
 | Rail de 56px | `components/layout/console-rail.tsx` | La sidebar de 248px con sus once secciones, más el menú de cuenta del TopNav (organización activa, densidad, tema, cerrar sesión) |
 | Barra de ámbito de 52px | `components/layout/scope-bar.tsx` | La `GlobalFilterBar` entera (mismos seis controles, mismo contrato por página), el buscador ⌘K, exportar, notificaciones y el indicador de frescura |
 | Marco | `components/layout/console-frame.tsx` | Decide entre superficie de consola y cromo heredado según `isConsoleRoute` |
-| Mapa de espacios | `lib/console-spaces.ts` + `lib/space-views.ts` | Las 25 rutas → 14 espacios; gobierna rail, redirects y qué ruta usa qué cromo |
+| Mapa de espacios | `lib/console-spaces.ts` + `lib/space-views.ts` | Las 25 rutas → 13 espacios; gobierna rail, redirects y qué ruta usa qué cromo |
 | Historial del ámbito | `lib/scope-history.ts` | Deshacer / rehacer sobre cualquier cambio de filtro, venga de donde venga |
 
 `TopNav`, `Sidebar` y `GlobalFilterBar` siguen en el árbol con sus tests: son la
@@ -44,7 +44,7 @@ Mientras un espacio no esté construido, el rail enlaza a la primera ruta que
 absorberá y no hay redirect: mandar `/tendencias` a un `/mercado` inexistente
 cambiaría una pantalla viva por un 404.
 
-### Estado: los 14 espacios, cubriendo las 25 rutas
+### Estado: los 13 espacios, cubriendo las 25 rutas
 
 **Rediseñadas a fondo**, con su superficie reconstruida:
 
@@ -65,12 +65,15 @@ completa, así que no se ha tocado una sola de sus funciones:
 | --- | --- | --- |
 | `/mercado` | 8 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos |
 | `/competencia` | 2 | competidores · utes |
-| `/relaciones` | 2 | red-organo-empresa · ecosistema-partners |
 | `/mi-pipeline` | 2 | pipeline-alertas · renovaciones |
 | `/ops` | 5 | observabilidad · calidad-datos · administración · feature-flags · active-learning |
 
 **Con cabecera de espacio** y su pantalla intacta: `/oportunidades`,
 `/investigador`, `/mi-watchlist`, `/mi-perfil`, `/empresas`, `/equipo`.
+
+**Fuera del sistema de espacios**, cada una en su propia ruta sin agrupar:
+`/red-organo-empresa`, `/ecosistema-partners` (antes consolidadas bajo
+`/relaciones`, retirada de la navegación; ambas pantallas siguen intactas).
 
 ### Los movimientos estructurales, uno por pantalla
 
@@ -83,7 +86,6 @@ Consolidar no era el objetivo: era el envase. Esto es lo que cambia dentro.
 | Detalle | Los once bloques del Sheet modal en cinco pestañas, en el mismo plano que la tabla |
 | Oportunidades | Carriles a alto de pantalla con scroll propio; en la ficha, **Decisión abre** (era el último de seis paneles) |
 | Competencia | La tabla que gobierna los nueve gráficos va primero; los nueve pasan a cortes con pestañas; el dossier sale del modal |
-| Relaciones | Ranking y grafo lado a lado: re-centrar en un vecino ya no te quita de vista la fila de la que venías |
 | Investigador | `alpha` y `top_k` visibles; resultados y conversación conviven en vez de excluirse |
 | Mercado · Órganos | El drill-down sale del Sheet y convive con el ranking |
 | Empresas | La cola de revisión pasa de bloque condicional a vista con contador; importe resuelto en ámbar bajo el 95% |
@@ -133,7 +135,7 @@ diff habría hecho ilegible el uno y arriesgado el otro.
 ### Qué está verificado y qué no
 
 En verde: tests unitarios, lint, typecheck, build, invariantes de datos, y los
-19 redirects comprobados contra el servidor real (308 con la query intacta).
+17 redirects comprobados contra el servidor real (308 con la query intacta).
 
 **Sin verificar: el aspecto con datos reales.** No hay backend en el entorno de
 desarrollo remoto, así que no hay QA visual. Los e2e de Playwright fallan 27 de

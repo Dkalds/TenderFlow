@@ -34,10 +34,6 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "competidores", label: "Competidores", from: "competidores" },
     { key: "utes", label: "UTEs", from: "utes" },
   ],
-  relaciones: [
-    { key: "organo-empresa", label: "Órgano · empresa", from: "red-organo-empresa" },
-    { key: "partners", label: "Partners", from: "ecosistema-partners" },
-  ],
   "mi-pipeline": [
     { key: "pipeline", label: "Pipeline y alertas", from: "pipeline-alertas" },
     { key: "renovaciones", label: "Renovaciones", from: "renovaciones" },
@@ -64,7 +60,6 @@ export const BUILT_SPACE_ROUTES: readonly string[] = [
   "oportunidades",
   "mercado",
   "competencia",
-  "relaciones",
   "investigador",
   "mi-pipeline",
   "mi-watchlist",
