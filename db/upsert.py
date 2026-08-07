@@ -492,6 +492,12 @@ def replace_adjudicaciones_batch(
                     persisted += p
                     dropped += d
                 except Exception:
+                    # `failures` recoge el detalle para record_failure, pero solo
+                    # en el camino por lotes; aquí el contador subía sin dejar
+                    # ninguna traza de qué expediente falló ni por qué.
+                    _log.warning(
+                        "adjudicaciones_rowwise_failed", licitacion_id=lic_id, exc_info=True
+                    )
                     failed += 1
     # Persistir failures fuera de la transacción del upsert (best-effort).
     for caught_exc, payload_ref in failures:

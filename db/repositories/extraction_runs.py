@@ -113,4 +113,5 @@ class ExtractionRunRepository:
                 ).fetchall()
             return [r[0] for r in rows]
         except Exception:
+            log.warning("recent_daily_statuses_load_failed", exc_info=True)
             return []

@@ -814,3 +814,13 @@ Resueltos por los streams de [docs/plans/2026-08-plan-saneamiento.md](../plans/2
 - **Riesgo:** bajo — un KPI; el único punto sensible es si requiere columna nueva (alembic → OK humano).
 - **Cerrado:** 2026-08-07, commit `8eb7450`.
 
+### [P2] Vaciar el grandfathering de excepciones tragadas (20 funciones restantes)
+- **Área:** db/, services/
+- **Problema:** `tests/test_swallowed_exceptions_guard.py` congela funciones cuyo `except Exception` devuelve un fallback sin dejar rastro: un fallo de infraestructura se presenta como "sin resultados" y nadie puede distinguirlo.
+- **Progreso 2026-08-07 (commit `ad2574e`):** 32 → **20**. Instrumentadas las 12 de autenticación (`api_keys` ×5, `sessions`, `totp` ×2), auditoría (`log_event` ×2 handlers, `verify_hash_chain`) y export GDPR. Quedan las de búsqueda, webhooks e ingesta.
+- **Acceptance criteria:**
+  - Cada arreglo añade `log.warning("<evento>", exc_info=True)` antes del fallback y borra su entrada de `_GRANDFATHERED_PENDING_FIX` (el ratchet falla si la entrada sobra).
+  - Prioridad sugerida: autenticación → auditoría → búsqueda → analítica.
+- **Files de partida:** [tests/test_swallowed_exceptions_guard.py](../tests/test_swallowed_exceptions_guard.py)
+- **Riesgo:** bajo — aditivo (solo añade logs).
+- **Cerrado:** 2026-08-07 (Ola 2). El ratchet quedó en **0** de 32: las 12 de auth/auditoría en `ad2574e` y las 15 de búsqueda, webhooks e ingesta en la Ola 2.

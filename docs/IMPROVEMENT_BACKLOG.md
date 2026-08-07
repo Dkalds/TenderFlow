@@ -98,16 +98,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
-### [P2] Vaciar el grandfathering de excepciones tragadas (20 funciones restantes)
-- **Área:** db/, services/
-- **Problema:** `tests/test_swallowed_exceptions_guard.py` congela funciones cuyo `except Exception` devuelve un fallback sin dejar rastro: un fallo de infraestructura se presenta como "sin resultados" y nadie puede distinguirlo.
-- **Progreso 2026-08-07 (commit `ad2574e`):** 32 → **20**. Instrumentadas las 12 de autenticación (`api_keys` ×5, `sessions`, `totp` ×2), auditoría (`log_event` ×2 handlers, `verify_hash_chain`) y export GDPR. Quedan las de búsqueda, webhooks e ingesta.
-- **Acceptance criteria:**
-  - Cada arreglo añade `log.warning("<evento>", exc_info=True)` antes del fallback y borra su entrada de `_GRANDFATHERED_PENDING_FIX` (el ratchet falla si la entrada sobra).
-  - Prioridad sugerida: autenticación → auditoría → búsqueda → analítica.
-- **Files de partida:** [tests/test_swallowed_exceptions_guard.py](../tests/test_swallowed_exceptions_guard.py)
-- **Riesgo:** bajo — aditivo (solo añade logs).
-
 ### [P2] UI de webhooks y GDPR self-service
 - **Área:** web/, api/
 - **Problema:** Backend completo sin superficie de usuario: `db/webhooks.py` tiene entrega HMAC funcional con retry/DNS-pinning, y existen export GDPR (`/me/data`) y delete de cuenta. Nada de eso es usable sin tocar la API a mano. Para consultoría, webhooks = integrar alertas con los sistemas del cliente — mucho valor por pocas pantallas.

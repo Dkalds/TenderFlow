@@ -6,6 +6,9 @@ from typing import Any, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class FeedbackRepository:
@@ -85,6 +88,10 @@ class FeedbackRepository:
         try:
             return cast(dict[str, Any], json.loads(row[0]))
         except Exception:
+            # Un JSON corrupto en la caché de idempotencia se presenta como
+            # "esta key no existe", así que la petición se reprocesa como nueva
+            # — justo lo que la idempotencia venía a evitar.
+            log.warning("feedback_idempotency_payload_corrupto", exc_info=True)
             return None
 
     def store_idempotency(self, key: str, response: dict[str, Any]) -> None:

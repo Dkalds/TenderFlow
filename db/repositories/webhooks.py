@@ -185,6 +185,7 @@ class WebhookRepository:
                 )
                 return rows_to_dicts(cur)
             except Exception:
+                log.warning("webhook_deliveries_list_failed", exc_info=True)
                 return []
 
     @staticmethod
@@ -253,6 +254,7 @@ class WebhookRepository:
                 try:
                     inserted_value = cast(dict[str, Any], json.loads(row[0]))
                 except Exception:
+                    log.warning("idempotency_inserted_value_unreadable", exc_info=True)
                     inserted_value = {}
                 # Algunos adaptadores no informan rowcount de INSERT de forma
                 # uniforme. El token aleatorio identifica inequívocamente
@@ -263,6 +265,7 @@ class WebhookRepository:
             return False, cast(dict[str, Any], json.loads(row[0]))
         except Exception:
             # A malformed legacy cache entry is not trusted and never returned.
+            log.warning("idempotency_reserve_failed", exc_info=True)
             return False, {}
 
     def idempotency_finalize(
@@ -285,6 +288,7 @@ class WebhookRepository:
             try:
                 pending = cast(dict[str, Any], json.loads(row[0]))
             except Exception:
+                log.warning("idempotency_finalize_failed", exc_info=True)
                 return False
             if pending.get("_reservation_token") != reservation_token:
                 return False
@@ -308,6 +312,9 @@ class WebhookRepository:
             try:
                 pending = cast(dict[str, Any], json.loads(row[0]))
             except Exception:
+                # Sin poder leer la reserva no se puede liberar: la key queda
+                # ocupada hasta que expire, bloqueando reintentos legítimos.
+                log.warning("idempotency_release_payload_ilegible", exc_info=True)
                 return
             if pending.get("_pending") and pending.get("_reservation_token") == reservation_token:
                 c.execute(

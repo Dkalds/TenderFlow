@@ -14,7 +14,10 @@ from sqlalchemy import Select, and_, func, or_, select, text
 from db.database import connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS
+
+log = get_logger(__name__)
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -589,6 +592,7 @@ class LicitacionRepository:
                 )
                 return [row[0] for row in cur.fetchall()]
         except Exception:
+            log.warning("fts_ids_search_failed", exc_info=True)
             return None
 
     def load_drift_window(self, start: str, end: str) -> list[dict[str, Any]]:
@@ -708,6 +712,7 @@ class LicitacionRepository:
                 )
                 rows = cur.fetchall()
         except Exception:
+            log.warning("fts_bm25_search_failed", exc_info=True)
             return []
 
         if not rows:
@@ -736,6 +741,7 @@ class LicitacionRepository:
                 )
                 return [(r[0], 0.20) for r in cur.fetchall()]
         except Exception:
+            log.warning("like_fallback_search_failed", exc_info=True)
             return []
 
     def fetch_metadata_by_ids(
@@ -760,6 +766,7 @@ class LicitacionRepository:
                 cols = [d[0] for d in cur.description]
                 return {r[0]: dict(zip(cols, r, strict=False)) for r in cur.fetchall()}
         except Exception:
+            log.warning("metadata_fetch_by_ids_failed", exc_info=True)
             return {}
 
     def get_history(self, id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
@@ -816,4 +823,5 @@ class LicitacionRepository:
                 )
                 return rows_to_dicts(cur)
         except Exception:
+            log.warning("like_search_for_ask_failed", exc_info=True)
             return []

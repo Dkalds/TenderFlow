@@ -16,6 +16,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
 if TYPE_CHECKING:
     pass
 
@@ -183,7 +187,10 @@ class PgTsBackend:
             ).fetchall()
             return [(r[0], float(r[1])) for r in rows]
         except Exception:
-            pass
+            # No es un fallo terminal: abajo se intenta el fallback pg_trgm.
+            # Pero sin log, una búsqueda degradada es indistinguible de una
+            # búsqueda que simplemente no encontró nada.
+            log.warning("ts_search_websearch_failed", exc_info=True)
 
         # Fallback: pg_trgm ILIKE (antes de que exista search_vector)
         try:
@@ -197,6 +204,7 @@ class PgTsBackend:
             rows = conn.execute(sql, (pattern, pattern, limit, offset)).fetchall()
             return [(r[0], float(r[1])) for r in rows]
         except Exception:
+            log.warning("ts_search_failed", exc_info=True)
             return []
 
     # ── Retrieval híbrido (plan Pliegos+RAG, F9 — cierra la deuda F3b) ──────
@@ -299,6 +307,7 @@ class PgTsBackend:
         try:
             rows = conn.execute(sql, exec_params).fetchall()
         except Exception:
+            log.warning("hybrid_search_docs_failed", exc_info=True)
             return []
 
         cols = (
