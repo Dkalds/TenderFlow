@@ -339,32 +339,41 @@ def train_from_db() -> dict[str, Any]:
     from scraper.ml_classifier import SAPClassifier
 
     init_db()
+    # Dos SELECT planos vía el protocolo DBAPI (execute/fetchall), no
+    # ``pd.read_sql_query``: mismas etiquetas que el camino semanal pero sin
+    # depender de que la conexión sea un connectable de pandas.
     with connect() as c:
-        lic = pd.read_sql_query(
+        lic_cur = c.execute(
             "SELECT id_externo, titulo, descripcion, raw_keywords, cpv, "
-            "importe, fecha_publicacion, tecnologia "
-            "FROM licitaciones",
-            c,
+            "importe, fecha_publicacion, tecnologia FROM licitaciones"
         )
-        fb = pd.read_sql_query("SELECT expediente, relevante FROM ml_feedback", c)
-    if lic.empty:
-        return {"error": "no_data"}
+        lic_rows = lic_cur.fetchall()
+        lic_cols = [d[0] for d in lic_cur.description]
+        fb_cur = c.execute("SELECT expediente, relevante FROM ml_feedback")
+        fb_rows = fb_cur.fetchall()
+        fb_cols = [d[0] for d in fb_cur.description]
 
-    # Etiqueta base: raw_keywords no vacío OR tecnología detectada.
-    lic["es_relevante"] = (
-        (lic["raw_keywords"].notna() & (lic["raw_keywords"] != ""))
-        | (lic["tecnologia"].notna() & (lic["tecnologia"] != ""))
-    ).astype(int)
-    # Sobrescribir con feedback humano explícito (mayor prioridad).
-    if not fb.empty:
-        fb_map = dict(zip(fb["expediente"], fb["relevante"], strict=False))
-        lic["es_relevante"] = lic.apply(
-            lambda r: (
-                int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"]
-            ),
-            axis=1,
-        )
+    lic = pd.DataFrame(lic_rows, columns=lic_cols)
+    fb = pd.DataFrame(fb_rows, columns=fb_cols)
 
+    if not lic.empty:
+        # Etiqueta base: raw_keywords no vacío OR tecnología detectada.
+        lic["es_relevante"] = (
+            (lic["raw_keywords"].notna() & (lic["raw_keywords"] != ""))
+            | (lic["tecnologia"].notna() & (lic["tecnologia"] != ""))
+        ).astype(int)
+        # Sobrescribir con feedback humano explícito (mayor prioridad).
+        if not fb.empty:
+            fb_map = dict(zip(fb["expediente"], fb["relevante"], strict=False))
+            lic["es_relevante"] = lic.apply(
+                lambda r: (
+                    int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"]
+                ),
+                axis=1,
+            )
+
+    # Con ``lic`` vacío el clasificador devuelve ``{"error": ...}`` y no se
+    # guarda (mismo comportamiento que antes: train decide, no un early-return).
     clf = SAPClassifier()
     metrics = clf.train(lic)
     if "error" not in metrics:

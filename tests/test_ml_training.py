@@ -90,20 +90,27 @@ class TestTrainFromDb:
     def test_train_success_saves(
         self, mock_clf_cls: MagicMock, mock_init: MagicMock, mock_connect: MagicMock
     ) -> None:
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
-            ("t1", "d1", "SAP", "48000000", 1000, "2024-01-01"),
+        # train_from_db emite dos SELECT: licitaciones (con id_externo/tecnologia)
+        # y ml_feedback. Se mockean por separado con side_effect.
+        lic_cursor = MagicMock()
+        lic_cursor.fetchall.return_value = [
+            ("LIC-1", "t1", "d1", "SAP", "48000000", 1000, "2024-01-01", "SAP"),
         ]
-        mock_cursor.description = [
+        lic_cursor.description = [
+            ("id_externo",),
             ("titulo",),
             ("descripcion",),
             ("raw_keywords",),
             ("cpv",),
             ("importe",),
             ("fecha_publicacion",),
+            ("tecnologia",),
         ]
+        fb_cursor = MagicMock()
+        fb_cursor.fetchall.return_value = []
+        fb_cursor.description = [("expediente",), ("relevante",)]
         mock_conn = MagicMock()
-        mock_conn.execute.return_value = mock_cursor
+        mock_conn.execute.side_effect = [lic_cursor, fb_cursor]
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -113,7 +120,7 @@ class TestTrainFromDb:
 
         from scraper.ml_training import train_from_db
 
-        result = train_from_db()
+        train_from_db()
         mock_clf.train.assert_called_once()
         mock_clf.save.assert_called_once()
 
@@ -123,18 +130,25 @@ class TestTrainFromDb:
     def test_train_error_no_save(
         self, mock_clf_cls: MagicMock, mock_init: MagicMock, mock_connect: MagicMock
     ) -> None:
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = []
-        mock_cursor.description = [
+        # Sin licitaciones: train recibe un DataFrame vacío, devuelve error y no
+        # se guarda. Se mockean las dos queries (licitaciones + ml_feedback).
+        lic_cursor = MagicMock()
+        lic_cursor.fetchall.return_value = []
+        lic_cursor.description = [
+            ("id_externo",),
             ("titulo",),
             ("descripcion",),
             ("raw_keywords",),
             ("cpv",),
             ("importe",),
             ("fecha_publicacion",),
+            ("tecnologia",),
         ]
+        fb_cursor = MagicMock()
+        fb_cursor.fetchall.return_value = []
+        fb_cursor.description = [("expediente",), ("relevante",)]
         mock_conn = MagicMock()
-        mock_conn.execute.return_value = mock_cursor
+        mock_conn.execute.side_effect = [lic_cursor, fb_cursor]
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
