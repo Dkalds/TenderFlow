@@ -91,7 +91,7 @@ describe("SpaceShell", () => {
       </SpaceShell>,
     );
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(8);
+    expect(tabs).toHaveLength(9);
     expect(screen.getByRole("tab", { name: "Órganos" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Calendario" })).toHaveAttribute(
       "aria-selected",
@@ -106,7 +106,10 @@ describe("SpaceShell", () => {
         <p>contenido</p>
       </SpaceShell>,
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Clusters" }));
+    // La pestaña lleva el distintivo "Exp": forma parte de su nombre accesible
+    // a propósito — un lector de pantalla también debe saber que la vista
+    // está en validación.
+    fireEvent.click(screen.getByRole("tab", { name: /Clusters/ }));
     expect(onViewChange).toHaveBeenCalledWith("clusters");
   });
 

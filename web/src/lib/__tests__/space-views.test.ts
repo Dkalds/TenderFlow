@@ -22,18 +22,23 @@ describe("SPACE_VIEWS", () => {
       "mi-pipeline",
       "ops",
     ]);
-    expect(SPACE_VIEWS.mercado).toHaveLength(8);
-    expect(SPACE_VIEWS.competencia).toHaveLength(2);
+    // 9 = 8 + la vista `red` (red-organo-empresa), que existía como página
+    // sin ningún acceso desde la navegación y se rescató como experimental.
+    expect(SPACE_VIEWS.mercado).toHaveLength(9);
+    // 3 = 2 + `partners` (ecosistema-partners), mismo caso.
+    expect(SPACE_VIEWS.competencia).toHaveLength(3);
     expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(2);
     expect(SPACE_VIEWS.ops).toHaveLength(5);
   });
 
-  it("absorbe 17 rutas heredadas, todas distintas", () => {
+  it("absorbe 19 rutas heredadas, todas distintas", () => {
+    // 19 = las 17 originales + `red-organo-empresa` y `ecosistema-partners`,
+    // que existían como páginas sin acceso desde la navegación.
     const origenes = allViews()
       .map(([, view]) => view.from)
       .filter(Boolean);
-    expect(origenes).toHaveLength(17);
-    expect(new Set(origenes).size).toBe(17);
+    expect(origenes).toHaveLength(19);
+    expect(new Set(origenes).size).toBe(19);
   });
 
   it("da a cada vista una clave única dentro de su espacio y una etiqueta", () => {
@@ -67,7 +72,7 @@ describe("BUILT_SPACE_ROUTES", () => {
 describe("legacyRedirects", () => {
   it("emite un redirect por ruta absorbida hacia su `?vista=`", () => {
     const redirects = legacyRedirects();
-    expect(redirects).toHaveLength(17);
+    expect(redirects).toHaveLength(19);
     expect(redirects).toContainEqual({
       source: "/tendencias",
       destination: "/mercado?vista=tiempo",

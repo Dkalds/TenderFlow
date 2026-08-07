@@ -158,7 +158,7 @@ describe("descarte server-side", () => {
     });
 
     const deleted = fetchMock.mock.calls.find(
-      ([url, init]) => (init as RequestInit | undefined)?.method === "DELETE",
+      ([, init]) => (init as RequestInit | undefined)?.method === "DELETE",
     );
     expect(deleted).toBeDefined();
     expect(String(deleted![0])).toContain("DESCARTADA");

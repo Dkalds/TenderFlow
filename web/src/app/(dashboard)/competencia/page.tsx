@@ -24,6 +24,7 @@ const loading = () => (
 const VIEWS: Record<string, React.ComponentType> = {
   competidores: dynamic(() => import("../competidores/page"), { loading }),
   utes: dynamic(() => import("../utes/page"), { loading }),
+  partners: dynamic(() => import("../ecosistema-partners/page"), { loading }),
 };
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "competencia")!;

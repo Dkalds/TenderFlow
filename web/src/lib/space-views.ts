@@ -16,6 +16,16 @@ export interface SpaceView {
   label: string;
   /** Ruta heredada del repo que esta vista absorbe. */
   from?: string;
+  /**
+   * `experimental`: la vista existe y funciona, pero no está a la altura del
+   * resto del producto — análisis en validación, o superficies que nadie ha
+   * usado todavía en serio. Se marca en la UI en vez de esconderse: ocultarla
+   * la convertiría en código muerto, y prometer paridad con las vistas core
+   * sería lo que este proyecto ya hace demasiado.
+   *
+   * Ausente ≡ `core`.
+   */
+  visibility?: "core" | "experimental";
 }
 
 /** slug del espacio → sus vistas, en orden de aparición. */
@@ -27,12 +37,32 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "geografia", label: "Geografía", from: "geografia" },
     { key: "tecnologias", label: "Tecnologías", from: "tecnologias" },
     { key: "organos", label: "Órganos", from: "organos" },
-    { key: "clusters", label: "Clusters", from: "clusters" },
-    { key: "proyectos", label: "Proyectos y módulos", from: "proyectos-modulos" },
+    { key: "clusters", label: "Clusters", from: "clusters", visibility: "experimental" },
+    {
+      key: "proyectos",
+      label: "Proyectos y módulos",
+      from: "proyectos-modulos",
+      visibility: "experimental",
+    },
+    // Estaba construida y sin ningún acceso desde la navegación: alcanzable
+    // solo escribiendo la URL. Se rescata declarada como lo que es.
+    {
+      key: "red",
+      label: "Red órgano-empresa",
+      from: "red-organo-empresa",
+      visibility: "experimental",
+    },
   ],
   competencia: [
     { key: "competidores", label: "Competidores", from: "competidores" },
     { key: "utes", label: "UTEs", from: "utes" },
+    // Mismo caso que `red-organo-empresa`: existía sin acceso.
+    {
+      key: "partners",
+      label: "Ecosistema de partners",
+      from: "ecosistema-partners",
+      visibility: "experimental",
+    },
   ],
   "mi-pipeline": [
     { key: "pipeline", label: "Pipeline y alertas", from: "pipeline-alertas" },
