@@ -553,9 +553,11 @@ def connect_read() -> Iterator[Any]:
         yield conn
     finally:
         # Las lecturas no necesitan commit; cerramos la transacción con un
-        # rollback explícito (best-effort) antes de devolver la conexión al pool.
+        # rollback explícito antes de devolver la conexión al pool. Si el
+        # rollback falla, la conexión está en mal estado: lo registramos (no es
+        # indistinguible de "sin datos") y dejamos que el pool la descarte.
         try:
             conn.rollback()
         except Exception:
-            pass
+            log.warning("connect_read_rollback_failed", exc_info=True)
         _return_conn(conn)
