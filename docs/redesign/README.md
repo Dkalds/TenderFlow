@@ -71,9 +71,11 @@ completa, así que no se ha tocado una sola de sus funciones:
 **Con cabecera de espacio** y su pantalla intacta: `/oportunidades`,
 `/investigador`, `/mi-watchlist`, `/mi-perfil`, `/empresas`, `/equipo`.
 
-**Fuera del sistema de espacios**, cada una en su propia ruta sin agrupar:
-`/red-organo-empresa`, `/ecosistema-partners` (antes consolidadas bajo
-`/relaciones`, retirada de la navegación; ambas pantallas siguen intactas).
+**Retiradas**: `/red-organo-empresa` y `/ecosistema-partners` (antes
+consolidadas bajo `/relaciones`) se borraron por completo — pantallas,
+componentes de grafo (`force-graph.tsx`) y los endpoints de backend que solo
+existían para servirlas (`organ-concentration`, `organ-company-graph*`,
+`organ-company-edge`, `partnership-graph`).
 
 ### Los movimientos estructurales, uno por pantalla
 

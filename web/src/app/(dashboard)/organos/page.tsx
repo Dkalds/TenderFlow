@@ -94,7 +94,7 @@ interface OrganoDetailResponse {
 
 export default function OrganosPage() {
   const searchParams = useSearchParams();
-  // Deep-link desde los grafos (Red Órgano-Empresa): `?q=<órgano>` siembra el filtro.
+  // Deep-link externo: `?q=<órgano>` siembra el filtro.
   const [filter, setFilter] = useState(() => searchParams?.get("q") ?? "");
   const [selectedOrgano, setSelectedOrgano] = useState<string | null>(null);
 

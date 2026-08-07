@@ -42,8 +42,6 @@ pinta como dato real.
 | `tendencias` | heatmap Mes×Estado = producto de marginales (distribución global × mes) | cross-tab real en `services/analytics` |
 | `calendario` | conteos diarios = serie **semanal** ÷ 7 + fudge de día laborable | `group_by=day` real |
 | `resumen` | "CCAA cubiertas" = `concentracion_top3 × 17` | `distinct_ccaa()` real |
-| `red-organo-empresa` | aristas órgano↔empresa = "comparten CCAA" | grafo de adjudicación real (`services/organ_company_graph.py`) |
-| `ecosistema-partners` | aristas empresa↔empresa = co-ocurrencia en CCAA | grafo de UTE/co-licitación real (`services/partners.py`) |
 
 ### 2 — Agregación cliente sobre sample/lista parcial, etiquetada como total
 

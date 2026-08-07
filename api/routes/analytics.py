@@ -16,11 +16,6 @@ from observability.logging import get_logger
 from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
 from services.analytics.competitors import CompetitorFilters, CompetitorResult, get_competitors
-from services.analytics.ecosistema_partners import (
-    PartnerGraphFilters,
-    PartnershipGraphResult,
-    get_partnership_graph,
-)
 from services.analytics.forecast_svc import (
     ForecastFilters,
     ForecastVolumeResult,
@@ -44,19 +39,6 @@ from services.analytics.proyectos_modulos import (
     get_proyectos_modulos,
 )
 from services.analytics.quality import QualityResult, get_quality
-from services.analytics.red_organo_empresa import (
-    ConcentracionFilters,
-    ConcentracionResult,
-    EdgeDetailFilters,
-    EdgeDetailResult,
-    EgoFilters,
-    GraphFilters,
-    OrganCompanyGraphResult,
-    get_organ_company_edge,
-    get_organ_company_ego,
-    get_organ_company_graph,
-    get_organ_concentration,
-)
 from services.analytics.resumen import (
     ResumenHoyFilters,
     ResumenHoyResult,
@@ -598,87 +580,3 @@ def compare_periods(
         tecnologia=tecnologia,
     )
     return get_compare_periods(filters)
-
-
-@router.get("/organ-company-graph", response_model=OrganCompanyGraphResult)
-def organ_company_graph(
-    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
-    min_contratos: int = Query(default=1, ge=1, le=100, description="Min contratos per edge"),
-    top_organos: int = Query(default=10, ge=1, le=50, description="Top N organos by importe"),
-    top_empresas: int = Query(default=10, ge=1, le=50, description="Top N empresas by importe"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
-) -> OrganCompanyGraphResult:
-    """Grafo bipartito órgano↔empresa de adjudicaciones reales (no co-ocurrencia CCAA)."""
-    return get_organ_company_graph(
-        GraphFilters(
-            ccaa=ccaa,
-            min_contratos=min_contratos,
-            top_organos=top_organos,
-            top_empresas=top_empresas,
-        )
-    )
-
-
-@router.get("/organ-concentration", response_model=ConcentracionResult)
-def organ_concentration(
-    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
-    min_contratos: int = Query(
-        default=5, ge=1, le=100, description="Min adjudicaciones per órgano"
-    ),
-    top_n: int = Query(default=25, ge=1, le=100, description="Top N órganos by HHI"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
-) -> ConcentracionResult:
-    """Ranking de órganos por concentración de proveedores (HHI, cuota top-1/CR3)."""
-    return get_organ_concentration(
-        ConcentracionFilters(ccaa=ccaa, min_contratos=min_contratos, top_n=top_n)
-    )
-
-
-@router.get("/organ-company-graph/ego", response_model=OrganCompanyGraphResult)
-def organ_company_ego(
-    entity_type: Literal["organo", "empresa"] = Query(description="Tipo de entidad central"),
-    entity_key: str = Query(description="Nombre del órgano o empresa (nombre_canonico)"),
-    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
-    top_neighbors: int = Query(default=30, ge=1, le=80, description="Max vecinos"),
-    min_contratos: int = Query(default=1, ge=1, le=100, description="Min contratos per edge"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
-) -> OrganCompanyGraphResult:
-    """Vecindario inmediato (ego-network) de un órgano o empresa."""
-    return get_organ_company_ego(
-        EgoFilters(
-            entity_type=entity_type,
-            entity_key=entity_key,
-            ccaa=ccaa,
-            top_neighbors=top_neighbors,
-            min_contratos=min_contratos,
-        )
-    )
-
-
-@router.get("/organ-company-edge", response_model=EdgeDetailResult)
-def organ_company_edge(
-    organo: str = Query(description="Nombre del órgano contratante"),
-    empresa: str = Query(description="Nombre canónico de la empresa"),
-    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
-    limit: int = Query(default=100, ge=1, le=500, description="Max licitaciones"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
-) -> EdgeDetailResult:
-    """Licitaciones reales que sustentan la relación órgano→empresa (drill-down)."""
-    return get_organ_company_edge(
-        EdgeDetailFilters(organo=organo, empresa=empresa, ccaa=ccaa, limit=limit)
-    )
-
-
-@router.get("/partnership-graph", response_model=PartnershipGraphResult)
-def partnership_graph(
-    ccaa: str | None = Query(default=None, description="Filter by CCAA (comma-separated)"),
-    min_contratos: int = Query(
-        default=1, ge=1, le=100, description="Min UTEs compartidas per edge"
-    ),
-    top_nodes: int = Query(default=20, ge=1, le=80, description="Top N empresas by importe"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
-) -> PartnershipGraphResult:
-    """Grafo de co-licitación real (UTE/co-adjudicación), no co-ocurrencia por CCAA."""
-    return get_partnership_graph(
-        PartnerGraphFilters(ccaa=ccaa, min_contratos=min_contratos, top_nodes=top_nodes)
-    )
