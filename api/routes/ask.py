@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
@@ -428,7 +429,11 @@ async def ask_question(
 
 
 @router.post(
-    "/licitaciones/{id_externo}/resumen",
+    # ``:path`` y no el conversor por defecto: hay ``id_externo`` de PLACSP con
+    # barras (p.ej. ``PA-S 2026/000058``). Con ``[^/]+`` esos expedientes
+    # devolvían 404 en silencio, mientras sus rutas hermanas (/explain,
+    # /documentos, /ficha-pliego, /tech-scores…) sí los aceptaban.
+    "/licitaciones/{id_externo:path}/resumen",
     summary="Resumen IA de una licitación (oportunidad + pliegos)",
     response_class=StreamingResponse,
     responses={
@@ -468,18 +473,28 @@ async def resumen_licitacion(
 
     from llm.budget import bind_budget_subject
     from llm.client import stream_llm_response
-    from services.rag.context import build_licitacion_context, primary_doc_from_context
+    from services.rag.context import (
+        LicitacionContext,
+        build_licitacion_context,
+        primary_doc_from_context,
+    )
 
     scope_key = _budget_subject(user)
 
-    ctx = build_licitacion_context(id_externo, None)
-    if ctx is None:
+    def _load_context() -> tuple[LicitacionContext, dict[str, Any]] | None:
+        """Contexto + documento principal, en el threadpool (ambos van a BD)."""
+        loaded = build_licitacion_context(id_externo, None)
+        if loaded is None:
+            return None
+        return loaded, primary_doc_from_context(id_externo, loaded)
+
+    loaded_pair = await run_db(_load_context)
+    if loaded_pair is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Licitación '{id_externo}' no encontrada.",
         )
-
-    doc = primary_doc_from_context(id_externo, ctx)
+    ctx, doc = loaded_pair
     degraded_docs = [{k: doc.get(k) for k in _DEGRADED_DOC_FIELDS}]
     resumen_meta = {
         "has_pliego_text": ctx["has_pliego_text"],
