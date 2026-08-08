@@ -98,16 +98,10 @@ def test_download_filtra_por_tecnologia_y_fechas_en_la_query(session_client):
     import db.database as db_mod
 
     # La no coincidente se publica después, así que encabeza el ORDER BY.
-    _seed_licitacion(
-        db_mod, "EXP-DL-OTRA", tecnologia="Oracle", fecha_publicacion="2026-05-01"
-    )
-    _seed_licitacion(
-        db_mod, "EXP-DL-SAP", tecnologia="SAP", fecha_publicacion="2026-01-15"
-    )
+    _seed_licitacion(db_mod, "EXP-DL-OTRA", tecnologia="Oracle", fecha_publicacion="2026-05-01")
+    _seed_licitacion(db_mod, "EXP-DL-SAP", tecnologia="SAP", fecha_publicacion="2026-01-15")
 
-    resp = session_client.get(
-        "/api/v1/exports/download?format=csv&tecnologia=SAP&limit=1"
-    )
+    resp = session_client.get("/api/v1/exports/download?format=csv&tecnologia=SAP&limit=1")
 
     assert resp.status_code == 200, resp.text
     cuerpo = resp.content.decode("utf-8-sig")
