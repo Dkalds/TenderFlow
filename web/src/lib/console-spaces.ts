@@ -151,6 +151,15 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     group: "personal",
   },
   {
+    key: "mi-cuenta",
+    label: "Mi cuenta",
+    short: "CTA",
+    slug: "mi-cuenta",
+    description: "Exportar mis datos y eliminar la cuenta (GDPR).",
+    icon: ShieldCheck,
+    group: "personal",
+  },
+  {
     key: "empresas",
     label: "Empresas",
     short: "EMP",

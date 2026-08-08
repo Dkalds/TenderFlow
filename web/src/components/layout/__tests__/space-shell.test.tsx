@@ -106,7 +106,10 @@ describe("SpaceShell", () => {
         <p>contenido</p>
       </SpaceShell>,
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Clusters" }));
+    // La pestaña lleva el distintivo "Exp": forma parte de su nombre accesible
+    // a propósito — un lector de pantalla también debe saber que la vista
+    // está en validación.
+    fireEvent.click(screen.getByRole("tab", { name: /Clusters/ }));
     expect(onViewChange).toHaveBeenCalledWith("clusters");
   });
 

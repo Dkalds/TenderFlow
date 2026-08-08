@@ -28,6 +28,18 @@ class ProblemDetail(BaseModel):
     errors: list[dict[str, Any]] | None = None
 
     def response(self, **extra_headers: str) -> JSONResponse:
+        # `**extra_headers` acepta cualquier nombre, así que pasar un campo del
+        # modelo —`instance=...`— no era un error: se convertía en un header
+        # HTTP y el campo se quedaba en `None`, fuera del body. Además metía la
+        # URL cruda (con los bytes que mandó el cliente) en un header, que es
+        # donde reventaba el transporte. Se detecta aquí en vez de confiar en
+        # que nadie repita la confusión.
+        colisiones = sorted(set(extra_headers) & set(type(self).model_fields))
+        if colisiones:
+            raise TypeError(
+                f"{colisiones} son campos de ProblemDetail, no headers: pasalos al "
+                "constructor. `.response()` sólo acepta headers HTTP extra."
+            )
         headers = {"Content-Type": "application/problem+json"}
         headers.update(extra_headers)
         return JSONResponse(
@@ -86,12 +98,13 @@ def problem_409(detail: str) -> ProblemDetail:
     )
 
 
-def problem_422(errors: list[dict[str, Any]]) -> ProblemDetail:
+def problem_422(errors: list[dict[str, Any]], instance: str | None = None) -> ProblemDetail:
     return ProblemDetail(
         type="https://licitaciones-sap/errors/validation-error",
         title="Unprocessable Entity",
         status=422,
         detail="La solicitud contiene datos inválidos.",
+        instance=instance,
         errors=errors,
     )
 
@@ -105,12 +118,15 @@ def problem_429(limit: int, window: int) -> ProblemDetail:
     )
 
 
-def problem_500(detail: str = "Error interno del servidor.") -> ProblemDetail:
+def problem_500(
+    detail: str = "Error interno del servidor.", instance: str | None = None
+) -> ProblemDetail:
     return ProblemDetail(
         type="https://licitaciones-sap/errors/internal-server-error",
         title="Internal Server Error",
         status=500,
         detail=detail,
+        instance=instance,
     )
 
 
@@ -126,6 +142,19 @@ def problem_503(detail: str = "Servicio temporalmente no disponible.") -> Proble
 # ── Exception handlers ───────────────────────────────────────────────────────
 
 
+def _instance(request: Request) -> str:
+    """URL de la petición, garantizada ASCII imprimible.
+
+    ASGI entrega el path decodificado como latin-1, así que ``str(request.url)``
+    puede arrastrar los bytes crudos que mandó el cliente e incluso surrogates.
+    Eso rompe a quien luego los codifique: el transporte al serializar headers,
+    o el encoder JSON al escribir el body. El ``instance`` de RFC 7807 sirve
+    para identificar la petición, no para devolverla byte a byte, así que se
+    escapa lo que no sea ASCII en vez de propagarlo.
+    """
+    return str(request.url).encode("ascii", "backslashreplace").decode("ascii")
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Registra manejadores globales de excepciones con respuestas RFC 7807."""
 
@@ -133,7 +162,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         status_code = exc.status_code
         constructors = {
-            400: lambda: problem_400(str(exc.detail), str(request.url)),
+            400: lambda: problem_400(str(exc.detail), _instance(request)),
             401: lambda: problem_401(str(exc.detail)),
             403: lambda: problem_403(str(exc.detail)),
             404: lambda: problem_404(str(exc.detail)),
@@ -158,7 +187,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 title=f"HTTP {status_code}",
                 status=status_code,
                 detail=str(exc.detail),
-                instance=str(request.url),
+                instance=_instance(request),
             )
         extra: dict[str, str] = {}
         if status_code == 401:
@@ -179,7 +208,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             }
             for e in exc.errors()
         ]
-        return problem_422(errors).response(instance=str(request.url))
+        return problem_422(errors, _instance(request)).response()
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
@@ -204,7 +233,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc_type=type(exc).__name__,
             error=str(exc),
         )
-        return problem_400("La solicitud contiene un valor inválido.", str(request.url)).response()
+        return problem_400(
+            "La solicitud contiene un valor inválido.", _instance(request)
+        ).response()
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -217,4 +248,4 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc_type=type(exc).__name__,
             error=str(exc),
         )
-        return problem_500().response(instance=str(request.url))
+        return problem_500(instance=_instance(request)).response()

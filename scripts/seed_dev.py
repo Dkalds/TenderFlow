@@ -438,7 +438,7 @@ def step_usuario_demo() -> tuple[int, str]:
 
         c.execute(
             "INSERT INTO api_keys (key_hash, name, created_at, is_active) "
-            "VALUES (?, ?, ?, 1) ON CONFLICT (key_hash) DO NOTHING",
+            "VALUES (%s, %s, %s, 1) ON CONFLICT (key_hash) DO NOTHING",
             (key_hash, "seed-demo-key", now_utc_iso()),
         )
     print(f"[seed] API key demo: {raw_key}")
@@ -492,7 +492,7 @@ def step_predicciones(licitacion_ids: list[str]) -> None:
         c.executemany(
             "INSERT INTO predicciones_baja "
             "(licitacion_id, p10, p50, p90, model_version, computed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
             "ON CONFLICT (licitacion_id) DO UPDATE SET "
             "p10 = EXCLUDED.p10, p50 = EXCLUDED.p50, p90 = EXCLUDED.p90, "
             "model_version = EXCLUDED.model_version, computed_at = EXCLUDED.computed_at",

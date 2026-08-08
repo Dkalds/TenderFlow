@@ -77,7 +77,7 @@ def seeded_client(api_db, api_key, monkeypatch):
             "INSERT INTO licitaciones "
             "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
             " fecha_publicacion, ccaa, cpv, url, tecnologia, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
             [
                 "LIC-001",
                 "Sistema SAP ERP para AEAT",
@@ -97,7 +97,7 @@ def seeded_client(api_db, api_key, monkeypatch):
             "INSERT INTO licitaciones "
             "(id_externo, titulo, organo_contratacion, importe, estado, "
             " fecha_publicacion, ccaa, tecnologia, fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
             [
                 "LIC-002",
                 "Mantenimiento SAP Barcelona",
@@ -255,7 +255,7 @@ class TestApiKeyExpiration:
         past = "2020-01-01T00:00:00+00:00"
         with connect() as c:
             c.execute(
-                "UPDATE api_keys SET expires_at = ? WHERE key_hash = ?",
+                "UPDATE api_keys SET expires_at = %s WHERE key_hash = %s",
                 (past, key_hash),
             )
         # Force a fresh connection so the ASGI thread reads the committed UPDATE
@@ -276,7 +276,7 @@ class TestApiKeyExpiration:
         future = "2099-12-31T23:59:59+00:00"
         with connect() as c:
             c.execute(
-                "UPDATE api_keys SET expires_at = ? WHERE key_hash = ?",
+                "UPDATE api_keys SET expires_at = %s WHERE key_hash = %s",
                 (future, key_hash),
             )
 

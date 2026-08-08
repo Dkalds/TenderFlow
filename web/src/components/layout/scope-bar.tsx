@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Info, Redo2, RotateCcw, Search, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -129,11 +130,6 @@ function ScopeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo reacciona al valor debounced
   }, [debouncedImporte]);
 
-  const addUnique = (value: string, current: string[], setValue: (next: string[]) => void) => {
-    if (!value || current.includes(value)) return;
-    setValue([...current, value]);
-  };
-
   const label = "mb-1.5 block font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground";
   const control =
     "h-8 w-full rounded-md border border-input bg-background/70 px-2 text-xs text-foreground outline-none";
@@ -197,61 +193,40 @@ function ScopeEditor({
       {shows("ccaa") && (
         <div>
           <span className={label}>Comunidad autónoma</span>
-          <select
+          <MultiSelect
             aria-label="Añadir comunidad autónoma al ámbito"
-            className={control}
-            value=""
-            onChange={(event) => addUnique(event.target.value, filters.ccaas, filters.setCcaas)}
-          >
-            <option value="">Añadir CCAA…</option>
-            {(meta?.ccaa ?? []).map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+            options={meta?.ccaa ?? []}
+            selected={filters.ccaas}
+            onChange={filters.setCcaas}
+            placeholder="Añadir CCAA…"
+          />
         </div>
       )}
 
       {shows("tecnologia") && (
         <div>
           <span className={label}>Tecnología</span>
-          <select
+          <MultiSelect
             aria-label="Filtrar por tecnología"
-            className={control}
-            value={singleTecnologia ? filters.tecnologias[0] ?? "" : ""}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (singleTecnologia) filters.setTecnologias(value ? [value] : []);
-              else addUnique(value, filters.tecnologias, filters.setTecnologias);
-            }}
-          >
-            <option value="">{singleTecnologia ? "Todas" : "Añadir tecnología…"}</option>
-            {(meta?.tecnologia ?? []).map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+            options={meta?.tecnologia ?? []}
+            selected={filters.tecnologias}
+            onChange={filters.setTecnologias}
+            placeholder={singleTecnologia ? "Todas" : "Añadir tecnología…"}
+            single={singleTecnologia}
+          />
         </div>
       )}
 
       {shows("estado") && (
         <div>
           <span className={label}>Estado</span>
-          <select
+          <MultiSelect
             aria-label="Añadir estado al ámbito"
-            className={control}
-            value=""
-            onChange={(event) => addUnique(event.target.value, filters.estados, filters.setEstados)}
-          >
-            <option value="">Añadir estado…</option>
-            {(meta?.estado ?? []).map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+            options={meta?.estado ?? []}
+            selected={filters.estados}
+            onChange={filters.setEstados}
+            placeholder="Añadir estado…"
+          />
         </div>
       )}
 

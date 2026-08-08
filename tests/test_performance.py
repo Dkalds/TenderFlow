@@ -131,7 +131,7 @@ class TestQueryPerformance:
             c.execute("SELECT estado, COUNT(*) FROM licitaciones GROUP BY estado").fetchall()
             # Búsqueda por texto
             c.execute(
-                "SELECT COUNT(*) FROM licitaciones WHERE titulo LIKE ?",
+                "SELECT COUNT(*) FROM licitaciones WHERE titulo LIKE %s",
                 ["%Licitación 5%"],
             ).fetchone()
         elapsed = time.monotonic() - t0
@@ -188,7 +188,7 @@ class TestFTSPerformance:
             # `syntax error at or near "MATCH"`.
             rows = c.execute(
                 "SELECT COUNT(*) FROM licitaciones "
-                "WHERE search_vector @@ websearch_to_tsquery('spanish', ?)",
+                "WHERE search_vector @@ websearch_to_tsquery('spanish', %s)",
                 ["SAP HANA"],
             ).fetchone()
         elapsed = time.monotonic() - t0

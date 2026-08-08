@@ -1,3 +1,4 @@
+import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -52,11 +53,40 @@ const refetch = vi.fn();
 const radarState: {
   data?: { items: RadarTender[] };
   isLoading: boolean;
-  isRanking: boolean;
   error: unknown;
   refetch: typeof refetch;
-} = { data: undefined, isLoading: false, isRanking: false, error: null, refetch };
-vi.mock("@/hooks/use-radar", () => ({ useRadar: () => radarState }));
+} = { data: undefined, isLoading: false, error: null, refetch };
+
+// El triaje es server-side: la página lee los descartes y muta contra
+// `/api/v1/radar/dismissals`. El stub replica esa ida y vuelta con un store
+// suscribible — mutar un array suelto no provocaría el re-render que sí
+// provoca la invalidación de react-query en producción.
+let dismissedIds: string[] = [];
+const dismissalListeners = new Set<() => void>();
+function setDismissed(next: string[]) {
+  dismissedIds = next;
+  dismissalListeners.forEach((listener) => listener());
+}
+function useDismissedStub() {
+  const [, force] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    dismissalListeners.add(force);
+    return () => {
+      dismissalListeners.delete(force);
+    };
+  }, []);
+  return dismissedIds;
+}
+const dismissMutate = vi.fn((id: string) => setDismissed([...dismissedIds, id]));
+const restoreMutate = vi.fn((id: string) =>
+  setDismissed(dismissedIds.filter((current) => current !== id)),
+);
+vi.mock("@/hooks/use-radar", () => ({
+  useRadar: () => radarState,
+  useRadarDismissals: () => ({ data: useDismissedStub() }),
+  useDismissRadarTender: () => ({ mutate: dismissMutate }),
+  useRestoreRadarTender: () => ({ mutate: restoreMutate }),
+}));
 
 // El inspector consulta el histórico del órgano; en jsdom no hay backend, así
 // que se devuelve vacío y el panel enseña su estado "sin adjudicaciones".
@@ -117,10 +147,10 @@ function tender(overrides: Partial<RadarTender> = {}): RadarTender {
 }
 
 beforeEach(() => {
+  setDismissed([]);
   radarState.data = { items: [tender()] };
   radarState.isLoading = false;
-  radarState.isRanking = false;
-  radarState.error = null;
+    radarState.error = null;
   watchedItems.length = 0;
 });
 
@@ -137,8 +167,11 @@ describe("RadarPage", () => {
     expect(screen.getAllByText("Caliente").length).toBeGreaterThan(0);
   });
 
-  it("shows the score even when the backend sent no band", () => {
-    radarState.data = { items: [tender({ score: 61, band: null })] };
+  it("shows the score even when the band is not informative", () => {
+    // `band` dejó de ser nullable al pasar el Radar a consumir
+    // `ScoredOpportunity`: el scoring siempre la calcula. Lo que sí puede
+    // llegar es una banda vacía, y el score tiene que verse igual.
+    radarState.data = { items: [tender({ score: 61, band: "" })] };
 
     renderRadar();
 
@@ -151,21 +184,26 @@ describe("RadarPage", () => {
     expect(screen.getByText("Sin puntuar")).toBeInTheDocument();
   });
 
-  it("does not claim a band while the ranking is still in flight", () => {
-    // "Sin puntuar" antes de que llegue el scoring se lee como una categoría
-    // del dato, no como "todavía no lo sé".
-    radarState.isRanking = true;
+  it("no tiene un estado intermedio en el que el orden no sea el final", () => {
+    // Antes la lista salía del listado por fecha y el score llegaba en una
+    // segunda query, así que había una ventana en la que el orden mostrado no
+    // era el prometido y la UI tenía que avisar ("ordenando por afinidad…").
+    // Ahora la fuente ES el ranking: cuando hay filas, ya están ordenadas.
+    radarState.data = { items: [tender({ score: 87, band: "Caliente" })] };
 
     renderRadar();
 
-    expect(screen.getByText(/ordenando por afinidad/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ordenando por afinidad/i)).not.toBeInTheDocument();
   });
 
-  it("states the scope of the list instead of implying a market-wide ranking", () => {
+  it("declara que la lista es el ranking de mercado, que es lo que ahora entrega", () => {
+    // El copy anterior ("las 24 abiertas más recientes") describía con
+    // honestidad una limitación que ya no existe: la fuente es
+    // `GET /analytics/scoring?limit=24`, el top-24 del corpus abierto.
     renderRadar();
 
     expect(
-      screen.getByText(/las 24 abiertas más recientes, reordenadas por afinidad/),
+      screen.getByText(/top 24 del mercado abierto por potencial comercial/),
     ).toBeInTheDocument();
   });
 
@@ -228,15 +266,17 @@ describe("RadarPage", () => {
     expect(screen.getAllByText("Mantenimiento SAP").length).toBeGreaterThan(0);
   });
 
-  it("offers an inline undo and says the dismissal is session-scoped", () => {
-    // No hay endpoint de dismiss en el backend, así que el descarte se pierde
-    // al recargar. Mientras siga así, la UI lo declara en vez de dejar que el
-    // usuario lo crea definitivo, y ofrece deshacer sin buscar la acción masiva.
+  it("persiste el descarte y ofrece deshacer en línea", () => {
+    // El descarte ya no es de sesión: va a `/api/v1/radar/dismissals` y
+    // sobrevive a la recarga, así que el copy deja de avisar de lo contrario.
+    // El deshacer inmediato se conserva: sigue siendo la salida barata de un
+    // clic equivocado, sin ir a buscar la acción masiva.
     renderRadar();
     fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
 
+    expect(dismissMutate).toHaveBeenCalledWith("LIC-1");
     expect(toastCall).toHaveBeenCalledWith(
-      "Señal descartada en esta sesión",
+      "Señal descartada",
       expect.objectContaining({ action: expect.objectContaining({ label: "Deshacer" }) }),
     );
 

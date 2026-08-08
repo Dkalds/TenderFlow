@@ -160,7 +160,7 @@ def _fetch_recent_texts(days: int = 30) -> list[str]:
     since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with connect() as c:
         cur = c.execute(
-            "SELECT titulo, descripcion FROM licitaciones WHERE fecha_publicacion >= ?",
+            "SELECT titulo, descripcion FROM licitaciones WHERE fecha_publicacion >= %s",
             (since,),
         )
         texts = []

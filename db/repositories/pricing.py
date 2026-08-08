@@ -16,7 +16,7 @@ class PricingRepository:
             rows = rows_to_dicts(
                 connection.execute(
                     "SELECT id_externo, titulo, organo_contratacion, cpv, importe "
-                    "FROM licitaciones WHERE id_externo = ?",
+                    "FROM licitaciones WHERE id_externo = %s",
                     (licitacion_id,),
                 )
             )
@@ -50,7 +50,7 @@ class PricingRepository:
             "  AND a.importe_adjudicado <= COALESCE(lo.importe, l.importe) "
             "  AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed' "
             "ORDER BY a.fecha_adjudicacion DESC "
-            "LIMIT ?"
+            "LIMIT %s"
         )
         with connect_read() as connection:
             return rows_to_dicts(connection.execute(sql, (limit,)))

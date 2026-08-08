@@ -72,7 +72,7 @@ def add_entry(entry: WatchlistEntry) -> None:
 
 
 def remove_entry(entry_id: int, user_key: str) -> bool:
-    """Remove a watchlist entry owned by ``user_key``. False si no es suya."""
+    """Remove a watchlist entry by ID, scoped to its owner."""
     return _remove_entry(entry_id, user_key)
 
 
@@ -87,7 +87,7 @@ def list_entries(
 
 
 def update_frequency(entry_id: int, frequency: str, user_key: str) -> bool:
-    """Update notification frequency for an entry owned by ``user_key``."""
+    """Update notification frequency for a watchlist entry, scoped to its owner."""
     return _update_frequency(entry_id, frequency, user_key)
 
 

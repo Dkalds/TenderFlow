@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { t } from "@/lib/i18n";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
@@ -145,7 +144,7 @@ export default function TendenciasCpvPage() {
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">{t("common.error")}: {(error as Error).message}</p>
+        <p className="text-destructive">{"Error"}: {(error as Error).message}</p>
       </div>
     );
   }

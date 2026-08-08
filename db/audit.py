@@ -69,7 +69,7 @@ def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
     disponible en :func:`verify_hash_chain`.
     """
     state_row = connection.execute(
-        "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state WHERE chain_name = ?",
+        "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state WHERE chain_name = %s",
         (_CHAIN_NAME,),
     ).fetchone()
     tail_row = connection.execute(
@@ -153,14 +153,14 @@ def log_action(
                     c.execute(
                         "INSERT INTO audit_log "
                         "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash, hash_version) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, 'hmac-sha256-v1')",
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, 'hmac-sha256-v1')",
                         (user_key, session_hash, action, detail, now, prev_hash, this_hash),
                     )
                 else:
                     c.execute(
                         "INSERT INTO audit_log "
                         "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                         (user_key, session_hash, action, detail, now, prev_hash, this_hash),
                     )
                 if has_chain_state:
@@ -168,21 +168,21 @@ def log_action(
                     next_signature = _state_hmac(this_hash, next_count)
                     if state_exists:
                         c.execute(
-                            "UPDATE audit_chain_state SET head_hash = ?, entry_count = ?, "
-                            "state_hmac = ?, updated_at = ? WHERE chain_name = ?",
+                            "UPDATE audit_chain_state SET head_hash = %s, entry_count = %s, "
+                            "state_hmac = %s, updated_at = %s WHERE chain_name = %s",
                             (this_hash, next_count, next_signature, now, _CHAIN_NAME),
                         )
                     else:
                         c.execute(
                             "INSERT INTO audit_chain_state "
                             "(chain_name, head_hash, entry_count, state_hmac, updated_at) "
-                            "VALUES (?, ?, ?, ?, ?)",
+                            "VALUES (%s, %s, %s, %s, %s)",
                             (_CHAIN_NAME, this_hash, next_count, next_signature, now),
                         )
             else:
                 c.execute(
                     "INSERT INTO audit_log (user_key, session_hash, action, detail, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "VALUES (%s, %s, %s, %s, %s)",
                     (user_key, session_hash, action, detail, now),
                 )
     except Exception as exc:
@@ -223,9 +223,9 @@ def log_event(
         try:
             detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:2000]
         except Exception:
-            # El repr de Python no es consultable como el JSON: la entrada de
-            # auditoría queda degradada y conviene saber cuándo pasa.
-            log.debug("audit_detail_not_serializable", event_type=event_type, exc_info=True)
+            # El detalle degradado a repr() sigue siendo mejor que perder el
+            # evento, pero un detalle no serializable es un bug del llamante.
+            log.warning("audit_detail_not_serializable", event_type=event_type, exc_info=True)
             detail_str = str(detail)[:2000]
     else:
         detail_str = str(detail)[:2000]
@@ -252,9 +252,9 @@ def log_event(
 
         audit_events_total.labels(event_type=event_type, outcome=outcome).inc()
     except Exception:
-        # La métrica es best-effort (no puede romper el camino de auditoría),
-        # pero sin rastro un contador congelado se lee como "no pasó nada".
-        log.debug("audit_metric_failed", event_type=event_type, exc_info=True)
+        # La métrica es accesoria (el evento ya está persistido), pero perderla
+        # en silencio deja los paneles de auditoría mintiendo por omisión.
+        log.debug("audit_metric_unavailable", event_type=event_type, exc_info=True)
 
 
 def list_recent(
@@ -273,17 +273,17 @@ def list_recent(
     clauses: list[str] = []
     params: list[Any] = []
     if user_key:
-        clauses.append("user_key = ?")
+        clauses.append("user_key = %s")
         params.append(user_key)
     if action:
-        clauses.append("action = ?")
+        clauses.append("action = %s")
         params.append(action)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(limit)
     with connect() as c:
         cur = c.execute(
             "SELECT id, user_key, session_hash, action, detail, created_at "
-            "FROM audit_log " + where + " ORDER BY created_at DESC, id DESC LIMIT ?",
+            "FROM audit_log " + where + " ORDER BY created_at DESC, id DESC LIMIT %s",
             params,
         )
         cols = [d[0] for d in cur.description]
@@ -325,7 +325,7 @@ def verify_hash_chain() -> dict[str, object]:
             if has_chain_state:
                 state_row = c.execute(
                     "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state "
-                    "WHERE chain_name = ?",
+                    "WHERE chain_name = %s",
                     (_CHAIN_NAME,),
                 ).fetchone()
 
@@ -420,7 +420,8 @@ def verify_hash_chain() -> dict[str, object]:
         return {"valid": True, "checked": checked, "first_tampered_id": None, "error": None}
 
     except Exception as exc:
-        # `valid: None` viaja al endpoint, pero sin traza no hay forma de saber
-        # si la cadena de auditoría falló por schema, por permisos o por datos.
-        log.warning("audit_chain_verification_failed", exc_info=True)
+        # `valid: None` viaja hasta /security/audit/verify como "no se pudo
+        # comprobar". Sin log no se distingue una cadena rota de un fallo al
+        # leerla, que es justo la diferencia que importa en una auditoría.
+        log.warning("audit_hash_chain_verify_failed", exc_info=True)
         return {"valid": None, "checked": 0, "first_tampered_id": None, "error": str(exc)}

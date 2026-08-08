@@ -41,7 +41,7 @@ class WebhookRepository:
             # webhook, así que tiene que ser el de ESTA fila sin ambigüedad.
             row = c.execute(
                 "INSERT INTO webhooks (name, url, secret, event_types, active, created_at) "
-                "VALUES (?, ?, ?, ?, 1, ?) RETURNING id",
+                "VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
                 (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
             ).fetchone()
             webhook_id = int(row[0]) if row else 0
@@ -54,7 +54,7 @@ class WebhookRepository:
             secret = _secrets.token_urlsafe(32)
             with connect() as c:
                 c.execute(
-                    "UPDATE webhooks SET secret = ? WHERE id = ?",
+                    "UPDATE webhooks SET secret = %s WHERE id = %s",
                     (secret, webhook_id),
                 )
 
@@ -75,7 +75,7 @@ class WebhookRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id, name, url, event_types, active, created_at, "
-                "last_triggered_at, last_status, failure_count FROM webhooks WHERE id = ?",
+                "last_triggered_at, last_status, failure_count FROM webhooks WHERE id = %s",
                 (webhook_id,),
             )
             row = cur.fetchone()
@@ -88,7 +88,7 @@ class WebhookRepository:
 
     def delete(self, webhook_id: int) -> bool:
         with connect() as c:
-            cur = c.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
+            cur = c.execute("DELETE FROM webhooks WHERE id = %s", (webhook_id,))
             return cast(bool, cur.rowcount > 0)
 
     def update(
@@ -104,23 +104,23 @@ class WebhookRepository:
         sets: list[str] = []
         params: list[Any] = []
         if name is not None:
-            sets.append("name = ?")
+            sets.append("name = %s")
             params.append(name)
         if url is not None:
-            sets.append("url = ?")
+            sets.append("url = %s")
             params.append(url)
         if event_types is not None:
-            sets.append("event_types = ?")
+            sets.append("event_types = %s")
             params.append(",".join(event_types))
         if active is not None:
-            sets.append("active = ?")
+            sets.append("active = %s")
             params.append(1 if active else 0)
         if not sets:
             return True
         params.append(webhook_id)
         with connect() as c:
             cur = c.execute(
-                "UPDATE webhooks SET " + ", ".join(sets) + " WHERE id = ?",
+                "UPDATE webhooks SET " + ", ".join(sets) + " WHERE id = %s",
                 tuple(params),
             )
             return cast(bool, cur.rowcount > 0)
@@ -132,7 +132,7 @@ class WebhookRepository:
         For legacy secrets, returns the stored value.
         """
         with connect_read() as c:
-            row = c.execute("SELECT secret FROM webhooks WHERE id = ?", (webhook_id,)).fetchone()
+            row = c.execute("SELECT secret FROM webhooks WHERE id = %s", (webhook_id,)).fetchone()
         if not row:
             return None
         stored = str(row[0])
@@ -158,22 +158,22 @@ class WebhookRepository:
                 c.execute(
                     "INSERT INTO webhook_deliveries "
                     "(webhook_id, event_type, status_code, success, payload_size, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
                     (webhook_id, event_type, status_code, 1 if success else 0, payload_size, now),
                 )
             except Exception:
                 log.debug("webhook_delivery_insert_failed", webhook_id=webhook_id, exc_info=True)
             if success:
                 c.execute(
-                    "UPDATE webhooks SET last_triggered_at = ?, last_status = ?, failure_count = 0 WHERE id = ?",
+                    "UPDATE webhooks SET last_triggered_at = %s, last_status = %s, failure_count = 0 WHERE id = %s",
                     (now, status_code, webhook_id),
                 )
             else:
                 c.execute(
-                    "UPDATE webhooks SET last_triggered_at = ?, last_status = ?, "
+                    "UPDATE webhooks SET last_triggered_at = %s, last_status = %s, "
                     "failure_count = failure_count + 1, "
                     "active = CASE WHEN failure_count + 1 >= 10 THEN 0 ELSE active END "
-                    "WHERE id = ?",
+                    "WHERE id = %s",
                     (now, status_code, webhook_id),
                 )
 
@@ -182,11 +182,12 @@ class WebhookRepository:
             try:
                 cur = c.execute(
                     "SELECT id, webhook_id, event_type, status_code, success, payload_size, created_at "
-                    "FROM webhook_deliveries WHERE webhook_id = ? ORDER BY created_at DESC LIMIT ?",
+                    "FROM webhook_deliveries WHERE webhook_id = %s ORDER BY created_at DESC LIMIT %s",
                     (webhook_id, limit),
                 )
                 return rows_to_dicts(cur)
             except Exception:
+                log.warning("webhook_deliveries_list_failed", exc_info=True)
                 return []
 
     @staticmethod
@@ -225,19 +226,19 @@ class WebhookRepository:
         }
         with connect() as c:
             row = c.execute(
-                "SELECT response_json, created_at FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                "SELECT response_json, created_at FROM idempotency_keys WHERE idem_key = %s AND endpoint = %s",
                 (key, endpoint),
             ).fetchone()
             if row is not None and self._idempotency_is_expired(row[1], max_age_seconds):
                 c.execute(
-                    "DELETE FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                    "DELETE FROM idempotency_keys WHERE idem_key = %s AND endpoint = %s",
                     (key, endpoint),
                 )
                 row = None
             if row is None:
                 inserted = c.execute(
                     "INSERT INTO idempotency_keys (idem_key, endpoint, response_json, created_at) "
-                    "VALUES (?, ?, ?, ?) ON CONFLICT(idem_key, endpoint) DO NOTHING",
+                    "VALUES (%s, %s, %s, %s) ON CONFLICT(idem_key, endpoint) DO NOTHING",
                     (key, endpoint, json.dumps(pending, ensure_ascii=False), now_utc_iso()),
                 )
                 if inserted.rowcount > 0:
@@ -247,7 +248,7 @@ class WebhookRepository:
                 # la petición concurrente en estado pendiente (fail closed).
                 row = c.execute(
                     "SELECT response_json, created_at FROM idempotency_keys "
-                    "WHERE idem_key = ? AND endpoint = ?",
+                    "WHERE idem_key = %s AND endpoint = %s",
                     (key, endpoint),
                 ).fetchone()
                 if row is None:
@@ -255,6 +256,7 @@ class WebhookRepository:
                 try:
                     inserted_value = cast(dict[str, Any], json.loads(row[0]))
                 except Exception:
+                    log.warning("idempotency_inserted_value_unreadable", exc_info=True)
                     inserted_value = {}
                 # Algunos adaptadores no informan rowcount de INSERT de forma
                 # uniforme. El token aleatorio identifica inequívocamente
@@ -265,6 +267,7 @@ class WebhookRepository:
             return False, cast(dict[str, Any], json.loads(row[0]))
         except Exception:
             # A malformed legacy cache entry is not trusted and never returned.
+            log.warning("idempotency_reserve_failed", exc_info=True)
             return False, {}
 
     def idempotency_finalize(
@@ -279,7 +282,7 @@ class WebhookRepository:
 
         with connect() as c:
             row = c.execute(
-                "SELECT response_json FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                "SELECT response_json FROM idempotency_keys WHERE idem_key = %s AND endpoint = %s",
                 (key, endpoint),
             ).fetchone()
             if row is None:
@@ -287,11 +290,12 @@ class WebhookRepository:
             try:
                 pending = cast(dict[str, Any], json.loads(row[0]))
             except Exception:
+                log.warning("idempotency_finalize_failed", exc_info=True)
                 return False
             if pending.get("_reservation_token") != reservation_token:
                 return False
             c.execute(
-                "UPDATE idempotency_keys SET response_json = ? WHERE idem_key = ? AND endpoint = ?",
+                "UPDATE idempotency_keys SET response_json = %s WHERE idem_key = %s AND endpoint = %s",
                 (json.dumps(response, ensure_ascii=False), key, endpoint),
             )
         return True
@@ -302,7 +306,7 @@ class WebhookRepository:
 
         with connect() as c:
             row = c.execute(
-                "SELECT response_json FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                "SELECT response_json FROM idempotency_keys WHERE idem_key = %s AND endpoint = %s",
                 (key, endpoint),
             ).fetchone()
             if row is None:
@@ -310,9 +314,12 @@ class WebhookRepository:
             try:
                 pending = cast(dict[str, Any], json.loads(row[0]))
             except Exception:
+                # Sin poder leer la reserva no se puede liberar: la key queda
+                # ocupada hasta que expire, bloqueando reintentos legítimos.
+                log.warning("idempotency_release_payload_ilegible", exc_info=True)
                 return
             if pending.get("_pending") and pending.get("_reservation_token") == reservation_token:
                 c.execute(
-                    "DELETE FROM idempotency_keys WHERE idem_key = ? AND endpoint = ?",
+                    "DELETE FROM idempotency_keys WHERE idem_key = %s AND endpoint = %s",
                     (key, endpoint),
                 )

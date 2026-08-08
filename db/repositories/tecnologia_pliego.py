@@ -82,17 +82,17 @@ class TecnologiaPliegoRepository:
         ] or [(licitacion_id, _NO_SIGNAL_SENTINEL, method, 0.0, None, None, signal_version, now)]
 
         with connect() as c:
-            placeholders = ",".join("?" for _ in techs)
+            placeholders = ",".join("%s" for _ in techs)
             c.execute(
                 "DELETE FROM licitacion_tecnologia_pliego "
-                f"WHERE licitacion_id = ? AND method = ? AND tecnologia NOT IN ({placeholders})",
+                f"WHERE licitacion_id = %s AND method = %s AND tecnologia NOT IN ({placeholders})",
                 (licitacion_id, method, *techs),
             )
             c.executemany(
                 "INSERT INTO licitacion_tecnologia_pliego "
                 "(licitacion_id, tecnologia, method, score, matched_terms, "
                 "evidence_json, signal_version, computed_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(licitacion_id, tecnologia, method) DO UPDATE SET "
                 "score=excluded.score, matched_terms=excluded.matched_terms, "
                 "evidence_json=excluded.evidence_json, signal_version=excluded.signal_version, "
@@ -113,10 +113,10 @@ class TecnologiaPliegoRepository:
                 "WHERE d.status = 'extracted' "
                 "AND NOT EXISTS ("
                 "  SELECT 1 FROM licitacion_tecnologia_pliego p "
-                "  WHERE p.licitacion_id = d.licitacion_id AND p.method = ? "
-                "  AND p.signal_version = ?"
+                "  WHERE p.licitacion_id = d.licitacion_id AND p.method = %s "
+                "  AND p.signal_version = %s"
                 ") "
-                "ORDER BY d.licitacion_id LIMIT ?",
+                "ORDER BY d.licitacion_id LIMIT %s",
                 (method, signal_version, max(1, min(int(limit), 2000))),
             ).fetchall()
             return [str(row[0]) for row in rows]
@@ -131,14 +131,14 @@ class TecnologiaPliegoRepository:
         params: list[Any] = [min_score]
         extra = ""
         if licitacion_ids:
-            placeholders = ",".join("?" for _ in licitacion_ids)
+            placeholders = ",".join("%s" for _ in licitacion_ids)
             extra = f" AND licitacion_id IN ({placeholders})"
             params.extend(licitacion_ids)
         with connect_read() as c:
             cur = c.execute(
                 "SELECT licitacion_id, tecnologia, method, score, matched_terms, "
                 "evidence_json, signal_version, merged_at "
-                f"FROM licitacion_tecnologia_pliego WHERE score >= ?{extra} "
+                f"FROM licitacion_tecnologia_pliego WHERE score >= %s{extra} "
                 "ORDER BY licitacion_id",
                 params,
             )
@@ -153,8 +153,8 @@ class TecnologiaPliegoRepository:
             return
         with connect() as c:
             c.executemany(
-                "UPDATE licitacion_tecnologia_pliego SET merged_at = ? "
-                "WHERE licitacion_id = ? AND tecnologia = ? AND method = ? "
+                "UPDATE licitacion_tecnologia_pliego SET merged_at = %s "
+                "WHERE licitacion_id = %s AND tecnologia = %s AND method = %s "
                 "AND merged_at IS NULL",
                 [(merged_at, lic, tech, method) for (lic, tech, method) in rows],
             )
@@ -167,7 +167,7 @@ class TecnologiaPliegoRepository:
                 "SELECT tecnologia, method, score, matched_terms, evidence_json, "
                 "signal_version, computed_at, merged_at "
                 "FROM licitacion_tecnologia_pliego "
-                "WHERE licitacion_id = ? AND tecnologia != ? "
+                "WHERE licitacion_id = %s AND tecnologia != %s "
                 "ORDER BY score DESC",
                 (licitacion_id, _NO_SIGNAL_SENTINEL),
             )
@@ -200,16 +200,16 @@ class TecnologiaPliegoRepository:
         """
         with connect() as c:
             c.execute(
-                "SELECT pg_advisory_xact_lock(hashtext(?))",
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
                 (f"tenderflow.tech_signal_merge.{licitacion_id}",),
             )
             lic_row = c.execute(
-                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = ?",
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s",
                 (licitacion_id,),
             ).fetchone()
             score_rows = c.execute(
                 "SELECT tecnologia, probabilidad FROM licitacion_tecnologia_score "
-                "WHERE licitacion_id = ?",
+                "WHERE licitacion_id = %s",
                 (licitacion_id,),
             ).fetchall()
             ml_tecnologias_raw = str(lic_row[0]) if lic_row and lic_row[0] else ""
@@ -224,8 +224,8 @@ class TecnologiaPliegoRepository:
 
             now = now_utc_iso()
             c.execute(
-                "UPDATE licitaciones SET ml_tecnologias = ?, ml_proba_max = ?, "
-                "ml_tech_principal = ? WHERE id_externo = ?",
+                "UPDATE licitaciones SET ml_tecnologias = %s, ml_proba_max = %s, "
+                "ml_tech_principal = %s WHERE id_externo = %s",
                 (
                     result["ml_tecnologias"],
                     result["ml_proba_max"],
@@ -238,7 +238,7 @@ class TecnologiaPliegoRepository:
                 c.executemany(
                     "INSERT INTO licitacion_tecnologia_score "
                     "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
-                    "VALUES (?, ?, ?, ?, ?) "
+                    "VALUES (%s, %s, %s, %s, %s) "
                     "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
                     "probabilidad=excluded.probabilidad, "
                     "threshold_aplicado=excluded.threshold_aplicado, "

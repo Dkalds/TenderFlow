@@ -121,6 +121,34 @@ def _post_pinned_webhook(url: str, payload: bytes, headers: dict[str, str]) -> i
         return response.status_code
 
 
+class WebhookDelivery(BaseModel):
+    """Una entrega registrada de un webhook.
+
+    Antes esta ruta devolvía ``list[dict[str, Any]]`` y el cliente generado la
+    veía como `{ [key: string]: unknown }[]`, obligando al frontend a
+    redeclarar la forma a mano — el anti-patrón que ya hizo que el Radar
+    pintase campos inexistentes.
+    """
+
+    id: int
+    webhook_id: int
+    event_type: str
+    status_code: int | None = None
+    success: bool
+    payload_size: int | None = None
+    created_at: str
+
+
+class WebhookEventTypes(BaseModel):
+    """Tipos de evento a los que un webhook puede suscribirse.
+
+    Los sirve el backend en vez de que la UI los duplique: la lista es la misma
+    que valida `WebhookCreate.event_types`, así que no pueden divergir.
+    """
+
+    event_types: list[str]
+
+
 class WebhookUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     url: str | None = None
@@ -300,7 +328,11 @@ class WebhookOut(BaseModel):
     name: str | None
     url: str
     event_types: list[str]
-    active: int | None
+    # `bool`, no `int`: la columna guarda 0/1 —herencia de SQLite— pero eso es
+    # su representación en disco, no el contrato. El PATCH ya recibía
+    # `active: bool | None`, así que el cliente escribía un booleano y leía un
+    # entero; Pydantic hace la coerción y la asimetría desaparece.
+    active: bool | None
     created_at: str | None
     last_triggered_at: str | None
     last_status: int | None
@@ -490,6 +522,18 @@ async def ping(
 
 
 @router.get(
+    "/event-types",
+    summary="Tipos de evento a los que suscribirse",
+    responses={401: {"description": "API key inválida"}},
+)
+async def event_types(
+    _ctx: dict[str, Any] = Depends(require_admin),
+) -> WebhookEventTypes:
+    """Lista los eventos válidos, derivada de la misma constante que valida el alta."""
+    return WebhookEventTypes(event_types=sorted(_VALID_EVENTS))
+
+
+@router.get(
     "/{webhook_id}/deliveries",
     summary="Historial de entregas",
     responses={
@@ -501,8 +545,9 @@ async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
     _ctx: dict[str, Any] = Depends(require_admin),
-) -> list[dict[str, Any]]:
+) -> list[WebhookDelivery]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     if await run_db(_repo.get_by_id, webhook_id) is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
-    return await run_db(_repo.list_deliveries, webhook_id, limit=limit)
+    rows = await run_db(_repo.list_deliveries, webhook_id, limit=limit)
+    return [WebhookDelivery(**row) for row in rows]

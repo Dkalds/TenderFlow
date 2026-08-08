@@ -97,7 +97,7 @@ def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int,
         row = c.execute(
             "INSERT INTO webhooks "
             "(name, url, secret, event_types, active, created_at) "
-            "VALUES (?, ?, ?, ?, 1, ?) RETURNING id",
+            "VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
             (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
         ).fetchone()
         webhook_id = int(row[0]) if row else 0
@@ -111,7 +111,7 @@ def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int,
         secret = _secrets.token_urlsafe(32)
         with connect() as c:
             c.execute(
-                "UPDATE webhooks SET secret = ? WHERE id = ?",
+                "UPDATE webhooks SET secret = %s WHERE id = %s",
                 (secret, webhook_id),
             )
 
@@ -134,7 +134,7 @@ def list_webhooks() -> list[dict[str, Any]]:
 def delete_webhook(webhook_id: int) -> bool:
     """Borra un webhook. Devuelve True si existía."""
     with connect() as c:
-        cur = c.execute("DELETE FROM webhooks WHERE id = ?", (webhook_id,))
+        cur = c.execute("DELETE FROM webhooks WHERE id = %s", (webhook_id,))
         return cast(bool, cur.rowcount > 0)
 
 
@@ -211,15 +211,15 @@ def _record_delivery(webhook_id: int, status_code: int, success: bool) -> None:
     with connect() as c:
         if success:
             c.execute(
-                "UPDATE webhooks SET last_triggered_at = ?, last_status = ?, "
-                "failure_count = 0 WHERE id = ?",
+                "UPDATE webhooks SET last_triggered_at = %s, last_status = %s, "
+                "failure_count = 0 WHERE id = %s",
                 (now_utc_iso(), status_code, webhook_id),
             )
         else:
             c.execute(
-                "UPDATE webhooks SET last_triggered_at = ?, last_status = ?, "
+                "UPDATE webhooks SET last_triggered_at = %s, last_status = %s, "
                 "failure_count = failure_count + 1, "
-                "active = CASE WHEN failure_count + 1 >= ? THEN 0 ELSE active END "
-                "WHERE id = ?",
+                "active = CASE WHEN failure_count + 1 >= %s THEN 0 ELSE active END "
+                "WHERE id = %s",
                 (now_utc_iso(), status_code, _MAX_FAILURES_BEFORE_DISABLE, webhook_id),
             )

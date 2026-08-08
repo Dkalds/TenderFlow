@@ -75,7 +75,7 @@ Generado: 2026-08-07
 
 ## Superficie de la API
 
-**149 endpoints** expuestos.
+**153 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -203,6 +203,9 @@ Generado: 2026-08-07
 | GET | `/api/v1/pursuits/metrics` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
+| GET | `/api/v1/radar/dismissals` |
+| POST | `/api/v1/radar/dismissals` |
+| DELETE | `/api/v1/radar/dismissals/{id_externo}` |
 | GET | `/api/v1/resoluciones` |
 | GET | `/api/v1/saved-filters` |
 | POST | `/api/v1/saved-filters` |
@@ -223,6 +226,7 @@ Generado: 2026-08-07
 | GET | `/api/v1/watchlist/rules/{rule_id}/matches` |
 | GET | `/api/v1/webhooks` |
 | POST | `/api/v1/webhooks` |
+| GET | `/api/v1/webhooks/event-types` |
 | DELETE | `/api/v1/webhooks/{webhook_id}` |
 | GET | `/api/v1/webhooks/{webhook_id}` |
 | PATCH | `/api/v1/webhooks/{webhook_id}` |

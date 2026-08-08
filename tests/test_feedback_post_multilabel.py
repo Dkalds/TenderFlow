@@ -122,7 +122,7 @@ class TestFeedbackPostMultilabel:
 
         with connect_read() as c:
             row = c.execute(
-                "SELECT tecnologia FROM ml_feedback WHERE expediente = ?",
+                "SELECT tecnologia FROM ml_feedback WHERE expediente = %s",
                 ("MULTI-007",),
             ).fetchone()
         assert row is not None
@@ -144,7 +144,7 @@ class TestFeedbackPostMultilabel:
 
         with connect_read() as c:
             row = c.execute(
-                "SELECT tecnologia, tecnologias_secundarias FROM ml_feedback WHERE expediente = ?",
+                "SELECT tecnologia, tecnologias_secundarias FROM ml_feedback WHERE expediente = %s",
                 ("MULTI-008",),
             ).fetchone()
         assert row is not None
@@ -169,7 +169,7 @@ class TestFeedbackPostMultilabel:
 
         with connect_read() as c:
             row = c.execute(
-                "SELECT tecnologia, tecnologias_secundarias FROM ml_feedback WHERE expediente = ?",
+                "SELECT tecnologia, tecnologias_secundarias FROM ml_feedback WHERE expediente = %s",
                 ("MULTI-009",),
             ).fetchone()
         assert row is not None
@@ -191,7 +191,7 @@ class TestFeedbackPostMultilabel:
 
         with connect_read() as c:
             row = c.execute(
-                "SELECT relevante, tecnologia, tecnologias_secundarias FROM ml_feedback WHERE expediente = ?",
+                "SELECT relevante, tecnologia, tecnologias_secundarias FROM ml_feedback WHERE expediente = %s",
                 ("MULTI-010",),
             ).fetchone()
         assert row is not None

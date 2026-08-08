@@ -74,7 +74,7 @@ def test_upsert_updates_field(db):
 
     with connect() as c:
         row = c.execute(
-            "SELECT importe FROM licitaciones WHERE id_externo = ?", ["TEST-001"]
+            "SELECT importe FROM licitaciones WHERE id_externo = %s", ["TEST-001"]
         ).fetchone()
     assert row[0] == pytest.approx(200.0)
 
@@ -96,7 +96,7 @@ def test_upsert_keeps_earliest_fecha_publicacion(db):
 
     with connect() as c:
         row = c.execute(
-            "SELECT fecha_publicacion FROM licitaciones WHERE id_externo = ?", ["TEST-001"]
+            "SELECT fecha_publicacion FROM licitaciones WHERE id_externo = %s", ["TEST-001"]
         ).fetchone()
     assert row[0] == "2026-05-01"
 
@@ -111,7 +111,7 @@ def test_upsert_backfills_earlier_fecha_publicacion(db):
 
     with connect() as c:
         row = c.execute(
-            "SELECT fecha_publicacion FROM licitaciones WHERE id_externo = ?", ["TEST-001"]
+            "SELECT fecha_publicacion FROM licitaciones WHERE id_externo = %s", ["TEST-001"]
         ).fetchone()
     assert row[0] == "2026-05-01"
 
@@ -130,7 +130,7 @@ def test_upsert_with_history_keeps_earliest_fecha_publicacion(db):
 
     with connect() as c:
         row = c.execute(
-            "SELECT fecha_publicacion, estado FROM licitaciones WHERE id_externo = ?",
+            "SELECT fecha_publicacion, estado FROM licitaciones WHERE id_externo = %s",
             ["TEST-001"],
         ).fetchone()
     assert row[0] == "2026-05-01"
@@ -160,7 +160,7 @@ def test_upsert_keeps_fecha_limite_when_reingest_lacks_it(db):
 
     with connect() as c:
         row = c.execute(
-            "SELECT fecha_limite, estado FROM licitaciones WHERE id_externo = ?",
+            "SELECT fecha_limite, estado FROM licitaciones WHERE id_externo = %s",
             ["TEST-001"],
         ).fetchone()
     assert row[0] == "2026-08-15T21:59:00+00:00"
@@ -179,7 +179,7 @@ def test_upsert_updates_fecha_limite_on_real_extension(db):
 
     with connect() as c:
         row = c.execute(
-            "SELECT fecha_limite FROM licitaciones WHERE id_externo = ?", ["TEST-001"]
+            "SELECT fecha_limite FROM licitaciones WHERE id_externo = %s", ["TEST-001"]
         ).fetchone()
     assert row[0] == "2026-09-01T21:59:00+00:00"
 
@@ -204,7 +204,7 @@ def test_upsert_with_history_tracks_fecha_limite_extension(db):
     with connect() as c:
         row = c.execute(
             "SELECT changed_fields, snapshot_json FROM licitaciones_history "
-            "WHERE id_externo = ? ORDER BY id DESC LIMIT 1",
+            "WHERE id_externo = %s ORDER BY id DESC LIMIT 1",
             ["TEST-001"],
         ).fetchone()
     assert row is not None
@@ -276,7 +276,7 @@ def test_replace_adjudicaciones_replaces(db):
 
     with connect() as c:
         rows = c.execute(
-            "SELECT nombre FROM adjudicaciones WHERE licitacion_id = ?", ["TEST-001"]
+            "SELECT nombre FROM adjudicaciones WHERE licitacion_id = %s", ["TEST-001"]
         ).fetchall()
     names = [r[0] for r in rows]
     assert "Empresa B" in names
@@ -454,7 +454,7 @@ def test_replace_adjudicaciones_unique_dedup_does_not_hit_dlq(db):
     with connect() as c:
         n = c.execute(
             "SELECT COUNT(*) FROM failed_extractions "
-            "WHERE scope = 'adjudicacion' AND payload_ref = ?",
+            "WHERE scope = 'adjudicacion' AND payload_ref = %s",
             ("TEST-001:B11111111:1000.0",),
         ).fetchone()[0]
     assert n == 0
@@ -470,7 +470,7 @@ def test_replace_adjudicaciones_empty_clears(db):
 
     with connect() as c:
         count = c.execute(
-            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = ?", ["TEST-001"]
+            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = %s", ["TEST-001"]
         ).fetchone()[0]
     assert count == 0
 
@@ -503,7 +503,7 @@ def test_upsert_with_history_tracks_changes(db):
 
     with connect() as c:
         rows = c.execute(
-            "SELECT snapshot_json, changed_fields FROM licitaciones_history WHERE id_externo = ?",
+            "SELECT snapshot_json, changed_fields FROM licitaciones_history WHERE id_externo = %s",
             ["TEST-001"],
         ).fetchall()
     assert len(rows) == 1
@@ -574,7 +574,7 @@ def test_log_extraccion(db):
     log_extraccion("test_fuente", nuevas=5, actualizadas=3, total=8, notas="ok")
     with connect() as c:
         row = c.execute(
-            "SELECT fuente, nuevas, actualizadas FROM extracciones WHERE fuente = ?",
+            "SELECT fuente, nuevas, actualizadas FROM extracciones WHERE fuente = %s",
             ["test_fuente"],
         ).fetchone()
     assert row is not None

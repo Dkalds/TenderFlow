@@ -326,7 +326,7 @@ def test_dlq_mark_resolved(tmp_db):
 def test_dlq_mark_matching_resolved(tmp_db):
     """mark_matching_resolved con scope específico resuelve esos fallos.
 
-    La SQL usa COALESCE(scope, '') = COALESCE(?, ''), por lo que pasar scope=None
+    La SQL usa COALESCE(scope, '') = COALESCE(%s, ''), por lo que pasar scope=None
     solo resuelve filas con scope NULL. Para resolver con scope concreto hay que
     pasarlo explícitamente.
     """

@@ -15,8 +15,19 @@ UX/UI del frontend con su roadmap por olas en
 
 ## 0. Alcance y prioridades
 
-Las features nuevas están permitidas. Salvo que el usuario priorice otra cosa,
-seguí el orden de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md).
+**Congelamiento de superficie (desde 2026-08-07).** No se añaden endpoints ni
+páginas fuera de [docs/plans/2026-08-plan-saneamiento.md](docs/plans/2026-08-plan-saneamiento.md)
+hasta cerrar su Ola 2. El motivo está en el plan: el producto acumuló 154
+endpoints y 13 espacios de consola en doce días, y varias de esas superficies
+mostraban datos fabricados o placeholder. Arreglar lo que existe va antes que
+ampliarlo. Fuera de esa regla, las features nuevas están permitidas.
+
+Salvo que el usuario priorice otra cosa, seguí el orden de
+[docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md). Los ítems cerrados
+se archivan en
+[docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md](docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md)
+en vez de acumularse en el backlog: un backlog que nadie puede leer entero no
+prioriza nada.
 
 No escribas aquí hechos calculables (conteos de tests, coverage, tamaño de
 ratchets, jobs o endpoints): pertenecen a [docs/STATUS.md](docs/STATUS.md), que

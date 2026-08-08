@@ -28,7 +28,7 @@ def save_filter(
             c.execute(
                 """
                 INSERT INTO saved_filters (user_key, name, filters_json, created_at)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT(user_key, name) DO UPDATE SET
                     filters_json = excluded.filters_json,
                     created_at   = excluded.created_at
@@ -40,7 +40,7 @@ def save_filter(
             """
             INSERT INTO saved_filters
                 (user_key, name, filters_json, created_at, organization_id, visibility)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT(user_key, name) DO UPDATE SET
                 filters_json = excluded.filters_json,
                 created_at   = excluded.created_at,
@@ -57,14 +57,14 @@ def list_saved_filters(user_key: str, organization_id: int | None = None) -> lis
         if organization_id is None:
             cur = c.execute(
                 "SELECT id, name, filters_json, created_at, organization_id, visibility "
-                "FROM saved_filters WHERE user_key = ? ORDER BY created_at DESC",
+                "FROM saved_filters WHERE user_key = %s ORDER BY created_at DESC",
                 (user_key,),
             )
         else:
             cur = c.execute(
                 "SELECT id, name, filters_json, created_at, organization_id, visibility "
-                "FROM saved_filters WHERE organization_id = ? "
-                "AND (visibility = 'organization' OR user_key = ?) "
+                "FROM saved_filters WHERE organization_id = %s "
+                "AND (visibility = 'organization' OR user_key = %s) "
                 "ORDER BY created_at DESC",
                 (organization_id, user_key),
             )
@@ -82,13 +82,13 @@ def delete_saved_filter(
     with connect() as c:
         if organization_id is None:
             c.execute(
-                "DELETE FROM saved_filters WHERE id = ? AND user_key = ?",
+                "DELETE FROM saved_filters WHERE id = %s AND user_key = %s",
                 (filter_id, user_key),
             )
         else:
             c.execute(
-                "DELETE FROM saved_filters WHERE id = ? AND organization_id = ? "
-                "AND (visibility = 'organization' OR user_key = ?)",
+                "DELETE FROM saved_filters WHERE id = %s AND organization_id = %s "
+                "AND (visibility = 'organization' OR user_key = %s)",
                 (filter_id, organization_id, user_key),
             )
 

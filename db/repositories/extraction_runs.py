@@ -31,7 +31,7 @@ class ExtractionRunRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT " + _FULL_COLUMNS + " FROM extraction_runs "
-                "ORDER BY started_at DESC LIMIT ?",
+                "ORDER BY started_at DESC LIMIT %s",
                 (limit,),
             )
             return rows_to_dicts(cur)
@@ -41,7 +41,7 @@ class ExtractionRunRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT " + _CALIDAD_COLUMNS + " FROM extraction_runs "
-                "ORDER BY started_at DESC LIMIT ?",
+                "ORDER BY started_at DESC LIMIT %s",
                 (limit,),
             )
             return rows_to_dicts(cur)
@@ -80,7 +80,7 @@ class ExtractionRunRepository:
                     " months_attempted, months_ok, months_failed, "
                     " licitaciones_nuevas, licitaciones_actualizadas, "
                     " adjudicaciones, errores_parseo, errores_descarga, notas) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         run_id,
                         started_at,
@@ -107,10 +107,14 @@ class ExtractionRunRepository:
             with connect_read() as c:
                 rows = c.execute(
                     "SELECT status FROM extraction_runs "
-                    "WHERE notas LIKE 'daily|%' "
-                    "ORDER BY started_at DESC LIMIT ?",
+                    # `%%` obligatorio: la sentencia lleva `LIMIT %s`. Este
+                    # literal causó un bug de producción (ver ADR-018) — la
+                    # alerta de fallos consecutivos nunca se disparaba.
+                    "WHERE notas LIKE 'daily|%%' "
+                    "ORDER BY started_at DESC LIMIT %s",
                     [limit],
                 ).fetchall()
             return [r[0] for r in rows]
         except Exception:
+            log.warning("recent_daily_statuses_load_failed", exc_info=True)
             return []

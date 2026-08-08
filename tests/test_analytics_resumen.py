@@ -355,7 +355,7 @@ def _insert_adjudicacion(
             "INSERT INTO adjudicaciones "
             "(licitacion_id, nombre, nif, importe_adjudicado, fecha_adjudicacion, "
             "fecha_extraccion) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             (licitacion_id, nombre, nif, importe_adjudicado, now_utc_iso(), now_utc_iso()),
         )
 

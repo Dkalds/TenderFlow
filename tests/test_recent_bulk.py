@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def test_run_delegates_to_bulk_pipeline_with_three_months():
-    """El job delega en la pipeline canónica con la ventana de 3 meses."""
+def test_run_calls_analytics_export_before_kpi_precompute():
+    """run_bulk_pipeline ejecuta analytics export antes que KPI precompute."""
     from scheduler.jobs import recent_bulk
 
     called: list[str] = []
@@ -24,22 +24,18 @@ def test_run_delegates_to_bulk_pipeline_with_three_months():
     assert "run_bulk_pipeline(3)" in called[0]
 
 
-def test_run_continues_when_a_post_ingestion_step_raises():
-    """Si un paso post-ingesta falla, la pipeline canónica continúa.
-
-    Usaba ``analytics_export`` como paso de ejemplo; ese paso se retiró de
-    CANONICAL_STEPS (llevaba roto desde ADR-021), así que la misma propiedad se
-    verifica con ``tech_signal_merge``.
-    """
+def test_run_continues_when_analytics_export_raises():
+    """Si un paso post-ingesta falla, la pipeline canónica continúa."""
     from scheduler.pipeline_runs import _run_post_ingestion_steps
 
     with (
         patch(
-            "scheduler.pipeline_runs._run_tech_signal_merge",
+            "scheduler.pipeline_runs._run_analytics_export",
             side_effect=RuntimeError("boom"),
         ),
         patch("scheduler.pipeline_runs._run_ml_scoring"),
         patch("scheduler.pipeline_runs._run_ml_tecnologias"),
+        patch("scheduler.pipeline_runs._run_tech_signal_merge"),
         patch("scheduler.pipeline_runs._run_kpi_precompute"),
         patch("scheduler.pipeline_runs._run_aggregates_precompute"),
         patch("scheduler.pipeline_runs._run_watchlist_notify"),
@@ -48,7 +44,7 @@ def test_run_continues_when_a_post_ingestion_step_raises():
     ):
         results = _run_post_ingestion_steps()
 
-    assert results["tech_signal_merge"] == "error"
+    assert results["analytics_export"] == "error"
     assert results["kpi_precompute"] == "ok"
 
 

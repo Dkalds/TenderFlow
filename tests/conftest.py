@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -156,7 +157,27 @@ _PG_SCHEMA_SEQ = itertools.count()
 
 
 def _pg_test_url() -> str:
-    return os.environ.get("TEST_DATABASE_URL", "")
+    """URL del Postgres de tests: entorno primero, ``.env`` como fallback.
+
+    El fallback existe para las sesiones remotas de agentes, donde el hook
+    ``SessionStart`` (``.claude/hooks/session_start_pg.py``) provisiona el
+    cluster y deja la URL en ``.env``: un hook no puede exportar variables al
+    shell del agente, así que sin este fallback habría que recordar el
+    ``export`` en cada invocación y la suite seguiría abortando por olvido.
+    El entorno mantiene la precedencia — CI la inyecta por ``env:`` y no debe
+    verse afectado por un ``.env`` que ni siquiera está versionado.
+    """
+    from_env = os.environ.get("TEST_DATABASE_URL", "")
+    if from_env:
+        return from_env
+    env_file = Path(__file__).resolve().parents[1] / ".env"
+    if not env_file.is_file():
+        return ""
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith("TEST_DATABASE_URL="):
+            return line.split("=", 1)[1].strip().strip("\"'")
+    return ""
 
 
 @pytest.fixture(scope="session")
@@ -182,10 +203,12 @@ def _pg_schema_ddl(tmp_path_factory):
     url = _pg_test_url()
     if not url:
         raise pytest.UsageError(
-            "TEST_DATABASE_URL no configurada. Postgres es el único motor "
-            "soportado (ADR-021): levantá el de dev con "
-            "`docker compose up -d postgres` y exportá "
+            "TEST_DATABASE_URL no configurada (ni en el entorno ni en .env). "
+            "Postgres es el único motor soportado (ADR-021): levantá el de dev "
+            "con `docker compose up -d postgres` y exportá "
             "TEST_DATABASE_URL=postgresql://tenderflow:tenderflow@localhost:5432/tenderflow"  # pragma: allowlist secret -- contenedor local de dev
+            ". En una sesión remota de agente lo provisiona el hook "
+            "`.claude/hooks/session_start_pg.py`; si no corrió, ejecutalo a mano."
         )
 
     if os.environ.get("PYTEST_XDIST_WORKER") is None:

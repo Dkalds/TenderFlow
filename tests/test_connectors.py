@@ -207,7 +207,7 @@ def test_runner_multi_lote_misma_empresa_mismo_importe_no_pierde_filas(db):
         rows = c.execute(
             "SELECT a.nif, a.importe_adjudicado, l.numero "
             "FROM adjudicaciones a JOIN lotes l ON l.id = a.lote_id "
-            "WHERE a.licitacion_id = ? ORDER BY l.numero",
+            "WHERE a.licitacion_id = %s ORDER BY l.numero",
             ["fake:N1"],
         ).fetchall()
     assert [r[2] for r in rows] == ["1", "2"]
@@ -235,7 +235,7 @@ def test_runner_sin_lote_preserva_dedup_antiguo(db):
     assert result.adjudicaciones == 1
     with connect() as c:
         count = c.execute(
-            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = ?", ["fake:N1"]
+            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = %s", ["fake:N1"]
         ).fetchone()[0]
     assert count == 1
 
@@ -256,7 +256,7 @@ def test_runner_persiste_lotes_con_metadatos(db):
         numeros = {
             r[0]
             for r in c.execute(
-                "SELECT numero FROM lotes WHERE licitacion_id = ?", ["fake:N1"]
+                "SELECT numero FROM lotes WHERE licitacion_id = %s", ["fake:N1"]
             ).fetchall()
         }
     assert numeros == {"1", "2"}
@@ -272,7 +272,7 @@ def test_runner_lotes_reingesta_no_duplica(db):
 
     with connect() as c:
         count = c.execute(
-            "SELECT COUNT(*) FROM lotes WHERE licitacion_id = ?", ["fake:N1"]
+            "SELECT COUNT(*) FROM lotes WHERE licitacion_id = %s", ["fake:N1"]
         ).fetchone()[0]
     assert count == 1
 
@@ -298,7 +298,7 @@ def test_runner_adjudicacion_sin_lote_numero_no_falla_con_lotes_presentes(db):
     assert result.errores == 0
     with connect() as c:
         lote_id = c.execute(
-            "SELECT lote_id FROM adjudicaciones WHERE licitacion_id = ?", ["fake:N1"]
+            "SELECT lote_id FROM adjudicaciones WHERE licitacion_id = %s", ["fake:N1"]
         ).fetchone()[0]
     assert lote_id is None
 

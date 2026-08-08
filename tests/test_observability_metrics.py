@@ -29,7 +29,7 @@ def test_record_run_persists_success(tmp_db):
         m.licitaciones_nuevas = 5
     with db_mod.connect() as c:
         row = c.execute(
-            "SELECT status, months_ok, licitaciones_nuevas FROM extraction_runs WHERE run_id = ?",
+            "SELECT status, months_ok, licitaciones_nuevas FROM extraction_runs WHERE run_id = %s",
             ("run-ok",),
         ).fetchone()
     assert row[0] == "ok"
@@ -45,7 +45,7 @@ def test_record_run_marks_partial(tmp_db):
         m.months_failed = 1
     with db_mod.connect() as c:
         row = c.execute(
-            "SELECT status FROM extraction_runs WHERE run_id = ?",
+            "SELECT status FROM extraction_runs WHERE run_id = %s",
             ("run-partial",),
         ).fetchone()
     assert row[0] == "partial"
@@ -57,7 +57,7 @@ def test_record_run_marks_error_on_exception(tmp_db):
         raise ValueError("boom")
     with db_mod.connect() as c:
         row = c.execute(
-            "SELECT status FROM extraction_runs WHERE run_id = ?",
+            "SELECT status FROM extraction_runs WHERE run_id = %s",
             ("run-err",),
         ).fetchone()
     assert row[0] == "error"

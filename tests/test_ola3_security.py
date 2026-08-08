@@ -59,7 +59,7 @@ def test_create_api_key_stores_prefix(api_db, monkeypatch):
 
     with db_mod.connect_read() as c:
         row = c.execute(
-            "SELECT prefix FROM api_keys WHERE prefix = ?", (expected_prefix,)
+            "SELECT prefix FROM api_keys WHERE prefix = %s", (expected_prefix,)
         ).fetchone()
 
     assert row is not None, f"Prefix {expected_prefix!r} no guardado en api_keys"

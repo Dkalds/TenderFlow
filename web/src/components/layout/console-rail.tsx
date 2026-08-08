@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { AlignJustify, LayoutGrid, LogOut, Menu, Moon, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -172,7 +171,7 @@ function AccountMenu() {
           className="text-destructive focus:text-destructive"
         >
           <LogOut className="h-4 w-4" />
-          {t("auth.logout")}
+          {"Cerrar sesión"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

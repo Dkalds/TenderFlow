@@ -286,7 +286,7 @@ class TestLicitacionesSearch:
                 "INSERT INTO licitaciones "
                 "(id_externo, titulo, descripcion, organo_contratacion, importe, estado, "
                 "fecha_publicacion, ccaa, cpv, url, tecnologia, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
                 [
                     "S-001",
                     "SAP ERP AEAT",
@@ -306,7 +306,7 @@ class TestLicitacionesSearch:
                 "INSERT INTO licitaciones "
                 "(id_externo, titulo, organo_contratacion, importe, estado, "
                 "fecha_publicacion, ccaa, tecnologia, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
                 [
                     "S-002",
                     "Oracle Database Cataluña",
@@ -366,7 +366,7 @@ class TestETagCaching:
             c.execute(
                 "INSERT INTO licitaciones "
                 "(id_externo, titulo, estado, ccaa, tecnologia, fecha_extraccion) "
-                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
                 ["ETAG-001", "SAP Test", "PUB", "Madrid", "SAP", "2025-01-01"],
             )
         from api.app import app

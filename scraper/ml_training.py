@@ -254,7 +254,7 @@ def seed_negatives(
             extra_params: list[Any] = []
             if has_fecha_act:
                 extra_cols += ", fecha_actualizacion_fuente"
-                extra_vals += ", ?"
+                extra_vals += ", %s"
                 extra_params.append(row[10])
             if has_tecnologia:
                 extra_cols += ", tecnologia"
@@ -268,7 +268,7 @@ def seed_negatives(
                         provincia, nuts_code, ccaa,
                         duracion_valor, duracion_unidad, fecha_inicio,
                         fecha_fin, prorroga_descripcion{extra_cols})
-                       VALUES (?,?,?,?,?,?,?,?,?,?,{now_sql},?,NULL,?,?,?,?,?,?,?,?{extra_vals})
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,{now_sql},%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s{extra_vals})
                        ON CONFLICT(id_externo) DO NOTHING""",
                     (
                         row[0],
@@ -445,7 +445,7 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
 
         with connect() as c:
             c.executemany(
-                "UPDATE licitaciones SET ml_proba = ? WHERE id_externo = ?",
+                "UPDATE licitaciones SET ml_proba = %s WHERE id_externo = %s",
                 [(float(proba), row[0]) for row, proba in zip(batch, probas, strict=False)],
             )
             c.commit()
@@ -541,22 +541,22 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         with connect() as c:
             if force and delete_params:
                 c.executemany(
-                    "DELETE FROM licitacion_tecnologia_score WHERE licitacion_id = ?",
+                    "DELETE FROM licitacion_tecnologia_score WHERE licitacion_id = %s",
                     delete_params,
                 )
             c.executemany(
                 "UPDATE licitaciones SET "
-                "ml_tecnologias = ?, "
-                "ml_proba_max = ?, "
-                "ml_tech_principal = ? "
-                "WHERE id_externo = ?",
+                "ml_tecnologias = %s, "
+                "ml_proba_max = %s, "
+                "ml_tech_principal = %s "
+                "WHERE id_externo = %s",
                 update_params,
             )
             c.executemany(
                 "INSERT INTO licitacion_tecnologia_score "
                 "(licitacion_id, tecnologia, probabilidad, "
                 " threshold_aplicado, computed_at) "
-                f"VALUES (?, ?, ?, ?, {now_sql}) "
+                f"VALUES (%s, %s, %s, %s, {now_sql}) "
                 "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
                 "probabilidad=excluded.probabilidad, "
                 "threshold_aplicado=excluded.threshold_aplicado, "

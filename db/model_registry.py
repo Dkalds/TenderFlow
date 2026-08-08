@@ -54,7 +54,7 @@ def register_version(
     """
     with connect() as c:
         row = c.execute(
-            "SELECT COALESCE(MAX(version), 0) + 1 FROM model_versions WHERE name = ?",
+            "SELECT COALESCE(MAX(version), 0) + 1 FROM model_versions WHERE name = %s",
             (name,),
         ).fetchone()
         next_version = int(row[0])
@@ -63,7 +63,7 @@ def register_version(
             "INSERT INTO model_versions "
             "(name, version, path, sha256, metrics_json, trained_at, "
             " trained_on_n_samples, trained_on_n_feedbacks, is_active, notes) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 name,
                 next_version,
@@ -80,7 +80,7 @@ def register_version(
 
         if activate:
             c.execute(
-                "UPDATE model_versions SET is_active = 0 WHERE name = ? AND version != ?",
+                "UPDATE model_versions SET is_active = 0 WHERE name = %s AND version != %s",
                 (name, next_version),
             )
 
@@ -101,7 +101,7 @@ def get_active(name: str) -> dict[str, Any] | None:
         cur = c.execute(
             "SELECT id, name, version, path, sha256, metrics_json, trained_at, "
             "trained_on_n_samples, trained_on_n_feedbacks, is_active, notes "
-            "FROM model_versions WHERE name = ? AND is_active = 1 "
+            "FROM model_versions WHERE name = %s AND is_active = 1 "
             "ORDER BY version DESC LIMIT 1",
             (name,),
         )
@@ -120,8 +120,8 @@ def list_versions(name: str, *, limit: int = 50) -> list[dict[str, Any]]:
         cur = c.execute(
             "SELECT id, name, version, path, sha256, metrics_json, trained_at, "
             "trained_on_n_samples, trained_on_n_feedbacks, is_active, notes "
-            "FROM model_versions WHERE name = ? "
-            "ORDER BY version DESC LIMIT ?",
+            "FROM model_versions WHERE name = %s "
+            "ORDER BY version DESC LIMIT %s",
             (name, limit),
         )
         cols = [d[0] for d in cur.description]
@@ -141,14 +141,14 @@ def activate_version(name: str, version: int) -> bool:
     """
     with connect() as c:
         cur = c.execute(
-            "SELECT 1 FROM model_versions WHERE name = ? AND version = ?",
+            "SELECT 1 FROM model_versions WHERE name = %s AND version = %s",
             (name, version),
         )
         if not cur.fetchone():
             return False
         c.execute(
             "UPDATE model_versions SET is_active = "
-            "CASE WHEN version = ? THEN 1 ELSE 0 END WHERE name = ?",
+            "CASE WHEN version = %s THEN 1 ELSE 0 END WHERE name = %s",
             (version, name),
         )
     log.info("model_activated", name=name, version=version)
@@ -187,7 +187,7 @@ def feedbacks_since_last_train(name: str = "sap_classifier") -> int:
             cur = c.execute("SELECT COUNT(*) FROM ml_feedback")
         else:
             cur = c.execute(
-                "SELECT COUNT(*) FROM ml_feedback WHERE created_at > ?",
+                "SELECT COUNT(*) FROM ml_feedback WHERE created_at > %s",
                 (active["trained_at"],),
             )
         row = cur.fetchone()

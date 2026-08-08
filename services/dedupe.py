@@ -126,7 +126,7 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
             c.execute(
                 "SELECT id_externo, organo_contratacion, cpv, fuente, "
                 "       fecha_publicacion, fecha_extraccion "
-                "FROM licitaciones WHERE fuente = ? AND fecha_extraccion > ?",
+                "FROM licitaciones WHERE fuente = %s AND fecha_extraccion > %s",
                 (fuente, watermark),
             )
         )
@@ -138,7 +138,7 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
             c.execute(
                 "SELECT id_externo, organo_contratacion, cpv, fuente, "
                 "       fecha_publicacion, fecha_extraccion "
-                "FROM licitaciones WHERE fuente != ?",
+                "FROM licitaciones WHERE fuente != %s",
                 (fuente,),
             )
         )
@@ -189,7 +189,7 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
             c.executemany(
                 "INSERT INTO licitaciones_duplicados "
                 "(licitacion_id, canonical_id, clave_match, confianza, status) "
-                "VALUES (?, ?, ?, ?, ?) "
+                "VALUES (%s, %s, %s, %s, %s) "
                 "ON CONFLICT(licitacion_id) DO NOTHING",
                 marcas,
             )
@@ -218,7 +218,7 @@ def review_pending(limit: int = 100) -> list[dict[str, Any]]:
                 JOIN licitaciones l  ON l.id_externo  = d.licitacion_id
                 JOIN licitaciones lc ON lc.id_externo = d.canonical_id
                 WHERE d.status = 'pending'
-                ORDER BY d.detectado_en LIMIT ?
+                ORDER BY d.detectado_en LIMIT %s
                 """,
                 (max(1, min(int(limit), 500)),),
             )
@@ -233,8 +233,8 @@ def resolve_pending(licitacion_id: str, *, accept: bool, resolved_by: str = "") 
     with connect() as c:
         cur = c.execute(
             "UPDATE licitaciones_duplicados "  # noqa: S608 — resolved_at_sql es un fragmento constante
-            f"SET status = ?, resolved_at = {resolved_at_sql}, resolved_by = ? "
-            "WHERE licitacion_id = ? AND status = 'pending'",
+            f"SET status = %s, resolved_at = {resolved_at_sql}, resolved_by = %s "
+            "WHERE licitacion_id = %s AND status = 'pending'",
             ("confirmed" if accept else "rejected", resolved_by, licitacion_id),
         )
         return bool(cur.rowcount)
@@ -244,7 +244,7 @@ def medir_solape(fuente_a: str = "pscp", fuente_b: str = "placsp") -> dict[str, 
     """Mide el solape detectado entre dos fuentes (acceptance del RFC)."""
     with connect_read() as c:
         total_a = c.execute(
-            "SELECT COUNT(*) FROM licitaciones WHERE fuente = ?", (fuente_a,)
+            "SELECT COUNT(*) FROM licitaciones WHERE fuente = %s", (fuente_a,)
         ).fetchone()[0]
         solapadas = c.execute(
             """
@@ -252,7 +252,7 @@ def medir_solape(fuente_a: str = "pscp", fuente_b: str = "placsp") -> dict[str, 
             JOIN licitaciones l  ON l.id_externo  = d.licitacion_id
             JOIN licitaciones lc ON lc.id_externo = d.canonical_id
             WHERE d.status != 'rejected'
-              AND ((l.fuente = ? AND lc.fuente = ?) OR (l.fuente = ? AND lc.fuente = ?))
+              AND ((l.fuente = %s AND lc.fuente = %s) OR (l.fuente = %s AND lc.fuente = %s))
             """,
             (fuente_a, fuente_b, fuente_b, fuente_a),
         ).fetchone()[0]

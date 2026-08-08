@@ -18,7 +18,7 @@ class OrganizationRepository:
             existing = self._personal_for_user(conn, user_id)
             if existing is None:
                 user_row = conn.execute(
-                    "SELECT display_name, email FROM users WHERE id = ?",
+                    "SELECT display_name, email FROM users WHERE id = %s",
                     (user_id,),
                 ).fetchone()
                 if user_row is None:
@@ -28,14 +28,14 @@ class OrganizationRepository:
                     "INSERT INTO organizations "
                     "(name, is_personal, personal_owner_user_id, created_by_user_id, "
                     " created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT(personal_owner_user_id) DO NOTHING RETURNING id",
                     (name, True, user_id, user_id, now, now),
                 ).fetchone()
                 organization_id = int(inserted[0]) if inserted else None
                 if organization_id is None:
                     row = conn.execute(
-                        "SELECT id FROM organizations WHERE personal_owner_user_id = ?",
+                        "SELECT id FROM organizations WHERE personal_owner_user_id = %s",
                         (user_id,),
                     ).fetchone()
                     if row is None:
@@ -44,7 +44,7 @@ class OrganizationRepository:
                 conn.execute(
                     "INSERT INTO organization_memberships "
                     "(organization_id, user_id, role, status, created_at, updated_at) "
-                    "VALUES (?, ?, 'owner', 'active', ?, ?) "
+                    "VALUES (%s, %s, 'owner', 'active', %s, %s) "
                     "ON CONFLICT(organization_id, user_id) DO UPDATE SET "
                     "role = 'owner', status = 'active', updated_at = excluded.updated_at",
                     (organization_id, user_id, now, now),
@@ -54,7 +54,7 @@ class OrganizationRepository:
                 conn.execute(
                     "INSERT INTO organization_memberships "
                     "(organization_id, user_id, role, status, created_at, updated_at) "
-                    "VALUES (?, ?, 'owner', 'active', ?, ?) "
+                    "VALUES (%s, %s, 'owner', 'active', %s, %s) "
                     "ON CONFLICT(organization_id, user_id) DO NOTHING",
                     (organization_id, user_id, now, now),
                 )
@@ -70,14 +70,14 @@ class OrganizationRepository:
             row = conn.execute(
                 "INSERT INTO organizations "
                 "(name, is_personal, created_by_user_id, created_at, updated_at) "
-                "VALUES (?, FALSE, ?, ?, ?) RETURNING id",
+                "VALUES (%s, FALSE, %s, %s, %s) RETURNING id",
                 (name, owner_user_id, now, now),
             ).fetchone()
             organization_id = int(row[0])
             conn.execute(
                 "INSERT INTO organization_memberships "
                 "(organization_id, user_id, role, status, created_at, updated_at) "
-                "VALUES (?, ?, 'owner', 'active', ?, ?)",
+                "VALUES (%s, %s, 'owner', 'active', %s, %s)",
                 (organization_id, owner_user_id, now, now),
             )
             result = self._organization_with_role(conn, organization_id, owner_user_id)
@@ -100,7 +100,7 @@ class OrganizationRepository:
             conn.execute(
                 "INSERT INTO organization_memberships "
                 "(organization_id, user_id, role, status, invited_by_user_id, "
-                " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                " created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(organization_id, user_id) DO UPDATE SET "
                 "role = excluded.role, status = excluded.status, "
                 "invited_by_user_id = excluded.invited_by_user_id, "
@@ -120,7 +120,7 @@ class OrganizationRepository:
                 "m.created_at, m.updated_at, u.display_name, u.email "
                 "FROM organization_memberships m "
                 "JOIN users u ON u.id = m.user_id "
-                "WHERE m.organization_id = ? AND m.user_id = ?",
+                "WHERE m.organization_id = %s AND m.user_id = %s",
                 (organization_id, user_id),
             )
             results = rows_to_dicts(row)
@@ -131,7 +131,7 @@ class OrganizationRepository:
             cur = conn.execute(
                 "SELECT organization_id, user_id, role, status, created_at, updated_at "
                 "FROM organization_memberships "
-                "WHERE organization_id = ? AND user_id = ? AND status = 'active'",
+                "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
                 (organization_id, user_id),
             )
             rows = rows_to_dicts(cur)
@@ -143,7 +143,7 @@ class OrganizationRepository:
                 "SELECT o.id, o.name, o.is_personal, m.role, o.created_at "
                 "FROM organization_memberships m "
                 "JOIN organizations o ON o.id = m.organization_id "
-                "WHERE m.user_id = ? AND m.status = 'active' "
+                "WHERE m.user_id = %s AND m.status = 'active' "
                 "ORDER BY o.is_personal DESC, o.name, o.id",
                 (user_id,),
             )
@@ -160,7 +160,7 @@ class OrganizationRepository:
                 "m.created_at, m.updated_at, u.display_name, u.email "
                 "FROM organization_memberships m "
                 "JOIN users u ON u.id = m.user_id "
-                "WHERE m.organization_id = ? ORDER BY m.role, m.user_id",
+                "WHERE m.organization_id = %s ORDER BY m.role, m.user_id",
                 (organization_id,),
             )
             return rows_to_dicts(cur)
@@ -212,14 +212,14 @@ class OrganizationRepository:
             for table, has_user_id in tables.items():
                 if has_user_id:
                     cur = conn.execute(
-                        f"UPDATE {table} SET organization_id = ? "
-                        "WHERE organization_id IS NULL AND (user_id = ? OR user_key = ?)",
+                        f"UPDATE {table} SET organization_id = %s "
+                        "WHERE organization_id IS NULL AND (user_id = %s OR user_key = %s)",
                         (organization_id, user_id, user_key),
                     )
                 else:
                     cur = conn.execute(
-                        f"UPDATE {table} SET organization_id = ? "
-                        "WHERE organization_id IS NULL AND user_key = ?",
+                        f"UPDATE {table} SET organization_id = %s "
+                        "WHERE organization_id IS NULL AND user_key = %s",
                         (organization_id, user_key),
                     )
                 changed += max(0, int(getattr(cur, "rowcount", 0) or 0))
@@ -232,7 +232,7 @@ class OrganizationRepository:
                 "m.user_id, m.role, m.status, m.created_at, m.updated_at "
                 "FROM organization_memberships m "
                 "JOIN organizations o ON o.id = m.organization_id "
-                "WHERE m.user_id = ? ORDER BY m.organization_id",
+                "WHERE m.user_id = %s ORDER BY m.organization_id",
                 (user_id,),
             )
             return rows_to_dicts(cur)
@@ -241,7 +241,7 @@ class OrganizationRepository:
         """Elimina vínculos personales; no borra datos corporativos."""
         with connect() as conn:
             conn.execute(
-                "DELETE FROM organization_memberships WHERE user_id = ?",
+                "DELETE FROM organization_memberships WHERE user_id = %s",
                 (user_id,),
             )
 
@@ -249,7 +249,7 @@ class OrganizationRepository:
     def _personal_for_user(conn: Any, user_id: int) -> dict[str, Any] | None:
         cur = conn.execute(
             "SELECT id, name, is_personal, created_at "
-            "FROM organizations WHERE personal_owner_user_id = ?",
+            "FROM organizations WHERE personal_owner_user_id = %s",
             (user_id,),
         )
         rows = rows_to_dicts(cur)
@@ -263,7 +263,7 @@ class OrganizationRepository:
             "SELECT o.id, o.name, o.is_personal, m.role, o.created_at "
             "FROM organizations o JOIN organization_memberships m "
             "ON m.organization_id = o.id "
-            "WHERE o.id = ? AND m.user_id = ? AND m.status = 'active'",
+            "WHERE o.id = %s AND m.user_id = %s AND m.status = 'active'",
             (organization_id, user_id),
         )
         rows = rows_to_dicts(cur)

@@ -183,7 +183,7 @@ def test_quality_organization_scope_counts_real_rows(tmp_db):
     )  # pragma: allowlist secret
     with db_mod.connect() as conn:
         conn.execute(
-            "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (?, ?, ?)",
+            "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (%s, %s, %s)",
             ("QUALITY-1", "x", "2026-07-30T10:00:00+00:00"),
         )
 

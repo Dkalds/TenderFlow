@@ -3,7 +3,6 @@
 import { Component, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -41,14 +40,14 @@ export class ChartErrorBoundary extends Component<Props, State> {
           role="alert"
         >
           <AlertTriangle className="h-8 w-8 text-destructive/60" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">{t("common.chart_error")}</p>
+          <p className="text-sm text-muted-foreground">{"No se pudo cargar el gráfico."}</p>
           <Button
             variant="outline"
             size="sm"
             onClick={() => this.setState({ hasError: false, error: null })}
           >
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-            {t("common.retry")}
+            {"Reintentar"}
           </Button>
         </div>
       );

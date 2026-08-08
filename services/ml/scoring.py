@@ -78,7 +78,7 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
         c.executemany(
             "INSERT INTO predicciones_baja "
             "(licitacion_id, p10, p50, p90, model_version, computed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
             "ON CONFLICT(licitacion_id) DO UPDATE SET "
             "p10=excluded.p10, p50=excluded.p50, p90=excluded.p90, "
             "model_version=excluded.model_version, computed_at=excluded.computed_at",
@@ -185,7 +185,7 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
             c.executemany(
                 "INSERT INTO predicciones_retencion "
                 "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
-                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?) "
+                " model_version, computed_at) VALUES (%s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(licitacion_id) DO UPDATE SET "
                 "empresa_id=excluded.empresa_id, prob_retencion=excluded.prob_retencion, "
                 "riesgo_cambio=excluded.riesgo_cambio, "
@@ -232,7 +232,7 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
             c.executemany(
                 "INSERT INTO predicciones_retencion "
                 "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
-                " model_version, computed_at) VALUES (?, ?, ?, ?, ?, ?) "
+                " model_version, computed_at) VALUES (%s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(licitacion_id) DO UPDATE SET "
                 "empresa_id=excluded.empresa_id, prob_retencion=excluded.prob_retencion, "
                 "riesgo_cambio=excluded.riesgo_cambio, "
@@ -259,7 +259,7 @@ def _baja_real(c: Any, licitacion_id: str) -> tuple[float, float] | None:
         SELECT l.importe, SUM(a.importe_adjudicado) AS total_adjudicado
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE a.licitacion_id = ? AND {exclude_duplicados_sql()}
+        WHERE a.licitacion_id = %s AND {exclude_duplicados_sql()}
           AND l.importe > 0 AND a.importe_adjudicado > 0
         GROUP BY l.importe
     """  # noqa: S608 — exclude_duplicados_sql() es un fragmento constante
@@ -283,7 +283,7 @@ def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:
     with connect_read() as c:
         cur = c.execute(
             "SELECT p10, p50, p90, model_version, computed_at "
-            "FROM predicciones_baja WHERE licitacion_id = ?",
+            "FROM predicciones_baja WHERE licitacion_id = %s",
             (licitacion_id,),
         )
         pred_row = cur.fetchone()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import sqlite3
 import tempfile
 from contextlib import contextmanager
@@ -69,19 +68,19 @@ def _make_connect(db_path: str):
 # ─── model_registry tests ────────────────────────────────────────────────────
 
 
+@pytest.mark.usefixtures("tmp_db")
 class TestModelRegistry:
-    def setup_method(self):
-        self.db_path = _make_db()
-        # model_registry imports `connect` by name from db.database, so patch at usage site
-        self._patch = patch("db.model_registry.connect", new=_make_connect(self.db_path))
-        self._patch.start()
+    """Registro de modelos, contra el motor real.
 
-    def teardown_method(self):
-        self._patch.stop()
-        try:
-            os.unlink(self.db_path)
-        except (PermissionError, FileNotFoundError):
-            pass  # Windows: locked; OS will clean up
+    Estos tests parcheaban ``db.model_registry.connect`` con un SQLite hecho a
+    mano: ejercitaban el código de producción contra **otro dialecto** que el
+    que corre en producción, que es exactamente el modo de fallo que ADR-018 y
+    ADR-021 vinieron a cerrar. Pasaban porque el SQL del proyecto se escribía
+    en qmark, compatible con ambos motores; al migrar a ``%s`` quedó a la vista.
+
+    ``tmp_db`` da un schema Postgres aislado por test con ``model_versions``
+    ya creada por Alembic, así que el DDL a mano tampoco hace falta.
+    """
 
     def test_register_and_get_active(self):
         from db.model_registry import get_active, register_version
@@ -142,11 +141,20 @@ class TestModelRegistry:
 
     def test_feedbacks_since_last_train_no_active(self):
         """With no active model, counts all ml_feedback rows."""
-        con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO ml_feedback (expediente, relevante) VALUES ('X', 1)")
-        con.execute("INSERT INTO ml_feedback (expediente, relevante) VALUES ('Y', 0)")
-        con.commit()
-        con.close()
+        from db.database import connect, now_utc_iso
+
+        # `created_at` es NOT NULL en el schema real; el SQLite a mano que estos
+        # tests usaban no lo era, así que la divergencia no se veía.
+        ahora = now_utc_iso()
+        with connect() as c:
+            c.execute(
+                "INSERT INTO ml_feedback (expediente, relevante, created_at) VALUES ('X', 1, %s)",
+                (ahora,),
+            )
+            c.execute(
+                "INSERT INTO ml_feedback (expediente, relevante, created_at) VALUES ('Y', 0, %s)",
+                (ahora,),
+            )
 
         from db.model_registry import feedbacks_since_last_train
 
@@ -154,17 +162,16 @@ class TestModelRegistry:
 
     def test_feedbacks_since_last_train_with_active(self):
         """With an active model, only counts recent rows."""
+        from db.database import connect
         from db.model_registry import feedbacks_since_last_train, register_version
 
         register_version(name="sap_classifier", path="/p", sha256="s", activate=True)
-        # Seed two old rows (before trained_at)
-        con = sqlite3.connect(self.db_path)
-        con.execute(
-            "INSERT INTO ml_feedback (expediente, relevante, created_at) "
-            "VALUES ('A', 1, '2000-01-01T00:00:00')"
-        )
-        con.commit()
-        con.close()
+        # Fila anterior a trained_at: no debe contar.
+        with connect() as c:
+            c.execute(
+                "INSERT INTO ml_feedback (expediente, relevante, created_at) "
+                "VALUES ('A', 1, '2000-01-01T00:00:00')"
+            )
 
         count = feedbacks_since_last_train("sap_classifier")
         # Row is before trained_at → count == 0

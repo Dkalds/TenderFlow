@@ -33,14 +33,14 @@ def _sembrar_historico(c, n_meses=14, por_mes=8):
             c.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
                 " ccaa, importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
-                "VALUES (?, ?, ?, '72000000', 'Madrid', ?, 'Servicios', 'placsp', ?, "
+                "VALUES (%s, %s, %s, '72000000', 'Madrid', %s, 'Servicios', 'placsp', %s, "
                 " CURRENT_TIMESTAMP)",
                 (f"H{i}", f"Contrato {i}", organo, importe, fecha),
             )
             c.execute(
                 "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
                 " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
-                "VALUES (?, 'Empresa X', ?, ?, 3, CURRENT_TIMESTAMP)",
+                "VALUES (%s, 'Empresa X', %s, %s, 3, CURRENT_TIMESTAMP)",
                 (f"H{i}", importe * (1 - baja), fecha),
             )
             i += 1
@@ -51,7 +51,7 @@ def _insertar_abierta(c, lic_id="ABIERTA", organo="Organo A"):
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
         " importe, estado, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
-        "VALUES (?, 'Nueva', ?, '72000000', 'Madrid', 300000, 'PUB', 'Servicios', "
+        "VALUES (%s, 'Nueva', %s, '72000000', 'Madrid', 300000, 'PUB', 'Servicios', "
         " 'placsp', '2026-06-01', CURRENT_TIMESTAMP)",
         (lic_id, organo),
     )
@@ -336,7 +336,7 @@ def test_media_global_baja_usa_presupuesto_del_lote(db):
         c.execute(
             "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
             " fecha_adjudicacion, n_ofertas_recibidas, lote_id, fecha_extraccion) "
-            "VALUES ('LOTE-BASE', 'Empresa X', 15000, '2025-02-01', 3, ?, CURRENT_TIMESTAMP)",
+            "VALUES ('LOTE-BASE', 'Empresa X', 15000, '2025-02-01', 3, %s, CURRENT_TIMESTAMP)",
             [lote_id],
         )
 

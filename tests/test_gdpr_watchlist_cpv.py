@@ -59,7 +59,7 @@ def test_anonymize_removes_pii_and_hides_from_export(tmp_db):
 
     with connect_read() as c:
         cur = c.execute(
-            "SELECT user_key, email, user_id FROM watchlist_cpv WHERE cpv_prefix = ?",
+            "SELECT user_key, email, user_id FROM watchlist_cpv WHERE cpv_prefix = %s",
             ("72",),
         )
         rows = rows_to_dicts(cur)

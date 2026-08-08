@@ -25,7 +25,7 @@ def get_user_profile(user_key: str, organization_id: int | None = None) -> dict[
                 "SELECT user_key, weights_json, afinidad_keywords_json, "
                 "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
                 "organization_id, visibility "
-                "FROM user_profiles WHERE user_key = ?",
+                "FROM user_profiles WHERE user_key = %s",
                 (user_key,),
             ).fetchone()
         else:
@@ -33,9 +33,9 @@ def get_user_profile(user_key: str, organization_id: int | None = None) -> dict[
                 "SELECT user_key, weights_json, afinidad_keywords_json, "
                 "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
                 "organization_id, visibility "
-                "FROM user_profiles WHERE organization_id = ? "
-                "AND (visibility = 'organization' OR user_key = ?) "
-                "ORDER BY CASE WHEN user_key = ? THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+                "FROM user_profiles WHERE organization_id = %s "
+                "AND (visibility = 'organization' OR user_key = %s) "
+                "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
                 (organization_id, user_key, user_key),
             ).fetchone()
     if row is None:
@@ -89,7 +89,7 @@ def upsert_user_profile(
             "INSERT INTO user_profiles "
             "(user_key, weights_json, afinidad_keywords_json, cpvs_json, ccaa_json, "
             " importe_min, importe_max, updated_at, organization_id, visibility) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             "ON CONFLICT(user_key) DO UPDATE SET "
             "weights_json = excluded.weights_json, "
             "afinidad_keywords_json = excluded.afinidad_keywords_json, "
@@ -119,5 +119,5 @@ def upsert_user_profile(
 def delete_user_profile(user_key: str) -> bool:
     """Elimina el perfil del usuario. Devuelve True si existia."""
     with connect() as c:
-        cur = c.execute("DELETE FROM user_profiles WHERE user_key = ?", (user_key,))
+        cur = c.execute("DELETE FROM user_profiles WHERE user_key = %s", (user_key,))
         return bool(cur.rowcount > 0)

@@ -38,7 +38,7 @@ def _insert_batched(conn: Any, sql_prefix: str, columns: int, rows: list[tuple[A
     """
     for i in range(0, len(rows), _INSERT_CHUNK):
         chunk = rows[i : i + _INSERT_CHUNK]
-        placeholders = ", ".join(f"({', '.join('?' * columns)})" for _ in chunk)
+        placeholders = ", ".join(f"({', '.join(['%s'] * columns)})" for _ in chunk)
         values = [v for row in chunk for v in row]
         conn.execute(f"{sql_prefix} VALUES {placeholders}", values)
 

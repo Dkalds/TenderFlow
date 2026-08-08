@@ -28,7 +28,7 @@ def _licitacion(db_mod, id_externo: str = "LIC-PURSUIT-1") -> None:
     with db_mod.connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones "
-            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (?, ?, ?, ?)",
+            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (%s, %s, %s, %s)",
             (id_externo, "Servicio SAP", "2026-12-01T12:00:00+00:00", "2026-07-30T10:00:00+00:00"),
         )
 
@@ -57,7 +57,7 @@ def test_personal_organization_is_idempotent(tmp_db):
     assert first["role"] == "owner"
     with _db_mod.connect_read() as conn:
         count = conn.execute(
-            "SELECT COUNT(*) FROM organizations WHERE personal_owner_user_id = ?",
+            "SELECT COUNT(*) FROM organizations WHERE personal_owner_user_id = %s",
             (user_id,),
         ).fetchone()
     assert count[0] == 1
@@ -170,9 +170,9 @@ def test_pursuit_events_reject_update_and_delete(tmp_db):
     with pytest.raises((psycopg.errors.DatabaseError, ValueError), match="append-only"):
         with db_mod.connect() as conn:
             conn.execute(
-                "UPDATE pursuit_events SET event_type = 'tampered' WHERE pursuit_id = ?",
+                "UPDATE pursuit_events SET event_type = 'tampered' WHERE pursuit_id = %s",
                 (pursuit.id,),
             )
     with pytest.raises((psycopg.errors.DatabaseError, ValueError), match="append-only"):
         with db_mod.connect() as conn:
-            conn.execute("DELETE FROM pursuit_events WHERE pursuit_id = ?", (pursuit.id,))
+            conn.execute("DELETE FROM pursuit_events WHERE pursuit_id = %s", (pursuit.id,))

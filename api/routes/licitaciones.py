@@ -28,6 +28,7 @@ from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from shared.dto import SafeStr
 from shared.export_safety import sanitize_spreadsheet_record
 from shared.tender_facts import EvidenceRef, TenderFactSheetRecord
 
@@ -840,7 +841,9 @@ class BulkGetResult(BaseModel):
 
 
 class BulkGetRequest(BaseModel):
-    ids: list[str] = Field(
+    # `SafeStr`, no `str`: un \x00 en un id viajaba hasta Postgres y su
+    # DataError salía como 500 (KNOWN_5XX del fuzzer).
+    ids: list[SafeStr] = Field(
         ...,
         min_length=1,
         max_length=100,

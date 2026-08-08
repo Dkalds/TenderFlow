@@ -26,7 +26,7 @@ def db(tmp_db):
 
 def _empresa(c, nombre):
     row = c.execute(
-        "INSERT INTO empresas (nombre_canonico) VALUES (?) RETURNING id", (nombre,)
+        "INSERT INTO empresas (nombre_canonico) VALUES (%s) RETURNING id", (nombre,)
     ).fetchone()
     return row[0]
 
@@ -46,13 +46,13 @@ def _contrato(
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
         " importe, fecha_fin, fuente, fecha_publicacion, fecha_extraccion) "
-        "VALUES (?, ?, ?, ?, 'Madrid', ?, ?, 'placsp', ?, CURRENT_TIMESTAMP)",
+        "VALUES (%s, %s, %s, %s, 'Madrid', %s, %s, 'placsp', %s, CURRENT_TIMESTAMP)",
         (lic_id, f"Servicio mantenimiento {lic_id}", organo, cpv, importe, fecha_fin, fecha_adj),
     )
     c.execute(
         "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
         " fecha_adjudicacion, empresa_id, fecha_extraccion) "
-        "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        "VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
         (lic_id, f"Empresa {empresa_id}", adjudicado, fecha_adj, empresa_id),
     )
 

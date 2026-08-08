@@ -32,7 +32,7 @@ def _licitacion(id_externo: str = "LIC-CONTRACT") -> None:
     with connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones "
-            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (?, ?, ?, ?)",
+            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (%s, %s, %s, %s)",
             (id_externo, "Migración SAP", "2026-11-01T10:00:00+00:00", "2026-07-30T10:00:00+00:00"),
         )
 

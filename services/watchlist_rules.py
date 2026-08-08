@@ -54,7 +54,7 @@ def create_rule(
             "INSERT INTO watchlist_rules "
             "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
             " frequency, active, organization_id, visibility) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 user_key,
                 user_id,
@@ -78,7 +78,7 @@ def list_rules(user_key: str, organization_id: int | None = None) -> list[Watchl
         if organization_id is None:
             rows = c.execute(
                 "SELECT id, nombre, keyword, cpv, min_importe, ccaa, frequency, active, "
-                "organization_id, visibility FROM watchlist_rules WHERE user_key = ? "
+                "organization_id, visibility FROM watchlist_rules WHERE user_key = %s "
                 "ORDER BY created_at DESC, id DESC",
                 (user_key,),
             ).fetchall()
@@ -86,8 +86,8 @@ def list_rules(user_key: str, organization_id: int | None = None) -> list[Watchl
             rows = c.execute(
                 "SELECT id, nombre, keyword, cpv, min_importe, ccaa, frequency, active, "
                 "organization_id, visibility FROM watchlist_rules "
-                "WHERE organization_id = ? "
-                "AND (visibility = 'organization' OR user_key = ?) "
+                "WHERE organization_id = %s "
+                "AND (visibility = 'organization' OR user_key = %s) "
                 "ORDER BY created_at DESC, id DESC",
                 (organization_id, user_key),
             ).fetchall()
@@ -128,17 +128,17 @@ def update_rule(
         if organization_id is None:
             cur = c.execute(
                 "UPDATE watchlist_rules SET "
-                "nombre = ?, keyword = ?, cpv = ?, min_importe = ?, ccaa = ?, "
-                "frequency = ?, active = ? "
-                "WHERE id = ? AND user_key = ?",
+                "nombre = %s, keyword = %s, cpv = %s, min_importe = %s, ccaa = %s, "
+                "frequency = %s, active = %s "
+                "WHERE id = %s AND user_key = %s",
                 (*values, rule_id, user_key),
             )
         else:
             cur = c.execute(
                 "UPDATE watchlist_rules SET "
-                "nombre = ?, keyword = ?, cpv = ?, min_importe = ?, ccaa = ?, "
-                "frequency = ?, active = ? "
-                "WHERE id = ? AND user_key = ? AND organization_id = ?",
+                "nombre = %s, keyword = %s, cpv = %s, min_importe = %s, ccaa = %s, "
+                "frequency = %s, active = %s "
+                "WHERE id = %s AND user_key = %s AND organization_id = %s",
                 (*values, rule_id, user_key, organization_id),
             )
         return bool(cur.rowcount > 0)
@@ -148,7 +148,7 @@ def set_active(user_key: str, rule_id: int, active: bool) -> bool:
     """Activa o pausa una regla propia."""
     with connect() as c:
         cur = c.execute(
-            "UPDATE watchlist_rules SET active = ? WHERE id = ? AND user_key = ?",
+            "UPDATE watchlist_rules SET active = %s WHERE id = %s AND user_key = %s",
             (1 if active else 0, rule_id, user_key),
         )
         return bool(cur.rowcount > 0)
@@ -159,12 +159,12 @@ def delete_rule(user_key: str, rule_id: int, organization_id: int | None = None)
     with connect() as c:
         if organization_id is None:
             cur = c.execute(
-                "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ?",
+                "DELETE FROM watchlist_rules WHERE id = %s AND user_key = %s",
                 (rule_id, user_key),
             )
         else:
             cur = c.execute(
-                "DELETE FROM watchlist_rules WHERE id = ? AND user_key = ? AND organization_id = ?",
+                "DELETE FROM watchlist_rules WHERE id = %s AND user_key = %s AND organization_id = %s",
                 (rule_id, user_key, organization_id),
             )
         return bool(cur.rowcount > 0)
@@ -173,7 +173,7 @@ def delete_rule(user_key: str, rule_id: int, organization_id: int | None = None)
 def delete_all_for_user(user_key: str) -> int:
     """Borra todas las reglas del usuario (GDPR). Devuelve el numero de filas borradas."""
     with connect() as c:
-        cur = c.execute("DELETE FROM watchlist_rules WHERE user_key = ?", (user_key,))
+        cur = c.execute("DELETE FROM watchlist_rules WHERE user_key = %s", (user_key,))
         return int(cur.rowcount)
 
 

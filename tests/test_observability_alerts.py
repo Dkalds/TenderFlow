@@ -255,7 +255,7 @@ def test_check_consecutive_failures_sends_alert(tmp_db):
         for i in range(_DAILY_MAX_CONSECUTIVE_FAILURES):
             c.execute(
                 "INSERT INTO extraction_runs (run_id, started_at, status, notas) "
-                "VALUES (?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s)",
                 (f"run-{uuid4()}", f"2024-01-0{i + 1}T00:00:00", "error", "daily|test"),
             )
 
@@ -274,13 +274,13 @@ def test_check_consecutive_failures_mixed_status_no_alert(tmp_db):
 
     with db_mod.connect() as c:
         c.execute(
-            "INSERT INTO extraction_runs (run_id, started_at, status, notas) VALUES (?, ?, ?, ?)",
+            "INSERT INTO extraction_runs (run_id, started_at, status, notas) VALUES (%s, %s, %s, %s)",
             (f"run-{uuid4()}", "2024-01-01T00:00:00", "ok", "daily|test"),
         )
         for i in range(_DAILY_MAX_CONSECUTIVE_FAILURES - 1):
             c.execute(
                 "INSERT INTO extraction_runs (run_id, started_at, status, notas) "
-                "VALUES (?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s)",
                 (f"run-{uuid4()}", f"2024-01-0{i + 2}T00:00:00", "error", "daily|test"),
             )
 

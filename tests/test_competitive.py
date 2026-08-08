@@ -725,7 +725,7 @@ def _watched_empresa(db, nombre="Watched SL", nif="B99999999"):
     resolve(db)
     with connect_read() as c:
         return int(
-            c.execute("SELECT empresa_id FROM empresas WHERE nif_canonico = ?", (nif,)).fetchone()[
+            c.execute("SELECT empresa_id FROM empresas WHERE nif_canonico = %s", (nif,)).fetchone()[
                 0
             ]
         )
@@ -814,7 +814,7 @@ def test_totales_renovaciones_incluye_kpis_de_riesgo(db):
         ):
             c.execute(
                 "INSERT INTO predicciones_retencion "
-                "(licitacion_id, prob_retencion, riesgo_cambio) VALUES (?, ?, ?)",
+                "(licitacion_id, prob_retencion, riesgo_cambio) VALUES (%s, %s, %s)",
                 (lic_id, 1.0 - riesgo, riesgo),
             )
 

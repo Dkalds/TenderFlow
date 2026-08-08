@@ -109,13 +109,11 @@ MAX_EXAMPLES_GATE = 25
 # (validador compartido en los DTO, middleware en la frontera HTTP, o ambos):
 # es un cambio transversal con su propia discusión, anotado en
 # docs/IMPROVEMENT_BACKLOG.md. Al resolverlo, borrá su línea de aquí.
-KNOWN_5XX: frozenset[str] = frozenset(
-    {
-        "POST /api/v1/licitaciones/bulk-get",
-        "PUT /api/v1/feature-flags",
-        "DELETE /api/v1/watchlist/items/{id_externo}",
-    }
-)
+# Vaciada el 2026-08-07: las tres entradas eran la misma clase de fallo (un
+# byte que el cliente puede enviar y la capa de datos no admite). El saneo del
+# NUL vive ahora en el contrato (``shared.dto.SafeStr``) y las tres operaciones
+# devuelven 4xx; ver ``tests/test_malformed_input_4xx.py``.
+KNOWN_5XX: frozenset[str] = frozenset()
 
 
 @dataclass

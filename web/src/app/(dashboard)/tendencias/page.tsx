@@ -10,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { t } from "@/lib/i18n";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import type { TrendPoint } from "@/lib/api-types";
@@ -190,7 +189,7 @@ export default function TendenciasPage() {
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">{t("common.error")}: {(error as Error).message}</p>
+        <p className="text-destructive">{"Error"}: {(error as Error).message}</p>
       </div>
     );
   }

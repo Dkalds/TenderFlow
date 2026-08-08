@@ -6,6 +6,9 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class AuditRepository:
@@ -16,10 +19,13 @@ class AuditRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT * FROM audit_log WHERE user_key = ? "
+                    "SELECT * FROM audit_log WHERE user_key = %s "
                     "ORDER BY created_at DESC LIMIT 1000",
                     (user_key,),
                 )
                 return rows_to_dicts(cur)
             except Exception:
+                # Export GDPR: devolver [] ante un fallo entrega al usuario un
+                # export incompleto que parece completo.
+                log.warning("audit_export_by_user_key_failed", exc_info=True)
                 return []

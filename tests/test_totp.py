@@ -73,7 +73,7 @@ def test_secret_stored_encrypted_in_db(tmp_db):
     from db.database import connect
 
     with connect() as c:
-        row = c.execute("SELECT secret FROM totp_secrets WHERE user_id = ?", (1,)).fetchone()
+        row = c.execute("SELECT secret FROM totp_secrets WHERE user_id = %s", (1,)).fetchone()
     assert row is not None
     raw_value = row[0]
     assert raw_value != "PLAINTEXT_SECRET"  # pragma: allowlist secret
@@ -187,7 +187,7 @@ def test_get_totp_secret_reads_legacy_plaintext(tmp_db):
     # Insertar directamente sin cifrar (simula dato legacy)
     with connect() as c:
         c.execute(
-            "INSERT INTO totp_secrets (user_id, secret, confirmed, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO totp_secrets (user_id, secret, confirmed, created_at) VALUES (%s, %s, %s, %s)",
             (99, "LEGACY_PLAIN_SECRET", 1, now_utc_iso()),
         )
 

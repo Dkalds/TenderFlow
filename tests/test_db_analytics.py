@@ -1,48 +1,35 @@
-"""Tests para db/analytics.py — puente DuckDB/SQLite para consultas analíticas."""
+"""Tests para db/analytics.py — puente DuckDB/Postgres para consultas analíticas.
+
+``TestAnalyticsSqlitePath`` cubría ``_sqlite_path()``, retirado con el camino
+SQLite (ADR-021). Su equivalente es ``_database_url()``, que resuelve el DSN
+Postgres que se ATTACHea: mismos casos (resuelve / falla al no haber origen).
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from pydantic import SecretStr
 
 
-class TestAnalyticsSqlitePath:
-    def test_finds_file_from_DATABASE_PATH(self, tmp_path):
+class TestAnalyticsDatabaseUrl:
+    def test_returns_dsn_from_settings(self):
         from db import analytics
 
-        db_file = tmp_path / "test.db"
-        db_file.touch()
+        dsn = "postgresql://u:p@localhost:5432/db"  # pragma: allowlist secret -- DSN de prueba
         with patch.object(analytics, "settings", create=True) as mock_s:
-            mock_s.DATABASE_PATH = str(db_file)
-            mock_s.SQLITE_PATH = None
-            mock_s.DATA_DIR = None
-            result = analytics._sqlite_path()
-            assert result == db_file
+            mock_s.DATABASE_URL = SecretStr(dsn)
+            assert analytics._database_url() == dsn
 
-    def test_finds_file_from_DATA_DIR(self, tmp_path):
-        from db import analytics
-
-        db_file = tmp_path / "licitaciones.db"
-        db_file.touch()
-        with patch.object(analytics, "settings", create=True) as mock_s:
-            mock_s.DATABASE_PATH = None
-            mock_s.SQLITE_PATH = None
-            mock_s.DATA_DIR = str(tmp_path)
-            result = analytics._sqlite_path()
-            assert result == db_file
-
-    def test_raises_when_not_found(self):
+    def test_raises_when_database_url_empty(self):
         from db import analytics
 
         with patch.object(analytics, "settings", create=True) as mock_s:
-            mock_s.DATABASE_PATH = None
-            mock_s.SQLITE_PATH = None
-            mock_s.DATA_DIR = None
-            with pytest.raises(FileNotFoundError):
-                analytics._sqlite_path()
+            mock_s.DATABASE_URL = SecretStr("")
+            with pytest.raises(RuntimeError, match="DATABASE_URL"):
+                analytics._database_url()
 
 
 class TestHasDuckdb:
@@ -105,13 +92,14 @@ class TestGetConnectionWithDuckdb:
             mock_duckdb = MagicMock()
             mock_duckdb.connect.return_value = mock_con
 
+            dsn = "postgresql://u:p@localhost:5432/db"  # pragma: allowlist secret -- DSN de prueba
             with (
                 patch.object(analytics, "duckdb", mock_duckdb),
-                patch.object(analytics, "_sqlite_path", return_value=Path("/fake/db.sqlite")),
+                patch.object(analytics, "_database_url", return_value=dsn),
             ):
                 conn = analytics.get_connection()
                 assert conn is mock_con
-                mock_con.execute.assert_any_call("INSTALL sqlite_scanner;")
+                mock_con.execute.assert_any_call("INSTALL postgres;")
         finally:
             analytics._DUCKDB_AVAILABLE = original_avail
             analytics._conn = original_conn

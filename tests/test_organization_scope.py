@@ -34,7 +34,7 @@ def test_organization_visibility_shares_only_explicit_items(tmp_db):
     with db_mod.connect() as conn:
         for external_id in ("SCOPE-SHARED", "SCOPE-PRIVATE"):
             conn.execute(
-                "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (?, ?, ?)",
+                "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (%s, %s, %s)",
                 (external_id, external_id, "2026-07-30T10:00:00+00:00"),
             )
 
@@ -108,7 +108,7 @@ def _clear_dependency_overrides():
 
 def test_omitting_organization_id_scopes_to_personal_not_merged_across_orgs(client, api_db):
     """Regresión del bug de tenencia: antes, omitir organization_id caía a
-    ``WHERE user_key = ?`` sin mirar organization_id en absoluto -- un favorito
+    ``WHERE user_key = %s`` sin mirar organization_id en absoluto -- un favorito
     guardado bajo el contexto de una organización compartida se filtraba igual
     en la vista "sin organización". Tras el fix, omitirlo resuelve siempre a
     la organización personal -- una vista distinta y separada, no una fusión.

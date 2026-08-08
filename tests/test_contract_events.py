@@ -44,7 +44,7 @@ def eventos(db, lic_id="C-001"):
             )
             for r in c.execute(
                 "SELECT tipo, campo, valor_antes, valor_despues, importe_delta "
-                "FROM contrato_eventos WHERE licitacion_id = ? ORDER BY id",
+                "FROM contrato_eventos WHERE licitacion_id = %s ORDER BY id",
                 (lic_id,),
             ).fetchall()
         ]

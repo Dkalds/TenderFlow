@@ -73,12 +73,12 @@ def test_healthcheck_reporta_total_de_licitaciones(tmp_db):
     with connect() as c:
         c.execute(
             "INSERT INTO extraction_runs "
-            "(run_id, started_at, ended_at, status) VALUES ('r1', ?, ?, 'ok')",
+            "(run_id, started_at, ended_at, status) VALUES ('r1', %s, %s, 'ok')",
             (now, now),
         )
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
-            "VALUES ('LIC-001', 'Contrato de prueba', ?)",
+            "VALUES ('LIC-001', 'Contrato de prueba', %s)",
             (now,),
         )
 
@@ -111,19 +111,19 @@ def test_healthcheck_degrada_si_no_puede_medir_la_cobertura_de_empresas(tmp_db, 
     with connect() as c:
         c.execute(
             "INSERT INTO extraction_runs "
-            "(run_id, started_at, ended_at, status) VALUES ('r1', ?, ?, 'ok')",
+            "(run_id, started_at, ended_at, status) VALUES ('r1', %s, %s, 'ok')",
             (now, now),
         )
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
-            "VALUES ('LIC-001', 'Contrato de prueba', ?)",
+            "VALUES ('LIC-001', 'Contrato de prueba', %s)",
             (now,),
         )
         # Sin empresa_id: fuerza el recorrido de identidades sin resolver, que
         # es donde se llama a normalize_company.
         c.execute(
             "INSERT INTO adjudicaciones "
-            "(licitacion_id, nombre, fecha_extraccion) VALUES ('LIC-001', 'Empresa', ?)",
+            "(licitacion_id, nombre, fecha_extraccion) VALUES ('LIC-001', 'Empresa', %s)",
             (now,),
         )
 
@@ -176,7 +176,7 @@ def test_healthcheck_degraded_when_last_run_stale(tmp_db):
             "INSERT INTO extraction_runs "
             "(run_id, started_at, ended_at, duration_ms, status, "
             " months_attempted, months_ok) "
-            "VALUES ('r-old', ?, ?, 1000, 'ok', 1, 1)",
+            "VALUES ('r-old', %s, %s, 1000, 'ok', 1, 1)",
             (old, old),
         )
 
@@ -196,12 +196,12 @@ def test_healthcheck_degraded_when_dlq_above_threshold(tmp_db):
         c.execute(
             "INSERT INTO extraction_runs "
             "(run_id, started_at, ended_at, status) VALUES "
-            "('r1', ?, ?, 'ok')",
+            "('r1', %s, %s, 'ok')",
             (datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat()),
         )
         for i in range(6):
             c.execute(
-                "INSERT INTO failed_extractions (fuente, created_at) VALUES (?, ?)",
+                "INSERT INTO failed_extractions (fuente, created_at) VALUES (%s, %s)",
                 (f"src-{i}", datetime.now(UTC).isoformat()),
             )
 
@@ -221,17 +221,17 @@ def test_healthcheck_degraded_when_empresa_resolution_below_threshold(tmp_db):
     with connect() as c:
         c.execute(
             "INSERT INTO extraction_runs "
-            "(run_id, started_at, ended_at, status) VALUES ('r1', ?, ?, 'ok')",
+            "(run_id, started_at, ended_at, status) VALUES ('r1', %s, %s, 'ok')",
             (now, now),
         )
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
-            "VALUES ('LIC-001', 'Contrato de prueba', ?)",
+            "VALUES ('LIC-001', 'Contrato de prueba', %s)",
             (now,),
         )
         c.execute(
             "INSERT INTO adjudicaciones "
-            "(licitacion_id, nombre, fecha_extraccion) VALUES ('LIC-001', 'Empresa', ?)",
+            "(licitacion_id, nombre, fecha_extraccion) VALUES ('LIC-001', 'Empresa', %s)",
             (now,),
         )
 
@@ -252,25 +252,25 @@ def test_healthcheck_counts_pending_review_as_covered(tmp_db):
     with connect() as c:
         c.execute(
             "INSERT INTO extraction_runs "
-            "(run_id, started_at, ended_at, status) VALUES ('r1', ?, ?, 'ok')",
+            "(run_id, started_at, ended_at, status) VALUES ('r1', %s, %s, 'ok')",
             (now, now),
         )
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
-            "VALUES ('LIC-001', 'Contrato de prueba', ?)",
+            "VALUES ('LIC-001', 'Contrato de prueba', %s)",
             (now,),
         )
         c.execute(
             "INSERT INTO adjudicaciones "
             "(licitacion_id, nombre, nif, fecha_extraccion) "
-            "VALUES ('LIC-001', 'Empresa Candidata S.L.', 'B12345678', ?)",  # pragma: allowlist secret -- NIF sintético
+            "VALUES ('LIC-001', 'Empresa Candidata S.L.', 'B12345678', %s)",  # pragma: allowlist secret -- NIF sintético
             (now,),
         )
         c.execute(
             "INSERT INTO empresa_review_queue "
             "(nombre_original, alias_normalizado, nif, score, status, created_at) "
             "VALUES ('Empresa Candidata S.L.', 'EMPRESA CANDIDATA', "
-            "'B12345678', 0.95, 'pending', ?)",  # pragma: allowlist secret -- NIF sintético
+            "'B12345678', 0.95, 'pending', %s)",  # pragma: allowlist secret -- NIF sintético
             (now,),
         )
 
@@ -317,7 +317,7 @@ def test_healthcheck_main_returns_1_for_degraded(tmp_db):
             "INSERT INTO extraction_runs "
             "(run_id, started_at, ended_at, duration_ms, status, "
             " months_attempted, months_ok) "
-            "VALUES ('r-deg', ?, ?, 1000, 'ok', 1, 1)",
+            "VALUES ('r-deg', %s, %s, 1000, 'ok', 1, 1)",
             (old, old),
         )
 
@@ -360,7 +360,7 @@ def test_healthcheck_main_alert_mode_degraded_returns_0(tmp_db):
             "INSERT INTO extraction_runs "
             "(run_id, started_at, ended_at, duration_ms, status, "
             " months_attempted, months_ok) "
-            "VALUES ('r-deg-alert', ?, ?, 1000, 'ok', 1, 1)",
+            "VALUES ('r-deg-alert', %s, %s, 1000, 'ok', 1, 1)",
             (old, old),
         )
 
