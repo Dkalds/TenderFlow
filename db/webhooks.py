@@ -91,14 +91,16 @@ def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int,
     master_key = _get_webhook_master_key()
 
     with connect() as c:
-        # Insert with placeholder; we need the ID to derive the secret
-        cur = c.execute(
+        # Insert with placeholder; we need the ID to derive the secret.
+        # RETURNING y no lastval(): el id tiene que ser el de ESTA fila aunque
+        # un trigger toque otra secuencia — de él se deriva el secret HMAC.
+        row = c.execute(
             "INSERT INTO webhooks "
             "(name, url, secret, event_types, active, created_at) "
-            "VALUES (?, ?, ?, ?, 1, ?)",
+            "VALUES (?, ?, ?, ?, 1, ?) RETURNING id",
             (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
-        )
-        webhook_id = int(cur.lastrowid or 0)
+        ).fetchone()
+        webhook_id = int(row[0]) if row else 0
 
     if master_key:
         secret = derive_webhook_secret(master_key, webhook_id)

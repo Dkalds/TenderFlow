@@ -25,8 +25,10 @@ def db(tmp_db):
 
 
 def _empresa(c, nombre):
-    cur = c.execute("INSERT INTO empresas (nombre_canonico) VALUES (?)", (nombre,))
-    return cur.lastrowid
+    row = c.execute(
+        "INSERT INTO empresas (nombre_canonico) VALUES (?) RETURNING id", (nombre,)
+    ).fetchone()
+    return row[0]
 
 
 def _contrato(

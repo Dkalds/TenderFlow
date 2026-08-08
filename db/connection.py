@@ -221,32 +221,14 @@ class _PgConnAdapter:
             return -1
         return int(self._cur.rowcount)
 
-    @property
-    def lastrowid(self) -> Any:
-        """Id autogenerado por el último INSERT.
-
-        psycopg3 no expone ``lastrowid``. Antes esta propiedad devolvía
-        ``self._cur.rownumber``, que es la **posición del cursor en el
-        resultado**, no un id: ``db/users.py::create_user`` y
-        ``db/webhooks.py`` devolvían un identificador inventado (típicamente 0)
-        en producción.
-
-        ``lastval()`` devuelve el último valor generado por una secuencia en la
-        sesión actual, que es el equivalente correcto tras un INSERT sobre una
-        PK serial/identity. Si el INSERT no tocó ninguna secuencia, Postgres
-        lanza ``ObjectNotInPrerequisiteState``; se devuelve None, que los
-        call-sites ya tratan (``int(cur.lastrowid or 0)``).
-        """
-        if self._cur is None:
-            return None
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT lastval()")
-                row = cur.fetchone()
-                return row[0] if row else None
-        except Exception:
-            log.debug("pg_lastrowid_unavailable")
-            return None
+    # ``lastrowid`` NO se expone a propósito. psycopg3 no lo tiene, y emularlo
+    # con ``SELECT lastval()`` era incorrecto: lastval() devuelve el último
+    # valor generado por CUALQUIER secuencia de la sesión, en una sentencia
+    # aparte. Con triggers en el schema (v61) basta que uno inserte en otra
+    # tabla con identity para que el caller reciba un id ajeno sin error.
+    # El equivalente correcto en Postgres es ``INSERT … RETURNING id``, que es
+    # lo que usan hoy los call-sites (db/webhooks.py, db/events.py,
+    # db/watchlist_empresas.py, services/watchlist_rules.py).
 
     def commit(self) -> None:
         self._conn.commit()

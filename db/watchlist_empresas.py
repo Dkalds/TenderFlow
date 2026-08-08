@@ -33,10 +33,10 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
         ).fetchone()
         if existing is not None:
             return None
-        cur = c.execute(
+        row = c.execute(
             "INSERT INTO watchlist_empresas "
             "(user_key, empresa_id, email, frequency, created_at, organization_id, visibility) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
             (
                 entry.user_key,
                 entry.empresa_id,
@@ -46,8 +46,8 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
                 entry.organization_id,
                 entry.visibility,
             ),
-        )
-        return int(cur.lastrowid)
+        ).fetchone()
+        return int(row[0])
 
 
 def remove_entry(user_key: str, empresa_id: int, organization_id: int | None = None) -> bool:
