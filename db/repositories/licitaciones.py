@@ -654,13 +654,13 @@ class LicitacionRepository:
             conditions.append("estado = %s")
             params.append(estado)
         if tecnologia:
-            conditions.append("tecnologia = ?")
+            conditions.append("tecnologia = %s")
             params.append(tecnologia)
         if fecha_desde:
-            conditions.append("fecha_publicacion >= ?")
+            conditions.append("fecha_publicacion >= %s")
             params.append(fecha_desde)
         if fecha_hasta:
-            conditions.append("fecha_publicacion <= ?")
+            conditions.append("fecha_publicacion <= %s")
             params.append(fecha_hasta)
         if q:
             like_op = "ILIKE"
