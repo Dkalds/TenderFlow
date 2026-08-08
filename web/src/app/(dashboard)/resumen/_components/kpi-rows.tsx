@@ -81,8 +81,8 @@ function UrgentCard({
     <Link
       href={href}
       className={cn(
-        "group flex min-h-[124px] flex-col rounded-xl border bg-card/70 px-3.5 py-3 text-left",
-        "transition-[transform,border-color] duration-140 ease-out hover:-translate-y-px hover:border-primary/45",
+        "group bg-card/70 flex min-h-[124px] flex-col rounded-xl border px-3.5 py-3 text-left",
+        "hover:border-primary/45 transition-[transform,border-color] duration-140 ease-out hover:-translate-y-px",
         alert ? "border-destructive/50" : "border-border/60",
       )}
     >
@@ -98,19 +98,17 @@ function UrgentCard({
       {loading ? (
         <Skeleton className="h-8 w-20 rounded" />
       ) : (
-        <div className="tf-tnum font-mono text-[30px] font-semibold leading-none" style={{ color }}>
+        <div className="tf-tnum font-mono text-[30px] leading-none font-semibold" style={{ color }}>
           {value}
         </div>
       )}
-      <div className="mt-1.5 text-[11px] leading-[1.45] text-muted-foreground">{subtitle}</div>
-      <div className="mt-auto flex items-center gap-1.5 border-t border-border/40 pt-2.5">
+      <div className="text-muted-foreground mt-1.5 text-[11px] leading-[1.45]">{subtitle}</div>
+      <div className="border-border/40 mt-auto flex items-center gap-1.5 border-t pt-2.5">
         {/* El destino se enseña, no se adivina: la tarjeta dice a qué listado
             ya filtrado lleva antes de que la pulses. */}
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-muted-foreground">
-          {target}
-        </span>
+        <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[10.5px]">{target}</span>
         <ArrowRight
-          className="h-3 w-3 flex-none text-primary transition-transform duration-140 ease-out group-hover:translate-x-0.5"
+          className="text-primary h-3 w-3 flex-none transition-transform duration-140 ease-out group-hover:translate-x-0.5"
           aria-hidden="true"
         />
       </div>
@@ -137,10 +135,10 @@ function ContextCell({
 }) {
   const up = (trend ?? 0) >= 0;
   return (
-    <div className="min-w-0 bg-card px-3.5 py-2.5">
+    <div className="bg-card min-w-0 px-3.5 py-2.5">
       <div className="mb-1.5 flex items-center gap-1.5">
-        <Icon className="h-3 w-3 flex-none text-muted-foreground" aria-hidden="true" />
-        <span className="truncate font-mono text-[8.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        <Icon className="text-muted-foreground h-3 w-3 flex-none" aria-hidden="true" />
+        <span className="text-muted-foreground truncate font-mono text-[8.5px] font-semibold tracking-[0.1em] uppercase">
           {label}
         </span>
         {anomaly && (
@@ -156,13 +154,11 @@ function ContextCell({
         <Skeleton className="h-4 w-24 rounded" />
       ) : (
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="tf-tnum truncate font-mono text-base font-semibold leading-none">
-            {value}
-          </span>
+          <span className="tf-tnum truncate font-mono text-base leading-none font-semibold">{value}</span>
           {trend != null && (
             <span
               className={cn(
-                "tf-tnum flex-none font-mono text-[11px] font-medium leading-none",
+                "tf-tnum flex-none font-mono text-[11px] leading-none font-medium",
                 up ? "text-[hsl(var(--success))]" : "text-destructive",
               )}
             >
@@ -172,7 +168,7 @@ function ContextCell({
           )}
         </div>
       )}
-      <div className="mt-1 text-[10px] leading-[1.3] text-muted-foreground/80">{trendLabel}</div>
+      <div className="text-muted-foreground/80 mt-1 text-[10px] leading-[1.3]">{trendLabel}</div>
     </div>
   );
 }
@@ -219,9 +215,7 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
           <h2 id="resumen-urgente" className="text-xs font-semibold">
             Requiere atención
           </h2>
-          <span className="text-[10.5px] text-muted-foreground">
-            hoy · cada tarjeta abre su listado ya filtrado
-          </span>
+          <span className="text-muted-foreground text-[10.5px]">hoy · cada tarjeta abre su listado ya filtrado</span>
         </div>
         <Stagger className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stagger.Item>
@@ -281,11 +275,9 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
           <h2 id="resumen-contexto" className="text-xs font-semibold">
             Contexto de mercado
           </h2>
-          <span className="text-[10.5px] text-muted-foreground">
-            del ámbito activo · delta contra el mes previo
-          </span>
+          <span className="text-muted-foreground text-[10.5px]">del ámbito activo · delta contra el mes previo</span>
         </div>
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 lg:grid-cols-4">
+        <div className="border-border/60 bg-border/60 grid grid-cols-2 gap-px overflow-hidden rounded-xl border lg:grid-cols-4">
           <ContextCell
             label="Total licitaciones"
             value={formatNumber(overview?.total_licitaciones)}

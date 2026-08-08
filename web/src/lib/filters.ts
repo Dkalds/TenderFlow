@@ -77,45 +77,26 @@ export function useFilters(): FiltersState {
   );
 
   const setRango = useCallback(
-    (r: DateRange) =>
-      setParams({ fecha_desde: r.desde || "", fecha_hasta: r.hasta || "" }),
+    (r: DateRange) => setParams({ fecha_desde: r.desde || "", fecha_hasta: r.hasta || "" }),
     [setParams],
   );
 
-  const estados = useMemo(
-    () => (params.estado ? params.estado.split(",") : []),
-    [params.estado],
-  );
+  const estados = useMemo(() => (params.estado ? params.estado.split(",") : []), [params.estado]);
 
-  const setEstados = useCallback(
-    (estados: string[]) => setParams({ estado: estados.join(",") || "" }),
-    [setParams],
-  );
+  const setEstados = useCallback((estados: string[]) => setParams({ estado: estados.join(",") || "" }), [setParams]);
 
-  const ccaas = useMemo(
-    () => (params.ccaa ? params.ccaa.split(",") : []),
-    [params.ccaa],
-  );
+  const ccaas = useMemo(() => (params.ccaa ? params.ccaa.split(",") : []), [params.ccaa]);
 
-  const setCcaas = useCallback(
-    (ccaas: string[]) => setParams({ ccaa: ccaas.join(",") || "" }),
-    [setParams],
-  );
+  const setCcaas = useCallback((ccaas: string[]) => setParams({ ccaa: ccaas.join(",") || "" }), [setParams]);
 
-  const tecnologias = useMemo(
-    () => (params.tecnologia ? params.tecnologia.split(",") : []),
-    [params.tecnologia],
-  );
+  const tecnologias = useMemo(() => (params.tecnologia ? params.tecnologia.split(",") : []), [params.tecnologia]);
 
   const setTecnologias = useCallback(
     (tecnologias: string[]) => setParams({ tecnologia: tecnologias.join(",") || "" }),
     [setParams],
   );
 
-  const importeMin = useMemo(
-    () => (params.importe_min ? Number(params.importe_min) : null),
-    [params.importe_min],
-  );
+  const importeMin = useMemo(() => (params.importe_min ? Number(params.importe_min) : null), [params.importe_min]);
 
   const setImporteMin = useCallback(
     (val: number | null) => setParams({ importe_min: val != null ? String(val) : "" }),
@@ -124,10 +105,7 @@ export function useFilters(): FiltersState {
 
   const comparar = params.comparar === "true";
 
-  const setComparar = useCallback(
-    (val: boolean) => setParams({ comparar: val ? "true" : "" }),
-    [setParams],
-  );
+  const setComparar = useCallback((val: boolean) => setParams({ comparar: val ? "true" : "" }), [setParams]);
 
   const rangoB = useMemo(
     () => ({
@@ -138,15 +116,11 @@ export function useFilters(): FiltersState {
   );
 
   const setRangoB = useCallback(
-    (r: DateRange) =>
-      setParams({ rango_b_desde: r.desde || "", rango_b_hasta: r.hasta || "" }),
+    (r: DateRange) => setParams({ rango_b_desde: r.desde || "", rango_b_hasta: r.hasta || "" }),
     [setParams],
   );
 
-  const setQ = useCallback(
-    (q: string) => setParams({ q: q || "" }),
-    [setParams],
-  );
+  const setQ = useCallback((q: string) => setParams({ q: q || "" }), [setParams]);
 
   const resetFilters = useCallback(
     () =>
@@ -196,9 +170,7 @@ export type ScopeSnapshot = Record<keyof typeof filterParsers, string>;
 
 const SCOPE_KEYS = Object.keys(filterParsers) as (keyof typeof filterParsers)[];
 
-export const EMPTY_SCOPE: ScopeSnapshot = Object.fromEntries(
-  SCOPE_KEYS.map((key) => [key, ""]),
-) as ScopeSnapshot;
+export const EMPTY_SCOPE: ScopeSnapshot = Object.fromEntries(SCOPE_KEYS.map((key) => [key, ""])) as ScopeSnapshot;
 
 /** Serialización estable de una instantánea, para comparar sin `deepEqual`. */
 export function scopeKey(snapshot: ScopeSnapshot): string {
@@ -233,9 +205,7 @@ export function useScopeSnapshot(): {
 
   const applySnapshot = useCallback(
     (next: ScopeSnapshot) => {
-      setParams(
-        Object.fromEntries(SCOPE_KEYS.map((key) => [key, next[key] ?? ""])) as ScopeSnapshot,
-      );
+      setParams(Object.fromEntries(SCOPE_KEYS.map((key) => [key, next[key] ?? ""])) as ScopeSnapshot);
     },
     [setParams],
   );

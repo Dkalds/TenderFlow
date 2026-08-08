@@ -13,41 +13,34 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const {
-  pathnameRef,
-  filtersRef,
-  filterParamsRef,
-  historyRef,
-  overviewRef,
-  setCommandOpen,
-  undo,
-  redo,
-} = vi.hoisted(() => ({
-  pathnameRef: { current: "/mercado" },
-  filtersRef: {
-    current: {
-      q: "",
-      rango: { desde: null as string | null, hasta: null as string | null },
-      estados: [] as string[],
-      ccaas: [] as string[],
-      tecnologias: [] as string[],
-      importeMin: null as number | null,
-      setQ: vi.fn(),
-      setRango: vi.fn(),
-      setEstados: vi.fn(),
-      setCcaas: vi.fn(),
-      setTecnologias: vi.fn(),
-      setImporteMin: vi.fn(),
-      resetFilters: vi.fn(),
+const { pathnameRef, filtersRef, filterParamsRef, historyRef, overviewRef, setCommandOpen, undo, redo } = vi.hoisted(
+  () => ({
+    pathnameRef: { current: "/mercado" },
+    filtersRef: {
+      current: {
+        q: "",
+        rango: { desde: null as string | null, hasta: null as string | null },
+        estados: [] as string[],
+        ccaas: [] as string[],
+        tecnologias: [] as string[],
+        importeMin: null as number | null,
+        setQ: vi.fn(),
+        setRango: vi.fn(),
+        setEstados: vi.fn(),
+        setCcaas: vi.fn(),
+        setTecnologias: vi.fn(),
+        setImporteMin: vi.fn(),
+        resetFilters: vi.fn(),
+      },
     },
-  },
-  filterParamsRef: { current: {} as Record<string, string> },
-  historyRef: { current: { canUndo: false, canRedo: false } },
-  overviewRef: { current: { data: { total_licitaciones: 1234 }, isLoading: false } },
-  setCommandOpen: vi.fn(),
-  undo: vi.fn(),
-  redo: vi.fn(),
-}));
+    filterParamsRef: { current: {} as Record<string, string> },
+    historyRef: { current: { canUndo: false, canRedo: false } },
+    overviewRef: { current: { data: { total_licitaciones: 1234 }, isLoading: false } },
+    setCommandOpen: vi.fn(),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  }),
+);
 
 vi.mock("next/navigation", () => ({ usePathname: () => pathnameRef.current }));
 vi.mock("@/lib/filters", () => ({
@@ -283,9 +276,7 @@ describe("ScopeBar — editor del ámbito", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
     // El control es un multi-select real (Popover + opciones), no un `<select>`
     // que "añade" al cambiar: se abre y se marca la opción.
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"),
-    );
+    fireEvent.click(within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"));
     fireEvent.click(screen.getByRole("option", { name: "Madrid" }));
     expect(filtersRef.current.setCcaas).toHaveBeenCalledWith(["Cataluña", "Madrid"]);
   });
@@ -294,9 +285,7 @@ describe("ScopeBar — editor del ámbito", () => {
     filtersRef.current = { ...filtersRef.current, ccaas: ["Madrid"] };
     renderBar();
     fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"),
-    );
+    fireEvent.click(within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"));
     const option = screen.getByRole("option", { name: "Madrid" });
     expect(option).toHaveAttribute("aria-selected", "true");
     fireEvent.click(option);
@@ -307,9 +296,7 @@ describe("ScopeBar — editor del ámbito", () => {
     filterParamsRef.current = { q: "sap" };
     renderBar();
     fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /Limpiar el ámbito/ }),
-    );
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Limpiar el ámbito/ }));
     expect(filtersRef.current.resetFilters).toHaveBeenCalled();
   });
 });

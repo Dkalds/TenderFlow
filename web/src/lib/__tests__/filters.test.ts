@@ -36,25 +36,19 @@ describe("filtersToParams", () => {
   });
 
   it("adds fecha_desde from rango.desde", () => {
-    const result = filtersToParams(
-      makeFilters({ rango: { desde: "2024-01-01", hasta: null } }),
-    );
+    const result = filtersToParams(makeFilters({ rango: { desde: "2024-01-01", hasta: null } }));
     expect(result.fecha_desde).toBe("2024-01-01");
     expect(result.fecha_hasta).toBeUndefined();
   });
 
   it("adds fecha_hasta from rango.hasta", () => {
-    const result = filtersToParams(
-      makeFilters({ rango: { desde: null, hasta: "2024-12-31" } }),
-    );
+    const result = filtersToParams(makeFilters({ rango: { desde: null, hasta: "2024-12-31" } }));
     expect(result.fecha_hasta).toBe("2024-12-31");
     expect(result.fecha_desde).toBeUndefined();
   });
 
   it("adds both fecha_desde and fecha_hasta when both are set", () => {
-    const result = filtersToParams(
-      makeFilters({ rango: { desde: "2024-01-01", hasta: "2024-06-30" } }),
-    );
+    const result = filtersToParams(makeFilters({ rango: { desde: "2024-01-01", hasta: "2024-06-30" } }));
     expect(result.fecha_desde).toBe("2024-01-01");
     expect(result.fecha_hasta).toBe("2024-06-30");
   });
@@ -85,9 +79,7 @@ describe("filtersToParams", () => {
   });
 
   it("joins tecnologias as comma-separated string under 'tecnologia' key", () => {
-    const result = filtersToParams(
-      makeFilters({ tecnologias: ["IA", "Cloud", "Ciberseguridad"] }),
-    );
+    const result = filtersToParams(makeFilters({ tecnologias: ["IA", "Cloud", "Ciberseguridad"] }));
     expect(result.tecnologia).toBe("IA,Cloud,Ciberseguridad");
   });
 
@@ -136,9 +128,7 @@ describe("filtersToParams", () => {
 
 describe("appendFiltersToPath", () => {
   it("appends the filter query string to a plain path", () => {
-    expect(appendFiltersToPath("/detalle", "?estado=PUB")).toBe(
-      "/detalle?estado=PUB",
-    );
+    expect(appendFiltersToPath("/detalle", "?estado=PUB")).toBe("/detalle?estado=PUB");
   });
 
   it("returns the path untouched when there are no active filters", () => {
@@ -147,14 +137,10 @@ describe("appendFiltersToPath", () => {
 
   it("does NOT append when the path already carries its own query string", () => {
     // Deep-links that set a specific filtered view must keep overriding.
-    expect(appendFiltersToPath("/detalle?lic=ABC123", "?estado=PUB")).toBe(
-      "/detalle?lic=ABC123",
-    );
+    expect(appendFiltersToPath("/detalle?lic=ABC123", "?estado=PUB")).toBe("/detalle?lic=ABC123");
   });
 
   it("leaves deep-links untouched even with no active filters", () => {
-    expect(appendFiltersToPath("/detalle?lic=ABC123", "")).toBe(
-      "/detalle?lic=ABC123",
-    );
+    expect(appendFiltersToPath("/detalle?lic=ABC123", "")).toBe("/detalle?lic=ABC123");
   });
 });

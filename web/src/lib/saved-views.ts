@@ -54,10 +54,7 @@ export function applySnapshot(filters: FiltersState, filtersJson: string): void 
 export function useSavedViews() {
   return useQuery({
     queryKey: SAVED_VIEWS_KEY,
-    queryFn: () =>
-      fetchWithAuth<{ items: SavedView[] }>("/api/v1/saved-filters").then(
-        (r) => r.items,
-      ),
+    queryFn: () => fetchWithAuth<{ items: SavedView[] }>("/api/v1/saved-filters").then((r) => r.items),
     meta: { silent: true },
   });
 }
@@ -65,8 +62,7 @@ export function useSavedViews() {
 export function useSaveView() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { name: string; filters_json: string }) =>
-      apiMutate("POST", "/api/v1/saved-filters", vars),
+    mutationFn: (vars: { name: string; filters_json: string }) => apiMutate("POST", "/api/v1/saved-filters", vars),
     meta: {
       successMessage: "Vista guardada",
       errorTitle: "No se pudo guardar la vista",
