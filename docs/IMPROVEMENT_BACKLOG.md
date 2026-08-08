@@ -13,39 +13,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
-### [P1] Erradicar el trabajo bloqueante en handlers `async def` (event loop parado por DB síncrona, argon2, reportlab y auditoría O(n))
-- **Área:** api/routes, api/concurrency.py, db/audit.py
-- **Problema:** existe el helper correcto (`api/concurrency.py::run_db`/`run_ml`, ~90 usos) pero la adopción es inconsistente, y todo handler `async def` que llama a la BD o hace CPU sin pasar por él **para el event loop entero**: mientras corre, ninguno de los 149 endpoints responde — tampoco `/health`, así que el probe de la plataforma reinicia el servicio en vez de verlo "degraded". Con el threadpool global capado a 4 hilos (`api/app.py:129`) la interferencia es doble: lo que usa `run_db` compite por 4 slots, lo que no, bloquea el loop. Casos encontrados por auditoría AST (2026-08-07):
-  - `api/routes/exports.py:235` `download_export`: `fetch_for_pdf` (hasta 50k filas) + `generate_excel`/`_build_pdf` (reportlab, CPU, segundos) inline; además filtra `tecnologia`/fechas en Python post-fetch en vez de en SQL.
-  - `api/routes/auth.py:335` `login` (y `register`): `verify_password` (argon2, caro por diseño) + 5-6 round-trips DB síncronos; logins concurrentes serializan toda la API, y el propio chequeo de lockout consulta la BD en el loop antes de decidir.
-  - `api/routes/security.py:218` → `db/audit.py:288` `verify_hash_chain`: `SELECT … FROM audit_log ORDER BY id` + `fetchall()` + HMAC por fila — O(n) en loop y en memoria sobre una tabla que solo crece.
-  - `api/routes/health.py:141`: `_check_db()`/`_check_redis()` síncronos en handler async — si la BD se cuelga, `/health` se cuelga con ella.
-  - Menores del mismo patrón: `api/routes/exports.py:384` (`calendario_ics`, `connect_read` directo), `api/routes/watchlist_rules.py:174/208` (`connect` directo), `api/routes/webhooks.py:323-500` (list/get/update/delete/deliveries vía `_repo` síncrono), `api/routes/me.py:360/414`.
-- **Acceptance criteria:**
-  - Ningún handler `async def` de `api/routes/` llama a `db.*`/`services.*` bloqueante ni a CPU pesada (argon2, reportlab) sin `run_db`/`run_ml`; los listados arriba migran a `await run_db(...)` o se declaran `def` (threadpool).
-  - Test de arquitectura AST (patrón de `tests/test_user_key_sql_isolation.py` / `tests/test_swallowed_exceptions_guard.py`) que detecta llamadas bloqueantes dentro de `async def` sin threadpool, con grandfathering ratchet que solo encoge.
-  - `/health` responde dentro del timeout del probe incluso con la BD colgada (check en threadpool con timeout propio).
-- **Files de partida:** [api/concurrency.py](../api/concurrency.py), [api/routes/exports.py](../api/routes/exports.py), [api/routes/auth.py](../api/routes/auth.py), [db/audit.py](../db/audit.py), [api/routes/health.py](../api/routes/health.py)
-- **Riesgo:** medio — toca muchos handlers de producción, pero cada migración a `run_db` es mecánica, la suite funcional existente cubre el comportamiento y el ratchet AST evita regresiones.
-
-### [P1] Hacer alcanzable `POST /licitaciones/{id_externo}/resumen` para ids con `/` (conversor `:path`)
-- **Área:** api/routes/ask.py
-- **Problema:** la ruta usa el conversor por defecto (`[^/]+`) mientras todas las sub-rutas hermanas (`/explain`, `/documentos`, `/ficha-pliego`, `/tech-scores`, `/tecnologias`, `/eventos`, `/prediccion-baja`, `/escenarios-precio`) usan `{...:path}`, y el detalle tiene un fallback `:path` explícito en `api/app.py:497` **solo para GET**, precisamente porque hay `id_externo` de PLACSP con barras (ej. `PA-S 2026/000058`). Para esos expedientes el resumen ejecutivo devuelve 404 siempre, en silencio.
-- **Acceptance criteria:**
-  - La ruta pasa a `{id_externo:path}/resumen` y un test cubre un id con `/`.
-  - Barrido de que no queda ninguna otra sub-ruta de licitaciones con el conversor por defecto (`grep '"/licitaciones/{' api/`).
-- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [api/app.py](../api/app.py)
-- **Riesgo:** bajo — cambio de un decorator; el contrato OpenAPI solo cambia en el patrón del path param.
-
-### [P1] Sustituir el `lastrowid` emulado (`SELECT lastval()`) por `INSERT … RETURNING id`
-- **Área:** db/connection.py y 5 call-sites
-- **Problema:** `_PgConnAdapter.lastrowid` (`db/connection.py:225-249`) ejecuta `SELECT lastval()` en una sentencia separada: devuelve el último valor de **cualquier** secuencia de la sesión, así que no es atómico respecto a triggers — v61 ya introduce triggers en el schema; basta que uno inserte en otra tabla con identity para que el caller reciba un id ajeno **sin error**. Dependen de esto 5 call-sites de producción: `db/webhooks.py:101`, `db/repositories/webhooks.py:45`, `db/watchlist_empresas.py:50`, `db/events.py:69`, `services/watchlist_rules.py:72`.
-- **Acceptance criteria:**
-  - Los 5 call-sites usan `INSERT … RETURNING id` (idiomático y atómico en Postgres) y la propiedad `lastrowid` del adaptador se elimina.
-  - Los tests existentes de webhooks/watchlist/events siguen verdes; se añade uno que verifique el id devuelto contra la fila real.
-- **Files de partida:** [db/connection.py](../db/connection.py), [db/webhooks.py](../db/webhooks.py), [db/events.py](../db/events.py)
-- **Riesgo:** bajo — 5 sitios mecánicos; el riesgo latente de dejarlo (ids cruzados silenciosos) supera al del cambio.
-
 ### [P1] El Radar no puede ordenar por el ranking real: falta dismiss server-side y faltan campos en `ScoredOpportunity`
 - **Área:** api/routes/analytics.py, services/analytics/scoring.py, api/routes/licitaciones.py, web/src/hooks/use-radar.ts, web/src/app/(dashboard)/radar/page.tsx
 - **Problema:** dos huecos de backend que dejan la página insignia a medias (ver [UX_AUDIT.md](UX_AUDIT.md) §1).
@@ -93,7 +60,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Test de regresión que mockee `is_postgres_backend() = True` y verifique que no se llama a `_sqlite_path()`.
 - **Files de partida:** [db/analytics.py](../db/analytics.py)
 - **Riesgo:** medio — toca el único camino de exports OLAP a Parquet; sin test contra Postgres real (`postgres_scanner` no se ejercita en la suite hoy) el cambio va a ciegas hasta que exista cobertura.
-- **Nota (auditoría 2026-08-07):** repriorización sugerida — mantener un módulo que falla siempre con warning periódico del scheduler es peor que cualquiera de las dos salidas: o se migra a `postgres_scanner` ya, o se retira del árbol y del scheduler hasta que haga falta.
+- **Actualización 2026-08-08:** el paso `analytics_export` salió de `CANONICAL_STEPS` (ver _Cerrados_, commit `fc626df`), así que ya no falla en cada run del scheduler ni ensucia los logs. Lo que queda de este ítem es la migración real a `postgres_scanner`, que sigue necesitando un Postgres con la extensión instalada para verificarse. Al completarla hay que volver a añadir el paso a `CANONICAL_STEPS` y su `_run_analytics_export`.
 
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
 - **Área:** scraper/connectors/pscp.py, observability
@@ -138,15 +105,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
-### [P2] Compartir el poll del SSE de licitaciones entre clientes (hoy una consulta cada 5s por cliente)
-- **Área:** api/routes/stream.py
-- **Problema:** `_POLL_INTERVAL = 5.0` (`api/routes/stream.py:55`): cada cliente SSE conectado consulta el centinela vía `run_db` cada 5s, compitiendo por el threadpool global de 4 hilos con el resto de la API. N clientes = N consultas/5s, casi todas sin novedades.
-- **Acceptance criteria:**
-  - Un único poller compartido por proceso (o LISTEN/NOTIFY de Postgres) alimenta a todos los clientes conectados; con N clientes la carga a BD es O(1), no O(N).
-  - Test que conecta ≥2 clientes y verifica una sola consulta por intervalo; el contrato SSE (eventos, `Last-Event-ID`) no cambia.
-- **Files de partida:** [api/routes/stream.py](../api/routes/stream.py)
-- **Riesgo:** medio — toca un endpoint streaming de producción; mitigado manteniendo el contrato intacto.
-
 ### [P2] Separar los requirements de la API de los del pipeline/ML
 - **Área:** requirements.in, docker/
 - **Problema:** las 33 deps runtime (pandas, scikit-learn, statsmodels, networkx, reportlab, boto3, lxml, openai…) viven en un único deployable: la imagen de la API que corre en 0.1 vCPU/2GiB paga memoria, cold start y superficie de ataque de librerías que solo usa el plano de ingesta/ML. El OOM del 2026-08-02 (comentario en `api/app.py:115-120`) es el síntoma de fondo: OLAP y ML dentro del proceso HTTP.
@@ -156,23 +114,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - CI construye ambas variantes y el smoke de la API pasa con la imagen reducida.
 - **Files de partida:** [requirements.in](../requirements.in), [docker/](../docker/)
 - **Riesgo:** medio — toca dependencias (gate humano §6) y puede destapar imports implícitos; mitigado con smoke de import por entrypoint.
-
-### [P2] Parametrizar el límite del threadpool de anyio (hoy 4, hardcodeado)
-- **Área:** api/app.py, config/settings.py
-- **Problema:** `api/app.py:129` fija `total_tokens = 4` sin leer settings — correcto para Render Free (0.1 vCPU), estrangulador en cualquier instancia mayor: todo endpoint `def` y todo `run_db` compiten por 4 slots por proceso, se despliegue donde se despliegue.
-- **Acceptance criteria:**
-  - Setting `API_THREADPOOL_TOKENS` (default 4) con validación y coherencia con `DB_POOL_SIZE` (warning si tokens > pool).
-  - Test de settings cubriendo default y override.
-- **Files de partida:** [api/app.py](../api/app.py), [config/settings.py](../config/settings.py)
-- **Riesgo:** bajo — cambio acotado con default idéntico al comportamiento actual.
-
-### [P2] Dar primer test a los 3 módulos que ningún test menciona
-- **Área:** services, db/repositories, tests
-- **Problema:** ningún archivo de `tests/` menciona `services/deadline_reminders.py` (que además ejecuta SQL propio bajo `# noqa: S608`), `services/rate_limiting.py` ni `db/repositories/csp_violations.py` (auditoría 2026-08-07). Cualquier regresión ahí pasa CI en verde.
-- **Acceptance criteria:**
-  - Cada módulo tiene al menos un test de comportamiento (no de import) cubriendo su camino principal y un caso borde.
-- **Files de partida:** [services/deadline_reminders.py](../services/deadline_reminders.py), [services/rate_limiting.py](../services/rate_limiting.py), [db/repositories/csp_violations.py](../db/repositories/csp_violations.py)
-- **Riesgo:** bajo — solo añade tests.
 
 ### [P2] Paralelizar la suite: activar `-n auto` en CI y medir
 - **Área:** ci.yml
@@ -219,15 +160,15 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
-### [P2] Vaciar el grandfathering de excepciones tragadas (32 funciones)
+### [P2] Vaciar el grandfathering de excepciones tragadas (quedan 17)
 - **Área:** db/, services/
-- **Problema:** `tests/test_swallowed_exceptions_guard.py` congela 32 funciones cuyo `except Exception` devuelve un fallback sin dejar rastro. Entre ellas, el camino de autenticación (`api_keys`, `sessions`, `totp`), la cadena de auditoría y los fallbacks de búsqueda: un fallo de infraestructura se presenta como "clave inválida" o "sin resultados" y nadie puede distinguirlo.
+- **Problema:** `tests/test_swallowed_exceptions_guard.py` congela en `_GRANDFATHERED_PENDING_FIX` las funciones cuyo `except Exception` devuelve un fallback sin dejar rastro. El camino de autenticación y la cadena de auditoría (10 funciones) ya se arreglaron; **quedan 17**, entre ellas los fallbacks de búsqueda y el export GDPR: un fallo de infraestructura se presenta como "sin resultados" o "sin datos" y nadie puede distinguirlo. (El conteo de 32 que citaba este ítem nunca cuadró con el ratchet — el número vigente sale de `len(_GRANDFATHERED_PENDING_FIX)`.)
 - **Acceptance criteria:**
   - Cada arreglo añade `log.warning("<evento>", exc_info=True)` antes del fallback y borra su entrada de `_GRANDFATHERED_PENDING_FIX` (el ratchet falla si la entrada sobra).
-  - Prioridad sugerida: autenticación → auditoría → búsqueda → analítica.
+  - Prioridad sugerida: ~~autenticación → auditoría~~ (hechas) → búsqueda → analítica.
 - **Files de partida:** [tests/test_swallowed_exceptions_guard.py](../tests/test_swallowed_exceptions_guard.py)
 - **Riesgo:** bajo — aditivo (solo añade logs).
-- **Nota (auditoría 2026-08-07):** repriorización sugerida — el subconjunto de autenticación (`api_keys`, `sessions`, `totp`) merece P1: un fallo de infra presentado como "clave inválida" es un incidente indiagnosticable de cara a un cliente.
+- **Actualización 2026-08-08:** el subconjunto de **autenticación y auditoría** está cerrado (10 funciones: `api_keys` ×5, `sessions.validate_session`, `totp.verify_totp`/`use_recovery_code`, `audit.log_event`/`verify_hash_chain` — ver _Cerrados_, commit `85e850e`). Quedan las de export GDPR, búsqueda, idempotencia de webhooks e ingesta/analítica; el orden sugerido para el resto es búsqueda → idempotencia → analítica.
 
 ### [P2] Los filtros de CCAA / tecnología / estado son `<select>` nativos que fingen ser multi-select
 - **Área:** web/src/components/layout/scope-bar.tsx
@@ -242,15 +183,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Acceptance criteria:** decisión de producto registrada y, según ella, (a) retirar `lib/i18n.ts` + `public/locales/` inlineando las 40 claves, o (b) plan de extracción de cadenas con selector de idioma y `lang` dinámico.
 - **Files de partida:** [web/src/lib/i18n.ts](../web/src/lib/i18n.ts)
 - **Riesgo:** bajo (a) / alto (b). **Requiere decisión del usuario antes de tocar código.**
-
-### [P2] Cerrar los huecos de aislamiento por user_key encontrados en la auditoría de tenencia
-- **Área:** db/watchlist.py, db/saved_filters.py, api/routes/watchlist_rules.py
-- **Problema:** [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) audita que toda query contra una tabla user-scoped filtre por `user_key`, y encontró 3 violaciones reales que quedaron explícitamente allowlisted como huecos pendientes (no como precedente): `db/watchlist.py::remove_entry`/`update_frequency` (`DELETE`/`UPDATE ... WHERE id = ?` sin `user_key`, sin caller HTTP hoy), `db/saved_filters.py::delete_saved_filter` (mismo patrón; no explotable hoy porque `api/routes/saved_filters.py` valida propiedad antes de llamar, pero el repository no se defiende solo), y `api/routes/watchlist_rules.py::post_rule._create` (`UPDATE watchlist_rules SET email = ? WHERE id = ?` sin `user_key`, inconsistente con `put_rule._update` que sí lo añade).
-- **Acceptance criteria:**
-  - Las 3 funciones añaden `user_key` como parámetro y `AND user_key = ?` a su query.
-  - Cada entrada se retira de `_KNOWN_GAPS_PENDING_FIX`/`_GRANDFATHERED_KNOWN_GAPS_PENDING_FIX` en `tests/test_user_key_sql_isolation.py` al arreglarse (el ratchet solo puede encoger).
-- **Files de partida:** [db/watchlist.py](../db/watchlist.py), [db/saved_filters.py](../db/saved_filters.py), [api/routes/watchlist_rules.py](../api/routes/watchlist_rules.py), [tests/test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)
-- **Riesgo:** bajo — ninguna es explotable hoy (sin caller o con chequeo de propiedad en la ruta), pero son IDOR latentes si se reutiliza el repository sin ese cuidado.
 
 ### [P2] UI de webhooks y GDPR self-service
 - **Área:** web/, api/
@@ -407,6 +339,89 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-08] **P1: el trabajo bloqueante sale del event loop, y un ratchet impide que vuelva** —
+  La API es async pero toda la persistencia es síncrona, así que un `async def` que llamaba
+  directo a `db.*`/`services.*` ejecutaba ese trabajo **sobre el event loop**: mientras duraba,
+  ningún endpoint del proceso respondía. Ninguna herramienta del repo veía la clase (ruff y mypy
+  no modelan qué bloquea, y los tests funcionales pasan igual — un handler bloqueante da la
+  respuesta correcta, solo que parando el proceso). Los peores casos eran
+  `dual_auth.require_any_auth` y `auth._session_principal` (dependencias de casi toda la
+  superficie autenticada), `auth.login`/`register` (seis viajes a BD más argon2, caro por
+  diseño), `exports.download_export` (50k filas + reportlab) y `security.verify_audit_integrity`
+  (HMAC fila a fila sobre una tabla que solo crece). Los 22 handlers migran al idioma que ya
+  usaba `watchlist_rules.post_rule`: agrupar el trabajo síncrono en una función anidada y
+  despacharlo con un solo `await run_db(...)`, conservando el span OTEL `db.query`.
+  `tests/test_async_handlers_no_blocking_io.py` lo congela con una allowlist vacía —
+  no quedó deuda que grandfatherear— y se verificó que detecta una regresión inyectada.
+  De paso, `download_export` empuja `tecnologia`/`fecha_desde`/`fecha_hasta` a la query: antes
+  el LIMIT se gastaba en filas que luego se descartaban en Python, así que una exportación
+  filtrada podía salir corta. Commits `8f3e7b9`, `fa383e5`.
+
+- [2026-08-08] **P1: `/health` responde aunque una dependencia esté colgada** — Los tres
+  sondeos no tenían techo de tiempo: con la BD colgada el endpoint esperaba al `connect_timeout`
+  (10 s) o al `statement_timeout` (30 s), más de lo que aguanta el probe de la plataforma, que
+  daba el proceso por muerto y lo reiniciaba justo cuando `/health` existía para publicar
+  "degraded". Ahora van concurrentes en un task group, cada uno bajo `anyio.fail_after` con
+  `HEALTH_CHECK_TIMEOUT_SECONDS` (default 5 s). Commit `377b844`.
+
+- [2026-08-08] **P1: `POST /licitaciones/{id}/resumen` alcanzable para ids con `/`** — Usaba el
+  conversor por defecto (`[^/]+`) mientras sus ocho rutas hermanas usan `{...:path}`. Los
+  expedientes PLACSP con barra en el id (`PA-S 2026/000058`) recibían 404 antes de entrar al
+  handler: el resumen ejecutivo era inalcanzable para ellos, en silencio. Commit `fa383e5`.
+
+- [2026-08-08] **P1: `INSERT … RETURNING id` en vez del `lastrowid` emulado** — El adaptador
+  emulaba el id con `SELECT lastval()` en sentencia aparte, que devuelve el último valor de
+  **cualquier** secuencia de la sesión: con triggers ya en el schema (v61), un trigger que
+  insertara en otra tabla con identity hacía que el caller recibiera un id ajeno sin ningún
+  error. Los dos call-sites de webhooks eran los más expuestos (de ese id se deriva el secret
+  HMAC). Los 5 sitios migran y la propiedad se elimina del adaptador. Commit `187ff9d`.
+
+- [2026-08-08] **P2: los fallos tragados del camino de auth dejan rastro** — Diez funciones
+  capturaban `Exception` y devolvían el fallback sin log: un fallo de infraestructura se le
+  presentaba al usuario como "clave inválida" o "sesión caducada", indistinguible de una
+  credencial mala o de un ataque. Cubre `api_keys` (5 métodos, incluido
+  `deactivate_all_for_user`, que devolvía 0 en silencio y hacía creer que el borrado GDPR había
+  revocado las keys), `sessions.validate_session`, `totp.verify_totp`/`use_recovery_code` y
+  `audit.log_event`/`verify_hash_chain`. Las diez salen del ratchet. Commit `85e850e`.
+  *(Era la parte de autenticación del ítem de excepciones tragadas; el resto sigue abierto.)*
+
+- [2026-08-08] **P2: un solo poller del centinela SSE por proceso** — Cada cliente conectado
+  consultaba `shared.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por
+  intervalo compitiendo por el threadpool de 4 hilos. Ahora un `_SignalWatcher` por proceso
+  publica el timestamp en memoria y cada cliente lo compara con su checkpoint — exactamente lo
+  que evaluaba `check_cache_signal`, pero O(1) en conexiones. El poller arranca con el primer
+  suscriptor y se cancela con el último; el bucle por cliente baja a 1 s (comprobación en
+  memoria), mejorando latencia y detección de desconexión sin coste de BD. Commit `b07fd6b`.
+
+- [2026-08-08] **P2: `API_THREADPOOL_TOKENS` parametriza el límite de hilos** — `api/app.py`
+  fijaba `total_tokens = 4` sin leer settings; ese pool sirve a los endpoints `def` y a todo
+  `run_db`, así que el valor correcto para Render Free era un cuello de botella en cualquier
+  instancia mayor. Default 4 (comportamiento idéntico) y warning si supera `DB_POOL_SIZE`.
+  Commit `978b373`.
+
+- [2026-08-08] **P2: cerrados los huecos de aislamiento por `user_key`** — `db/watchlist.py::
+  remove_entry` y `::update_frequency` hacían DELETE/UPDATE con `WHERE id = ?` a secas, así que
+  el aislamiento dependía de que cada caller validase la propiedad: un IDOR latente. Ambas
+  reciben `user_key` y filtran por él, devolviendo `bool` para que un id ajeno sea
+  indistinguible de uno inexistente. `_KNOWN_GAPS_PENDING_FIX` queda vacío. El tercer hueco
+  del ítem original (`post_rule._create`) ya estaba arreglado y el texto del backlog había
+  quedado desactualizado. Commit `09578bb`.
+
+- [2026-08-08] **P2: primer test para los 3 módulos que ninguno mencionaba** —
+  `services/deadline_reminders.py`, `services/rate_limiting.py` y
+  `db/repositories/csp_violations.py` no tenían una sola referencia en `tests/`. Commit
+  `2ca9174`.
+
+- [2026-08-08] **Export OLAP roto desenganchado del scheduler** — `analytics_export` fallaba en
+  **todas** las ejecuciones desde ADR-021 (`db.analytics` hace `ATTACH (TYPE SQLITE)` sobre un
+  fichero que ya no existe) y solo producía un warning por run: ruido que entrena a ignorar los
+  logs. Sale de `CANONICAL_STEPS`; el módulo se queda documentando que vuelve a engancharse
+  cuando la migración a `postgres_scanner` tenga cobertura. Incluye la purga de las referencias
+  a SQLite que ADR-021 dejó obsoletas en docstrings (`api/concurrency.py`, `api/app.py`,
+  `health.py`, `rag/context.py`, `ml/scoring.py`, `competitive/__init__.py`) y el renombre
+  `SqliteRateLimiter` → `DbRateLimiter` con alias retrocompatible. Commit `fc626df`.
+  *(La migración real a `postgres_scanner` sigue abierta más arriba.)*
 
 - [2026-08-04] **P1: la categorización de tecnología ahora también la alimentan los pliegos, no solo el título** —
   Hasta ahora la clasificación de tecnología corría una sola vez en el ingest y solo veía
