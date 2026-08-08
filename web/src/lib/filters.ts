@@ -18,6 +18,7 @@ export interface FiltersState {
   ccaas: string[];
   tecnologias: string[];
   importeMin: number | null;
+  soloAbiertas: boolean;
   comparar: boolean;
   rangoB: DateRange;
 
@@ -27,6 +28,7 @@ export interface FiltersState {
   setCcaas: (ccaas: string[]) => void;
   setTecnologias: (tecnologias: string[]) => void;
   setImporteMin: (min: number | null) => void;
+  setSoloAbiertas: (soloAbiertas: boolean) => void;
   setComparar: (comparar: boolean) => void;
   setRangoB: (rango: DateRange) => void;
   resetFilters: () => void;
@@ -40,6 +42,16 @@ export interface FilterValues {
   ccaas: string[];
   tecnologias: string[];
   importeMin: number | null;
+  /**
+   * "Sólo las que siguen abiertas" — descarta los estados terminales.
+   *
+   * No es lo mismo que `estados: ["PUB","EV"]`, y por eso existe: enumerar los
+   * abiertos deja fuera cualquier código que la fuente publique después
+   * (`ADM` es el caso real). El backend ya lo resolvía con `solo_abiertas`;
+   * lo que faltaba era que el ámbito pudiera expresarlo, para que una tarjeta
+   * que cuenta "activas" pueda abrir el listado que enseña justo esas.
+   */
+  soloAbiertas: boolean;
 }
 
 const filterParsers = {
@@ -50,6 +62,7 @@ const filterParsers = {
   ccaa: parseAsString.withDefault(""),
   tecnologia: parseAsString.withDefault(""),
   importe_min: parseAsString.withDefault(""),
+  solo_abiertas: parseAsString.withDefault(""),
   comparar: parseAsString.withDefault(""),
   rango_b_desde: parseAsString.withDefault(""),
   rango_b_hasta: parseAsString.withDefault(""),
@@ -77,57 +90,39 @@ export function useFilters(): FiltersState {
   );
 
   const setRango = useCallback(
-    (r: DateRange) =>
-      setParams({ fecha_desde: r.desde || "", fecha_hasta: r.hasta || "" }),
+    (r: DateRange) => setParams({ fecha_desde: r.desde || "", fecha_hasta: r.hasta || "" }),
     [setParams],
   );
 
-  const estados = useMemo(
-    () => (params.estado ? params.estado.split(",") : []),
-    [params.estado],
-  );
+  const estados = useMemo(() => (params.estado ? params.estado.split(",") : []), [params.estado]);
 
-  const setEstados = useCallback(
-    (estados: string[]) => setParams({ estado: estados.join(",") || "" }),
-    [setParams],
-  );
+  const setEstados = useCallback((estados: string[]) => setParams({ estado: estados.join(",") || "" }), [setParams]);
 
-  const ccaas = useMemo(
-    () => (params.ccaa ? params.ccaa.split(",") : []),
-    [params.ccaa],
-  );
+  const ccaas = useMemo(() => (params.ccaa ? params.ccaa.split(",") : []), [params.ccaa]);
 
-  const setCcaas = useCallback(
-    (ccaas: string[]) => setParams({ ccaa: ccaas.join(",") || "" }),
-    [setParams],
-  );
+  const setCcaas = useCallback((ccaas: string[]) => setParams({ ccaa: ccaas.join(",") || "" }), [setParams]);
 
-  const tecnologias = useMemo(
-    () => (params.tecnologia ? params.tecnologia.split(",") : []),
-    [params.tecnologia],
-  );
+  const tecnologias = useMemo(() => (params.tecnologia ? params.tecnologia.split(",") : []), [params.tecnologia]);
 
   const setTecnologias = useCallback(
     (tecnologias: string[]) => setParams({ tecnologia: tecnologias.join(",") || "" }),
     [setParams],
   );
 
-  const importeMin = useMemo(
-    () => (params.importe_min ? Number(params.importe_min) : null),
-    [params.importe_min],
-  );
+  const importeMin = useMemo(() => (params.importe_min ? Number(params.importe_min) : null), [params.importe_min]);
 
   const setImporteMin = useCallback(
     (val: number | null) => setParams({ importe_min: val != null ? String(val) : "" }),
     [setParams],
   );
 
+  const soloAbiertas = params.solo_abiertas === "true";
+
+  const setSoloAbiertas = useCallback((val: boolean) => setParams({ solo_abiertas: val ? "true" : "" }), [setParams]);
+
   const comparar = params.comparar === "true";
 
-  const setComparar = useCallback(
-    (val: boolean) => setParams({ comparar: val ? "true" : "" }),
-    [setParams],
-  );
+  const setComparar = useCallback((val: boolean) => setParams({ comparar: val ? "true" : "" }), [setParams]);
 
   const rangoB = useMemo(
     () => ({
@@ -138,15 +133,11 @@ export function useFilters(): FiltersState {
   );
 
   const setRangoB = useCallback(
-    (r: DateRange) =>
-      setParams({ rango_b_desde: r.desde || "", rango_b_hasta: r.hasta || "" }),
+    (r: DateRange) => setParams({ rango_b_desde: r.desde || "", rango_b_hasta: r.hasta || "" }),
     [setParams],
   );
 
-  const setQ = useCallback(
-    (q: string) => setParams({ q: q || "" }),
-    [setParams],
-  );
+  const setQ = useCallback((q: string) => setParams({ q: q || "" }), [setParams]);
 
   const resetFilters = useCallback(
     () =>
@@ -158,6 +149,7 @@ export function useFilters(): FiltersState {
         ccaa: "",
         tecnologia: "",
         importe_min: "",
+        solo_abiertas: "",
         comparar: "",
         rango_b_desde: "",
         rango_b_hasta: "",
@@ -178,6 +170,8 @@ export function useFilters(): FiltersState {
     setTecnologias,
     importeMin,
     setImporteMin,
+    soloAbiertas,
+    setSoloAbiertas,
     comparar,
     setComparar,
     rangoB,
@@ -187,7 +181,7 @@ export function useFilters(): FiltersState {
 }
 
 /**
- * Instantánea completa del ámbito: el valor crudo de los diez parámetros que
+ * Instantánea completa del ámbito: el valor crudo de los once parámetros que
  * gobierna el estado de filtros. Es lo que apila el historial de deshacer /
  * rehacer de la barra de ámbito (`lib/scope-history.ts`), que necesita
  * restaurar el objeto entero y no una clave suelta.
@@ -196,9 +190,7 @@ export type ScopeSnapshot = Record<keyof typeof filterParsers, string>;
 
 const SCOPE_KEYS = Object.keys(filterParsers) as (keyof typeof filterParsers)[];
 
-export const EMPTY_SCOPE: ScopeSnapshot = Object.fromEntries(
-  SCOPE_KEYS.map((key) => [key, ""]),
-) as ScopeSnapshot;
+export const EMPTY_SCOPE: ScopeSnapshot = Object.fromEntries(SCOPE_KEYS.map((key) => [key, ""])) as ScopeSnapshot;
 
 /** Serialización estable de una instantánea, para comparar sin `deepEqual`. */
 export function scopeKey(snapshot: ScopeSnapshot): string {
@@ -207,9 +199,9 @@ export function scopeKey(snapshot: ScopeSnapshot): string {
 
 /**
  * Lee y escribe el ámbito completo de una vez. Separado de `useFilters` porque
- * el historial restaura los diez parámetros en una sola actualización de URL:
- * hacerlo con los setters individuales produciría diez entradas de historial y
- * diez refetch en cascada.
+ * el historial restaura los once parámetros en una sola actualización de URL:
+ * hacerlo con los setters individuales produciría once entradas de historial y
+ * once refetch en cascada.
  */
 export function useScopeSnapshot(): {
   snapshot: ScopeSnapshot;
@@ -233,9 +225,7 @@ export function useScopeSnapshot(): {
 
   const applySnapshot = useCallback(
     (next: ScopeSnapshot) => {
-      setParams(
-        Object.fromEntries(SCOPE_KEYS.map((key) => [key, next[key] ?? ""])) as ScopeSnapshot,
-      );
+      setParams(Object.fromEntries(SCOPE_KEYS.map((key) => [key, next[key] ?? ""])) as ScopeSnapshot);
     },
     [setParams],
   );
@@ -256,6 +246,7 @@ export function filtersToParams(filters: FilterValues): Record<string, string> {
   if (filters.ccaas.length) params.ccaa = filters.ccaas.join(",");
   if (filters.tecnologias.length) params.tecnologia = filters.tecnologias.join(",");
   if (filters.importeMin !== null) params.importe_min = String(filters.importeMin);
+  if (filters.soloAbiertas) params.solo_abiertas = "true";
   return params;
 }
 
@@ -304,14 +295,14 @@ export function useWithFilters(): (path: string) => string {
  * doesn't refetch on every render.
  */
 export function useFilterParams(): Record<string, string> {
-  const { q, rango, estados, ccaas, tecnologias, importeMin } = useFilters();
+  const { q, rango, estados, ccaas, tecnologias, importeMin, soloAbiertas } = useFilters();
   // Serialize arrays to strings so object identity doesn't cause unnecessary recalculations
   const estadosKey = estados.join();
   const ccaasKey = ccaas.join();
   const tecnologiasKey = tecnologias.join();
   return useMemo(
-    () => filtersToParams({ q, rango, estados, ccaas, tecnologias, importeMin }),
+    () => filtersToParams({ q, rango, estados, ccaas, tecnologias, importeMin, soloAbiertas }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stable primitive deps via join()
-    [q, rango.desde, rango.hasta, estadosKey, ccaasKey, tecnologiasKey, importeMin],
+    [q, rango.desde, rango.hasta, estadosKey, ccaasKey, tecnologiasKey, importeMin, soloAbiertas],
   );
 }

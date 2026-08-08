@@ -13,12 +13,14 @@ const filtersStub = {
   ccaas: [] as string[],
   tecnologias: [] as string[],
   importeMin: null,
+  soloAbiertas: false,
   setQ,
   setRango: vi.fn(),
   setEstados: vi.fn(),
   setCcaas: vi.fn(),
   setTecnologias: vi.fn(),
   setImporteMin: vi.fn(),
+  setSoloAbiertas: vi.fn(),
 };
 vi.mock("@/lib/filters", () => ({ useFilters: () => filtersStub }));
 
@@ -47,7 +49,10 @@ afterEach(() => {
 
 describe("SavedViewsMenu", () => {
   it("opens the menu and lists saved views", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     renderMenu({ views: VIEWS });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
     // Radix Popover.Content renders with role="dialog" (a non-modal popover,
@@ -58,21 +63,30 @@ describe("SavedViewsMenu", () => {
   });
 
   it("shows an empty state when there are no views", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     renderMenu({ views: [] });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
     expect(screen.getByText("No tienes vistas guardadas.")).toBeInTheDocument();
   });
 
   it("shows a loading state while the query is pending", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     renderMenu();
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
     expect(screen.getByText("Cargando…")).toBeInTheDocument();
   });
 
   it("applies a saved view's snapshot back onto the filters", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     renderMenu({ views: VIEWS });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
     // Exact match: a regex here would also match "Eliminar vista Vista A".
@@ -99,7 +113,10 @@ describe("SavedViewsMenu", () => {
   });
 
   it("opens when the ui store's savedViewsOpen flag is set externally (e.g. from the command palette)", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     renderMenu({ views: VIEWS });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     act(() => {
@@ -113,7 +130,10 @@ describe("SavedViewsMenu", () => {
     // capturing a native pointerdown on `document`, which jsdom + fireEvent's
     // synthetic events cannot reproduce reliably (see sheet.test.tsx); Escape
     // exercises the same `onOpenChange(false)` codepath deterministically.
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     renderMenu({ views: VIEWS });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
     expect(useUiStore.getState().savedViewsOpen).toBe(true);

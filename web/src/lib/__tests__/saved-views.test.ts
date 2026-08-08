@@ -9,6 +9,7 @@ const baseValues: FilterValues = {
   ccaas: [],
   tecnologias: [],
   importeMin: null,
+  soloAbiertas: false,
 };
 
 function makeFilters(overrides: Partial<FilterValues> = {}): FilterValues {
@@ -63,6 +64,7 @@ describe("applySnapshot", () => {
       setCcaas: vi.fn(),
       setTecnologias: vi.fn(),
       setImporteMin: vi.fn(),
+      setSoloAbiertas: vi.fn(),
       setComparar: vi.fn(),
       setRangoB: vi.fn(),
       resetFilters: vi.fn(),
@@ -109,3 +111,44 @@ describe("applySnapshot", () => {
     expect(filters.setImporteMin).toHaveBeenCalledWith(10000);
   });
 });
+
+describe("saved views · soloAbiertas", () => {
+  /**
+   * Un filtro que no vuelve al restaurar la vista es peor que no tenerlo: el
+   * usuario guarda "mis abiertas de Madrid", la aplica, y le salen también las
+   * adjudicadas sin que nada lo indique.
+   */
+  it("va en la instantánea", () => {
+    const snap = snapshotFilters(makeFilters({ soloAbiertas: true }));
+    expect(JSON.parse(snap).soloAbiertas).toBe(true);
+  });
+
+  it("se restaura al aplicar la vista", () => {
+    const filters = { ...baseValues, ...mockSetters() } as FiltersState;
+    applySnapshot(filters, JSON.stringify({ soloAbiertas: true }));
+    expect(filters.setSoloAbiertas).toHaveBeenCalledWith(true);
+  });
+
+  it("una vista guardada antes de que el filtro existiera lo apaga", () => {
+    const filters = { ...baseValues, soloAbiertas: true, ...mockSetters() } as FiltersState;
+    applySnapshot(filters, JSON.stringify({ q: "sap" }));
+    expect(filters.setSoloAbiertas).toHaveBeenCalledWith(false);
+  });
+});
+
+function mockSetters() {
+  return {
+    setQ: vi.fn(),
+    setRango: vi.fn(),
+    setEstados: vi.fn(),
+    setCcaas: vi.fn(),
+    setTecnologias: vi.fn(),
+    setImporteMin: vi.fn(),
+    setSoloAbiertas: vi.fn(),
+    setComparar: vi.fn(),
+    setRangoB: vi.fn(),
+    resetFilters: vi.fn(),
+    comparar: false,
+    rangoB: { desde: null, hasta: null },
+  };
+}
