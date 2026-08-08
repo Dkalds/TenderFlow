@@ -39,11 +39,16 @@ log = get_logger(__name__)
 # Los pasos que no deben abortar la pipeline capturan excepciones y loguean.
 # El orden de esta lista define el contrato de la secuencia canónica.
 
+# ``analytics_export`` se retiró de la secuencia el 2026-08-08: desde ADR-021
+# ``db.analytics`` adjunta con DuckDB un fichero SQLite que ya no existe, así
+# que el paso fallaba en TODAS las ejecuciones y solo producía un warning por
+# run. Un paso permanentemente roto es ruido que entrena a ignorar los logs.
+# El código de ``db/analytics.py`` sigue en el árbol; se volverá a enganchar
+# cuando se migre a ``postgres_scanner`` y exista cobertura (backlog).
 CANONICAL_STEPS: list[str] = [
     "ml_scoring",
     "ml_tecnologias",
     "tech_signal_merge",
-    "analytics_export",
     "kpi_precompute",
     "aggregates_precompute",
     "watchlist_notify",
@@ -149,24 +154,6 @@ def _run_tech_signal_merge() -> None:
     from services.tech_signal import merge_doc_signals
 
     merge_doc_signals()
-
-
-def _run_analytics_export() -> None:
-    """Snapshot Parquet + manifest de linaje (RFC-086). Best-effort.
-
-    ``db.analytics`` sigue adjuntando un fichero SQLite con el
-    ``sqlite_scanner`` de DuckDB, que tras ADR-021 ya no existe: este paso
-    falla de forma esperada hasta que se migre a ``postgres_scanner`` (ítem
-    P2 del backlog). Se registra a **warning**, no a debug: un paso que no
-    hace nada tiene que verse en los logs, que es exactamente el modo de
-    fallo silencioso que ADR-021 vino a eliminar.
-    """
-    try:
-        from db.analytics import run_analytics_export
-
-        run_analytics_export()
-    except Exception as exc:
-        log.warning("pipeline_analytics_export_failed", error=str(exc))
 
 
 def _run_kpi_precompute() -> dict[str, Any]:

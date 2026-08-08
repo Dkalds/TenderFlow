@@ -1,7 +1,9 @@
 """Helpers de concurrencia para la API REST.
 
-SQLite es síncrono. Para no bloquear el event loop de FastAPI (async),
-toda query debe ejecutarse en el threadpool de anyio con ``run_db``.
+La capa de persistencia es síncrona (psycopg3 sobre ``db.connection``). Para
+no bloquear el event loop de FastAPI (async), toda query debe ejecutarse en el
+threadpool de anyio con ``run_db``. ``tests/test_async_handlers_no_blocking_io.py``
+lo verifica de forma estructural sobre ``api/routes/``.
 
 Bulkhead pattern
 ----------------

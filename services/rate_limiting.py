@@ -1,10 +1,10 @@
 """Interfaz unificada de rate limiting.
 
-Centraliza la elección de backend (SQLite o Redis) mediante una factory.
-Las implementaciones concretas delegan en los módulos existentes:
+Centraliza la elección de backend (base de datos o Redis) mediante una
+factory. Las implementaciones concretas delegan en los módulos existentes:
 
-* :class:`SqliteRateLimiter`  — ventana deslizante en ``rate_limits`` SQLite.
-* :class:`RedisRateLimiter`   — sorted set en Redis (requiere extra ``[scale]``).
+* :class:`DbRateLimiter`     — ventana deslizante en la tabla ``rate_limits``.
+* :class:`RedisRateLimiter`  — sorted set en Redis (requiere extra ``[scale]``).
 
 Uso::
 
@@ -14,8 +14,10 @@ Uso::
     allowed = limiter.check("ak:abc123", max_calls=120, window_seconds=60)
 
 El backend se selecciona mediante la variable de entorno
-``RATE_LIMIT_BACKEND`` (``redis`` | ``sqlite``, por defecto ``sqlite``) o
-según disponibilidad de Redis si está configurado.
+``RATE_LIMIT_BACKEND`` (``redis`` | ``db``, por defecto ``db``) o según
+disponibilidad de Redis si está configurado. ``sqlite`` se sigue aceptando
+como alias histórico de ``db``: el motor es Postgres desde ADR-021, pero el
+valor pudo quedar fijado en despliegues anteriores.
 """
 
 from __future__ import annotations
@@ -47,8 +49,8 @@ class RateLimiter(Protocol):
 # ── Implementaciones ─────────────────────────────────────────────────────────
 
 
-class SqliteRateLimiter:
-    """Backend SQLite — ventana deslizante en la tabla ``rate_limits``."""
+class DbRateLimiter:
+    """Backend de base de datos — ventana deslizante en ``rate_limits``."""
 
     def check(
         self,
@@ -65,7 +67,7 @@ class SqliteRateLimiter:
 class RedisRateLimiter:
     """Backend Redis — ventana deslizante en sorted set.
 
-    Cae automáticamente a SQLite si Redis no está disponible.
+    Cae automáticamente al backend de BD si Redis no está disponible.
     """
 
     def check(
@@ -80,9 +82,9 @@ class RedisRateLimiter:
         result = check_rate_limit_redis(key, max_calls=max_calls, window_seconds=window_seconds)
         if result is not None:
             return result
-        # Redis no disponible — fallback a SQLite
-        log.debug("rate_limiting_redis_fallback_sqlite", key=key)
-        return SqliteRateLimiter().check(key, max_calls=max_calls, window_seconds=window_seconds)
+        # Redis no disponible — fallback al backend de BD
+        log.debug("rate_limiting_redis_fallback_db", key=key)
+        return DbRateLimiter().check(key, max_calls=max_calls, window_seconds=window_seconds)
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────
@@ -111,20 +113,25 @@ def reset_rate_limiter() -> None:
 def _create_limiter() -> RateLimiter:
     import os
 
-    backend = os.getenv("RATE_LIMIT_BACKEND", "sqlite").lower()
+    backend = os.getenv("RATE_LIMIT_BACKEND", "db").lower()
     if backend == "redis":
         from services.rate_limit_redis import has_redis
 
         if has_redis():
             log.info("rate_limiting_backend_redis")
             return RedisRateLimiter()
-        log.warning("rate_limiting_redis_requested_but_unavailable_using_sqlite")
+        log.warning("rate_limiting_redis_requested_but_unavailable_using_db")
 
-    log.info("rate_limiting_backend_sqlite")
-    return SqliteRateLimiter()
+    log.info("rate_limiting_backend_db")
+    return DbRateLimiter()
 
+
+# Alias histórico: el motor es Postgres desde ADR-021, pero el nombre viejo
+# pudo quedar importado en código externo o en configuración.
+SqliteRateLimiter = DbRateLimiter
 
 __all__ = [
+    "DbRateLimiter",
     "RateLimiter",
     "RedisRateLimiter",
     "SqliteRateLimiter",

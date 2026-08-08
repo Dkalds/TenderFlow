@@ -104,7 +104,6 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_ml_scoring": _make_mock("ml_scoring"),
             "scheduler.pipeline_runs._run_ml_tecnologias": _make_mock("ml_tecnologias"),
             "scheduler.pipeline_runs._run_tech_signal_merge": _make_mock("tech_signal_merge"),
-            "scheduler.pipeline_runs._run_analytics_export": _make_mock("analytics_export"),
             "scheduler.pipeline_runs._run_kpi_precompute": _make_mock("kpi_precompute"),
             "scheduler.pipeline_runs._run_aggregates_precompute": _make_mock(
                 "aggregates_precompute"
@@ -138,7 +137,6 @@ class TestCanonicalPipelineSteps:
             patch("scheduler.pipeline_runs._run_ml_scoring", side_effect=_boom),
             patch("scheduler.pipeline_runs._run_ml_tecnologias"),
             patch("scheduler.pipeline_runs._run_tech_signal_merge"),
-            patch("scheduler.pipeline_runs._run_analytics_export"),
             patch("scheduler.pipeline_runs._run_kpi_precompute"),
             patch("scheduler.pipeline_runs._run_aggregates_precompute"),
             patch("scheduler.pipeline_runs._run_watchlist_notify"),
@@ -198,7 +196,6 @@ class TestLaneAwareSteps:
             patch("scheduler.pipeline_runs._run_ml_scoring") as ml_scoring,
             patch("scheduler.pipeline_runs._run_ml_tecnologias"),
             patch("scheduler.pipeline_runs._run_tech_signal_merge"),
-            patch("scheduler.pipeline_runs._run_analytics_export"),
             patch("scheduler.pipeline_runs._run_kpi_precompute"),
             patch("scheduler.pipeline_runs._run_aggregates_precompute"),
             patch("scheduler.pipeline_runs._run_watchlist_notify"),

@@ -2,7 +2,7 @@
 
 Serving = batch nocturno + lectura de tabla (patrón ``ml_proba``): nada de
 inferencia online por request. Idempotente: PK natural + upsert
-(``ON CONFLICT ... DO UPDATE``, portable entre SQLite y Postgres) — doble
+(``ON CONFLICT ... DO UPDATE``) — doble
 ejecución produce las mismas filas.
 
 Si no hay versión activa del modelo en ``model_versions`` (no entrenado aún,

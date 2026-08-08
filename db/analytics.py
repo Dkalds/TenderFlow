@@ -7,12 +7,18 @@
    lanza ``FileNotFoundError``.
 
    Se conserva —fallando ruidosamente, no en silencio— en vez de borrarse
-   porque el camino de exports OLAP a Parquet (``run_analytics_export``,
-   consumido por ``scheduler/pipeline_runs.py``) sigue siendo deseable; lo que
-   falta es reescribirlo sobre el ``postgres_scanner`` de DuckDB
-   (``ATTACH ... (TYPE POSTGRES, READ_ONLY)`` contra ``DATABASE_URL``). Es un
-   ítem P2 del backlog y requiere verificación contra un Postgres real con la
-   extensión instalada, así que no se hizo a ciegas dentro de ADR-021.
+   porque el camino de exports OLAP a Parquet (``run_analytics_export``)
+   sigue siendo deseable; lo que falta es reescribirlo sobre el
+   ``postgres_scanner`` de DuckDB (``ATTACH ... (TYPE POSTGRES, READ_ONLY)``
+   contra ``DATABASE_URL``). Es un ítem del backlog y requiere verificación
+   contra un Postgres real con la extensión instalada, así que no se hizo a
+   ciegas dentro de ADR-021.
+
+   **Desenganchado del scheduler el 2026-08-08.** ``analytics_export`` salió de
+   ``CANONICAL_STEPS`` (``scheduler/pipeline_runs.py``): el paso fallaba en
+   todas las ejecuciones y su warning por run era ruido que entrena a ignorar
+   los logs. Nada de este módulo se invoca hoy en producción; vuelve a
+   engancharse cuando la migración a ``postgres_scanner`` tenga cobertura.
 
 DuckDB se ATTACHa sobre la BD operacional en modo lectura para ejecutar
 queries OLAP pesadas (group-by sobre millones de filas, window functions,
@@ -20,7 +26,7 @@ joins múltiples) órdenes de magnitud más rápido que el motor transaccional.
 
 Diseño (F2):
     * La conexión DuckDB es **opcional** — si DuckDB no está instalado, las
-      funciones devuelven ``None`` y los callers caen al backend SQLite.
+      funciones devuelven ``None`` y los callers caen al motor transaccional.
     * Modo lectura siempre: ``read_only=True`` para garantizar que las
       analíticas no pueden corromper la BD operacional.
     * Persistencia opcional a Parquet para snapshots históricos
