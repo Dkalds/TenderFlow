@@ -17,7 +17,14 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 
-def _iso_in(days: int) -> str:
+def _iso_in(days: float) -> str:
+    """Fecha a ``days`` del ahora. Acepta fracciones a propósito.
+
+    El módulo calcula ``(dt - now).days``, que trunca hacia abajo: un offset de
+    exactamente 0 días se vuelve negativo en los microsegundos que pasan entre
+    construir la fecha y evaluarla, y la licitación se descarta por vencida. Con
+    medio día el resultado es 0 de forma estable.
+    """
     return (datetime.now(UTC) + timedelta(days=days)).isoformat()
 
 
@@ -60,7 +67,7 @@ def _notifications(db_mod, user_key: str = "alice") -> list[tuple[str, str]]:
 
 @pytest.mark.parametrize(
     ("days_left", "expected"),
-    [(0, "deadline_1"), (5, "deadline_7"), (20, "deadline_30")],
+    [(0.5, "deadline_1"), (5, "deadline_7"), (20, "deadline_30")],
 )
 def test_deadline_window_picks_the_tightest_type(seeded, days_left, expected):
     """Cada plazo cae en su ventana más ajustada."""
@@ -118,11 +125,20 @@ def test_licitacion_vencida_no_genera_aviso(seeded):
 
 
 def test_fecha_ilegible_no_rompe_el_job(seeded):
-    """Una fecha no parseable se salta sin abortar el resto."""
+    """Una fecha con forma ISO pero inexistente se salta sin abortar el resto.
+
+    No vale cualquier basura: ``ck_licitaciones_fecha_limite_iso`` (v59) exige
+    que el valor empiece por ``AAAA-MM-DD``, así que "no-es-una-fecha" ni entra
+    en la tabla. Lo que la constraint NO comprueba es que la fecha exista —
+    valida la forma con una regex—, y ahí es donde vive el guard del módulo:
+    ``2026-13-45`` pasa el CHECK y revienta ``datetime.fromisoformat``. La
+    constraint además se creó ``NOT VALID``, así que las filas anteriores a v59
+    pueden contener cualquier cosa.
+    """
     from services.deadline_reminders import check_deadlines_and_notify
 
     db_mod, seed = seeded
-    seed("EXP-5", fecha_limite="no-es-una-fecha")
+    seed("EXP-5", fecha_limite="2026-13-45")
     seed("EXP-6", fecha_limite=_iso_in(5))
 
     assert check_deadlines_and_notify("alice") >= 1
