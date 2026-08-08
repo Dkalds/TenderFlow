@@ -313,6 +313,14 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_POOL_TIMEOUT: float = 10.0
 
+    # ── API (runtime HTTP) ────────────────────────────────────────────────
+    # Hilos del threadpool de anyio, que sirve tanto a los endpoints `def`
+    # como a todo `api.concurrency.run_db`. El default 4 es el valor que
+    # estuvo hardcodeado en api/app.py para sobrevivir a Render Free
+    # (0.1 vCPU); súbelo en instancias con más CPU, sin pasar de DB_POOL_SIZE
+    # (los hilos de más solo esperan conexión).
+    API_THREADPOOL_TOKENS: int = 4
+
     # ── Scraper ──────────────────────────────────────────────────────────
     REQUEST_TIMEOUT: int = 30
     REQUEST_DELAY_SECONDS: float = 1.5
@@ -561,6 +569,14 @@ class Settings(BaseSettings):
         val = int(str(v))
         if val < 1:
             raise ValueError("DB_POOL_SIZE debe ser >= 1")
+        return val
+
+    @field_validator("API_THREADPOOL_TOKENS", mode="before")
+    @classmethod
+    def _validate_threadpool_tokens(cls, v: object) -> int:
+        val = int(str(v))
+        if val < 1:
+            raise ValueError("API_THREADPOOL_TOKENS debe ser >= 1")
         return val
 
     @model_validator(mode="after")

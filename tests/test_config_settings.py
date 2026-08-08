@@ -161,6 +161,26 @@ def test_pool_size_zero_raises():
         Settings(DB_POOL_SIZE=0)
 
 
+def test_api_threadpool_tokens_default_is_4():
+    """El default reproduce el valor que estuvo hardcodeado en api/app.py."""
+    from config.settings import Settings
+
+    assert Settings().API_THREADPOOL_TOKENS == 4
+
+
+def test_api_threadpool_tokens_override():
+    from config.settings import Settings
+
+    assert Settings(API_THREADPOOL_TOKENS=16).API_THREADPOOL_TOKENS == 16
+
+
+def test_api_threadpool_tokens_zero_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="API_THREADPOOL_TOKENS"):
+        Settings(API_THREADPOOL_TOKENS=0)
+
+
 # ---------------------------------------------------------------------------
 # Cross-field validator: ML_UNCERTAINTY rango
 # ---------------------------------------------------------------------------

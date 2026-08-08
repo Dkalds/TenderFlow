@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     - Startup: ejecuta migraciones y crea tablas. Falla rápido en prod si hay error.
     - Shutdown: espera hasta 30s a que los BackgroundTasks en vuelo terminen,
-      luego cierra el pool de conexiones SQLite limpiamente.
+      luego cierra el pool de conexiones Postgres limpiamente.
     """
     import asyncio
 
@@ -123,11 +123,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # con pocos vCPUs (ej. Render Free 0.1 vCPU).  Sin este límite, FastAPI
     # despacha cada endpoint sync a un hilo nuevo (default 40), provocando que
     # 9 peticiones Pandas concurrentes saturen el único core y generen 502.
+    #
+    # El valor sale de settings (default 4, el que estaba hardcodeado): este
+    # mismo pool sirve a los endpoints `def` y a todo `run_db`, así que en una
+    # instancia mayor 4 pasa de protección a cuello de botella.
     try:
         import anyio
 
-        anyio.to_thread.current_default_thread_limiter().total_tokens = 4
-        log.info("anyio_thread_limiter_set", max_threads=4)
+        tokens = int(getattr(settings, "API_THREADPOOL_TOKENS", 4))
+        anyio.to_thread.current_default_thread_limiter().total_tokens = tokens
+        log.info("anyio_thread_limiter_set", max_threads=tokens)
+        pool_size = int(getattr(settings, "DB_POOL_SIZE", 5))
+        if tokens > pool_size:
+            # Más hilos que conexiones: los hilos de más se quedan esperando en
+            # `pool.getconn()` hasta DB_POOL_TIMEOUT en vez de trabajar.
+            log.warning(
+                "anyio_thread_limiter_exceeds_db_pool",
+                threads=tokens,
+                db_pool_size=pool_size,
+            )
     except Exception as exc:
         log.warning("anyio_thread_limiter_failed", error=str(exc))
 
@@ -149,7 +163,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         except Exception as exc:
             log.warning("api_shutdown_drain_error", error=str(exc))
 
-    # Cerrar pool de conexiones SQLite
+    # Cerrar pool de conexiones Postgres
     try:
         from db.database import close_pool
 
