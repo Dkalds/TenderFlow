@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from api.auth import AuthContext, require_scope
+from api.concurrency import run_db
 from api.middleware import _trusted_client_ip
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
@@ -90,9 +91,15 @@ async def csp_report(request: Request) -> None:
     Sin autenticación (el navegador lo envía directamente).
     Rate limiting: 10 reportes/min por IP para mitigar flood/DoS.
     """
-    # Rate limiting por IP — los browsers legítimos envían muy pocos reportes
+    # Rate limiting por IP — los browsers legítimos envían muy pocos reportes.
+    # El backend de rate limiting va a BD, así que la comprobación se despacha
+    # al threadpool: este endpoint es público y sin auth, justo el que no debe
+    # poder parar el event loop a base de reportes.
     client_ip = _trusted_client_ip(request)
-    if not get_rate_limiter().check(f"csp:{client_ip}", max_calls=10, window_seconds=60):
+    allowed = await run_db(
+        lambda: get_rate_limiter().check(f"csp:{client_ip}", max_calls=10, window_seconds=60)
+    )
+    if not allowed:
         log.warning("csp_report_rate_limited", client_ip=client_ip)
         return  # Responder 204 de todas formas (no revelar al cliente el rate limit)
 
@@ -118,7 +125,7 @@ async def csp_report(request: Request) -> None:
     # Persistir en tabla si existe
     from services.security import store_csp_violation
 
-    store_csp_violation(blocked_uri, violated_directive, document_uri, source_file)
+    await run_db(store_csp_violation, blocked_uri, violated_directive, document_uri, source_file)
 
 
 # ── GitHub Secret Scanning partner endpoint ───────────────────────────────────
@@ -227,4 +234,6 @@ async def verify_audit_integrity(
     """
     from db.audit import verify_hash_chain
 
-    return AuditChainVerification.model_validate(verify_hash_chain())
+    # Recorre audit_log entero recalculando el HMAC fila a fila: O(n) en CPU y
+    # en memoria sobre una tabla que solo crece. Nunca sobre el event loop.
+    return AuditChainVerification.model_validate(await run_db(verify_hash_chain))

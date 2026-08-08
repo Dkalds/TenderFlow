@@ -25,6 +25,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from api.auth import AuthContext, require_api_key
+from api.concurrency import run_db
 from api.routes.auth import get_current_session_user
 from observability.logging import get_logger
 
@@ -252,31 +253,38 @@ async def download_export(
     from services.exports import generate_csv, generate_excel, get_export_filename
     from services.licitaciones import fetch_for_pdf
 
-    rows = fetch_for_pdf(ccaa=ccaa, estado=estado, q=q, limit=limit)
-    # Apply extra filters not supported by fetch_for_pdf
-    if tecnologia:
-        rows = [r for r in rows if r.get("tecnologia") == tecnologia]
-    if fecha_desde:
-        rows = [r for r in rows if (r.get("fecha_publicacion") or "") >= fecha_desde]
-    if fecha_hasta:
-        rows = [r for r in rows if (r.get("fecha_publicacion") or "") <= fecha_hasta]
+    def _render() -> tuple[bytes, str, int]:
+        """Consulta + serialización, fuera del event loop.
+
+        Hasta 50 000 filas y, con ``format=pdf``, la maquetación de reportlab:
+        segundos de CPU que, ejecutados aquí, congelaban la API entera.
+        """
+        rows = fetch_for_pdf(
+            ccaa=ccaa,
+            estado=estado,
+            q=q,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            limit=limit,
+        )
+        if format == "excel":
+            return (
+                generate_excel(rows),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                len(rows),
+            )
+        if format == "pdf":
+            title = "Licitaciones SAP — Exportación"
+            if ccaa:
+                title += f" ({ccaa})"
+            return _build_pdf(rows, title), "application/pdf", len(rows)
+        return generate_csv(rows), "text/csv; charset=utf-8", len(rows)
 
     filename = get_export_filename(format)
+    content, media_type, n_rows = await run_db(_render)
 
-    if format == "excel":
-        content = generate_excel(rows)
-        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    elif format == "pdf":
-        title = "Licitaciones SAP — Exportación"
-        if ccaa:
-            title += f" ({ccaa})"
-        content = _build_pdf(rows, title)
-        media_type = "application/pdf"
-    else:
-        content = generate_csv(rows)
-        media_type = "text/csv; charset=utf-8"
-
-    log.info("export_download", format=format, n_rows=len(rows))
+    log.info("export_download", format=format, n_rows=n_rows)
     return StreamingResponse(
         io.BytesIO(content),
         media_type=media_type,
@@ -397,29 +405,33 @@ async def calendario_ics(
     Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
       ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
     """
+    from db.database import connect_read
     from db.users import get_user_by_id
     from shared.identity import user_key_from_email
 
-    owner = get_user_by_id(ctx.user_id) if ctx.user_id is not None else None
-    if owner is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
-        )
-    user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
+    def _load() -> tuple[str, list[dict[str, Any]]]:
+        """Propietario de la key + sus favoritos con fecha, en el threadpool."""
+        owner = get_user_by_id(ctx.user_id) if ctx.user_id is not None else None
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
+            )
+        key = user_key_from_email(owner.get("email"), int(owner["id"]))
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
+                "FROM watchlist_items wi "
+                "JOIN licitaciones l ON l.id_externo = wi.id_externo "
+                "WHERE wi.user_key = ? AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
+                (key,),
+            )
+            loaded = [
+                dict(zip([d[0] for d in cur.description], row, strict=False))
+                for row in cur.fetchall()
+            ]
+        return key, loaded
 
-    from db.database import connect_read
-
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
-            "FROM watchlist_items wi "
-            "JOIN licitaciones l ON l.id_externo = wi.id_externo "
-            "WHERE wi.user_key = ? AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
-            (user_key,),
-        )
-        rows = [
-            dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()
-        ]
+    user_key, rows = await run_db(_load)
 
     events: list[dict[str, Any]] = []
     for row in rows:

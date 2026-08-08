@@ -30,6 +30,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from api.auth import create_api_key
+from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.audit import log_event
@@ -367,7 +368,7 @@ async def get_profile(
     from db.repositories.user_profiles import get_user_profile
 
     user_key = _user_key(ctx)
-    raw = get_user_profile(user_key, ctx["organization_id"])
+    raw = await run_db(get_user_profile, user_key, ctx["organization_id"])
     if raw is None:
         return UserProfileOut()
     return UserProfileOut(
@@ -396,7 +397,8 @@ async def put_profile(
     body.validate_weights()
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
-    upsert_user_profile(
+    await run_db(
+        upsert_user_profile,
         user_key,
         {
             "weights": body.weights,
@@ -418,5 +420,5 @@ async def delete_profile(
     from db.repositories.user_profiles import delete_user_profile
 
     user_key = _user_key(ctx)
-    delete_user_profile(user_key)
+    await run_db(delete_user_profile, user_key)
     return StatusOk(status="ok")

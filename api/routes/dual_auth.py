@@ -23,6 +23,7 @@ from fastapi import (
 )
 from fastapi.security import APIKeyHeader
 
+from api.concurrency import run_db
 from config import settings
 from observability.logging import get_logger
 from shared.identity import user_key_from_email
@@ -89,7 +90,10 @@ async def require_any_auth(
             user_id = ctx.key_id
             owner: dict[str, Any] | None = None
         else:
-            owner = get_user_by_id(user_id)
+            # Esta dependencia cuelga de casi toda la API: la lectura del
+            # propietario va al threadpool o bloquea el event loop en cada
+            # request autenticada por API key.
+            owner = await run_db(get_user_by_id, user_id)
             if owner is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner inactive"
