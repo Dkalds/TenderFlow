@@ -117,3 +117,57 @@ class TestStreamSSE:
         with _patch_fast_stream():
             resp = stream_client.get("/api/v1/licitaciones/stream?batch=5")
         assert resp.status_code == 200
+
+
+class TestSharedSignalWatcher:
+    """El poll del centinela es uno por proceso, no uno por cliente."""
+
+    def test_n_subscribers_produce_one_read_per_interval(self):
+        """Con 5 suscriptores el centinela se lee una vez, no cinco.
+
+        Antes cada cliente conectado consultaba la BD cada 5 s por su cuenta:
+        la carga crecía con el número de conexiones y competía por el
+        threadpool con el resto de la API.
+        """
+        import asyncio
+
+        from api.routes.stream import _SignalWatcher
+
+        reads = {"n": 0}
+
+        class _CountingWatcher(_SignalWatcher):
+            def _read_signal(self) -> float:
+                reads["n"] += 1
+                return 123.0
+
+        async def _exercise() -> None:
+            watcher = _CountingWatcher()
+            for _ in range(5):
+                await watcher.subscribe()
+            assert watcher.latest == 123.0
+            for _ in range(5):
+                await watcher.unsubscribe()
+
+        asyncio.run(_exercise())
+        assert reads["n"] == 1, f"se leyó el centinela {reads['n']} veces para 5 clientes"
+
+    def test_watcher_stops_when_last_subscriber_leaves(self):
+        """Sin clientes conectados no queda ningún poller consultando."""
+        import asyncio
+
+        from api.routes.stream import _SignalWatcher
+
+        class _StubWatcher(_SignalWatcher):
+            def _read_signal(self) -> float:
+                return 1.0
+
+        async def _exercise() -> tuple[bool, bool]:
+            watcher = _StubWatcher()
+            await watcher.subscribe()
+            running = watcher._task is not None
+            await watcher.unsubscribe()
+            return running, watcher._task is None
+
+        running_with_client, stopped_without = asyncio.run(_exercise())
+        assert running_with_client
+        assert stopped_without
