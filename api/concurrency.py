@@ -31,6 +31,8 @@ T = TypeVar("T")
 # Pool general para queries DB (sin límite explícito — usa el default de anyio)
 # Pool dedicado para inferencia ML — máx. 2 requests concurrentes de ML
 _ML_LIMITER: CapacityLimiter | None = None
+# Pool dedicado para sondeos de salud — ver `run_probe`
+_PROBE_LIMITER: CapacityLimiter | None = None
 
 
 def _get_ml_limiter() -> CapacityLimiter:
@@ -39,6 +41,14 @@ def _get_ml_limiter() -> CapacityLimiter:
     if _ML_LIMITER is None:
         _ML_LIMITER = CapacityLimiter(2)
     return _ML_LIMITER
+
+
+def _get_probe_limiter() -> CapacityLimiter:
+    """Lazy singleton del CapacityLimiter para sondeos de salud."""
+    global _PROBE_LIMITER
+    if _PROBE_LIMITER is None:
+        _PROBE_LIMITER = CapacityLimiter(4)
+    return _PROBE_LIMITER
 
 
 async def run_db(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
@@ -64,6 +74,28 @@ async def run_db(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     except Exception:
         # Fallback sin tracing si hay cualquier problema con OTEL
         return await to_thread.run_sync(lambda: fn(*args, **kwargs))
+
+
+async def run_probe(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Ejecuta un sondeo de salud en un threadpool propio, **abandonable**.
+
+    Diferencia esencial con ``run_db``: ``abandon_on_cancel=True``. Por defecto,
+    ``to_thread.run_sync`` NO devuelve el control al cancelarse — espera a que
+    el hilo termine —, así que envolverlo en ``anyio.fail_after`` no acota nada:
+    con la BD colgada, ``/health`` seguía tardando lo que tardase el sondeo. Con
+    esta bandera el timeout sí devuelve y el endpoint puede responder
+    ``degraded`` mientras el hilo huérfano se apaga solo (lo hará: la conexión
+    lleva ``connect_timeout`` y ``statement_timeout`` propios).
+
+    El limiter dedicado es la contrapartida: un hilo abandonado retiene su slot
+    hasta morir, y sin bulkhead una racha de probes con la BD caída se comería
+    el threadpool general que sirve al resto de la API. Mismo patrón que
+    ``run_ml``.
+    """
+    limiter = _get_probe_limiter()
+    return await to_thread.run_sync(
+        lambda: fn(*args, **kwargs), limiter=limiter, abandon_on_cancel=True
+    )
 
 
 async def run_ml(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:

@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-08-07
+Generado: 2026-08-08
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -169,10 +169,10 @@ Generado: 2026-08-07
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
 | GET | `/api/v1/licitaciones/{id_externo}` |
-| POST | `/api/v1/licitaciones/{id_externo}/resumen` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |

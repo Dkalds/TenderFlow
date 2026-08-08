@@ -18,7 +18,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.concurrency import run_db
+from api.concurrency import run_probe
 from observability.logging import get_logger
 from services.health import check_db
 from shared.outbound_http import pinned_https_request
@@ -82,18 +82,20 @@ async def _gather_checks() -> tuple[str, str, str]:
     """Ejecuta los tres sondeos en el threadpool, con techo de tiempo.
 
     Los tres son síncronos y bloqueantes (BD, socket a Redis, ``statvfs``), así
-    que van a ``run_db``; el ``fail_after`` acota lo que puede tardar el
-    endpoint aunque la dependencia no responda nunca. El hilo que quedó
-    esperando termina por su cuenta cuando su propio timeout salta: lo que
-    importa es que la respuesta HTTP salga a tiempo con ``degraded`` en vez de
-    colgarse con el probe.
+    que van a ``run_probe`` — y no a ``run_db``: solo ``run_probe`` abandona el
+    hilo al cancelarse, que es lo único que hace efectivo el ``fail_after``. Con
+    ``run_db`` el timeout salta pero la espera continúa hasta que el sondeo
+    termina, así que el endpoint seguiría colgado (ver su docstring).
+    El hilo huérfano muere por su cuenta cuando salta su propio timeout de
+    conexión; lo que importa es que la respuesta HTTP salga a tiempo con
+    ``degraded`` en vez de colgarse con el probe.
     """
     timeout = _check_timeout_seconds()
 
     async def _guarded(name: str, fn: Any, on_timeout: str) -> str:
         try:
             with anyio.fail_after(timeout):
-                result: str = await run_db(fn)
+                result: str = await run_probe(fn)
                 return result
         except TimeoutError:
             log.warning("health_check_timeout", check=name, timeout_seconds=timeout)

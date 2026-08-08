@@ -341,12 +341,14 @@ class OAuthAuthorizeResult(BaseModel):
 
 @router.post("/login", response_model=UserInfo)
 async def login(body: LoginRequest, response: Response, request: Request) -> UserInfo:
-    """Authenticate with email + password, set session cookie.
-
-    Todo el trabajo (seis viajes a BD y el ``verify_password`` de argon2, caro
-    por diseño) va en un solo salto al threadpool: ejecutado sobre el event
-    loop, cada login serializaba la API entera mientras duraba el KDF.
-    """
+    """Authenticate with email + password, set session cookie."""
+    # Nota de implementación (deliberadamente FUERA del docstring: FastAPI lo
+    # publica como descripción del endpoint en el OpenAPI, y de ahí baja al
+    # cliente TypeScript generado — un detalle de threadpool no es contrato
+    # público). Todo el trabajo (seis viajes a BD y el `verify_password` de
+    # argon2, caro por diseño) va en un solo salto al threadpool: ejecutado
+    # sobre el event loop, cada login serializaba la API entera mientras
+    # duraba el KDF.
     from db.rate_limits import clear_login_attempts, is_login_locked_out, record_failed_login
     from db.totp import is_totp_required
 

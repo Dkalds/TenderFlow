@@ -32,7 +32,7 @@ def seeded(tmp_db):
         with db_mod.connect() as c:
             c.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, fecha_limite, fecha_fin) "
-                "VALUES (?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación {id_externo}",
@@ -48,7 +48,7 @@ def seeded(tmp_db):
 def _notifications(db_mod, user_key: str = "alice") -> list[tuple[str, str]]:
     with db_mod.connect_read() as c:
         rows = c.execute(
-            "SELECT type, licitacion_id FROM user_notifications WHERE user_key = ? ORDER BY type",
+            "SELECT type, licitacion_id FROM user_notifications WHERE user_key = %s ORDER BY type",
             (user_key,),
         ).fetchall()
     return [(str(r[0]), str(r[1])) for r in rows]

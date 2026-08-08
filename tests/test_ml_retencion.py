@@ -25,8 +25,9 @@ def db(tmp_db):
 
 
 def _empresa(c, nombre):
+    # La PK de `empresas` se llama `empresa_id`, no `id` (v55).
     row = c.execute(
-        "INSERT INTO empresas (nombre_canonico) VALUES (%s) RETURNING id", (nombre,)
+        "INSERT INTO empresas (nombre_canonico) VALUES (%s) RETURNING empresa_id", (nombre,)
     ).fetchone()
     return row[0]
 
