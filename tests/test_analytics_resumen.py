@@ -202,19 +202,30 @@ def test_hoy_filtro_ccaa(tmp_db):
 
 
 def test_hoy_solo_estados_activos_cuentan(tmp_db):
-    """total_activas solo cuenta estado PUB y EV; ADJ/RES no."""
+    """total_activas descuenta los estados terminales, no enumera los abiertos.
+
+    Antes decía "solo cuenta PUB y EV", y el SQL lo cumplía al pie de la letra
+    con una lista blanca. Este test pasaba porque sólo sembraba PUB/EV/RES/ADJ,
+    que se comportan igual con las dos reglas — por eso el fallo sobrevivió a la
+    suite entera. `ADM` es el estado que las distingue, y es el más común en los
+    datos reales: con la lista blanca, el resumen decía 0 activas mientras el
+    Radar listaba 12. Ver `shared/estados.py`.
+    """
     _insert(
         [
             _row("P1", estado="PUB"),
             _row("E1", estado="EV"),
+            _row("D1", estado="ADM"),  # abierta: en plazo de admisión
+            _row("X1", estado="XYZ"),  # abierta: código que la fuente no documentó
             _row("R1", estado="RES"),  # no activa
             _row("A1", estado="ADJ"),  # no activa
+            _row("N1", estado="ANUL"),  # no activa
         ]
     )
 
     result = get_resumen_hoy(ResumenHoyFilters())
 
-    assert result.total_activas == 2
+    assert result.total_activas == 4
 
 
 def test_hoy_nuevas_24h(tmp_db):
