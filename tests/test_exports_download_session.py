@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 import pytest
 
 _EMAIL = "exportador@example.com"
-_PASSWORD = "Exportar-2026-Seguro"
+_PASSWORD = "Exportar-2026-Seguro"  # pragma: allowlist secret
 
 
 def _seed_licitacion(

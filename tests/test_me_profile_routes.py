@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 _EMAIL = "perfil@example.com"
-_PASSWORD = "Perfil-2026-Seguro"
+_PASSWORD = "Perfil-2026-Seguro"  # pragma: allowlist secret
 
 
 @pytest.fixture()
