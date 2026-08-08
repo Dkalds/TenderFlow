@@ -259,12 +259,18 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
             <UrgentCard
               title="Total activas"
               value={formatNumber(hoy?.total_activas)}
-              subtitle="Publicadas o en evaluación"
+              // El subtítulo decía "Publicadas o en evaluación" y el enlace
+              // filtraba `estado=PUB,EV`: los dos describían la lista blanca que
+              // el backend usaba y que dejaba fuera `ADM`. Con el contador ya
+              // contando todo lo no terminal, esa tarjeta habría dicho un número
+              // y su listado otro — justo lo que promete la cabecera de la fila
+              // ("cada tarjeta abre su listado ya filtrado").
+              subtitle="Sin adjudicar ni cerrar"
               icon={Activity}
               accent="primary"
               loading={hoyLoading}
-              href="/detalle?estado=PUB,EV"
-              target="/detalle?estado=PUB,EV"
+              href="/detalle?solo_abiertas=true"
+              target="/detalle?solo_abiertas=true"
             />
           </Stagger.Item>
         </Stagger>

@@ -24,12 +24,14 @@ const { pathnameRef, filtersRef, filterParamsRef, historyRef, overviewRef, setCo
         ccaas: [] as string[],
         tecnologias: [] as string[],
         importeMin: null as number | null,
+        soloAbiertas: false,
         setQ: vi.fn(),
         setRango: vi.fn(),
         setEstados: vi.fn(),
         setCcaas: vi.fn(),
         setTecnologias: vi.fn(),
         setImporteMin: vi.fn(),
+        setSoloAbiertas: vi.fn(),
         resetFilters: vi.fn(),
       },
     },
@@ -94,6 +96,7 @@ beforeEach(() => {
     q: "",
     rango: { desde: null, hasta: null },
     estados: [],
+    soloAbiertas: false,
     ccaas: [],
     tecnologias: [],
     importeMin: null,
@@ -298,5 +301,30 @@ describe("ScopeBar — editor del ámbito", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Limpiar el ámbito/ }));
     expect(filtersRef.current.resetFilters).toHaveBeenCalled();
+  });
+});
+
+describe("ScopeBar — «Sólo abiertas»", () => {
+  /**
+   * No es un código de estado más: descarta los terminales, cualesquiera que
+   * sean. Marcar PUB y EV a mano deja fuera `ADM` y cualquier código que la
+   * fuente publique después, que es el fallo que traía el resumen.
+   */
+  it("pinta su chip cuando está activo", () => {
+    filtersRef.current = { ...filtersRef.current, soloAbiertas: true };
+    renderBar();
+    expect(screen.getByText("Sólo abiertas")).toBeInTheDocument();
+  });
+
+  it("el chip se puede quitar", () => {
+    filtersRef.current = { ...filtersRef.current, soloAbiertas: true };
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: "Quitar estado Sólo abiertas" }));
+    expect(filtersRef.current.setSoloAbiertas).toHaveBeenCalledWith(false);
+  });
+
+  it("no pinta chip cuando está apagado", () => {
+    renderBar();
+    expect(screen.queryByText("Sólo abiertas")).not.toBeInTheDocument();
   });
 });

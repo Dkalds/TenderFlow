@@ -14,6 +14,7 @@ const emptyFilters: FilterValues = {
   ccaas: [],
   tecnologias: [],
   importeMin: null,
+  soloAbiertas: false,
 };
 
 function makeFilters(overrides: Partial<FilterValues> = {}): FilterValues {
@@ -142,5 +143,25 @@ describe("appendFiltersToPath", () => {
 
   it("leaves deep-links untouched even with no active filters", () => {
     expect(appendFiltersToPath("/detalle?lic=ABC123", "")).toBe("/detalle?lic=ABC123");
+  });
+});
+
+describe("filtersToParams · solo_abiertas", () => {
+  /**
+   * Este parámetro existe porque `estado=PUB,EV` no es equivalente a "abiertas".
+   * La tarjeta "Total activas" de /resumen enlazaba a `?estado=PUB,EV` mientras
+   * su contador pasaba a contar todo lo no terminal: decía 12 y su listado 0.
+   */
+  it("emite solo_abiertas cuando está activo", () => {
+    expect(filtersToParams(makeFilters({ soloAbiertas: true })).solo_abiertas).toBe("true");
+  });
+
+  it("lo omite cuando no lo está, en vez de mandar 'false'", () => {
+    expect(filtersToParams(makeFilters({ soloAbiertas: false })).solo_abiertas).toBeUndefined();
+  });
+
+  it("no enumera estados: convive con un filtro de estado sin pisarlo", () => {
+    const result = filtersToParams(makeFilters({ soloAbiertas: true, estados: ["ADM"] }));
+    expect(result).toEqual({ solo_abiertas: "true", estado: "ADM" });
   });
 });

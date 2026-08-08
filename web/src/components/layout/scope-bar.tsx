@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Info, Redo2, RotateCcw, Search, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -239,6 +240,24 @@ function ScopeEditor({
             onChange={filters.setEstados}
             placeholder="Añadir estado…"
           />
+          {/* Separado del multi-select porque no es un código más: descarta los
+              estados terminales, cualesquiera que sean. Marcar "PUB" y "EV" a
+              mano no es equivalente — deja fuera `ADM` y cualquier código que
+              la fuente publique mañana. */}
+          <div className="mt-1.5 flex items-center gap-2">
+            {/* `htmlFor`/`id` en vez de envolver el control: el Checkbox de Radix
+                renderiza un `<button role="checkbox">`, no un input nativo, así
+                que anidarlo no lo asocia con la etiqueta. */}
+            <Checkbox
+              id="scope-solo-abiertas"
+              checked={filters.soloAbiertas}
+              onCheckedChange={(value) => filters.setSoloAbiertas(value === true)}
+            />
+            <label htmlFor="scope-solo-abiertas" className="text-muted-foreground cursor-pointer text-xs">
+              Sólo abiertas
+              <span className="ml-1 text-[10px] opacity-70">(sin adjudicar ni cerrar)</span>
+            </label>
+          </div>
         </div>
       )}
 
@@ -335,6 +354,15 @@ export function ScopeBar() {
       });
     }
     if (shows("estado")) {
+      // Va antes que los estados sueltos porque es el filtro más amplio de los
+      // dos: "abiertas" es una propiedad del expediente, no un código concreto.
+      if (filters.soloAbiertas) {
+        list.push({
+          key: "Estado",
+          value: "Sólo abiertas",
+          remove: () => filters.setSoloAbiertas(false),
+        });
+      }
       for (const value of filters.estados) {
         list.push({
           key: "Estado",

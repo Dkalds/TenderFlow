@@ -13,12 +13,14 @@ const filtersStub = {
   ccaas: [] as string[],
   tecnologias: [] as string[],
   importeMin: null,
+  soloAbiertas: false,
   setQ,
   setRango: vi.fn(),
   setEstados: vi.fn(),
   setCcaas: vi.fn(),
   setTecnologias: vi.fn(),
   setImporteMin: vi.fn(),
+  setSoloAbiertas: vi.fn(),
 };
 vi.mock("@/lib/filters", () => ({ useFilters: () => filtersStub }));
 
