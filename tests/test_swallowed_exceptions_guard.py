@@ -219,20 +219,11 @@ _GRANDFATHERED_PENDING_FIX: frozenset[str] = frozenset(
         # (`export_by_user_key` ya se arregló: sin `except` que trague el fallo.)
         "db/repositories/watchlist.py::WatchlistRepository.export_items_by_user_key",
         "db/repositories/audit.py::AuditRepository.export_by_user_key",
-        # ── Camino de autenticación ─────────────────────────────────────────
-        # Un fallo de BD aquí se presenta como "clave inválida"; sin log no hay
-        # forma de distinguir un ataque de una incidencia de infraestructura.
-        "db/repositories/api_keys.py::ApiKeyRepository.get_active_scopes",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_user_id",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_by_key_id",
-        "db/repositories/api_keys.py::ApiKeyRepository.get_all_for_user",
-        "db/repositories/api_keys.py::ApiKeyRepository.deactivate_all_for_user",
-        "db/sessions.py::validate_session",
-        "db/totp.py::verify_totp",
-        "db/totp.py::use_recovery_code",
-        # ── Auditoría: la cadena de hashes pierde eventos en silencio ───────
-        "db/audit.py::log_event",
-        "db/audit.py::verify_hash_chain",
+        # (El camino de autenticación y la auditoría salieron de aquí el
+        # 2026-08-08: los diez sitios ganaron `log.warning(..., exc_info=True)`
+        # antes del fallback. Eran la prioridad del ítem del backlog porque un
+        # fallo de infraestructura se presentaba al usuario como "clave
+        # inválida" o "sesión caducada", sin nada que permitiera distinguirlo.)
         # ── Búsqueda: los fallbacks encadenados degradan sin dejar rastro,
         # así que una búsqueda rota se ve como "sin resultados".
         "db/repositories/licitaciones.py::LicitacionRepository.fts5_bm25_search",

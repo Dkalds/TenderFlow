@@ -223,6 +223,9 @@ def log_event(
         try:
             detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:2000]
         except Exception:
+            # El repr de Python no es consultable como el JSON: la entrada de
+            # auditoría queda degradada y conviene saber cuándo pasa.
+            log.debug("audit_detail_not_serializable", event_type=event_type, exc_info=True)
             detail_str = str(detail)[:2000]
     else:
         detail_str = str(detail)[:2000]
@@ -249,7 +252,9 @@ def log_event(
 
         audit_events_total.labels(event_type=event_type, outcome=outcome).inc()
     except Exception:
-        pass
+        # La métrica es best-effort (no puede romper el camino de auditoría),
+        # pero sin rastro un contador congelado se lee como "no pasó nada".
+        log.debug("audit_metric_failed", event_type=event_type, exc_info=True)
 
 
 def list_recent(
@@ -415,4 +420,7 @@ def verify_hash_chain() -> dict[str, object]:
         return {"valid": True, "checked": checked, "first_tampered_id": None, "error": None}
 
     except Exception as exc:
+        # `valid: None` viaja al endpoint, pero sin traza no hay forma de saber
+        # si la cadena de auditoría falló por schema, por permisos o por datos.
+        log.warning("audit_chain_verification_failed", exc_info=True)
         return {"valid": None, "checked": 0, "first_tampered_id": None, "error": str(exc)}

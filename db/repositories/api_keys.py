@@ -66,6 +66,9 @@ class ApiKeyRepository:
                     (key_hash,),
                 ).fetchone()
         except Exception:
+            # Sin log, un fallo de infraestructura aquí se presenta al cliente
+            # como "clave inválida": indistinguible de un ataque.
+            log.warning("api_key_scopes_lookup_failed", exc_info=True)
             return None
         if not row:
             return None
@@ -85,6 +88,7 @@ class ApiKeyRepository:
                     return int(row[0])
                 return None
             except Exception:
+                log.warning("api_key_user_lookup_failed", key_id=key_id, exc_info=True)
                 return None
 
     def get_name_and_scopes(self, key_id: int) -> tuple[str, str] | None:
@@ -147,6 +151,8 @@ class ApiKeyRepository:
                 cols = [d[0] for d in cur.description]
                 return [dict(zip(cols, r, strict=False)) for r in cur.fetchall()]
             except Exception:
+                # Una lista vacía por fallo es indistinguible de "sin keys".
+                log.warning("api_keys_list_for_user_failed", user_id=user_id, exc_info=True)
                 return []
 
     # ── Listings ─────────────────────────────────────────────
@@ -185,6 +191,7 @@ class ApiKeyRepository:
                 )
                 return rows_to_dicts(cur)
             except Exception:
+                log.warning("api_key_lookup_by_id_failed", key_id=key_id, exc_info=True)
                 return []
 
     # ── Mutations ────────────────────────────────────────────
@@ -280,6 +287,9 @@ class ApiKeyRepository:
                 )
                 return int(cur.rowcount)
             except Exception:
+                # Devolver 0 sin rastro deja creer que el borrado GDPR revocó
+                # todas las keys cuando puede no haber revocado ninguna.
+                log.warning("api_keys_deactivate_all_failed", user_id=user_id, exc_info=True)
                 return 0
 
     def set_expiry(self, key_id: int, expires_at: str) -> None:

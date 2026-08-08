@@ -76,6 +76,12 @@ def verify_totp(secret: str, code: str) -> bool:
         try:
             key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8), casefold=True)
         except Exception:
+            # Un secreto almacenado que no es base32 válido deja al usuario sin
+            # segundo factor para siempre, y sin este log se ve igual que meter
+            # un código equivocado.
+            from observability.logging import get_logger
+
+            get_logger(__name__).warning("totp_secret_malformed", exc_info=True)
             return False
         counter = int(time.time() // 30)
         for candidate in (counter - 1, counter, counter + 1):
@@ -202,6 +208,14 @@ def use_recovery_code(user_id: int, code: str) -> bool:
                         (now_utc_iso(), row_id),
                     ).rowcount
                     return consumed == 1
-            except Exception:  # noqa: S112
+            except Exception:
+                # Se sigue probando el resto de códigos, pero un fallo aquí
+                # puede dejar un recovery code válido sin consumir: el usuario
+                # ve "código inválido" y nadie sabe que fue la BD.
+                from observability.logging import get_logger
+
+                get_logger(__name__).warning(
+                    "recovery_code_check_failed", user_id=user_id, exc_info=True
+                )
                 continue
     return False
