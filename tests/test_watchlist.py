@@ -23,8 +23,41 @@ def test_crud_lifecycle(tmp_db):
     assert items[0]["keyword"] == "sap"
     assert items[0]["ccaa"] == "Madrid"
 
-    remove_entry(int(items[0]["id"]))
+    assert remove_entry(int(items[0]["id"]), "alice") is True
     assert list_entries("alice") == []
+
+
+def test_remove_entry_rejects_another_users_id(tmp_db):
+    """Un id ajeno no borra nada: el filtro por user_key vive en la query.
+
+    Antes el DELETE era ``WHERE id = ?`` a secas y el aislamiento dependía de
+    que cada caller comprobase la propiedad antes de llamar — un IDOR latente
+    en cuanto alguien reutilizara el repositorio sin ese cuidado.
+    """
+    from db.watchlist import WatchlistEntry, add_entry, list_entries, remove_entry
+
+    add_entry(WatchlistEntry(user_key="alice", cpv_prefix="72"))
+    entry_id = int(list_entries("alice")[0]["id"])
+
+    assert remove_entry(entry_id, "mallory") is False
+    assert len(list_entries("alice")) == 1
+
+    assert remove_entry(entry_id, "alice") is True
+    assert list_entries("alice") == []
+
+
+def test_update_frequency_rejects_another_users_id(tmp_db):
+    """Mismo aislamiento en el UPDATE de frecuencia."""
+    from db.watchlist import WatchlistEntry, add_entry, list_entries, update_frequency
+
+    add_entry(WatchlistEntry(user_key="alice", cpv_prefix="72", frequency="daily"))
+    entry_id = int(list_entries("alice")[0]["id"])
+
+    assert update_frequency(entry_id, "weekly", "mallory") is False
+    assert list_entries("alice")[0]["frequency"] == "daily"
+
+    assert update_frequency(entry_id, "weekly", "alice") is True
+    assert list_entries("alice")[0]["frequency"] == "weekly"
 
 
 def test_add_entry_is_idempotent(tmp_db):
