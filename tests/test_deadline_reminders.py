@@ -30,14 +30,18 @@ def seeded(tmp_db):
         from db.repositories.watchlist import WatchlistRepository
 
         with db_mod.connect() as c:
+            # `fecha_extraccion` es NOT NULL en `licitaciones`: omitirla aborta
+            # el INSERT entero.
             c.execute(
-                "INSERT INTO licitaciones (id_externo, titulo, fecha_limite, fecha_fin) "
-                "VALUES (%s, %s, %s, %s)",
+                "INSERT INTO licitaciones "
+                "(id_externo, titulo, fecha_limite, fecha_fin, fecha_extraccion) "
+                "VALUES (%s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación {id_externo}",
                     fechas.get("fecha_limite"),
                     fechas.get("fecha_fin"),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
         WatchlistRepository().add_item(user_key=user_key, user_id=None, id_externo=id_externo)
