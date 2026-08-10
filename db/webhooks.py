@@ -95,10 +95,10 @@ def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int,
         cur = c.execute(
             "INSERT INTO webhooks "
             "(name, url, secret, event_types, active, created_at) "
-            "VALUES (%s, %s, %s, %s, 1, %s)",
+            "VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
             (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
         )
-        webhook_id = int(cur.lastrowid or 0)
+        webhook_id = int(cur.fetchone()[0])
 
     if master_key:
         secret = derive_webhook_secret(master_key, webhook_id)

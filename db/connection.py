@@ -162,19 +162,19 @@ class _PgConnAdapter:
 
     @property
     def lastrowid(self) -> Any:
-        """Id autogenerado por el último INSERT.
+        """**Obsoleto: usá ``INSERT … RETURNING id``.** Id del último INSERT.
 
-        psycopg3 no expone ``lastrowid``. Antes esta propiedad devolvía
-        ``self._cur.rownumber``, que es la **posición del cursor en el
-        resultado**, no un id: ``db/users.py::create_user`` y
-        ``db/webhooks.py`` devolvían un identificador inventado (típicamente 0)
-        en producción.
+        psycopg3 no expone ``lastrowid``, así que esto emite un
+        ``SELECT lastval()`` aparte. Dos motivos para no usarlo:
 
-        ``lastval()`` devuelve el último valor generado por una secuencia en la
-        sesión actual, que es el equivalente correcto tras un INSERT sobre una
-        PK serial/identity. Si el INSERT no tocó ninguna secuencia, Postgres
-        lanza ``ObjectNotInPrerequisiteState``; se devuelve None, que los
-        call-sites ya tratan (``int(cur.lastrowid or 0)``).
+        1. Cuesta un round-trip extra por inserción.
+        2. ``lastval()`` devuelve el último valor generado por una secuencia
+           **en la sesión**, no el de la tabla insertada: si el INSERT dispara
+           un trigger que escribe en otra tabla con serial, el id devuelto es
+           el de la tabla equivocada, en silencio.
+
+        Los call-sites de producción migraron a ``RETURNING id`` en 2026-08. Se
+        mantiene por compatibilidad con tests y utilidades.
         """
         if self._cur is None:
             return None

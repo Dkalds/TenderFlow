@@ -241,7 +241,7 @@ export default function RadarPage() {
 
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0">
-      <main className="flex min-w-0 flex-1 flex-col border-r border-border/70">
+      <section className="flex min-w-0 flex-1 flex-col border-r border-border/70">
         {/* Segmentos y orden */}
         <div className="flex h-11 flex-none items-center gap-0.5 border-b border-border/60 px-3.5">
           {SEGMENTS.map((item) => {
@@ -552,7 +552,7 @@ export default function RadarPage() {
             </span>
           ))}
         </div>
-      </main>
+      </section>
 
       <aside className="hidden w-[432px] flex-none flex-col bg-card/40 xl:flex">
         {active ? (

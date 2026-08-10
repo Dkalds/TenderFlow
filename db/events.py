@@ -56,7 +56,7 @@ def append_event(
         cur = c.execute(
             "INSERT INTO domain_events "
             "(event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 event_type,
                 str(aggregate_id),
@@ -66,7 +66,7 @@ def append_event(
                 now_utc_iso(),
             ),
         )
-        event_id: int = cur.lastrowid or 0
+        event_id: int = int(cur.fetchone()[0])
     log.debug("event_appended", event_type=event_type, aggregate_id=aggregate_id, event_id=event_id)
     return event_id
 

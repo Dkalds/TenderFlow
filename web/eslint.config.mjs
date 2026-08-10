@@ -21,6 +21,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Código autogenerado — no debe lintarse.
     "src/generated/**",
+    // Informe HTML de cobertura (v8 lo escribe al correr `npm run
+    // test:coverage`): lo genera una herramienta y no está versionado.
+    "coverage/**",
   ]),
   // Accessibility rules.
   // El plugin `jsx-a11y` ya lo registra `eslint-config-next/core-web-vitals`;
@@ -50,6 +53,34 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
+  // El formato de datos vive en `src/lib/utils.ts` y en ningún otro sitio.
+  //
+  // Hubo una época de cinco formateadores de euros distintos, cada uno con su
+  // criterio de redondeo, y el arreglo fue centralizarlos. Sin una regla que lo
+  // sostenga, la dispersión vuelve por goteo: cada componente que necesita una
+  // fecha con hora se escribe su `Intl.DateTimeFormat`. Si falta un helper
+  // (p. ej. fecha + hora), añadilo a `lib/utils.ts` en vez de inlinearlo.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/**", "src/**/__tests__/**", "src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "NewExpression[callee.object.name='Intl'][callee.property.name=/^(NumberFormat|DateTimeFormat|RelativeTimeFormat)$/]",
+          message:
+            "Usá los helpers de @/lib/utils (formatCurrency, formatNumber, formatDate…). Si falta uno, añadilo allí.",
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(toLocaleString|toLocaleDateString|toLocaleTimeString)$/]",
+          message:
+            "Usá los helpers de @/lib/utils (formatNumber, formatDate…) en vez de toLocaleString.",
+        },
       ],
     },
   },

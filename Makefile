@@ -1,4 +1,5 @@
 .PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: web-test web-test-coverage
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -166,6 +167,12 @@ web-lint:  ## Lint del frontend Next.js
 
 web-typecheck:  ## Type checking del frontend Next.js
 	cd web && npm run typecheck
+
+web-test:  ## Tests unitarios del frontend (vitest)
+	cd web && npm run test
+
+web-test-coverage:  ## Tests del frontend con cobertura (los umbrales que aplica CI)
+	cd web && npm run test:coverage
 
 web-test-e2e:  ## Run Playwright E2E tests
 	cd web && npx playwright test

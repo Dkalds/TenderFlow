@@ -100,7 +100,7 @@ export async function apiMutate<T>(
       throw new ApiError(401, "Session expired");
     }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, error.detail ?? "Unknown error");
+    throw new ApiError(res.status, error.detail ?? error.title ?? "Unknown error");
   }
 
   return res.json() as Promise<T>;
@@ -137,8 +137,11 @@ export async function fetchWithAuth<T>(
     if (res.status === 401 && typeof window !== "undefined") {
       redirectToLogin();
     }
+    // La API responde `application/problem+json` (RFC 7807): `detail` es el
+    // mensaje y `title` el genérico. Los cortes de middleware (429, 413) solo
+    // garantizan `title`, así que se usa como respaldo.
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail ?? `API error: ${res.status}`);
+    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`);
   }
 
   return res.json() as Promise<T>;
@@ -152,4 +155,56 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/**
+ * Rutas GET del esquema generado. Es el conjunto de literales que la API
+ * declara, así que un typo o un endpoint retirado no compila.
+ */
+export type ApiGetPath = keyof {
+  [P in keyof paths as paths[P] extends { get: unknown } ? P : never]: paths[P];
+};
+
+/**
+ * GET tipado contra el esquema OpenAPI generado.
+ *
+ * Por qué existe: hasta 2026-08 el cliente tipado (`api`, arriba) no tenía un
+ * solo call site. Las ~90 llamadas iban por `fetchWithAuth` con URLs literales
+ * y cerraban con `res.json() as Promise<T>` — un cast, no una validación. El
+ * resultado es que `web/src/generated/api.d.ts` y el job de CI que lo custodia
+ * contra drift no protegían ninguna línea de producto: un endpoint que cambia
+ * de forma o de ruta compilaba igual y rompía en runtime.
+ *
+ * Con este helper la ruta se comprueba contra el esquema y el tipo de retorno
+ * sale de él, en vez de escribirse a mano en el hook.
+ *
+ * Las llamadas con ruta dinámica (`/licitaciones/{id}`) siguen usando
+ * `fetchWithAuth`; para esas, tipá el retorno con `components["schemas"][...]`
+ * vía `@/lib/api-types`, nunca con una interfaz local.
+ */
+export type ApiGetResult<P extends ApiGetPath> = paths[P] extends {
+  get: { responses: { 200: { content: { "application/json": infer R } } } };
+}
+  ? R
+  : never;
+
+export async function apiGet<P extends ApiGetPath>(
+  path: P,
+  init?: { params?: Record<string, unknown>; signal?: AbortSignal },
+): Promise<ApiGetResult<P>> {
+  const { data, error, response } = await (
+    api.GET as unknown as (
+      p: P,
+      o?: Record<string, unknown>,
+    ) => Promise<{ data?: unknown; error?: unknown; response: Response }>
+  )(path, { params: init?.params, signal: init?.signal });
+
+  if (error !== undefined || !response.ok) {
+    const problem = (error ?? {}) as { detail?: string; title?: string };
+    throw new ApiError(
+      response.status,
+      problem.detail ?? problem.title ?? `API error: ${response.status}`,
+    );
+  }
+  return data as ApiGetResult<P>;
 }

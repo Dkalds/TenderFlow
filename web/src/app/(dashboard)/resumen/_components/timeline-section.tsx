@@ -104,9 +104,9 @@ export function TimelineSection({
                   dataKey="x"
                   type="number"
                   domain={["dataMin", "dataMax"]}
-                  tickFormatter={(value: number) =>
-                    new Date(value).toLocaleDateString("es-ES", { month: "short", day: "numeric" })
-                  }
+                  // El eje es numérico (epoch en ms), así que se convierte a
+                  // Date antes de formatear con el helper compartido.
+                  tickFormatter={(value: number) => formatDate(new Date(value))}
                   tick={{ fontSize: 11 }}
                   name="Fecha"
                 />

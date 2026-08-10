@@ -16,7 +16,6 @@ import re
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -285,18 +284,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
         if not allowed:
             log.warning("rate_limit_exceeded", client=client, path=path)
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "detail": "Rate limit excedido. Intenta de nuevo más tarde.",
-                    "limit": effective_max,
-                    "window_seconds": self._window,
-                },
-                headers={
+            # `application/problem+json` como el resto de la API (RFC 7807). El
+            # 429 cortocircuita antes del router, así que se construye aquí en
+            # vez de en un exception handler; `problem_429` ya existía sin uso.
+            from api.errors import problem_429
+
+            return problem_429(effective_max, int(self._window)).response(
+                **{
                     "Retry-After": str(int(self._window)),
                     "X-RateLimit-Limit": str(effective_max),
                     "X-RateLimit-Window": str(int(self._window)),
-                },
+                }
             )
         return await call_next(request)
 
@@ -406,6 +404,12 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
 
 # ───────────────────────────── ETag caching ──────────────────────────────────
 
+# RFC 7232 §4.1: un 304 debe repetir las cabeceras que habrían acompañado al
+# 200 y que el cliente necesita para interpretar la respuesta cacheada.
+_NOT_MODIFIED_PRESERVED_HEADERS = frozenset(
+    {"vary", "x-request-id", "x-correlation-id", "content-language"}
+)
+
 
 class ETagMiddleware(BaseHTTPMiddleware):
     """Añade ``ETag`` a respuestas GET 200 y responde 304 si ``If-None-Match`` coincide.
@@ -413,7 +417,16 @@ class ETagMiddleware(BaseHTTPMiddleware):
     Sólo actúa sobre respuestas con ``Content-Type: application/json`` y
     tamaño < ``max_bytes`` para no bloquear streams ni ficheros grandes.
 
-    El ETag es un hash SHA-1 del cuerpo, prefijado con ``W/`` (weak).
+    El ETag es un hash SHA-256 del cuerpo (truncado), prefijado con ``W/`` (weak).
+
+    **Tráfico autenticado.** Hasta 2026-08 una petición con cookie o API key
+    salía por un atajo que ponía ``private, no-store`` y devolvía la respuesta
+    *sin* ETag. Como prácticamente todos los endpoints exigen autenticación, el
+    middleware no emitía un solo ETag en producción: se pagaba el coste de
+    bufferizar el cuerpo de cada GET JSON a cambio de nada. Ahora esas
+    respuestas llevan ``private, no-cache``, que sigue impidiendo que un caché
+    compartido las guarde y además permite la revalidación con 304 — que es
+    justo donde está el ahorro de ancho de banda para un SPA que repregunta.
     """
 
     def __init__(
@@ -436,10 +449,13 @@ class ETagMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # Una respuesta solicitada con cookie o API key puede contener estado
-        # personalizado; ningún cache compartido debe conservarla.
-        if request.headers.get("cookie") or request.headers.get("x-api-key"):
-            response.headers["Cache-Control"] = "private, no-store"
-            return response
+        # personalizado; ningún cache compartido debe conservarla. `private`
+        # lo garantiza, y `no-cache` obliga a revalidar en cada uso — el 304
+        # sigue siendo válido y es el punto del ETag.
+        is_authenticated = bool(
+            request.headers.get("cookie") or request.headers.get("x-api-key")
+        )
+        cache_control = "private, no-cache" if is_authenticated else None
 
         if response.status_code != 200:
             return response
@@ -465,11 +481,21 @@ class ETagMiddleware(BaseHTTPMiddleware):
         if_none_match = request.headers.get("if-none-match", "")
         # RFC 7232: If-None-Match can contain multiple ETags separated by commas
         if if_none_match and etag in {t.strip() for t in if_none_match.split(",")}:
-            return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
+            # El 304 conserva las cabeceras de correlación/seguridad de la
+            # respuesta original: son las mismas que el cliente habría recibido
+            # con un 200, y perderlas rompía el rastro de la petición.
+            not_modified = {
+                k: v
+                for k, v in response.headers.items()
+                if k.lower() in _NOT_MODIFIED_PRESERVED_HEADERS
+            }
+            not_modified["ETag"] = etag
+            not_modified["Cache-Control"] = cache_control or "no-cache"
+            return Response(status_code=304, headers=not_modified)
 
         headers = dict(response.headers)
         headers["ETag"] = etag
-        headers["Cache-Control"] = headers.get("Cache-Control", "no-cache")
+        headers["Cache-Control"] = cache_control or headers.get("Cache-Control", "no-cache")
         return Response(
             content=body,
             status_code=response.status_code,

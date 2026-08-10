@@ -291,7 +291,15 @@ class _MaxBodyMiddleware:
     """
 
     _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
-    _413_BODY = b'{"detail":"Request body demasiado grande (m\\u00e1x. 1 MB)."}'
+    # RFC 7807 como el resto de la API. El 413 se emite en ASGI crudo (el body
+    # se corta antes de llegar al router, así que no hay exception handler que
+    # lo formatee), pero el contrato que ve el cliente es el mismo: un
+    # `application/problem+json` con type/title/status.
+    _413_BODY = (
+        b'{"type":"https://licitaciones-sap/errors/payload-too-large",'
+        b'"title":"Payload Too Large","status":413,'
+        b'"detail":"Request body demasiado grande (m\\u00e1x. 1 MB)."}'
+    )
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -340,7 +348,7 @@ class _MaxBodyMiddleware:
                 "type": "http.response.start",
                 "status": 413,
                 "headers": [
-                    (b"content-type", b"application/json"),
+                    (b"content-type", b"application/problem+json"),
                     (b"content-length", str(len(self._413_BODY)).encode()),
                 ],
             }
