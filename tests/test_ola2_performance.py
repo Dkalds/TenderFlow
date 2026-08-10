@@ -200,14 +200,19 @@ def test_run_ml_bulkhead_exists():
 
 
 def test_run_ml_capacity_limiter_is_2():
-    """El CapacityLimiter de ML debe tener capacidad máxima de 2."""
+    """El CapacityLimiter de ML debe tener capacidad máxima de 2.
+
+    El limiter pasó a `shared.concurrency` en 2026-08 para que `shared.cache`
+    pudiera usar el mismo presupuesto sin importar `api` (inversión de capas);
+    `api.concurrency` lo reexporta con nombre público.
+    """
     import asyncio
 
-    from api.concurrency import _get_ml_limiter
+    from api.concurrency import ml_limiter, reset_limiters
 
     async def _check():
-        limiter = _get_ml_limiter()
-        return limiter.total_tokens
+        reset_limiters()
+        return ml_limiter().total_tokens
 
     total = asyncio.run(_check())
     assert total == 2

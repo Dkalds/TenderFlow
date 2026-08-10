@@ -203,8 +203,7 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
             return None
 
         stale = (
-            last_seen is None
-            or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS
+            last_seen is None or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS
         )
         if stale:
             c.execute(
