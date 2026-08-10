@@ -85,6 +85,14 @@ jobs:
           ENV: dev
         run: python scripts/gen_status.py --check
 
+      # Un validador nuevo en Settings que exija una variable en producción pasa
+      # CI en verde y revienta al arrancar el contenedor. Aquí se comprueba que
+      # todo lo obligatorio esté declarado en render.yaml.
+      - name: Verify env parity (settings ↔ render.yaml ↔ .env.example)
+        env:
+          ENV: dev
+        run: python scripts/check_env_parity.py
+
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
 
   # ── Tests contra el motor de producción (ADR-018, ADR-021) ─────────
@@ -641,3 +649,30 @@ jobs:
           name: e2e-api-log
           path: /tmp/uvicorn.log
           if-no-files-found: ignore
+
+  commitlint:
+    name: Commitlint (PR titles)
+    runs-on: ubuntu-latest
+    # Vivía en release.yml, que solo dispara con tags y workflow_dispatch, bajo
+    # un `if: github.event_name == 'pull_request'` que allí nunca podía ser
+    # cierto: el job no llegó a ejecutarse una sola vez pese a existir
+    # .commitlintrc.json y a que cliff.toml genera el changelog desde commits
+    # convencionales. Aquí sí corre, porque este workflow escucha pull_request.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: Install commitlint
+        run: |
+          npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$PR_TITLE" | npx commitlint

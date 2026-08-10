@@ -1,5 +1,5 @@
 .PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
-.PHONY: web-test web-test-coverage
+.PHONY: web-test web-test-coverage check-env-parity
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -47,6 +47,9 @@ check-api-contract:  ## Ratchet del contrato API↔web (ninguna operación nueva
 
 check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y markers
 	python scripts/check_agent_docs.py
+
+check-env-parity:  ## Variables obligatorias en prod declaradas en render.yaml y documentadas
+	python scripts/check_env_parity.py
 
 smoke-prod:  ## Chequeo sintético contra producción (SMOKE_BASE_URL + SMOKE_API_KEY)
 	python scripts/smoke_prod.py

@@ -103,6 +103,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ### [P3] Migrar los `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
+- **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
 - **Problema:** quedan ~180 `title=` nativos. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
 - **Acceptance criteria:** ningún `title=` sobre un elemento interactivo; en celdas y textos truncados, o `Tooltip` o texto visible.
 - **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip)
@@ -173,15 +174,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
   - Sin borde visible cuando el contenido está en el tope (`scrollY === 0`).
 - **Files de partida:** [web/src/components/layout/top-nav.tsx](../web/src/components/layout/top-nav.tsx), [web/src/components/layout/kpi-bar.tsx](../web/src/components/layout/kpi-bar.tsx), [web/src/components/layout/global-filter-bar.tsx](../web/src/components/layout/global-filter-bar.tsx)
 - **Riesgo:** bajo — puramente visual, sin tocar datos ni contratos.
-
-### [P3] Completar la migración de `title=` nativos a `ui/tooltip.tsx`
-- **Área:** web/ (amplio)
-- **Problema:** La revisión de las skills de Emil Kowalski (2026-07-25, ver `docs/frontend-motion.md`) migró a `components/ui/tooltip.tsx` (Radix, `skipDelayDuration`) los `title=` de los controles interactivos icon-only más visibles (preset menus de `GlobalFilterBar`, badge de anomalía de `KpiCard`, toggles de densidad/tema de `TopNav`). Quedan `title=` nativos en celdas de tabla truncadas y textos informativos (p. ej. `tecnologias/page.tsx`, `company-profile-summary.tsx`, `company-year-trend.tsx`) — el `title` nativo del navegador tiene delay fijo (~500ms), no se estiliza y no existe en táctil.
-- **Acceptance criteria:**
-  - Los `title=` sobre contenido truncado/informativo (no solo controles) migrados a `Tooltip`, envueltos en `TooltipProvider` donde haga falta.
-  - Ningún `title=` nuevo se añade sin pasar antes por `Tooltip`.
-- **Files de partida:** `grep -rn 'title=' web/src --include='*.tsx'` (excluyendo el prop `title` de `KpiCard`, que es el encabezado de la tarjeta, no un tooltip nativo)
-- **Riesgo:** bajo — cosmético/accesibilidad, sin tocar datos; requiere `TooltipProvider` en los tests que rendericen los componentes migrados de forma aislada (ver `global-filter-bar.test.tsx` como ejemplo).
 
 ---
 

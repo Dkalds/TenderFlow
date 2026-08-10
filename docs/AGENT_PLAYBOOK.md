@@ -41,7 +41,9 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Validar contrato API | `make check-api-contract` |
 | Validar invariantes analíticos del frontend | `make check-frontend-invariants` |
 | Lint / typecheck frontend | `make web-lint` / `make web-typecheck` |
+| Tests unitarios frontend | `make web-test` (con umbrales: `make web-test-coverage`) |
 | Tests E2E frontend | `make web-test-e2e` |
+| Paridad de variables de entorno | `make check-env-parity` |
 | Arrancar API / frontend | `make api` / `make web-dev` |
 | Regenerar estado calculado | `make status` |
 | Verificar paridad de jobs | `make job-parity` |

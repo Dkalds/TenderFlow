@@ -48,8 +48,8 @@ los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
 |-------|-------|
 | **SLI** | `(tiempo_total - tiempo_inaccesible) / tiempo_total × 100` |
 | **SLO** | ≥ 99% mensual |
-| **Medición** | Healthcheck externo cada 5 minutos (ver `scheduler/healthcheck.py`) |
-| **Alerta** | Email (observability/alerts.py) si baja de 99% en ventana de 1h — no hay PagerDuty en este stack |
+| **Medición** | Chequeo sintético cada 15 min (`.github/workflows/smoke.yml`) + healthcheck cada 6 h (`healthcheck.yml` → `scheduler/healthcheck.py`) |
+| **Alerta** | Email (`observability/alerts.py`) — no hay PagerDuty en este stack. El sondeo cada 15 min acota el tiempo de detección a ~7 min de media; con el cron de 6 h anterior eran ~3 h y este SLO no era computable |
 | **Error budget** | 7.2 min/día, 3.6h/mes |
 
 ### 2. Frescura de datos
@@ -68,8 +68,8 @@ los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
 |-------|-------|
 | **SLI** | Tiempo de respuesta HTTP P50 / P95 / P99 de la ruta principal del frontend web |
 | **SLO** | P95 < 3 s en cargas con caché caliente |
-| **Medición** | Prometheus + Grafana (ver `observability/prometheus.yml`) |
-| **Alerta** | Si P95 > 5 s durante 5 minutos consecutivos |
+| **Medición** | Prometheus + Grafana. Config de producción: `observability/prometheus.render.yml`, horneada en la imagen por `docker/Dockerfile.prometheus` (`prometheus.yml` es la de docker-compose local) |
+| **Alerta** | **No implementada** — `observability/alert_rules.yml` no define ninguna regla de latencia HTTP; las 7 vigentes cubren presupuesto LLM, dedupe y pool de Postgres |
 | **Optimizaciones activas** | Caché caliente, agregados server-side y paginación server-side |
 
 ### 4. Tasa de éxito del pipeline de scraping
@@ -97,8 +97,8 @@ los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
 |-------|-------|
 | **SLI** | Latencia HTTP de `GET /api/v1/licitaciones` P99 |
 | **SLO** | P99 < 500 ms con datasets de hasta 10.000 licitaciones |
-| **Medición** | OpenTelemetry → Prometheus (ver `observability/tracing.py`) |
-| **Alerta** | Si P99 > 1 s durante 5 minutos |
+| **Medición** | Prometheus (`prometheus-fastapi-instrumentator`, ver `api/app.py`). El tracing OTLP de `observability/tracing.py` es opcional y opera en modo NoOp sin el extra `[tracing]` |
+| **Alerta** | **No implementada** (ver SLO 3). Sí existe `PgWriteLatencyHigh` sobre la latencia de escritura a BD |
 
 ---
 

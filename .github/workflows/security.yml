@@ -1,12 +1,16 @@
 name: Security scans
 
+# Escaneo programado y subida de SARIF. Bandit, pip-audit y Trivy **también**
+# corren en ci.yml en cada push/PR; tenerlos aquí con los mismos triggers hacía
+# que cada PR ejecutase dos veces los mismos escáneres y construyese dos veces
+# la imagen Docker completa, además de con dos versiones distintas de
+# trivy-action. El gate por PR se queda en ci.yml (que es el que bloquea el
+# merge) y este workflow conserva lo que allí no hay: Semgrep, detect-secrets,
+# el barrido semanal y la subida a code-scanning.
 on:
-  push:
-    branches: ["master", "main"]
-  pull_request:
-    branches: ["master", "main"]
   schedule:
     - cron: "0 5 * * 1"  # Lunes 05:00 UTC
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -114,7 +118,10 @@ jobs:
   trivy-image:
     name: Trivy — Docker image scan
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
+    # Sin condición de evento: antes se excluía del cron (`!= 'schedule'`)
+    # porque ya corría en cada push, y al dejar este workflow como semanal eso
+    # lo habría dejado sin ejecutarse nunca. El escaneo por PR sigue en ci.yml;
+    # esta pasada es la que sube el SARIF a code-scanning.
     strategy:
       fail-fast: false
       matrix:
