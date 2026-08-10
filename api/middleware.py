@@ -449,20 +449,22 @@ class ETagMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # Una respuesta solicitada con cookie o API key puede contener estado
-        # personalizado; ningún cache compartido debe conservarla. `private`
-        # lo garantiza, y `no-cache` obliga a revalidar en cada uso — el 304
-        # sigue siendo válido y es el punto del ETag.
-        is_authenticated = bool(
-            request.headers.get("cookie") or request.headers.get("x-api-key")
-        )
+        # personalizado; ningún cache compartido debe conservarla.
+        is_authenticated = bool(request.headers.get("cookie") or request.headers.get("x-api-key"))
+
+        # Lo que este middleware NO va a etiquetar con ETag (no-200, streams,
+        # descargas) conserva el `private, no-store` de siempre: sin
+        # revalidación posible, lo correcto es no guardarlo en ningún sitio.
+        es_json = "application/json" in response.headers.get("content-type", "")
+        if response.status_code != 200 or not es_json:
+            if is_authenticated:
+                response.headers["Cache-Control"] = "private, no-store"
+            return response
+
+        # Para el JSON que sí lleva ETag, `private` mantiene fuera a los cachés
+        # compartidos y `no-cache` obliga a revalidar en cada uso — el 304 sigue
+        # siendo válido, y es justo el punto de haber calculado el ETag.
         cache_control = "private, no-cache" if is_authenticated else None
-
-        if response.status_code != 200:
-            return response
-
-        content_type = response.headers.get("content-type", "")
-        if "application/json" not in content_type:
-            return response
 
         # Leer el cuerpo completo (sólo si es razonable en tamaño)
         body = b""
