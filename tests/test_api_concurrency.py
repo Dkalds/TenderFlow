@@ -110,13 +110,25 @@ def test_run_db_survives_a_broken_tracer(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_bulkheads_are_independent() -> None:
     """ML y CPU tienen presupuestos separados, no comparten limiter."""
     concurrency.reset_limiters()
-    assert concurrency._get_ml_limiter() is not concurrency._get_cpu_limiter()
+    assert concurrency.ml_limiter() is not concurrency.cpu_limiter()
+
+
+def test_cache_response_shares_the_cpu_bulkhead() -> None:
+    """``shared.cache`` y ``api.concurrency`` deben usar el MISMO limiter.
+
+    Si cada uno creara el suyo, dos presupuestos de 2 slots permitirían 4
+    agregaciones pandas concurrentes en vez de 2.
+    """
+    from shared.concurrency import cpu_limiter as shared_cpu_limiter
+
+    concurrency.reset_limiters()
+    assert concurrency.cpu_limiter() is shared_cpu_limiter()
 
 
 def test_run_cpu_passes_its_own_limiter() -> None:
     """``run_cpu`` no debe consumir slots del bulkhead de ML."""
     concurrency.reset_limiters()
-    cpu_limiter = concurrency._get_cpu_limiter()
+    cpu_limiter = concurrency.cpu_limiter()
     seen: list[object] = []
 
     async def _fake_run_sync(fn: object, **kwargs: object) -> str:

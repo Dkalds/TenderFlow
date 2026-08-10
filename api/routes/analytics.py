@@ -141,7 +141,7 @@ def geography(
 
 
 @router.get("/competitors", response_model=CompetitorResult)
-@cache_response(ttl=300)
+@cache_response(ttl=300, cpu_bound=True)
 def competitors(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -166,7 +166,7 @@ def competitors(
 
 
 @router.get("/scoring", response_model=ScoringResult)
-@cache_response(ttl=300)
+@cache_response(ttl=300, cpu_bound=True)
 def scoring(
     min_score: int = Query(default=0, ge=0, le=100, description="Minimum score threshold"),
     limit: int = Query(default=50, ge=1, le=500, description="Max opportunities to return"),
@@ -220,7 +220,7 @@ def source_freshness(
 
 
 @router.get("/organos", response_model=OrganosResult)
-@cache_response(ttl=300)
+@cache_response(ttl=300, cpu_bound=True)
 def organos(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
@@ -301,7 +301,7 @@ def proyectos_modulos(
 
 
 @router.get("/clusters", response_model=ClustersResult)
-@cache_response(ttl=1800)
+@cache_response(ttl=1800, cpu_bound=True)
 def clusters(
     n_clusters: int | None = Query(default=None, ge=2, le=20, description="Desired cluster count"),
     auto_k: bool = Query(default=False, description="Auto-select k via silhouette score"),
@@ -322,7 +322,7 @@ def clusters(
 
 
 @router.get("/pipeline", response_model=PipelineResult)
-@cache_response(ttl=120)
+@cache_response(ttl=120, cpu_bound=True)
 def pipeline(
     dias: int = Query(default=30, ge=1, le=365, description="Deadline window in days"),
     limit: int = Query(default=50, ge=1, le=500, description="Max entries to return"),
@@ -438,7 +438,7 @@ def resumen_top(
 
 
 @router.get("/forecast/volume", response_model=ForecastVolumeResult)
-@cache_response(ttl=600)
+@cache_response(ttl=600, cpu_bound=True)
 def forecast_volume_endpoint(
     months_ahead: int = Query(default=6, ge=1, le=24, description="Months to forecast"),
     metric: str = Query(default="count", description="Metric: count or sum"),
@@ -465,7 +465,7 @@ def forecast_volume_endpoint(
     response_model=RetenderingResult,
     deprecated=True,
 )
-@cache_response(ttl=600)
+@cache_response(ttl=600, cpu_bound=True)
 def forecast_retendering(
     meses_anticipacion: int = Query(default=6, ge=1, le=24, description="Months anticipation"),
     solo_mantenimiento: bool = Query(default=True, description="Only maintenance contracts"),
@@ -523,7 +523,7 @@ def trends_cpv(
 
 
 @router.get("/organos/{organo}", response_model=OrganoDetailResult)
-@cache_response(ttl=300)
+@cache_response(ttl=300, cpu_bound=True)
 def organo_detail(
     organo: str,
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),

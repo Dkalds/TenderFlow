@@ -37,7 +37,8 @@ import asyncio
 import json
 import math
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -85,14 +86,100 @@ def _fetch_recent(since_ts: float, limit: int) -> list[dict[str, Any]]:
         return []
 
 
+class _SignalWatcher:
+    """Poller único de proceso para el centinela de ingesta, con fan-out en memoria.
+
+    Cada conexión SSE consultaba el centinela por su cuenta cada 5 s. Con N
+    clientes con el dashboard abierto eso son 12 consultas por minuto y cliente,
+    una ocupando un hilo del threadpool y una conexión del pool, solo para
+    preguntar si hay novedades: veinte usuarios agotaban el presupuesto de
+    concurrencia de la API sin que nadie hubiera pedido nada.
+
+    Aquí el centinela se consulta **una vez por proceso** mientras haya al menos
+    un suscriptor, y el resultado se reparte por una ``asyncio.Condition``. El
+    coste pasa de O(clientes) a O(1), y además el aviso es inmediato en vez de
+    esperar al siguiente tick de cada generador.
+    """
+
+    def __init__(self) -> None:
+        self._subscribers = 0
+        self._task: asyncio.Task[None] | None = None
+        self._cond = asyncio.Condition()
+        self._signal_ts: float = 0.0
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    @asynccontextmanager
+    async def subscribe(self) -> AsyncIterator[_SignalWatcher]:
+        """Registra un suscriptor; arranca el poller con el primero y lo para con el último."""
+        async with self._cond:
+            self._subscribers += 1
+            if self._task is None or self._task.done():
+                self._task = asyncio.create_task(self._run())
+        try:
+            yield self
+        finally:
+            async with self._cond:
+                self._subscribers -= 1
+                if self._subscribers <= 0 and self._task is not None:
+                    self._task.cancel()
+                    self._task = None
+                    self._signal_ts = 0.0
+
+    async def _run(self) -> None:
+        from shared.cache_signal import get_signal_timestamp
+
+        while True:
+            try:
+                ts = await run_db(get_signal_timestamp)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.warning("stream.signal_poll_failed", error=str(exc))
+                ts = 0.0
+            if ts > self._signal_ts:
+                async with self._cond:
+                    self._signal_ts = ts
+                    self._cond.notify_all()
+            await asyncio.sleep(_POLL_INTERVAL)
+
+    async def wait_for_signal(self, since: float, timeout: float) -> float | None:
+        """Marca del centinela si supera ``since``; ``None`` si expiró el plazo."""
+        async with self._cond:
+            if self._signal_ts > since:
+                return self._signal_ts
+            try:
+                await asyncio.wait_for(self._cond.wait(), timeout=timeout)
+            except TimeoutError:
+                return None
+            return self._signal_ts if self._signal_ts > since else None
+
+
+_watcher: _SignalWatcher | None = None
+
+
+def _get_watcher() -> _SignalWatcher:
+    """Singleton del watcher, recreado si cambia el event loop.
+
+    La suite instancia la app en loops distintos (``TestClient`` abre uno por
+    petición), y una ``Condition`` atada a un loop muerto no sirve.
+    """
+    global _watcher
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if _watcher is None or _watcher._loop is not loop:
+        _watcher = _SignalWatcher()
+        _watcher._loop = loop
+    return _watcher
+
+
 async def _event_generator(
     request: Request,
     last_event_id: float,
     batch: int,
 ) -> AsyncGenerator[str, None]:
     """Generador asíncrono de eventos SSE."""
-    from shared.cache_signal import check_cache_signal
-
     deadline = time.monotonic() + _MAX_DURATION_SECONDS
     last_signal_check = last_event_id  # timestamp del último evento conocido por el cliente
     last_heartbeat = time.monotonic()
@@ -100,26 +187,30 @@ async def _event_generator(
     # Enviar heartbeat inicial para confirmar conexión
     yield _sse_event("heartbeat", {"ts": time.time()})
 
-    while time.monotonic() < deadline:
-        # Comprobar si el cliente desconectó — debe ir antes de cualquier yield
-        # para no emitir heartbeat/data a un cliente que ya se fue.
-        if await request.is_disconnected():
-            log.debug("stream.client_disconnected")
-            break
-
-        now = time.monotonic()
-
-        # Heartbeat — verificar desconexión justo antes de emitir para no
-        # desperdiciar I/O en un cliente que ya se fue.
-        if now - last_heartbeat >= _HEARTBEAT_INTERVAL:
+    async with _get_watcher().subscribe() as watcher:
+        while time.monotonic() < deadline:
+            # Comprobar si el cliente desconectó — debe ir antes de cualquier yield
+            # para no emitir heartbeat/data a un cliente que ya se fue.
             if await request.is_disconnected():
-                log.debug("stream.client_disconnected_before_heartbeat")
+                log.debug("stream.client_disconnected")
                 break
-            yield _sse_event("heartbeat", {"ts": time.time()})
-            last_heartbeat = now
 
-        # Comprobar señal de nueva ingesta
-        if await run_db(check_cache_signal, last_signal_check):
+            now = time.monotonic()
+
+            # Heartbeat — verificar desconexión justo antes de emitir para no
+            # desperdiciar I/O en un cliente que ya se fue.
+            if now - last_heartbeat >= _HEARTBEAT_INTERVAL:
+                if await request.is_disconnected():
+                    log.debug("stream.client_disconnected_before_heartbeat")
+                    break
+                yield _sse_event("heartbeat", {"ts": time.time()})
+                last_heartbeat = now
+
+            # Esperar aviso del poller compartido (sin tocar la BD desde aquí).
+            signal_ts = await watcher.wait_for_signal(last_signal_check, _POLL_INTERVAL)
+            if signal_ts is None:
+                continue
+
             new_signal_ts = time.time()
             try:
                 items = await run_db(_fetch_recent, last_signal_check, batch)
@@ -139,8 +230,6 @@ async def _event_generator(
                 log.info("stream.sent_batch", n=len(items))
 
             last_signal_check = new_signal_ts
-
-        await asyncio.sleep(_POLL_INTERVAL)
 
     # Evento de cierre limpio
     yield _sse_event("close", {"reason": "max_duration_reached"})

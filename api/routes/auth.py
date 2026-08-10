@@ -21,8 +21,9 @@ from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, 
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from api.concurrency import run_db
 from config import settings
-from db.sessions import create_session, revoke_session, validate_session
+from db.sessions import create_session, revoke_session, validate_session_principal
 from db.users import (
     admin_granted_by,
     create_user,
@@ -172,34 +173,34 @@ def _session_principal(session: str | None) -> dict[str, Any]:
     """Resuelve el principal de la cookie de sesión, sin gate de MFA.
 
     Raises 401 if the session is missing, invalid, or expired.
+
+    Función **síncrona**: las dependencias que la usan la despachan al
+    threadpool con ``run_db``. Llamarla directamente desde un ``async def``
+    bloquea el event loop durante todo el viaje a la BD, y esta es la
+    dependencia base de todo el SPA.
     """
     if not session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No session")
-    session_record = validate_session(session)
-    if session_record is None:
+    principal = validate_session_principal(session)
+    if principal is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
-    user_id: int | None = session_record.get("user_id")
+    user_id = principal.get("id")
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session payload"
         )
-    user = get_user_by_id(user_id)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    from db.totp import is_totp_required
-
-    mfa_required = is_totp_required(int(user["id"]))
+    email = principal.get("email")
     return {
-        "user_id": user["id"],
-        "email": user.get("email"),
-        "display_name": user.get("display_name"),
-        "is_admin": bool(user.get("is_admin")),
+        "user_id": user_id,
+        "email": email,
+        "display_name": principal.get("display_name"),
+        "is_admin": bool(principal.get("is_admin")),
         "csrf": _csrf_for_session(session),
         "session_token": session,
-        "authenticated_at": session_record.get("authenticated_at"),
-        "mfa_verified_at": session_record.get("mfa_verified_at"),
-        "mfa_required": mfa_required,
-        "user_key": user_key_from_email(user.get("email"), int(user["id"])),
+        "authenticated_at": principal.get("authenticated_at"),
+        "mfa_verified_at": principal.get("mfa_verified_at"),
+        "mfa_required": bool(principal.get("mfa_required")),
+        "user_key": user_key_from_email(email, int(user_id)),
     }
 
 
@@ -224,7 +225,7 @@ async def get_current_session_user(
     base, una ruta nueva nace protegida; lo que debe funcionar *antes* de
     completar MFA usa explícitamente :func:`get_session_user_pending_mfa`.
     """
-    user = _session_principal(session)
+    user = await run_db(_session_principal, session)
     _reject_pending_mfa(user)
     return user
 
@@ -243,7 +244,7 @@ async def get_session_user_pending_mfa(
     propósito: FastAPI lo interpretaría como query param y el bypass sería
     invocable desde la URL.
     """
-    return _session_principal(session)
+    return await run_db(_session_principal, session)
 
 
 # ---------------------------------------------------------------------------

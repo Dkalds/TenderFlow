@@ -27,48 +27,16 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, TypeVar
 
-from anyio import CapacityLimiter, to_thread
+from anyio import to_thread
+
+# Los presupuestos viven en ``shared`` para que ``shared.cache`` pueda usarlos
+# sin importar ``api`` (inversión de capas) y para que ambos caminos compartan
+# el mismo limiter.
+from shared.concurrency import cpu_limiter, ml_limiter, reset_limiters
 
 T = TypeVar("T")
 
-# Limiters dedicados (bulkheads). Lazy porque leen settings, que en tests se
-# parchea después de importar este módulo.
-_ML_LIMITER: CapacityLimiter | None = None
-_CPU_LIMITER: CapacityLimiter | None = None
-
-
-def _limiter_tokens(setting_name: str, default: int) -> int:
-    """Lee un tamaño de bulkhead de settings, con default si no está definido."""
-    try:
-        from config.settings import settings
-
-        value = int(getattr(settings, setting_name, default))
-    except Exception:
-        return default
-    return max(1, value)
-
-
-def _get_ml_limiter() -> CapacityLimiter:
-    """Lazy singleton del CapacityLimiter para ML. Creado al primer uso."""
-    global _ML_LIMITER
-    if _ML_LIMITER is None:
-        _ML_LIMITER = CapacityLimiter(_limiter_tokens("API_ML_TOKENS", 2))
-    return _ML_LIMITER
-
-
-def _get_cpu_limiter() -> CapacityLimiter:
-    """Lazy singleton del CapacityLimiter para trabajo CPU-bound (pandas)."""
-    global _CPU_LIMITER
-    if _CPU_LIMITER is None:
-        _CPU_LIMITER = CapacityLimiter(_limiter_tokens("API_CPU_BOUND_TOKENS", 2))
-    return _CPU_LIMITER
-
-
-def reset_limiters() -> None:
-    """Descarta los limiters cacheados (tests que cambian settings)."""
-    global _ML_LIMITER, _CPU_LIMITER
-    _ML_LIMITER = None
-    _CPU_LIMITER = None
+__all__ = ["cpu_limiter", "ml_limiter", "reset_limiters", "run_cpu", "run_db", "run_ml"]
 
 
 def _span(name: str, attributes: dict[str, str]) -> AbstractContextManager[Any]:
@@ -123,7 +91,7 @@ async def run_ml(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         probs = await run_ml(classifier.predict_proba, texts)
     """
     with _span("ml.inference", {"ml.function": _fn_name(fn)}):
-        return await to_thread.run_sync(lambda: fn(*args, **kwargs), limiter=_get_ml_limiter())
+        return await to_thread.run_sync(lambda: fn(*args, **kwargs), limiter=ml_limiter())
 
 
 async def run_cpu(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
@@ -134,4 +102,4 @@ async def run_cpu(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     general con ellas deja sin hilos a las lecturas baratas.
     """
     with _span("cpu.task", {"cpu.function": _fn_name(fn)}):
-        return await to_thread.run_sync(lambda: fn(*args, **kwargs), limiter=_get_cpu_limiter())
+        return await to_thread.run_sync(lambda: fn(*args, **kwargs), limiter=cpu_limiter())
