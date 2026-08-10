@@ -32,6 +32,7 @@ export function snapshotFilters(values: FilterValues): string {
     ccaas: values.ccaas,
     tecnologias: values.tecnologias,
     importeMin: values.importeMin,
+    soloAbiertas: values.soloAbiertas,
   });
 }
 
@@ -48,16 +49,18 @@ export function applySnapshot(filters: FiltersState, filtersJson: string): void 
   filters.setEstados(snap.estados ?? []);
   filters.setCcaas(snap.ccaas ?? []);
   filters.setTecnologias(snap.tecnologias ?? []);
+  // `?? false` y no `?? filters.soloAbiertas`: una vista guardada antes de que
+  // este filtro existiera describe un ámbito sin él, así que restaurarla tiene
+  // que apagarlo. Dejarlo como estaba haría que la vista dependiera de lo que
+  // hubiera activo al aplicarla — el mismo valor daría dos resultados.
+  filters.setSoloAbiertas(snap.soloAbiertas ?? false);
   filters.setImporteMin(snap.importeMin ?? null);
 }
 
 export function useSavedViews() {
   return useQuery({
     queryKey: SAVED_VIEWS_KEY,
-    queryFn: () =>
-      fetchWithAuth<{ items: SavedView[] }>("/api/v1/saved-filters").then(
-        (r) => r.items,
-      ),
+    queryFn: () => fetchWithAuth<{ items: SavedView[] }>("/api/v1/saved-filters").then((r) => r.items),
     meta: { silent: true },
   });
 }
@@ -65,8 +68,7 @@ export function useSavedViews() {
 export function useSaveView() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { name: string; filters_json: string }) =>
-      apiMutate("POST", "/api/v1/saved-filters", vars),
+    mutationFn: (vars: { name: string; filters_json: string }) => apiMutate("POST", "/api/v1/saved-filters", vars),
     meta: {
       successMessage: "Vista guardada",
       errorTitle: "No se pudo guardar la vista",

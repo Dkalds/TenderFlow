@@ -41,7 +41,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
-from shared.estados import ESTADOS_CERRADOS
+from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
 log = get_logger(__name__)
 
@@ -420,20 +420,24 @@ class AggregateRepository:
         where, params = _build_where(filters)
         pub_guard = _iso_guard("fecha_publicacion")
         lim_guard = _iso_guard("fecha_limite")
+        # `abierta_sql()` y no `estado IN ('PUB','EV')`: con la lista blanca,
+        # `total_activas` daba 0 sobre datos donde el Radar listaba 12 — todos
+        # en `ADM`, que no es terminal. Ver `shared/estados.py`.
+        abierta = abierta_sql()
         sql = (
             "WITH filtered AS (SELECT * FROM licitaciones WHERE " + where + "), "
             "p75 AS (SELECT percentile_cont(0.75) WITHIN GROUP (ORDER BY importe) AS v "
             "        FROM filtered WHERE importe IS NOT NULL) "
             "SELECT "
             "  COUNT(*) FILTER ("
-            "    WHERE estado IN ('PUB', 'EV') "
+            f"    WHERE {abierta} "
             f"     AND {lim_guard} AND fecha_limite > %s "
             "      AND importe >= (SELECT v FROM p75)"
             "  ) AS calientes_hoy, "
             f"  COUNT(*) FILTER (WHERE {lim_guard} AND fecha_limite >= %s AND fecha_limite <= %s)"
             "     AS vencen_48h, "
             f"  COUNT(*) FILTER (WHERE {pub_guard} AND fecha_publicacion >= %s) AS nuevas_24h, "
-            "  COUNT(*) FILTER (WHERE estado IN ('PUB', 'EV')) AS total_activas "
+            f"  COUNT(*) FILTER (WHERE {abierta}) AS total_activas "
             "FROM filtered"
         )
         run_params = [*params, hoy_iso, hoy_iso, limite_48h_iso, hace_24h_iso]

@@ -221,8 +221,15 @@ def run_kpi_precompute() -> dict[str, Any]:
 # ── Exportación Parquet materializada (F2) ────────────────────────────────────
 
 _MAT_QUERIES: dict[str, str] = {
+    # `substr` y no `strftime`: esta consulta la ejecuta DuckDB sólo si el
+    # extra `[analytics]` está instalado; sin él —el caso de la imagen que se
+    # despliega, `requirements.txt` no trae duckdb— cae al fallback de pandas
+    # contra Postgres, que no tiene `strftime`. El `except` por tabla se comía
+    # el error como un `.skip`, así que este Parquet no se escribía nunca y en
+    # silencio. `fecha_publicacion` es texto ISO, de modo que cortar los 7
+    # primeros caracteres da el mes en los dos motores sin castear.
     "mat_licitaciones_por_mes": (
-        "SELECT strftime('%Y-%m', fecha_publicacion) AS mes, "
+        "SELECT substr(fecha_publicacion, 1, 7) AS mes, "
         "COUNT(*) AS n, SUM(importe) AS importe_total, AVG(importe) AS importe_medio "
         "FROM licitaciones WHERE fecha_publicacion IS NOT NULL "
         "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
