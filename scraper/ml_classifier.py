@@ -775,26 +775,51 @@ class SAPClassifier:
         """
         import joblib
 
-        # Si no se pasa path explícito, consultar el model registry
+        # Si no se pasa path explícito, consultar el model registry.
+        #
+        # El `path` del registry es una ruta del sistema de ficheros de la
+        # máquina que ENTRENÓ el modelo (un runner de GitHub Actions), y el
+        # serving corre en otro contenedor: esa ruta normalmente no existe aquí.
+        # Antes se usaba tal cual, así que `load()` fallaba con FileNotFoundError
+        # sobre una ruta ajena en vez de caer al artefacto local, y el registry
+        # quedaba de metadato decorativo. Ahora la ruta se usa **solo si existe**
+        # en esta máquina, y el `sha256` del registry se aprovecha para verificar
+        # la integridad del artefacto local — que es el dato que sí viaja entre
+        # máquinas (ver ADR-025 sobre identificar artefactos por contenido).
+        registry_sha256 = ""
         if path is None:
             try:
                 from db.model_registry import get_active
 
                 active = get_active("sap_classifier")
-                if active and active.get("path"):
-                    path = Path(active["path"])
-                    log.info(
-                        "ml_classifier.load_from_registry",
-                        version=active.get("version"),
-                        path=str(path),
-                    )
+                if active:
+                    registry_sha256 = str(active.get("sha256") or "")
+                    registry_path = Path(str(active["path"])) if active.get("path") else None
+                    if registry_path is not None and registry_path.exists():
+                        path = registry_path
+                        log.info(
+                            "ml_classifier.load_from_registry",
+                            version=active.get("version"),
+                            path=str(path),
+                        )
+                    elif registry_path is not None:
+                        log.info(
+                            "ml_classifier.registry_path_not_local",
+                            version=active.get("version"),
+                            registry_path=str(registry_path),
+                            fallback=str(_MODEL_PATH),
+                        )
             except Exception as _reg_exc:
                 log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
 
         target = path or _MODEL_PATH
+        # El pin explícito de settings manda; si no hay, sirve el hash que dejó
+        # registrado quien entrenó el modelo. Es lo que permite comprobar que el
+        # artefacto de esta máquina es el mismo que la versión activa declara.
+        pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "") or registry_sha256
         verify_model_integrity(
             target,
-            pinned_sha256=str(getattr(settings, "ML_MODEL_SHA256", "") or ""),
+            pinned_sha256=pinned,
             pin_setting_name="ML_MODEL_SHA256",
             model_label="sap_classifier",
             env=str(getattr(settings, "ENV", "dev")),
