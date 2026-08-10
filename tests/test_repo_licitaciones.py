@@ -324,3 +324,103 @@ def test_repo_get_last_extraction_date_con_datos(tmp_db):
     assert result is not None
     assert isinstance(result, str)
     assert "2026-01-01" in result
+
+
+# ---------------------------------------------------------------------------
+# get_filter_options — loose index scan
+# ---------------------------------------------------------------------------
+
+
+def seed_filtros(db_mod):
+    """Siembra valores variados de filtro: duplicados, NULL y cadena vacía."""
+    from db.upsert import Licitacion, upsert_licitaciones
+
+    # (ccaa, estado, cpv, tecnologia) — el primero se repite a propósito para
+    # comprobar que la deduplicación del loose index scan es real.
+    filas = [
+        ("Madrid", "PUB", "72000000", "SAP"),
+        ("Madrid", "PUB", "72000000", "SAP"),
+        ("Andalucía", "ADJ", "48000000", "ORACLE"),
+        ("Cataluña", "RES", "30000000", None),
+        (None, None, None, None),
+        ("", "", "", ""),
+    ]
+    upsert_licitaciones(
+        [
+            Licitacion(
+                id_externo=f"F{i:03d}",
+                titulo=f"Licitacion filtro {i}",
+                descripcion="",
+                organo_contratacion="Ministerio",
+                estado=estado,
+                fecha_publicacion="2026-01-01T00:00:00+00:00",
+                fecha_extraccion="2026-01-01",
+                tecnologia=tecnologia,
+                cpv=cpv,
+                ccaa=ccaa,
+            )
+            for i, (ccaa, estado, cpv, tecnologia) in enumerate(filas)
+        ]
+    )
+
+
+def test_repo_get_filter_options_equivale_a_distinct(tmp_db):
+    """El loose index scan devuelve exactamente lo mismo que SELECT DISTINCT.
+
+    Es el invariante que justifica la reescritura: se cambió el plan de
+    ejecución (39 s -> 42 ms en prod), no la semántica. Se compara contra el
+    ``DISTINCT`` original ejecutado en el mismo test, no contra una lista
+    escrita a mano, para que el contraste siga siendo válido si cambia el seed.
+    """
+    db_mod, _ = tmp_db
+    seed_filtros(db_mod)
+
+    from db.connection import connect_read
+    from db.repositories.licitaciones import LicitacionRepository
+
+    result = LicitacionRepository().get_filter_options()
+
+    with connect_read() as c:
+        for col in ("estado", "ccaa", "tecnologia", "cpv"):
+            # `col` recorre una tupla literal de este test, no entrada externa.
+            # El SQL es a propósito el original que la reescritura sustituyó: es
+            # el oráculo contra el que se compara.
+            rows = c.execute(
+                f"SELECT DISTINCT {col} FROM licitaciones "  # noqa: S608
+                f"WHERE {col} IS NOT NULL AND {col} != '' "
+                f"ORDER BY {col}"
+            ).fetchall()
+            assert result[col] == [r[0] for r in rows], f"divergencia en {col}"
+
+
+def test_repo_get_filter_options_excluye_null_y_vacio(tmp_db):
+    """NULL y cadena vacía no aparecen como opciones de filtro."""
+    db_mod, _ = tmp_db
+    seed_filtros(db_mod)
+
+    from db.repositories.licitaciones import LicitacionRepository
+
+    result = LicitacionRepository().get_filter_options()
+
+    assert set(result["ccaa"]) == {"Andalucía", "Cataluña", "Madrid"}
+    assert set(result["tecnologia"]) == {"ORACLE", "SAP"}
+    for valores in result.values():
+        assert "" not in valores
+        assert None not in valores
+        # Sin duplicados y en orden ascendente: el CTE recursivo avanza con
+        # `> valor anterior`, así que ambas propiedades salen del propio plan.
+        assert valores == sorted(set(valores))
+
+
+def test_repo_get_filter_options_sin_datos(tmp_db):
+    """Con la tabla vacía devuelve listas vacías, no None ni error.
+
+    El caso base del CTE recursivo no encuentra semilla: la recursión termina
+    en la primera iteración y el filtro final descarta la fila NULL.
+    """
+    _, _ = tmp_db
+
+    from db.repositories.licitaciones import LicitacionRepository
+
+    result = LicitacionRepository().get_filter_options()
+    assert result == {"estado": [], "ccaa": [], "tecnologia": [], "cpv": []}
