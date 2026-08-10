@@ -121,11 +121,17 @@ services:
   #
   # Prometheus es un servicio privado (no expuesto a internet); Grafana es web
   # porque hay que abrirlo desde el navegador y trae su propia autenticación.
+  # Se construye desde docker/Dockerfile.prometheus en vez de usar la imagen
+  # upstream: `runtime: image` arrancaba con la config de fábrica porque nada
+  # copiaba prometheus.render.yml ni alert_rules.yml dentro del contenedor (el
+  # único disco montado es el de datos). Con la config de fábrica Prometheus
+  # solo se scrapea a sí mismo, así que ni había targets de la API ni se
+  # evaluaba una sola regla de alerta.
   - type: pserv
     name: tenderflow-prometheus
-    runtime: image
-    image:
-      url: docker.io/prom/prometheus:v2.53.0
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.prometheus
+    dockerContext: .
     plan: starter
     region: frankfurt
     dockerCommand: >-

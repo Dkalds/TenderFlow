@@ -204,9 +204,6 @@ _LEGITIMATE_SILENT: frozenset[str] = frozenset(
         # Probes de disponibilidad: el `return False` ES el resultado que el
         # llamante espera, no un fallback que oculte un fallo.
         "db/search_backend.py::PgTsBackend.available",
-        # `check_db` devuelve "error", que viaja hasta /api/v1/health/ready y
-        # se convierte en 503. La constancia es la respuesta HTTP.
-        "services/health.py::check_db",
     }
 )
 

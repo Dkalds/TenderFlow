@@ -69,10 +69,27 @@ const nextConfig: NextConfig = {
   },
 
   /**
-   * Proxy API requests to FastAPI backend in development.
-   * In production, same-origin deployment means no rewrites needed.
+   * Proxy de `/api/*` al backend FastAPI.
+   *
+   * Los rewrites se hornean en el build, así que el valor que tenga
+   * `API_BASE_URL` en ese momento es el que queda grabado en el despliegue.
+   * Frontend (Vercel) y API (Render) están en orígenes distintos, de modo que
+   * un build de Vercel sin la variable dejaba TODA la app apuntando a
+   * `http://localhost:8080` — con el build en verde y fallos de red solo en
+   * runtime. Se falla el build en su lugar.
+   *
+   * El guard mira `VERCEL` en vez de `NODE_ENV`: el job `frontend` de CI hace
+   * un `next build` de producción legítimo sin API_BASE_URL (solo comprueba que
+   * compila, no despliega), y ahí el fallback local es correcto.
    */
   async rewrites() {
+    if (process.env.VERCEL && !process.env.API_BASE_URL) {
+      throw new Error(
+        "API_BASE_URL no está definida en el proyecto de Vercel. Los rewrites de " +
+          "/api/* se resuelven en build time: sin ella el despliegue apuntaría a " +
+          "http://localhost:8080 y la app fallaría en runtime.",
+      );
+    }
     const apiBase = process.env.API_BASE_URL ?? "http://localhost:8080";
     return [
       {

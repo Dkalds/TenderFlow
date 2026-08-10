@@ -63,9 +63,23 @@ try:
     )
 
     # ── DB pool ───────────────────────────────────────────────────────────────
+    # Etiquetadas por pool: hay uno de escritura y otro de lectura (ADR-025).
     db_pool_size = Gauge(
         "db_pool_size",
-        "Tamaño configurado del pool de conexiones DB",
+        "Tamaño máximo configurado del pool de conexiones DB",
+        ["pool"],
+    )
+
+    db_pool_connections = Gauge(
+        "db_pool_connections",
+        "Conexiones del pool por estado (available: libres en el pool; used: en uso)",
+        ["pool", "state"],
+    )
+
+    db_pool_requests_waiting = Gauge(
+        "db_pool_requests_waiting",
+        "Peticiones encoladas esperando una conexión libre del pool",
+        ["pool"],
     )
 
     db_pool_acquire_timeout_total = Counter(
@@ -77,6 +91,15 @@ try:
     db_write_duration_seconds = Histogram(
         "db_write_duration_seconds",
         "Latencia de commits de escritura a la BD (alerta PgWriteLatencyHigh: p99 >1s)",
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+    )
+
+    # ── DB read health ────────────────────────────────────────────────────
+    # Simétrica a la de escritura: hasta 2026-08 solo se medía el 49% del
+    # tráfico (los commits), y las 209 rutas de lectura eran invisibles.
+    db_read_duration_seconds = Histogram(
+        "db_read_duration_seconds",
+        "Latencia de los bloques de lectura (connect_read) contra la BD",
         buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
     )
 
@@ -154,7 +177,7 @@ except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
 
     class _NoopMetric:
-        def labels(self, **_: object) -> _NoopMetric:
+        def labels(self, *_args: object, **_kwargs: object) -> _NoopMetric:
             return self
 
         def set(self, _value: float) -> None: ...
@@ -169,8 +192,11 @@ except ImportError:  # pragma: no cover
     scheduler_job_total = _NoopMetric()  # type: ignore[assignment]
     scheduler_job_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_pool_size = _NoopMetric()  # type: ignore[assignment]
+    db_pool_connections = _NoopMetric()  # type: ignore[assignment]
+    db_pool_requests_waiting = _NoopMetric()  # type: ignore[assignment]
     db_pool_acquire_timeout_total = _NoopMetric()  # type: ignore[assignment]
     db_write_duration_seconds = _NoopMetric()  # type: ignore[assignment]
+    db_read_duration_seconds = _NoopMetric()  # type: ignore[assignment]
     db_concurrent_writers = _NoopMetric()  # type: ignore[assignment]
     parser_field_null_total = _NoopMetric()  # type: ignore[assignment]
     parser_entries_total = _NoopMetric()  # type: ignore[assignment]
@@ -183,3 +209,31 @@ except ImportError:  # pragma: no cover
     dedupe_marked_total = _NoopMetric()  # type: ignore[assignment]
     dedupe_match_rate = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False
+
+
+def refresh_db_pool_metrics() -> None:
+    """Vuelca el estado de los pools de BD en sus gauges.
+
+    Se invoca al servir ``/metrics`` en vez de instrumentar cada ``getconn``:
+    ``psycopg_pool`` ya lleva la contabilidad, y muestrearla en el scrape evita
+    añadir trabajo al camino de cada petición. Sin esto, ``db_pool_size`` y
+    compañía existían declaradas pero valían siempre 0 — la saturación del pool,
+    que es el modo de fallo más probable bajo carga, era invisible.
+    """
+    try:
+        from db.connection import pool_stats
+    except Exception:  # pragma: no cover - import defensivo
+        return
+
+    for pool_name, stats in pool_stats().items():
+        try:
+            db_pool_size.labels(pool=pool_name).set(stats.get("pool_max", 0))
+            db_pool_connections.labels(pool=pool_name, state="available").set(
+                stats.get("pool_available", 0)
+            )
+            db_pool_connections.labels(pool=pool_name, state="used").set(
+                max(stats.get("pool_size", 0) - stats.get("pool_available", 0), 0)
+            )
+            db_pool_requests_waiting.labels(pool=pool_name).set(stats.get("requests_waiting", 0))
+        except Exception:  # pragma: no cover - métrica best-effort
+            log.debug("db_pool_metrics_refresh_failed", pool=pool_name)

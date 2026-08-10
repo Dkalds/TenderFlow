@@ -120,15 +120,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # carga lazy mientras sus agregados se migran a SQL (backlog P1).
     log.info("analytics_full_table_prewarm_disabled")
 
-    # Limitar hilos del threadpool de anyio — evita CPU starvation en instancias
-    # con pocos vCPUs (ej. Render Free 0.1 vCPU).  Sin este límite, FastAPI
-    # despacha cada endpoint sync a un hilo nuevo (default 40), provocando que
-    # 9 peticiones Pandas concurrentes saturen el único core y generen 502.
+    # Dimensionar el threadpool de anyio, donde corre todo el trabajo síncrono.
+    # El límite existe por CPU starvation en instancias de pocos vCPUs (Render
+    # Free, 0.1 vCPU): sin él FastAPI despacha cada endpoint sync a un hilo
+    # nuevo (default 40) y 9 peticiones Pandas concurrentes saturan el core.
+    # Pero fijarlo en 4 castigaba también a las lecturas IO-bound, que solo
+    # esperan red: el techo efectivo de la API pasaba a ser 4 peticiones
+    # simultáneas contra un pool de conexiones más grande que eso. Quien tiene
+    # que estar acotada es la carga CPU-bound, y para eso está su bulkhead
+    # propio (``api.concurrency.run_cpu``), no el pool general.
+    previous_tokens: float | None = None
     try:
         import anyio
 
-        anyio.to_thread.current_default_thread_limiter().total_tokens = 4
-        log.info("anyio_thread_limiter_set", max_threads=4)
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        previous_tokens = limiter.total_tokens
+        tokens = int(getattr(settings, "API_THREADPOOL_TOKENS", 24))
+        limiter.total_tokens = tokens
+        log.info("anyio_thread_limiter_set", max_threads=tokens, previous=previous_tokens)
     except Exception as exc:
         log.warning("anyio_thread_limiter_failed", error=str(exc))
 
@@ -150,7 +159,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         except Exception as exc:
             log.warning("api_shutdown_drain_error", error=str(exc))
 
-    # Cerrar pool de conexiones SQLite
+    # Cerrar los pools de conexiones (escritura y lectura)
     try:
         from db.database import close_pool
 
@@ -158,6 +167,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log.info("api_shutdown_db_pool_closed")
     except Exception:
         pass
+
+    # Restaurar el limiter global de anyio. Es estado de proceso, no de la app:
+    # sin esto, la suite de tests que instancia la app con `with TestClient`
+    # deja el threadpool encogido para todo lo que corra después.
+    if previous_tokens is not None:
+        try:
+            import anyio
+
+            anyio.to_thread.current_default_thread_limiter().total_tokens = previous_tokens
+        except Exception:  # pragma: no cover - restauración best-effort
+            log.debug("anyio_thread_limiter_restore_failed")
 
 
 # ---------------------------------------------------------------------------
@@ -580,6 +600,12 @@ try:
                 if not ip_allowed and not key_authenticated:
                     return Response(status_code=401, content="Unauthorized")
 
+            # Muestrear el estado de los pools de BD justo antes de serializar:
+            # psycopg_pool ya lleva la contabilidad, así que el scrape la lee en
+            # vez de instrumentar cada adquisición de conexión.
+            from observability.runtime_metrics import refresh_db_pool_metrics
+
+            refresh_db_pool_metrics()
             return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
         log.info("prometheus_metrics_endpoint_enabled", path="/metrics")

@@ -62,7 +62,7 @@ coordinación entre ellos:
 | `scheduler/run_update.py` | Delega en `pipeline_runs` |
 | `scheduler/jobs/daily_atom.py` | Delega en `pipeline_runs` |
 | `scheduler/jobs/recent_bulk.py` | Delega en `pipeline_runs` |
-| `services/job_locks.py` | **Nuevo** — acquire/release/is_held |
+| `db/job_locks.py` | **Nuevo** — acquire/release/is_held (vivía en `services/`; movido a `db/` en 2026-08 por ADR-022) |
 | `db/schema.py` | DDL tabla `job_locks` |
 | `db/migrations.py` | Migración v34 |
 | `db/alembic/versions/v34_job_locks.py` | **Nuevo** — migración Alembic |

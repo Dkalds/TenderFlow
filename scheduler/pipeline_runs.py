@@ -85,7 +85,7 @@ def _run_periodic(name: str, ttl_seconds: int, fn: Any) -> str:
 
     La pipeline canónica corre cada 4h, pero algunos pasos tienen cadencia
     propia (un digest "diario" enviado 6 veces al día no es diario). Se
-    reutiliza ``services.job_locks`` con el periodo como TTL: el lock **no se
+    reutiliza ``db.job_locks`` con el periodo como TTL: el lock **no se
     libera** al terminar bien, así que actúa de ventana temporal — las
     siguientes pasadas dentro del periodo no lo adquieren y se saltan el paso.
 
@@ -95,16 +95,17 @@ def _run_periodic(name: str, ttl_seconds: int, fn: Any) -> str:
     Returns:
         ``"ok"`` si se ejecutó, ``"skipped"`` si aún no tocaba.
     """
-    from services.job_locks import acquire, release
+    from db.job_locks import acquire, release
 
-    if not acquire(name, ttl_seconds=ttl_seconds, holder="pipeline_runs"):
+    holder = "pipeline_runs"
+    if not acquire(name, ttl_seconds=ttl_seconds, holder=holder):
         log.debug("pipeline_periodic_skipped", step=name)
         return "skipped"
 
     try:
         fn()
     except Exception:
-        release(name)
+        release(name, holder=holder)
         raise
     return "ok"
 
