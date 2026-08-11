@@ -173,11 +173,15 @@ def scoring(
     band: str | None = Query(
         default=None, description="Filter by band (Caliente|Atractiva|Tibia|Descarte)"
     ),
+    tecnologia: str | None = Query(
+        default=None,
+        description="Filter by tecnologia (se aplica al universo, antes del top-N)",
+    ),
     ids: str | None = Query(
         default=None,
         description=(
             "CSV de id_externo: puntua exactamente esas licitaciones (alineado a la "
-            "pagina del listado), ignorando min_score/band/limit"
+            "pagina del listado), ignorando min_score/band/limit/tecnologia"
         ),
     ),
     _user: dict[str, Any] = Depends(get_current_session_user),
@@ -186,6 +190,10 @@ def scoring(
 
     Cuando el usuario tiene un perfil (Feature B), aplica sus pesos y keywords
     personalizados. Sin perfil, usa los settings globales.
+
+    En modo top-N el universo son las oportunidades vivas (estado no terminal y
+    plazo por vencer); ``tecnologia`` lo acota antes de ordenar y cortar, para
+    que el top-N sea el de esa tecnología y no el global filtrado después.
     """
     user_key = str(_user.get("user_key") or "") or None
     id_list = [i for i in ids.split(",") if i] if ids else None
@@ -193,6 +201,7 @@ def scoring(
         min_score=min_score,
         limit=limit,
         band=band,
+        tecnologia=tecnologia,
         ids=id_list,
     )
     return get_scoring(filters, user_key=user_key)

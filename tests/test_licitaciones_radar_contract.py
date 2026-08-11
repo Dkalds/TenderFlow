@@ -47,23 +47,34 @@ def _seed(db_mod) -> None:
             )
 
 
+# Corte de "plazo vivo" que usan los tests del universo puntuable: fijo, no
+# `date.today()`, para que el resultado no dependa del día en que se corran.
+_HOY = "2026-08-01"
+_PLAZO_VIVO = "2026-12-01T00:00:00+00:00"
+
+
 def _seed_estados(db_mod) -> None:
-    """Siembra un expediente por estado.
+    """Siembra un expediente por estado, todos con el plazo abierto.
 
     El título lleva ``bandeja`` para que el test de la rama FTS tenga un
     término que buscar: ``search_vector`` es columna generada, así que un
     INSERT normal ya la rellena.
+
+    La fecha límite es común a todas las filas justamente para que no sea la
+    variable del test del universo puntuable: ahí lo único que debe decidir es
+    el estado. El plazo tiene su propio test.
     """
     with db_mod.connect() as conn:
         for id_externo, estado in _ESTADO_ROWS:
             conn.execute(
                 "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-                "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
+                "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s, %s)",
                 (
                     id_externo,
                     f"Licitación bandeja {id_externo}",
                     estado,
                     "2026-07-01",
+                    _PLAZO_VIVO,
                     "2026-07-30T00:00:00+00:00",
                     "SAP",
                 ),
@@ -249,17 +260,93 @@ def test_el_universo_puntuable_enumera_el_cierre_y_no_la_apertura(tmp_db):
     with db_mod.connect() as conn:
         conn.execute(
             "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-            "fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s)",
+            "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (
                 "EST-ADM",
                 "Licitación en admisión",
                 "ADM",
                 "2026-07-02",
+                _PLAZO_VIVO,
                 "2026-07-30T00:00:00+00:00",
                 "SAP",
             ),
         )
 
-    ids = {row["id_externo"] for row in AggregateRepository().scoring_candidates()}
+    ids = {row["id_externo"] for row in AggregateRepository().scoring_candidates(hoy_iso=_HOY)}
 
     assert ids == {"EST-PUB", "EST-EV", "EST-NULL", "EST-ADM"}
+
+
+def test_el_universo_puntuable_exige_plazo_por_vencer(tmp_db):
+    """Estar abierta no basta: sin plazo vivo no hay nada a lo que presentarse.
+
+    El estado no acotaba nada en producción. Medido el 2026-08-11: 1.501.273 de
+    1.640.915 filas no están en estado terminal (el 91%, porque PSCP publica
+    1,46 M avisos en ``PUBLICACIÓ AGREGADA``), y cargarlas en pandas dejaba a la
+    API sin memoria —diez reinicios de la instancia ese día, uno por carga del
+    Radar— o hacía saltar el ``statement_timeout``. En los dos casos el usuario
+    veía "Error al cargar la bandeja del radar".
+
+    Exigir plazo por vencer deja 1.643 filas y además dice la verdad: una
+    licitación cuyo plazo pasó, o que nunca publicó uno, no es una decisión
+    pendiente.
+    """
+    from db.repositories.aggregates import AggregateRepository
+
+    db_mod, _ = tmp_db
+    with db_mod.connect() as conn:
+        for id_externo, limite in (
+            ("PLAZO-VIVO", _PLAZO_VIVO),
+            ("PLAZO-VENCIDO", "2026-07-15T00:00:00+00:00"),
+            ("PLAZO-AUSENTE", None),
+        ):
+            conn.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
+                "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (
+                    id_externo,
+                    f"Licitación {id_externo}",
+                    "PUB",
+                    "2026-07-01",
+                    limite,
+                    "2026-07-30T00:00:00+00:00",
+                    "SAP",
+                ),
+            )
+
+    ids = {row["id_externo"] for row in AggregateRepository().scoring_candidates(hoy_iso=_HOY)}
+
+    assert ids == {"PLAZO-VIVO"}
+
+
+def test_el_universo_puntuable_acepta_el_filtro_de_tecnologia(tmp_db):
+    """El filtro acota el universo, no el top-N ya cortado.
+
+    El Radar filtraba en el cliente el top-24 global: con 13 licitaciones SAP
+    vivas entre 1.643, la bandeja de SAP salía vacía aunque esas 13 existieran.
+    """
+    from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+
+    db_mod, _ = tmp_db
+    with db_mod.connect() as conn:
+        for id_externo, tecnologia in (("TEC-SAP", "SAP"), ("TEC-MS", "MICROSOFT")):
+            conn.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
+                "fecha_limite, fecha_extraccion, tecnologia) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (
+                    id_externo,
+                    f"Licitación {id_externo}",
+                    "PUB",
+                    "2026-07-01",
+                    _PLAZO_VIVO,
+                    "2026-07-30T00:00:00+00:00",
+                    tecnologia,
+                ),
+            )
+
+    repo = AggregateRepository()
+    solo_sap = repo.scoring_candidates(hoy_iso=_HOY, filters=LicitacionesFilters(tecnologia="SAP"))
+    sin_filtro = repo.scoring_candidates(hoy_iso=_HOY)
+
+    assert {row["id_externo"] for row in solo_sap} == {"TEC-SAP"}
+    assert {row["id_externo"] for row in sin_filtro} == {"TEC-SAP", "TEC-MS"}
