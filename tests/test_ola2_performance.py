@@ -101,6 +101,74 @@ def test_meta_filters_returns_xcache_header(app_and_client, api_key):
     assert r2.headers.get("X-Cache") == "HIT"
 
 
+def test_meta_last_extraction_sirve_del_cache(app_and_client, api_key, monkeypatch):
+    """La segunda llamada a /meta/last-extraction no vuelve a tocar la BD.
+
+    El endpoint no lleva cabecera ``X-Cache``, así que el contador sobre el
+    repositorio es lo que distingue un HIT de un MISS.
+    """
+    from api.cache import cache_clear_all
+
+    cache_clear_all()
+    _, client = app_and_client
+    headers = {"X-API-Key": api_key}
+
+    from db.repositories.licitaciones import LicitacionRepository
+
+    llamadas = {"n": 0}
+    original = LicitacionRepository.get_last_extraction_date
+
+    def contando(self):
+        llamadas["n"] += 1
+        return original(self)
+
+    monkeypatch.setattr(LicitacionRepository, "get_last_extraction_date", contando)
+
+    r1 = client.get("/api/v1/meta/last-extraction", headers=headers)
+    assert r1.status_code == 200
+    assert "last_extraction" in r1.json()
+    assert llamadas["n"] == 1
+
+    r2 = client.get("/api/v1/meta/last-extraction", headers=headers)
+    assert r2.status_code == 200
+    assert r2.json() == r1.json()
+    assert llamadas["n"] == 1, "la segunda llamada debía salir del caché"
+
+
+def test_meta_last_extraction_cachea_corpus_vacio(app_and_client, api_key, monkeypatch):
+    """``None`` (corpus vacío) es un valor cacheable, no un fallo de caché.
+
+    Es el motivo por el que se cachea un ``dict`` y no el ``str`` pelado: con el
+    valor desnudo, ``cache_get`` devolvería ``None`` tanto para "no hay entrada"
+    como para "la entrada dice que no hay extracción", y el endpoint repetiría
+    la consulta en cada petición justo cuando la tabla está vacía.
+    """
+    from api.cache import cache_clear_all
+
+    cache_clear_all()
+    _, client = app_and_client
+    headers = {"X-API-Key": api_key}
+
+    from db.repositories.licitaciones import LicitacionRepository
+
+    llamadas = {"n": 0}
+
+    def sin_datos(self):
+        llamadas["n"] += 1
+        return None
+
+    monkeypatch.setattr(LicitacionRepository, "get_last_extraction_date", sin_datos)
+
+    r1 = client.get("/api/v1/meta/last-extraction", headers=headers)
+    assert r1.status_code == 200
+    assert r1.json()["last_extraction"] is None
+
+    r2 = client.get("/api/v1/meta/last-extraction", headers=headers)
+    assert r2.status_code == 200
+    assert r2.json()["last_extraction"] is None
+    assert llamadas["n"] == 1, "None debe cachearse igual que cualquier otro valor"
+
+
 # ── OLA 2.3: Bulk endpoint ────────────────────────────────────────────────────
 
 

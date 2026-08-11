@@ -29,7 +29,8 @@ import os
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -297,6 +298,29 @@ def _get_cache_lock(key: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _cache_locks[key] = lock
         return lock
+
+
+@asynccontextmanager
+async def single_flight(key: str) -> AsyncIterator[None]:
+    """Serializa el recálculo de ``key`` entre corrutinas concurrentes.
+
+    Es la misma protección anti-estampida que aplica :func:`cache_response`,
+    expuesta para los handlers que gestionan su propio par
+    ``cache_get``/``cache_set`` porque devuelven cabeceras (``X-Cache``) que el
+    decorador no modela.
+
+    El patrón de uso es *comprobar, entrar, volver a comprobar*: la segunda
+    lectura dentro del bloque es obligatoria, porque quien esperaba en el lock
+    lo hacía precisamente mientras otra corrutina rellenaba la entrada.
+
+    Sin esto, N peticiones simultáneas fallan el caché a la vez y las N
+    ejecutan la consulta cara. En producción se midió el caso: dos
+    ``/meta/filters`` y cuatro ``/analytics/overview`` en el mismo segundo,
+    cada uno arrastrando su propio escaneo y reteniendo una conexión del pool
+    (12 slots) durante decenas de segundos.
+    """
+    async with _get_cache_lock(key):
+        yield
 
 
 def cache_response(
