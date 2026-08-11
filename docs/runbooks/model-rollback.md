@@ -74,16 +74,44 @@ EOF
 
 ## Marcar versión anterior como activa en BD
 
+Usá la función canónica del registry en vez de escribir el UPDATE a mano: hace
+el cambio en un solo statement por nombre de modelo (el SQL manual de este
+runbook desactivaba **todas** las filas de la tabla, no solo las del modelo que
+se estaba revirtiendo, y usaba el paramstyle `?` que se retiró con ADR-021).
+
 ```bash
 python - <<'EOF'
 import sys
-target_version = sys.argv[1] if len(sys.argv) > 1 else input("Versión a activar: ")
-from db.database import connect
-with connect() as c:
-    c.execute("UPDATE model_versions SET is_active=0")
-    n = c.execute(
-        "UPDATE model_versions SET is_active=1 WHERE version=?", (target_version,)
-    ).rowcount
-print(f"Modelo v{target_version} marcado como activo ({n} filas actualizadas).")
+from db.model_registry import activate_version, get_active
+
+target_version = int(sys.argv[1] if len(sys.argv) > 1 else input("Versión a activar: "))
+if activate_version("sap_classifier", target_version):
+    print(f"Modelo v{target_version} activo: {get_active('sap_classifier')}")
+else:
+    print(f"No existe la versión {target_version} para 'sap_classifier'.")
 EOF
+```
+
+## Hacer que la API sirva la versión nueva
+
+Cambiar `is_active` en la BD **no basta**: el proceso de la API cachea el
+clasificador cargado. Hay dos vías:
+
+```bash
+# Preferida — invalida la caché del proceso que atiende la petición.
+# Requiere API key con scope admin.
+curl -fsS -X POST \
+  -H "X-API-Key: $ADMIN_API_KEY" \
+  "$API_BASE_URL/api/v1/models/sap_classifier/activate/$TARGET_VERSION"
+```
+
+Si hay varios workers, cada uno recarga por su cuenta al vencer
+`API_MODEL_CACHE_TTL_SECONDS` (5 min por defecto). Para un corte inmediato en
+todos, reiniciá el servicio desde el dashboard de Render.
+
+Verificá que la versión servida es la esperada:
+
+```bash
+curl -fsS -H "X-API-Key: $ADMIN_API_KEY" \
+  "$API_BASE_URL/api/v1/models/sap_classifier" | python -m json.tool
 ```

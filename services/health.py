@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from db.database import connect
+from db.database import ping
 
 
 def check_db() -> str:
-    """Ejecuta ``SELECT 1`` y devuelve ``'ok'`` o ``'error'``."""
-    try:
-        with connect() as c:
-            c.execute("SELECT 1").fetchone()
-        return "ok"
-    except Exception:
-        return "error"
+    """Devuelve ``'ok'`` si la BD responde, ``'error'`` si no.
+
+    El ``SELECT 1`` vive en ``db.connection.ping`` (ADR-022): aquí solo se
+    traduce el booleano al vocabulario que espera el DTO de ``/health``.
+    """
+    return "ok" if ping() else "error"

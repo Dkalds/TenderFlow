@@ -326,6 +326,8 @@ async def single_flight(key: str) -> AsyncIterator[None]:
 def cache_response(
     ttl: int = 300,
     namespace: str = "analytics",
+    *,
+    cpu_bound: bool = False,
 ) -> Callable[..., Any]:
     """Decorador que cachea respuestas de endpoints FastAPI.
 
@@ -343,6 +345,12 @@ def cache_response(
     Args:
         ttl: Tiempo de vida en segundos (default 5 min).
         namespace: Namespace del backend de cache.
+        cpu_bound: si el handler hace trabajo pesado de CPU (agregación pandas),
+            se ejecuta en el bulkhead ``API_CPU_BOUND_TOKENS`` en vez de competir
+            por el threadpool general. Es lo que permite dimensionar ese pool
+            para carga IO-bound sin repetir el incidente de CPU starvation que
+            en su día lo dejó clavado en 4 hilos: quien tiene que estar acotada
+            es la analítica, no las lecturas baratas.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -386,8 +394,14 @@ def cache_response(
                 if is_sync:
                     import anyio.to_thread
 
+                    limiter = None
+                    if cpu_bound:
+                        from shared.concurrency import cpu_limiter
+
+                        limiter = cpu_limiter()
                     result = await anyio.to_thread.run_sync(
                         functools.partial(func, *args, **kwargs),
+                        limiter=limiter,
                     )
                 else:
                     result = await func(*args, **kwargs)

@@ -2090,6 +2090,10 @@ export interface paths {
         /**
          * Activar una versión concreta (rollback o promote)
          * @description Activa la ``version`` indicada. Requiere API key con scope admin.
+         *
+         *     Invalida la caché de proceso del clasificador: sin esto, el cambio de
+         *     ``is_active`` quedaba solo en la BD y el proceso seguía sirviendo el modelo
+         *     anterior hasta reiniciar, así que el rollback no surtía efecto.
          */
         post: operations["activate_model_version_api_v1_models__name__activate__version__post"];
         delete?: never;

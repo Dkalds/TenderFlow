@@ -293,6 +293,54 @@ class TestETagMiddleware:
         resp = client.post("/test")
         assert "ETag" not in resp.headers
 
+    def test_authenticated_json_gets_an_etag_and_stays_private(self):
+        """El tráfico autenticado es el único que hay: si se excluye, no hay ETag.
+
+        Hasta 2026-08 cualquier petición con cookie o API key salía por un atajo
+        que ponía `private, no-store` y devolvía la respuesta **sin** ETag. Como
+        prácticamente todos los endpoints exigen autenticación, el middleware
+        bufferizaba el cuerpo de cada GET JSON sin emitir un solo ETag.
+        """
+        app = _make_app(ETagMiddleware, json_body=True, status=200)
+        client = TestClient(app)
+
+        resp = client.get("/test", headers={"X-API-Key": "k"})
+
+        assert "ETag" in resp.headers
+        cache_control = resp.headers["Cache-Control"]
+        assert "private" in cache_control, "no debe poder cachearlo un proxy compartido"
+        assert "no-cache" in cache_control, "debe revalidar, que es lo que habilita el 304"
+
+    def test_authenticated_request_revalidates_with_304(self):
+        app = _make_app(ETagMiddleware, json_body=True, status=200)
+        client = TestClient(app)
+        auth = {"X-API-Key": "k"}
+
+        etag = client.get("/test", headers=auth).headers["ETag"]
+        resp = client.get("/test", headers={**auth, "If-None-Match": etag})
+
+        assert resp.status_code == 304
+        assert "private" in resp.headers["Cache-Control"]
+
+    def test_authenticated_non_json_is_never_stored(self):
+        """Lo que no lleva ETag (streams, descargas) conserva `no-store`.
+
+        Sin revalidación posible, lo correcto es que no se guarde en ningún
+        sitio; relajarlo a `no-cache` dejaría el cuerpo en el disco del cliente.
+        """
+
+        async def _handler(request: Request) -> Response:
+            return Response("data: hola\n\n", media_type="text/event-stream")
+
+        app = Starlette(routes=[Route("/stream", _handler)])
+        app.add_middleware(ETagMiddleware)
+        client = TestClient(app)
+
+        resp = client.get("/stream", headers={"X-API-Key": "k"})
+
+        assert "ETag" not in resp.headers
+        assert resp.headers["Cache-Control"] == "private, no-store"
+
     def test_skips_non_200(self):
         async def _handler(request: Request) -> Response:
             return JSONResponse({"error": "not found"}, status_code=404)

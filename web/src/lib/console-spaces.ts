@@ -49,6 +49,23 @@ export interface ConsoleSpace {
   icon: LucideIcon;
   group: ConsoleGroup;
   /**
+   * Quién ve el espacio. Mismo vocabulario que `SpaceView.visibility`, un nivel
+   * más arriba:
+   *
+   * - `core` (ausente ≡ core): visible para cualquier usuario autenticado.
+   * - `admin`: solo para administradores. Es un filtro de navegación, **no** un
+   *   control de acceso: la autorización real la impone la API en cada endpoint.
+   * - `experimental`: funciona, pero no está a la altura del resto; se marca en
+   *   la UI en vez de esconderse.
+   *
+   * Hasta 2026-08 esto se expresaba de tres formas distintas a la vez: un
+   * `Set` de slugs (`ADMIN_ONLY_SPACES`) que consultaban el rail y la paleta de
+   * comandos, un `visibility` solo para vistas en `space-views.ts`, y un
+   * `adminOnly` en `navigation.ts` que ya no leía nadie. Un solo campo por
+   * nivel evita que las tres respuestas puedan discrepar.
+   */
+  visibility?: "core" | "admin" | "experimental";
+  /**
    * Vistas del espacio, tomadas de `lib/space-views.ts` (tabla compartida con
    * `next.config.ts`). La primera es la de entrada (`?vista=` ausente); una
    * vista con `from` absorbe esa ruta heredada.
@@ -185,12 +202,26 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     description: "Observabilidad, calidad del dato y administración.",
     icon: ShieldCheck,
     group: "organizacion",
+    visibility: "admin",
     views: SPACE_VIEWS.ops,
   },
 ];
 
-/** Espacios que sólo ve un administrador. */
-export const ADMIN_ONLY_SPACES = new Set(["ops"]);
+/**
+ * Espacios que sólo ve un administrador, derivados de `visibility`.
+ *
+ * Se mantiene el export porque hay tests y llamadas que lo consultan, pero ya
+ * no es una lista que mantener a mano en paralelo a las definiciones: sale de
+ * ellas, así que no puede quedarse desincronizada.
+ */
+export const ADMIN_ONLY_SPACES = new Set(
+  CONSOLE_SPACES.filter((space) => space.visibility === "admin").map((space) => space.key),
+);
+
+/** ¿Puede este usuario ver el espacio? Filtro de navegación, no de acceso. */
+export function isSpaceVisible(space: ConsoleSpace, isAdmin: boolean): boolean {
+  return space.visibility !== "admin" || isAdmin;
+}
 
 export const CONSOLE_GROUP_ORDER: ConsoleGroup[] = [
   "trabajo",

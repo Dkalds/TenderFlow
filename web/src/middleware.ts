@@ -2,7 +2,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/_next", "/favicon.ico", "/locales", "/spain-ccaa.json"];
+// `/locales` salió con la retirada de i18n (el producto es español-only): era
+// una ruta exenta del control de sesión sin nada detrás.
+const PUBLIC_PATHS = ["/login", "/_next", "/favicon.ico", "/spain-ccaa.json"];
 
 function buildCsp(nonce: string): string {
   const isDevelopment = process.env.NODE_ENV !== "production";

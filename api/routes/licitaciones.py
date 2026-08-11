@@ -184,18 +184,16 @@ def _check_etag(request: Request, etag: str) -> bool:
 
 # ── SAPClassifier singleton ───────────────────────────────────────────────
 
-_classifier_cache: Any = None
-_classifier_lock_val = False
-
 
 def _get_classifier() -> Any:
-    """Carga SAPClassifier una sola vez (singleton lazy thread-safe)."""
-    global _classifier_cache
-    if _classifier_cache is None:
-        from scraper.ml_classifier import SAPClassifier
+    """Devuelve el SAPClassifier activo (caché de proceso con lock y TTL).
 
-        _classifier_cache = SAPClassifier.load()
-    return _classifier_cache
+    La caché vive en ``api.model_cache`` para que ``/models/{name}/activate``
+    pueda invalidarla sin importar esta ruta.
+    """
+    from api.model_cache import get_classifier
+
+    return get_classifier()
 
 
 # ── /licitaciones (offset pagination — marcado deprecated) ───────────────

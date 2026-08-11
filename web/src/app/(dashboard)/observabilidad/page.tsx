@@ -25,7 +25,7 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { formatDate, formatNumber, formatTime } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { getGrafanaUrl } from "@/lib/runtime-config";
 
@@ -208,7 +208,7 @@ export default function ObservabilidadPage() {
         />
         <KpiCard
           title="Ultimo health check"
-          value={lastCheck ? lastCheck.toLocaleTimeString("es-ES") : undefined}
+          value={lastCheck ? formatTime(lastCheck) : undefined}
           subtitle={lastCheck ? formatDate(lastCheck) : undefined}
           icon={Server}
           loading={isLoading}
@@ -234,7 +234,7 @@ export default function ObservabilidadPage() {
           </span>
           {lastCheck && (
             <span className="text-muted-foreground">
-              — Verificado {lastCheck.toLocaleTimeString("es-ES")}
+              — Verificado {formatTime(lastCheck)}
             </span>
           )}
         </div>

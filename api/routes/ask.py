@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
@@ -303,13 +304,15 @@ def _stream_sse(
     return _generate()
 
 
-def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[str, None]:
-    """Prepara contexto + historial y devuelve el stream SSE del LLM."""
-    from llm.budget import bind_budget_subject
-    from llm.client import stream_llm_response
+def _prepare_ask_context(request: AskRequest) -> tuple[list[dict[str, Any]], PromptMode]:
+    """Recupera los documentos de contexto para la pregunta (trabajo de BD).
 
-    _validate_model(request.model)
-
+    Se separa de ``_stream_ask`` para poder despacharla al threadpool: es la
+    fase pesada de ``/ask`` (anuncio completo + fragmentos de pliego, o bien
+    retrieval FTS + pgvector) y corría en el event loop, bloqueando la API
+    entera durante cientos de milisegundos por pregunta. El streaming de tokens
+    del LLM ya estaba correctamente aislado en un thread.
+    """
     mode: PromptMode = "general"
     docs: list[dict[str, Any]] = []
 
@@ -340,6 +343,18 @@ def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[st
             tecnologia=request.tecnologia,
         )
         mode = "general"
+
+    return docs, mode
+
+
+async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[str, None]:
+    """Prepara contexto + historial y devuelve el stream SSE del LLM."""
+    from llm.budget import bind_budget_subject
+    from llm.client import stream_llm_response
+
+    _validate_model(request.model)
+
+    docs, mode = await run_db(_prepare_ask_context, request)
 
     keywords = [w for w in request.question.split() if len(w) > 3][:10]
     history: list[ChatMessage] = [
@@ -415,7 +430,7 @@ async def ask_question(
 
     _check_budget(user)
 
-    generator = _stream_ask(body, _budget_subject(user))
+    generator = await _stream_ask(body, _budget_subject(user))
 
     return StreamingResponse(
         generator,
@@ -472,7 +487,9 @@ async def resumen_licitacion(
 
     scope_key = _budget_subject(user)
 
-    ctx = build_licitacion_context(id_externo, None)
+    # Igual que en `/ask`: el armado del contexto toca BD y no puede correr en
+    # el event loop.
+    ctx = await run_db(build_licitacion_context, id_externo, None)
     if ctx is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -33,6 +33,7 @@ import {
   useWebhooks,
 } from "@/hooks/use-webhooks";
 import { toast } from "sonner";
+import { formatDateTime } from "@/lib/utils";
 
 const EMPTY = "—";
 
@@ -41,7 +42,7 @@ function formatDate(value: string | null | undefined): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? EMPTY
-    : date.toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
+    : formatDateTime(date);
 }
 
 /** Aviso persistente con el secret recién creado: no se puede volver a ver. */

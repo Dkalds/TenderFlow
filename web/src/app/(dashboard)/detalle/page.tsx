@@ -31,7 +31,7 @@ import { ExportPopover } from "@/components/export-popover";
 import { Comparator } from "@/components/comparator";
 import { DetailInspector } from "@/components/detail-inspector";
 import type { LicitacionDetail } from "@/components/detail-panel";
-import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
 import { getJSON, setJSON, remove as removeStored } from "@/lib/storage";
 import { useDensity } from "@/lib/density";
 import { useFilterParams, useFilters } from "@/lib/filters";
@@ -492,7 +492,7 @@ export default function DetallePage() {
     ? `Mostrando ${pagination.pageIndex * pagination.pageSize + 1}–${Math.min(
         (pagination.pageIndex + 1) * pagination.pageSize,
         data.total,
-      )} de ${data.total.toLocaleString("es-ES")}`
+      )} de ${formatNumber(data.total)}`
     : "—";
 
   const pageButton =
@@ -500,7 +500,7 @@ export default function DetallePage() {
 
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0">
-      <main className="flex min-w-0 flex-1 flex-col border-r border-border/70">
+      <section className="flex min-w-0 flex-1 flex-col border-r border-border/70">
         {/* Barra de la tabla */}
         <div className="flex h-11 flex-none items-center gap-2.5 border-b border-border/60 px-3.5">
           <span className="text-[12.5px] font-semibold">Detalle</span>
@@ -923,7 +923,7 @@ export default function DetallePage() {
             </button>
           </nav>
         </div>
-      </main>
+      </section>
 
       {detailId && detailWithScore && (
         <div className="hidden w-[428px] flex-none xl:flex">

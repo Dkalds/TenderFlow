@@ -54,7 +54,7 @@ def create_rule(
             "INSERT INTO watchlist_rules "
             "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
             " frequency, active, organization_id, visibility) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 user_key,
                 user_id,
@@ -69,8 +69,8 @@ def create_rule(
                 visibility,
             ),
         )
-        rid = cur.lastrowid
-    return int(rid) if rid is not None else 0
+        row = cur.fetchone()
+    return int(row[0]) if row else 0
 
 
 def list_rules(user_key: str, organization_id: int | None = None) -> list[WatchlistRule]:

@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ADMIN_ONLY_SPACES,
+  isSpaceVisible,
   CONSOLE_GROUP_ORDER,
   CONSOLE_SPACES,
   type ConsoleSpace,
@@ -184,9 +184,7 @@ export function ConsoleRail() {
   const withFilters = useWithFilters();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
-  const spaces = CONSOLE_SPACES.filter(
-    (space) => !ADMIN_ONLY_SPACES.has(space.key) || isAdmin,
-  );
+  const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, isAdmin));
 
   const groups = CONSOLE_GROUP_ORDER.map((group) => ({
     group,

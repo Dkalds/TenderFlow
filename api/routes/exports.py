@@ -25,6 +25,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from api.auth import AuthContext, require_api_key
+from api.concurrency import run_db
 from api.routes.auth import get_current_session_user
 from observability.logging import get_logger
 
@@ -369,6 +370,23 @@ def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> 
     return "\r\n".join(_ics_fold(ln) for ln in lines) + "\r\n"
 
 
+def _calendario_rows(user_key: str) -> list[dict[str, Any]]:
+    """Deadlines y fines de contrato de la watchlist del usuario."""
+    from db.database import connect_read
+
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
+            "FROM watchlist_items wi "
+            "JOIN licitaciones l ON l.id_externo = wi.id_externo "
+            "WHERE wi.user_key = %s AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
+            (user_key,),
+        )
+        return [
+            dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()
+        ]
+
+
 @router.get(
     "/calendario.ics",
     summary="Calendario ICS con deadlines y vencimientos de favoritos",
@@ -400,26 +418,17 @@ async def calendario_ics(
     from db.users import get_user_by_id
     from shared.identity import user_key_from_email
 
-    owner = get_user_by_id(ctx.user_id) if ctx.user_id is not None else None
+    # Todo el trabajo de BD va al threadpool: este endpoint lo consumen clientes
+    # de calendario que refrescan solos cada pocos minutos, y corría entero
+    # sobre el event loop.
+    owner = await run_db(get_user_by_id, ctx.user_id) if ctx.user_id is not None else None
     if owner is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
         )
     user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
-    from db.database import connect_read
-
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
-            "FROM watchlist_items wi "
-            "JOIN licitaciones l ON l.id_externo = wi.id_externo "
-            "WHERE wi.user_key = %s AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
-            (user_key,),
-        )
-        rows = [
-            dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()
-        ]
+    rows = await run_db(_calendario_rows, user_key)
 
     events: list[dict[str, Any]] = []
     for row in rows:
