@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { apiMutate } from "@/lib/api-client";
+import { formatDate, formatDateTime } from "@/lib/utils";
 
 interface TechModel {
   tech_scores: Record<string, number>;
@@ -358,7 +359,7 @@ export default function ActiveLearningPage() {
               <p className="text-muted-foreground">Ultima actualizacion</p>
               <p className="font-medium">
                 {stats?.last_updated
-                  ? new Date(stats.last_updated).toLocaleString("es-ES")
+                  ? formatDateTime(stats.last_updated)
                   : "—"}
               </p>
             </div>
@@ -376,7 +377,7 @@ export default function ActiveLearningPage() {
                   <p className="text-muted-foreground">Reentrenado</p>
                   <p className="font-medium">
                     {activeModel.trained_at
-                      ? new Date(activeModel.trained_at).toLocaleDateString("es-ES")
+                      ? formatDate(activeModel.trained_at)
                       : "—"}
                   </p>
                 </div>
@@ -573,7 +574,7 @@ export default function ActiveLearningPage() {
                       )}
                       {item.fecha_publicacion && (
                         <Badge variant="outline" className="text-xs">
-                          {new Date(item.fecha_publicacion).toLocaleDateString("es-ES")}
+                          {formatDate(item.fecha_publicacion)}
                         </Badge>
                       )}
                       {item.tecnologia && (
@@ -646,7 +647,7 @@ export default function ActiveLearningPage() {
                             className="text-xs text-muted-foreground/70"
                             title={`Modelo v${activeModel.version}${
                               activeModel.trained_at
-                                ? ` — reentrenado ${new Date(activeModel.trained_at).toLocaleDateString("es-ES")}`
+                                ? ` — reentrenado ${formatDate(activeModel.trained_at)}`
                                 : ""
                             }`}
                           >

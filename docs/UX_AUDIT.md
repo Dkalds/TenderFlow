@@ -1,7 +1,8 @@
 # Auditoría UX/UI del frontend
 
-Revisión crítica de `web/` (Next.js 16, App Router, 28 rutas de dashboard,
-~27k LOC de TSX) hecha el 2026-08-01. Prioriza por daño al usuario, no por
+Revisión crítica de `web/` (Next.js 16, App Router) hecha el 2026-08-01. Las
+cifras del original —28 rutas de dashboard, ~27k LOC de TSX— se quedaron atrás
+enseguida: a 2026-08-10 son 33 rutas y ~44,7k LOC de TS/TSX. Prioriza por daño al usuario, no por
 esfuerzo. La **Ola 1** ya está implementada; el resto está priorizado abajo y
 replicado en [IMPROVEMENT_BACKLOG.md](IMPROVEMENT_BACKLOG.md).
 

@@ -325,7 +325,20 @@ class Settings(BaseSettings):
 
     # ── Base de datos ─────────────────────────────────────────────────────
     DB_POOL_SIZE: int = 5
+    # Segundos de espera por una conexión libre antes de fallar. Sin este
+    # límite del lado cliente, una petición espera indefinidamente cuando el
+    # pool está agotado y la saturación se manifiesta como cuelgue, no como
+    # error medible (ver `db_pool_acquire_timeout_total`).
     DB_POOL_TIMEOUT: float = 10.0
+    # Tamaño del pool de LECTURA (`connect_read`). 0 = mismo que DB_POOL_SIZE.
+    # Son pools separados porque el modo solo-lectura se fija en la sesión.
+    DB_READ_POOL_SIZE: int = 0
+    # Reciclado de conexiones (segundos). `max_idle` mantiene las ociosas por
+    # debajo del idle-timeout del pooler de Supabase, que si no las corta y el
+    # pool entrega una conexión muerta; `max_lifetime` recicla también la que
+    # sostiene `min_size`. 0 desactiva cada uno.
+    DB_POOL_MAX_IDLE_SECONDS: float = 120.0
+    DB_POOL_MAX_LIFETIME_SECONDS: float = 1800.0
 
     # ── Scraper ──────────────────────────────────────────────────────────
     REQUEST_TIMEOUT: int = 30
@@ -414,6 +427,22 @@ class Settings(BaseSettings):
     SCORING_AFINIDAD_KEYWORDS: list[str] = []
 
     # ── API REST ─────────────────────────────────────────────────────────
+    # Hilos del threadpool de anyio, donde corre TODO el trabajo síncrono de la
+    # API (los ~104 `run_db` y los handlers `def`). Estuvo fijado a 4 desde un
+    # incidente de CPU en Render Free: el límite era correcto para la analítica
+    # pandas pero castigaba por igual a las lecturas IO-bound, que solo esperan
+    # red — con 4 hilos y un pool de 5 conexiones, el techo de la API era de 4
+    # peticiones concurrentes. Ahora el trabajo CPU-bound tiene su propio carril
+    # (API_CPU_BOUND_TOKENS) y este límite puede respirar.
+    API_THREADPOOL_TOKENS: int = 24
+    # Bulkheads dedicados (subconjuntos del threadpool anterior).
+    API_CPU_BOUND_TOKENS: int = 2
+    API_ML_TOKENS: int = 2
+    # TTL de la caché de proceso del clasificador ML. Cubre el caso
+    # multi-worker: `/models/{name}/activate` invalida el proceso que atiende
+    # la petición, y los demás recargan al vencer este plazo. 0 = sin recarga
+    # por tiempo (solo invalidación explícita).
+    API_MODEL_CACHE_TTL_SECONDS: float = 300.0
     # IPs (o rangos) que pueden acceder a /metrics sin API key (separadas por coma).
     # Por defecto solo loopback. En producción añadir la IP del servidor Prometheus.
     # Ej: "127.0.0.1,10.0.0.5,10.0.0.6"

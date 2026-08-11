@@ -41,27 +41,26 @@ def _stub_session(
     mfa_required: bool,
     mfa_verified_at: str | None = None,
 ) -> None:
-    """Sustituye la capa db que consulta ``_session_principal``."""
+    """Sustituye la capa db que consulta ``_session_principal``.
+
+    Desde 2026-08 la sesión, el usuario y el estado de MFA se resuelven en una
+    sola consulta (``db.sessions.validate_session_principal``), así que el stub
+    es uno en vez de tres.
+    """
     monkeypatch.setattr(
         auth_routes,
-        "validate_session",
+        "validate_session_principal",
         lambda token: {
             "user_id": _USER_ID,
             "authenticated_at": "2026-08-02T00:00:00+00:00",
             "mfa_verified_at": mfa_verified_at,
-        },
-    )
-    monkeypatch.setattr(
-        auth_routes,
-        "get_user_by_id",
-        lambda user_id, **kwargs: {
             "id": _USER_ID,
             "email": "usuario@example.com",
             "display_name": "Usuario",
             "is_admin": False,
+            "mfa_required": mfa_required,
         },
     )
-    monkeypatch.setattr("db.totp.is_totp_required", lambda user_id: mfa_required)
 
 
 # ---------------------------------------------------------------------------

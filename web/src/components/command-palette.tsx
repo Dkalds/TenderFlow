@@ -32,7 +32,7 @@ import {
   Sun,
 } from "lucide-react";
 import {
-  ADMIN_ONLY_SPACES,
+  isSpaceVisible,
   CONSOLE_GROUP_ORDER,
   CONSOLE_SPACES,
   type ConsoleGroup,
@@ -94,9 +94,7 @@ function CommandPaletteInner() {
   // Un grupo por familia de espacios; cada espacio multivista despliega sus
   // vistas como destinos propios.
   const spaceGroups = React.useMemo(() => {
-    const spaces = CONSOLE_SPACES.filter(
-      (space) => !ADMIN_ONLY_SPACES.has(space.key) || isAdmin,
-    );
+    const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, isAdmin));
     return CONSOLE_GROUP_ORDER.map((group) => ({
       label: GROUP_LABELS[group],
       items: spaces

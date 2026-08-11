@@ -58,8 +58,6 @@ Generado: 2026-08-10
 - `services/deadline_reminders.py`
 - `services/dedupe.py`
 - `services/entity_resolution.py`
-- `services/health.py`
-- `services/job_locks.py`
 - `services/licitaciones.py`
 - `services/ml/retencion_labels.py`
 - `services/ml/scoring.py`

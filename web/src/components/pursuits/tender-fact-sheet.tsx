@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type FactItem, type FactSheetStatus, type TenderFactSheet, useExtractTenderFactSheet, useTenderFactSheet } from "@/hooks/use-tender-fact-sheet";
+import { type AnyFact, type FactSheetStatus, type TenderFactSheet, useExtractTenderFactSheet, useTenderFactSheet } from "@/hooks/use-tender-fact-sheet";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 const categories: Array<{ key: keyof TenderFactSheet; label: string }> = [
   { key: "award_criteria", label: "Criterios de adjudicación" },
@@ -27,17 +28,38 @@ function statusPresentation(status: FactSheetStatus) {
   return { label: "Pendiente", variant: "secondary" as const };
 }
 
-function FactRow({ item }: { item: FactItem }) {
+/**
+ * Lee un campo que solo existe en algunas familias de hechos.
+ *
+ * El backend tipa cada familia por separado (`WeightedCriterion` tiene
+ * `weight_pct`, `MonetaryFact` tiene `amount_eur`…). Esta fila las renderiza
+ * todas, así que consulta los campos opcionales con una comprobación explícita
+ * en vez de asumir un tipo aplanado que la API nunca prometió.
+ */
+function optionalField<T>(item: AnyFact, key: string): T | null {
+  return key in item ? ((item as unknown as Record<string, T | null>)[key] ?? null) : null;
+}
+
+function FactRow({ item }: { item: AnyFact }) {
   const confidence = Math.round(Math.max(0, Math.min(1, item.confidence)) * 100);
-  const title = item.name || item.role || item.description || "Campo extraído";
+  const name = optionalField<string>(item, "name");
+  const role = optionalField<string>(item, "role");
+  const weightPct = optionalField<number>(item, "weight_pct");
+  const amountEur = optionalField<number>(item, "amount_eur");
+  const quantity = optionalField<number>(item, "quantity");
+  const minimumYears = optionalField<number>(item, "minimum_years");
+  const dateValue = optionalField<string>(item, "date_value");
+  const evidence = item.evidence ?? [];
+
+  const title = name || role || item.description || "Campo extraído";
   const metadata = [
-    item.weight_pct != null ? `Peso ${item.weight_pct}%` : null,
-    item.amount_eur != null ? new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(item.amount_eur) : null,
-    item.quantity != null ? `${item.quantity} persona(s)` : null,
-    item.minimum_years != null ? `${item.minimum_years} años mínimos` : null,
-    item.date_value ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium" }).format(new Date(item.date_value)) : null,
+    weightPct != null ? `Peso ${weightPct}%` : null,
+    amountEur != null ? formatCurrency(amountEur) : null,
+    quantity != null ? `${quantity} persona(s)` : null,
+    minimumYears != null ? `${minimumYears} años mínimos` : null,
+    dateValue ? formatDate(dateValue) : null,
   ].filter(Boolean);
-  return <li className="rounded-lg border border-border/70 bg-background/45 p-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 font-medium leading-snug">{title}</p><span className="shrink-0 text-xs font-semibold text-muted-foreground">{confidence}% confianza</span></div>{item.name && item.description !== item.name && <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>}{metadata.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{metadata.map((value) => <Badge key={value} variant="secondary">{value}</Badge>)}</div>}<div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-label={`Confianza ${confidence}%`}><div className="h-full rounded-full bg-primary" style={{ width: `${confidence}%` }} /></div>{item.evidence.length > 0 && <details className="mt-3 text-xs"><summary className="cursor-pointer font-medium text-primary hover:underline">{item.evidence.length} cita{item.evidence.length === 1 ? "" : "s"} verificable{item.evidence.length === 1 ? "" : "s"}</summary><ul className="mt-2 space-y-2 border-l-2 border-primary/25 pl-3">{item.evidence.map((evidence, index) => <li key={`${evidence.documento_id}-${evidence.page_number}-${index}`}><p className="font-medium text-muted-foreground">Documento {evidence.documento_id} · página {evidence.page_number}</p><blockquote className="mt-1 leading-relaxed text-foreground/85">«{evidence.quote}»</blockquote></li>)}</ul></details>}</li>;
+  return <li className="rounded-lg border border-border/70 bg-background/45 p-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 font-medium leading-snug">{title}</p><span className="shrink-0 text-xs font-semibold text-muted-foreground">{confidence}% confianza</span></div>{name && item.description !== name && <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>}{metadata.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{metadata.map((value) => <Badge key={value} variant="secondary">{value}</Badge>)}</div>}<div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-label={`Confianza ${confidence}%`}><div className="h-full rounded-full bg-primary" style={{ width: `${confidence}%` }} /></div>{evidence.length > 0 && <details className="mt-3 text-xs"><summary className="cursor-pointer font-medium text-primary hover:underline">{evidence.length} cita{evidence.length === 1 ? "" : "s"} verificable{evidence.length === 1 ? "" : "s"}</summary><ul className="mt-2 space-y-2 border-l-2 border-primary/25 pl-3">{evidence.map((cita, index) => <li key={`${cita.documento_id}-${cita.page_number}-${index}`}><p className="font-medium text-muted-foreground">Documento {cita.documento_id} · página {cita.page_number}</p><blockquote className="mt-1 leading-relaxed text-foreground/85">«{cita.quote}»</blockquote></li>)}</ul></details>}</li>;
 }
 
 export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string }) {

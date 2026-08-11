@@ -67,8 +67,17 @@ def activate_model_version(
     version: int,
     _ctx: Any = Depends(require_scope("admin")),
 ) -> ModelActivated:
-    """Activa la ``version`` indicada. Requiere API key con scope admin."""
+    """Activa la ``version`` indicada. Requiere API key con scope admin.
+
+    Invalida la caché de proceso del clasificador: sin esto, el cambio de
+    ``is_active`` quedaba solo en la BD y el proceso seguía sirviendo el modelo
+    anterior hasta reiniciar, así que el rollback no surtía efecto.
+    """
     ok = activate_version(name, version)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Versión {version} no existe para '{name}'")
+
+    from api.model_cache import invalidate_classifier_cache
+
+    invalidate_classifier_cache()
     return ModelActivated(name=name, version=version, activated=True)

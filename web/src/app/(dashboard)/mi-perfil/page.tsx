@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
 import { SpaceShell } from "@/components/layout/space-shell";
+import { formatDateTime } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -311,7 +312,7 @@ export default function MiPerfilPage() {
         {hasProfile && (
           <p className="mt-2 text-xs text-muted-foreground">
             Última actualización:{" "}
-            {data.updated_at ? new Date(data.updated_at).toLocaleString("es-ES") : "—"}
+            {data.updated_at ? formatDateTime(data.updated_at) : "—"}
           </p>
         )}
       </div>

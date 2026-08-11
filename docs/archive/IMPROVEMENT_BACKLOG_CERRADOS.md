@@ -9,6 +9,13 @@ Movidos aquí desde [IMPROVEMENT_BACKLOG.md](../IMPROVEMENT_BACKLOG.md) el
 cuyo propósito es que un agente elija en qué trabajar. Un backlog que nadie
 puede leer entero no prioriza nada.
 
+> **Aviso sobre los SHAs de la sección del 2026-08-07 (plan de saneamiento).**
+> Los commits que cita ese bloque —`8eb7450`, `cb7e1c7`, `3ed5eef`, `ad2574e`,
+> `352db1b`, `f768920`— **no existen en el repositorio**: eran los SHAs de las
+> ramas de cada stream antes del squash-merge de la PR #154, que los reemplazó
+> por un único commit (`b070c0e`). Los demás SHAs del archivo sí resuelven. Si
+> buscás el cambio concreto de uno de esos ítems, mirá `git show b070c0e`.
+
 No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 útil, solo deja de competir por la atención con lo que está abierto.
 

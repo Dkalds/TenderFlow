@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePriceScenarios } from "@/hooks/use-price-scenarios";
+import { formatCurrency, formatPercent } from "@/lib/utils";
 
 const names = {
   defensivo: "Defensivo",
@@ -12,20 +13,10 @@ const names = {
   competitivo: "Competitivo",
 } as const;
 
-function eur(value: number): string {
-  return new Intl.NumberFormat("es-ES", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+// Formato compartido: ver `no-restricted-syntax` en eslint.config.mjs.
+const eur = (value: number): string => formatCurrency(value);
 
-function percent(value: number): string {
-  return new Intl.NumberFormat("es-ES", {
-    style: "percent",
-    maximumFractionDigits: 1,
-  }).format(value);
-}
+const percent = (value: number): string => formatPercent(value * 100);
 
 export function PriceScenariosPanel({ licitacionId }: { licitacionId: string }) {
   const query = usePriceScenarios(licitacionId);

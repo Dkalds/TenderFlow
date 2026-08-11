@@ -1,8 +1,12 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render } from "@testing-library/react";
 
-// DashboardShell monta `useKeyboardShortcuts`, que necesita el router.
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// DashboardShell monta `useKeyboardShortcuts` (router) y resuelve el título
+// accesible de la página a partir de la ruta (`usePathname`).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/radar",
+}));
 
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { useDensity } from "@/lib/density";

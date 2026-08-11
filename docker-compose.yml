@@ -21,7 +21,8 @@ services:
     tmpfs:
       - /tmp
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      # busybox wget: node:22-alpine no trae curl (ver docker/Dockerfile.web)
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

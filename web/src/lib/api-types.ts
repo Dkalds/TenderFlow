@@ -77,6 +77,17 @@ export type AskModelInfo = Schemas["AskModelInfo"];
 export type TenderFactSheet = Schemas["TenderFactSheet"];
 export type TenderFactSheetRecord = Schemas["TenderFactSheetRecord"];
 export type EvidenceRef = Schemas["EvidenceRef"];
+/**
+ * Familias de hechos de la ficha de pliego. El backend las tipa por separado
+ * (un criterio de adjudicación tiene `weight_pct`, un aval tiene `amount_eur`);
+ * aplanarlas en un solo tipo es lo que hacía `use-tender-fact-sheet` a mano.
+ */
+export type FactItem = Schemas["FactItem"];
+export type WeightedCriterion = Schemas["WeightedCriterion"];
+export type MonetaryFact = Schemas["MonetaryFact"];
+export type TeamRequirement = Schemas["TeamRequirement"];
+export type DeadlineFact = Schemas["DeadlineFact"];
+export type TechnologyMention = Schemas["TechnologyMention"];
 /** Lo que devuelve `POST /watchlist/items`: sin los campos enriquecidos del GET. */
 export type WatchlistFavoriteCreated = Schemas["WatchlistFavoriteCreated"];
 /** Solo la creación devuelve `secret`, y una única vez. */

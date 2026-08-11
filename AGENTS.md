@@ -15,12 +15,18 @@ UX/UI del frontend con su roadmap por olas en
 
 ## 0. Alcance y prioridades
 
-**Congelamiento de superficie (desde 2026-08-07).** No se añaden endpoints ni
-páginas fuera de [docs/plans/2026-08-plan-saneamiento.md](docs/plans/2026-08-plan-saneamiento.md)
-hasta cerrar su Ola 2. El motivo está en el plan: el producto acumuló 154
-endpoints y 13 espacios de consola en doce días, y varias de esas superficies
-mostraban datos fabricados o placeholder. Arreglar lo que existe va antes que
-ampliarlo. Fuera de esa regla, las features nuevas están permitidas.
+**Congelamiento de superficie — levantado el 2026-08-10.** Estuvo vigente desde
+el 2026-08-07 mientras corría
+[docs/plans/2026-08-plan-saneamiento.md](docs/plans/2026-08-plan-saneamiento.md);
+sus dos olas están cerradas, así que la restricción ya no aplica y las features
+nuevas están permitidas. (Su última frase se contradecía con las anteriores, y
+un agente que lo leyera hoy no sabría cuál de las dos obedecer.)
+
+Lo que **sí** sigue vigente es el motivo por el que se declaró: el producto
+acumuló 154 endpoints y 13 espacios de consola en doce días, y varias de esas
+superficies mostraban datos fabricados o placeholder. Antes de añadir una
+superficie nueva, comprobá que ninguna existente cubre ya el caso, y que la que
+añadís muestra datos reales desde el primer commit.
 
 Salvo que el usuario priorice otra cosa, seguí el orden de
 [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md). Los ítems cerrados

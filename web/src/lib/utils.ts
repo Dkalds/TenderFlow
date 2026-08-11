@@ -121,6 +121,35 @@ export function formatDate(
 }
 
 /**
+ * Fecha + hora ("12 ago 2026, 14:30").
+ *
+ * Faltaba en este módulo, y por eso media docena de componentes se escribían su
+ * propio `Intl.DateTimeFormat`/`toLocaleString` con estilos distintos: la misma
+ * marca temporal se veía diferente según la pantalla. Para fecha sin hora usá
+ * `formatDate`; para "hace X", `formatRelativeTime`.
+ */
+export function formatDateTime(
+  date: string | Date | null | undefined,
+  locale = "es-ES",
+): string {
+  if (!date) return EMPTY;
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return typeof date === "string" ? date : EMPTY;
+  return d.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
+}
+
+/** Solo la hora ("14:30:05"), para marcas de tiempo del mismo día. */
+export function formatTime(
+  date: string | Date | null | undefined,
+  locale = "es-ES",
+): string {
+  if (!date) return EMPTY;
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return EMPTY;
+  return d.toLocaleTimeString(locale);
+}
+
+/**
  * Format a past instant as relative time ("hace 3 h", "hace 2 días").
  *
  * `Intl.RelativeTimeFormat` instead of a hand-rolled ladder: it declines the

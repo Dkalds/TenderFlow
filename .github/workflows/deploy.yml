@@ -1,0 +1,107 @@
+name: Deploy a producción (Render)
+
+# Despliegue manual con verificación encadenada.
+#
+# `render.yaml` fija `autoDeploy: false` a propósito (un merge no debe llegar
+# solo a producción), pero no existía ningún workflow que disparase el deploy ni
+# que comprobase el resultado: el despliegue era una acción a mano en el
+# dashboard y el único chequeo posterior era el cron de smoke, con lo que un
+# deploy malo podía pasar desapercibido hasta el siguiente ciclo.
+#
+# Requiere configurar:
+#   - secrets.RENDER_DEPLOY_HOOK_URL  (Render → tenderflow-api → Settings →
+#     Deploy Hook). Es una URL con token: va como secret, nunca como variable.
+#   - vars.SMOKE_BASE_URL / secrets.SMOKE_API_KEY (los mismos que usa smoke.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_smoke:
+        description: "Desplegar sin esperar al chequeo posterior (solo para rollbacks urgentes)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Disparar deploy y verificar
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Verificar configuración
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "::error title=Falta el deploy hook::Definí el secret RENDER_DEPLOY_HOOK_URL con la URL del Deploy Hook de tenderflow-api."
+            exit 1
+          fi
+          if [ -z "$SMOKE_BASE_URL" ]; then
+            echo "::error title=Falta SMOKE_BASE_URL::Sin la URL pública no se puede verificar el deploy."
+            exit 1
+          fi
+
+      - name: Disparar deploy en Render
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          codigo=$(curl -sS -o /tmp/deploy.json -w "%{http_code}" -X POST "$DEPLOY_HOOK")
+          if [ "$codigo" -ge 300 ]; then
+            echo "::error title=Deploy rechazado::Render devolvió HTTP $codigo"
+            cat /tmp/deploy.json || true
+            exit 1
+          fi
+          echo "Deploy encolado (HTTP $codigo)."
+
+      # Render no expone el fin del despliegue por el deploy hook, así que se
+      # sondea el healthcheck hasta que la instancia nueva responde. El
+      # `start-period` cubre además el arranque en frío del plan free.
+      - name: Esperar a que la API responda
+        if: ${{ !inputs.skip_smoke }}
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: |
+          set -uo pipefail
+          for intento in $(seq 1 60); do
+            estado=$(curl -sS -o /dev/null -w "%{http_code}" "$SMOKE_BASE_URL/api/v1/health/ready" || echo "000")
+            if [ "$estado" = "200" ]; then
+              echo "API lista tras $intento intentos."
+              exit 0
+            fi
+            echo "Intento $intento: HTTP $estado — reintentando en 15 s."
+            sleep 15
+          done
+          echo "::error title=La API no llegó a responder::15 minutos sin un 200 en /health/ready."
+          exit 1
+
+      # El gate real: 200 no significa que la pantalla tenga datos. Este script
+      # nació justo de dos incidentes en los que producción respondía 200 con
+      # payloads vacíos y nadie se enteró.
+      - name: Chequeo sintético post-deploy
+        if: ${{ !inputs.skip_smoke }}
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+          SMOKE_API_KEY: ${{ secrets.SMOKE_API_KEY }}
+        run: python scripts/smoke_prod.py
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "### Deploy a producción"
+            echo ""
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Verificación posterior: ${{ inputs.skip_smoke && 'omitida (skip_smoke)' || 'ejecutada' }}"
+            echo "- Resultado: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"

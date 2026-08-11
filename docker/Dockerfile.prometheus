@@ -1,0 +1,19 @@
+# Imagen de Prometheus con la configuración del proyecto horneada (ADR-019).
+#
+# Por qué existe: `render.yaml` declaraba el servicio con `runtime: image` sobre
+# `prom/prometheus` upstream y un `dockerCommand` que apunta a
+# `/etc/prometheus/prometheus.yml`, pero nada copiaba nuestra configuración ni
+# las reglas de alerta dentro del contenedor — el único disco montado es el de
+# datos (`/prometheus`). El contenedor arrancaba con la config de fábrica de la
+# imagen, que solo se scrapea a sí mismo: ni un target de la API, ni una regla
+# de alerta evaluada. Es decir, ADR-019 y la tabla de SLOs describían una
+# medición que en producción no ocurría.
+#
+# En docker-compose la configuración se monta por volumen; Render no tiene ese
+# hook, así que la vía es construir la imagen.
+FROM prom/prometheus:v2.53.0
+
+COPY observability/prometheus.render.yml /etc/prometheus/prometheus.yml
+COPY observability/alert_rules.yml /etc/prometheus/alert_rules.yml
+
+# El ENTRYPOINT y los flags los aporta `dockerCommand` en render.yaml.

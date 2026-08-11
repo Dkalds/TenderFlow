@@ -94,27 +94,31 @@ def _database_url() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Adaptador psycopg3 que aplica el shim automáticamente
+# Adaptador de interfaz sobre la conexión psycopg3
 # ---------------------------------------------------------------------------
 
 
 class _PgConnAdapter:
-    """Envuelve una conexión psycopg3 y traduce qmark→%s en execute/executemany.
+    """Expone una conexión psycopg3 con la interfaz que usan los call-sites.
 
-    Expone la misma interfaz mínima que las conexiones libsql para que los
-    call-sites existentes funcionen sin cambios:
-      - execute(sql, params) → cursor con fetchone/fetchall/description
+    Une conexión y cursor en un solo objeto, de forma que ``execute`` devuelva
+    algo encadenable con ``fetchone``/``fetchall``:
+      - execute(sql, params) → self, con fetchone/fetchall/description/rowcount
       - executemany(sql, seq)
       - commit() / rollback()
       - close()
 
-    El shim se aplica en execute/executemany. description es un alias de
-    cursor.description de la última query.
+    No traduce el SQL: el paramstyle del proyecto es el nativo de psycopg3
+    (``%s``). Hasta 2026-08 esta clase aplicaba un shim qmark→``%s``, retirado
+    con ADR-021 junto al segundo motor que lo justificaba.
     """
 
-    def __init__(self, pg_conn: Any) -> None:
+    def __init__(self, pg_conn: Any, pool: Any = None) -> None:
         self._conn = pg_conn
         self._cur: Any = None
+        # Pool del que salió la conexión: hay uno de escritura y otro de
+        # lectura, y devolverla al equivocado corrompería ambos.
+        self._pool = pool
 
     def execute(self, sql: str, params: Any = None) -> _PgConnAdapter:
         self._cur = self._conn.cursor()
@@ -148,7 +152,7 @@ class _PgConnAdapter:
 
         24 call-sites de producción lo usan para saber si un UPDATE/DELETE tuvo
         efecto (``db/webhooks.py``, ``db/repositories/api_keys.py``,
-        ``services/watchlist_rules.py``, ``services/job_locks.py``…). Faltaba en
+        ``services/watchlist_rules.py``, ``db/job_locks.py``…). Faltaba en
         este adaptador, así que **todos** lanzaban ``AttributeError`` con backend
         Postgres. La suite no lo detectaba porque corría sobre SQLite (ADR-018).
         """
@@ -158,19 +162,19 @@ class _PgConnAdapter:
 
     @property
     def lastrowid(self) -> Any:
-        """Id autogenerado por el último INSERT.
+        """**Obsoleto: usá ``INSERT … RETURNING id``.** Id del último INSERT.
 
-        psycopg3 no expone ``lastrowid``. Antes esta propiedad devolvía
-        ``self._cur.rownumber``, que es la **posición del cursor en el
-        resultado**, no un id: ``db/users.py::create_user`` y
-        ``db/webhooks.py`` devolvían un identificador inventado (típicamente 0)
-        en producción.
+        psycopg3 no expone ``lastrowid``, así que esto emite un
+        ``SELECT lastval()`` aparte. Dos motivos para no usarlo:
 
-        ``lastval()`` devuelve el último valor generado por una secuencia en la
-        sesión actual, que es el equivalente correcto tras un INSERT sobre una
-        PK serial/identity. Si el INSERT no tocó ninguna secuencia, Postgres
-        lanza ``ObjectNotInPrerequisiteState``; se devuelve None, que los
-        call-sites ya tratan (``int(cur.lastrowid or 0)``).
+        1. Cuesta un round-trip extra por inserción.
+        2. ``lastval()`` devuelve el último valor generado por una secuencia
+           **en la sesión**, no el de la tabla insertada: si el INSERT dispara
+           un trigger que escribe en otra tabla con serial, el id devuelto es
+           el de la tabla equivocada, en silencio.
+
+        Los call-sites de producción migraron a ``RETURNING id`` en 2026-08. Se
+        mantiene por compatibilidad con tests y utilidades.
         """
         if self._cur is None:
             return None
@@ -208,7 +212,8 @@ class _PgConnAdapter:
 # Pool Postgres (psycopg_pool.ConnectionPool)
 # ---------------------------------------------------------------------------
 
-_pg_pool: Any = None  # psycopg_pool.ConnectionPool | None
+_pg_pool: Any = None  # psycopg_pool.ConnectionPool | None — camino de escritura
+_pg_read_pool: Any = None  # psycopg_pool.ConnectionPool | None — camino de lectura
 _pg_pool_lock = threading.Lock()
 
 
@@ -228,7 +233,7 @@ def _url_options(url: str) -> str:
     return values[-1] if values else ""
 
 
-def _pg_connect_kwargs(url: str = "") -> dict[str, Any]:
+def _pg_connect_kwargs(url: str = "", *, read_only: bool = False) -> dict[str, Any]:
     """Parámetros libpq extra aplicados a cada conexión del pool Postgres.
 
     - ``options``: ``statement_timeout`` + ``idle_in_transaction_session_timeout``
@@ -237,6 +242,11 @@ def _pg_connect_kwargs(url: str = "") -> dict[str, Any]:
       Se **fusionan** con los que traiga la URL, que de otro modo se perderían.
     - ``connect_timeout``: no colgar indefinidamente si el pooler no responde.
     - ``sslrootcert``: CA raíz para ``sslmode=verify-full`` (si está configurada).
+    - ``read_only``: añade ``default_transaction_read_only=on`` a nivel de sesión
+      y abre la conexión en autocommit. Es lo que sustituye al
+      ``SET TRANSACTION READ ONLY`` por bloque del camino de lectura: misma
+      garantía (una escritura por esa vía lanza ``ReadOnlySqlTransaction``) sin
+      gastar un round-trip por lectura.
     """
     kwargs: dict[str, Any] = {}
     stmt_ms = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
@@ -249,6 +259,8 @@ def _pg_connect_kwargs(url: str = "") -> dict[str, Any]:
         opts.append(f"-c statement_timeout={stmt_ms}")
     if idle_ms > 0:
         opts.append(f"-c idle_in_transaction_session_timeout={idle_ms}")
+    if read_only:
+        opts.append("-c default_transaction_read_only=on")
     if opts:
         kwargs["options"] = " ".join(opts)
     connect_timeout = int(getattr(settings, "DB_CONNECT_TIMEOUT", 10))
@@ -257,63 +269,140 @@ def _pg_connect_kwargs(url: str = "") -> dict[str, Any]:
     ca = getattr(settings, "DATABASE_SSL_ROOT_CERT", "") or ""
     if isinstance(ca, str) and ca.strip():
         kwargs["sslrootcert"] = ca.strip()
+    if read_only:
+        # En autocommit un SELECT no abre transacción, así que ``putconn`` no
+        # tiene que emitir el ROLLBACK de cierre: el camino de lectura pasa de
+        # 3 round-trips (SET + query + ROLLBACK) a 1.
+        kwargs["autocommit"] = True
     return kwargs
 
 
+def _pool_lifecycle_kwargs() -> dict[str, Any]:
+    """``timeout``/``max_idle``/``max_lifetime`` del pool (lado cliente).
+
+    Sin ``timeout`` una petición espera indefinidamente cuando el pool está
+    agotado; sin reciclado, una conexión que el pooler de Supabase cortó por
+    inactividad se entrega rota al siguiente que la pida. ``max_idle`` mantiene
+    las conexiones ociosas por debajo de cualquier idle-timeout razonable del
+    pooler, y ``max_lifetime`` recicla también la que sostiene ``min_size``.
+    """
+    kwargs: dict[str, Any] = {}
+    acquire_timeout = float(getattr(settings, "DB_POOL_TIMEOUT", 10.0))
+    if acquire_timeout > 0:
+        kwargs["timeout"] = acquire_timeout
+    max_idle = float(getattr(settings, "DB_POOL_MAX_IDLE_SECONDS", 120.0))
+    if max_idle > 0:
+        kwargs["max_idle"] = max_idle
+    max_lifetime = float(getattr(settings, "DB_POOL_MAX_LIFETIME_SECONDS", 1800.0))
+    if max_lifetime > 0:
+        kwargs["max_lifetime"] = max_lifetime
+    return kwargs
+
+
+def _build_pool(*, read_only: bool) -> Any:
+    """Crea un ``ConnectionPool`` de escritura o de lectura."""
+    try:
+        from psycopg_pool import ConnectionPool
+    except ImportError as exc:
+        raise RuntimeError(
+            "psycopg-pool no instalado. Ejecuta: pip install psycopg-pool>=3.2,<4"
+        ) from exc
+
+    default_size = getattr(settings, "DB_POOL_SIZE", 5)
+    if read_only:
+        pool_size = getattr(settings, "DB_READ_POOL_SIZE", 0) or default_size
+    else:
+        pool_size = default_size
+    url = _database_url()
+    conn_kwargs = _pg_connect_kwargs(url, read_only=read_only)
+    lifecycle = _pool_lifecycle_kwargs()
+    name = "read" if read_only else "write"
+    try:
+        pool = ConnectionPool(
+            conninfo=url,
+            min_size=1,
+            max_size=max(pool_size, 2),
+            kwargs=conn_kwargs,
+            open=True,
+            name=f"tenderflow-{name}",
+            **lifecycle,
+        )
+    except Exception as exc:
+        # No filtrar el DSN (con password) en el mensaje de error propagado.
+        from observability.logging import redact_dsn
+
+        raise RuntimeError(f"No se pudo crear el pool Postgres: {redact_dsn(str(exc))}") from None
+    log.info(
+        "pg_pool_created",
+        pool=name,
+        min=1,
+        max=max(pool_size, 2),
+        timeouts=conn_kwargs.get("options", "none"),
+        ssl_ca=bool(conn_kwargs.get("sslrootcert")),
+        acquire_timeout=lifecycle.get("timeout"),
+        max_lifetime=lifecycle.get("max_lifetime"),
+    )
+    return pool
+
+
 def _get_pg_pool() -> Any:
-    """Devuelve (creando si es necesario) el pool de conexiones Postgres."""
+    """Devuelve (creando si es necesario) el pool de escritura."""
     global _pg_pool
     if _pg_pool is not None:
         return _pg_pool
     with _pg_pool_lock:
-        if _pg_pool is not None:
-            return _pg_pool
-        try:
-            from psycopg_pool import ConnectionPool
-        except ImportError as exc:
-            raise RuntimeError(
-                "psycopg-pool no instalado. Ejecuta: pip install psycopg-pool>=3.2,<4"
-            ) from exc
-
-        pool_size = getattr(settings, "DB_POOL_SIZE", 5)
-        url = _database_url()
-        conn_kwargs = _pg_connect_kwargs(url)
-        try:
-            _pg_pool = ConnectionPool(
-                conninfo=url,
-                min_size=1,
-                max_size=max(pool_size, 2),
-                kwargs=conn_kwargs,
-                open=True,
-            )
-        except Exception as exc:
-            # No filtrar el DSN (con password) en el mensaje de error propagado.
-            from observability.logging import redact_dsn
-
-            raise RuntimeError(
-                f"No se pudo crear el pool Postgres: {redact_dsn(str(exc))}"
-            ) from None
-        log.info(
-            "pg_pool_created",
-            min=1,
-            max=max(pool_size, 2),
-            timeouts=conn_kwargs.get("options", "none"),
-            ssl_ca=bool(conn_kwargs.get("sslrootcert")),
-        )
+        if _pg_pool is None:
+            _pg_pool = _build_pool(read_only=False)
     return _pg_pool
 
 
-def _close_pg_pool() -> None:
-    """Cierra el pool Postgres si está abierto."""
-    global _pg_pool
+def _get_pg_read_pool() -> Any:
+    """Devuelve (creando si es necesario) el pool de lectura.
+
+    Es un pool aparte porque el modo solo-lectura se fija **en la sesión**
+    (``default_transaction_read_only``), no por transacción: mezclarlo con las
+    conexiones de escritura en un pool común haría que un writer heredase el
+    modo de la conexión que le tocara.
+    """
+    global _pg_read_pool
+    if _pg_read_pool is not None:
+        return _pg_read_pool
     with _pg_pool_lock:
-        pool = _pg_pool
-        _pg_pool = None
-    if pool is not None:
+        if _pg_read_pool is None:
+            _pg_read_pool = _build_pool(read_only=True)
+    return _pg_read_pool
+
+
+def pool_stats() -> dict[str, dict[str, int]]:
+    """Estadísticas de ambos pools para métricas y diagnóstico.
+
+    Devuelve ``{}`` para el pool que aún no se haya creado (lazy), sin forzar
+    su creación: exponer la métrica no debe abrir conexiones por sí mismo.
+    """
+    stats: dict[str, dict[str, int]] = {}
+    for name, pool in (("write", _pg_pool), ("read", _pg_read_pool)):
+        if pool is None:
+            continue
         try:
-            pool.close()
+            stats[name] = dict(pool.get_stats())
         except Exception:
-            pass
+            log.debug("pg_pool_stats_unavailable", pool=name)
+    return stats
+
+
+def _close_pg_pool() -> None:
+    """Cierra ambos pools Postgres si están abiertos."""
+    global _pg_pool, _pg_read_pool
+    with _pg_pool_lock:
+        pools = [_pg_pool, _pg_read_pool]
+        _pg_pool = None
+        _pg_read_pool = None
+    for pool in pools:
+        if pool is not None:
+            try:
+                pool.close()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -373,16 +462,29 @@ def get_table_columns(conn: Any, table: str) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def _create_pg_connection() -> _PgConnAdapter:
-    """Crea una nueva conexión Postgres via psycopg_pool."""
-    pool = _get_pg_pool()
-    raw_conn = pool.getconn()
-    return _PgConnAdapter(raw_conn)
+def _create_pg_connection(*, read_only: bool = False) -> _PgConnAdapter:
+    """Toma una conexión del pool correspondiente (lectura o escritura).
+
+    Un agotamiento del pool se contabiliza en ``db_pool_acquire_timeout_total``
+    antes de propagarse: es el modo de fallo más probable bajo carga y sin esta
+    métrica era invisible.
+    """
+    pool = _get_pg_read_pool() if read_only else _get_pg_pool()
+    try:
+        raw_conn = pool.getconn()
+    except Exception as exc:
+        if type(exc).__name__ == "PoolTimeout":
+            from observability.runtime_metrics import db_pool_acquire_timeout_total
+
+            db_pool_acquire_timeout_total.inc()
+            log.warning("pg_pool_acquire_timeout", pool="read" if read_only else "write")
+        raise
+    return _PgConnAdapter(raw_conn, pool=pool)
 
 
 def _return_pg_connection(adapter: _PgConnAdapter) -> None:
-    """Devuelve la conexión subyacente al pool Postgres."""
-    pool = _pg_pool
+    """Devuelve la conexión subyacente a su pool de origen."""
+    pool = adapter._pool if adapter._pool is not None else _pg_pool
     if pool is not None:
         try:
             pool.putconn(adapter._conn)
@@ -393,7 +495,7 @@ def _return_pg_connection(adapter: _PgConnAdapter) -> None:
                 pass
 
 
-def _get_conn() -> Any:
+def _get_conn(*, read_only: bool = False) -> Any:
     """Devuelve una conexión del pool Postgres gestionado (psycopg_pool)."""
     if not _database_url():
         raise RuntimeError(
@@ -402,7 +504,7 @@ def _get_conn() -> Any:
             "`docker compose up -d postgres` o apuntá DATABASE_URL a tu "
             "instancia."
         )
-    return _create_pg_connection()
+    return _create_pg_connection(read_only=read_only)
 
 
 def _return_conn(conn: Any) -> None:
@@ -428,8 +530,8 @@ def connect() -> Iterator[Any]:
     Instrumenta latencia de commit; los eventos se persisten en ops_events via
     buffer en memoria + flush best-effort (ver observability/ops_events.py).
 
-    Con backend Postgres (ADR-016): usa psycopg_pool; el shim qmark→%s se
-    aplica automáticamente en cada execute().
+    Toma la conexión del pool de escritura; para lecturas usá ``connect_read``,
+    que además impide escribir por esa vía.
     """
     import time as _time
 
@@ -472,27 +574,44 @@ def connect() -> Iterator[Any]:
 def connect_read() -> Iterator[Any]:
     """Context manager de SOLO LECTURA.
 
-    Marca la transacción en curso como ``READ ONLY``: cualquier
-    INSERT/UPDATE/DELETE/DDL mal dirigido por esta vía lanza
-    ``ReadOnlySqlTransaction`` en vez de ejecutarse y ser revertido en silencio
-    por el ``putconn`` del pool. El guard anterior
-    (``SET LOCAL default_transaction_read_only = on``) era inerte: solo afecta a
-    transacciones que empiecen *después*, pero el primer ``execute`` ya había
-    abierto la actual, así que una escritura pasaba sin error y se perdía sin
-    rastro. ``SET TRANSACTION READ ONLY`` tiene que ser la primera sentencia de
-    la transacción, y lo es: ``_get_conn`` entrega una conexión limpia del pool.
+    La garantía es la misma de siempre —cualquier INSERT/UPDATE/DELETE/DDL mal
+    dirigido por esta vía lanza ``ReadOnlySqlTransaction`` en vez de ejecutarse
+    y ser revertido en silencio— pero ahora la impone la **sesión**: el pool de
+    lectura abre sus conexiones con ``default_transaction_read_only=on`` y en
+    autocommit (ver ``_pg_connect_kwargs``).
+
+    El motivo es de latencia. Hasta 2026-08 cada bloque emitía
+    ``SET TRANSACTION READ ONLY`` y un ``ROLLBACK`` de cierre alrededor de la
+    query: tres round-trips por lectura, que a los ~80 ms de RTT contra Supabase
+    ponían el suelo de cualquier lectura en ~240 ms, con 209 bloques de lectura
+    en producción. Es la misma clase de defecto que ya se corrigió en el camino
+    de escritura (2201 → 6 viajes por lote), que nunca se auditó en lectura.
+    En autocommit un SELECT no abre transacción, así que ``putconn`` tampoco
+    tiene nada que revertir al devolver la conexión.
     """
-    conn = _get_conn()
+    import time as _time
+
+    from observability.runtime_metrics import db_read_duration_seconds
+
+    conn = _get_conn(read_only=True)
+    t0 = _time.monotonic()
     try:
-        conn.execute("SET TRANSACTION READ ONLY")
         yield conn
     finally:
-        # Las lecturas no necesitan commit; cerramos la transacción con un
-        # rollback explícito antes de devolver la conexión al pool. Si el
-        # rollback falla, la conexión está en mal estado: lo registramos (no es
-        # indistinguible de "sin datos") y dejamos que el pool la descarte.
-        try:
-            conn.rollback()
-        except Exception:
-            log.warning("connect_read_rollback_failed", exc_info=True)
+        db_read_duration_seconds.observe(_time.monotonic() - t0)
         _return_conn(conn)
+
+
+def ping() -> bool:
+    """``SELECT 1`` contra el camino de lectura. True si la BD responde.
+
+    Es el chequeo de conectividad que consume ``services/health.py``; vive aquí
+    para que el SQL no salga de ``db/`` (ADR-022).
+    """
+    try:
+        with connect_read() as conn:
+            conn.execute("SELECT 1").fetchone()
+        return True
+    except Exception:
+        log.warning("db_ping_failed", exc_info=True)
+        return False

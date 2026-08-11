@@ -36,7 +36,7 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
         cur = c.execute(
             "INSERT INTO watchlist_empresas "
             "(user_key, empresa_id, email, frequency, created_at, organization_id, visibility) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 entry.user_key,
                 entry.empresa_id,
@@ -47,7 +47,7 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
                 entry.visibility,
             ),
         )
-        return int(cur.lastrowid)
+        return int(cur.fetchone()[0])
 
 
 def remove_entry(user_key: str, empresa_id: int, organization_id: int | None = None) -> bool:
