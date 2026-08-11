@@ -12,7 +12,12 @@ name: Smoke sintético post-deploy
 
 on:
   schedule:
-    - cron: "30 */6 * * *"
+    # Cada 15 minutos. Con el cron cada 6h anterior, el tiempo medio hasta
+    # detectar una caída era de ~3 horas —y el SLO de disponibilidad del 99%
+    # mensual que promete docs/sli-slo.md ni siquiera es computable a esa
+    # granularidad—. La API corre en Render Free (con spin-down), así que este
+    # sondeo es además lo que la mantiene despierta.
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -26,10 +31,21 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: vars.SMOKE_BASE_URL != ''
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # El job entero llevaba `if: vars.SMOKE_BASE_URL != ''`: sin esa variable
+      # configurada se saltaba **en verde**, así que la ausencia de monitorización
+      # se veía igual que una monitorización que pasa. Ahora falla y se ve.
+      - name: Verificar configuración
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: |
+          if [ -z "$SMOKE_BASE_URL" ]; then
+            echo "::error title=Smoke sin configurar::Definí la variable de repositorio SMOKE_BASE_URL (Settings → Secrets and variables → Actions → Variables) para que este chequeo vigile producción."
+            exit 1
+          fi
 
       - name: Run synthetic checks
         env:

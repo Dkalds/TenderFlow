@@ -120,28 +120,33 @@ def test_load_no_pin_uses_colocated_checksum(tmp_path, monkeypatch) -> None:
 
 
 def _fila(cpv4: str, i: int) -> FilaDataset:
-    """Fila sintética con todas las FEATURE_COLUMNS pobladas."""
-    return FilaDataset(
-        licitacion_id=f"L{i}",
-        fecha="2026-01-15",
-        features={
-            "cpv2": cpv4[:2],
-            "cpv4": cpv4,
-            "tipo_contrato": "Servicios",
-            "ccaa": "Madrid",
-            "fuente": "placsp",
-            "banda_importe": "b2",
-            "log_importe": 11.5,
-            "n_ofertas": 3.0,
-            "baja_media_organo": 0.10,
-            "baja_media_cpv4": 0.10,
-            "baja_media_organo_cpv4": 0.10,
-            "hhi_segmento": 1000.0,
-            "mes": 1.0,
-            "trimestre": 1.0,
-        },
-        baja=0.10,
-    )
+    """Fila sintética con todas las FEATURE_COLUMNS pobladas.
+
+    Se construye desde ``FEATURE_COLUMNS`` para que añadir una feature no deje
+    este helper a medias: las categóricas necesitan valor sí o sí
+    (``_aprender_categorias`` indexa, no usa ``.get``).
+    """
+    from services.ml.features import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
+
+    valores: dict[str, object] = {
+        "cpv2": cpv4[:2],
+        "cpv4": cpv4,
+        "tipo_contrato": "Servicios",
+        "ccaa": "Madrid",
+        "provincia": "Madrid",
+        "organo": "Organo A",
+        "fuente": "placsp",
+        "banda_importe": "b2",
+    }
+    features: dict[str, object] = {
+        col: valores.get(col, "na") if col in CATEGORICAL_COLUMNS else 1.0
+        for col in FEATURE_COLUMNS
+    }
+    features["log_importe"] = 11.5
+    features["mes"] = 1.0
+    features["trimestre"] = 1.0
+    features["baja_media_organo_cpv4"] = 0.10
+    return FilaDataset(licitacion_id=f"L{i}", fecha="2026-01-15", features=features, baja=0.10)
 
 
 def _filas_cpv4(n: int, frecuentes: int = 0) -> list[FilaDataset]:
@@ -379,6 +384,307 @@ def test_baseline_intervalo_valido():
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Target agregado por expediente (db/repositories/ml_dataset.py)
+# ---------------------------------------------------------------------------
+
+
+def _insertar_expediente(c, lic_id, importe, fecha="2025-03-01", organo="Organo A"):
+    c.execute(
+        "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
+        " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
+        "VALUES (%s, 'Expediente', %s, '72000000', 'Madrid', %s, 'Servicios', 'placsp', "
+        " %s, CURRENT_TIMESTAMP)",
+        (lic_id, organo, importe, fecha),
+    )
+
+
+def _insertar_lote(c, lic_id, numero, importe):
+    return c.execute(
+        "INSERT INTO lotes (licitacion_id, numero, importe, fecha_extraccion) "
+        "VALUES (%s, %s, %s, CURRENT_TIMESTAMP) RETURNING id",
+        (lic_id, numero, importe),
+    ).fetchone()[0]
+
+
+def _insertar_adjudicacion(
+    c, lic_id, importe, fecha="2025-06-01", lote_id=None, nombre="Empresa X"
+):
+    c.execute(
+        "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
+        " fecha_adjudicacion, n_ofertas_recibidas, lote_id, fecha_extraccion) "
+        "VALUES (%s, %s, %s, %s, 3, %s, CURRENT_TIMESTAMP)",
+        (lic_id, nombre, importe, fecha, lote_id),
+    )
+
+
+def _target(lic_id):
+    from services.ml.features import construir_dataset_baja
+
+    filas, _ = construir_dataset_baja()
+    por_id = {f.licitacion_id: f for f in filas}
+    assert lic_id in por_id, f"{lic_id} no entró en el dataset"
+    return por_id[lic_id].baja
+
+
+def test_target_agregado_suma_solo_los_lotes_adjudicados(db):
+    """Expediente de 3 lotes con 2 adjudicados: el denominador son esos 2.
+
+    Contra el presupuesto del expediente (100k) la baja saldría 0.61; contra la
+    suma de los lotes adjudicados (50k) es 0.22, que es la baja real de la
+    porción adjudicada.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        _insertar_expediente(c, "MULTI", 100_000)
+        lote1 = _insertar_lote(c, "MULTI", "1", 20_000)
+        lote2 = _insertar_lote(c, "MULTI", "2", 30_000)
+        _insertar_lote(c, "MULTI", "3", 50_000)  # publicado, no adjudicado
+        _insertar_adjudicacion(c, "MULTI", 15_000, lote_id=lote1)
+        _insertar_adjudicacion(c, "MULTI", 24_000, lote_id=lote2)
+
+    assert _target("MULTI") == pytest.approx(1 - 39_000 / 50_000)
+
+
+def test_target_agregado_sin_lote_resuelto_cae_al_expediente(db):
+    """Datos anteriores a v65_lotes: sin lote_id, el denominador es l.importe."""
+    from db.database import connect
+
+    with connect() as c:
+        _insertar_expediente(c, "PRE-V65", 100_000)
+        _insertar_adjudicacion(c, "PRE-V65", 40_000)
+        _insertar_adjudicacion(c, "PRE-V65", 35_000)
+
+    assert _target("PRE-V65") == pytest.approx(1 - 75_000 / 100_000)
+
+
+def test_lote_compartido_no_cuenta_su_presupuesto_dos_veces(db):
+    """Dos empresas ganan el MISMO lote: su presupuesto entra una sola vez.
+
+    Sumando por fila de adjudicación el denominador sería 40k y la baja 0.575;
+    con los lotes distintos es 20k y la baja 0.15.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        _insertar_expediente(c, "COMPARTIDO", 100_000)
+        lote = _insertar_lote(c, "COMPARTIDO", "1", 20_000)
+        _insertar_adjudicacion(c, "COMPARTIDO", 8_000, lote_id=lote, nombre="Empresa A")
+        _insertar_adjudicacion(c, "COMPARTIDO", 9_000, lote_id=lote, nombre="Empresa B")
+
+    assert _target("COMPARTIDO") == pytest.approx(1 - 17_000 / 20_000)
+
+
+def test_una_fila_por_expediente_no_una_por_lote(db):
+    from db.database import connect
+    from services.ml.features import construir_dataset_baja
+
+    with connect() as c:
+        _insertar_expediente(c, "UNICA", 100_000)
+        lote1 = _insertar_lote(c, "UNICA", "1", 40_000)
+        lote2 = _insertar_lote(c, "UNICA", "2", 60_000)
+        _insertar_adjudicacion(c, "UNICA", 30_000, lote_id=lote1)
+        _insertar_adjudicacion(c, "UNICA", 50_000, lote_id=lote2)
+
+    filas, _ = construir_dataset_baja()
+    assert [f.licitacion_id for f in filas].count("UNICA") == 1
+
+
+# ---------------------------------------------------------------------------
+# Anti-fuga: el ancla es la publicación, no la adjudicación
+# ---------------------------------------------------------------------------
+
+
+def test_no_ve_adjudicaciones_posteriores_a_su_publicacion(db):
+    """Una adjudicación entre la publicación y la adjudicación de una fila
+    NO puede entrar en sus agregados históricos.
+
+    Con el ancla anterior (fecha de adjudicación) la fila X sí veía a Y, que se
+    resolvió cuatro meses después de publicarse X: meses de información que en
+    scoring no existen, porque ahí la licitación aún está abierta.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        # Z se resuelve antes de que X se publique: X sí debe verla.
+        _insertar_expediente(c, "Z", 100_000, fecha="2024-06-01")
+        _insertar_adjudicacion(c, "Z", 90_000, fecha="2024-08-01")  # baja 0.10
+        # Y se resuelve DESPUÉS de que X se publique: X no debe verla.
+        _insertar_expediente(c, "Y", 100_000, fecha="2024-12-01")
+        _insertar_adjudicacion(c, "Y", 50_000, fecha="2025-03-01")  # baja 0.50
+        _insertar_expediente(c, "X", 100_000, fecha="2025-01-01")
+        _insertar_adjudicacion(c, "X", 80_000, fecha="2025-06-01")  # baja 0.20
+
+    from services.ml.features import construir_dataset_baja
+
+    filas, _ = construir_dataset_baja()
+    x = next(f for f in filas if f.licitacion_id == "X")
+
+    # Solo Z está incorporada, así que la media del órgano (y el prior global,
+    # que también es 0.10) valen 0.10. Si Y se hubiera colado, ambas serían 0.30.
+    assert x.features["baja_media_organo"] == pytest.approx(0.10)
+    assert x.features["n_obs_organo"] == pytest.approx(1.0)
+
+
+def test_scoring_y_entrenamiento_comparten_las_columnas(db):
+    """Ninguna feature puede existir al entrenar y faltar al servir.
+
+    Es la asimetría que tenía ``n_ofertas``: presente en el 100% de las filas
+    de entrenamiento (venía de ``adjudicaciones``) y ausente en el 100% de las
+    de scoring, sin que el monitor de drift pudiera verlo.
+    """
+    from db.database import connect
+    from services.ml.features import (
+        CATEGORICAL_COLUMNS,
+        FEATURE_COLUMNS,
+        construir_dataset_baja,
+        features_licitaciones_abiertas,
+    )
+
+    with connect() as c:
+        _sembrar_historico(c, n_meses=6, por_mes=6)
+        _insertar_abierta(c)
+
+    entrenamiento, _ = construir_dataset_baja()
+    scoring = features_licitaciones_abiertas()
+    assert entrenamiento and scoring
+    numericas = FEATURE_COLUMNS[len(CATEGORICAL_COLUMNS) :]
+
+    def _cobertura(filas, col):
+        return sum(1 for f in filas if f.features.get(col) is not None) / len(filas)
+
+    ausentes = [
+        col
+        for col in numericas
+        if _cobertura(entrenamiento, col) > 0.5 and _cobertura(scoring, col) == 0.0
+    ]
+    assert not ausentes, f"features disponibles al entrenar y nunca al servir: {ausentes}"
+    assert "n_ofertas" not in FEATURE_COLUMNS
+
+
+# ---------------------------------------------------------------------------
+# Guard de layout de features y degradación del serving
+# ---------------------------------------------------------------------------
+
+
+def test_predict_rechaza_un_artefacto_con_otro_layout():
+    from services.ml.baja_model import FeatureSchemaMismatch
+
+    modelo = BajaModel(
+        modelos={},
+        categorias={},
+        metadata={"feature_columns": ["cpv2", "n_ofertas"]},  # layout viejo
+    )
+    with pytest.raises(FeatureSchemaMismatch, match="otras columnas"):
+        modelo.predict([_fila("7200", 0)])
+
+
+def test_predict_rechaza_un_artefacto_sin_feature_columns():
+    """Falla cerrado: sin metadata no se puede verificar el layout."""
+    from services.ml.baja_model import FeatureSchemaMismatch
+
+    modelo = BajaModel(modelos={}, categorias={}, metadata={})
+    with pytest.raises(FeatureSchemaMismatch, match="no registra feature_columns"):
+        modelo.predict([_fila("7200", 0)])
+
+
+def test_scoring_degrada_a_baseline_si_el_layout_no_coincide(db, monkeypatch, tmp_path):
+    """El .pkl activo entrenado con otras columnas no debe servirse.
+
+    Es el escenario real de un despliegue en el que el artefacto activo es
+    anterior al cambio de features: sin el guard, sus árboles reciben columnas
+    distintas en las mismas posiciones y devuelven números sin significado.
+    """
+    from db.database import connect
+    from db.model_registry import activate_version, list_versions
+
+    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    with connect() as c:
+        _sembrar_historico(c)
+        _insertar_abierta(c)
+
+    model_path = tmp_path / "baja.pkl"
+    entrenar(activar=False, model_path=model_path)
+    activate_version(MODEL_NAME, list_versions(MODEL_NAME)[0]["version"])
+
+    # Se manipula la metadata del artefacto para simular un layout anterior.
+    modelo = BajaModel.load(model_path)
+    modelo.metadata["feature_columns"] = ["cpv2", "n_ofertas"]
+    modelo.save(model_path)
+    monkeypatch.setattr(
+        "shared.model_artifacts.resolve_active_artifact", lambda *_a, **_k: model_path
+    )
+
+    stats = score_predicciones_baja()
+
+    assert stats["serving"] == "baseline"
+    assert prediccion_baja("ABIERTA")["model_version"] is None
+
+
+# ---------------------------------------------------------------------------
+# Conformal (split-CQR) y monitor de nulos
+# ---------------------------------------------------------------------------
+
+
+def test_offset_conformal_lleva_la_cobertura_al_objetivo():
+    """Un intervalo demasiado estrecho se ensancha hasta cubrir el 80%."""
+    import numpy as np
+
+    from services.ml.baja_model import _offset_conformal
+
+    rng = np.random.default_rng(42)
+    y = rng.uniform(0.0, 0.5, 400)
+    centro = np.full(400, 0.25)
+    p10, p90 = centro - 0.02, centro + 0.02  # cubre muy poco
+
+    offset = _offset_conformal(p10, p90, y)
+    cobertura = float(np.mean((y >= p10 - offset) & (y <= p90 + offset)))
+
+    assert offset > 0
+    assert cobertura == pytest.approx(0.80, abs=0.05)
+
+
+def test_offset_conformal_estrecha_un_intervalo_que_sobra():
+    """Simétrico: si el intervalo cubre de más, el offset es negativo.
+
+    Es lo que hace que la cobertura aterrice EN el objetivo en vez de limitarse
+    a superarlo, que es la diferencia entre un intervalo informativo y uno
+    inútilmente ancho.
+    """
+    import numpy as np
+
+    from services.ml.baja_model import _offset_conformal
+
+    y = np.full(200, 0.25)
+    p10, p90 = np.full(200, 0.0), np.full(200, 0.9)  # cubre el 100%
+
+    assert _offset_conformal(p10, p90, y) < 0
+
+
+def test_drift_ve_una_feature_ausente_en_scoring(monkeypatch):
+    """El caso que reportaba PSI 0.00 "estable": ausente al servir, presente al
+    entrenar. El PSI solo compara los presentes; el delta de nulos lo caza."""
+    import services.ml.features as features_mod
+    from services.ml.drift import comprobar_drift_baja
+
+    def _fila_con(valor):
+        base = dict.fromkeys(features_mod.FEATURE_COLUMNS, 1.0)
+        base.update({c: "x" for c in features_mod.CATEGORICAL_COLUMNS})
+        base["log_importe"] = valor
+        return FilaDataset(licitacion_id="L", fecha="2026-01-01", features=base)
+
+    entrenamiento = [_fila_con(1.0) for _ in range(50)]
+    scoring = [_fila_con(None) for _ in range(50)]
+    monkeypatch.setattr(features_mod, "construir_dataset_baja", lambda: (entrenamiento, None))
+    monkeypatch.setattr(features_mod, "features_licitaciones_abiertas", lambda: scoring)
+
+    resultado = comprobar_drift_baja()
+
+    assert resultado["status"] == "crit"
+    assert resultado["missing_delta"]["log_importe"] == pytest.approx(1.0)
 
 
 def test_api_prediccion_baja(client, auth):

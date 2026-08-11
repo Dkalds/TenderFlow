@@ -89,6 +89,26 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
 - **Riesgo:** bajo — solo umbrales.
 
+### [P2] Persistir procedimiento, tramitación y criterios de adjudicación
+- **Área:** scraper/codice_parser.py, db/alembic, services/ml/features.py
+- **Problema:** el tipo de procedimiento (abierto/negociado/menor), la tramitación (ordinaria/urgente) y el **peso del precio en los criterios de adjudicación** no existen como columnas. Son los tres drivers más fuertes de la baja en contratación pública española, y el RFC de modelos predictivos ya los marcó como gap en junio de 2026 (§Restricciones de datos). Sin ellos, el modelo de baja tiene un techo que no se sube con más features derivadas: el saneamiento de agosto de 2026 agotó lo que se puede extraer de las columnas existentes.
+- **Acceptance criteria:**
+  - `parse_licitaciones` extrae los tres campos de `cac:TenderingProcess` / `cac:AwardingCriterion` (el parser ya lee `TenderSubmissionDeadlinePeriod` de ese mismo bloque, ver `scraper/codice_parser.py`).
+  - Migración append-only con las columnas nuevas + backfill medido sobre los ZIP cacheados; se reporta el % de cobertura real por campo antes de usarlas como feature.
+  - Entran en `FEATURE_COLUMNS` solo si la cobertura supera el 50%, y el reentrenamiento reporta el delta de `mae_p50` contra la versión previa.
+- **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [services/ml/features.py](../services/ml/features.py), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
+- **Riesgo:** medio — toca parser, esquema y dataset de un modelo en producción; el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
+
+### [P2] Modelo de baja por lote
+- **Área:** services/ml, db/alembic, api/routes/predicciones.py, web/
+- **Problema:** el modelo predice la baja **agregada por expediente** porque es la granularidad que puede servir `predicciones_baja` (PK `licitacion_id`) y la que mide `services/ml/calibration.py`. Pero el lote es la unidad sobre la que realmente se puja: en un expediente de 30 lotes, una sola cifra agregada es menos accionable que 30.
+- **Acceptance criteria:**
+  - Migración de `predicciones_baja` a PK `(licitacion_id, lote_id)` con `lote_id` nullable para expedientes de lote único.
+  - `db/repositories/ml_dataset.py` expone la variante por lote (el denominador por fila ya existe: `EFFECTIVE_BUDGET_SQL`), `calibration.py` compara a la misma granularidad, y el DTO/endpoint/frontend exponen el desglose.
+  - Se compara `mae_p50` por lote contra el agregado actual antes de sustituirlo; si no mejora, se documenta y se queda el agregado.
+- **Files de partida:** [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py), [services/ml/calibration.py](../services/ml/calibration.py), [api/routes/predicciones.py](../api/routes/predicciones.py)
+- **Riesgo:** medio — migración de una tabla materializada + cambio de contrato API.
+
 ### [P2] Sustituir los fixtures sintéticos del corpus CODICE por expedientes reales
 - **Área:** tests/fixtures/placsp/
 - **Problema:** los once casos del corpus golden son estructuralmente fieles al CODICE pero escritos a mano: la sesión que los creó no tenía ZIP mensuales cacheados ni acceso al feed. El valor del corpus está en codificar variabilidad que nadie imaginó, y eso solo lo dan los datos reales.
@@ -97,15 +117,31 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
-### [P2] Cobertura de tests del frontend en flujos críticos
-- **Área:** web/ (tests vitest)
-- **Problema:** El frontend tiene thresholds reales 68/63/68/70 (vitest.config.ts) con 82 test files. Los flujos críticos de valor (filtros nuqs URL↔estado, watchlist, streaming `/ask`) no tienen cobertura. Una regresión en esos flujos pasa CI en verde.
+### [P1] Cobertura de tests de las páginas del frontend
+- **Área:** web/src/app (tests vitest)
+- **Problema:** Con el denominador corregido el 2026-08-10 (antes se excluía `src/app/**` entero alegando que son Server Components, y 34 de 37 páginas son `"use client"`), la cobertura real del frontend es **40.2/30.4/37.5/41.6**, no el 68/63/68/70 que CI parecía exigir. Las páginas están al 0%: ahí vive la lógica de filtros, mutaciones y derivación, en ficheros de más de 1.000 líneas (`competidores` 1.047, `mi-watchlist` 1.044, `detalle` 1.015). Los pisos por carpeta de `lib`/`hooks`/`components` conservan la garantía anterior, pero el conjunto está descubierto.
 - **Acceptance criteria:**
-  - Tests para los 3 flujos: filtros nuqs (`web/src/lib/filters.ts`), watchlist (`use-watchlist-items`), streaming SSE de `/ask` (`ask-stream.ts` / `use-ask.ts`). `use-ask` cubierto al 100% en commit 52ad203; resta `ask-stream.ts`.
-  - Thresholds de `vitest.config.ts` subidos anti-regresión (actualmente 68/63/68/70 tras subida de Fase 9 de cobertura 2026-07-04).
-  - Tests no dependen de la API real (mock del cliente OpenAPI generado).
-- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/filters.ts](../web/src/lib/filters.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
+  - Tests de los 3 flujos críticos que siguen sin cubrir: filtros nuqs (`web/src/lib/filters.ts` ya cubierto; falta su uso desde las páginas), watchlist (`use-watchlist-items`), streaming SSE de `/ask` (`ask-stream.ts`).
+  - Extraer a hooks testeables la lógica de las páginas de 1.000+ líneas, en vez de testear el árbol entero.
+  - Subir los umbrales globales de `vitest.config.ts` conforme suba lo medido. **No bajar los pisos por carpeta.**
+- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
 - **Riesgo:** bajo — solo añade tests.
+
+### [P2] Extraer las vistas de `/ops` a componentes compartidos
+- **Área:** web/src/app/(dashboard)/ops
+- **Problema:** `ops/page.tsx:28-33` importa con `dynamic()` **seis `page.tsx` completos** (`observabilidad`, `calidad-datos`, `administracion`, `feature-flags`, `active-learning`, `webhooks`) y los renderiza como componentes. Esos módulos siguen existiendo además como rutas propias, así que cada uno tiene dos puntos de entrada y dos estados de URL, y Next no puede tratarlos como boundaries de ruta. Es la costura de la consolidación en espacios, materializada en código.
+- **Acceptance criteria:**
+  - El cuerpo de cada una pasa a `_components/<x>-view.tsx`; tanto la ruta como `/ops` consumen esa vista.
+  - `ops/page.tsx` deja de importar ningún `page.tsx`.
+- **Files de partida:** [web/src/app/(dashboard)/ops/page.tsx](<../web/src/app/(dashboard)/ops/page.tsx>)
+- **Riesgo:** bajo-medio — mecánico pero toca seis páginas; hacerlo de una en una.
+
+### [P3] Documentar `FRONTEND_URL` y `SENTRY_DSN` en `.env.example`
+- **Área:** .env.example
+- **Problema:** `render.yaml` las declara y `.env.example` no las documenta, así que no se pueden descubrir leyendo el fichero que existe para eso. `scripts/check_env_parity.py` las lleva anotadas en `_DOCUMENTACION_PENDIENTE` para no bloquear CI; esa lista solo puede encoger. No se arreglaron en el mismo cambio porque tocar `.env*` requiere OK explícito (AGENTS.md §6).
+- **Acceptance criteria:** ambas documentadas con un comentario de una línea; entrada retirada de `_DOCUMENTACION_PENDIENTE`; `make check-env-parity` sigue verde.
+- **Files de partida:** [.env.example](../.env.example), [scripts/check_env_parity.py](../scripts/check_env_parity.py)
+- **Riesgo:** bajo — documentación.
 
 ---
 
@@ -129,6 +165,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ### [P3] Migrar los `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
+- **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
 - **Problema:** quedan ~180 `title=` nativos. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
 - **Acceptance criteria:** ningún `title=` sobre un elemento interactivo; en celdas y textos truncados, o `Tooltip` o texto visible.
 - **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip)
@@ -163,6 +200,7 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
 - **Problema:** El ratchet TID251 tiene una whitelist que solo puede decrecer (conteo vigente: [STATUS.md](STATUS.md), generado por `make status`). **Destino fijado por [ADR-022](adr/ADR-022-frontera-de-persistencia.md)**: el SQL se mueve a `db/`, y `db/repositories/*` (clases) y `db/*.py` (funciones de módulo) son el mismo estrato — o sea que **no hay renombrado de por medio**, cada archivo va al módulo `db/` de su tabla en la forma que ya tenga. Antes de ADR-022 este ítem no tenía estado final declarado, que era el motivo real de que llevara meses parado: refactorizar hacia un destino indefinido produce un idioma más, no menos.
 - **Baseline (medido 2026-07-30 sobre `pyproject.toml`):** services/ 18 · scheduler/ 9 · scripts/ 5 · api/ 4 · scraper/ 2 = **38 archivos** en whitelist, más los dos globs estructurales que no son deuda (`db/**` y `tests/*`, exentos por diseño). El "= 44 entradas" del baseline anterior no cuadraba con el desglose (que ya sumaba 40 contando los globs); la cifra de referencia es la de STATUS.md, que cuenta archivos.
+- **Progreso 2026-08-10 — primera ola, 38 → 36:** `services/job_locks.py` entero pasa a `db/job_locks.py` (aprovechando que había que corregir su `release()`, que borraba locks ajenos) y el `SELECT 1` de `services/health.py` pasa a `db.connection.ping()`. El ratchet llevaba meses sin moverse; la lección de esta ola es que sale barato cuando se hace **al pasar por el módulo por otro motivo**, no como pasada dedicada. Siguientes candidatos por coste (conteo de `connect(`+`execute(`): `services/ml/calibration.py` (1), `services/entity_resolution.py` (1), `services/licitaciones.py` (2), `services/competitive/bajas.py` (2), `services/ml/features.py` (2), `services/ml/retencion_labels.py` (2).
 - **Orden de olas:** services/ → api/ → scheduler/ → scripts/ (por densidad; `services/` es además el único que viola la capa de dominio de ADR-007)
 - **Excepción declarada:** `services/sql_fragments.py` se queda — expone fragmentos SQL constantes pero no ejecuta nada (ADR-022 §3).
 - **Acceptance criteria por ola:**
@@ -200,14 +238,55 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [web/src/components/layout/top-nav.tsx](../web/src/components/layout/top-nav.tsx), [web/src/components/layout/kpi-bar.tsx](../web/src/components/layout/kpi-bar.tsx), [web/src/components/layout/global-filter-bar.tsx](../web/src/components/layout/global-filter-bar.tsx)
 - **Riesgo:** bajo — puramente visual, sin tocar datos ni contratos.
 
-### [P3] Completar la migración de `title=` nativos a `ui/tooltip.tsx`
-- **Área:** web/ (amplio)
-- **Problema:** La revisión de las skills de Emil Kowalski (2026-07-25, ver `docs/frontend-motion.md`) migró a `components/ui/tooltip.tsx` (Radix, `skipDelayDuration`) los `title=` de los controles interactivos icon-only más visibles (preset menus de `GlobalFilterBar`, badge de anomalía de `KpiCard`, toggles de densidad/tema de `TopNav`). Quedan `title=` nativos en celdas de tabla truncadas y textos informativos (p. ej. `tecnologias/page.tsx`, `company-profile-summary.tsx`, `company-year-trend.tsx`) — el `title` nativo del navegador tiene delay fijo (~500ms), no se estiliza y no existe en táctil.
+### [P2] Contrato de paginación común para la API
+
+- **Área:** api/routes/
+- **Problema:** `PaginatedResponse` vive en 1 de los 30 módulos de rutas (`licitaciones.py`) sobre 146 endpoints, así que cada consumidor del cliente TS aprende una forma distinta de paginar. Revisado el 2026-08-10: los endpoints de analytics **no** son el problema que parecía —devuelven agregados acotados por la cardinalidad del `GROUP BY` (≤19 CCAA, ≤52 provincias, nº de códigos tech) y `competitors`/`organos` ya aceptan `limit`—. El caso real de crecimiento no acotado es `trends`, cuya serie escala con la **longitud del rango de fechas** (10 años ≈ 3.650 puntos), donde un `limit` por filas es la herramienta equivocada: lo que hay que acotar es el rango o la granularidad del roll-up.
 - **Acceptance criteria:**
-  - Los `title=` sobre contenido truncado/informativo (no solo controles) migrados a `Tooltip`, envueltos en `TooltipProvider` donde haga falta.
-  - Ningún `title=` nuevo se añade sin pasar antes por `Tooltip`.
-- **Files de partida:** `grep -rn 'title=' web/src --include='*.tsx'` (excluyendo el prop `title` de `KpiCard`, que es el encabezado de la tarjeta, no un tooltip nativo)
-- **Riesgo:** bajo — cosmético/accesibilidad, sin tocar datos; requiere `TooltipProvider` en los tests que rendericen los componentes migrados de forma aislada (ver `global-filter-bar.test.tsx` como ejemplo).
+  - Un `Paginated[T]` (o dependencia `limit`/`offset` compartida) reutilizado por las rutas que devuelven listas, aplicado por olas.
+  - `trends` acota rango o expone `freq` de roll-up; documentado en el DTO.
+- **Files de partida:** [api/routes/licitaciones.py](../api/routes/licitaciones.py), [api/routes/analytics.py](../api/routes/analytics.py)
+- **Riesgo:** bajo — aditivo si se hace con defaults generosos.
+
+### [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado
+
+- **Área:** web/src (hooks, componentes y páginas)
+- **Problema:** El 2026-08-10 se añadió `apiGet` (tipado contra el esquema generado) y se migraron los dos hooks que quedaban con interfaces a mano, pero las ~94 llamadas existentes siguen usando `fetchWithAuth`/`apiMutate` con URLs literales y un cast sin validación. Mientras esas llamadas no pasen por el esquema, el job `codegen-drift` de CI custodia un artefacto que no protege el código que lo consume.
+- **Acceptance criteria:**
+  - Las llamadas de ruta estática usan `apiGet`; las de ruta dinámica tipan el retorno con `@/lib/api-types`, nunca con una interfaz local.
+  - Por olas y por carpeta (`hooks/` primero, que es donde se concentran).
+- **Files de partida:** [web/src/lib/api-client.ts](../web/src/lib/api-client.ts), [web/src/lib/api-types.ts](../web/src/lib/api-types.ts)
+- **Riesgo:** bajo — `make web-typecheck` es el guardián.
+
+### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
+
+- **Área:** tests/conftest.py
+- **Problema:** Cada uno de los 157 ficheros de test con BD crea un schema completo (~50 tablas + índices), cierra el pool y abre uno nuevo (TCP + handshake TLS) y luego hace `DROP SCHEMA CASCADE`. El cacheo del DDL entre workers ya está hecho y bien; el coste residual es lineal en número de tests y es el techo estructural de la velocidad de la suite.
+- **Acceptance criteria:**
+  - `CREATE DATABASE … TEMPLATE` una vez por sesión, o aislamiento por transacción con rollback para los tests que no hacen DDL.
+  - Tiempo del job `test` de CI medido antes/después en el PR.
+- **Files de partida:** [tests/conftest.py](../tests/conftest.py)
+- **Riesgo:** medio — toca el aislamiento de toda la suite; un fallo aquí se manifiesta como tests que se contaminan entre sí.
+
+### [P3] Partir los dos módulos-dios: `aggregates.py` y `settings.py`
+
+- **Área:** db/repositories/aggregates.py, config/settings.py
+- **Problema:** `db/repositories/aggregates.py` son 1.327 líneas y 55 funciones en una sola clase que concentra toda la analítica; `config/settings.py` son 946 líneas con 26 validadores en una clase plana que mezcla ejes ortogonales (BD, ML, LLM, auth, scraper, observabilidad) que ya están conceptualmente separados por `APP_PROFILE`. Son los dos ficheros que todo el mundo tiene que tocar, y donde se concentran los conflictos de merge. (`shared/dto.py`, en contraste, está sano: 620 líneas / 45 clases.)
+- **Acceptance criteria:**
+  - `AggregateRepository` partido por dominio (overview / geografía / competidores), **al pasar por cada dominio**, no en un big-bang.
+  - `Settings` en submodelos anidados por eje, preservando los nombres de variables de entorno.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
+- **Riesgo:** medio — mucha superficie; mitigable haciéndolo por partes con la suite verde entre cada una.
+
+### [P3] Entorno de staging y plan de la API
+
+- **Área:** render.yaml, infraestructura (acción del usuario)
+- **Problema:** `render.yaml` define tres servicios, todos en `frankfurt`, ninguno de staging: el primer entorno donde un cambio se ejecuta contra infraestructura real es producción. La API corre además en `plan: free`, con spin-down por inactividad y 512 MB — el mismo contenedor donde ya hubo un OOM. El nuevo `deploy.yml` verifica el deploy, pero verificar no sustituye a tener dónde probar.
+- **Acceptance criteria (decisión del usuario, con coste asociado):**
+  - Decidir si se sube el plan de `tenderflow-api` (elimina spin-down y el techo de memoria).
+  - Decidir si se añade un servicio de staging apuntando a una BD de staging, y si `deploy.yml` despliega allí primero.
+- **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
+- **Riesgo:** bajo técnico, con coste económico — por eso es decisión del usuario.
 
 ---
 

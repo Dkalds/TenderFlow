@@ -424,8 +424,19 @@ class AggregateRepository:
         # `total_activas` daba 0 sobre datos donde el Radar listaba 12 — todos
         # en `ADM`, que no es terminal. Ver `shared/estados.py`.
         abierta = abierta_sql()
+        # Proyección explícita y no `SELECT *`: `filtered` se referencia dos
+        # veces (en `p75` y en el FROM final), así que Postgres la materializa
+        # en lugar de inlinearla. Con `SELECT *` eso son 1,64 M filas completas
+        # —los ~46 bytes de estas cuatro columnas frente a la fila entera— que
+        # con `work_mem` a 2 MB se derraman a disco y se releen dos veces.
+        # Medido en producción el 2026-08-10: 26,5 s de media antes, 20,1 s con
+        # la proyección acotada. Las cuatro columnas son exactamente las que
+        # usan los FILTER de abajo; el WHERE del CTE se evalúa contra
+        # `licitaciones`, así que `_build_where` puede seguir citando cualquier
+        # otra columna.
         sql = (
-            "WITH filtered AS (SELECT * FROM licitaciones WHERE " + where + "), "
+            "WITH filtered AS (SELECT importe, fecha_limite, fecha_publicacion, estado "
+            "                  FROM licitaciones WHERE " + where + "), "
             "p75 AS (SELECT percentile_cont(0.75) WITHIN GROUP (ORDER BY importe) AS v "
             "        FROM filtered WHERE importe IS NOT NULL) "
             "SELECT "

@@ -79,6 +79,13 @@ export interface NavSection {
   label: string;
   icon: LucideIcon;
   pages: NavPage[];
+  /**
+   * @deprecated No lo lee nadie: la visibilidad de la navegación real la
+   * gobierna `ConsoleSpace.visibility` en `lib/console-spaces.ts`, que además
+   * cubre el eje `experimental`. Se conserva mientras `SECTIONS` siga
+   * describiendo el catálogo histórico de páginas; al retirarlo, borrar también
+   * este campo.
+   */
   adminOnly?: boolean;
 }
 

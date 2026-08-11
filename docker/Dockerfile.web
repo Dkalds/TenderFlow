@@ -38,7 +38,11 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+# `wget` (busybox), no `curl`: la imagen base es node:22-alpine, que no trae
+# curl y nunca lo instala. Con `curl -f` el contenedor quedaba permanentemente
+# unhealthy, y como docker-compose encadena `depends_on: service_healthy`, nada
+# que dependiera de `web` llegaba a arrancar.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:3000/ || exit 1
+  CMD wget -q --spider http://localhost:3000/ || exit 1
 
 CMD ["node", "server.js"]

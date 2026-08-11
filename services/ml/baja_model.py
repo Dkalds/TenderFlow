@@ -4,13 +4,26 @@ Tres ``HistGradientBoostingRegressor`` con pérdida cuantílica: la predicción
 de negocio es un **intervalo** ("baja esperada 12-18%, mediana 15%"), no un
 punto — un punto sin incertidumbre invita a sobreconfianza en pujas.
 
-Validación con split temporal estricto (entrena hasta T, valida los últimos
-``valid_meses``). Baseline a batir: la media histórica del segmento
+El target es la baja **agregada por expediente** (una fila por licitación),
+la misma magnitud que sirve ``predicciones_baja`` y que mide
+``services.ml.calibration`` — ver ``db.repositories.ml_dataset``.
+
+Validación **rolling-origin**: varios cortes temporales sucesivos en vez de un
+único holdout de seis meses, cuyo resultado dependía de que ese semestre
+concreto fuera representativo. El criterio de activación usa la media entre
+folds. Baseline a batir: la media histórica suavizada del segmento
 (``baja_media_organo_cpv4`` → ``baja_media_cpv4`` → ``baja_media_organo`` →
-media global del train), que es exactamente lo que hoy sirve
-``baja_de_referencia``. **Criterio de honestidad del RFC**: si el MAE(p50)
-no mejora el baseline ≥10% relativo, la versión se registra pero NO se
-activa, y el serving sigue siendo el baseline.
+media global del train), que es lo que sirve ``baja_de_referencia``. Se compara
+además con pérdida pinball en q=0.5 para las dos, porque el MAE lo minimiza la
+mediana y enfrentar un p50 contra una *media* favorece al modelo.
+
+**Criterio de honestidad del RFC**: si el MAE(p50) no mejora el baseline ≥10%
+relativo, la versión se registra pero NO se activa, y el serving sigue siendo
+el baseline.
+
+Los intervalos se **conformalizan** (split-CQR) sobre un bloque temporal que
+el ajuste no vio: la cobertura del 80% pasa a cumplirse por construcción en vez
+de depender de que los tres cuantiles salgan bien calibrados por su cuenta.
 
 Registro en ``model_versions`` (name="baja_model") con métricas completas;
 activación manual vía ``db.model_registry.activate_version`` o automática si
@@ -20,6 +33,8 @@ activación manual vía ``db.model_registry.activate_version`` o automática si
 from __future__ import annotations
 
 import hashlib
+import math
+import random
 from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
@@ -44,6 +59,7 @@ log = get_logger(__name__)
 MODEL_NAME = "baja_model"
 QUANTILES = (0.10, 0.50, 0.90)
 MIN_TRAIN_SAMPLES = 200
+_MIN_VALID_SAMPLES = 30
 _MODEL_PATH = Path(__file__).parents[2] / "data" / "models" / "baja_model.pkl"
 # Tope físico del target: una baja real vive en [0, 1); el clip evita que
 # outliers residuales empujen predicciones absurdas.
@@ -51,6 +67,8 @@ _BAJA_MAX = 0.95
 # Criterios de activación (acceptance del RFC).
 MEJORA_MINIMA_RELATIVA = 0.10
 COBERTURA_OBJETIVO = (0.75, 0.85)
+# Cobertura nominal del intervalo servido (p10..p90).
+_COBERTURA_NOMINAL = 0.80
 
 _BASELINE_FALLBACK = ("baja_media_organo_cpv4", "baja_media_cpv4", "baja_media_organo")
 
@@ -60,6 +78,36 @@ MAX_CATEGORIAS = 255
 # Bucket de cola larga cuando una columna supera el techo. El sentinel no puede
 # colisionar con un valor real (CPV, CCAA, tipo de contrato…).
 CATEGORIA_OTRAS = "__otras__"
+
+# Hiperparámetros de partida (los que estuvieron fijos desde la Fase 6.1).
+_HIPER_BASE: dict[str, Any] = {
+    "max_iter": 300,
+    "learning_rate": 0.06,
+    "max_depth": 6,
+    "min_samples_leaf": 30,
+    "l2_regularization": 0.0,
+}
+# Rejilla de la búsqueda aleatoria. Se explora solo con q=0.5 y los ganadores
+# se reutilizan en p10/p90: triplicar la búsqueda para afinar las colas no
+# compensa en un reentrenamiento mensual.
+_REJILLA: dict[str, list[Any]] = {
+    "max_iter": [200, 300, 500],
+    "learning_rate": [0.03, 0.06, 0.10],
+    "max_depth": [4, 6, 8, None],
+    "min_samples_leaf": [15, 30, 60],
+    "l2_regularization": [0.0, 0.1, 1.0],
+}
+
+
+class FeatureSchemaMismatch(RuntimeError):
+    """El artefacto se entrenó con otro conjunto (u orden) de columnas.
+
+    ``BajaModel.predict`` construye la matriz con el ``FEATURE_COLUMNS`` del
+    módulo, no con el que vio el ajuste. Si el ``.pkl`` activo es anterior a un
+    cambio de features, sus árboles reciben columnas distintas en las mismas
+    posiciones y devuelven números sin significado, en silencio. El serving
+    trata esta excepción degradando al baseline (``services.ml.scoring``).
+    """
 
 
 @dataclass
@@ -84,8 +132,10 @@ def _aprender_categorias(filas: list[FilaDataset], col: str) -> dict[str, int]:
     Se conservan los ``MAX_CATEGORIAS - 1`` valores más frecuentes y el resto
     cae en ``CATEGORIA_OTRAS``: la cola larga de CPV son códigos con un puñado
     de observaciones cada uno, sin señal propia para un árbol, y ``cpv2`` ya
-    aporta la división gruesa. El orden es determinista (frecuencia desc, valor
-    asc) para que dos entrenamientos sobre el mismo dataset den el mismo mapa.
+    aporta la división gruesa. Lo mismo vale para ``organo`` y ``provincia``,
+    que entraron después con cardinalidad alta por naturaleza. El orden es
+    determinista (frecuencia desc, valor asc) para que dos entrenamientos sobre
+    el mismo dataset den el mismo mapa.
     """
     frecuencias = Counter(str(f.features[col]) for f in filas)
     if len(frecuencias) <= MAX_CATEGORIAS:
@@ -130,7 +180,7 @@ def _codificar(
         for j, col in enumerate(FEATURE_COLUMNS):
             valor = fila.features.get(col)
             if col in CATEGORICAL_COLUMNS:
-                mapa = cats[col]
+                mapa = cats.get(col, {})
                 X[i, j] = float(mapa.get(str(valor), mapa.get(CATEGORIA_OTRAS, -1)))
             elif valor is not None:
                 X[i, j] = float(valor)
@@ -143,6 +193,22 @@ def _baseline(fila: FilaDataset, media_global: float) -> float:
         if valor is not None:
             return float(valor)
     return media_global
+
+
+def _pesos_recencia(filas: list[FilaDataset], halflife_meses: float) -> npt.NDArray[np.float64]:
+    """Pesos que decaen con la antigüedad (vida media en meses).
+
+    El drift de bajas está monitorizado (``services.ml.drift``) pero el ajuste
+    trataba una adjudicación de hace cinco años igual que la del mes pasado.
+    ``halflife_meses <= 0`` desactiva el decaimiento (pesos uniformes).
+    """
+    import numpy as np
+
+    if halflife_meses <= 0 or not filas:
+        return np.ones(len(filas), dtype=np.float64)
+    fin = max(_fecha_dt(f.fecha) for f in filas)
+    edades = np.array([(fin - _fecha_dt(f.fecha)).days / 30.0 for f in filas], dtype=np.float64)
+    return np.power(0.5, edades / halflife_meses)
 
 
 class BajaModel:
@@ -158,17 +224,49 @@ class BajaModel:
         self.categorias = categorias
         self.metadata = metadata
 
+    @property
+    def conformal_offset(self) -> float:
+        """Corrección de anchura del intervalo aprendida en calibración."""
+        return float(self.metadata.get("conformal_offset") or 0.0)
+
+    def verificar_features(self) -> None:
+        """Comprueba que el artefacto se entrenó con las columnas actuales.
+
+        Falla cerrado: un ``.pkl`` sin ``feature_columns`` en su metadata no se
+        puede validar, y servir predicciones de un layout equivocado es peor
+        que no servirlas (mismo criterio que el MISMATCH de sha256 en
+        ``shared.model_integrity``).
+        """
+        registradas = self.metadata.get("feature_columns")
+        if registradas is None:
+            raise FeatureSchemaMismatch(
+                f"El artefacto de {MODEL_NAME} no registra feature_columns; "
+                "no se puede verificar contra el layout actual"
+            )
+        if tuple(registradas) != tuple(FEATURE_COLUMNS):
+            faltan = sorted(set(FEATURE_COLUMNS) - set(registradas))
+            sobran = sorted(set(registradas) - set(FEATURE_COLUMNS))
+            raise FeatureSchemaMismatch(
+                f"El artefacto de {MODEL_NAME} se entrenó con otras columnas "
+                f"(faltan={faltan}, sobran={sobran}, n={len(registradas)} vs "
+                f"{len(FEATURE_COLUMNS)}): reentrená antes de servirlo"
+            )
+
     def predict(self, filas: list[FilaDataset]) -> list[Prediccion]:
         if not filas:
             return []
+        self.verificar_features()
         X, _ = _codificar(filas, self.categorias)
         por_quantil = {q: self.modelos[q].predict(X) for q in QUANTILES}
+        offset = self.conformal_offset
         out: list[Prediccion] = []
         for i, fila in enumerate(filas):
+            crudos = {q: float(por_quantil[q][i]) for q in QUANTILES}
+            # El offset conformal ensancha (o estrecha, si sobraba anchura) el
+            # intervalo; la mediana no se toca.
+            ajustados = (crudos[0.10] - offset, crudos[0.50], crudos[0.90] + offset)
             # Monotonicidad: los tres fits son independientes y pueden cruzarse.
-            p10, p50, p90 = sorted(
-                min(max(float(por_quantil[q][i]), 0.0), _BAJA_MAX) for q in QUANTILES
-            )
+            p10, p50, p90 = sorted(min(max(v, 0.0), _BAJA_MAX) for v in ajustados)
             out.append(Prediccion(licitacion_id=fila.licitacion_id, p10=p10, p50=p50, p90=p90))
         return out
 
@@ -223,11 +321,191 @@ def _split_temporal(
     corte = _fecha_dt(filas[-1].fecha) - timedelta(days=valid_meses * 30)
     train = [f for f in filas if _fecha_dt(f.fecha) < corte]
     valid = [f for f in filas if _fecha_dt(f.fecha) >= corte]
-    if len(train) < MIN_TRAIN_SAMPLES // 2 or len(valid) < 30:
+    if len(train) < MIN_TRAIN_SAMPLES // 2 or len(valid) < _MIN_VALID_SAMPLES:
         # Histórico corto: split temporal 80/20 manteniendo el orden.
         k = int(len(filas) * 0.8)
         train, valid = filas[:k], filas[k:]
     return train, valid
+
+
+def _folds_rolling(
+    filas: list[FilaDataset], valid_meses: int, n_folds: int
+) -> list[tuple[list[FilaDataset], list[FilaDataset]]]:
+    """Cortes sucesivos con ventana de train expansiva (rolling origin).
+
+    El fold más antiguo entrena con menos historia y valida el bloque
+    siguiente; el más reciente entrena con todo menos el último bloque. Si el
+    histórico no da para ningún fold válido, cae al split único de
+    :func:`_split_temporal`, que es el comportamiento anterior.
+    """
+    fin = _fecha_dt(filas[-1].fecha)
+    ancho = timedelta(days=valid_meses * 30)
+    folds: list[tuple[list[FilaDataset], list[FilaDataset]]] = []
+    for k in range(n_folds, 0, -1):
+        inicio = fin - ancho * k
+        limite = fin - ancho * (k - 1)
+        train = [f for f in filas if _fecha_dt(f.fecha) < inicio]
+        valid = [f for f in filas if inicio <= _fecha_dt(f.fecha) < limite]
+        if len(train) >= MIN_TRAIN_SAMPLES // 2 and len(valid) >= _MIN_VALID_SAMPLES:
+            folds.append((train, valid))
+    return folds or [_split_temporal(filas, valid_meses)]
+
+
+def _fit_quantil(
+    q: float,
+    X: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    pesos: npt.NDArray[np.float64],
+    cat_mask: list[bool],
+    hiper: dict[str, Any],
+) -> Any:
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    est = HistGradientBoostingRegressor(
+        loss="quantile",
+        quantile=q,
+        categorical_features=cat_mask,
+        random_state=42,
+        **hiper,
+    )
+    est.fit(X, y, sample_weight=pesos)
+    return est
+
+
+def _combinaciones(n: int, semilla: int = 42) -> list[dict[str, Any]]:
+    """``n`` combinaciones distintas de :data:`_REJILLA`, más la base.
+
+    Determinista: dos entrenamientos sobre el mismo dataset exploran las mismas
+    combinaciones y eligen la misma.
+    """
+    # S311: muestreo de hiperparámetros, no criptografía. La semilla fija es un
+    # requisito aquí — dos entrenamientos del mismo dataset deben explorar lo
+    # mismo y elegir lo mismo.
+    rng = random.Random(semilla)  # noqa: S311
+    combos: list[dict[str, Any]] = [dict(_HIPER_BASE)]
+    vistas = {tuple(sorted(_HIPER_BASE.items(), key=lambda kv: kv[0]))}
+    intentos = 0
+    while len(combos) <= n and intentos < n * 20:
+        intentos += 1
+        combo = {k: rng.choice(v) for k, v in sorted(_REJILLA.items())}
+        clave = tuple(sorted(combo.items(), key=lambda kv: kv[0]))
+        if clave in vistas:
+            continue
+        vistas.add(clave)
+        combos.append(combo)
+    return combos
+
+
+def _y_de(filas: list[FilaDataset]) -> npt.NDArray[np.float64]:
+    import numpy as np
+
+    return np.array([min(float(f.baja or 0.0), _BAJA_MAX) for f in filas], dtype=np.float64)
+
+
+def _buscar_hiper(
+    folds: list[tuple[list[FilaDataset], list[FilaDataset]]],
+    cat_mask: list[bool],
+    n_combos: int,
+    halflife: float,
+) -> tuple[dict[str, Any], int]:
+    """Elige hiperparámetros por pinball(q=0.5) medio sobre los folds.
+
+    Antes no había búsqueda: los cuatro valores estaban fijos en el código para
+    los tres cuantiles. Se explora solo q=0.5 y el ganador se reutiliza en las
+    colas. ``n_combos <= 0`` devuelve la base sin ajustar nada.
+    """
+    import numpy as np
+    from sklearn.metrics import mean_pinball_loss
+
+    if n_combos <= 0:
+        return dict(_HIPER_BASE), 0
+
+    combos = _combinaciones(n_combos)
+    mejor: dict[str, Any] = dict(_HIPER_BASE)
+    mejor_perdida = math.inf
+    for combo in combos:
+        perdidas: list[float] = []
+        for train, valid in folds:
+            X_tr, cats = _codificar(train)
+            X_va, _ = _codificar(valid, cats)
+            est = _fit_quantil(
+                0.50, X_tr, _y_de(train), _pesos_recencia(train, halflife), cat_mask, combo
+            )
+            pred = np.clip(est.predict(X_va), 0.0, _BAJA_MAX)
+            perdidas.append(float(mean_pinball_loss(_y_de(valid), pred, alpha=0.50)))
+        media = sum(perdidas) / len(perdidas)
+        if media < mejor_perdida:
+            mejor_perdida, mejor = media, combo
+    log.info("baja_model_hiper_elegidos", **mejor, pinball_p50=round(mejor_perdida, 5))
+    return mejor, len(combos)
+
+
+def _offset_conformal(
+    p10: npt.NDArray[np.float64],
+    p90: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    cobertura: float = _COBERTURA_NOMINAL,
+) -> float:
+    """Corrección split-CQR para que el intervalo cubra ``cobertura``.
+
+    Score de conformidad de Romano et al.: ``E = max(p10 - y, y - p90)``, que es
+    positivo cuando el punto queda fuera del intervalo y negativo cuando queda
+    holgadamente dentro. El cuantil ``⌈(n+1)·cobertura⌉/n`` de esos scores es la
+    cantidad que hay que sumar a cada extremo para alcanzar la cobertura
+    deseada; puede ser **negativa**, y entonces estrecha un intervalo que
+    sobraba de ancho. Esa simetría es lo que hace que la cobertura empírica
+    aterrice en el objetivo en vez de simplemente superarlo.
+    """
+    import numpy as np
+
+    n = len(y)
+    if n < _MIN_VALID_SAMPLES:
+        return 0.0
+    scores = np.maximum(p10 - y, y - p90)
+    nivel = min(1.0, math.ceil((n + 1) * cobertura) / n)
+    return float(np.quantile(scores, nivel, method="higher"))
+
+
+def _metricas_fold(
+    modelos: dict[float, Any],
+    valid: list[FilaDataset],
+    X_valid: npt.NDArray[np.float64],
+    media_global: float,
+    mediana_train: float,
+    offset: float,
+) -> dict[str, float]:
+    import numpy as np
+    from sklearn.metrics import mean_absolute_error, mean_pinball_loss
+
+    y = _y_de(valid)
+    pred = {q: np.clip(modelos[q].predict(X_valid), 0.0, _BAJA_MAX) for q in QUANTILES}
+    p10 = np.clip(
+        np.minimum(pred[0.10], np.minimum(pred[0.50], pred[0.90])) - offset, 0.0, _BAJA_MAX
+    )
+    p90 = np.clip(
+        np.maximum(pred[0.90], np.maximum(pred[0.50], pred[0.10])) + offset, 0.0, _BAJA_MAX
+    )
+
+    baseline = np.array([_baseline(f, media_global) for f in valid], dtype=np.float64)
+    mae_p50 = float(mean_absolute_error(y, pred[0.50]))
+    mae_baseline = float(mean_absolute_error(y, baseline))
+    return {
+        "mae_p50": mae_p50,
+        "mae_baseline": mae_baseline,
+        "mejora_relativa": (1.0 - mae_p50 / mae_baseline) if mae_baseline > 0 else 0.0,
+        # Misma pérdida para modelo y baseline: el MAE lo minimiza la mediana,
+        # así que enfrentar un p50 contra una media inclina la comparación.
+        "pinball_p50": float(mean_pinball_loss(y, pred[0.50], alpha=0.50)),
+        "pinball_p50_baseline": float(mean_pinball_loss(y, baseline, alpha=0.50)),
+        # Suelo de cordura: predecir siempre la mediana del train. La mediana
+        # sale del TRAIN, no del valid, para no mirar el target que se evalúa.
+        "mae_mediana_constante": float(
+            mean_absolute_error(y, np.full(len(y), mediana_train, dtype=np.float64))
+        ),
+        "pinball_p10": float(mean_pinball_loss(y, pred[0.10], alpha=0.10)),
+        "pinball_p90": float(mean_pinball_loss(y, pred[0.90], alpha=0.90)),
+        "cobertura_intervalo_80": float(np.mean((y >= p10) & (y <= p90))),
+    }
 
 
 def entrenar(
@@ -239,64 +517,129 @@ def entrenar(
 ) -> dict[str, Any]:
     """Entrena p10/p50/p90, valida contra el baseline y registra la versión.
 
+    Secuencia: filtra el target, elige hiperparámetros y mide con
+    rolling-origin, ajusta el modelo final, **conformaliza** el intervalo sobre
+    un bloque que el ajuste no vio y reporta la media de métricas entre folds.
+
     ``activar=None`` aplica la política del RFC: solo activa si
-    ``ML_PRED_AUTO_ACTIVE`` está encendido Y el modelo bate el baseline ≥10%
+    ``ML_PRED_AUTO_ACTIVATE`` está encendido Y el modelo bate el baseline ≥10%
     relativo en MAE Y la cobertura del intervalo 80% nominal cae en [75, 85]%.
     Devuelve el resumen con métricas (clave ``activado``).
     """
     import numpy as np
-    from sklearn.ensemble import HistGradientBoostingRegressor
-    from sklearn.metrics import mean_absolute_error, mean_pinball_loss
 
-    filas, _ = construir_dataset_baja(hasta=hasta)
+    from config import settings
+
+    filas_todas, _ = construir_dataset_baja(hasta=hasta)
+    # Una baja negativa (adjudicado por encima del presupuesto: modificados o
+    # errores de fuente) sobrevivía en `y` porque el clip solo tenía techo,
+    # mientras `predict` acota a [0, _BAJA_MAX]: esas filas tiraban de los tres
+    # ajustes hacia una región que el modelo no puede predecir.
+    filas = [f for f in filas_todas if (f.baja or 0.0) >= 0.0]
+    descartadas = len(filas_todas) - len(filas)
     if len(filas) < MIN_TRAIN_SAMPLES:
         log.warning("baja_model_insufficient_data", n=len(filas), min=MIN_TRAIN_SAMPLES)
         return {"status": "datos_insuficientes", "n": len(filas)}
 
-    train, valid = _split_temporal(filas, valid_meses)
-    X_train, categorias = _codificar(train)
-    X_valid, _ = _codificar(valid, categorias)
-    y_train = np.array([min(float(f.baja or 0.0), _BAJA_MAX) for f in train])
-    y_valid = np.array([min(float(f.baja or 0.0), _BAJA_MAX) for f in valid])
+    halflife = float(getattr(settings, "ML_BAJA_HALFLIFE_MESES", 18.0))
+    n_folds = int(getattr(settings, "ML_BAJA_FOLDS", 3))
+    n_combos = int(getattr(settings, "ML_BAJA_SEARCH_COMBOS", 8))
+    usar_conformal = bool(getattr(settings, "ML_BAJA_CONFORMAL", True))
+
     cat_mask = [col in CATEGORICAL_COLUMNS for col in FEATURE_COLUMNS]
+    folds = _folds_rolling(filas, valid_meses, n_folds)
+    hiper, n_explorados = _buscar_hiper(folds, cat_mask, n_combos, halflife)
 
-    modelos: dict[float, Any] = {}
-    for q in QUANTILES:
-        est = HistGradientBoostingRegressor(
-            loss="quantile",
-            quantile=q,
-            max_iter=300,
-            learning_rate=0.06,
-            max_depth=6,
-            min_samples_leaf=30,
-            categorical_features=cat_mask,
-            random_state=42,
-        )
-        est.fit(X_train, y_train)
-        modelos[q] = est
+    # Bloque de calibración: el trozo inmediatamente anterior al último fold de
+    # validación. El ajuste final no lo ve, así que el offset conformal y la
+    # cobertura reportada no se miden sobre los mismos datos.
+    train_final, valid_final = folds[-1]
+    calibracion: list[FilaDataset] = []
+    if usar_conformal and len(train_final) >= MIN_TRAIN_SAMPLES:
+        corte_cal = _fecha_dt(valid_final[0].fecha) - timedelta(days=valid_meses * 30)
+        ajuste = [f for f in train_final if _fecha_dt(f.fecha) < corte_cal]
+        candidata = [f for f in train_final if _fecha_dt(f.fecha) >= corte_cal]
+        if len(ajuste) >= MIN_TRAIN_SAMPLES and len(candidata) >= _MIN_VALID_SAMPLES:
+            train_final, calibracion = ajuste, candidata
 
-    pred = {q: np.clip(modelos[q].predict(X_valid), 0.0, _BAJA_MAX) for q in QUANTILES}
-    p10 = np.minimum(pred[0.10], np.minimum(pred[0.50], pred[0.90]))
-    p90 = np.maximum(pred[0.90], np.maximum(pred[0.50], pred[0.10]))
+    X_train, categorias = _codificar(train_final)
+    y_train = _y_de(train_final)
+    pesos = _pesos_recencia(train_final, halflife)
+    modelos: dict[float, Any] = {
+        q: _fit_quantil(q, X_train, y_train, pesos, cat_mask, hiper) for q in QUANTILES
+    }
 
     media_global = float(y_train.mean())
-    baseline_pred = np.array([_baseline(f, media_global) for f in valid])
+    offset = 0.0
+    if calibracion:
+        X_cal, _ = _codificar(calibracion, categorias)
+        pred_cal = {q: np.clip(modelos[q].predict(X_cal), 0.0, _BAJA_MAX) for q in QUANTILES}
+        offset = _offset_conformal(
+            np.minimum(pred_cal[0.10], pred_cal[0.50]),
+            np.maximum(pred_cal[0.90], pred_cal[0.50]),
+            _y_de(calibracion),
+        )
 
-    mae_p50 = float(mean_absolute_error(y_valid, pred[0.50]))
-    mae_baseline = float(mean_absolute_error(y_valid, baseline_pred))
-    mejora = 1.0 - mae_p50 / mae_baseline if mae_baseline > 0 else 0.0
-    cobertura = float(np.mean((y_valid >= p10) & (y_valid <= p90)))
-    metricas = {
-        "mae_p50": round(mae_p50, 5),
-        "mae_baseline": round(mae_baseline, 5),
-        "mejora_relativa": round(mejora, 4),
-        "pinball_p10": round(float(mean_pinball_loss(y_valid, pred[0.10], alpha=0.10)), 5),
-        "pinball_p90": round(float(mean_pinball_loss(y_valid, pred[0.90], alpha=0.90)), 5),
-        "cobertura_intervalo_80": round(cobertura, 4),
-        "n_train": len(train),
-        "n_valid": len(valid),
-        "valid_desde": valid[0].fecha,
-        "valid_hasta": valid[-1].fecha,
+    # Métricas por fold con los hiperparámetros elegidos. El último fold se
+    # evalúa con el modelo que se va a serializar (no con uno reajustado sobre
+    # más datos): si el bloque de calibración se separó del train, reajustar
+    # daría métricas de un modelo distinto del que se guarda.
+    por_fold: list[dict[str, float]] = []
+    for i, (train, valid) in enumerate(folds):
+        if i == len(folds) - 1:
+            X_va, _ = _codificar(valid, categorias)
+            por_fold.append(
+                _metricas_fold(
+                    modelos, valid, X_va, media_global, float(np.median(y_train)), offset
+                )
+            )
+            continue
+        X_tr, cats_f = _codificar(train)
+        X_va, _ = _codificar(valid, cats_f)
+        y_tr = _y_de(train)
+        modelos_f = {
+            q: _fit_quantil(q, X_tr, y_tr, _pesos_recencia(train, halflife), cat_mask, hiper)
+            for q in QUANTILES
+        }
+        por_fold.append(
+            _metricas_fold(
+                modelos_f, valid, X_va, float(y_tr.mean()), float(np.median(y_tr)), offset
+            )
+        )
+
+    def _media(clave: str) -> float:
+        return round(sum(f[clave] for f in por_fold) / len(por_fold), 5)
+
+    def _desv(clave: str) -> float:
+        valores = [f[clave] for f in por_fold]
+        m = sum(valores) / len(valores)
+        return round(math.sqrt(sum((v - m) ** 2 for v in valores) / len(valores)), 5)
+
+    mejora = _media("mejora_relativa")
+    cobertura = _media("cobertura_intervalo_80")
+    metricas: dict[str, Any] = {
+        "mae_p50": _media("mae_p50"),
+        "mae_baseline": _media("mae_baseline"),
+        "mejora_relativa": mejora,
+        "pinball_p10": _media("pinball_p10"),
+        "pinball_p50": _media("pinball_p50"),
+        "pinball_p50_baseline": _media("pinball_p50_baseline"),
+        "pinball_p90": _media("pinball_p90"),
+        "mae_mediana_constante": _media("mae_mediana_constante"),
+        "cobertura_intervalo_80": cobertura,
+        "mae_p50_std_folds": _desv("mae_p50"),
+        "cobertura_std_folds": _desv("cobertura_intervalo_80"),
+        "n_folds": len(por_fold),
+        "n_train": len(train_final),
+        "n_valid": len(valid_final),
+        "n_calibracion": len(calibracion),
+        "n_descartadas_negativas": descartadas,
+        "conformal_offset": round(offset, 5),
+        "hiper": hiper,
+        "hiper_explorados": n_explorados,
+        "halflife_meses": halflife,
+        "valid_desde": valid_final[0].fecha,
+        "valid_hasta": valid_final[-1].fecha,
         # Cardinalidad efectiva por columna categórica: es la métrica que se
         # acercó al techo de 255 sin que nadie la mirara hasta que reventó.
         "categorias": {col: len(categorias[col]) for col in CATEGORICAL_COLUMNS},
@@ -307,14 +650,16 @@ def entrenar(
         and COBERTURA_OBJETIVO[0] <= cobertura <= COBERTURA_OBJETIVO[1]
     )
     if activar is None:
-        from config import settings
-
         activar = bool(getattr(settings, "ML_PRED_AUTO_ACTIVATE", False)) and cumple
 
     modelo = BajaModel(
         modelos,
         categorias,
-        metadata={"feature_columns": list(FEATURE_COLUMNS), "metrics": metricas},
+        metadata={
+            "feature_columns": list(FEATURE_COLUMNS),
+            "conformal_offset": offset,
+            "metrics": metricas,
+        },
     )
     path = modelo.save(model_path)
     sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -326,7 +671,7 @@ def entrenar(
         path=str(path),
         sha256=sha256,
         metrics=metricas,
-        n_samples=len(train),
+        n_samples=len(train_final),
         activate=bool(activar),
         notes="cumple criterios RFC 20260611-2" if cumple else "NO bate baseline — no activar",
     )

@@ -624,11 +624,16 @@ def test_oauth_wildcard_domain_allows_any_email(monkeypatch):
 # Al final del fichero a propósito: `.secrets.baseline` referencia por número de
 # línea un literal de este módulo, así que insertar tests más arriba lo desplaza
 # y obliga a regenerar un fichero que AGENTS.md §6 pone bajo gate humano.
-def test_api_threadpool_tokens_default_is_4():
-    """El default reproduce el valor que estuvo hardcodeado en api/app.py."""
+def test_api_threadpool_tokens_default_is_24():
+    """El default es el techo ampliado en #159, no el 4 que estuvo hardcodeado.
+
+    Los 4 hilos originales acotaban la analítica pandas, pero castigaban por
+    igual a las lecturas IO-bound. Ahora lo CPU-bound tiene su propio bulkhead
+    (``API_CPU_BOUND_TOKENS``) y el pool general puede respirar.
+    """
     from config.settings import Settings
 
-    assert Settings().API_THREADPOOL_TOKENS == 4
+    assert Settings().API_THREADPOOL_TOKENS == 24
 
 
 def test_api_threadpool_tokens_override():

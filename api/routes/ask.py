@@ -304,13 +304,15 @@ def _stream_sse(
     return _generate()
 
 
-def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[str, None]:
-    """Prepara contexto + historial y devuelve el stream SSE del LLM."""
-    from llm.budget import bind_budget_subject
-    from llm.client import stream_llm_response
+def _prepare_ask_context(request: AskRequest) -> tuple[list[dict[str, Any]], PromptMode]:
+    """Recupera los documentos de contexto para la pregunta (trabajo de BD).
 
-    _validate_model(request.model)
-
+    Se separa de ``_stream_ask`` para poder despacharla al threadpool: es la
+    fase pesada de ``/ask`` (anuncio completo + fragmentos de pliego, o bien
+    retrieval FTS + pgvector) y corría en el event loop, bloqueando la API
+    entera durante cientos de milisegundos por pregunta. El streaming de tokens
+    del LLM ya estaba correctamente aislado en un thread.
+    """
     mode: PromptMode = "general"
     docs: list[dict[str, Any]] = []
 
@@ -341,6 +343,18 @@ def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[st
             tecnologia=request.tecnologia,
         )
         mode = "general"
+
+    return docs, mode
+
+
+async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[str, None]:
+    """Prepara contexto + historial y devuelve el stream SSE del LLM."""
+    from llm.budget import bind_budget_subject
+    from llm.client import stream_llm_response
+
+    _validate_model(request.model)
+
+    docs, mode = await run_db(_prepare_ask_context, request)
 
     keywords = [w for w in request.question.split() if len(w) > 3][:10]
     history: list[ChatMessage] = [
@@ -416,7 +430,7 @@ async def ask_question(
 
     _check_budget(user)
 
-    generator = _stream_ask(body, _budget_subject(user))
+    generator = await _stream_ask(body, _budget_subject(user))
 
     return StreamingResponse(
         generator,
@@ -481,6 +495,9 @@ async def resumen_licitacion(
 
     scope_key = _budget_subject(user)
 
+    # Igual que en `/ask`: el armado del contexto toca BD y no puede correr en
+    # el event loop. `primary_doc_from_context` también va a BD, así que viaja
+    # en el mismo salto al threadpool en vez de en uno propio.
     def _load_context() -> tuple[LicitacionContext, dict[str, Any]] | None:
         """Contexto + documento principal, en el threadpool (ambos van a BD)."""
         loaded = build_licitacion_context(id_externo, None)

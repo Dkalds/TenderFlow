@@ -25,10 +25,21 @@ log = get_logger(__name__)
 
 _SESSION_TTL_HOURS = 24
 _SESSION_IDLE_MINUTES = 30
+# Cada request autenticada refrescaba ``last_seen_at``. Con un umbral de
+# inactividad de 30 minutos, escribir en cada petición no aporta precisión: solo
+# convierte toda lectura autenticada en una escritura. Se refresca como mucho
+# una vez por minuto.
+_LAST_SEEN_THROTTLE_SECONDS = 60
 
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _as_utc(value: str) -> datetime:
+    """Parsea un timestamp ISO de la BD como datetime aware en UTC."""
+    parsed = datetime.fromisoformat(value)
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
 
 def create_session(
@@ -107,6 +118,110 @@ def validate_session(token: str) -> dict[str, Any] | None:
         "expires_at": expires_at,
         "ip": ip,
         "mfa_verified_at": mfa_verified_at,
+    }
+
+
+def validate_session_principal(token: str) -> dict[str, Any] | None:
+    """Valida la sesión y devuelve sesión + usuario + estado MFA en UNA consulta.
+
+    Es el camino que recorre **toda** petición autenticada por cookie del SPA.
+    Componerlo con ``validate_session`` + ``get_user_by_id`` +
+    ``is_totp_required`` costaba de 3 a 5 aperturas de conexión en serie, cada
+    una con su transacción de escritura: a los ~80 ms de RTT contra Supabase,
+    varias décimas de segundo gastadas antes de empezar el trabajo real de la
+    petición. Aquí es un SELECT con dos LEFT JOIN.
+
+    Además lee ``totp_secrets.confirmed`` sin descifrar el secreto:
+    ``is_totp_required`` pasaba por ``get_totp_secret``, que descifra el TOTP
+    entero para acabar mirando un booleano.
+
+    Devuelve ``None`` si la sesión no existe, está revocada, expiró, lleva
+    inactiva más de ``_SESSION_IDLE_MINUTES`` (en cuyo caso la revoca) o su
+    usuario está desactivado. El llamador no distingue entre esos casos a
+    propósito: todos son "sesión inválida" y detallarlos filtra si la cuenta
+    existe.
+    """
+    token_hash = _hash_token(token)
+    now = datetime.now(UTC)
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT s.user_id, s.created_at, s.expires_at, s.revoked, s.ip, "
+            "       s.last_seen_at, s.mfa_verified_at, "
+            "       u.id, u.email, u.display_name, u.is_admin, u.deactivated_at, "
+            "       COALESCE(t.confirmed, 0) "
+            "FROM sessions s "
+            "LEFT JOIN users u ON u.id = s.user_id "
+            "LEFT JOIN totp_secrets t ON t.user_id = s.user_id "
+            "WHERE s.token_hash = %s",
+            (token_hash,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        (
+            user_id,
+            created_at,
+            expires_at,
+            revoked,
+            ip,
+            last_seen_at,
+            mfa_verified_at,
+            u_id,
+            email,
+            display_name,
+            is_admin,
+            deactivated_at,
+            totp_confirmed,
+        ) = row
+
+        if revoked:
+            return None
+
+        try:
+            expired = now > _as_utc(expires_at)
+            last_seen = _as_utc(last_seen_at) if last_seen_at else None
+        except Exception:
+            # Camino de autenticación: un fallo al interpretar las marcas de
+            # tiempo se presenta como "sesión inválida", indistinguible para el
+            # usuario de un token caducado. Queda constancia en el log.
+            log.warning("session_validation_failed", exc_info=True)
+            return None
+
+        if expired:
+            return None
+
+        if last_seen is not None and now - last_seen > timedelta(minutes=_SESSION_IDLE_MINUTES):
+            c.execute(
+                "UPDATE sessions SET revoked = 1, revoked_at = %s WHERE token_hash = %s",
+                (now.isoformat(), token_hash),
+            )
+            return None
+
+        # Usuario inexistente o desactivado: la sesión ya no vale.
+        if u_id is None or deactivated_at is not None:
+            return None
+
+        stale = (
+            last_seen is None or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS
+        )
+        if stale:
+            c.execute(
+                "UPDATE sessions SET last_seen_at = %s WHERE token_hash = %s AND revoked = 0",
+                (now.isoformat(), token_hash),
+            )
+
+    return {
+        "user_id": user_id,
+        "authenticated_at": created_at,
+        "expires_at": expires_at,
+        "ip": ip,
+        "mfa_verified_at": mfa_verified_at,
+        "id": u_id,
+        "email": email,
+        "display_name": display_name,
+        "is_admin": bool(is_admin),
+        "mfa_required": bool(totp_confirmed),
     }
 
 

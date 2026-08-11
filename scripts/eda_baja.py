@@ -1,8 +1,9 @@
 """EDA reproducible del target de baja (paso 2 del RFC 20260611-2).
 
-Imprime: distribución real del target, volumen de pares válidos por segmento
-CPV-2, % de n_ofertas_recibidas poblado y candidatos a truncamiento de
-outliers. Decide los parámetros del modelo sin tocar código de producción.
+Imprime: distribución real del target (baja agregada por expediente), volumen
+de pares válidos por segmento CPV-2, cobertura de la competencia histórica del
+segmento y candidatos a truncamiento de outliers. Decide los parámetros del
+modelo sin tocar código de producción.
 
 Uso: python scripts/eda_baja.py [--hasta YYYY-MM-DD]
 """
@@ -37,7 +38,10 @@ def main() -> int:
     def pct(p: float) -> float:
         return bajas[min(int(n * p), n - 1)]
 
-    print(f"== Target: baja = (importe - adjudicado) / importe — {n} pares válidos ==")
+    print(
+        f"== Target: baja agregada = 1 - adjudicado / presupuesto de los lotes "
+        f"adjudicados — {n} expedientes válidos =="
+    )
     print(f"  media={sum(bajas) / n:.4f}  p5={pct(0.05):.4f}  p25={pct(0.25):.4f}")
     print(f"  p50={pct(0.50):.4f}  p75={pct(0.75):.4f}  p95={pct(0.95):.4f}  p99={pct(0.99):.4f}")
     print(
@@ -49,8 +53,14 @@ def main() -> int:
         f"(el modelo usa 0.95 fijo; ajustar si p99 difiere mucho)"
     )
 
-    con_ofertas = sum(1 for f in filas if f.features.get("n_ofertas") is not None)
-    print(f"\n== n_ofertas_recibidas poblado: {con_ofertas}/{n} ({con_ofertas * 100 / n:.1f}%) ==")
+    # `n_ofertas` ya no es feature (solo existe después de adjudicar, así que en
+    # scoring era NaN siempre). Lo que se mide ahora es la cobertura de la
+    # competencia HISTÓRICA del segmento, que sí está disponible al predecir.
+    con_ofertas = sum(1 for f in filas if f.features.get("n_ofertas_media_cpv4") is not None)
+    print(
+        f"\n== Competencia histórica por CPV-4 poblada: {con_ofertas}/{n} "
+        f"({con_ofertas * 100 / n:.1f}%) =="
+    )
 
     por_cpv2 = Counter(str(f.features["cpv2"]) for f in filas)
     print("\n== Volumen por CPV-2 (top 15) ==")

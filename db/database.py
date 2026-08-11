@@ -18,6 +18,8 @@ nivel:
 - ``connect()``             — context manager de escritura (commit/rollback).
 - ``connect_read()``        — context manager de solo lectura.
 - ``close_pool()``          — cierra conexiones del hilo actual y el pool Postgres.
+- ``ping()``                — ``SELECT 1`` de conectividad (health checks).
+- ``pool_stats()``          — estado de los pools para métricas/diagnóstico.
 - ``get_table_columns()``   — inspección de columnas (information_schema).
 - ``now_utc()``             — datetime UTC aware (reemplaza datetime.utcnow()).
 - ``now_utc_iso()``         — ISO 8601 del instante actual en UTC.
@@ -78,6 +80,8 @@ from db.connection import (
     get_table_columns,
     now_utc,
     now_utc_iso,
+    ping,
+    pool_stats,
     set_pg_test_url,
 )
 
@@ -112,6 +116,8 @@ __all__ = [
     "connect",
     "connect_read",
     "close_pool",
+    "ping",
+    "pool_stats",
     "get_table_columns",
     "now_utc",
     "now_utc_iso",

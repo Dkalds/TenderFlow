@@ -29,7 +29,8 @@ import os
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -299,9 +300,34 @@ def _get_cache_lock(key: str) -> asyncio.Lock:
         return lock
 
 
+@asynccontextmanager
+async def single_flight(key: str) -> AsyncIterator[None]:
+    """Serializa el recálculo de ``key`` entre corrutinas concurrentes.
+
+    Es la misma protección anti-estampida que aplica :func:`cache_response`,
+    expuesta para los handlers que gestionan su propio par
+    ``cache_get``/``cache_set`` porque devuelven cabeceras (``X-Cache``) que el
+    decorador no modela.
+
+    El patrón de uso es *comprobar, entrar, volver a comprobar*: la segunda
+    lectura dentro del bloque es obligatoria, porque quien esperaba en el lock
+    lo hacía precisamente mientras otra corrutina rellenaba la entrada.
+
+    Sin esto, N peticiones simultáneas fallan el caché a la vez y las N
+    ejecutan la consulta cara. En producción se midió el caso: dos
+    ``/meta/filters`` y cuatro ``/analytics/overview`` en el mismo segundo,
+    cada uno arrastrando su propio escaneo y reteniendo una conexión del pool
+    (12 slots) durante decenas de segundos.
+    """
+    async with _get_cache_lock(key):
+        yield
+
+
 def cache_response(
     ttl: int = 300,
     namespace: str = "analytics",
+    *,
+    cpu_bound: bool = False,
 ) -> Callable[..., Any]:
     """Decorador que cachea respuestas de endpoints FastAPI.
 
@@ -319,6 +345,12 @@ def cache_response(
     Args:
         ttl: Tiempo de vida en segundos (default 5 min).
         namespace: Namespace del backend de cache.
+        cpu_bound: si el handler hace trabajo pesado de CPU (agregación pandas),
+            se ejecuta en el bulkhead ``API_CPU_BOUND_TOKENS`` en vez de competir
+            por el threadpool general. Es lo que permite dimensionar ese pool
+            para carga IO-bound sin repetir el incidente de CPU starvation que
+            en su día lo dejó clavado en 4 hilos: quien tiene que estar acotada
+            es la analítica, no las lecturas baratas.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -362,8 +394,14 @@ def cache_response(
                 if is_sync:
                     import anyio.to_thread
 
+                    limiter = None
+                    if cpu_bound:
+                        from shared.concurrency import cpu_limiter
+
+                        limiter = cpu_limiter()
                     result = await anyio.to_thread.run_sync(
                         functools.partial(func, *args, **kwargs),
+                        limiter=limiter,
                     )
                 else:
                     result = await func(*args, **kwargs)

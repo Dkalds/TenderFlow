@@ -377,6 +377,23 @@ def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> 
     return "\r\n".join(_ics_fold(ln) for ln in lines) + "\r\n"
 
 
+def _calendario_rows(user_key: str) -> list[dict[str, Any]]:
+    """Deadlines y fines de contrato de la watchlist del usuario."""
+    from db.database import connect_read
+
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
+            "FROM watchlist_items wi "
+            "JOIN licitaciones l ON l.id_externo = wi.id_externo "
+            "WHERE wi.user_key = %s AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
+            (user_key,),
+        )
+        return [
+            dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()
+        ]
+
+
 @router.get(
     "/calendario.ics",
     summary="Calendario ICS con deadlines y vencimientos de favoritos",
@@ -405,33 +422,20 @@ async def calendario_ics(
     Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
       ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
     """
-    from db.database import connect_read
     from db.users import get_user_by_id
     from shared.identity import user_key_from_email
 
-    def _load() -> tuple[str, list[dict[str, Any]]]:
-        """Propietario de la key + sus favoritos con fecha, en el threadpool."""
-        owner = get_user_by_id(ctx.user_id) if ctx.user_id is not None else None
-        if owner is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
-            )
-        key = user_key_from_email(owner.get("email"), int(owner["id"]))
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
-                "FROM watchlist_items wi "
-                "JOIN licitaciones l ON l.id_externo = wi.id_externo "
-                "WHERE wi.user_key = %s AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
-                (key,),
-            )
-            loaded = [
-                dict(zip([d[0] for d in cur.description], row, strict=False))
-                for row in cur.fetchall()
-            ]
-        return key, loaded
+    # Todo el trabajo de BD va al threadpool: este endpoint lo consumen clientes
+    # de calendario que refrescan solos cada pocos minutos, y corría entero
+    # sobre el event loop.
+    owner = await run_db(get_user_by_id, ctx.user_id) if ctx.user_id is not None else None
+    if owner is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
+        )
+    user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
-    user_key, rows = await run_db(_load)
+    rows = await run_db(_calendario_rows, user_key)
 
     events: list[dict[str, Any]] = []
     for row in rows:
