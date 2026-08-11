@@ -139,8 +139,14 @@ def test_target_y_columnas(db):
     assert fila.features["cpv4"] == "7200"
     assert fila.features["banda_importe"] == "b3"  # 143k ≤ 200k < 221k
     assert fila.features["log_importe"] == pytest.approx(math.log1p(200_000.0))
-    assert fila.features["n_ofertas"] == 5.0
     assert fila.features["mes"] == 2.0 and fila.features["trimestre"] == 1.0
+    # `n_ofertas_recibidas` ya no es feature: solo existe DESPUÉS de adjudicar,
+    # así que en scoring era NaN siempre. La competencia entra por el histórico
+    # del segmento, que en la primera fila todavía está vacío.
+    assert "n_ofertas" not in fila.features
+    assert fila.features["n_ofertas_media_cpv4"] is None
+    assert fila.features["n_obs_cpv4"] == 0.0
+    assert fila.features["n_lotes"] == 0.0  # sin filas en `lotes`
 
 
 def test_pares_invalidos_quedan_fuera(db):
@@ -172,7 +178,7 @@ def test_features_abiertas_usa_historico_y_excluye_adjudicadas(db):
     from db.database import connect
 
     with connect() as c:
-        _insert_par(c, "HIST", fecha="2026-01-10", adjudicado=85_000.0)
+        _insert_par(c, "HIST", fecha="2026-01-10", adjudicado=85_000.0, n_ofertas=4)
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
             " importe, estado, fuente, fecha_publicacion, fecha_extraccion) "
@@ -186,4 +192,10 @@ def test_features_abiertas_usa_historico_y_excluye_adjudicadas(db):
     fila = filas[0]
     assert fila.baja is None
     assert fila.features["baja_media_organo"] == pytest.approx(0.15)  # del histórico
-    assert fila.features["n_ofertas"] is None  # aún desconocido
+    # La competencia esperada SÍ está disponible al servir: sale del histórico
+    # del segmento, no de la adjudicación (que aún no existe). Es el reemplazo
+    # de `n_ofertas`, que era NaN en el 100% de las filas de scoring.
+    assert fila.features["n_ofertas_media_cpv4"] == pytest.approx(4.0)
+    # El ancla es la publicación de la propia licitación (2026-06-01), no `ahora`.
+    assert fila.fecha == "2026-06-01"
+    assert fila.features["mes"] == 6.0

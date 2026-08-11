@@ -6,6 +6,11 @@ recalculada del dataset actual con corte en la fecha de entrenamiento) y la
 distribución de las filas de scoring de hoy. Umbrales estándar del proyecto
 (scheduler.drift_monitor): <0.10 estable · 0.10-0.25 seguimiento · >0.25
 drift significativo → alerta por el canal existente.
+
+Además del PSI se vigila el **delta de nulos** por feature. El PSI compara
+solo los valores presentes en ambos lados, así que era ciego al caso más grave
+posible: una feature disponible al entrenar y ausente al servir. Ver
+:data:`_MISSING_DELTA_WARN`.
 """
 
 from __future__ import annotations
@@ -18,14 +23,28 @@ log = get_logger(__name__)
 
 _PSI_WARN = 0.10
 _PSI_CRIT = 0.25
-_NUMERIC_FEATURES = (
-    "log_importe",
-    "n_ofertas",
-    "baja_media_organo",
-    "baja_media_cpv4",
-    "baja_media_organo_cpv4",
-    "hhi_segmento",
-)
+
+# Diferencia admisible entre la tasa de nulos de una feature en entrenamiento y
+# en scoring. El PSI solo compara los valores **presentes**, así que una feature
+# que existe al entrenar y no al servir le resultaba invisible: ``n_ofertas``
+# venía de ``adjudicaciones`` (dato post-adjudicación), era NaN en el 100% de
+# las filas de scoring, y el monitor reportaba PSI 0.00 "estable" mientras el
+# modelo se partía sobre ella. Esa asimetría es un fallo de diseño de features,
+# no una deriva de datos, y es la que este umbral vigila.
+_MISSING_DELTA_WARN = 0.20
+_MISSING_DELTA_CRIT = 0.50
+
+
+def _numeric_features() -> tuple[str, ...]:
+    """Columnas numéricas del dataset, derivadas del orden canónico.
+
+    Se calcula desde ``FEATURE_COLUMNS`` en vez de mantener una lista paralela:
+    una feature nueva entra en el monitor sola, sin que nadie tenga que
+    acordarse de añadirla aquí.
+    """
+    from services.ml.features import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
+
+    return FEATURE_COLUMNS[len(CATEGORICAL_COLUMNS) :]
 
 
 def _psi(ref: list[float], cur: list[float], n_bins: int = 10, eps: float = 1e-6) -> float:
@@ -68,26 +87,49 @@ def comprobar_drift_baja() -> dict[str, Any]:
             return {"status": "sin_datos"}
 
         psi_por_feature: dict[str, float] = {}
-        for col in _NUMERIC_FEATURES:
+        missing_por_feature: dict[str, float] = {}
+        for col in _numeric_features():
             ref = [float(f.features[col]) for f in entrenamiento if f.features.get(col) is not None]
             cur = [float(f.features[col]) for f in scoring if f.features.get(col) is not None]
             psi_por_feature[col] = round(_psi(ref, cur), 4)
+            # Delta de nulos: positivo = falta más al servir que al entrenar.
+            missing_ref = 1.0 - len(ref) / len(entrenamiento)
+            missing_cur = 1.0 - len(cur) / len(scoring)
+            missing_por_feature[col] = round(missing_cur - missing_ref, 4)
 
         peor = max(psi_por_feature.values(), default=0.0)
-        severity = "crit" if peor >= _PSI_CRIT else "warn" if peor >= _PSI_WARN else "ok"
+        peor_missing = max((abs(v) for v in missing_por_feature.values()), default=0.0)
+        if peor >= _PSI_CRIT or peor_missing >= _MISSING_DELTA_CRIT:
+            severity = "crit"
+        elif peor >= _PSI_WARN or peor_missing >= _MISSING_DELTA_WARN:
+            severity = "warn"
+        else:
+            severity = "ok"
         if severity != "ok":
-            log.warning("ml_drift_detected", severity=severity, psi=psi_por_feature)
+            log.warning(
+                "ml_drift_detected",
+                severity=severity,
+                psi=psi_por_feature,
+                missing_delta=missing_por_feature,
+            )
             try:
                 from observability.alerts import notify
 
                 notify(
                     "warn" if severity == "warn" else "error",
-                    f"Drift en features del modelo de baja (PSI máx {peor:.2f})",
-                    str(psi_por_feature),
+                    f"Drift en features del modelo de baja "
+                    f"(PSI máx {peor:.2f}, delta de nulos máx {peor_missing:.0%})",
+                    f"psi={psi_por_feature} missing_delta={missing_por_feature}",
                 )
             except Exception:  # canal de alertas opcional
                 log.debug("ml_drift_alert_channel_unavailable")
-        return {"status": severity, "psi": psi_por_feature, "psi_max": peor}
+        return {
+            "status": severity,
+            "psi": psi_por_feature,
+            "psi_max": peor,
+            "missing_delta": missing_por_feature,
+            "missing_delta_max": peor_missing,
+        }
     except Exception as e:
         log.warning("ml_drift_check_failed", error=str(e))
         return {"status": "error", "error": str(e)}

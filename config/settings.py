@@ -185,6 +185,20 @@ class Settings(BaseSettings):
     # del RFC). Por defecto la activación es manual (model_registry).
     ML_PRED_AUTO_ACTIVATE: bool = False
 
+    # Conformaliza el intervalo p10-p90 del modelo de baja (split-CQR) sobre un
+    # bloque temporal que el ajuste no vio: la cobertura del 80% se cumple por
+    # construcción en vez de depender de que los tres cuantiles salgan bien
+    # calibrados por su cuenta. Ver services.ml.baja_model._offset_conformal.
+    ML_BAJA_CONFORMAL: bool = True
+    # Cortes de validación rolling-origin del modelo de baja. 1 reproduce el
+    # holdout único anterior.
+    ML_BAJA_FOLDS: int = 3
+    # Combinaciones de hiperparámetros a explorar (0 = usar solo la base fija).
+    ML_BAJA_SEARCH_COMBOS: int = 8
+    # Vida media en meses del peso por recencia de las filas de entrenamiento.
+    # 0 desactiva el decaimiento (pesos uniformes, comportamiento anterior).
+    ML_BAJA_HALFLIFE_MESES: float = 18.0
+
     # ── DB / Upsert ──────────────────────────────────────────────────────
     # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk
     # se ejecuta en su propia transacción, liberando el write lock entre chunks.

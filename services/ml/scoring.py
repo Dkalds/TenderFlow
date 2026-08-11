@@ -18,32 +18,30 @@ from typing import Any
 from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
 from services.dedupe import exclude_duplicados_sql
-from services.ml.baja_model import MODEL_NAME, BajaModel, Prediccion, predecir_baseline
+from services.ml.baja_model import (
+    MODEL_NAME,
+    BajaModel,
+    FeatureSchemaMismatch,
+    Prediccion,
+    predecir_baseline,
+)
 from services.ml.features import features_licitaciones_abiertas
-from services.sql_fragments import BAJA_PCT_SQL, VALID_PAIR_LOTE
 
 log = get_logger(__name__)
 
 
 def _media_global_baja() -> float:
-    """Baja media histórica del segmento, usada como baseline sin modelo entrenado.
+    """Baja media histórica, usada como baseline sin modelo entrenado.
 
-    Presupuesto de referencia por fila: el del lote si la adjudicación lo
-    tiene resuelto (v65_lotes), o el del expediente completo si no —
-    ``BAJA_PCT_SQL``/``VALID_PAIR_LOTE`` (services/sql_fragments.py).
+    Delega en ``db.repositories.ml_dataset`` para compartir la regla de
+    denominador con el target de entrenamiento y con ``calibration.py``: antes
+    promediaba bajas **por lote** mientras el modelo predice la baja
+    **agregada por expediente**, así que el baseline y el modelo no medían la
+    misma magnitud.
     """
-    sql = f"""
-        SELECT AVG({BAJA_PCT_SQL} / 100)
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN lotes lo ON lo.id = a.lote_id
-        WHERE {VALID_PAIR_LOTE}
-          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
-          AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — VALID_PAIR_LOTE y exclude_duplicados_sql son fragmentos constantes
-    with connect_read() as c:
-        row = c.execute(sql).fetchone()
-    return float(row[0]) if row and row[0] is not None else 0.12
+    from db.repositories.ml_dataset import MlDatasetRepository
+
+    return MlDatasetRepository().media_global_baja()
 
 
 def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
@@ -62,13 +60,26 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     # predicciones de un artefacto equivocado es peor que no servirlas.
     activa = get_active(MODEL_NAME)
     artefacto = resolve_active_artifact(MODEL_NAME) if activa else None
-    preds: list[Prediccion]
+    preds: list[Prediccion] | None = None
+    version: int | None = None
     if activa and artefacto is not None:
         modelo = BajaModel.load(artefacto)
-        preds = modelo.predict(filas)
-        version: int | None = int(activa["version"])
-    else:
-        if activa:
+        try:
+            preds = modelo.predict(filas)
+            version = int(activa["version"])
+        except FeatureSchemaMismatch as exc:
+            # El artefacto activo se entrenó con otro layout de columnas: sus
+            # árboles recibirían features distintas en las mismas posiciones y
+            # devolverían números sin significado. Degradar al baseline (que la
+            # UI ya etiqueta como estimación histórica) es la única opción
+            # honesta hasta que corra el reentrenamiento.
+            log.warning(
+                "baja_model_feature_schema_mismatch",
+                version=int(activa["version"]),
+                error=str(exc),
+            )
+    if preds is None:
+        if activa and artefacto is None:
             log.warning("baja_model_artifact_unresolvable_fallback_baseline")
         preds = predecir_baseline(filas, _media_global_baja())
         version = None
