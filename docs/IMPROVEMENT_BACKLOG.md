@@ -13,6 +13,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
+### [P1] El contexto de scoring cuesta ~25 s en frío en cada instancia nueva
+- **Área:** db/repositories/aggregates.py, services/analytics/scoring_signals.py
+- **Problema:** acotar el universo puntuable (commit del fix del Radar, 2026-08-11) quitó el escaneo de 1,5 M filas, pero `_build_context` sigue pagando tres consultas de contexto que no dependen de la fila puntuada y que escanean la tabla entera. Medido en producción el 2026-08-11: `importe_percentiles()` **7,4 s** (seq scan + sort de 1,63 M importes, y a diferencia de las señales **no está cacheada**: se llama en cada request), la media de ofertas por CPV-4 de `load_competencia_stats` **9,5 s** (hash join de 1,6 M adjudicaciones contra un Parallel Seq Scan de `licitaciones` filtrando por `analysis_universe`, que no tiene índice utilizable), más las tres consultas de `load_margen_stats`. Total observado de un request en frío: **59,6 s** (correlation_id `93da5a9b`, 25 filas puntuadas) frente a 186 ms con caché caliente. Ya no tumba el proceso —las cachés ahora sobreviven porque la instancia deja de reiniciarse—, pero la primera carga del Radar tras cada deploy o expiración de TTL paga eso entero.
+- **Acceptance criteria:**
+  - Primera carga del Radar en una instancia fría por debajo de 5 s.
+  - `importe_percentiles()` cacheada con el mismo patrón `SignalAwareCache` que ya usan las señales (P10/P90 globales cambian con la ingesta, no con el request), o materializada.
+  - La media de ofertas por CPV-4 deja de escanear `licitaciones` entera: índice que sirva el predicado de `analysis_universe`/`cpv`, o agregado materializado por CPV-4.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py) (`importe_percentiles`), [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/_data_cache.py](../services/_data_cache.py)
+- **Riesgo:** bajo — cachear un agregado global y añadir un índice; sin cambio de contrato ni de números mostrados.
+
 ### [P2] Surface `participaciones_ute` en el frontend de competidores
 - **Área:** web/src/components/competitors/company-profile-types.ts, web/src/components/competitors/company-profile-summary.tsx, web/src/app/(dashboard)/competidores/page.tsx
 - **Problema:** el backend ya expone `participaciones_ute` en `GET /api/v1/competitive/.../perfil` (ver _Cerrados_, commit `33d98e4`) — por cada UTE de la que la empresa es miembro, sus `contratos`/`importe_total` propios y los `otros_miembros`. `company-profile-types.ts` todavía no declara el campo (compara con `por_cpv`/`por_anio`/`movimientos`, todas ya tipadas ahí) y ningún componente lo renderiza, así que el dato es invisible en la UI aunque ya viaja en la respuesta.
