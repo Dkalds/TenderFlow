@@ -24,7 +24,9 @@ def _make_user(email: str = "user@example.com", *, is_admin: bool = False) -> in
     from db.users import create_user
 
     user_id = create_user(
-        email=email, password_hash="hash-irrelevante", display_name="Nombre Visible"
+        email=email,
+        password_hash="hash-irrelevante",  # pragma: allowlist secret
+        display_name="Nombre Visible",
     )
     if is_admin:
         with connect() as c:

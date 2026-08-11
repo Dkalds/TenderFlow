@@ -222,10 +222,16 @@ def refresh_db_pool_metrics() -> None:
     """
     try:
         from db.connection import pool_stats
-    except Exception:  # pragma: no cover - import defensivo
+
+        instantanea = pool_stats()
+    except Exception:
+        # La instrumentación nunca puede tumbar el endpoint que la expone: un
+        # /metrics que devuelve 500 deja ciego al scrape entero, no solo a
+        # estos gauges.
+        log.debug("db_pool_metrics_unavailable", exc_info=True)
         return
 
-    for pool_name, stats in pool_stats().items():
+    for pool_name, stats in instantanea.items():
         try:
             db_pool_size.labels(pool=pool_name).set(stats.get("pool_max", 0))
             db_pool_connections.labels(pool=pool_name, state="available").set(
