@@ -95,15 +95,16 @@ async def get_last_extraction(
 ) -> LastExtraction:
     """Devuelve la fecha/hora de la última extracción del scraper.
 
-    Cacheado 60 s: el valor solo cambia al terminar una ingesta, pero el
-    frontend lo pide en cada carga de página. Era la tercera consulta más cara
-    de producción (134 llamadas, 16,6 s de media, 93 s de pico) porque
-    ``MAX(fecha_extraccion)`` no tenía índice; v77 lo añade y esto evita además
-    que varias pestañas repitan la consulta mientras el caché está frío.
-
-    Se cachea un ``dict`` y no el ``str`` pelado para que ``None`` (corpus
-    vacío) sea un valor cacheable y no se confunda con "no hay entrada".
+    Respuesta cacheada 60 segundos.
     """
+    # El valor solo cambia al terminar una ingesta, pero el frontend lo pide en
+    # cada carga de página. Era la tercera consulta más cara de producción (134
+    # llamadas, 16,6 s de media, 93 s de pico) porque `MAX(fecha_extraccion)` no
+    # tenía índice; v77 lo añade y el caché evita además que varias pestañas
+    # repitan la consulta mientras está frío.
+    #
+    # Se cachea un `dict` y no el `str` pelado para que `None` (corpus vacío) sea
+    # un valor cacheable y no se confunda con "no hay entrada".
     cached = cache_get(_LAST_EXTRACTION_CACHE_KEY)
     if cached is None:
         async with single_flight(_LAST_EXTRACTION_CACHE_KEY):

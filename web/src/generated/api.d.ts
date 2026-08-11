@@ -2046,6 +2046,8 @@ export interface paths {
         /**
          * Fecha de la última extracción de datos
          * @description Devuelve la fecha/hora de la última extracción del scraper.
+         *
+         *     Respuesta cacheada 60 segundos.
          */
         get: operations["get_last_extraction_api_v1_meta_last_extraction_get"];
         put?: never;

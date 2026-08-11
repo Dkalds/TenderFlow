@@ -439,3 +439,86 @@ class TestCacheResponseIdentity:
         assert second["principal"] == "user-b"
         assert first == repeat
         assert calls == 2
+
+
+# ---------------------------------------------------------------------------
+# single_flight
+# ---------------------------------------------------------------------------
+
+
+class TestSingleFlight:
+    """El lock por clave que usan los handlers con caché propio."""
+
+    def test_deduplica_corrutinas_concurrentes(self):
+        """N corrutinas simultáneas sobre la misma clave calculan una sola vez.
+
+        Es la garantía que justifica el helper: sin él, las N que llegan con el
+        caché frío fallan la comprobación previa a la vez y las N ejecutan la
+        consulta cara. El ``await`` dentro del bloque es lo que da a las otras
+        cuatro la oportunidad de entrar si el lock no funcionara.
+        """
+        mod = _fresh_import()
+        ejecuciones = 0
+        store: dict[str, str] = {}
+
+        async def calcular():
+            nonlocal ejecuciones
+            if "k" in store:
+                return store["k"]
+            async with mod.single_flight("single-flight:dedup"):
+                if "k" in store:
+                    return store["k"]
+                ejecuciones += 1
+                await asyncio.sleep(0.02)
+                store["k"] = "valor"
+                return store["k"]
+
+        async def invoke():
+            return await asyncio.gather(*(calcular() for _ in range(5)))
+
+        resultados = asyncio.run(invoke())
+        assert resultados == ["valor"] * 5
+        assert ejecuciones == 1
+
+    def test_claves_distintas_no_se_bloquean(self):
+        """Dos claves distintas usan locks distintos y progresan en paralelo."""
+        mod = _fresh_import()
+        ejecuciones = 0
+
+        async def calcular(clave: str):
+            nonlocal ejecuciones
+            async with mod.single_flight(clave):
+                ejecuciones += 1
+                await asyncio.sleep(0.02)
+                return clave
+
+        async def invoke():
+            return await asyncio.gather(
+                calcular("single-flight:a"),
+                calcular("single-flight:b"),
+            )
+
+        resultados = asyncio.run(invoke())
+        assert sorted(resultados) == ["single-flight:a", "single-flight:b"]
+        assert ejecuciones == 2
+
+    def test_libera_el_lock_si_el_bloque_lanza(self):
+        """Una excepción dentro del bloque no deja la clave bloqueada."""
+        mod = _fresh_import()
+
+        async def invoke():
+            try:
+                async with mod.single_flight("single-flight:error"):
+                    raise RuntimeError("boom")
+            except RuntimeError:
+                pass
+            # Si el lock hubiera quedado tomado, este bloque colgaría.
+            async with mod.single_flight("single-flight:error"):
+                return "ok"
+
+        async def con_limite():
+            # `wait_for` para que un lock filtrado falle el test en vez de
+            # colgar el job de CI.
+            return await asyncio.wait_for(invoke(), timeout=5)
+
+        assert asyncio.run(con_limite()) == "ok"
