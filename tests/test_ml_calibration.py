@@ -134,13 +134,22 @@ def test_excluye_duplicados_confirmados(db):
     assert res["n"] == 30
 
 
+class _RepoQueRevienta:
+    """Repository cuya lectura falla, para ejercitar el fail-open.
+
+    El SQL de calibración vive en ``db.repositories.ml_dataset`` (ADR-022), así
+    que el punto donde puede caerse la BD ya no es ``connect_read`` dentro de
+    este módulo sino la llamada al repository.
+    """
+
+    def calibracion_baja(self) -> dict[str, object]:
+        raise RuntimeError("db caída")
+
+
 def test_fail_open_si_falla_la_query(db, monkeypatch):
     import services.ml.calibration as cal_mod
 
-    def _boom(*a, **k):
-        raise RuntimeError("db caída")
-
-    monkeypatch.setattr(cal_mod, "connect_read", _boom)
+    monkeypatch.setattr(cal_mod, "MlDatasetRepository", _RepoQueRevienta)
     res = comprobar_calibracion_baja()
     assert res["status"] == "error"
 
@@ -188,9 +197,7 @@ def test_dto_error_mapea_a_insuficiente(db, monkeypatch):
     'sin señal fiable todavía', igual que sin_datos."""
     import services.ml.calibration as cal_mod
 
-    monkeypatch.setattr(
-        cal_mod, "connect_read", lambda: (_ for _ in ()).throw(RuntimeError("db caída"))
-    )
+    monkeypatch.setattr(cal_mod, "MlDatasetRepository", _RepoQueRevienta)
     dto = calibracion_baja_dto()
     assert dto.estado == "insuficiente"
     assert dto.cobertura is None

@@ -49,6 +49,23 @@ _BROKEN_PATTERNS = (
     re.compile(r"a\.importe_adjudicado\s*\)?\s*/\s*l\.importe\b"),
 )
 
+# La misma fórmula escrita en Python sobre las claves de una fila ya leída.
+# `services/ml/features.py` la tuvo durante meses -- ``(float(row["importe"]) -
+# float(row["importe_adjudicado"])) / float(row["importe"])`` -- y este ratchet
+# no la veía porque solo buscaba los literales SQL: el dataset del modelo de
+# baja entrenó contra el presupuesto del expediente mientras los tres
+# consumidores SQL ya estaban arreglados. Los patrones toleran float(...),
+# corchetes o .get(), y espacios arbitrarios.
+_CLAVE = r"""\[?['"]importe['"]\]?|\.get\(\s*['"]importe['"]\s*\)"""
+_CLAVE_ADJ = r"""\[?['"]importe_adjudicado['"]\]?|\.get\(\s*['"]importe_adjudicado['"]\s*\)"""
+_BROKEN_PATTERNS_PY = (
+    # (row["importe"] - row["importe_adjudicado"])  /  row["importe"]
+    re.compile(
+        rf"(?:{_CLAVE})[^\n]{{0,40}}-[^\n]{{0,40}}(?:{_CLAVE_ADJ})[^\n]{{0,60}}/[^\n]{{0,40}}"
+        rf"(?:{_CLAVE})"
+    ),
+)
+
 
 def _iter_production_py_files() -> list[Path]:
     files: list[Path] = []
@@ -74,6 +91,41 @@ def test_no_file_reinvents_the_broken_per_row_baja_formula() -> None:
         "Fórmula de baja por-fila reinventada fuera de services/sql_fragments.py "
         f"(usa BAJA_PCT_SQL/EFFECTIVE_BUDGET_SQL en su lugar): {violations}"
     )
+
+
+def test_no_file_reinvents_the_broken_formula_in_python() -> None:
+    """La variante Python de la fórmula rota, que este ratchet no veía.
+
+    Regresión del hueco del propio ratchet: `services/ml/features.py` dividía
+    entre `row["importe"]` (presupuesto del expediente) en Python mientras los
+    consumidores SQL ya usaban el del lote.
+    """
+    violations: list[str] = []
+    for path in _iter_production_py_files():
+        rel = path.relative_to(_REPO_ROOT).as_posix()
+        if rel in _ALLOWED_FILES:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for pattern in _BROKEN_PATTERNS_PY:
+            if pattern.search(text):
+                violations.append(rel)
+                break
+    assert not violations, (
+        "Fórmula de baja reinventada en Python: el denominador debe ser el "
+        "presupuesto efectivo del lote o el agregado del expediente "
+        f"(db/repositories/ml_dataset.py), no `importe` a secas: {violations}"
+    )
+
+
+def test_ml_dataset_repository_owns_the_aggregate_formula() -> None:
+    """El dataset del modelo de baja agrega por expediente antes de dividir."""
+    text = (_REPO_ROOT / "db/repositories/ml_dataset.py").read_text(encoding="utf-8")
+    assert "presupuesto_efectivo" in text
+    # La regla de los lotes distintos: un lote adjudicado a dos empresas no
+    # puede contar su presupuesto dos veces.
+    assert "SELECT DISTINCT licitacion_id, lote_id" in text
+    for pattern in _BROKEN_PATTERNS:
+        assert not pattern.search(text)
 
 
 def test_bajas_py_uses_the_shared_fragment() -> None:

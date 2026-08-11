@@ -13,6 +13,10 @@ predicción↔realidad sin guardar nada nuevo: este monitor lo explota.
 
 Mismo contrato que el monitor de drift: computa, loguea structured y alerta
 por el canal existente; fail-open (nunca bloquea el scoring).
+
+El SQL vive en ``db.repositories.ml_dataset`` (ADR-022) y comparte la regla de
+denominador con el target de entrenamiento: cobertura y MAE se miden sobre la
+misma magnitud que el modelo aprende.
 """
 
 from __future__ import annotations
@@ -21,9 +25,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from db.database import connect_read
+from db.repositories.ml_dataset import MlDatasetRepository
 from observability.logging import get_logger
-from services.dedupe import exclude_duplicados_sql
 
 log = get_logger(__name__)
 
@@ -44,49 +47,22 @@ def comprobar_calibracion_baja() -> dict[str, Any]:
     Fail-open: cualquier error se loguea y no propaga.
     """
     try:
-        # S608: exclude_duplicados_sql() es un fragmento constante; no hay input
-        # de usuario en esta query. Agregamos los lotes (SUM importe_adjudicado)
-        # por licitación ANTES de comparar, igual que _baja_real en scoring.py:
-        # una licitación multi-lote tiene varias filas en `adjudicaciones`, y sin
-        # agregar cada lote se comparaba contra el importe total del expediente
-        # (baja realizada ~cerca de 1.0), hundiendo la cobertura empírica.
-        sql = f"""
-            WITH adjudicado AS (
-                SELECT a.licitacion_id AS lic_id,
-                       SUM(a.importe_adjudicado) AS total_adjudicado
-                FROM adjudicaciones a
-                WHERE a.importe_adjudicado > 0
-                  AND {exclude_duplicados_sql("a.licitacion_id")}
-                GROUP BY a.licitacion_id
-            ),
-            evaluadas AS (
-                SELECT pb.p10 AS p10, pb.p50 AS p50, pb.p90 AS p90,
-                       (l.importe - adj.total_adjudicado) / l.importe AS realizada
-                FROM predicciones_baja pb
-                JOIN licitaciones l ON l.id_externo = pb.licitacion_id
-                JOIN adjudicado adj ON adj.lic_id = l.id_externo
-                WHERE l.importe > 0
-                  AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
-                  AND adj.total_adjudicado <= l.importe * 1.5
-            )
-            SELECT
-                COUNT(*) AS n,
-                AVG(CASE WHEN realizada BETWEEN p10 AND p90 THEN 1.0 ELSE 0.0 END) AS cobertura,
-                AVG(ABS(realizada - p50)) AS mae,
-                AVG(realizada - p50) AS sesgo
-            FROM evaluadas
-        """  # noqa: S608
-        with connect_read() as c:
-            row = c.execute(sql).fetchone()
+        # La baja realizada se calcula con la MISMA regla de denominador que el
+        # target de entrenamiento (``db.repositories.ml_dataset``): es lo que
+        # hace comparable esta cobertura empírica con la nominal. Mientras esta
+        # query dividía entre ``l.importe`` y el entrenamiento usaba el
+        # presupuesto del lote, se medía una magnitud distinta de la entrenada y
+        # la cobertura no significaba nada.
+        medido = MlDatasetRepository().calibracion_baja()
 
-        n = int(row[0]) if row and row[0] is not None else 0
-        if n < _MIN_EVALUADAS:
+        n = int(medido["n"])
+        if n < _MIN_EVALUADAS or medido["cobertura"] is None:
             log.info("ml_calibracion_skip", reason="pocas_evaluadas", n=n)
             return {"status": "sin_datos", "n": n}
 
-        cobertura = round(float(row[1]), 4)
-        mae = round(float(row[2]), 4)
-        sesgo = round(float(row[3]), 4)
+        cobertura = round(float(medido["cobertura"]), 4)
+        mae = round(float(medido["mae"] or 0.0), 4)
+        sesgo = round(float(medido["sesgo"] or 0.0), 4)
 
         if cobertura < _COBERTURA_CRIT:
             severity = "crit"
