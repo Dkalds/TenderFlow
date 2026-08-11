@@ -78,16 +78,34 @@ const nextConfig: NextConfig = {
    * `http://localhost:8080` — con el build en verde y fallos de red solo en
    * runtime. Se falla el build en su lugar.
    *
-   * El guard mira `VERCEL` en vez de `NODE_ENV`: el job `frontend` de CI hace
-   * un `next build` de producción legítimo sin API_BASE_URL (solo comprueba que
-   * compila, no despliega), y ahí el fallback local es correcto.
+   * El guard mira `VERCEL_ENV === "production"`, no `VERCEL` ni `NODE_ENV`:
+   *
+   * - `NODE_ENV` es "production" en cualquier `next build`, incluido el del job
+   *   `frontend` de CI, que compila sin API_BASE_URL a propósito (comprueba que
+   *   compila, no despliega) y para el que el fallback local es correcto.
+   * - `VERCEL` está a 1 también en los previews, y el proyecto **no** tiene la
+   *   variable definida en ese entorno: cortar ahí rompía cada preview de cada
+   *   PR sin proteger nada que no estuviera ya roto (un preview siempre horneó
+   *   el fallback local; ver backlog).
+   *
+   * Queda acotado al único despliegue donde la variable existe y donde su
+   * ausencia sí es un incidente: producción.
    */
   async rewrites() {
-    if (process.env.VERCEL && !process.env.API_BASE_URL) {
+    const esProduccionVercel = process.env.VERCEL_ENV === "production";
+    if (esProduccionVercel && !process.env.API_BASE_URL) {
       throw new Error(
         "API_BASE_URL no está definida en el proyecto de Vercel. Los rewrites de " +
           "/api/* se resuelven en build time: sin ella el despliegue apuntaría a " +
           "http://localhost:8080 y la app fallaría en runtime.",
+      );
+    }
+    if (process.env.VERCEL_ENV === "preview" && !process.env.API_BASE_URL) {
+      // No aborta el build —el preview es útil para revisar UI— pero deja
+      // constancia de por qué sus llamadas a /api/* no van a resolver.
+      console.warn(
+        "[next.config] Preview sin API_BASE_URL: /api/* queda apuntando a " +
+          "http://localhost:8080 y las llamadas al backend fallarán en runtime.",
       );
     }
     const apiBase = process.env.API_BASE_URL ?? "http://localhost:8080";
