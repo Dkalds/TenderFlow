@@ -37,8 +37,14 @@ def test_rechaza_claves_inventadas():
 
 
 def test_rechaza_una_clave_inventada_entre_validas():
+    """Una dimensión mal escrita entre otras válidas no puede colarse en silencio.
+
+    `afinidadd` está mal escrita **a propósito**: es el caso realista —un dedazo
+    en el nombre de una dimensión— que antes pasaba la validación y se llevaba
+    esos puntos a ninguna parte.
+    """
     with pytest.raises(ValueError, match="clave desconocida"):
-        validate_scoring_weights({**_VALIDOS, "afinidad": 5, "afinity": 10})
+        validate_scoring_weights({**_VALIDOS, "afinidad": 5, "afinidadd": 10})
 
 
 def test_rechaza_pesos_negativos():
