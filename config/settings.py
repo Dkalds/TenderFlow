@@ -606,6 +606,14 @@ class Settings(BaseSettings):
             raise ValueError("DB_POOL_SIZE debe ser >= 1")
         return val
 
+    @field_validator("API_THREADPOOL_TOKENS", mode="before")
+    @classmethod
+    def _validate_threadpool_tokens(cls, v: object) -> int:
+        val = int(str(v))
+        if val < 1:
+            raise ValueError("API_THREADPOOL_TOKENS debe ser >= 1")
+        return val
+
     @model_validator(mode="after")
     def _validate_ml_uncertainty_range(self) -> Settings:
         if self.ML_UNCERTAINTY_LO >= self.ML_UNCERTAINTY_HI:

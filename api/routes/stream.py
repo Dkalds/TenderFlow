@@ -22,8 +22,15 @@ del último evento procesado (reconexión idempotente).
 
 Diseño
 ------
-* Poll interno sobre ``shared.cache_signal.check_cache_signal()`` cada
-  ``POLL_INTERVAL`` segundos (por defecto 5 s), respaldado por Postgres.
+* **Un solo poller por proceso** (``_SignalWatcher``) lee el centinela de
+  ``shared.cache_signal`` cada ``POLL_INTERVAL`` segundos y publica el
+  timestamp en memoria. Antes cada cliente conectado hacía su propia consulta
+  cada 5 s: con N clientes eran N consultas por intervalo, casi todas sin
+  novedades, compitiendo por el threadpool con el resto de la API. Ahora la
+  carga a BD es O(1) en el número de clientes.
+* Los clientes comparan ese timestamp contra su propio checkpoint. Es
+  exactamente lo que hacía ``check_cache_signal(last_check)``
+  (``get_signal_timestamp() > last_check``), pero sin viaje a BD por cliente.
 * Heartbeat cada ``HEARTBEAT_INTERVAL`` segundos (por defecto 30 s) para
   mantener la conexión TCP viva a través de proxies y load-balancers.
 * Máximo ``MAX_DURATION_SECONDS`` por conexión (por defecto 300 s = 5 min)

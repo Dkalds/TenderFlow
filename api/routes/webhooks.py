@@ -285,7 +285,8 @@ async def create(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Webhook creation did not produce a signing secret.",
         )
-    log_event(
+    await run_db(
+        log_event,
         event_type="webhook.created",
         user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
@@ -355,7 +356,7 @@ class WebhookPingResult(BaseModel):
 async def list_all(
     _ctx: dict[str, Any] = Depends(require_admin),
 ) -> list[dict[str, Any]]:
-    return _repo.list_all()
+    return await run_db(_repo.list_all)
 
 
 @router.get(
@@ -367,7 +368,7 @@ async def get_one(
     webhook_id: int,
     _ctx: dict[str, Any] = Depends(require_admin),
 ) -> WebhookOut:
-    wh = _repo.get_by_id(webhook_id)
+    wh = await run_db(_repo.get_by_id, webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
     return WebhookOut(**wh)
@@ -388,7 +389,8 @@ async def update(
     ctx: dict[str, Any] = Depends(require_admin),
 ) -> WebhookOut:
     """Actualiza nombre, URL, event_types o active de un webhook existente."""
-    found = _repo.update(
+    found = await run_db(
+        _repo.update,
         webhook_id,
         name=body.name,
         url=body.url,
@@ -397,12 +399,13 @@ async def update(
     )
     if not found:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
-    log_event(
+    await run_db(
+        log_event,
         event_type="webhook.updated",
         user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
     )
-    wh = _repo.get_by_id(webhook_id)
+    wh = await run_db(_repo.get_by_id, webhook_id)
     if wh is None:  # borrado concurrente entre el update y la relectura
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
     return WebhookOut(**wh)
@@ -421,9 +424,10 @@ async def delete(
     webhook_id: int,
     ctx: dict[str, Any] = Depends(require_admin),
 ) -> None:
-    if not _repo.delete(webhook_id):
+    if not await run_db(_repo.delete, webhook_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe")
-    log_event(
+    await run_db(
+        log_event,
         event_type="webhook.deleted",
         user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
@@ -450,11 +454,11 @@ async def ping(
     import hmac as _hmac
     import json
 
-    wh = _repo.get_by_id(webhook_id)
+    wh = await run_db(_repo.get_by_id, webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
 
-    secret = _repo.get_secret(webhook_id)
+    secret = await run_db(_repo.get_secret, webhook_id)
     if not secret:
         raise HTTPException(status_code=500, detail="Secret no disponible.")
 
@@ -492,7 +496,8 @@ async def ping(
                 headers,
             )
             ok = 200 <= status_code < 300
-            _repo.record_delivery(
+            await run_db(
+                _repo.record_delivery,
                 webhook_id,
                 status_code=status_code,
                 success=ok,
@@ -505,7 +510,8 @@ async def ping(
             if attempt < max_attempts - 1:
                 await _asyncio.sleep(0.5 * (2**attempt))  # 0.5s, 1s
 
-    _repo.record_delivery(
+    await run_db(
+        _repo.record_delivery,
         webhook_id,
         status_code=0,
         success=False,
@@ -541,6 +547,7 @@ async def deliveries(
     _ctx: dict[str, Any] = Depends(require_admin),
 ) -> list[WebhookDelivery]:
     """Devuelve las últimas entregas realizadas para este webhook."""
-    if _repo.get_by_id(webhook_id) is None:
+    if await run_db(_repo.get_by_id, webhook_id) is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
-    return [WebhookDelivery(**row) for row in _repo.list_deliveries(webhook_id, limit=limit)]
+    rows = await run_db(_repo.list_deliveries, webhook_id, limit=limit)
+    return [WebhookDelivery(**row) for row in rows]

@@ -81,6 +81,16 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P2 — Media
 
+### [P2] Separar los requirements de la API de los del pipeline/ML
+- **Área:** requirements.in, docker/
+- **Problema:** las 33 deps runtime (pandas, scikit-learn, statsmodels, networkx, reportlab, boto3, lxml, openai…) viven en un único deployable: la imagen de la API que corre en 0.1 vCPU/2GiB paga memoria, cold start y superficie de ataque de librerías que solo usa el plano de ingesta/ML. El OOM del 2026-08-02 (comentario en `api/app.py`) es el síntoma de fondo: OLAP y ML dentro del proceso HTTP. Con 38 avisos de Dependabot abiertos (29 high), reducir lo que instala la imagen expuesta a internet también encoge la superficie que hay que parchear.
+- **Acceptance criteria:**
+  - `requirements-api.in` y `requirements-pipeline.in` compilados por separado (mismo flujo pip-tools con hashes).
+  - La imagen de la API no instala scikit-learn/statsmodels/networkx salvo que una ruta los importe de verdad (los imports lazy existentes delimitan el corte).
+  - CI construye ambas variantes y el smoke de la API pasa con la imagen reducida.
+- **Files de partida:** [requirements.in](../requirements.in), [docker/](../docker/)
+- **Riesgo:** medio — toca dependencias (gate humano §6) y puede destapar imports implícitos; mitigado con smoke de import por entrypoint.
+
 ### [P2] Calibrar los umbrales de la auditoría de verdad del dato
 - **Área:** scripts/audit_domain_truth.py
 - **Problema:** `MAX_PCT_SIN_FECHA_LIMITE = 60`, `MAX_PCT_FILAS_UTE = 8` y `MAX_DELTA_BAJA_PUNTOS = 5` se eligieron holgados para que el primer mes detecte empeoramientos bruscos sin ahogar en ruido. No son la calidad real medida.
@@ -146,6 +156,22 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P3 — Nice to have
+
+### [P3] Decidir el destino del peso de `graphify-out/` (17MB, ~52% del repo)
+- **Área:** graphify-out, .claude/hooks
+- **Problema:** los artefactos commiteados del knowledge graph pesan 17MB de un repo de 33MB sin `.git`: cada clone y cada sesión remota los paga, y el hook de stale-flag deja el working tree dirty en sesiones sin el CLI (que no pueden limpiarlo). El valor para agentes sin CLI es real (AGENTS.md §1), así que es un trade-off consciente a revisar, no un error.
+- **Acceptance criteria:**
+  - Decisión registrada: mantener como está, excluir `wiki/` (la parte más pesada y más regenerable), o mover a artefacto de CI/LFS con fallback textual documentado en AGENTS.md §1.
+- **Files de partida:** [AGENTS.md](../AGENTS.md), [.claude/hooks/](../.claude/hooks/)
+- **Riesgo:** bajo — decisión de mantenedor; sin impacto en runtime.
+
+### [P3] Dejar de engordar los god modules: `aggregates.py` y `settings.py`
+- **Área:** db/repositories/aggregates.py, config/settings.py
+- **Problema:** los dos archivos más grandes del repo (≈1300 y ≈950 LOC) concentran demasiadas responsabilidades: todas las agregaciones analíticas y toda la configuración. No urge un big-bang; la regla es no seguir haciéndolos crecer.
+- **Acceptance criteria:**
+  - Una agregación o setting nuevo va a un módulo hermano (`aggregates_<área>.py` / settings por dominio) en vez de sumar al monolito; al tocar un bloque cohesivo existente, se evalúa extraerlo en el mismo cambio.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
+- **Riesgo:** bajo — refactor local oportunista.
 
 ### [P3] Migrar los `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
@@ -275,6 +301,63 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-08] **P1: el trabajo bloqueante sale del event loop, y un ratchet impide que vuelva** —
+  La API es async pero toda la persistencia es síncrona, así que un `async def` que llamaba directo
+  a `db.*`/`services.*` ejecutaba ese trabajo **sobre el event loop**: mientras duraba, ningún
+  endpoint del proceso respondía. Ninguna herramienta del repo veía la clase (ruff y mypy no
+  modelan qué bloquea, y los tests funcionales pasan igual — un handler bloqueante da la respuesta
+  correcta, solo que parando el proceso). Los peores casos eran `dual_auth.require_any_auth` y
+  `auth._session_principal` (dependencias de casi toda la superficie autenticada, 1 y 3 viajes a BD
+  por request), `auth.login`/`register` (seis viajes más argon2, caro por diseño),
+  `exports.download_export` (50k filas + reportlab) y `security.verify_audit_integrity` (HMAC fila
+  a fila sobre una tabla que solo crece). Los 22 handlers migran al idioma que ya usaba
+  `watchlist_rules.post_rule`: el trabajo síncrono en una función anidada y un solo
+  `await run_db(...)`, conservando el span OTEL `db.query`.
+  `tests/test_async_handlers_no_blocking_io.py` lo congela con allowlist **vacía** (el barrido no
+  dejó deuda) y se verificó que detecta una regresión inyectada. De paso, `download_export` empuja
+  `tecnologia`/`fecha_desde`/`fecha_hasta` a la query: antes el LIMIT se gastaba en filas que luego
+  se descartaban en Python, así que una exportación filtrada podía salir corta. Commits `8f3e7b9`,
+  `fa383e5`.
+
+- [2026-08-08] **P1: `/health` responde aunque una dependencia esté colgada** — Los tres sondeos no
+  tenían techo de tiempo: con la BD colgada el endpoint esperaba al `connect_timeout` (10 s) o al
+  `statement_timeout` (30 s), más de lo que aguanta el probe de la plataforma, que daba el proceso
+  por muerto y lo reiniciaba justo cuando `/health` existía para publicar "degraded". Ahora van
+  concurrentes en un task group, cada uno bajo `anyio.fail_after` con
+  `HEALTH_CHECK_TIMEOUT_SECONDS` (default 5 s). Commit `377b844`.
+
+- [2026-08-08] **P1: `POST /licitaciones/{id}/resumen` alcanzable para ids con `/`** — Usaba el
+  conversor por defecto (`[^/]+`) mientras sus ocho rutas hermanas usan `{...:path}`. Los
+  expedientes PLACSP con barra en el id (`PA-S 2026/000058`) recibían 404 antes de entrar al
+  handler: el resumen ejecutivo era inalcanzable para ellos, en silencio. Commit `fa383e5`.
+
+- [2026-08-08] **P1: `INSERT … RETURNING id` en vez del `lastrowid` emulado** — El adaptador
+  emulaba el id con `SELECT lastval()` en sentencia aparte, que devuelve el último valor de
+  **cualquier** secuencia de la sesión: con triggers ya en el schema (v61), un trigger que
+  insertara en otra tabla con identity hacía que el caller recibiera un id ajeno **sin ningún
+  error**. Los dos call-sites de webhooks eran los más expuestos (de ese id se deriva el secret
+  HMAC). Los 5 sitios migran y la propiedad se elimina del adaptador. Commit `187ff9d`.
+
+- [2026-08-08] **P2: un solo poller del centinela SSE por proceso** — Cada cliente conectado
+  consultaba `shared.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por intervalo
+  compitiendo por el threadpool con el resto de la API. Ahora un `_SignalWatcher` por proceso
+  publica el timestamp en memoria y cada cliente lo compara con su checkpoint — exactamente lo que
+  evaluaba `check_cache_signal`, pero O(1) en conexiones. Arranca con el primer suscriptor y se
+  cancela con el último; el bucle por cliente baja a 1 s (comprobación en memoria), mejorando
+  latencia y detección de desconexión sin coste de BD. Commit `b07fd6b`.
+
+- [2026-08-08] **P2: `API_THREADPOOL_TOKENS` parametriza el límite de hilos** — `api/app.py` fijaba
+  `total_tokens = 4` sin leer settings; ese pool sirve a los endpoints `def` y a todo `run_db`, así
+  que el valor correcto para Render Free era un cuello de botella en cualquier instancia mayor.
+  Default 4 (comportamiento idéntico) y warning si supera `DB_POOL_SIZE`. Commit `978b373`.
+
+- [2026-08-08] **P2: primer test para los 3 módulos que ninguno mencionaba** —
+  `services/deadline_reminders.py` (las tres ventanas, la distinción deadline/renovación, la
+  idempotencia que hace seguro correrlo a diario), `services/rate_limiting.py` (selección de
+  backend y los dos caminos de degradación, que deben acabar en BD y nunca en "sin rate limiting")
+  y `db/repositories/csp_violations.py` (su contrato defensivo: ni tabla ausente ni BD caída
+  propagan al endpoint público). Commit `2ca9174`.
 
 El histórico de ítems cerrados vive en
 [docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).

@@ -244,7 +244,8 @@ async def resolve_review(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Revisión inexistente o ya resuelta.",
         )
-    log_event(
+    await run_db(
+        log_event,
         event_type="empresa.review_resolved",
         user_key=resolved_by[:8],
         resource=f"empresa_review:{review_id}",

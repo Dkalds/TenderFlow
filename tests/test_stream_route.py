@@ -117,3 +117,63 @@ class TestStreamSSE:
         with _patch_fast_stream():
             resp = stream_client.get("/api/v1/licitaciones/stream?batch=5")
         assert resp.status_code == 200
+
+
+class TestSharedSignalWatcher:
+    """El poll del centinela es uno por proceso, no uno por cliente."""
+
+    def test_n_subscribers_produce_one_read_per_interval(self):
+        """Con 5 suscriptores el centinela se lee una vez, no cinco.
+
+        Antes cada cliente conectado consultaba la BD cada 5 s por su cuenta:
+        la carga crecía con el número de conexiones y competía por el
+        threadpool con el resto de la API.
+        """
+        import asyncio
+        from contextlib import AsyncExitStack
+
+        from api.routes.stream import _SignalWatcher
+
+        reads = {"n": 0}
+
+        def _counting_signal() -> float:
+            reads["n"] += 1
+            return 123.0
+
+        async def _exercise() -> float:
+            watcher = _SignalWatcher()
+            async with AsyncExitStack() as stack:
+                for _ in range(5):
+                    await stack.enter_async_context(watcher.subscribe())
+                # El poller lee una vez al arrancar y después duerme
+                # _POLL_INTERVAL, así que basta con esperar a esa primera
+                # lectura: cualquier lectura de más sería una por cliente.
+                for _ in range(200):
+                    if watcher._signal_ts:
+                        break
+                    await asyncio.sleep(0.01)
+                return watcher._signal_ts
+
+        with patch("shared.cache_signal.get_signal_timestamp", _counting_signal):
+            signal_ts = asyncio.run(_exercise())
+
+        assert signal_ts == 123.0, "el poller no llegó a publicar la marca del centinela"
+        assert reads["n"] == 1, f"se leyó el centinela {reads['n']} veces para 5 clientes"
+
+    def test_watcher_stops_when_last_subscriber_leaves(self):
+        """Sin clientes conectados no queda ningún poller consultando."""
+        import asyncio
+
+        from api.routes.stream import _SignalWatcher
+
+        async def _exercise() -> tuple[bool, bool]:
+            watcher = _SignalWatcher()
+            async with watcher.subscribe():
+                running = watcher._task is not None
+            return running, watcher._task is None
+
+        with patch("shared.cache_signal.get_signal_timestamp", lambda: 1.0):
+            running_with_client, stopped_without = asyncio.run(_exercise())
+
+        assert running_with_client
+        assert stopped_without

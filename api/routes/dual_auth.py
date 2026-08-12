@@ -90,8 +90,9 @@ async def require_any_auth(
             user_id = ctx.key_id
             owner: dict[str, Any] | None = None
         else:
-            # `get_user_by_id` es síncrono (psycopg3): sin `run_db` bloquearía
-            # el event loop en cada petición autenticada por API key.
+            # Esta dependencia cuelga de casi toda la API: `get_user_by_id` es
+            # síncrono (psycopg3), así que sin `run_db` bloquearía el event
+            # loop en cada petición autenticada por API key.
             owner = await run_db(get_user_by_id, user_id)
             if owner is None:
                 raise HTTPException(

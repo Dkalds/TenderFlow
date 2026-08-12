@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 
 from api.auth import AuthContext, require_scope
+from api.concurrency import run_db
 from observability.logging import get_logger
 from services.watchlist import generate_atom_feed
 
@@ -56,7 +57,7 @@ async def watchlist_feed(
     garantizando que cada key solo accede a su propia watchlist.
     """
     try:
-        xml = generate_atom_feed(user_key=ctx.key_hash, limit=limit)
+        xml = await run_db(generate_atom_feed, user_key=ctx.key_hash, limit=limit)
     except Exception as exc:
         log.error("watchlist_feed_error", error=str(exc), key_id=ctx.key_id)
         raise HTTPException(

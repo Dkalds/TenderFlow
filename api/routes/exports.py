@@ -253,31 +253,38 @@ async def download_export(
     from services.exports import generate_csv, generate_excel, get_export_filename
     from services.licitaciones import fetch_for_pdf
 
-    rows = fetch_for_pdf(ccaa=ccaa, estado=estado, q=q, limit=limit)
-    # Apply extra filters not supported by fetch_for_pdf
-    if tecnologia:
-        rows = [r for r in rows if r.get("tecnologia") == tecnologia]
-    if fecha_desde:
-        rows = [r for r in rows if (r.get("fecha_publicacion") or "") >= fecha_desde]
-    if fecha_hasta:
-        rows = [r for r in rows if (r.get("fecha_publicacion") or "") <= fecha_hasta]
+    def _render() -> tuple[bytes, str, int]:
+        """Consulta + serialización, fuera del event loop.
+
+        Hasta 50 000 filas y, con ``format=pdf``, la maquetación de reportlab:
+        segundos de CPU que, ejecutados aquí, congelaban la API entera.
+        """
+        rows = fetch_for_pdf(
+            ccaa=ccaa,
+            estado=estado,
+            q=q,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            limit=limit,
+        )
+        if format == "excel":
+            return (
+                generate_excel(rows),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                len(rows),
+            )
+        if format == "pdf":
+            title = "Licitaciones SAP — Exportación"
+            if ccaa:
+                title += f" ({ccaa})"
+            return _build_pdf(rows, title), "application/pdf", len(rows)
+        return generate_csv(rows), "text/csv; charset=utf-8", len(rows)
 
     filename = get_export_filename(format)
+    content, media_type, n_rows = await run_db(_render)
 
-    if format == "excel":
-        content = generate_excel(rows)
-        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    elif format == "pdf":
-        title = "Licitaciones SAP — Exportación"
-        if ccaa:
-            title += f" ({ccaa})"
-        content = _build_pdf(rows, title)
-        media_type = "application/pdf"
-    else:
-        content = generate_csv(rows)
-        media_type = "text/csv; charset=utf-8"
-
-    log.info("export_download", format=format, n_rows=len(rows))
+    log.info("export_download", format=format, n_rows=n_rows)
     return StreamingResponse(
         io.BytesIO(content),
         media_type=media_type,

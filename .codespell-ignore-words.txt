@@ -135,4 +135,6 @@ controlable
 contiguos
 aplicable
 delate
+importen
+termine
 admisible

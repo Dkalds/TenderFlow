@@ -152,10 +152,21 @@ def fetch_for_pdf(
     ccaa: str | None = None,
     estado: str | None = None,
     q: str | None = None,
+    tecnologia: str | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
     limit: int = 500,
 ) -> list[dict[str, Any]]:
     """Carga licitaciones para exportación PDF."""
-    return _repo.fetch_for_pdf(ccaa=ccaa, estado=estado, q=q, limit=limit)
+    return _repo.fetch_for_pdf(
+        ccaa=ccaa,
+        estado=estado,
+        q=q,
+        tecnologia=tecnologia,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        limit=limit,
+    )
 
 
 def search_for_ask(

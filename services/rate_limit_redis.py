@@ -3,7 +3,7 @@
 Mantiene API compatible con ``db.rate_limits.check_rate_limit_db`` para
 permitir cambiar de backend con una variable de entorno
 (``RATE_LIMIT_BACKEND=redis``). Si Redis no está disponible o no se
-configura, cae al backend SQLite existente.
+configura, cae al backend de base de datos existente.
 
 Diseño:
 
@@ -111,16 +111,17 @@ def check_rate_limit(
     max_calls: int = 120,
     window_seconds: float = 60.0,
 ) -> bool:
-    """Dispatcher: Redis si configurado y operativo; SQLite como fallback.
+    """Dispatcher: Redis si configurado y operativo; BD como fallback.
 
-    Permite cambiar de backend con ``RATE_LIMIT_BACKEND=redis|sqlite``.
+    Permite cambiar de backend con ``RATE_LIMIT_BACKEND=redis|db``
+    (``sqlite`` sigue valiendo como alias histórico de ``db``).
     """
     backend = os.getenv("RATE_LIMIT_BACKEND", "sqlite").lower()
     if backend == "redis":
         result = check_rate_limit_redis(key, max_calls=max_calls, window_seconds=window_seconds)
         if result is not None:
             return result
-        log.debug("ratelimit_redis_fallback_to_sqlite", key=key)
+        log.debug("ratelimit_redis_fallback_to_db", key=key)
 
     from db.rate_limits import check_rate_limit_db
 

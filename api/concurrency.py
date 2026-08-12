@@ -3,6 +3,8 @@
 El driver de Postgres (psycopg3) es síncrono. Para no bloquear el event loop
 de FastAPI (async), toda query lanzada desde un handler ``async`` debe
 ejecutarse en el threadpool de anyio con ``run_db``.
+``tests/test_async_handlers_no_blocking_io.py`` lo verifica de forma
+estructural sobre ``api/routes/``.
 
 Bulkhead pattern
 ----------------
@@ -27,7 +29,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, TypeVar
 
-from anyio import to_thread
+from anyio import CapacityLimiter, to_thread
 
 # Los presupuestos viven en ``shared`` para que ``shared.cache`` pueda usarlos
 # sin importar ``api`` (inversión de capas) y para que ambos caminos compartan
@@ -36,7 +38,20 @@ from shared.concurrency import cpu_limiter, ml_limiter, reset_limiters
 
 T = TypeVar("T")
 
-__all__ = ["cpu_limiter", "ml_limiter", "reset_limiters", "run_cpu", "run_db", "run_ml"]
+__all__ = [
+    "cpu_limiter",
+    "ml_limiter",
+    "reset_limiters",
+    "run_cpu",
+    "run_db",
+    "run_ml",
+    "run_probe",
+]
+
+# Los bulkheads de ML y CPU viven en ``shared.concurrency`` porque los comparte
+# ``shared.cache``. El de sondeos se queda aquí: solo lo usa ``/health``, su
+# tamaño es fijo (no sale de settings) y nada fuera de ``api`` lo necesita.
+_PROBE_LIMITER: CapacityLimiter | None = None
 
 
 def _span(name: str, attributes: dict[str, str]) -> AbstractContextManager[Any]:
@@ -64,6 +79,14 @@ def _fn_name(fn: Callable[..., Any]) -> str:
     return name
 
 
+def _get_probe_limiter() -> CapacityLimiter:
+    """Lazy singleton del CapacityLimiter para sondeos de salud."""
+    global _PROBE_LIMITER
+    if _PROBE_LIMITER is None:
+        _PROBE_LIMITER = CapacityLimiter(4)
+    return _PROBE_LIMITER
+
+
 async def run_db(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Ejecuta ``fn(*args, **kwargs)`` en el threadpool general de anyio.
 
@@ -77,6 +100,28 @@ async def run_db(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """
     with _span("db.query", {"db.function": _fn_name(fn)}):
         return await to_thread.run_sync(lambda: fn(*args, **kwargs))
+
+
+async def run_probe(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Ejecuta un sondeo de salud en un threadpool propio, **abandonable**.
+
+    Diferencia esencial con ``run_db``: ``abandon_on_cancel=True``. Por defecto,
+    ``to_thread.run_sync`` NO devuelve el control al cancelarse — espera a que
+    el hilo termine —, así que envolverlo en ``anyio.fail_after`` no acota nada:
+    con la BD colgada, ``/health`` seguía tardando lo que tardase el sondeo. Con
+    esta bandera el timeout sí devuelve y el endpoint puede responder
+    ``degraded`` mientras el hilo huérfano se apaga solo (lo hará: la conexión
+    lleva ``connect_timeout`` y ``statement_timeout`` propios).
+
+    El limiter dedicado es la contrapartida: un hilo abandonado retiene su slot
+    hasta morir, y sin bulkhead una racha de probes con la BD caída se comería
+    el threadpool general que sirve al resto de la API. Mismo patrón que
+    ``run_ml``.
+    """
+    limiter = _get_probe_limiter()
+    return await to_thread.run_sync(
+        lambda: fn(*args, **kwargs), limiter=limiter, abandon_on_cancel=True
+    )
 
 
 async def run_ml(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:

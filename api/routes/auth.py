@@ -172,6 +172,11 @@ def _login_client_key(request: Request, email: str) -> str:
 def _session_principal(session: str | None) -> dict[str, Any]:
     """Resuelve el principal de la cookie de sesión, sin gate de MFA.
 
+    Síncrona a propósito: hace tres viajes a BD (``validate_session``,
+    ``get_user_by_id``, ``is_totp_required``) y es la dependencia de casi toda
+    la API autenticada por cookie. Sus dos llamadores async la despachan con un
+    único ``run_db`` para que ese trabajo no corra sobre el event loop.
+
     Raises 401 if the session is missing, invalid, or expired.
 
     Función **síncrona**: las dependencias que la usan la despachan al
@@ -337,42 +342,57 @@ class OAuthAuthorizeResult(BaseModel):
 @router.post("/login", response_model=UserInfo)
 async def login(body: LoginRequest, response: Response, request: Request) -> UserInfo:
     """Authenticate with email + password, set session cookie."""
+    # Nota de implementación (deliberadamente FUERA del docstring: FastAPI lo
+    # publica como descripción del endpoint en el OpenAPI, y de ahí baja al
+    # cliente TypeScript generado — un detalle de threadpool no es contrato
+    # público). Todo el trabajo (seis viajes a BD y el `verify_password` de
+    # argon2, caro por diseño) va en un solo salto al threadpool: ejecutado
+    # sobre el event loop, cada login serializaba la API entera mientras
+    # duraba el KDF.
     from db.rate_limits import clear_login_attempts, is_login_locked_out, record_failed_login
-
-    client_key = _login_client_key(request, str(body.email))
-    locked, retry_after = is_login_locked_out(client_key)
-    if locked:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed login attempts. Try again later.",
-            headers={"Retry-After": str(max(1, int(retry_after)))},
-        )
-    user = get_user_by_email(body.email)
-    if not user:
-        record_failed_login(client_key)
-        log.warning("login_failed", reason="user_not_found")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    pw_hash: str = user.get("password_hash", "") or ""
-    if not verify_password(body.password, pw_hash):
-        record_failed_login(client_key)
-        log.warning("login_failed", user_id=user["id"], reason="bad_password")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    clear_login_attempts(client_key)
-    _set_session_cookie(response, user["id"], request)
     from db.totp import is_totp_required
 
-    log_access(auth_method="password", user_id=user["id"])
-    log.info("login_success", user_id=user["id"])
+    client_key = _login_client_key(request, str(body.email))
 
-    return UserInfo(
-        user_id=user["id"],
-        email=user.get("email"),
-        display_name=user.get("display_name"),
-        is_admin=is_admin(user["id"]),
-        mfa_required=is_totp_required(user["id"]),
-    )
+    def _authenticate() -> UserInfo:
+        locked, retry_after = is_login_locked_out(client_key)
+        if locked:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed login attempts. Try again later.",
+                headers={"Retry-After": str(max(1, int(retry_after)))},
+            )
+        user = get_user_by_email(body.email)
+        if not user:
+            record_failed_login(client_key)
+            log.warning("login_failed", reason="user_not_found")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+            )
+
+        pw_hash: str = user.get("password_hash", "") or ""
+        if not verify_password(body.password, pw_hash):
+            record_failed_login(client_key)
+            log.warning("login_failed", user_id=user["id"], reason="bad_password")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+            )
+
+        clear_login_attempts(client_key)
+        _set_session_cookie(response, user["id"], request)
+
+        log_access(auth_method="password", user_id=user["id"])
+        log.info("login_success", user_id=user["id"])
+
+        return UserInfo(
+            user_id=user["id"],
+            email=user.get("email"),
+            display_name=user.get("display_name"),
+            is_admin=is_admin(user["id"]),
+            mfa_required=is_totp_required(user["id"]),
+        )
+
+    return await run_db(_authenticate)
 
 
 @router.post("/register", response_model=UserInfo, status_code=status.HTTP_201_CREATED)
@@ -398,19 +418,25 @@ async def register(body: RegisterRequest, response: Response, request: Request) 
     if not check.is_strong:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=check.summary)
 
-    if get_user_by_email(body.email, include_deactivated=True):
-        log.warning("signup_rejected", reason="email_exists")
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
-
     display_name = (body.display_name or "").strip() or None
-    user_id = create_user(
-        email=body.email,
-        password_hash=hash_password(body.password),
-        display_name=display_name,
-    )
 
-    _set_session_cookie(response, user_id, request)  # auto-login
-    log_access(auth_method="password_signup", user_id=user_id)
+    def _create_account() -> int:
+        """BD + ``hash_password`` (argon2) fuera del event loop."""
+        if get_user_by_email(body.email, include_deactivated=True):
+            log.warning("signup_rejected", reason="email_exists")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+            )
+        new_id = create_user(
+            email=body.email,
+            password_hash=hash_password(body.password),
+            display_name=display_name,
+        )
+        _set_session_cookie(response, new_id, request)  # auto-login
+        log_access(auth_method="password_signup", user_id=new_id)
+        return new_id
+
+    user_id = await run_db(_create_account)
     log.info("signup_success", user_id=user_id)
 
     return UserInfo(
@@ -435,21 +461,25 @@ if settings.ENV == "dev":
         login during local development without requiring Google OAuth
         or password setup.
         """
-        user = get_user_by_id(1)
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Dev user (id=1) not found",
+
+        def _dev_login() -> UserInfo:
+            user = get_user_by_id(1)
+            if user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Dev user (id=1) not found",
+                )
+            _set_session_cookie(response, user["id"], request)
+            log_access(auth_method="dev_login", user_id=user["id"])
+            log.info("dev_login_success", user_id=user["id"])
+            return UserInfo(
+                user_id=user["id"],
+                email=user.get("email"),
+                display_name=user.get("display_name"),
+                is_admin=is_admin(user["id"]),
             )
-        _set_session_cookie(response, user["id"], request)
-        log_access(auth_method="dev_login", user_id=user["id"])
-        log.info("dev_login_success", user_id=user["id"])
-        return UserInfo(
-            user_id=user["id"],
-            email=user.get("email"),
-            display_name=user.get("display_name"),
-            is_admin=is_admin(user["id"]),
-        )
+
+        return await run_db(_dev_login)
 
 
 @router.get("/me", response_model=UserInfo)
@@ -478,7 +508,7 @@ async def logout(
     Debe funcionar con MFA pendiente: abandonar un login a medias no puede
     requerir completarlo.
     """
-    revoke_session(str(user["session_token"]))
+    await run_db(revoke_session, str(user["session_token"]))
     _clear_session_cookies(response)
     return DetailMessage(detail="Logged out")
 
@@ -545,12 +575,19 @@ async def setup_totp(
     from db.totp import generate_totp_secret, get_totp_secret, get_totp_uri, save_totp_secret
 
     user_id = int(user["user_id"])
-    if get_totp_secret(user_id) is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="TOTP already configured")
-    secret = generate_totp_secret()
-    save_totp_secret(user_id, secret, confirmed=False)
+
+    def _setup() -> str:
+        if get_totp_secret(user_id) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="TOTP already configured"
+            )
+        secret = generate_totp_secret()
+        save_totp_secret(user_id, secret, confirmed=False)
+        return get_totp_uri(secret, str(user.get("email") or user_id))
+
+    otpauth_uri = await run_db(_setup)
     response.headers["Cache-Control"] = "no-store"
-    return TotpSetupResult(otpauth_uri=get_totp_uri(secret, str(user.get("email") or user_id)))
+    return TotpSetupResult(otpauth_uri=otpauth_uri)
 
 
 @router.post("/totp/confirm")
@@ -560,28 +597,32 @@ async def confirm_totp(
     user: dict[str, Any] = Depends(require_recent_session_auth),
 ) -> TotpConfirmResult:
     """Confirma el primer código TOTP y entrega recovery codes una sola vez."""
+    from db.rate_limits import clear_mfa_attempts
     from db.sessions import mark_session_mfa_verified
     from db.totp import confirm_totp as confirm_totp_secret
     from db.totp import generate_recovery_codes, get_totp_secret, verify_totp
 
     user_id = int(user["user_id"])
-    _reject_if_mfa_locked(user_id)
-    record = get_totp_secret(user_id)
-    if (
-        record is None
-        or record["confirmed"]
-        or not body.code.isdecimal()
-        or not verify_totp(record["secret"], body.code)
-    ):
-        _record_mfa_failure(user_id)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
-    confirm_totp_secret(user_id)
-    mark_session_mfa_verified(str(user["session_token"]))
-    from db.rate_limits import clear_mfa_attempts
 
-    clear_mfa_attempts(user_id)
+    def _confirm() -> list[str]:
+        _reject_if_mfa_locked(user_id)
+        record = get_totp_secret(user_id)
+        if (
+            record is None
+            or record["confirmed"]
+            or not body.code.isdecimal()
+            or not verify_totp(record["secret"], body.code)
+        ):
+            _record_mfa_failure(user_id)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
+        confirm_totp_secret(user_id)
+        mark_session_mfa_verified(str(user["session_token"]))
+        clear_mfa_attempts(user_id)
+        return generate_recovery_codes(user_id)
+
+    recovery_codes = await run_db(_confirm)
     response.headers["Cache-Control"] = "no-store"
-    return TotpConfirmResult(status="ok", recovery_codes=generate_recovery_codes(user_id))
+    return TotpConfirmResult(status="ok", recovery_codes=recovery_codes)
 
 
 @router.post("/totp/verify")
@@ -594,27 +635,30 @@ async def verify_totp_login(
     Es la única ruta que *tiene* que aceptar una sesión sin MFA verificado:
     gatearla dejaría a todo usuario con TOTP sin forma de completar el login.
     """
+    from db.rate_limits import clear_mfa_attempts
     from db.sessions import mark_session_mfa_verified
     from db.totp import get_totp_secret, use_recovery_code, verify_totp
 
     user_id = int(user["user_id"])
-    _reject_if_mfa_locked(user_id)
-    record = get_totp_secret(user_id)
-    valid = bool(
-        body.code.isdecimal()
-        and record
-        and record["confirmed"]
-        and verify_totp(record["secret"], body.code)
-    )
-    if not valid and len(body.code) == 16:
-        valid = use_recovery_code(user_id, body.code)
-    if not valid:
-        _record_mfa_failure(user_id)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
-    mark_session_mfa_verified(str(user["session_token"]))
-    from db.rate_limits import clear_mfa_attempts
 
-    clear_mfa_attempts(user_id)
+    def _verify() -> None:
+        _reject_if_mfa_locked(user_id)
+        record = get_totp_secret(user_id)
+        valid = bool(
+            body.code.isdecimal()
+            and record
+            and record["confirmed"]
+            and verify_totp(record["secret"], body.code)
+        )
+        if not valid and len(body.code) == 16:
+            valid = use_recovery_code(user_id, body.code)
+        if not valid:
+            _record_mfa_failure(user_id)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
+        mark_session_mfa_verified(str(user["session_token"]))
+        clear_mfa_attempts(user_id)
+
+    await run_db(_verify)
     return StatusOk(status="ok")
 
 
@@ -629,7 +673,7 @@ async def remove_totp(
         )
     from db.totp import delete_totp
 
-    delete_totp(int(user["user_id"]))
+    await run_db(delete_totp, int(user["user_id"]))
     return StatusOk(status="ok")
 
 
@@ -822,26 +866,28 @@ async def google_callback(
         log.warning("oauth_email_not_allowed")
         return _oauth_error_redirect(frontend_url, "email_not_allowed")
 
-    # Get or create user
-    user_id = get_or_create_oauth_user(
-        email=email,
-        oauth_provider="google",
-        oauth_sub=str(claims.get("sub", "")),
-        display_name=str(claims.get("name", "")),
-    )
+    from db.totp import is_totp_required
 
-    _sync_oauth_admin(user_id, email)
+    def _provision_user() -> tuple[int, bool]:
+        """Alta/actualización del usuario OAuth y su gate de MFA, en threadpool."""
+        new_id = get_or_create_oauth_user(
+            email=email,
+            oauth_provider="google",
+            oauth_sub=str(claims.get("sub", "")),
+            display_name=str(claims.get("name", "")),
+        )
+        _sync_oauth_admin(new_id, email)
+        log_access(auth_method="google_oauth", user_id=new_id)
+        return new_id, is_totp_required(new_id)
 
-    log_access(auth_method="google_oauth", user_id=user_id)
+    user_id, mfa_required = await run_db(_provision_user)
     log.info("oauth_login_success", user_id=user_id)
 
     # Con MFA confirmado la sesión nace pendiente: mandarla al dashboard la
     # dejaría en una pantalla que responde 403 en todo. El SPA lee `?mfa=required`
     # y muestra la verificación del segundo factor sobre la sesión ya creada.
-    from db.totp import is_totp_required
-
-    destino = "/login?mfa=required" if is_totp_required(user_id) else "/resumen"
+    destino = "/login?mfa=required" if mfa_required else "/resumen"
     redirect = RedirectResponse(url=f"{frontend_url}{destino}", status_code=302)
     redirect.delete_cookie(_OAUTH_PKCE_COOKIE, path="/api/v1/auth/oauth/google")
-    _set_session_cookie(redirect, user_id, request)
+    await run_db(_set_session_cookie, redirect, user_id, request)
     return redirect

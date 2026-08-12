@@ -187,7 +187,7 @@ def extract_keywords(query: str) -> list[str]:
 
 
 def escape_fts5(query: str) -> str:
-    """Escapa y normaliza la query para SQLite FTS5 MATCH (semántica RAG).
+    """Escapa y normaliza la query para FTS5 MATCH (semántica RAG).
 
     Dos bugs históricos que esta función corrige:
 
