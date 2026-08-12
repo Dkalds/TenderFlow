@@ -81,6 +81,21 @@ describe("useRadar", () => {
     expect(scoringCall).toContain("limit=24");
   });
 
+  it("pide el ranking sin las señales que el usuario descartó", async () => {
+    // Excluirlas en cliente sobre el top-24 ya cortado dejaba la bandeja vacía
+    // a quien triaba las 24: las descartadas seguían ocupando su plaza en el
+    // corte y no entraba nada detrás. El backend las quita antes de ordenar.
+    const fetchMock = stubApi({ opportunities: [scored("A", 50)] });
+
+    const { result } = renderHook(() => useRadar(), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const scoringCall = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .find((url) => url.includes("/analytics/scoring"));
+    expect(scoringCall).toContain("exclude_dismissed=true");
+  });
+
   it("respeta el orden que devuelve el backend sin reordenar en cliente", async () => {
     // La puntuación y el orden se calculan en servidor (ADR-014): aquí no se
     // deriva ninguna dimensión.

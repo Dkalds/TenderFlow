@@ -1993,8 +1993,12 @@ export interface paths {
          * Crear o actualizar el perfil de scoring
          * @description Crea o actualiza el perfil de scoring personalizado.
          *
-         *     Los pesos deben sumar 100 cuando se proporcionan.
-         *     Pasar `null` en un campo lo mantiene sin cambios (no sobrescribe).
+         *     Los pesos, cuando se proporcionan, deben ser dimensiones conocidas, no
+         *     negativas y sumar 100.
+         *
+         *     **Reemplaza el perfil completo**: el upsert escribe todas las columnas, así
+         *     que un campo omitido (o `null`) se guarda como `null`, no conserva el valor
+         *     anterior. Enviá siempre el estado íntegro.
          */
         put: operations["put_profile_api_v1_me_profile_put"];
         post?: never;
@@ -5986,11 +5990,52 @@ export interface components {
         ScoringResult: {
             /** Opportunities */
             opportunities?: components["schemas"]["ScoredOpportunity"][];
+            signals?: components["schemas"]["ScoringSignalsHealth"] | null;
             /**
              * Total Scored
+             * @description Oportunidades que pasaron los filtros, antes del truncado a `limit`. Puede ser mayor que len(opportunities).
              * @default 0
              */
             total_scored: number;
+        };
+        /**
+         * ScoringSignalsHealth
+         * @description De qué estaba hecho el score de esta respuesta.
+         *
+         *     Una señal caída y una señal sin datos producen el mismo resultado —todas
+         *     las filas neutrales en esa dimensión— y hasta ahora eso no se distinguía
+         *     de un score sano desde fuera: la señal de margen estuvo muerta semanas
+         *     porque su query fallaba y el ``except`` devolvía stats vacías. Que el
+         *     estado viaje con los datos es lo que convierte esa avería en algo visible
+         *     en la UI en vez de en un ranking silenciosamente peor.
+         */
+        ScoringSignalsHealth: {
+            /**
+             * Afinidad Metodo
+             * @description semantic_embeddings | keyword_cpv_fallback | unavailable
+             */
+            afinidad_metodo: string;
+            /**
+             * Competencia
+             * @description ok | vacia | error
+             */
+            competencia: string;
+            /**
+             * Margen
+             * @description ok | vacia | error
+             */
+            margen: string;
+            /**
+             * Percentiles Fuente
+             * @description universo_vivo | global | lote_local | sin_datos
+             */
+            percentiles_fuente: string;
+            /**
+             * Senal Tecnica
+             * @description ok | error
+             * @default ok
+             */
+            senal_tecnica: string;
         };
         /** SearchRequest */
         SearchRequest: {
@@ -6873,6 +6918,8 @@ export interface components {
         UserProfileBody: {
             /** Afinidad Keywords */
             afinidad_keywords?: string[] | null;
+            /** Cpvs */
+            cpvs?: string[] | null;
             /** Importe Max */
             importe_max?: number | null;
             /** Importe Min */
@@ -6897,6 +6944,8 @@ export interface components {
         UserProfileOut: {
             /** Afinidad Keywords */
             afinidad_keywords?: string[] | null;
+            /** Cpvs */
+            cpvs?: string[] | null;
             /** Importe Max */
             importe_max?: number | null;
             /** Importe Min */
@@ -8275,8 +8324,10 @@ export interface operations {
                 band?: string | null;
                 /** @description Filter by tecnologia (se aplica al universo, antes del top-N) */
                 tecnologia?: string | null;
-                /** @description CSV de id_externo: puntua exactamente esas licitaciones (alineado a la pagina del listado), ignorando min_score/band/limit/tecnologia */
+                /** @description CSV de id_externo (maximo 500): puntua exactamente esas licitaciones (alineado a la pagina del listado), ignorando min_score/band/limit/tecnologia */
                 ids?: string | null;
+                /** @description Excluye del ranking las senales que el usuario descarto, antes de ordenar y cortar. Se ignora en modo ids. */
+                exclude_dismissed?: boolean;
             };
             header?: never;
             path?: never;

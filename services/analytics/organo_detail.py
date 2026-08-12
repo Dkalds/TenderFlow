@@ -24,6 +24,8 @@ from pydantic import BaseModel, Field
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
+from services.analytics.scoring import score_dataframe
+from services.analytics.scoring_signals import load_importe_percentiles
 from services.classification import (
     ESTADO_LABELS,
     cpv_label,
@@ -110,29 +112,6 @@ def _to_repo_filters(filters: OrganoDetailFilters) -> LicitacionesFilters:
     )
 
 
-def _simple_score(row: pd.Series) -> float:
-    """Simplified scoring for ranking within an organo."""
-    score = 0.0
-    if pd.notna(row.get("importe")):
-        score += min(float(row["importe"]) / 1_000_000, 40)
-    titulo = str(row.get("titulo", "") or "").lower()
-    kw = ["sap", "erp", "cloud", "digital", "mantenimiento", "desarrollo"]
-    score += sum(5 for k in kw if k in titulo)
-    if row.get("estado") in ("PUB", "EV"):
-        score += 10
-    return min(round(score, 1), 100)
-
-
-def _score_to_banda(score: float) -> str:
-    if score >= 80:
-        return "A"
-    if score >= 60:
-        return "B"
-    if score >= 40:
-        return "C"
-    return "D"
-
-
 def _lead_time_median(adj_df: pd.DataFrame) -> float | None:
     """Mediana de días entre publicación y adjudicación.
 
@@ -199,6 +178,9 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
     df = df.assign(
         fecha_publicacion=pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True),
         importe=pd.to_numeric(df["importe"], errors="coerce"),
+        # Nombre que espera `_score_row` para la dimensión plazo.
+        fecha_limite_dt=pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True),
+        id_externo=df["id_externo"].astype(str),
     )
 
     # KPIs
@@ -262,8 +244,17 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
             for m, c in mes_counts.items()
         ]
 
-    # Top scored — enrich with adjudicacion data
-    df = df.assign(_score=df.apply(_simple_score, axis=1))
+    # Top scored — el mismo motor que el Radar, enriquecido con adjudicación.
+    #
+    # Hasta 2026-08 esto lo hacía un `_simple_score` propio, superviviente del
+    # scoring pre-RFC: sumaba 5 puntos por cada keyword SAP del título, 10 si
+    # el estado estaba en una allowlist que dejaba fuera `ADM` (el más común),
+    # y bandas A/B/C/D incomparables con las del resto del producto. Dos
+    # rankings distintos para la misma licitación, y el que se veía aquí era el
+    # que el RFC de scoring genérico había eliminado.
+    scored_df = score_dataframe(df, df, importe_percentiles=load_importe_percentiles())
+    df = df.merge(scored_df.rename(columns={"score": "_score"}), on="id_externo", how="left")
+    df["_score"] = df["_score"].fillna(0)
     top_scored_df = df.nlargest(30, "_score").copy()
     adj_lookup = _adj_lookup_for(adj_df, top_scored_df["id_externo"])
 
@@ -284,7 +275,7 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
                 titulo=titulo_raw,
                 importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
                 score=score,
-                banda=_score_to_banda(score),
+                banda=str(row["band"]) if pd.notna(row.get("band")) else None,
                 ccaa=str(row["ccaa"]) if pd.notna(row.get("ccaa")) else None,
                 estado=estado_raw,
                 estado_desc=ESTADO_LABELS.get(estado_raw.strip(), estado_raw)

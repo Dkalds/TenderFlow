@@ -10,6 +10,8 @@ from typing import Literal
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.scoring_weights import validate_scoring_weights
+
 _ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -420,15 +422,26 @@ class Settings(BaseSettings):
     EMBEDDING_VERSION: str = "v1"
 
     # ── Scoring de oportunidades ─────────────────────────────────────────
-    # Pesos por dimensión (enteros, deben sumar 100 cuando afinidad está activa).
+    # Pesos por dimensión (enteros, deben sumar 100). Validados al arrancar por
+    # shared/scoring_weights.py, el mismo validador que aplica el perfil de
+    # usuario.
+    #
+    # `senal_tecnica` (2026-08) mide cuán confirmada está la tecnología en el
+    # pliego real y en el clasificador. Los 10 puntos salen de `importe` y
+    # `competencia`, que son las dos señales más ruidosas del reparto: una
+    # normaliza contra los percentiles de ~1,6 k importes y la otra contra
+    # medias por CPV-4 con muestras de tres expedientes. `margen` se deja
+    # intacta porque es la única que viene de una predicción por licitación.
+    #
     # Overridable via ENV como JSON:
-    #   SCORING_WEIGHTS='{"importe":25,"plazo":15,"competencia":25,"margen":20,"afinidad":15}'
+    #   SCORING_WEIGHTS='{"importe":20,"plazo":15,"competencia":20,"margen":20,"afinidad":15,"senal_tecnica":10}'
     SCORING_WEIGHTS: dict[str, int] = {
-        "importe": 25,
+        "importe": 20,
         "plazo": 15,
-        "competencia": 25,
+        "competencia": 20,
         "margen": 20,
         "afinidad": 15,
+        "senal_tecnica": 10,
     }
     # Keywords de afinidad configurables por el usuario (casefold-substring sobre título).
     # Si está vacía, la dimensión afinidad se omite del desglose y su peso se
@@ -546,27 +559,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_scoring_weights(self) -> Settings:
-        weights = self.SCORING_WEIGHTS
-        allowed_keys = {"importe", "plazo", "competencia", "margen", "afinidad"}
-        for key, val in weights.items():
-            if key not in allowed_keys:
-                raise ValueError(
-                    f"SCORING_WEIGHTS contiene clave desconocida: {key!r}. "
-                    f"Claves permitidas: {sorted(allowed_keys)}"
-                )
-            if val < 0:
-                raise ValueError(
-                    f"SCORING_WEIGHTS[{key!r}] = {val} es negativo. Todos los pesos deben ser >= 0."
-                )
-        total = sum(weights.values())
-        if total != 100:
-            raise ValueError(
-                f"SCORING_WEIGHTS suma {total}, debe ser exactamente 100. "
-                f"Valores actuales: {weights}"
-            )
-        afinidad = weights.get("afinidad", 0)
-        if afinidad >= 100:
-            raise ValueError(f"SCORING_WEIGHTS['afinidad'] = {afinidad} debe ser < 100.")
+        # Misma regla que aplica el perfil de usuario en `PUT /me/profile`: los
+        # dos caminos por los que entran pesos comparten validador para que no
+        # puedan divergir (shared/scoring_weights.py).
+        validate_scoring_weights(self.SCORING_WEIGHTS, source="SCORING_WEIGHTS")
         return self
 
     @field_validator("ML_CONFIDENCE_THRESHOLD", mode="before")

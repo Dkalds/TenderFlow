@@ -15,9 +15,10 @@ type ScoredOpportunity = components["schemas"]["ScoredOpportunity"];
 
 export type RadarTender = ScoredOpportunity;
 
-interface ScoringResponse {
-  opportunities: ScoredOpportunity[];
-}
+/** De qué señales está hecho el score que se está mostrando. */
+export type ScoringSignals = components["schemas"]["ScoringSignalsHealth"];
+
+type ScoringResponse = components["schemas"]["ScoringResult"];
 
 interface DismissalsResponse {
   ids: string[];
@@ -44,9 +45,14 @@ const DISMISSALS_KEY = ["radar", "dismissals"] as const;
  * el top-24 tiene que ser el de esa tecnología. Filtrándolo en el cliente, con
  * 13 licitaciones SAP vivas entre 1.643, el top-24 global no traía ninguna y la
  * bandeja salía vacía bajo una cabecera que prometía lo contrario.
+ *
+ * Lo mismo vale para los descartes (`exclude_dismissed`): quitarlos aquí dejaba
+ * la bandeja vacía a quien triaba las 24, porque seguían ocupando su plaza en
+ * el corte. El backend los excluye antes de ordenar y el hueco lo ocupa la
+ * señal siguiente.
  */
 export function useRadar(tecnologia: string | null = null) {
-  const params = new URLSearchParams({ limit: "24" });
+  const params = new URLSearchParams({ limit: "24", exclude_dismissed: "true" });
   if (tecnologia) params.set("tecnologia", tecnologia);
 
   const scoring = useQuery({
@@ -57,12 +63,43 @@ export function useRadar(tecnologia: string | null = null) {
   });
 
   const items: RadarTender[] = scoring.data?.opportunities ?? [];
+  const signals = scoring.data?.signals ?? null;
 
   return {
-    data: scoring.data ? { items } : undefined,
+    data: scoring.data ? { items, signals } : undefined,
     isLoading: scoring.isPending,
     error: scoring.error,
     refetch: scoring.refetch,
+  };
+}
+
+/**
+ * Las descartadas, puntuadas — para su propio segmento del Radar.
+ *
+ * El ranking ya no las trae (`exclude_dismissed`), así que hay que pedirlas
+ * aparte. Se usa el modo page-aligned (`ids=`), el mismo que alinea el score
+ * del listado de Detalle: puntúa exactamente esas licitaciones sin recortar
+ * por plazo ni por estado, que es lo que hace falta para poder repasar lo
+ * descartado y restaurarlo.
+ */
+const MAX_DESCARTADAS_HIDRATADAS = 200;
+
+export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
+  const visibles = ids.slice(0, MAX_DESCARTADAS_HIDRATADAS);
+  const query = useQuery({
+    queryKey: ["radar", "dismissed-tenders", visibles],
+    queryFn: () =>
+      fetchWithAuth<ScoringResponse>(
+        `/api/v1/analytics/scoring?ids=${encodeURIComponent(visibles.join(","))}`,
+      ),
+    enabled: enabled && visibles.length > 0,
+    staleTime: 5 * 60_000,
+  });
+
+  return {
+    items: (query.data?.opportunities ?? []) as RadarTender[],
+    isLoading: query.isPending && enabled && visibles.length > 0,
+    truncadas: Math.max(0, ids.length - visibles.length),
   };
 }
 
@@ -104,6 +141,11 @@ export function useDismissRadarTender() {
     onSuccess: (ids: string[]) => {
       qc.setQueryData<string[]>(DISMISSALS_KEY, ids);
     },
+    onSettled: () => {
+      // El ranking se pide con `exclude_dismissed`: hay que volver a pedirlo
+      // para que entre la señal que ocupa el hueco.
+      void qc.invalidateQueries({ queryKey: ["radar", "scoring"] });
+    },
   });
 }
 
@@ -129,6 +171,7 @@ export function useRestoreRadarTender() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: DISMISSALS_KEY });
+      void qc.invalidateQueries({ queryKey: ["radar", "scoring"] });
     },
   });
 }

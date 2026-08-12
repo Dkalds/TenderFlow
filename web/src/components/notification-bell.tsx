@@ -174,7 +174,8 @@ export function NotificationBell({ className: _className }: NotificationBellProp
           <div className="mb-2 grid grid-cols-3 gap-1 px-1">
             <HoyStat label="Nuevas 24h" value={hoy.nuevas_24h} />
             <HoyStat label="Vencen 48h" value={hoy.vencen_48h} accent />
-            <HoyStat label="Calientes" value={hoy.calientes} />
+            {/* Importe ≥ P75 y en plazo — no la banda "Caliente" del score. */}
+            <HoyStat label="Grandes" value={hoy.calientes} />
           </div>
         )}
 

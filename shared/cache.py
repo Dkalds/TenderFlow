@@ -427,3 +427,32 @@ def cache_response(
         return wrapper
 
     return decorator
+
+
+def invalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int:
+    """Borra las entradas cacheadas de ``func_name`` que pertenecen a un usuario.
+
+    Para endpoints ``user_scoped`` cuya respuesta cambia por una acción del
+    propio usuario y no por una nueva ingesta: sin esto, quien descarta una
+    señal del Radar seguiría viéndola hasta que expirase el TTL, porque el
+    ranking se sirve cacheado.
+
+    Se filtra por contenido y no por prefijo: la clave la construye
+    ``cache_response`` ordenando kwargs, así que la posición de
+    ``principal:<user_key>`` depende de qué otros parámetros vengan. Devuelve
+    cuántas entradas se borraron.
+
+    Alcance: la instancia local con backend en memoria, todas con Redis. Con
+    varias instancias y memoria, el resto sigue el TTL — por eso el cliente
+    mantiene además su filtro optimista.
+    """
+    cache = get_cache(namespace)
+    marca = f"principal:{user_key}"
+    borradas = 0
+    for key in cache.keys(f"{func_name}|*"):
+        if marca in key:
+            cache.delete(key)
+            borradas += 1
+    if borradas:
+        log.debug("cache_invalidated_user_scoped", func=func_name, borradas=borradas)
+    return borradas

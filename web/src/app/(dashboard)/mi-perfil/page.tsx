@@ -22,17 +22,26 @@ import { formatDateTime } from "@/lib/utils";
 interface UserProfile {
   weights?: Record<string, number> | null;
   afinidad_keywords?: string[] | null;
+  cpvs?: string[] | null;
   importe_min?: number | null;
   importe_max?: number | null;
   updated_at?: string | null;
 }
 
+/** Mismo criterio que valida el backend: división, grupo o código completo. */
+function isValidCpv(value: string): boolean {
+  return /^\d{4,8}$/.test(value.trim());
+}
+
+// Debe reflejar `settings.SCORING_WEIGHTS`: es el reparto que el backend
+// aplica a quien no tiene perfil, y el que se ofrece al crear uno.
 const DEFAULT_WEIGHTS: Record<string, number> = {
-  importe: 25,
+  importe: 20,
   plazo: 15,
-  competencia: 25,
+  competencia: 20,
   margen: 20,
   afinidad: 15,
+  senal_tecnica: 10,
 };
 
 const WEIGHT_LABELS: Record<string, string> = {
@@ -41,14 +50,17 @@ const WEIGHT_LABELS: Record<string, string> = {
   competencia: "Competencia",
   margen: "Margen esperado",
   afinidad: "Afinidad (keywords)",
+  senal_tecnica: "Señal técnica",
 };
 
 const WEIGHT_DESCRIPTIONS: Record<string, string> = {
-  importe: "Puntúa según la posición del contrato en el rango P10-P90 del mercado.",
+  importe: "Puntúa según la posición del contrato en el rango P10-P90 del mercado abierto.",
   plazo: "Premia los contratos con plazo de presentación próximo (7-90 días).",
   competencia: "Favorece segmentos CPV con menos licitadores históricos.",
   margen: "Favorece contratos con baja esperada menor (más margen).",
   afinidad: "Puntúa matches con tus keywords de interés. Se omite si no hay keywords.",
+  senal_tecnica:
+    "Premia la evidencia de tecnología en el pliego y el clasificador, de la tecnología que estés filtrando.",
 };
 
 const PROFILE_KEY = ["me", "profile"] as const;
@@ -59,6 +71,19 @@ const PROFILE_KEY = ["me", "profile"] as const;
 
 function sumWeights(w: Record<string, number>): number {
   return Object.values(w).reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Pesos guardados → formulario, completando las dimensiones que falten con 0.
+ *
+ * Un perfil creado antes de que existiera una dimensión no la trae. Sin este
+ * relleno, su slider no aparecería y el usuario no podría activarla nunca; con
+ * el 0 explícito la ve, sabe que no está puntuando, y la suma sigue en 100.
+ */
+function hydrateWeights(saved: Record<string, number> | null | undefined): Record<string, number> {
+  if (!saved) return DEFAULT_WEIGHTS;
+  const ceros = Object.fromEntries(Object.keys(DEFAULT_WEIGHTS).map((k) => [k, 0]));
+  return { ...ceros, ...saved };
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +240,8 @@ export default function MiPerfilPage() {
   const [weights, setWeights] = useState<Record<string, number>>(DEFAULT_WEIGHTS);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [kwInput, setKwInput] = useState("");
+  const [cpvs, setCpvs] = useState<string[]>([]);
+  const [cpvInput, setCpvInput] = useState("");
   const [importeMin, setImporteMin] = useState("");
   const [importeMax, setImporteMax] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -222,8 +249,9 @@ export default function MiPerfilPage() {
   // Rellenar formulario cuando llegan datos del servidor
   useEffect(() => {
     if (!data) return;
-    setWeights(data.weights ?? DEFAULT_WEIGHTS); // eslint-disable-line react-hooks/set-state-in-effect
+    setWeights(hydrateWeights(data.weights)); // eslint-disable-line react-hooks/set-state-in-effect
     setKeywords(data.afinidad_keywords ?? []);
+    setCpvs(data.cpvs ?? []);
     setImporteMin(data.importe_min != null ? String(data.importe_min) : "");
     setImporteMax(data.importe_max != null ? String(data.importe_max) : "");
     setDirty(false);
@@ -239,6 +267,7 @@ export default function MiPerfilPage() {
       apiMutate<UserProfile>("PUT", "/api/v1/me/profile", {
         weights: weightsValid ? weights : null,
         afinidad_keywords: keywords.length > 0 ? keywords : null,
+        cpvs: cpvs.length > 0 ? cpvs : null,
         importe_min: importeMin !== "" ? Number(importeMin) : null,
         importe_max: importeMax !== "" ? Number(importeMax) : null,
       }),
@@ -257,6 +286,7 @@ export default function MiPerfilPage() {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
       setWeights(DEFAULT_WEIGHTS);
       setKeywords([]);
+      setCpvs([]);
       setImporteMin("");
       setImporteMax("");
       setDirty(false);
@@ -288,7 +318,20 @@ export default function MiPerfilPage() {
     setDirty(true);
   }
 
-  const hasProfile = data && (data.weights != null || data.afinidad_keywords != null || data.importe_min != null || data.importe_max != null);
+  function addCpv() {
+    const cpv = cpvInput.trim();
+    if (!isValidCpv(cpv) || cpvs.includes(cpv)) return;
+    setCpvs((prev) => [...prev, cpv]);
+    setCpvInput("");
+    setDirty(true);
+  }
+
+  function removeCpv(cpv: string) {
+    setCpvs((prev) => prev.filter((c) => c !== cpv));
+    setDirty(true);
+  }
+
+  const hasProfile = data && (data.weights != null || data.afinidad_keywords != null || data.cpvs != null || data.importe_min != null || data.importe_max != null);
 
   if (isLoading) {
     return (
@@ -363,9 +406,9 @@ export default function MiPerfilPage() {
         <CardHeader>
           <CardTitle>Keywords de afinidad</CardTitle>
           <CardDescription>
-            Las licitaciones cuyo título contenga estas palabras reciben puntos extra en la
-            dimensión &quot;Afinidad&quot;. Sin keywords, esa dimensión se omite y su peso se
-            redistribuye.
+            Las licitaciones cuyo título o descripción contengan estas palabras reciben puntos
+            extra en la dimensión &quot;Afinidad&quot;. Se busca la palabra completa. Sin
+            keywords ni CPVs, esa dimensión se omite y su peso se redistribuye.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -403,6 +446,62 @@ export default function MiPerfilPage() {
           ) : (
             <p className="text-sm text-muted-foreground">
               Sin keywords configuradas — afinidad desactivada (scoring global).
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* CPVs de interés */}
+      <Card>
+        <CardHeader>
+          <CardTitle>CPVs de interés</CardTitle>
+          <CardDescription>
+            Códigos CPV en los que trabajáis. Una licitación con el mismo código puntúa afinidad
+            máxima; si comparte los 4 primeros dígitos (la misma división), un 80%. Acepta de 4 a
+            8 dígitos.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              placeholder="p.ej. 72000000, 4823…"
+              value={cpvInput}
+              inputMode="numeric"
+              onChange={(e) => setCpvInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCpv();
+                }
+              }}
+              className="flex-1"
+            />
+            <Button variant="outline" onClick={addCpv} disabled={!isValidCpv(cpvInput)}>
+              Añadir
+            </Button>
+          </div>
+          {cpvInput.trim() !== "" && !isValidCpv(cpvInput) && (
+            <p className="text-xs text-destructive">
+              Un CPV son entre 4 y 8 dígitos, sin letras ni guiones.
+            </p>
+          )}
+          {cpvs.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {cpvs.map((cpv) => (
+                <Badge
+                  key={cpv}
+                  variant="secondary"
+                  className="cursor-pointer gap-1 pr-1.5 font-mono hover:bg-destructive/10"
+                  onClick={() => removeCpv(cpv)}
+                >
+                  {cpv}
+                  <span className="ml-0.5 text-muted-foreground">×</span>
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Sin CPVs configurados — la afinidad solo mira tus keywords.
             </p>
           )}
         </CardContent>

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.routes.auth import get_current_session_user
 from observability.logging import get_logger
@@ -165,6 +165,27 @@ def competitors(
     return get_competitors(filters)
 
 
+# El modo page-aligned puntúa una página del listado; el listado nunca pide más
+# de 500 filas y `limit` ya está acotado ahí. Sin este tope, un CSV arbitrario
+# se traducía en un `IN (...)` con tantos placeholders como ids llegaran y en un
+# bucle de pandas sin cota — el mismo trabajo no acotado que tumbaba la API
+# antes de recortar el universo puntuable.
+_MAX_SCORING_IDS = 500
+
+
+def _parse_scoring_ids(ids: str | None) -> list[str] | None:
+    """CSV de ids → lista, o 422 si excede la cota."""
+    if not ids:
+        return None
+    id_list = [i for i in ids.split(",") if i]
+    if len(id_list) > _MAX_SCORING_IDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"ids admite como maximo {_MAX_SCORING_IDS} elementos, llegaron {len(id_list)}",
+        )
+    return id_list
+
+
 @router.get("/scoring", response_model=ScoringResult)
 @cache_response(ttl=300, cpu_bound=True)
 def scoring(
@@ -180,8 +201,15 @@ def scoring(
     ids: str | None = Query(
         default=None,
         description=(
-            "CSV de id_externo: puntua exactamente esas licitaciones (alineado a la "
-            "pagina del listado), ignorando min_score/band/limit/tecnologia"
+            "CSV de id_externo (maximo 500): puntua exactamente esas licitaciones "
+            "(alineado a la pagina del listado), ignorando min_score/band/limit/tecnologia"
+        ),
+    ),
+    exclude_dismissed: bool = Query(
+        default=False,
+        description=(
+            "Excluye del ranking las senales que el usuario descarto, antes de "
+            "ordenar y cortar. Se ignora en modo ids."
         ),
     ),
     _user: dict[str, Any] = Depends(get_current_session_user),
@@ -196,13 +224,14 @@ def scoring(
     que el top-N sea el de esa tecnología y no el global filtrado después.
     """
     user_key = str(_user.get("user_key") or "") or None
-    id_list = [i for i in ids.split(",") if i] if ids else None
+    id_list = _parse_scoring_ids(ids)
     filters = ScoringFilters(
         min_score=min_score,
         limit=limit,
         band=band,
         tecnologia=tecnologia,
         ids=id_list,
+        exclude_dismissed=exclude_dismissed,
     )
     return get_scoring(filters, user_key=user_key)
 

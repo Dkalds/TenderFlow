@@ -324,6 +324,22 @@ def test_get_organo_detail_lead_time_and_fields(tmp_db):
     assert scored["L1"].fecha_adjudicacion == "11/01/2025"
 
 
+def test_top_scored_usa_las_bandas_del_motor_real(tmp_db):
+    """El drill-down puntúa con el mismo motor que el Radar, no con uno propio.
+
+    Tenía un `_simple_score` con keywords SAP y bandas A/B/C/D: la misma
+    licitación salía con dos rankings distintos según la página desde la que se
+    mirara, y el de aquí era el que el RFC de scoring genérico había retirado.
+    """
+    _seed_organo_detail()
+
+    result = get_organo_detail("ORG A", OrganoDetailFilters())
+
+    bandas = {s.banda for s in result.top_scored}
+    assert bandas <= {"Caliente", "Atractiva", "Tibia", "Descarte"}
+    assert all(0 <= s.score <= 100 for s in result.top_scored)
+
+
 def test_get_organo_detail_unknown_organo(tmp_db):
     _seed_organo_detail()
     result = get_organo_detail("ORG INEXISTENTE", OrganoDetailFilters())

@@ -8,6 +8,7 @@ fallback determinista histórico de coincidencias de keywords.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -96,10 +97,42 @@ def _cpv_similarity(candidate: Any, portfolio_cpvs: tuple[str, ...]) -> float:
     return 0.0
 
 
-def _fallback_score(row: pd.Series, portfolio: AffinityPortfolio) -> float:
-    """Fallback histórico: ``min(hits/3, 1)``; CPV explícito añade match exacto."""
-    title = str(row.get("titulo") or "").casefold()
-    hits = sum(1 for keyword in portfolio.keywords if keyword.casefold() in title)
+def _keyword_pattern(keywords: tuple[str, ...]) -> re.Pattern[str] | None:
+    """Alternancia con límites de palabra, compilada una vez por lote.
+
+    El fallback comparaba con ``in``: "sap" daba positivo dentro de
+    "pasaporte" y "erp" dentro de "superposición", así que la afinidad —cuyo
+    peso por defecto es 15— premiaba coincidencias que no existen. Es el mismo
+    patrón que ya usa ``scraper/filters.py`` para decidir qué entra a la BD.
+    """
+    limpias = [kw.strip() for kw in keywords if kw.strip()]
+    if not limpias:
+        return None
+    return re.compile(
+        r"\b(" + "|".join(re.escape(kw) for kw in limpias) + r")\b",
+        flags=re.IGNORECASE,
+    )
+
+
+def _fallback_score(
+    row: pd.Series,
+    portfolio: AffinityPortfolio,
+    pattern: re.Pattern[str] | None,
+) -> float:
+    """Fallback histórico: ``min(hits/3, 1)``; CPV explícito añade match exacto.
+
+    Se busca en título **y descripción**: el título de un pliego español dice
+    "servicios de mantenimiento del sistema de gestión económica" mucho más a
+    menudo de lo que nombra la tecnología.
+    """
+    hits = 0
+    if pattern is not None:
+        texto = " ".join(
+            part
+            for part in (str(row.get("titulo") or ""), str(row.get("descripcion") or ""))
+            if part
+        )
+        hits = len({match.group(0).casefold() for match in pattern.finditer(texto)})
     keyword_score = min(hits / 3.0, 1.0)
     return max(keyword_score, _cpv_similarity(row.get("cpv"), portfolio.cpvs))
 
@@ -111,8 +144,9 @@ def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> Affi
 
     ids = [str(value) for value in df.get("id_externo", pd.Series(dtype=str)).tolist()]
     rows = [row for _, row in df.iterrows()]
+    pattern = _keyword_pattern(portfolio.keywords)
     fallback = {
-        row_id: round(_fallback_score(row, portfolio), 6)
+        row_id: round(_fallback_score(row, portfolio, pattern), 6)
         for row_id, row in zip(ids, rows, strict=True)
     }
 

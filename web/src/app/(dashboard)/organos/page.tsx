@@ -572,11 +572,18 @@ export default function OrganosPage() {
                                 {s.titulo ?? s.id_externo}
                               </p>
                             )}
+                            {/*
+                              El color sale de la banda que calculó el backend,
+                              no de cortes propios: este ranking usa ya el mismo
+                              motor que el Radar (Caliente/Atractiva/Tibia/
+                              Descarte), y los umbrales 80/60 eran los del
+                              scoring A/B/C/D que se retiró.
+                            */}
                             <Badge
                               variant={
-                                s.score >= 80
+                                s.banda === "Caliente"
                                   ? "default"
-                                  : s.score >= 60
+                                  : s.banda === "Atractiva"
                                     ? "secondary"
                                     : "outline"
                               }

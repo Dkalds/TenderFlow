@@ -97,7 +97,11 @@ export const SECTIONS: NavSection[] = [
       {
         label: "Radar",
         slug: "radar",
-        description: "Señales recientes del mercado, ordenadas por afinidad.",
+        // Ni "recientes" ni "por afinidad": es el top del mercado abierto por
+        // score, y la afinidad es una dimensión de seis que además suele estar
+        // desactivada. La descripción prometía el ranking que el P0 del
+        // UX_AUDIT corrigió en la página y que aquí quedó sin actualizar.
+        description: "Top del mercado abierto por potencial comercial.",
         icon: RadioTower,
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia"],
