@@ -440,6 +440,49 @@ class TestCacheResponseIdentity:
         assert first == repeat
         assert calls == 2
 
+    def test_user_scoped_false_comparte_entrada_entre_identidades(self):
+        """Los datos globales se calculan una vez para todos los usuarios.
+
+        La analítica agregada no depende de quién pregunta, pero la clave
+        llevaba el ``user_key`` igual: N usuarios pagaban N veces la misma
+        agregación de decenas de segundos y ninguno aprovechaba el caché del
+        anterior. Con ``user_scoped=False`` la identidad sale de la clave.
+        """
+        mod = _fresh_import()
+        calls = 0
+
+        @mod.cache_response(ttl=60, namespace="global-regression", user_scoped=False)
+        def global_data(*, _user):
+            nonlocal calls
+            calls += 1
+            return {"call": calls}
+
+        async def invoke():
+            first = await global_data(_user={"user_key": "user-a"})
+            second = await global_data(_user={"user_key": "user-b"})
+            return first, second
+
+        first, second = asyncio.run(invoke())
+        assert first == second
+        assert calls == 1, "la segunda identidad debe reutilizar el cálculo de la primera"
+
+    def test_user_scoped_false_no_mezcla_parametros_distintos(self):
+        """Compartir entre identidades no significa compartir entre consultas."""
+        mod = _fresh_import()
+
+        @mod.cache_response(ttl=60, namespace="global-params", user_scoped=False)
+        def global_data(*, ccaa, _user):
+            return {"ccaa": ccaa}
+
+        async def invoke():
+            madrid = await global_data(ccaa="Madrid", _user={"user_key": "user-a"})
+            galicia = await global_data(ccaa="Galicia", _user={"user_key": "user-b"})
+            return madrid, galicia
+
+        madrid, galicia = asyncio.run(invoke())
+        assert madrid["ccaa"] == "Madrid"
+        assert galicia["ccaa"] == "Galicia"
+
 
 # ---------------------------------------------------------------------------
 # single_flight

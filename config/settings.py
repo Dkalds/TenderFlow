@@ -30,6 +30,12 @@ def _extract_sslmode(url: str) -> str | None:
 # Hosts sin red externa que interceptar — sslmode no aporta nada real ahí.
 _LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
+# Techo por consulta para los perfiles que no sirven HTTP (ver
+# ``Settings._relax_batch_statement_timeout``). Cinco minutos cubre con margen
+# la consulta batch más lenta medida (76 s) sin dejar a un job colgado media
+# hora contra la base de producción.
+_BATCH_STATEMENT_TIMEOUT_MS = 300_000
+
 
 def _extract_host(url: str) -> str | None:
     """Devuelve el hostname de una DATABASE_URL, o None si no se puede parsear."""
@@ -296,6 +302,11 @@ class Settings(BaseSettings):
     # Timeouts server-side aplicados a cada conexión del pool Postgres. Protegen
     # contra queries descontroladas o transacciones idle que clavan una conexión
     # y saturan el pool (pequeño). En milisegundos; 0 = sin límite (no recomendado).
+    #
+    # El default vale para el perfil ``api``, que es donde el pool es un recurso
+    # compartido y escaso. Los perfiles batch lo reciben más alto por
+    # ``_relax_batch_statement_timeout``: ver ese validator antes de asumir que
+    # 30 s es el valor efectivo en un job.
     DB_STATEMENT_TIMEOUT_MS: int = 30_000
     DB_IDLE_TX_TIMEOUT_MS: int = 60_000
     # Timeout (segundos) para establecer la conexión TCP/TLS al pooler.
@@ -638,6 +649,31 @@ class Settings(BaseSettings):
     def _serves_http(self) -> bool:
         """True si el proceso expone la API HTTP (perfil ``api``)."""
         return self.APP_PROFILE == "api"
+
+    @model_validator(mode="after")
+    def _relax_batch_statement_timeout(self) -> Settings:
+        """Sube el techo de tiempo por consulta en los perfiles que no sirven HTTP.
+
+        Los 30 s del default protegen un recurso que solo existe en la API: un
+        pool de 12 conexiones compartido por todas las peticiones, donde una
+        consulta clavada se lleva por delante a endpoints que no calculan nada.
+        Un job de GitHub Actions no tiene esa restricción —proceso propio, una
+        tarea, y su propio timeout de workflow— y sí tiene consultas que
+        legítimamente pasan de 30 s: la auditoría diaria de
+        ``domain-truth.yml`` mide 76 s, y el precálculo de KPIs agrega
+        ``adjudicaciones`` entera en unos 42 s.
+
+        Se deriva de ``APP_PROFILE`` en vez de declararlo en cada workflow
+        porque es el eje que el proyecto ya usa para esto (los ocho workflows
+        que tocan la BD declaran ``scraper``, y Render declara ``api``), y así
+        no depende de que nadie recuerde añadir una variable al octavo.
+
+        Un valor explícito en el entorno gana siempre: ``model_fields_set``
+        solo contiene los campos que llegaron de fuera, no los defaults.
+        """
+        if "DB_STATEMENT_TIMEOUT_MS" not in self.model_fields_set and not self._serves_http:
+            self.DB_STATEMENT_TIMEOUT_MS = _BATCH_STATEMENT_TIMEOUT_MS
+        return self
 
     @model_validator(mode="after")
     def _validate_prod_signing_key(self) -> Settings:

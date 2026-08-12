@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+from db.repositories.kpi_snapshots import read_overview_snapshot_for
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -141,9 +142,19 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     """Compute the full overview payload — agregaciones vía SQL en Postgres."""
     log.info("analytics_overview_start", filters=filters.model_dump(exclude_none=True))
     repo_filters = _to_repo_filters(filters)
-    adj_ind = _adj_indicadores()
 
-    k = _repo.overview_kpis(repo_filters)
+    # Sin filtros, los agregados sobre la tabla completa vienen del snapshot que
+    # deja el pipeline de ingesta: entre scrapes no cambian, y calcularlos aquí
+    # costaba 22 s (KPIs), 25 s (tasa de anulación) y 42 s (adjudicaciones) por
+    # cada fallo de caché. Cada pieza cae por su cuenta al cálculo en vivo si
+    # falta, así que un snapshot incompleto degrada en vez de romper.
+    snap = read_overview_snapshot_for(repo_filters)
+    snap_kpis = snap.kpis if snap is not None else None
+    snap_adj = snap.adj_indicadores if snap is not None else None
+    snap_tasa = snap.tasa_anulacion if snap is not None else None
+
+    adj_ind = snap_adj if snap_adj is not None else _adj_indicadores()
+    k = snap_kpis if snap_kpis is not None else _repo.overview_kpis(repo_filters)
 
     hoy = datetime.now(UTC)
     hace_30d_iso = (hoy - timedelta(days=30)).isoformat()
@@ -165,7 +176,11 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     total_imp = total_imp or 1.0
     concentracion_top10 = top10_imp / total_imp * 100
 
-    anul_count, total_12m = _repo.overview_tasa_anulacion(repo_filters, hace_365d_iso=hace_365d_iso)
+    anul_count, total_12m = (
+        snap_tasa
+        if snap_tasa is not None
+        else _repo.overview_tasa_anulacion(repo_filters, hace_365d_iso=hace_365d_iso)
+    )
     tasa_anulacion = (anul_count / total_12m * 100) if total_12m > 0 else 0.0
 
     top3_imp, total_imp_geo = _repo.overview_concentracion_ccaa(repo_filters, top_n=3)
@@ -179,6 +194,8 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         hoy_iso=hoy_iso,
         limite_48h_iso=limite_48h_iso,
         hace_24h_iso=hace_24h_iso,
+        p75=snap.importe_p75 if snap is not None else None,
+        total_activas=snap.total_activas if snap is not None else None,
     )
 
     por_estado = [
