@@ -1,30 +1,35 @@
-"""v78: índices de los caminos calientes y limpieza de duplicados.
+"""v79: índices de los caminos calientes y limpieza de duplicados.
 
-Revision ID: v78_perf_hot_paths_indexes
-Revises: v77_lic_fecha_extraccion_index
+Revision ID: v79_perf_hot_paths_indexes
+Revises: v78_lic_fecha_limite_index
 Create Date: 2026-08-12
 
 Continúa el trabajo de v77 sobre el mismo ``pg_stat_statements`` de producción.
 Medido el 2026-08-12 (contadores desde el 2026-08-03, 1,64 M filas y 972 MB de
-heap):
+heap).
 
-- ``fecha_actualizacion_fuente`` no tenía índice, así que el ``OR`` de
-  ``LicitacionRepository.fetch_recent`` —una rama por ``fecha_extraccion``, otra
-  por ``fecha_actualizacion_fuente``— no podía resolverse con un ``BitmapOr`` y
-  caía a escaneo completo. Es la consulta con más tiempo acumulado de toda la
-  base: 405 llamadas, 13,4 s de media, 110,9 s de pico, 5.430 s en total (15 %
-  del tiempo de servidor). La sirve el SSE de ``/licitaciones/stream``, que la
-  ejecuta por cada aviso de ingesta.
-- ``fecha_limite`` tampoco lo tenía, y es por donde cortan dos de los tres
-  contadores de ``overview_para_hoy`` (``calientes_hoy`` y ``vencen_48h``):
-  ventanas de horas que ahora se resuelven por rango en vez de contando la
-  tabla entera.
+``fecha_actualizacion_fuente`` no tenía índice, así que el ``OR`` de
+``LicitacionRepository.fetch_recent`` —una rama por ``fecha_extraccion``, otra
+por ``fecha_actualizacion_fuente``— no podía resolverse con un ``BitmapOr`` y
+caía a escaneo completo. Es la consulta con más tiempo acumulado de toda la
+base: 405 llamadas, 13,4 s de media, 110,9 s de pico, 5.430 s en total (15 % del
+tiempo de servidor). La sirve el SSE de ``/licitaciones/stream``, que la ejecuta
+por cada aviso de ingesta. Verificado con ``hypopg`` contra la base real: el
+plan pasa de Parallel Seq Scan (coste 138.942) a ``BitmapOr`` de este índice y
+el de v77 (coste 92,6).
 
-El índice es **parcial** en ambos casos: las dos columnas son mayormente NULL
-—``fecha_actualizacion_fuente`` solo la rellenan las fuentes que publican
-actualización, y 1,47 M de filas no tienen plazo propio— así que excluir los
-NULL deja un índice mucho más pequeño sin perder ninguna fila que las consultas
-puedan usar (``>= %s`` implica ``IS NOT NULL``).
+Va **parcial** porque la columna es mayormente NULL —solo la rellenan las
+fuentes que publican actualización— y excluirlos deja un índice mucho más
+pequeño sin perder ninguna fila que la consulta pueda usar: ``>= %s`` implica
+``IS NOT NULL``.
+
+``fecha_limite`` **no** se toca aquí aunque los contadores de
+``overview_para_hoy`` lo necesiten igual: ``v78_lic_fecha_limite_index`` ya crea
+``idx_lic_fecha_limite`` con ese mismo nombre, por el camino del Radar. Aquel es
+total y este habría sido parcial, pero un ``IF NOT EXISTS`` sobre el nombre ya
+ocupado sería un no-op silencioso y dejaría en producción una versión distinta
+de la que dice el código. Un btree total sirve exactamente igual a los rangos de
+``calientes_hoy`` y ``vencen_48h``; lo único que se pierde es tamaño en disco.
 
 Los otros dos reconcilian deriva entre el linaje de migraciones y la base real.
 ``pg_indexes`` en producción no los tenía pese a estar declarados desde v21:
@@ -57,8 +62,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "v78_perf_hot_paths_indexes"
-down_revision: str | Sequence[str] | None = "v77_lic_fecha_extraccion_index"
+revision: str = "v79_perf_hot_paths_indexes"
+down_revision: str | Sequence[str] | None = "v78_lic_fecha_limite_index"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -97,11 +102,6 @@ def upgrade() -> None:
             "WHERE fecha_actualizacion_fuente IS NOT NULL"
         )
         op.execute(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_lic_fecha_limite "
-            "ON licitaciones (fecha_limite) "
-            "WHERE fecha_limite IS NOT NULL"
-        )
-        op.execute(
             "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_lic_importe ON licitaciones (importe)"
         )
         op.execute(
@@ -120,5 +120,4 @@ def downgrade() -> None:
         _relax_timeouts()
         op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_lic_cursor")
         op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_lic_importe")
-        op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_lic_fecha_limite")
         op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_lic_fecha_act_fuente")
