@@ -44,6 +44,48 @@ def _patch_fast_stream():
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 
+class TestFetchRecentLookback:
+    """La ventana hacia atrás está acotada antes de llegar a la consulta.
+
+    Una conexión sin ``Last-Event-ID`` arranca el cursor en 0.0 —1970— y el
+    ``WHERE`` de ``fetch_recent`` pasaba a matchear la tabla entera: era la
+    consulta con más tiempo acumulado de producción (13,4 s de media, 110,9 s
+    de pico). Ningún índice arregla eso sin recortar la ventana.
+    """
+
+    def _capturar_since(self, since_ts: float) -> str:
+        from api.routes import stream
+
+        capturado: dict[str, str] = {}
+
+        def _fake_fetch_recent(since_iso, limit):
+            capturado["since"] = since_iso
+            return []
+
+        with patch("services.licitaciones.fetch_recent", _fake_fetch_recent):
+            stream._fetch_recent(since_ts, 20)
+        return capturado["since"]
+
+    def test_cursor_en_cero_no_consulta_desde_1970(self):
+        from api.routes.stream import _MAX_LOOKBACK_SECONDS
+
+        since = self._capturar_since(0.0)
+
+        minimo = time.strftime(
+            "%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - _MAX_LOOKBACK_SECONDS - 5)
+        )
+        assert not since.startswith("1970")
+        assert since >= minimo
+
+    def test_cursor_reciente_se_respeta(self):
+        """El recorte es un suelo, no un valor fijo: una reconexión normal
+        sigue pidiendo exactamente desde donde se quedó."""
+        hace_una_hora = time.time() - 3600
+        esperado = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(hace_una_hora))
+
+        assert self._capturar_since(hace_una_hora) == esperado
+
+
 class TestStreamAuth:
     def test_stream_requires_api_key(self, client):
         """Sin API key → 401."""

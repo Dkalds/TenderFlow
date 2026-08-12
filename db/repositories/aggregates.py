@@ -35,15 +35,39 @@ valida es ``NOT VALID``, no cubre datos previos a la migración). Por eso:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
 from db.database import connect_read
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import loose_distinct_count, rows_to_dicts
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
 log = get_logger(__name__)
+
+
+@contextmanager
+def _lectura(conn: Any | None) -> Iterator[Any]:
+    """Reutiliza la conexión dada, o abre una de lectura si no hay ninguna.
+
+    Lo aprovecha el precálculo de KPIs, que ya corre dentro de una transacción
+    con su propia conexión: sin esto abriría cinco más para preguntar lo mismo,
+    reteniendo slots del pool mientras sostiene la de escritura. Y lo que
+    permite es que el snapshot lo calculen **estas mismas funciones** en vez de
+    una copia del SQL en el scheduler que hubiera que mantener sincronizada a
+    mano — que es exactamente como el resumen y el Radar acabaron contando
+    cosas distintas.
+
+    ``conn`` va tipado como ``Any`` porque es el objeto de conexión de psycopg,
+    igual que en el resto de helpers de ``db/repositories``.
+    """
+    if conn is not None:
+        yield conn
+    else:
+        with connect_read() as abierta:
+            yield abierta
 
 
 def _iso_guard(column: str) -> str:
@@ -94,6 +118,21 @@ class LicitacionesFilters:
     importe_min: float | None = None
     q: str | None = None
     cpv: str | None = None
+
+    def is_empty(self) -> bool:
+        """True si ningún filtro está activo, es decir, si el ámbito es la tabla entera.
+
+        Es la condición que habilita los caminos precalculados del overview: un
+        agregado global solo se puede servir desde un snapshot si la pregunta
+        es efectivamente global.
+
+        Deliberadamente estricta. ``_build_where`` ignora un ``q`` en blanco o
+        un ``ccaa`` vacío, así que hay filtros que no añaden cláusula y aun así
+        se cuentan aquí como activos: equivocarse por este lado significa
+        calcular en vivo algo que se podría haber leído del snapshot, y por el
+        otro significaría servir un número que no corresponde al filtro pedido.
+        """
+        return self == LicitacionesFilters()
 
 
 def _build_where(filters: LicitacionesFilters) -> tuple[str, list[Any]]:
@@ -150,7 +189,9 @@ class AggregateRepository:
 
     # ── Overview ──────────────────────────────────────────────────────────
 
-    def overview_kpis(self, filters: LicitacionesFilters) -> dict[str, Any]:
+    def overview_kpis(
+        self, filters: LicitacionesFilters, *, conn: Any | None = None
+    ) -> dict[str, Any]:
         """total, importe_total, importe_medio, organos_unicos — un SELECT."""
         where, params = _build_where(filters)
         sql = (
@@ -160,7 +201,7 @@ class AggregateRepository:
             "       COUNT(DISTINCT organo_contratacion) AS organos "
             "FROM licitaciones WHERE " + where
         )
-        with connect_read() as c:
+        with _lectura(conn) as c:
             row = c.execute(sql, params).fetchone()
         if row is None or int(row[0]) == 0:
             return {"total": 0, "importe_total": 0.0, "importe_medio": 0.0, "organos": 0}
@@ -233,7 +274,9 @@ class AggregateRepository:
             "total": int(total or 0),
         }
 
-    def overview_adjudicaciones_indicadores(self) -> dict[str, float | None]:
+    def overview_adjudicaciones_indicadores(
+        self, *, conn: Any | None = None
+    ) -> dict[str, float | None]:
         """HHI, % oferta única y lead time medio, agregados en Postgres.
 
         Sustituye la carga full-table ``adjudicaciones⋈licitaciones`` que
@@ -283,7 +326,7 @@ class AggregateRepository:
             "          / NULLIF(COUNT(*), 0) "
             "   FROM adjudicaciones) AS pct_pyme"
         )
-        with connect_read() as c:
+        with _lectura(conn) as c:
             row = c.execute(sql).fetchone()
         if row is None:
             return {
@@ -376,6 +419,17 @@ class AggregateRepository:
         return sum(sums[:top_n]), sum(sums)
 
     def overview_ccaa_cubiertas(self, filters: LicitacionesFilters) -> int:
+        """CCAA distintas presentes en el ámbito.
+
+        Sin filtros va por *loose index scan*: ``COUNT(DISTINCT ccaa)`` sobre la
+        tabla entera medía 30,9 s de media en producción (35 llamadas, 84,5 s de
+        pico) para devolver un número de dos cifras. Con filtros se mantiene el
+        ``COUNT(DISTINCT)``, que ahí sí opera sobre un subconjunto y no puede
+        saltar por el índice.
+        """
+        if filters.is_empty():
+            with connect_read() as c:
+                return loose_distinct_count(c, "licitaciones", "ccaa")
         where, params = _build_where(filters)
         sql = "SELECT COUNT(DISTINCT ccaa) FROM licitaciones WHERE " + where
         with connect_read() as c:
@@ -383,7 +437,7 @@ class AggregateRepository:
         return int(row[0]) if row and row[0] is not None else 0
 
     def overview_tasa_anulacion(
-        self, filters: LicitacionesFilters, *, hace_365d_iso: str
+        self, filters: LicitacionesFilters, *, hace_365d_iso: str, conn: Any | None = None
     ) -> tuple[int, int]:
         """(anul_count, total_count) sobre fecha_publicacion >= hoy-365d."""
         where, params = _build_where(filters)
@@ -395,11 +449,39 @@ class AggregateRepository:
             "FROM licitaciones "
             f"WHERE {where} AND {guard} AND fecha_publicacion >= %s"
         )
-        with connect_read() as c:
+        with _lectura(conn) as c:
             row = c.execute(sql, [*params, hace_365d_iso]).fetchone()
         if row is None:
             return 0, 0
         return int(row[0] or 0), int(row[1] or 0)
+
+    def importe_p75(self, *, conn: Any | None = None) -> float | None:
+        """Percentil 75 de ``importe`` sobre toda la tabla.
+
+        Alimenta el snapshot que habilita el camino rápido de
+        :meth:`overview_para_hoy`, y es justo la parte cara de aquel cálculo:
+        ``percentile_cont`` ordena todos los importes y con ``work_mem`` a
+        3,5 MB eso se derrama a disco.
+
+        ``None`` cuando no hay ningún importe. El llamante debe tratarlo como
+        "sin umbral" y nunca como cero, que contaría todas las filas.
+        """
+        sql = (
+            "SELECT percentile_cont(0.75) WITHIN GROUP (ORDER BY importe) "
+            "FROM licitaciones WHERE importe IS NOT NULL"
+        )
+        with _lectura(conn) as c:
+            row = c.execute(sql).fetchone()
+        if row is None or row[0] is None:
+            return None
+        return float(row[0])
+
+    def count_total_activas(self, *, conn: Any | None = None) -> int:
+        """Expedientes no terminales en toda la tabla, para el snapshot."""
+        sql = f"SELECT COUNT(*) FROM licitaciones WHERE {abierta_sql()}"
+        with _lectura(conn) as c:
+            row = c.execute(sql).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
 
     def overview_para_hoy(
         self,
@@ -408,15 +490,31 @@ class AggregateRepository:
         hoy_iso: str,
         limite_48h_iso: str,
         hace_24h_iso: str,
+        p75: float | None = None,
+        total_activas: int | None = None,
     ) -> dict[str, int]:
-        """Los cuatro contadores del bloque "para hoy", en un solo SELECT.
+        """Los cuatro contadores del bloque "para hoy".
 
         Compartido por ``services/analytics/overview.py`` (que ignora
         ``total_activas``) y por ``services/analytics/resumen.py``
         (``/analytics/resumen/hoy``, que los usa los cuatro): son los mismos
         contadores sobre el mismo conjunto filtrado, así que duplicar el SQL
         sería duplicar también las convenciones de fecha y el P75.
+
+        ``p75`` y ``total_activas`` son los dos valores globales que el
+        precálculo de KPIs deja en ``kpi_snapshots``. Si llegan **y** el ámbito
+        es la tabla entera, se sirve por :meth:`_para_hoy_fast`; en cualquier
+        otro caso se calcula todo en vivo, que con filtros es la única opción
+        correcta.
         """
+        if filters.is_empty() and p75 is not None and total_activas is not None:
+            return self._para_hoy_fast(
+                hoy_iso=hoy_iso,
+                limite_48h_iso=limite_48h_iso,
+                hace_24h_iso=hace_24h_iso,
+                p75=p75,
+                total_activas=total_activas,
+            )
         where, params = _build_where(filters)
         pub_guard = _iso_guard("fecha_publicacion")
         lim_guard = _iso_guard("fecha_limite")
@@ -462,6 +560,57 @@ class AggregateRepository:
             "vencen_48h": int(vencen or 0),
             "nuevas_24h": int(nuevas or 0),
             "total_activas": int(activas or 0),
+        }
+
+    def _para_hoy_fast(
+        self,
+        *,
+        hoy_iso: str,
+        limite_48h_iso: str,
+        hace_24h_iso: str,
+        p75: float,
+        total_activas: int,
+    ) -> dict[str, int]:
+        """Los tres contadores con ventana, cada uno por su índice.
+
+        Misma pregunta y mismos predicados que la rama con CTE, pero sin
+        materializar ``filtered``: los tres acotan ventanas estrechas —plazo
+        posterior a hoy, plazo dentro de 48 h, publicadas en 24 h— que
+        ``idx_lic_fecha_limite`` e ``idx_fecha_pub`` resuelven por rango en vez
+        de recorrer 1,64 M filas para contar unas pocas. ``total_activas`` no
+        tiene ventana que acotar —es un recuento global por estado— así que
+        viene del snapshot en lugar de calcularse aquí.
+
+        Los ``_iso_guard`` se conservan literalmente aunque el corte por fecha
+        implique ya el extremo inferior: el techo ``< '3000'`` no lo implica, y
+        repetirlos tal cual es lo que hace evidente que las dos ramas cuentan
+        lo mismo. Como son rangos sobre la misma columna, Postgres los funde en
+        un único recorrido del índice.
+        """
+        abierta = abierta_sql()
+        pub_guard = _iso_guard("fecha_publicacion")
+        lim_guard = _iso_guard("fecha_limite")
+        sql = (
+            "SELECT "
+            "  (SELECT COUNT(*) FROM licitaciones "
+            f"    WHERE {abierta} AND {lim_guard} AND fecha_limite > %s "
+            "      AND importe >= %s) AS calientes_hoy, "
+            "  (SELECT COUNT(*) FROM licitaciones "
+            f"    WHERE {lim_guard} AND fecha_limite >= %s AND fecha_limite <= %s) "
+            "     AS vencen_48h, "
+            "  (SELECT COUNT(*) FROM licitaciones "
+            f"    WHERE {pub_guard} AND fecha_publicacion >= %s) AS nuevas_24h"
+        )
+        run_params: list[Any] = [hoy_iso, p75, hoy_iso, limite_48h_iso, hace_24h_iso]
+        with connect_read() as c:
+            row = c.execute(sql, run_params).fetchone()
+        if row is None:
+            return {"calientes_hoy": 0, "vencen_48h": 0, "nuevas_24h": 0, "total_activas": 0}
+        return {
+            "calientes_hoy": int(row[0] or 0),
+            "vencen_48h": int(row[1] or 0),
+            "nuevas_24h": int(row[2] or 0),
+            "total_activas": total_activas,
         }
 
     # ── Resumen ──────────────────────────────────────────────────────────

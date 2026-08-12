@@ -328,6 +328,7 @@ def cache_response(
     namespace: str = "analytics",
     *,
     cpu_bound: bool = False,
+    user_scoped: bool = True,
 ) -> Callable[..., Any]:
     """Decorador que cachea respuestas de endpoints FastAPI.
 
@@ -351,6 +352,14 @@ def cache_response(
             para carga IO-bound sin repetir el incidente de CPU starvation que
             en su día lo dejó clavado en 4 hilos: quien tiene que estar acotada
             es la analítica, no las lecturas baratas.
+        user_scoped: si la respuesta depende de **quién** pregunta. Por defecto
+            sí, que es la opción segura: la clave incorpora el ``user_key`` de
+            la dependencia de autenticación y dos identidades nunca comparten
+            entrada. Ponerlo a ``False`` es afirmar que el handler es función
+            pura de sus parámetros de consulta —que ya viajan en la clave— y
+            hace que N usuarios compartan un único cálculo en vez de pagarlo N
+            veces. Solo para datos globales: la analítica agregada lo es, el
+            scoring personalizado y las novedades desde el último login no.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -364,9 +373,13 @@ def cache_response(
             key_parts = [func.__name__]
             for k, v in sorted(kwargs.items()):
                 if k.startswith("_"):
-                    # Las dependencias de autenticación pueden alterar la respuesta.
-                    # Nunca deben compartir cache entre identidades.
-                    if isinstance(v, dict) and v.get("user_key"):
+                    # Las dependencias de autenticación pueden alterar la
+                    # respuesta; cuando lo hacen, la identidad entra en la clave
+                    # y dos usuarios nunca comparten entrada. Los endpoints que
+                    # declaran `user_scoped=False` afirman lo contrario —su
+                    # respuesta solo depende de los query params— y ahí meter el
+                    # `user_key` solo multiplicaba por N el mismo cálculo.
+                    if user_scoped and isinstance(v, dict) and v.get("user_key"):
                         key_parts.append(f"principal:{v['user_key']}")
                     continue
                 if isinstance(v, BaseModel):

@@ -64,6 +64,12 @@ _POLL_INTERVAL = 5.0  # segundos entre polls al centinela
 _HEARTBEAT_INTERVAL = 30.0  # segundos entre heartbeats
 _MAX_DURATION_SECONDS = 300  # máximo tiempo de conexión (5 min)
 _DEFAULT_BATCH = 20  # licitaciones por evento
+# Ventana máxima hacia atrás de `_fetch_recent`. Sin `Last-Event-ID` el cursor
+# arranca en 0.0, que es 1970-01-01: el `WHERE` de `fetch_recent` matcheaba
+# entonces la tabla entera (1,64 M filas) y el `ORDER BY` la ordenaba completa
+# para devolver `batch` filas. Con la ingesta cada 4 h, 48 h son doce ciclos:
+# cualquier novedad que este evento pueda emitir cae dentro del recorte.
+_MAX_LOOKBACK_SECONDS = 48 * 3600
 
 
 def _sse_event(event: str, data: Any) -> str:
@@ -85,6 +91,7 @@ def _fetch_recent(since_ts: float, limit: int) -> list[dict[str, Any]]:
     """Recupera licitaciones publicadas/actualizadas desde ``since_ts``."""
     from services.licitaciones import fetch_recent
 
+    since_ts = max(since_ts, time.time() - _MAX_LOOKBACK_SECONDS)
     since_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(since_ts))
     try:
         return fetch_recent(since_iso, limit)

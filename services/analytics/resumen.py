@@ -17,6 +17,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+from db.repositories.kpi_snapshots import read_overview_snapshot_for
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -195,11 +196,19 @@ def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
     log.info("analytics_resumen_hoy_start", filters=filters.model_dump(exclude_none=True))
 
     hoy = datetime.now(UTC)
+    repo_filters = _to_repo_filters(filters)
+    # Mismo camino rápido que `/analytics/overview`: el P75 de importe y el
+    # recuento de activas son globales y los deja precalculados el pipeline de
+    # ingesta, así que sin filtros esta consulta deja de recorrer la tabla
+    # entera. Sin snapshot (o con filtros) se calcula en vivo como antes.
+    snap = read_overview_snapshot_for(repo_filters)
     counts = _repo.overview_para_hoy(
-        _to_repo_filters(filters),
+        repo_filters,
         hoy_iso=hoy.isoformat(),
         limite_48h_iso=(hoy + timedelta(hours=48)).isoformat(),
         hace_24h_iso=(hoy - timedelta(hours=24)).isoformat(),
+        p75=snap.importe_p75 if snap is not None else None,
+        total_activas=snap.total_activas if snap is not None else None,
     )
 
     result = ResumenHoyResult(

@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from api.cache import cache_get, cache_key, cache_set
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from db.repositories.kpi_snapshots import read_meta_cpv
 from db.repositories.licitaciones import LicitacionRepository
 from shared.cache import single_flight
 
@@ -38,6 +39,18 @@ class MetaFilters(BaseModel):
 
 class LastExtraction(BaseModel):
     last_extraction: str | None
+
+
+def _load_filter_options() -> dict[str, list[str]]:
+    """Valores de los filtros, con la lista de CPV precalculada si la hay.
+
+    Las otras tres listas se resuelven en decenas de milisegundos, pero ``cpv``
+    tiene 18.203 valores distintos y cuesta unos 9,5 s incluso con el loose
+    index scan. El precálculo de KPIs la deja lista en ``kpi_snapshots`` tras
+    cada ingesta, que es exactamente cuando puede cambiar; si no está, el
+    repository la calcula en vivo y la respuesta es la misma.
+    """
+    return _lic_repo.get_filter_options(cpv_values=read_meta_cpv())
 
 
 @router.get(
@@ -78,7 +91,7 @@ async def get_filter_options(
             response.headers["X-Cache"] = "HIT"
             return MetaFilters(**cast("dict[str, Any]", cached))
 
-        result = await run_db(_lic_repo.get_filter_options)
+        result = await run_db(_load_filter_options)
         cache_set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
 
     response.headers["X-Cache"] = "MISS"

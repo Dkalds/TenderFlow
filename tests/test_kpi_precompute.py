@@ -315,7 +315,10 @@ class TestComputeAllKpis:
 
         # We need different return values for fetchone and fetchall calls.
         # fetchone returns (value,) and fetchall returns list of tuples.
-        mock_conn.execute.return_value.fetchone.return_value = (42, 100.0)
+        # La tupla tiene que ser tan ancha como la consulta con más columnas
+        # (`overview_kpis` y los indicadores de adjudicaciones leen cuatro):
+        # una más corta rompe con IndexError en cuanto se añade un KPI.
+        mock_conn.execute.return_value.fetchone.return_value = (42, 100.0, 7.0, 3)
         mock_conn.execute.return_value.fetchall.return_value = []
 
         result = _compute_all_kpis(mock_conn)
@@ -353,7 +356,8 @@ class TestRunKpiPrecompute:
     @patch("db.database.init_db")
     def test_run(self, mock_init: MagicMock, mock_connect: MagicMock) -> None:
         mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = (10, 50.0)
+        # Cuatro columnas: ver el comentario de TestComputeAllKpis.
+        mock_conn.execute.return_value.fetchone.return_value = (10, 50.0, 5.0, 2)
         mock_conn.execute.return_value.fetchall.return_value = []
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)

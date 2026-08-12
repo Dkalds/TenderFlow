@@ -168,6 +168,17 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
         }
     )
 
+    # ── Agregados globales del overview (métricas ``ov_*``) ───────────────
+    #
+    # Las calcula `db/repositories/kpi_snapshots.py` con el mismo
+    # `AggregateRepository` que sirve `/analytics/overview`, así que aquí no
+    # hay SQL (ADR-022) y la paridad con el camino en vivo no depende de
+    # mantener dos consultas parecidas sincronizadas a mano. Ojo: **no** son
+    # equivalentes a las métricas de arriba, que filtran `analysis_universe`.
+    from db.repositories.kpi_snapshots import compute_overview_snapshot_rows
+
+    snapshots.extend(compute_overview_snapshot_rows(conn))
+
     # Añadir timestamp a todos
     for s in snapshots:
         s.setdefault("valor_text", None)

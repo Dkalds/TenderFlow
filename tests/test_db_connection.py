@@ -240,6 +240,110 @@ def test_get_pg_pool_creates_pool_with_kwargs_and_logs(monkeypatch):
     monkeypatch.setattr(conn_mod, "_pg_pool", None)
 
 
+# ── configure: los timeouts se fijan con SET, no solo por `options` ──────────
+
+
+class _FakeCursor:
+    def __init__(self, ejecutadas):
+        self._ejecutadas = ejecutadas
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=None):
+        self._ejecutadas.append((sql, params))
+
+
+class _FakeConn:
+    def __init__(self, *, autocommit=False):
+        self.autocommit = autocommit
+        self.ejecutadas: list[tuple] = []
+        self.commits = 0
+
+    def cursor(self):
+        return _FakeCursor(self.ejecutadas)
+
+    def commit(self):
+        self.commits += 1
+
+
+def _ajustes(conn):
+    """{nombre: valor} de los set_config que recibió la conexión."""
+    return {params[0]: params[1] for _, params in conn.ejecutadas if params}
+
+
+def test_configure_aplica_los_timeouts_por_sesion(monkeypatch):
+    """El pool fija statement_timeout con SET además de pedirlo por `options`.
+
+    `options` es un parámetro de arranque de libpq y no está llegando a las
+    conexiones de la API a través del pooler: se veían consultas de 110 s con
+    el timeout puesto a 30 s. Un `set_config` viaja como sentencia normal.
+    """
+    from config import settings
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000)
+    monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000)
+
+    conn = _FakeConn()
+    conn_mod._make_pg_configure(read_only=False)(conn)
+
+    ajustes = _ajustes(conn)
+    assert ajustes["statement_timeout"] == "30000"
+    assert ajustes["idle_in_transaction_session_timeout"] == "60000"
+    assert "default_transaction_read_only" not in ajustes
+    # Sin autocommit el `set_config` abrió transacción: sin commit, el reset
+    # del pool haría rollback y los ajustes se perderían.
+    assert conn.commits == 1
+
+
+def test_configure_del_pool_de_lectura_fija_el_modo_solo_lectura(monkeypatch):
+    """El read-only del pool de lectura es una garantía, no una optimización."""
+    from config import settings
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000)
+    monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000)
+
+    conn = _FakeConn(autocommit=True)
+    conn_mod._make_pg_configure(read_only=True)(conn)
+
+    assert _ajustes(conn)["default_transaction_read_only"] == "on"
+    assert conn.commits == 0, "en autocommit no hay transacción que confirmar"
+
+
+def test_configure_con_timeouts_desactivados_no_ejecuta_nada(monkeypatch):
+    """A 0 (sin límite) no se emite ningún SET."""
+    from config import settings
+    from db import connection as conn_mod
+
+    monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 0)
+    monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 0)
+
+    conn = _FakeConn()
+    conn_mod._make_pg_configure(read_only=False)(conn)
+
+    assert conn.ejecutadas == []
+    assert conn.commits == 0
+
+
+def test_perfil_batch_recibe_un_techo_mas_alto():
+    """Un job de Actions no comparte el pool de 12 de la API y sí tiene
+    consultas legítimas de más de 30 s (la auditoría diaria mide 76 s)."""
+    from config.settings import Settings
+
+    api = Settings(APP_PROFILE="api", ENV="dev")
+    batch = Settings(APP_PROFILE="scraper", ENV="dev")
+    explicito = Settings(APP_PROFILE="scraper", ENV="dev", DB_STATEMENT_TIMEOUT_MS=15_000)
+
+    assert api.DB_STATEMENT_TIMEOUT_MS == 30_000
+    assert batch.DB_STATEMENT_TIMEOUT_MS > api.DB_STATEMENT_TIMEOUT_MS
+    assert explicito.DB_STATEMENT_TIMEOUT_MS == 15_000, "un valor del entorno gana siempre"
+
+
 def test_get_pg_pool_wraps_connection_error_without_leaking_dsn(monkeypatch):
     """Si ConnectionPool() falla, el error no debe filtrar la password del DSN."""
     from db import connection as conn_mod

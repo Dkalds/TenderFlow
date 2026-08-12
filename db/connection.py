@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import re
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -281,6 +281,63 @@ def _pool_lifecycle_kwargs() -> dict[str, Any]:
     return kwargs
 
 
+def _make_pg_configure(*, read_only: bool) -> Callable[[Any], None]:
+    """Callback ``configure`` del pool: fija los ajustes de sesión con ``SET``.
+
+    Duplica a propósito lo que ``_pg_connect_kwargs`` ya pide por ``options``,
+    porque **ese camino no está llegando a las conexiones de la API**. Con
+    ``DB_STATEMENT_TIMEOUT_MS`` a 30 s, ``pg_stat_statements`` registra
+    consultas que solo ejecuta la API con picos de 110 s y 116 s
+    (``get_filter_options``, ``overview_para_hoy``): con el timeout aplicado no
+    habrían pasado de 30. Se pierden los tres ajustes, incluido el
+    ``default_transaction_read_only`` del pool de lectura, que es una garantía
+    de seguridad y no solo una optimización.
+
+    La causa probable es que ``options`` es un parámetro de *arranque* de libpq
+    y el pooler de Supabase no lo propaga. No está cerrado del todo: el
+    comentario de ``db/upsert.py`` documenta un ``QueryCanceled`` a los 30 s en
+    el healthcheck del scraper, así que por ese camino sí llegó alguna vez. Sea
+    cual sea el motivo, un ``SET`` explícito quita la duda — y que atraviesa el
+    pooler está verificado (se probó subiendo el timeout para una migración).
+
+    ``set_config(..., false)`` en vez de ``SET`` a secas: viaja como una
+    sentencia normal, acepta el valor como parámetro en lugar de interpolarlo,
+    y ``false`` lo hace de sesión y no de transacción, que es lo que necesita
+    una conexión reutilizada por el pool.
+
+    Se conserva además el ``options`` de ``_pg_connect_kwargs``: cuando sí
+    aplica lo hace desde el primer byte de la sesión, antes incluso de este
+    callback.
+
+    Los ajustes se leen en cada conexión y no al construir el pool, para que un
+    cambio de configuración surta efecto en las conexiones nuevas sin recrear
+    el pool entero.
+    """
+
+    def _configure(conn: Any) -> None:
+        stmt_ms = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
+        idle_ms = int(getattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000))
+        ajustes: list[tuple[str, str]] = []
+        if stmt_ms > 0:
+            ajustes.append(("statement_timeout", str(stmt_ms)))
+        if idle_ms > 0:
+            ajustes.append(("idle_in_transaction_session_timeout", str(idle_ms)))
+        if read_only:
+            ajustes.append(("default_transaction_read_only", "on"))
+        if not ajustes:
+            return
+        with conn.cursor() as cur:
+            for nombre, valor in ajustes:
+                cur.execute("SELECT set_config(%s, %s, false)", (nombre, valor))
+        # En el pool de escritura la conexión no está en autocommit, así que el
+        # `set_config` abrió transacción: sin commit, el reset del pool haría
+        # rollback y se perderían los ajustes (son transaccionales).
+        if not getattr(conn, "autocommit", False):
+            conn.commit()
+
+    return _configure
+
+
 def _build_pool(*, read_only: bool) -> Any:
     """Crea un ``ConnectionPool`` de escritura o de lectura."""
     try:
@@ -305,6 +362,7 @@ def _build_pool(*, read_only: bool) -> Any:
             min_size=1,
             max_size=max(pool_size, 2),
             kwargs=conn_kwargs,
+            configure=_make_pg_configure(read_only=read_only),
             open=True,
             name=f"tenderflow-{name}",
             **lifecycle,
