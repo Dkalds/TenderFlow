@@ -1,0 +1,64 @@
+name: PR title
+
+# Este chequeo vive fuera de ci.yml por el *trigger*, no por el tema: necesita
+# `edited`, que es el evento que GitHub dispara cuando alguien corrige el
+# título de un PR. El default de `pull_request` es
+# [opened, synchronize, reopened] —sin `edited`—, así que el check se quedaba
+# en rojo hasta el siguiente commit aunque el título ya fuese válido. Se vio en
+# el PR #156: renombrar el título no volvió a disparar nada.
+#
+# Añadir `edited` al trigger de ci.yml habría arrastrado a todos sus jobs
+# (tests contra Postgres, E2E de Playwright con backend real, docker build +
+# Trivy): la suite entera cada vez que alguien toca el título *o la
+# descripción*. Peor aún, ci.yml agrupa por `ci-${{ github.ref }}` con
+# `cancel-in-progress: true`, así que editar la descripción a mitad de CI
+# habría matado la ejecución en curso para empezarla de cero. Aquí el coste de
+# repetir es un `npm install`.
+#
+# Historia previa: el job vivía en release.yml bajo un
+# `if: github.event_name == 'pull_request'` que allí nunca podía ser cierto
+# (release.yml solo escucha tags y workflow_dispatch), así que no se ejecutó
+# una sola vez; se movió a ci.yml en #159. Esta es la segunda arista del mismo
+# movimiento.
+#
+# El nombre del job —`Commitlint (PR titles)`— es el contexto que ve la
+# protección de rama: no lo renombres al mover el job de fichero.
+
+on:
+  pull_request:
+    branches: ["master", "main", "develop"]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    name: Commitlint (PR titles)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Sin `fetch-depth: 0`: el título llega por el payload del evento y
+      # commitlint solo necesita `.commitlintrc.json` del árbol de trabajo, no
+      # el historial.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+
+      - name: Install commitlint
+        run: |
+          npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+      # El repo mergea con squash y GitHub usa el título del PR como subject del
+      # commit resultante: validar el título es validar lo que acabará en
+      # master, que es de donde cliff.toml genera el changelog.
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$PR_TITLE" | npx commitlint

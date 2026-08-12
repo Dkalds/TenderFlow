@@ -650,29 +650,7 @@ jobs:
           path: /tmp/uvicorn.log
           if-no-files-found: ignore
 
-  commitlint:
-    name: Commitlint (PR titles)
-    runs-on: ubuntu-latest
-    # Vivía en release.yml, que solo dispara con tags y workflow_dispatch, bajo
-    # un `if: github.event_name == 'pull_request'` que allí nunca podía ser
-    # cierto: el job no llegó a ejecutarse una sola vez pese a existir
-    # .commitlintrc.json y a que cliff.toml genera el changelog desde commits
-    # convencionales. Aquí sí corre, porque este workflow escucha pull_request.
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "20"
-
-      - name: Install commitlint
-        run: |
-          npm install --save-dev @commitlint/cli @commitlint/config-conventional
-
-      - name: Validate PR title
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: echo "$PR_TITLE" | npx commitlint
+  # El check `Commitlint (PR titles)` no está aquí: vive en pr-title.yml porque
+  # necesita el evento `edited` (corregir el título de un PR debe volver a
+  # evaluarlo) y este workflow no puede escucharlo sin relanzar la suite entera
+  # a cada edición del título o la descripción.
