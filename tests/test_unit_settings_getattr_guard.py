@@ -63,13 +63,17 @@ def _ficheros_de_produccion() -> list[Path]:
 
 
 def _referencias() -> dict[str, set[str]]:
-    """Mapea cada nombre referenciado por getattr al fichero que lo usa."""
+    """Mapea cada nombre referenciado por getattr al fichero que lo usa.
+
+    Las rutas se normalizan con ``as_posix()``: en Windows ``str()`` daría
+    ``api\\middleware.py`` y las comparaciones de abajo esperan ``api/...``.
+    """
     encontrados: dict[str, set[str]] = {}
     for ruta in _ficheros_de_produccion():
         texto = ruta.read_text(encoding="utf-8", errors="ignore")
         for coincidencia in _PATRON.finditer(texto):
             nombre = coincidencia.group(1)
-            encontrados.setdefault(nombre, set()).add(str(ruta.relative_to(_RAIZ)))
+            encontrados.setdefault(nombre, set()).add(ruta.relative_to(_RAIZ).as_posix())
     return encontrados
 
 
