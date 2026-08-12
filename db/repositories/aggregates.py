@@ -1398,14 +1398,17 @@ class AggregateRepository:
         return float(row[0]), float(row[1] or 0.0)
 
     def scoring_candidates(
-        self, *, cerrados: tuple[str, ...] = ESTADOS_CERRADOS
+        self,
+        *,
+        hoy_iso: str,
+        filters: LicitacionesFilters | None = None,
+        cerrados: tuple[str, ...] = ESTADOS_CERRADOS,
     ) -> list[dict[str, Any]]:
-        """Proyección acotada de candidatas a oportunidad (estados no cerrados).
+        """Proyección acotada de candidatas a oportunidad: abiertas y en plazo.
 
         ADR-023: el scoring puntuaba la tabla entera vía pandas; una
         licitación cerrada/adjudicada nunca es una "oportunidad", así que el
-        universo puntuable excluye los estados terminales — una fracción del
-        total.
+        universo puntuable excluye los estados terminales.
 
         Se enumeran los estados **cerrados**, no los abiertos, que es la regla
         de ``shared.estados``: con la allowlist anterior (``PUB``/``EV``) todo
@@ -1413,14 +1416,44 @@ class AggregateRepository:
         común— quedaba fuera del Radar sin dejar rastro. Se vio al mandar el
         Radar a puntuar de verdad: con los 15 expedientes del seed (12 ``ADM``,
         3 ``ADJ``) el ranking salía vacío.
+
+        **El estado no acota nada por sí solo.** Medido en producción el
+        2026-08-11: de 1.640.915 filas, 1.501.273 no están en estado terminal
+        —el 91%—, porque 1.460.719 llegan de PSCP con ``PUBLICACIÓ AGREGADA``,
+        que no es RES/ADJ/ANUL. Cargar eso en pandas son 1,5 M filas por 12
+        columnas en cada request: la API se quedaba sin memoria y Render reiniciaba
+        la instancia (diez reinicios el 2026-08-11, uno por cada carga del
+        Radar), o el ``statement_timeout`` mataba la consulta y el usuario veía
+        "Error al cargar la bandeja del radar".
+
+        Por eso el universo exige además **plazo vivo**: sin fecha límite en el
+        futuro no hay nada que presentar, y el Radar es una bandeja de
+        decisión. Eso deja 1.643 filas, tres órdenes de magnitud menos. Lo que
+        cae son las 1.466.309 abiertas sin ``fecha_limite`` (99,5% de ellas
+        ``PUBLICACIÓ AGREGADA``, avisos agregados sin plazo propio que nunca
+        fueron oportunidades individuales) y las 33.321 con el plazo ya
+        vencido.
+
+        Consecuencia deliberada: este universo ya **no** coincide con
+        ``total_activas`` del resumen, que sigue contando por estado. Son dos
+        preguntas distintas —"cuántas siguen vivas en el sistema" frente a "a
+        cuántas puedo presentarme hoy"— y el ranking necesita la segunda.
+
+        ``hoy_iso`` se inyecta (no ``now()`` en SQL) como en
+        ``overview_para_hoy``: el corte queda fijado por el llamante y los
+        tests no dependen del reloj.
         """
+        where, params = _build_where(filters or LicitacionesFilters())
         placeholders = ",".join("%s" for _ in cerrados)
+        guard = _iso_guard("fecha_limite")
         sql = (
             f"SELECT {self._SCORING_COLS} FROM licitaciones "
-            f"WHERE estado IS NULL OR estado NOT IN ({placeholders})"
+            f"WHERE {where} "
+            f"  AND (estado IS NULL OR estado NOT IN ({placeholders})) "
+            f"  AND {guard} AND fecha_limite >= %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, list(cerrados)))
+            return rows_to_dicts(c.execute(sql, [*params, *cerrados, hoy_iso]))
 
     def licitaciones_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
         """Proyección de scoring para una lista exacta de ids (modo page-aligned)."""

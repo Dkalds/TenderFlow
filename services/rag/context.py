@@ -7,7 +7,7 @@ de caracteres.
 
 El ranking semántico frente a la pregunta corre en Python vía
 ``services.embeddings.smart_match`` (embeddings MiniLM si están instalados,
-substring si no): un solo camino que funciona igual en Postgres y SQLite —
+substring si no): un solo camino, sin ramas por motor —
 el embedding persistido en ``documento_chunks`` no se consulta aquí.
 """
 

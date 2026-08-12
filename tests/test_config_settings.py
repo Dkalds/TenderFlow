@@ -618,3 +618,32 @@ def test_oauth_wildcard_domain_allows_any_email(monkeypatch):
     monkeypatch.setattr(settings, "OAUTH_ALLOWED_DOMAINS", "*", raising=False)
     monkeypatch.setattr(settings, "OAUTH_ALLOWED_EMAILS", "", raising=False)
     assert oauth_email_allowed("cualquiera@dominio-ajeno.example") is True
+
+
+# ── API_THREADPOOL_TOKENS ────────────────────────────────────────────────────
+# Al final del fichero a propósito: `.secrets.baseline` referencia por número de
+# línea un literal de este módulo, así que insertar tests más arriba lo desplaza
+# y obliga a regenerar un fichero que AGENTS.md §6 pone bajo gate humano.
+def test_api_threadpool_tokens_default_is_24():
+    """El default es el techo ampliado en #159, no el 4 que estuvo hardcodeado.
+
+    Los 4 hilos originales acotaban la analítica pandas, pero castigaban por
+    igual a las lecturas IO-bound. Ahora lo CPU-bound tiene su propio bulkhead
+    (``API_CPU_BOUND_TOKENS``) y el pool general puede respirar.
+    """
+    from config.settings import Settings
+
+    assert Settings().API_THREADPOOL_TOKENS == 24
+
+
+def test_api_threadpool_tokens_override():
+    from config.settings import Settings
+
+    assert Settings(API_THREADPOOL_TOKENS=16).API_THREADPOOL_TOKENS == 16
+
+
+def test_api_threadpool_tokens_zero_raises():
+    from config.settings import Settings
+
+    with pytest.raises(Exception, match="API_THREADPOOL_TOKENS"):
+        Settings(API_THREADPOOL_TOKENS=0)

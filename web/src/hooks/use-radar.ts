@@ -39,9 +39,15 @@ const DISMISSALS_KEY = ["radar", "dismissals"] as const;
  *
  * La puntuación y el orden los calcula el backend (ADR-014): aquí no se deriva
  * ninguna dimensión ni se reordena nada.
+ *
+ * El filtro por tecnología viaja en la query, no se aplica al ranking recibido:
+ * el top-24 tiene que ser el de esa tecnología. Filtrándolo en el cliente, con
+ * 13 licitaciones SAP vivas entre 1.643, el top-24 global no traía ninguna y la
+ * bandeja salía vacía bajo una cabecera que prometía lo contrario.
  */
 export function useRadar(tecnologia: string | null = null) {
   const params = new URLSearchParams({ limit: "24" });
+  if (tecnologia) params.set("tecnologia", tecnologia);
 
   const scoring = useQuery({
     queryKey: ["radar", "scoring", tecnologia],
@@ -50,13 +56,7 @@ export function useRadar(tecnologia: string | null = null) {
     staleTime: 5 * 60_000,
   });
 
-  // El filtro por tecnología se aplica sobre el ranking recibido, no encogiendo
-  // una lista ya cortada: `scoring` no acepta ese filtro, así que sin él la
-  // página mostraría el top-24 global etiquetado como filtrado.
-  const all = scoring.data?.opportunities ?? [];
-  const items: RadarTender[] = tecnologia
-    ? all.filter((item) => item.tecnologia === tecnologia)
-    : all;
+  const items: RadarTender[] = scoring.data?.opportunities ?? [];
 
   return {
     data: scoring.data ? { items } : undefined,

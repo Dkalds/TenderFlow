@@ -107,13 +107,33 @@ describe("useRadar", () => {
     expect(result.current.data!.items[0].tecnologia).toBe("Salesforce");
   });
 
-  it("filtra por tecnología sobre el ranking recibido", async () => {
-    stubApi({ opportunities: [scored("SAP", 80, "SAP"), scored("SF", 70, "Salesforce")] });
+  it("manda la tecnología al backend en vez de filtrar el top-24 recibido", async () => {
+    // Filtrando en cliente, el top-24 se calcula sobre el corpus entero y luego
+    // se recorta: con 13 licitaciones SAP vivas entre 1.643, la bandeja de SAP
+    // salía vacía aunque esas 13 existieran. El filtro tiene que acotar el
+    // universo antes de ordenar y cortar (ADR-014, invariante 1).
+    const fetchMock = stubApi({ opportunities: [scored("SF", 70, "Salesforce")] });
 
     const { result } = renderHook(() => useRadar("Salesforce"), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
+    const scoringCall = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .find((url) => url.includes("/analytics/scoring"));
+    expect(scoringCall).toContain("tecnologia=Salesforce");
     expect(result.current.data!.items.map((item) => item.id_externo)).toEqual(["SF"]);
+  });
+
+  it("sin tecnología seleccionada no manda el parámetro", async () => {
+    const fetchMock = stubApi({ opportunities: [scored("A", 50)] });
+
+    const { result } = renderHook(() => useRadar(), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const scoringCall = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .find((url) => url.includes("/analytics/scoring"));
+    expect(scoringCall).not.toContain("tecnologia=");
   });
 });
 

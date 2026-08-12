@@ -18,6 +18,11 @@ Dimensiones (pesos configurables en ``settings.SCORING_WEIGHTS``, suman 100):
 Feature B: ``get_scoring`` acepta ``user_key`` opcional → carga el perfil del
 usuario y usa sus pesos/keywords/rango. Sin perfil → settings globales.
 
+Universo puntuable (modo top-N): oportunidades **vivas** — estado no terminal y
+plazo por vencer. El recorte y su medición están en
+``AggregateRepository.scoring_candidates``; el modo page-aligned (``ids``) no lo
+aplica, porque ahí manda el listado.
+
 Total = suma dimensiones + riesgo, clamp [0, 100].
 Bandas: ≥75 Caliente / ≥50 Atractiva / ≥25 Tibia / Descarte.
 """
@@ -31,7 +36,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from config import settings
-from db.repositories.aggregates import AggregateRepository
+from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.analytics.affinity import build_portfolio, score_affinity_batch
 from services.analytics.scoring_signals import (
@@ -57,6 +62,12 @@ class ScoringFilters(BaseModel):
     min_score: int = 0
     limit: int = 50
     band: str | None = None
+    # El filtro se aplica en SQL, sobre el universo puntuable, y no en el
+    # cliente sobre el top-N ya cortado: el Radar filtraba el top-24 global por
+    # `tecnologia` en el navegador, y como el corpus vivo tiene 13 licitaciones
+    # SAP entre 1.643, la bandeja filtrada salía vacía mientras la cabecera
+    # seguía prometiendo "top-24 de SAP" (ADR-014, invariante 1).
+    tecnologia: str | None = None
     # Page-aligned mode: cuando viene, se puntúan EXACTAMENTE esas licitaciones
     # (las filas visibles del listado) y se ignoran min_score/band/limit. El
     # listado paginado/ordenado/filtrado decide qué ids; el scoring solo se alinea.
@@ -430,16 +441,18 @@ def get_scoring(
         personalized=user_key is not None,
     )
     # ADR-023: proyección acotada desde SQL en vez de la tabla completa.
-    # Sin `ids`, el universo puntuable es todo lo que NO esté en un estado
-    # terminal (`shared.estados.ESTADOS_CERRADOS`): una licitación
-    # cerrada/adjudicada no es una oportunidad — puntuarlas solo servía para
-    # materializar la tabla entera en el proceso API. En modo page-aligned
-    # (`ids`) se traen exactamente esas filas, cualquiera sea su estado, para
-    # no romper el alineado con el listado.
+    # Sin `ids`, el universo puntuable son las oportunidades vivas: estado no
+    # terminal Y plazo por vencer (ver `scoring_candidates`, que documenta por
+    # qué el estado por sí solo no acotaba nada — el 91% de la tabla lo pasa).
+    # En modo page-aligned (`ids`) se traen exactamente esas filas, cualquiera
+    # sea su estado y su plazo, para no romper el alineado con el listado.
     if filters.ids:
         rows = _repo.licitaciones_by_ids([str(i) for i in filters.ids])
     else:
-        rows = _repo.scoring_candidates()
+        rows = _repo.scoring_candidates(
+            hoy_iso=pd.Timestamp.now("UTC").strftime("%Y-%m-%d"),
+            filters=LicitacionesFilters(tecnologia=filters.tecnologia),
+        )
 
     if not rows:
         log.info("analytics_scoring_done", total=0)

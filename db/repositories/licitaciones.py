@@ -638,9 +638,18 @@ class LicitacionRepository:
         ccaa: str | None = None,
         estado: str | None = None,
         q: str | None = None,
+        tecnologia: str | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
         limit: int = 500,
     ) -> list[dict[str, Any]]:
-        """Carga licitaciones para exportación PDF."""
+        """Carga licitaciones para exportación PDF.
+
+        ``tecnologia``/``fecha_desde``/``fecha_hasta`` se filtran aquí y no en
+        el llamador: la ruta de descarga los aplicaba en Python **después** de
+        traer hasta 50 000 filas, así que el LIMIT se consumía con filas que
+        luego se descartaban (una exportación filtrada podía salir corta).
+        """
         conditions: list[str] = []
         params: list[Any] = []
         if ccaa:
@@ -649,6 +658,15 @@ class LicitacionRepository:
         if estado:
             conditions.append("estado = %s")
             params.append(estado)
+        if tecnologia:
+            conditions.append("tecnologia = %s")
+            params.append(tecnologia)
+        if fecha_desde:
+            conditions.append("fecha_publicacion >= %s")
+            params.append(fecha_desde)
+        if fecha_hasta:
+            conditions.append("fecha_publicacion <= %s")
+            params.append(fecha_hasta)
         if q:
             like_op = "ILIKE"
             conditions.append(

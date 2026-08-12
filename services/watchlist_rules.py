@@ -50,7 +50,7 @@ def create_rule(
 ) -> int:
     """Persiste una regla nueva y devuelve su id."""
     with connect() as c:
-        cur = c.execute(
+        row = c.execute(
             "INSERT INTO watchlist_rules "
             "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
             " frequency, active, organization_id, visibility) "
@@ -68,8 +68,7 @@ def create_rule(
                 organization_id,
                 visibility,
             ),
-        )
-        row = cur.fetchone()
+        ).fetchone()
     return int(row[0]) if row else 0
 
 

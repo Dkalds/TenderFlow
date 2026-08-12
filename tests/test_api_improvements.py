@@ -182,6 +182,37 @@ class TestHealthEndpoints:
         assert resp.status_code == 200
         assert resp.json()["db"] == "ok"
 
+    def test_readiness_responds_503_when_db_check_hangs(self, client, monkeypatch):
+        """Una BD colgada da 503 "degraded", no un endpoint colgado.
+
+        Sin techo de tiempo el sondeo espera al connect_timeout (10 s) o al
+        statement_timeout (30 s) del pool: más de lo que aguanta el probe de la
+        plataforma, que da el proceso por muerto y lo reinicia en vez de leer
+        el estado degradado que este endpoint publica.
+        """
+        import time
+        from unittest.mock import patch
+
+        monkeypatch.setenv("HEALTH_CHECK_TIMEOUT_SECONDS", "0.2")
+
+        def _hangs() -> str:
+            time.sleep(5)
+            return "ok"
+
+        with (
+            patch("api.routes.health._check_db", _hangs),
+            patch("api.routes.health._check_redis", return_value="unconfigured"),
+            patch("api.routes.health._check_disk", return_value="ok"),
+        ):
+            t0 = time.monotonic()
+            resp = client.get("/api/v1/health/ready")
+            elapsed = time.monotonic() - t0
+
+        assert resp.status_code == 503
+        assert resp.json()["db"] == "error"
+        assert resp.json()["status"] == "degraded"
+        assert elapsed < 4, f"el endpoint esperó al sondeo colgado ({elapsed:.1f}s)"
+
     def test_upstash_healthcheck_uses_pinned_https_transport(self, monkeypatch):
         from unittest.mock import MagicMock, patch
 

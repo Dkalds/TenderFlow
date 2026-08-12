@@ -474,6 +474,10 @@ export interface paths {
          *
          *     Cuando el usuario tiene un perfil (Feature B), aplica sus pesos y keywords
          *     personalizados. Sin perfil, usa los settings globales.
+         *
+         *     En modo top-N el universo son las oportunidades vivas (estado no terminal y
+         *     plazo por vencer); ``tecnologia`` lo acota antes de ordenar y cortar, para
+         *     que el top-N sea el de esa tecnología y no el global filtrado después.
          */
         get: operations["scoring_api_v1_analytics_scoring_get"];
         put?: never;
@@ -8269,7 +8273,9 @@ export interface operations {
                 limit?: number;
                 /** @description Filter by band (Caliente|Atractiva|Tibia|Descarte) */
                 band?: string | null;
-                /** @description CSV de id_externo: puntua exactamente esas licitaciones (alineado a la pagina del listado), ignorando min_score/band/limit */
+                /** @description Filter by tecnologia (se aplica al universo, antes del top-N) */
+                tecnologia?: string | null;
+                /** @description CSV de id_externo: puntua exactamente esas licitaciones (alineado a la pagina del listado), ignorando min_score/band/limit/tecnologia */
                 ids?: string | null;
             };
             header?: never;

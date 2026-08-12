@@ -53,7 +53,7 @@ def append_event(
     """
     payload_json = json.dumps(payload, ensure_ascii=False, default=str)
     with connect() as c:
-        cur = c.execute(
+        row = c.execute(
             "INSERT INTO domain_events "
             "(event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at) "
             "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
@@ -65,8 +65,8 @@ def append_event(
                 int(actor_id) if actor_id is not None else None,
                 now_utc_iso(),
             ),
-        )
-        event_id: int = int(cur.fetchone()[0])
+        ).fetchone()
+        event_id: int = int(row[0]) if row else 0
     log.debug("event_appended", event_type=event_type, aggregate_id=aggregate_id, event_id=event_id)
     return event_id
 

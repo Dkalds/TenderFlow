@@ -91,9 +91,16 @@ def test_el_resumen_y_el_listado_cuentan_lo_mismo(estados_db):
     assert {row["id_externo"] for row in listados} == _ABIERTOS
 
 
-def test_el_ranking_ve_el_mismo_universo_que_el_resumen(estados_db):
-    """El Radar puntúa `scoring_candidates`; el resumen cuenta `total_activas`."""
-    puntuables = {row["id_externo"] for row in AggregateRepository().scoring_candidates()}
+def test_el_ranking_aplica_la_misma_regla_de_estado_que_el_resumen(estados_db):
+    """El Radar puntúa `scoring_candidates`; el resumen cuenta `total_activas`.
+
+    Con el plazo vivo en todas las filas del fixture, lo único que decide es el
+    estado — y ahí las dos superficies tienen que coincidir, que es el fallo
+    que este módulo fija.
+    """
+    puntuables = {
+        row["id_externo"] for row in AggregateRepository().scoring_candidates(hoy_iso="2026-08-08")
+    }
     overview = AggregateRepository().overview_para_hoy(
         LicitacionesFilters(),
         hoy_iso="2026-08-08T00:00:00+00:00",
@@ -103,6 +110,30 @@ def test_el_ranking_ve_el_mismo_universo_que_el_resumen(estados_db):
 
     assert puntuables == _ABIERTOS
     assert overview["total_activas"] == len(puntuables)
+
+
+def test_el_ranking_ademas_exige_plazo_y_por_eso_puede_contar_menos(estados_db):
+    """La única divergencia permitida entre ranking y resumen, y es deliberada.
+
+    `total_activas` responde "cuántas siguen vivas en el sistema"; el ranking,
+    "a cuántas puedo presentarme hoy". Sin esa segunda pregunta el universo
+    puntuable era el 91% de la tabla (1,5 M filas en producción) y la API moría
+    cargándolo. Lo que no puede pasar es que diverjan por el *estado*: eso lo
+    fija el test de arriba.
+    """
+    puntuables = {
+        row["id_externo"] for row in AggregateRepository().scoring_candidates(hoy_iso="2027-06-01")
+    }
+    overview = AggregateRepository().overview_para_hoy(
+        LicitacionesFilters(),
+        hoy_iso="2027-06-01T00:00:00+00:00",
+        limite_48h_iso="2027-06-03T00:00:00+00:00",
+        hace_24h_iso="2027-05-31T00:00:00+00:00",
+    )
+
+    # Todas las filas del fixture vencen el 2027-01-01: ninguna es puntuable ya.
+    assert puntuables == set()
+    assert overview["total_activas"] == len(_ABIERTOS)
 
 
 def test_calientes_hoy_no_descarta_un_expediente_en_admision(estados_db):

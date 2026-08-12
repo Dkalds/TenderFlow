@@ -548,6 +548,30 @@ class TestResumenEndpoint:
         )
         assert resp.status_code == 400
 
+    def test_resumen_accepts_id_externo_con_barras(self, ask_client):
+        """Los expedientes PLACSP con '/' en el id llegan al handler.
+
+        Con el conversor por defecto (``[^/]+``) esta ruta no casaba y FastAPI
+        devolvía 404 antes de ejecutar el handler, así que el resumen era
+        inalcanzable para esos expedientes. El id viaja completo hasta
+        ``build_licitacion_context``: eso es lo que se verifica aquí, no el 200.
+        """
+        visto: dict[str, str] = {}
+
+        def _capture_ctx(id_externo, _chunks):
+            visto["id_externo"] = id_externo
+            return _fake_ctx()
+
+        with patch("services.rag.context.build_licitacion_context", _capture_ctx):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                resp = ask_client.post(
+                    "/api/v1/licitaciones/PA-S 2026/000058/resumen",
+                    json={},
+                )
+
+        assert resp.status_code == 200
+        assert visto["id_externo"] == "PA-S 2026/000058"
+
     def test_resumen_streams_meta_first_then_text_and_done(self, ask_client):
         import json as _json
 

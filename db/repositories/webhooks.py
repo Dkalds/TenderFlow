@@ -37,12 +37,14 @@ class WebhookRepository:
         master_key = _get_webhook_master_key()
 
         with connect() as c:
-            cur = c.execute(
+            # RETURNING y no lastval(): de este id se deriva el secret HMAC del
+            # webhook, así que tiene que ser el de ESTA fila sin ambigüedad.
+            row = c.execute(
                 "INSERT INTO webhooks (name, url, secret, event_types, active, created_at) "
                 "VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
                 (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
-            )
-            webhook_id = int(cur.fetchone()[0])
+            ).fetchone()
+            webhook_id = int(row[0]) if row else 0
 
         if master_key:
             secret = derive_webhook_secret(master_key, webhook_id)

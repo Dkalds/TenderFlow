@@ -97,7 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     - Startup: ejecuta migraciones y crea tablas. Falla rápido en prod si hay error.
     - Shutdown: espera hasta 30s a que los BackgroundTasks en vuelo terminen,
-      luego cierra el pool de conexiones SQLite limpiamente.
+      luego cierra el pool de conexiones Postgres limpiamente.
     """
     import asyncio
 

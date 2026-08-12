@@ -160,32 +160,14 @@ class _PgConnAdapter:
             return -1
         return int(self._cur.rowcount)
 
-    @property
-    def lastrowid(self) -> Any:
-        """**Obsoleto: usá ``INSERT … RETURNING id``.** Id del último INSERT.
-
-        psycopg3 no expone ``lastrowid``, así que esto emite un
-        ``SELECT lastval()`` aparte. Dos motivos para no usarlo:
-
-        1. Cuesta un round-trip extra por inserción.
-        2. ``lastval()`` devuelve el último valor generado por una secuencia
-           **en la sesión**, no el de la tabla insertada: si el INSERT dispara
-           un trigger que escribe en otra tabla con serial, el id devuelto es
-           el de la tabla equivocada, en silencio.
-
-        Los call-sites de producción migraron a ``RETURNING id`` en 2026-08. Se
-        mantiene por compatibilidad con tests y utilidades.
-        """
-        if self._cur is None:
-            return None
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT lastval()")
-                row = cur.fetchone()
-                return row[0] if row else None
-        except Exception:
-            log.debug("pg_lastrowid_unavailable")
-            return None
+    # ``lastrowid`` NO se expone a propósito. psycopg3 no lo tiene, y emularlo
+    # con ``SELECT lastval()`` era incorrecto: lastval() devuelve el último
+    # valor generado por CUALQUIER secuencia de la sesión, en una sentencia
+    # aparte. Con triggers en el schema (v61) basta que uno inserte en otra
+    # tabla con identity para que el caller reciba un id ajeno sin error.
+    # El equivalente correcto en Postgres es ``INSERT … RETURNING id``, que es
+    # lo que usan hoy los call-sites (db/webhooks.py, db/events.py,
+    # db/watchlist_empresas.py, services/watchlist_rules.py).
 
     def commit(self) -> None:
         self._conn.commit()

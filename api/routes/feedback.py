@@ -289,7 +289,8 @@ async def submit_feedback(
     if idempotency_key:
         await run_db(_repo.store_idempotency, idempotency_key, response_data.model_dump())
 
-    log_event(
+    await run_db(
+        log_event,
         event_type="feedback.submitted",
         user_key=str(ctx.get("user_key", "system"))[:8],
         resource=f"licitacion:{body.expediente}",
